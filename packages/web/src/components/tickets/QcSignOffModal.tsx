@@ -18,6 +18,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Camera, Eraser, Check, X, Loader2, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 interface QcChecklistItem {
   id: number;
@@ -125,9 +130,18 @@ export function QcSignOffModal({
     setSignatureDrawn(false);
   };
 
-  const onPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const error = await validateImageFile(file, {
+      maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
+      label: `"${file.name}"`,
+    });
+    if (error) {
+      toast.error(error);
+      e.target.value = '';
+      return;
+    }
     setWorkingPhotoFile(file);
     const url = URL.createObjectURL(file);
     setWorkingPhotoPreview(url);
@@ -252,7 +266,7 @@ export function QcSignOffModal({
               <input
                 ref={photoInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={IMAGE_UPLOAD_ACCEPT}
                 onChange={onPhotoChange}
                 className="hidden"
               />

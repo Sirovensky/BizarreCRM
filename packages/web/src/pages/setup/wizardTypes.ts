@@ -16,7 +16,7 @@ export type WizardPhase =
   | 'firstLogin'        // Step 1 self-host — admin/admin123 default + force-pw warning
   | 'forcePassword'     // Step 2 self-host — change default password
   | 'signup'            // Step 1 SaaS — name/email/password/slug
-  | 'verifyEmail'       // Step 2 SaaS — 6-digit code (with TEMP dev-skip in dev mode)
+  | 'verifyEmail'       // Step 2 SaaS — 6-digit code
   | 'twoFactorSetup'    // Step 3 both — TOTP enroll + backup codes
   // Wizard body (linear)
   | 'welcome'           // Step 4 — shop name + theme
@@ -147,12 +147,15 @@ export type ExtraCardId =
  *
  * Keys must match the ALLOWED_CONFIG_KEYS set in settings.routes.ts (H2).
  * Special keys NOT persisted to store_config (used only for in-flow state):
- *   signup_email — captured in Step 1 SaaS, pre-fills Step 6 store_email.
+ *   signup_email/signup_slug/signup_verified — captured in Step 1/2 SaaS,
+ *   used by the email-verification step and Step 6 prefill.
  *   pricing_tier_* — StepRepairPricing publishes directly to repair_prices.
  */
 export interface PendingWrites {
   // ─── In-flow only (NOT persisted) ────────────────────────────────
   signup_email?: string;              // SaaS: account email captured at signup, pre-fills store_email
+  signup_slug?: string;               // SaaS: pending tenant slug for verification/resend
+  signup_verified?: boolean;          // SaaS: true after setup code verification succeeds
 
   // ─── Welcome step ────────────────────────────────────────────────
   store_name?: string;
@@ -300,8 +303,8 @@ export interface PendingWrites {
  * Steps don't manage their own navigation — they call back to the shell
  * via onNext/onBack/onUpdate and the shell handles phase transitions.
  *
- * H1: added `onSkip` so any step can fire the global skip-to-dashboard
- * action (previously only the top-bar SkipToDashboard button could).
+ * H1: added `onSkip` so optional screens can skip the current step while the
+ * shell's top-bar SkipToDashboard remains the only skip-the-entire-wizard path.
  */
 export interface StepProps {
   /** Values collected so far across all steps */
@@ -312,7 +315,7 @@ export interface StepProps {
   onNext: () => void;
   /** Back to previous step (no-op on first step) */
   onBack: () => void;
-  /** Optional: skip the entire wizard and flush partial state */
+  /** Optional: skip the current step and advance within the wizard */
   onSkip?: () => void;
 }
 

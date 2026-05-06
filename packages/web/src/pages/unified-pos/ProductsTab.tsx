@@ -24,6 +24,7 @@ export function ProductsTab() {
   // WEB-W1-014: pos_show_images — when '1', show product image/thumbnail in tiles.
   // When not set or '0', show the type-badge placeholder instead.
   const showImages = getSetting('pos_show_images', '0') === '1';
+  const showOutOfStock = getSetting('pos_show_out_of_stock', '1') === '1';
 
   const [keyword, setKeyword] = useState('');
   const [debouncedKeyword, setDebouncedKeyword] = useState('');
@@ -37,15 +38,19 @@ export function ProductsTab() {
   }, [keyword]);
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['pos-products', debouncedKeyword, category],
+    queryKey: ['pos-products', debouncedKeyword, category, showOutOfStock],
     queryFn: () => posApi.products({
       keyword: debouncedKeyword || undefined,
       category: category || undefined,
+      show_out_of_stock: showOutOfStock ? '1' : '0',
     }),
     staleTime: 30000,
   });
 
-  const products: any[] = productsData?.data?.data?.items || [];
+  const products: any[] = (productsData?.data?.data?.items || []).filter((p: any) => {
+    if (showOutOfStock || p.item_type === 'service') return true;
+    return Number(p.in_stock ?? 0) > 0;
+  });
   const categories: string[] = productsData?.data?.data?.categories || [];
 
   const handleAdd = (product: any) => {
@@ -108,7 +113,7 @@ export function ProductsTab() {
             onClick={() => navigate('/inventory/new?return=/pos')}
             title="Quick add — create a new inventory item"
             aria-label="Quick add inventory item"
-            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary-500 px-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+            className="btn btn-sm shrink-0 bg-primary-500 !font-semibold text-primary-950 shadow-sm hover:bg-primary-400"
           >
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Quick add</span>
@@ -121,7 +126,7 @@ export function ProductsTab() {
             <button
               onClick={() => setCategory('')}
               className={cn(
-                'flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                'btn btn-xs flex-shrink-0 !rounded-full',
                 !category
                   ? 'bg-primary-600 text-primary-950'
                   : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700',
@@ -134,7 +139,7 @@ export function ProductsTab() {
                 key={cat}
                 onClick={() => setCategory(cat === category ? '' : cat)}
                 className={cn(
-                  'flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                  'btn btn-xs flex-shrink-0 !rounded-full',
                   category === cat
                     ? 'bg-primary-600 text-primary-950'
                     : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700',
@@ -166,7 +171,7 @@ export function ProductsTab() {
                   onClick={() => handleAdd(p)}
                   disabled={outOfStock}
                   className={cn(
-                    'relative flex flex-col items-start rounded-xl border p-3 text-left transition-all',
+                    'btn btn-md relative !h-auto flex-col !items-start !justify-start rounded-xl border !p-3 text-left !whitespace-normal',
                     outOfStock
                       ? 'cursor-not-allowed border-surface-200 opacity-50 dark:border-surface-700'
                       : 'border-surface-200 bg-white hover:border-primary-400 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 dark:border-surface-700 dark:bg-surface-800 dark:hover:border-primary-500',

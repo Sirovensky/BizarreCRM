@@ -81,6 +81,7 @@ fun StocktakeListScreen(
 
     // Status filter: null = "All"
     var statusFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var sessionPendingCancel by remember { mutableStateOf<StocktakeListItem?>(null) }
 
     // Show snackbar on error
     LaunchedEffect(state.error) {
@@ -104,6 +105,29 @@ fun StocktakeListScreen(
             onDismiss = { viewModel.dismissNewDialog() },
             onCreate = { name, location, notes ->
                 viewModel.createSession(name, location, notes)
+            },
+        )
+    }
+
+    sessionPendingCancel?.let { session ->
+        AlertDialog(
+            onDismissRequest = { sessionPendingCancel = null },
+            title = { Text("Cancel stocktake?") },
+            text = { Text("No stock changes will be applied to ${session.name}.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        sessionPendingCancel = null
+                        viewModel.cancelSession(session.id)
+                    },
+                ) {
+                    Text("Cancel stocktake")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionPendingCancel = null }) {
+                    Text("Keep session")
+                }
             },
         )
     }
@@ -194,7 +218,7 @@ fun StocktakeListScreen(
                                     StocktakeSessionCard(
                                         session = session,
                                         onOpen = { onOpenSession(session.id) },
-                                        onCancel = { viewModel.cancelSession(session.id) },
+                                        onCancel = { sessionPendingCancel = session },
                                     )
                                 }
                             }

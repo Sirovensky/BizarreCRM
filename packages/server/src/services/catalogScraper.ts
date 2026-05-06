@@ -18,6 +18,10 @@ import { createHash } from 'crypto';
 import type Database from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
+import { getSupplierSource } from './suppliers/registry.js';
+import type { CatalogSource, ScrapedProduct } from './suppliers/types.js';
+
+export type { CatalogSource, ScrapedProduct } from './suppliers/types.js';
 
 const logger = createLogger('catalog-scraper');
 
@@ -30,13 +34,6 @@ class AppError_ConcurrentScrape extends Error {
     this.name = 'AppError_ConcurrentScrape';
   }
 }
-
-export type CatalogSource = 'mobilesentrix' | 'phonelcdparts';
-
-const BASE_URLS: Record<CatalogSource, string> = {
-  mobilesentrix: 'https://www.mobilesentrix.com',
-  phonelcdparts: 'https://www.phonelcdparts.com',
-};
 
 // Broad search terms that collectively cover a repair shop's entire parts catalog.
 // Running all of these in sequence gives us a near-complete scrape.
@@ -66,19 +63,6 @@ const FULL_CATALOG_QUERIES = [
   'ps5', 'ps4', 'ps3', 'ps2',
   'xbox', 'series x', 'series s',
 ];
-
-export interface ScrapedProduct {
-  externalId: string;    // URL slug or SKU — unique key per source
-  name: string;
-  sku: string | null;
-  price: number;
-  comparePrice: number | null;
-  imageUrl: string | null;
-  productUrl: string;
-  category: string | null;
-  inStock: boolean;
-  compatibleDevices: string[];
-}
 
 // ─── HTML Parsing ─────────────────────────────────────────────────────────────
 
@@ -381,76 +365,17 @@ function matchDeviceModels(db: Database.Database, deviceNames: string[]): number
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
-const REQUEST_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-};
-
 /** Fetch one page of Magento search results and return parsed products */
 async function fetchSearchPage(
   source: CatalogSource,
   query: string,
   page: number,
 ): Promise<{ products: ScrapedProduct[]; hasMore: boolean }> {
-  const baseUrl = BASE_URLS[source];
-  const encoded = encodeURIComponent(query);
-
-  // Mobilesentrix rejects `product_list_limit` param (returns 404).
-  // PhoneLcdParts accepts it fine. Build URL accordingly.
-  let url: string;
-  if (source === 'mobilesentrix') {
-    url = page > 1
-      ? `${baseUrl}/catalogsearch/result/?q=${encoded}&p=${page}`
-      : `${baseUrl}/catalogsearch/result/?q=${encoded}`;
-  } else {
-    url = `${baseUrl}/catalogsearch/result/?q=${encoded}&p=${page}&product_list_limit=36`;
-  }
-
-  // PROD29: SSRF guard on every outbound catalog fetch. BASE_URLS is
-  // hardcoded today but the defence-in-depth layer is cheap — if a
-  // future admin-configurable catalog source lands, this guard is
-  // already in place to block private/reserved IPs.
-  const { assertPublicUrl } = await import('../utils/ssrfGuard.js');
-  await assertPublicUrl(url);
-
-  const res = await fetch(url, { headers: REQUEST_HEADERS, signal: AbortSignal.timeout(15000) });
-  if (!res.ok) {
-    // MS sometimes returns 404 for valid searches with extra params — log and skip
-    throw new Error(`HTTP ${res.status} fetching ${url}`);
-  }
-
-  // SEC-L20: cap response body at 10 MiB before feeding cheerio. A
-  // malicious or accidentally-huge upstream response (runaway product
-  // list, compromised supplier page) could feed 100s of MiB of HTML into
-  // cheerio's synchronous parse, pinning the event loop and eating
-  // process memory. Two-layer check:
-  //   (1) if the server advertises Content-Length, reject pre-download;
-  //   (2) otherwise stream-read and abort if the body crosses the cap.
-  const CAP = 10 * 1024 * 1024;
-  const contentLengthHeader = res.headers.get('content-length');
-  if (contentLengthHeader) {
-    const contentLength = parseInt(contentLengthHeader, 10);
-    if (Number.isFinite(contentLength) && contentLength > CAP) {
-      throw new Error(`Upstream response too large (${contentLength} bytes > ${CAP}) for ${url}`);
-    }
-  }
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > CAP) {
-    throw new Error(`Upstream response too large (${buf.byteLength} bytes > ${CAP}) for ${url}`);
-  }
-  const html = Buffer.from(buf).toString('utf8');
-  const $ = cheerio.load(html);
-
-  const products = parseProductsFromHtml(html, baseUrl, source);
-
-  // Detect if there's a next page
-  // MS: look for .pages-items a.next or numbered pagination links
-  // PLP: standard Magento next button
-  const nextBtn = $('a.next, .pages-item-next:not(.disabled), a[title="Next"]').length > 0;
-  const hasMore = nextBtn || (page < 2 && products.length >= 30);
-
-  return { products, hasMore };
+  return getSupplierSource(source).fetchPart({
+    query,
+    page,
+    context: { parseProductsFromHtml },
+  });
 }
 
 // ─── DB persistence ───────────────────────────────────────────────────────────

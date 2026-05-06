@@ -41,6 +41,23 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+type BulkDeleteFailure = {
+  id: number;
+  label: string;
+  error: unknown;
+};
+
+function formatEstimateLabel(id: number, estimate?: { order_id?: string | null }) {
+  return estimate?.order_id || `EST-${String(id).padStart(4, '0')}`;
+}
+
+function formatBulkDeleteFailures(failures: BulkDeleteFailure[]) {
+  const visibleFailures = failures.slice(0, 3);
+  const details = visibleFailures.map((failure) => `${failure.label}: ${formatApiError(failure.error)}`);
+  const remaining = failures.length - visibleFailures.length;
+  return `${details.join('; ')}${remaining > 0 ? `; ${remaining} more failed` : ''}`;
+}
+
 // ─── Skeleton ────────────────────────────────────────────────────
 function SkeletonRow() {
   return (
@@ -393,6 +410,7 @@ export function EstimateListPage() {
   const sortDir = (searchParams.get('sort_dir') || 'desc') as 'asc' | 'desc';
   // WEB-W2-033: bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const toggleSelectAll = (checked: boolean) => {
     setSelectedIds(checked ? new Set(estimates.map((e: any) => e.id)) : new Set());
   };
@@ -499,7 +517,71 @@ export function EstimateListPage() {
 
   // Shared gate so Send/Convert/Delete/Reject row buttons can't fire in parallel
   // and race the convert->navigate transition (SCAN-984b).
-  const anyMutationPending = sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending;
+  const anyMutationPending =
+    sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending || isBulkDeleting;
+
+  const handleBulkDelete = useCallback(async () => {
+    if (anyMutationPending || selectedIds.size === 0) return;
+
+    const ids = [...selectedIds];
+    const total = ids.length;
+    const labelById = new Map(
+      estimates.map((estimate) => [estimate.id, formatEstimateLabel(estimate.id, estimate)]),
+    );
+
+    try {
+      if (!await confirm(`Delete ${total} estimate${total !== 1 ? 's' : ''}?`, { danger: true })) {
+        return;
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
+      return;
+    }
+
+    const loadingToastId = toast.loading(`Deleting ${total} estimate${total !== 1 ? 's' : ''}...`);
+    const failures: BulkDeleteFailure[] = [];
+    let deletedCount = 0;
+    setIsBulkDeleting(true);
+
+    try {
+      for (const id of ids) {
+        try {
+          await estimateApi.delete(id);
+          deletedCount += 1;
+        } catch (error) {
+          failures.push({
+            id,
+            label: labelById.get(id) || formatEstimateLabel(id),
+            error,
+          });
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      setSelectedIds(new Set(failures.map((failure) => failure.id)));
+      toast.dismiss(loadingToastId);
+
+      if (failures.length === 0) {
+        toast.success(`Deleted ${deletedCount} estimate${deletedCount !== 1 ? 's' : ''}`);
+      } else if (deletedCount > 0) {
+        toast.success(`Deleted ${deletedCount} of ${total} estimate${total !== 1 ? 's' : ''}`);
+        toast.error(
+          `Failed to delete ${failures.length} estimate${failures.length !== 1 ? 's' : ''}; failed rows remain selected. ${formatBulkDeleteFailures(failures)}`,
+          { duration: 10000 },
+        );
+      } else {
+        toast.error(
+          `No estimates were deleted; failed rows remain selected. ${formatBulkDeleteFailures(failures)}`,
+          { duration: 10000 },
+        );
+      }
+    } catch (err) {
+      toast.dismiss(loadingToastId);
+      toast.error(formatApiError(err));
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  }, [anyMutationPending, estimates, queryClient, selectedIds]);
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
@@ -585,21 +667,23 @@ export function EstimateListPage() {
                         {selectedIds.size} selected
                       </span>
                       <button
-                        onClick={async () => {
-                          try {
-                            if (await confirm(`Delete ${selectedIds.size} estimate${selectedIds.size !== 1 ? 's' : ''}?`, { danger: true })) {
-                              await Promise.all([...selectedIds].map((id) => estimateApi.delete(id)));
-                              queryClient.invalidateQueries({ queryKey: ['estimates'] });
-                              setSelectedIds(new Set());
-                              toast.success(`Deleted ${selectedIds.size} estimate${selectedIds.size !== 1 ? 's' : ''}`);
-                            }
-                          } catch (err) { toast.error(formatApiError(err)); }
-                        }}
-                        className="flex items-center gap-1 text-red-600 hover:text-red-700 font-medium"
+                        type="button"
+                        onClick={handleBulkDelete}
+                        disabled={anyMutationPending}
+                        className="flex items-center gap-1 text-red-600 hover:text-red-700 font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
                       >
-                        <Trash2 className="h-3.5 w-3.5" /> Delete selected
+                        {isBulkDeleting
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <Trash2 className="h-3.5 w-3.5" />}
+                        {isBulkDeleting ? 'Deleting...' : 'Delete selected'}
                       </button>
-                      <button onClick={() => setSelectedIds(new Set())} className="text-surface-400 hover:text-surface-600 ml-auto">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedIds(new Set())}
+                        disabled={isBulkDeleting}
+                        aria-label="Clear estimate selection"
+                        className="text-surface-400 hover:text-surface-600 ml-auto disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+                      >
                         <X className="h-4 w-4" />
                       </button>
                     </div>
@@ -613,7 +697,8 @@ export function EstimateListPage() {
                     type="checkbox"
                     checked={estimates.length > 0 && selectedIds.size === estimates.length}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
-                    className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                    disabled={isBulkDeleting}
+                    className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </th>
                 {([
@@ -649,7 +734,7 @@ export function EstimateListPage() {
                 Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
               ) : estimates.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={8}>
                     <div className="flex flex-col items-center justify-center py-20">
                       <ClipboardList className="mb-4 h-16 w-16 text-surface-300 dark:text-surface-600" />
                       <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No Estimates</h2>
@@ -675,7 +760,8 @@ export function EstimateListPage() {
                           type="checkbox"
                           checked={selectedIds.has(est.id)}
                           onChange={() => toggleSelect(est.id)}
-                          className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                          disabled={isBulkDeleting}
+                          className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </td>
                       <td className="px-4 py-3 font-medium text-primary-600 dark:text-primary-400">
@@ -860,9 +946,15 @@ export function EstimateListPage() {
                 <span className="text-xs text-surface-500 dark:text-surface-400">per page</span>
               </div>
               <p className="text-sm text-surface-500 dark:text-surface-400">
-                Showing {(page - 1) * pagination.per_page + 1}
-                &ndash;
-                {Math.min(page * pagination.per_page, pagination.total)} of {pagination.total}
+                {pagination.total > 0 ? (
+                  <>
+                    Showing {(page - 1) * pagination.per_page + 1}
+                    &ndash;
+                    {Math.min(page * pagination.per_page, pagination.total)} of {pagination.total}
+                  </>
+                ) : (
+                  'No results'
+                )}
               </p>
             </div>
             {pagination.total_pages > 1 && (

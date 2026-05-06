@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -64,11 +65,17 @@ fun CheckInStep5Quote(
     laborMinutes: Int,
     quoteTotalCents: Long,
     dueOnPickupCents: Long,
+    manualPriceDefaultCandidate: ManualPriceDefaultCandidate? = null,
+    saveManualPriceAsDefault: Boolean = false,
+    isSavingManualPriceDefault: Boolean = false,
+    manualPriceDefaultSaveMessage: String? = null,
+    manualPriceDefaultSaveError: String? = null,
     onDepositChange: (Long) -> Unit,
     onDepositFullBalance: (Boolean) -> Unit,
     onLaborMinutesChange: (Int) -> Unit,
     onLaborTechChange: (Long) -> Unit,
     onSubtotalChange: (Long) -> Unit,
+    onSaveManualPriceAsDefaultChange: (Boolean) -> Unit = {},
     repairLines: List<RepairLinePreview> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
@@ -89,7 +96,13 @@ fun CheckInStep5Quote(
             item(key = "repair_lines_placeholder") {
                 RepairLinesPlaceholder(
                     subtotalCents = subtotalCents,
+                    manualPriceDefaultCandidate = manualPriceDefaultCandidate,
+                    saveManualPriceAsDefault = saveManualPriceAsDefault,
+                    isSavingManualPriceDefault = isSavingManualPriceDefault,
+                    manualPriceDefaultSaveMessage = manualPriceDefaultSaveMessage,
+                    manualPriceDefaultSaveError = manualPriceDefaultSaveError,
                     onSubtotalChange = onSubtotalChange,
+                    onSaveManualPriceAsDefaultChange = onSaveManualPriceAsDefaultChange,
                 )
             }
         } else {
@@ -163,7 +176,13 @@ private fun RepairLineRow(line: RepairLinePreview) {
 @Composable
 private fun RepairLinesPlaceholder(
     subtotalCents: Long,
+    manualPriceDefaultCandidate: ManualPriceDefaultCandidate?,
+    saveManualPriceAsDefault: Boolean,
+    isSavingManualPriceDefault: Boolean,
+    manualPriceDefaultSaveMessage: String?,
+    manualPriceDefaultSaveError: String?,
     onSubtotalChange: (Long) -> Unit,
+    onSaveManualPriceAsDefaultChange: (Boolean) -> Unit,
 ) {
     var input by remember(subtotalCents) {
         mutableStateOf(if (subtotalCents > 0) "%.2f".format(subtotalCents / 100.0) else "")
@@ -190,6 +209,52 @@ private fun RepairLinesPlaceholder(
                     .fillMaxWidth()
                     .semantics { contentDescription = "Estimated repair cost in dollars" },
             )
+            manualPriceDefaultCandidate?.takeIf { subtotalCents > 0L }?.let { candidate ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentDescription = "Save manual price as default for ${candidate.repairServiceName}"
+                        },
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Checkbox(
+                        checked = saveManualPriceAsDefault,
+                        onCheckedChange = onSaveManualPriceAsDefaultChange,
+                        enabled = !isSavingManualPriceDefault,
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            "Save as default for this model",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "Future ${candidate.repairServiceName} repairs will use this estimate.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        manualPriceDefaultSaveMessage?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = LocalExtendedColors.current.success,
+                            )
+                        }
+                        manualPriceDefaultSaveError?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

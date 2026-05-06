@@ -5,15 +5,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
-import com.bizarreelectronics.crm.data.remote.api.StocktakeApi
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeCount
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeListItem
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeSummary
-import com.bizarreelectronics.crm.data.remote.dto.StocktakeUpsertCountRequest
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
+import com.bizarreelectronics.crm.data.repository.StocktakeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -57,7 +57,7 @@ data class StocktakeSessionDetailUiState(
 @HiltViewModel
 class StocktakeSessionDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val stocktakeApi: StocktakeApi,
+    private val stocktakeRepository: StocktakeRepository,
     private val inventoryRepository: InventoryRepository,
 ) : ViewModel() {
 
@@ -76,11 +76,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val resp = stocktakeApi.getSession(sessionId)
-                val detail = resp.data ?: run {
-                    _state.value = _state.value.copy(isLoading = false, error = "No data returned")
-                    return@launch
-                }
+                val detail = stocktakeRepository.getSession(sessionId)
                 _state.value = _state.value.copy(
                     session = detail.session,
                     counts = detail.counts,
@@ -113,17 +109,11 @@ class StocktakeSessionDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isUpsertingCount = true, error = null, searchQuery = "", searchResults = emptyList())
             try {
-                val resp = stocktakeApi.upsertCount(
-                    id = sessionId,
-                    request = StocktakeUpsertCountRequest(
-                        inventoryItemId = item.id,
-                        countedQty = countedQty,
-                    ),
+                val updated = stocktakeRepository.upsertCount(
+                    sessionId = sessionId,
+                    inventoryItemId = item.id,
+                    countedQty = countedQty,
                 )
-                val updated = resp.data ?: run {
-                    _state.value = _state.value.copy(isUpsertingCount = false)
-                    return@launch
-                }
                 val newCounts = mergeCount(_state.value.counts, updated)
                 _state.value = _state.value.copy(
                     counts = newCounts,
@@ -154,17 +144,11 @@ class StocktakeSessionDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isUpsertingCount = true, error = null)
             try {
-                val resp = stocktakeApi.upsertCount(
-                    id = sessionId,
-                    request = StocktakeUpsertCountRequest(
-                        inventoryItemId = inventoryItemId,
-                        countedQty = newQty,
-                    ),
+                val updated = stocktakeRepository.upsertCount(
+                    sessionId = sessionId,
+                    inventoryItemId = inventoryItemId,
+                    countedQty = newQty,
                 )
-                val updated = resp.data ?: run {
-                    _state.value = _state.value.copy(isUpsertingCount = false)
-                    return@launch
-                }
                 val newCounts = mergeCount(_state.value.counts, updated)
                 _state.value = _state.value.copy(
                     counts = newCounts,
@@ -192,7 +176,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
      */
     fun onBarcodeScanned(rawValue: String) {
         viewModelScope.launch {
-            val item = inventoryRepository.lookupBarcode(rawValue)
+            val item = lookupStocktakeItem(rawValue)
             if (item != null) {
                 val existing = _state.value.counts.firstOrNull { it.inventoryItemId == item.id }
                 upsertCount(item, (existing?.countedQty ?: 0) + 1)
@@ -221,6 +205,16 @@ class StocktakeSessionDetailViewModel @Inject constructor(
         _state.value = _state.value.copy(searchQuery = "", searchResults = emptyList())
     }
 
+    private suspend fun lookupStocktakeItem(rawValue: String): InventoryItemEntity? {
+        val code = rawValue.trim()
+        if (code.isBlank()) return null
+        inventoryRepository.lookupBarcode(code)?.let { return it }
+        return inventoryRepository.searchItems(code).first().firstOrNull { item ->
+            item.upcCode.equals(code, ignoreCase = true) ||
+                item.sku.equals(code, ignoreCase = true)
+        }
+    }
+
     // ── Commit ────────────────────────────────────────────────────────────────
 
     /**
@@ -231,7 +225,7 @@ class StocktakeSessionDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isCommitting = true, error = null)
             try {
-                stocktakeApi.commitById(sessionId)
+                stocktakeRepository.commitSession(sessionId)
                 _state.value = _state.value.copy(isCommitting = false, committedSuccess = true)
             } catch (e: HttpException) {
                 val msg = when (e.code()) {

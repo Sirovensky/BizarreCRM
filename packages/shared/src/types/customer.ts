@@ -57,6 +57,23 @@ export interface CustomerEmail {
   is_primary: boolean;
 }
 
+export interface CustomerAddress {
+  id: string;
+  customer_id: number;
+  type: 'primary' | 'billing' | 'shipping' | 'other';
+  label: string;
+  is_primary: boolean;
+  address1: string | null;
+  address2: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  country: string | null;
+  formatted: string;
+  source?: string;
+  updated_at?: string | null;
+}
+
 export interface CustomerGroup {
   id: number;
   name: string;

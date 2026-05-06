@@ -3,9 +3,9 @@
  *
  * Route: /pay/:token
  * Reads the payment-link token via the public API and shows the amount and
- * invoice ref. WEB-W3-005: "Pay now" button POSTs to get a BlockChyp hosted
- * checkout URL and redirects the customer to it. Falls back to "call shop"
- * when BlockChyp is not configured for this tenant.
+ * invoice ref. "Pay now" asks the server for the tenant's hosted checkout URL
+ * and redirects the customer to the provider. Falls back to "call shop" when
+ * online checkout is not configured for this tenant.
  *
  * IMPORTANT: this page must never depend on the AppShell or auth store.
  * It's rendered as a standalone route in App.tsx outside the protected
@@ -96,7 +96,7 @@ export function CustomerPayPage() {
     }
   }, [token]);
 
-  // WEB-W3-005: post to server to get a BlockChyp hosted checkout URL, then redirect.
+  // Post to server to get the tenant-hosted checkout URL, then redirect.
   const handlePay = useCallback(async () => {
     if (!token || view.kind !== 'ready') return;
     setPaying(true);
@@ -104,10 +104,10 @@ export function CustomerPayPage() {
       const res = await axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/pay`);
       const result = res.data?.data as { checkout_available: boolean; checkout_url?: string; error?: string } | undefined;
       if (result?.checkout_available && result.checkout_url) {
-        // Redirect the customer to the BlockChyp-hosted card entry page.
+        // Redirect the customer to the hosted card entry page.
         window.location.href = result.checkout_url;
       } else {
-        // BlockChyp not configured for this tenant — show "call shop" message.
+        // Checkout provider not configured for this tenant — show "call shop" message.
         setView({ kind: 'checkout_unavailable', link: view.link, reason: result?.error });
       }
     } catch (err) {
@@ -125,25 +125,25 @@ export function CustomerPayPage() {
   }, [loadLink]);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-surface-50 px-4 py-12 text-surface-900 dark:bg-surface-950 dark:text-surface-100">
       <div className="mx-auto max-w-md space-y-6">
         <header className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Payment Request</h1>
-          <p className="mt-1 text-sm text-gray-500">Review your balance</p>
+          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Payment Request</h1>
+          <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">Review your balance</p>
         </header>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="rounded-lg border border-surface-200 bg-white p-6 shadow-sm dark:border-surface-800 dark:bg-surface-900">
           {view.kind === 'loading' ? (
-            <p className="text-center text-gray-500">Loading…</p>
+            <p className="text-center text-surface-500 dark:text-surface-400">Loading…</p>
           ) : null}
 
           {view.kind === 'error' ? (
             <div className="space-y-3 text-center">
-              <p className="text-red-600 font-medium">{view.message}</p>
-              <p className="text-sm text-gray-600">Please call the shop to complete payment.</p>
+              <p className="font-medium text-error-600 dark:text-error-400">{view.message}</p>
+              <p className="text-sm text-surface-600 dark:text-surface-300">Please call the shop to complete payment.</p>
               <button
                 onClick={loadLink}
-                className="rounded-md bg-gray-100 px-4 py-2 text-sm hover:bg-gray-200"
+                className="rounded-md border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
               >
                 Try again
               </button>
@@ -152,8 +152,8 @@ export function CustomerPayPage() {
 
           {view.kind === 'expired' ? (
             <div className="space-y-3 text-center">
-              <p className="text-amber-600 font-medium">This link is no longer valid.</p>
-              <p className="text-sm text-gray-600">
+              <p className="font-medium text-warning-700 dark:text-warning-300">This link is no longer valid.</p>
+              <p className="text-sm text-surface-600 dark:text-surface-300">
                 Please contact the shop for an updated payment link.
               </p>
             </div>
@@ -161,9 +161,9 @@ export function CustomerPayPage() {
 
           {view.kind === 'paid' ? (
             <div className="space-y-3 text-center">
-              <div className="text-4xl">✓</div>
-              <p className="text-lg font-semibold text-green-700">Already paid</p>
-              <p className="text-sm text-gray-600">
+              <div className="text-4xl text-success-600 dark:text-success-400">✓</div>
+              <p className="text-lg font-semibold text-success-700 dark:text-success-300">Already paid</p>
+              <p className="text-sm text-surface-600 dark:text-surface-300">
                 This invoice has already been paid in full. Thank you!
               </p>
             </div>
@@ -172,26 +172,26 @@ export function CustomerPayPage() {
           {(view.kind === 'ready' || view.kind === 'checkout_unavailable') ? (
             <div className="space-y-4">
               <div className="text-center">
-                <p className="text-sm text-gray-500">Amount due</p>
-                <p className="text-4xl font-bold text-gray-900">
+                <p className="text-sm text-surface-500 dark:text-surface-400">Amount due</p>
+                <p className="text-4xl font-bold text-surface-900 dark:text-surface-50">
                   {formatCents(view.link.amount_cents)}
                 </p>
                 {view.link.invoice_order_id ? (
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
                     Invoice {view.link.invoice_order_id}
                   </p>
                 ) : null}
                 {view.link.description ? (
-                  <p className="mt-2 text-sm text-gray-600">{view.link.description}</p>
+                  <p className="mt-2 text-sm text-surface-600 dark:text-surface-300">{view.link.description}</p>
                 ) : null}
               </div>
 
               {view.kind === 'ready' ? (
-                /* WEB-W3-005: "Pay now" triggers BlockChyp hosted checkout */
+                /* "Pay now" triggers hosted checkout */
                 <button
                   onClick={handlePay}
                   disabled={paying}
-                  className="flex w-full items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-3 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-primary-600 px-4 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:focus-visible:ring-offset-surface-900"
                 >
                   {paying ? (
                     <><Loader2 className="h-4 w-4 animate-spin" />Preparing checkout…</>
@@ -200,8 +200,8 @@ export function CustomerPayPage() {
                   )}
                 </button>
               ) : (
-                /* Checkout unavailable (BlockChyp not configured for this tenant) */
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                /* Checkout unavailable for this tenant */
+                <div className="rounded-md border border-warning-200 bg-warning-50 px-4 py-3 text-sm text-warning-900 dark:border-warning-900 dark:bg-warning-950/40 dark:text-warning-200">
                   {view.reason
                     ? view.reason
                     : 'Online card checkout is not available for this payment. Please call the shop to complete payment.'}
@@ -211,7 +211,7 @@ export function CustomerPayPage() {
           ) : null}
         </div>
 
-        <p className="text-center text-xs text-gray-400">
+        <p className="text-center text-xs text-surface-400 dark:text-surface-500">
           Having trouble? Call the shop and reference this page.
         </p>
       </div>

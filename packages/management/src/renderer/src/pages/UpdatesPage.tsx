@@ -19,6 +19,8 @@ interface RollbackInfo {
   sha?: string;
 }
 
+const STAT_CARD_CLASS = 'relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700';
+
 // DASH-ELEC-111 (Fixer-B28 2026-04-25): scrub absolute filesystem paths +
 // likely env-var leakage from raw subprocess output before it lands in the
 // renderer DevTools console. Main process IPC log is the canonical sink; this
@@ -251,7 +253,7 @@ export function UpdatesPage() {
       {!statusLoading && !statusError && (
         <>
           {/* Current version */}
-          <div className="stat-card !p-5">
+          <div className={`${STAT_CARD_CLASS} !p-5`}>
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-1">Current Version</div>

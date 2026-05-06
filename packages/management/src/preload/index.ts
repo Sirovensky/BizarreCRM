@@ -17,12 +17,224 @@
  * or any other Node primitive on the window — only the `electronAPI`
  * facade with hard-coded methods.
  */
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+type ApiResponse<T = unknown> = {
+  success: boolean;
+  data?: T;
+  message?: string;
+  offline?: boolean;
+  code?: string;
+  request_id?: string;
+  status?: number;
+  error?: string;
+};
+
+type SetupStatus = {
+  needsSetup: boolean;
+  managementApiEnabled: boolean;
+  multiTenant: boolean;
+};
+
+type WatchdogEvent = {
+  kind: 'restart' | 'fatal' | 'cascade-abort' | 'extended-grace' | 'cert-expired';
+  timestamp: string;
+  reason: string;
+  longTask?: { kind: string; startedAt: number; expectedDurationMs: number; details?: Record<string, unknown> } | null;
+  cascadeAbort?: boolean;
+};
+
+type ServiceStatus = {
+  state: 'running' | 'stopped' | 'starting' | 'stopping' | 'unknown' | 'not_installed';
+  pid: number | null;
+  startType: 'auto' | 'demand' | 'disabled' | 'unknown';
+  mode: 'service' | 'pm2' | 'direct' | 'none';
+};
+
+type DiskDrive = {
+  mount: string;
+  total: number;
+  free: number;
+  used: number;
+};
+
+type SystemInfo = {
+  platform: string;
+  arch: string;
+  hostname: string;
+  totalMemory: number;
+  freeMemory: number;
+  cpus: number;
+  nodeVersion: string;
+  electronVersion: string;
+  appVersion: string;
+  isPackaged: boolean;
+};
+
+type CertPinningStatus = {
+  enabled: boolean;
+  reason?: string;
+  validTo?: string;
+  daysUntilExpiry?: number;
+};
+
+type TenantCreateResult = {
+  tenant_id: number;
+  slug: string;
+  url: string;
+  setup_url: string;
+};
+
+type TenantUpdatePayload = {
+  slug: string;
+  plan?: string;
+  name?: string;
+};
+
+type BackupSettings = {
+  backup_path: string;
+  schedule: string;
+  retention_days: number;
+  encryption_enabled: boolean;
+  last_backup: string;
+  last_status: string;
+};
+
+type BackupSettingsPayload = Pick<BackupSettings,
+  'backup_path' | 'schedule' | 'retention_days' | 'encryption_enabled'
+>;
+
+type EnvConnectionTestTarget = 'captcha' | 'stripe' | 'cloudflare';
+type EnvConnectionTestResult = {
+  target: EnvConnectionTestTarget;
+  status: 'pass' | 'warn' | 'fail';
+  summary: string;
+  checkedAt: string;
+  details: Array<{
+    label: string;
+    value: string;
+    tone?: 'success' | 'warning' | 'danger' | 'muted';
+  }>;
+};
+
+type ChannelSpec<Args extends unknown[], Result> = {
+  args: Args;
+  result: Result;
+};
+
+type IpcChannelMap = {
+  'management:setup-status': ChannelSpec<[], ApiResponse<SetupStatus>>;
+  'management:setup': ChannelSpec<[username: string, password: string], ApiResponse>;
+  'management:logout': ChannelSpec<[], ApiResponse>;
+  'management:get-stats': ChannelSpec<[], ApiResponse<Record<string, unknown>>>;
+  'management:get-stats-history': ChannelSpec<[range: string], ApiResponse<Array<Record<string, unknown>>>>;
+  'management:get-crashes': ChannelSpec<[], ApiResponse<Array<Record<string, unknown>>>>;
+  'management:get-crash-stats': ChannelSpec<[], ApiResponse<Record<string, unknown>>>;
+  'management:get-disabled-routes': ChannelSpec<[], ApiResponse<Array<Record<string, unknown>>>>;
+  'management:reenable-route': ChannelSpec<[route: string], ApiResponse>;
+  'management:clear-crashes': ChannelSpec<[], ApiResponse>;
+  'management:get-update-status': ChannelSpec<[], ApiResponse>;
+  'management:check-updates': ChannelSpec<[], ApiResponse>;
+  'management:perform-update': ChannelSpec<[], ApiResponse>;
+  'management:get-rollback-info': ChannelSpec<[], ApiResponse<{ available: boolean; sha?: string }>>;
+  'management:rollback-update': ChannelSpec<[], ApiResponse<{ sha: string; stdout: string }>>;
+  'management:clear-rollback': ChannelSpec<[], ApiResponse>;
+  'management:audit-update-result': ChannelSpec<[payload: { success: boolean; afterSha?: string; errorMessage?: string }], ApiResponse>;
+  'management:restart-server': ChannelSpec<[], ApiResponse>;
+  'management:stop-server': ChannelSpec<[], ApiResponse>;
+  'management:get-watchdog-events': ChannelSpec<[], { ok: boolean; code?: string; message?: string; events: WatchdogEvent[] }>;
+  'management:clear-watchdog-events': ChannelSpec<[], { ok: boolean; code?: string; message?: string }>;
+  'super-admin:login': ChannelSpec<[username: string, password: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:2fa-verify': ChannelSpec<[challengeToken: string, code: string], ApiResponse<{ token: string }>>;
+  'super-admin:2fa-setup': ChannelSpec<[challengeToken: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:set-password': ChannelSpec<[challengeToken: string, password: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:get-dashboard': ChannelSpec<[], ApiResponse>;
+  'super-admin:list-tenants': ChannelSpec<[], ApiResponse<{ tenants: Array<Record<string, unknown>> }>>;
+  'super-admin:create-tenant': ChannelSpec<[data: unknown], ApiResponse<TenantCreateResult>>;
+  'super-admin:get-tenant': ChannelSpec<[slug: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:update-tenant': ChannelSpec<[payload: TenantUpdatePayload], ApiResponse<Record<string, unknown>>>;
+  'super-admin:suspend-tenant': ChannelSpec<[slug: string], ApiResponse>;
+  'super-admin:activate-tenant': ChannelSpec<[slug: string], ApiResponse>;
+  'super-admin:delete-tenant': ChannelSpec<[slug: string], ApiResponse>;
+  'super-admin:repair-tenant': ChannelSpec<[slug: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:get-audit-log': ChannelSpec<[params?: unknown], ApiResponse<Array<Record<string, unknown>> | { logs?: Array<Record<string, unknown>> }>>;
+  'super-admin:get-sessions': ChannelSpec<[], ApiResponse<Array<Record<string, unknown>> | { sessions?: Array<Record<string, unknown>> }>>;
+  'super-admin:revoke-session': ChannelSpec<[id: string], ApiResponse>;
+  'super-admin:revoke-all-sessions': ChannelSpec<[], ApiResponse<{ revoked: true; count: number }>>;
+  'super-admin:get-config': ChannelSpec<[], ApiResponse<Record<string, string>>>;
+  'super-admin:get-config-schema': ChannelSpec<[], ApiResponse<{ fields: Array<Record<string, unknown>> }>>;
+  'super-admin:update-config': ChannelSpec<[updates: Record<string, string>], ApiResponse>;
+  'super-admin:list-security-alerts': ChannelSpec<[params?: unknown], ApiResponse<Record<string, unknown>>>;
+  'super-admin:acknowledge-alert': ChannelSpec<[id: number], ApiResponse<{ message: string }>>;
+  'super-admin:acknowledge-all-alerts': ChannelSpec<[], ApiResponse<{ count: number }>>;
+  'super-admin:reset-rate-limits': ChannelSpec<[payload: { tenantSlug?: string; all?: boolean; totpCode: string }], ApiResponse<Record<string, unknown>>>;
+  'super-admin:list-rate-limits': ChannelSpec<[payload: { lockedOnly?: boolean; limit?: number }], ApiResponse<Record<string, unknown>>>;
+  'super-admin:rotate-jwt-secret': ChannelSpec<[purpose: 'access' | 'refresh' | 'both', totpCode: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:backfill-cloudflare-dns': ChannelSpec<[totpCode: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:list-tenant-auth-events': ChannelSpec<[params?: unknown], ApiResponse<Record<string, unknown>>>;
+  'super-admin:list-tenant-notifications': ChannelSpec<[params: { slug: string; status?: string; type?: string; limit?: number }], ApiResponse<Record<string, unknown>>>;
+  'super-admin:list-tenant-webhook-failures': ChannelSpec<[params: { slug: string; event?: string; limit?: number }], ApiResponse<Record<string, unknown>>>;
+  'super-admin:retry-tenant-webhook-failure': ChannelSpec<[params: { slug: string; id: number }], ApiResponse<Record<string, unknown>>>;
+  'super-admin:list-tenant-automation-runs': ChannelSpec<[params: { slug: string; status?: string; automationId?: number; limit?: number }], ApiResponse<Record<string, unknown>>>;
+  'super-admin:tenant-backup-list': ChannelSpec<[slug: string], ApiResponse<Array<{ name: string; size: number; date: string }>>>;
+  'super-admin:tenant-backup-run': ChannelSpec<[slug: string], ApiResponse<{ success: boolean; message: string; file?: string }>>;
+  'super-admin:tenant-backup-delete': ChannelSpec<[slug: string, filename: string], ApiResponse>;
+  'super-admin:tenant-backup-restore': ChannelSpec<[slug: string, filename: string], ApiResponse<Record<string, unknown>>>;
+  'super-admin:tenant-backup-settings-get': ChannelSpec<[slug: string], ApiResponse<BackupSettings>>;
+  'super-admin:tenant-backup-settings-update': ChannelSpec<[slug: string, settings: BackupSettingsPayload], ApiResponse<BackupSettings>>;
+  'super-admin:backup-drives': ChannelSpec<[], ApiResponse<DiskDrive[]>>;
+  'admin:get-status': ChannelSpec<[], ApiResponse>;
+  'admin:list-drives': ChannelSpec<[], ApiResponse>;
+  'admin:browse-drive': ChannelSpec<[path: string], ApiResponse>;
+  'admin:create-folder': ChannelSpec<[parentPath: string, name: string], ApiResponse>;
+  'admin:list-backups': ChannelSpec<[], ApiResponse>;
+  'admin:download-backup': ChannelSpec<[filename: string], ApiResponse<{ path: string; metadataPath: string | null }>>;
+  'admin:upload-backup': ChannelSpec<[payload: { sourcePath: string }], ApiResponse<{ filename: string; metadataCopied: boolean }>>;
+  'admin:run-backup': ChannelSpec<[], ApiResponse>;
+  'admin:update-backup-settings': ChannelSpec<[settings: BackupSettingsPayload], ApiResponse<BackupSettings>>;
+  'admin:delete-backup': ChannelSpec<[filename: string], ApiResponse>;
+  'admin:restore-backup': ChannelSpec<[filename: string], ApiResponse<Record<string, unknown>>>;
+  'admin:get-env-settings': ChannelSpec<[], ApiResponse<{ fields: Array<Record<string, unknown>> }>>;
+  'admin:set-env-settings': ChannelSpec<[updates: Record<string, string>], ApiResponse<{ keysUpdated: string[]; requiresRestart: boolean }>>;
+  'admin:test-env-connection': ChannelSpec<[target: EnvConnectionTestTarget], ApiResponse<EnvConnectionTestResult>>;
+  'admin:list-logs': ChannelSpec<[], ApiResponse<Record<string, unknown>>>;
+  'admin:tail-log': ChannelSpec<[payload: { name: string; lines: number }], ApiResponse<Record<string, unknown>>>;
+  'service:get-status': ChannelSpec<[], ServiceStatus>;
+  'service:start': ChannelSpec<[], ApiResponse>;
+  'service:stop': ChannelSpec<[], ApiResponse>;
+  'service:restart': ChannelSpec<[], ApiResponse>;
+  'service:emergency-stop': ChannelSpec<[], ApiResponse>;
+  'service:kill-all': ChannelSpec<[], ApiResponse>;
+  'service:set-auto-start': ChannelSpec<[enabled: boolean], ApiResponse>;
+  'service:disable': ChannelSpec<[], ApiResponse>;
+  'system:get-disk-space': ChannelSpec<[], ApiResponse<DiskDrive[]>>;
+  'system:get-info': ChannelSpec<[], ApiResponse<SystemInfo>>;
+  'system:open-browser': ChannelSpec<[], ApiResponse>;
+  'system:open-external': ChannelSpec<[url: string], ApiResponse>;
+  'system:open-log-file': ChannelSpec<[], ApiResponse>;
+  'system:close-dashboard': ChannelSpec<[], ApiResponse>;
+  'system:minimize': ChannelSpec<[], ApiResponse>;
+  'system:maximize': ChannelSpec<[], ApiResponse>;
+  'system:get-cert-pinning-status': ChannelSpec<[], ApiResponse<CertPinningStatus>>;
+  'system:get-tag-verify-status': ChannelSpec<[], ApiResponse<{ bypass: boolean }>>;
+};
+
+type IpcChannel = keyof IpcChannelMap;
+type IpcArgs<C extends IpcChannel> = IpcChannelMap[C]['args'];
+type IpcResult<C extends IpcChannel> = IpcChannelMap[C]['result'];
+type AnyIpcResult = IpcChannelMap[IpcChannel]['result'];
+
+type IpcEventMap = {
+  'system:power-resume': [];
+};
+
+type IpcEvent = keyof IpcEventMap;
+type IpcEventArgs<C extends IpcEvent> = IpcEventMap[C];
 
 // @audit-fixed: explicit channel allow-list. Adding a new IPC handler
 // requires updating BOTH the main-process registration AND this list,
 // which makes accidental channel proliferation impossible.
-const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
+const ALLOWED_CHANNEL_LIST = [
   // management:*
   'management:setup-status',
   'management:setup',
@@ -54,6 +266,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:list-tenants',
   'super-admin:create-tenant',
   'super-admin:get-tenant',
+  'super-admin:update-tenant',
   'super-admin:suspend-tenant',
   'super-admin:activate-tenant',
   'super-admin:delete-tenant',
@@ -61,6 +274,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'super-admin:get-audit-log',
   'super-admin:get-sessions',
   'super-admin:revoke-session',
+  'super-admin:revoke-all-sessions',
   'super-admin:get-config',
   'super-admin:get-config-schema',
   'super-admin:update-config',
@@ -89,6 +303,8 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'admin:browse-drive',
   'admin:create-folder',
   'admin:list-backups',
+  'admin:download-backup',
+  'admin:upload-backup',
   'admin:run-backup',
   'admin:update-backup-settings',
   'admin:delete-backup',
@@ -96,6 +312,7 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   // admin:* (env-settings editor — edits .env directly)
   'admin:get-env-settings',
   'admin:set-env-settings',
+  'admin:test-env-connection',
   // admin:* (log viewer — reads logs/ files directly via fs)
   'admin:list-logs',
   'admin:tail-log',
@@ -121,16 +338,37 @@ const ALLOWED_CHANNELS: ReadonlySet<string> = new Set([
   'system:get-cert-pinning-status',
   // AUDIT-MGT-018: signed-tag verification bypass status for the renderer warning banner
   'system:get-tag-verify-status',
-]);
+] as const satisfies readonly IpcChannel[];
 
-function safeInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
+const ALLOWED_CHANNELS: ReadonlySet<IpcChannel> = new Set(ALLOWED_CHANNEL_LIST);
+
+const ALLOWED_EVENTS_LIST = [
+  'system:power-resume',
+] as const satisfies readonly IpcEvent[];
+
+const ALLOWED_EVENTS: ReadonlySet<IpcEvent> = new Set(ALLOWED_EVENTS_LIST);
+
+function safeInvoke<C extends IpcChannel>(channel: C, ...args: IpcArgs<C>): Promise<IpcResult<C>> {
   if (!ALLOWED_CHANNELS.has(channel)) {
     // Reject loudly so a typo or compromised script can't probe channels.
     return Promise.reject(
       new Error(`[preload] Refusing to invoke unknown IPC channel: ${channel}`)
     );
   }
-  return ipcRenderer.invoke(channel, ...args);
+  return ipcRenderer.invoke(channel, ...args) as Promise<IpcResult<C>>;
+}
+
+function safeOn<C extends IpcEvent>(channel: C, listener: (...args: IpcEventArgs<C>) => void): () => void {
+  if (!ALLOWED_EVENTS.has(channel)) {
+    throw new Error(`[preload] Refusing to listen on unknown IPC channel: ${channel}`);
+  }
+  const handler = (_event: unknown, ...args: unknown[]) => {
+    listener(...args as IpcEventArgs<C>);
+  };
+  ipcRenderer.on(channel, handler);
+  return () => {
+    ipcRenderer.removeListener(channel, handler);
+  };
 }
 
 // DASH-ELEC-007: deduplication wrapper for hot-path IPC channels (stats,
@@ -138,16 +376,16 @@ function safeInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
 // callers share the single in-flight Promise instead of spawning N parallel
 // requests. Keyed by channel + JSON-serialised args so concurrent calls with
 // different arguments still resolve independently.
-const _inFlight = new Map<string, Promise<unknown>>();
+const _inFlight = new Map<string, Promise<AnyIpcResult>>();
 
-function dedupInvoke(channel: string, ...args: unknown[]): Promise<unknown> {
+function dedupInvoke<C extends IpcChannel>(channel: C, ...args: IpcArgs<C>): Promise<IpcResult<C>> {
   const key = args.length === 0 ? channel : `${channel}:${JSON.stringify(args)}`;
-  const existing = _inFlight.get(key);
+  const existing = _inFlight.get(key) as Promise<IpcResult<C>> | undefined;
   if (existing) return existing;
   const p = safeInvoke(channel, ...args).finally(() => {
     _inFlight.delete(key);
   });
-  _inFlight.set(key, p);
+  _inFlight.set(key, p as Promise<AnyIpcResult>);
   return p;
 }
 
@@ -173,7 +411,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // MGT-028: expose audit-update-result so UpdatesPage can record the
     // final outcome (success/fail + afterSha) once the dashboard reopens
     // after a completed update attempt.
-    auditUpdateResult: (payload: unknown) => safeInvoke('management:audit-update-result', payload),
+    auditUpdateResult: (payload: { success: boolean; afterSha?: string; errorMessage?: string }) =>
+      safeInvoke('management:audit-update-result', payload),
     restartServer: () => safeInvoke('management:restart-server'),
     stopServer: () => safeInvoke('management:stop-server'),
     // Watchdog: poll for recent events emitted by packages/server/scripts/watchdog.cjs.
@@ -196,6 +435,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listTenants: () => safeInvoke('super-admin:list-tenants'),
     createTenant: (data: unknown) => safeInvoke('super-admin:create-tenant', data),
     getTenant: (slug: string) => safeInvoke('super-admin:get-tenant', slug),
+    updateTenant: (payload: TenantUpdatePayload) => safeInvoke('super-admin:update-tenant', payload),
     suspendTenant: (slug: string) => safeInvoke('super-admin:suspend-tenant', slug),
     activateTenant: (slug: string) => safeInvoke('super-admin:activate-tenant', slug),
     deleteTenant: (slug: string) => safeInvoke('super-admin:delete-tenant', slug),
@@ -204,20 +444,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAuditLog: (params?: unknown) => safeInvoke('super-admin:get-audit-log', params),
     getSessions: () => safeInvoke('super-admin:get-sessions'),
     revokeSession: (id: string) => safeInvoke('super-admin:revoke-session', id),
+    revokeAllSessions: () => safeInvoke('super-admin:revoke-all-sessions'),
     getConfig: () => safeInvoke('super-admin:get-config'),
     getConfigSchema: () => safeInvoke('super-admin:get-config-schema'),
-    updateConfig: (updates: unknown) => safeInvoke('super-admin:update-config', updates),
+    updateConfig: (updates: Record<string, string>) => safeInvoke('super-admin:update-config', updates),
     listSecurityAlerts: (params?: unknown) =>
       safeInvoke('super-admin:list-security-alerts', params),
     acknowledgeAlert: (id: number) => safeInvoke('super-admin:acknowledge-alert', id),
     acknowledgeAllAlerts: () => safeInvoke('super-admin:acknowledge-all-alerts'),
-    resetRateLimits: (payload: { tenantSlug?: string; all?: boolean }) =>
+    resetRateLimits: (payload: { tenantSlug?: string; all?: boolean; totpCode: string }) =>
       safeInvoke('super-admin:reset-rate-limits', payload),
     listRateLimits: (payload: { lockedOnly?: boolean; limit?: number }) =>
       safeInvoke('super-admin:list-rate-limits', payload),
-    rotateJwtSecret: (purpose: 'access' | 'refresh' | 'both') =>
-      safeInvoke('super-admin:rotate-jwt-secret', purpose),
-    backfillCloudflareDns: () => safeInvoke('super-admin:backfill-cloudflare-dns'),
+    rotateJwtSecret: (purpose: 'access' | 'refresh' | 'both', totpCode: string) =>
+      safeInvoke('super-admin:rotate-jwt-secret', purpose, totpCode),
+    backfillCloudflareDns: (totpCode: string) => safeInvoke('super-admin:backfill-cloudflare-dns', totpCode),
     listTenantAuthEvents: (params?: unknown) =>
       safeInvoke('super-admin:list-tenant-auth-events', params),
     listTenantNotifications: (params: { slug: string; status?: string; type?: string; limit?: number }) =>
@@ -240,7 +481,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       safeInvoke('super-admin:tenant-backup-restore', slug, filename),
     tenantBackupSettingsGet: (slug: string) =>
       safeInvoke('super-admin:tenant-backup-settings-get', slug),
-    tenantBackupSettingsUpdate: (slug: string, settings: unknown) =>
+    tenantBackupSettingsUpdate: (slug: string, settings: BackupSettingsPayload) =>
       safeInvoke('super-admin:tenant-backup-settings-update', slug, settings),
     backupDrives: () => safeInvoke('super-admin:backup-drives'),
   },
@@ -253,14 +494,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createFolder: (parentPath: string, name: string) =>
       safeInvoke('admin:create-folder', parentPath, name),
     listBackups: () => safeInvoke('admin:list-backups'),
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
+    downloadBackup: (filename: string) => safeInvoke('admin:download-backup', filename),
+    uploadBackup: (sourcePath: string) => safeInvoke('admin:upload-backup', { sourcePath }),
     runBackup: () => safeInvoke('admin:run-backup'),
-    updateBackupSettings: (settings: unknown) =>
+    updateBackupSettings: (settings: BackupSettingsPayload) =>
       safeInvoke('admin:update-backup-settings', settings),
     deleteBackup: (filename: string) => safeInvoke('admin:delete-backup', filename),
     restoreBackup: (filename: string) => safeInvoke('admin:restore-backup', filename),
     getEnvSettings: () => safeInvoke('admin:get-env-settings'),
     setEnvSettings: (updates: Record<string, string>) =>
       safeInvoke('admin:set-env-settings', updates),
+    testEnvConnection: (target: EnvConnectionTestTarget) =>
+      safeInvoke('admin:test-env-connection', target),
     listLogs: () => safeInvoke('admin:list-logs'),
     tailLog: (payload: { name: string; lines: number }) =>
       safeInvoke('admin:tail-log', payload),
@@ -292,5 +538,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getCertPinningStatus: () => safeInvoke('system:get-cert-pinning-status'),
     // AUDIT-MGT-018: signed-tag verification bypass status for warning banner
     getTagVerifyStatus: () => safeInvoke('system:get-tag-verify-status'),
+    onPowerResume: (listener: () => void) => safeOn('system:power-resume', listener),
   },
 });

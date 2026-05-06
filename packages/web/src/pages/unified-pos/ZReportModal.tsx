@@ -112,14 +112,14 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
             <button
               onClick={handlePrint}
               aria-label="Print"
-              className="rounded p-1.5 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800"
+              className="btn-icon btn-sm text-surface-500"
             >
               <Printer className="h-4 w-4" />
             </button>
             <button
               onClick={onClose}
               aria-label="Close"
-              className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800"
+              className="btn-icon btn-sm"
             >
               <X className="h-4 w-4" />
             </button>

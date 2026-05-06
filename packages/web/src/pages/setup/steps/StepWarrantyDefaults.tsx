@@ -173,7 +173,7 @@ export function StepWarrantyDefaults({
           <button
             type="button"
             onClick={onBack}
-            className="text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+            className="btn btn-lg text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
           >
             ← Back
           </button>
@@ -182,15 +182,15 @@ export function StepWarrantyDefaults({
               <button
                 type="button"
                 onClick={onSkip}
-                className="text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
+                className="btn btn-lg text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
               >
-                Skip
+                Skip this step
               </button>
             ) : null}
             <button
               type="button"
               onClick={handleContinue}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
             >
               Continue
               <ShieldCheck className="h-4 w-4" />

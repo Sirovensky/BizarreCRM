@@ -7,6 +7,7 @@
 
 import { SmsProvider, SmsProviderResult, MmsMedia, ProviderType, PROVIDER_REGISTRY } from './types.js';
 import { ConsoleProvider } from './console.js';
+import { BizarreSmsProvider } from './bizarresms.js';
 import { TwilioProvider } from './twilio.js';
 import { TelnyxProvider } from './telnyx.js';
 import { BandwidthProvider } from './bandwidth.js';
@@ -136,6 +137,10 @@ function getMissingFields(type: ProviderType, dbCfg: Record<string, string>): st
     if (!dbCfg[key]) missing.push(label);
   };
   switch (type) {
+    case 'bizarresms':
+      if (!config.bizarreSmsRelayUrl) missing.push('BIZARRESMS_RELAY_URL');
+      if (!config.bizarreSmsRelayToken) missing.push('BIZARRESMS_RELAY_TOKEN');
+      break;
     case 'twilio':
       check('sms_twilio_account_sid', 'account_sid');
       check('sms_twilio_auth_token', 'auth_token');
@@ -197,8 +202,19 @@ function createProvider(
   type: ProviderType,
   dbCfg: Record<string, string>,
   opts: CreateProviderOptions = {},
+  tenantSlug?: string | null,
 ): SmsProvider {
   switch (type) {
+    case 'bizarresms': {
+      return new BizarreSmsProvider({
+        relayUrl: config.bizarreSmsRelayUrl,
+        relayToken: config.bizarreSmsRelayToken,
+        webhookSecret: config.bizarreSmsWebhookSecret,
+        tenantSlug,
+        fromNumber: dbCfg.sms_sender_id || '',
+      });
+    }
+
     case 'twilio': {
       const missing = getMissingFields('twilio', dbCfg);
       if (missing.length > 0) return handleMissingCreds('twilio', missing, opts);
@@ -348,7 +364,7 @@ export function getProviderForDb(db: any, tenantSlug?: string | null): SmsProvid
   // simulated=true on every send so callers still know the send wasn't real.
   const dbCfg = getDbSmsConfig(db);
   const providerType = (dbCfg.sms_provider_type || dbCfg.sms_provider || 'console') as ProviderType;
-  const provider = createProvider(providerType, dbCfg, { strict: false });
+  const provider = createProvider(providerType, dbCfg, { strict: false }, tenantSlug);
 
   // @audit-fixed: enforce the hard cap. If we hit it, evict the oldest entry by
   // loadedAt instead of letting the map grow unbounded between cleanups.

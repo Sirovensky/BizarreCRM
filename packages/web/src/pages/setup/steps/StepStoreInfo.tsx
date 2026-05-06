@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { MapPin, Phone, Mail, Clock, DollarSign, ArrowRight, ArrowLeft } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
+import { useAuthStore } from '@/stores/authStore';
 import { formatStorePhoneAsYouType, formatStorePhoneOnBlur } from '@/utils/phoneFormat';
 import {
   validateStoreAddress,
@@ -24,12 +26,27 @@ const CURRENCIES = [
  * Timezone and currency have sensible defaults (America/Denver, USD) so
  * the minimum user interaction is just typing address/phone/email.
  */
-export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) {
+export function StepStoreInfo({ pending, onUpdate, onNext, onBack, onSkip }: StepProps) {
+  const accountEmail = useAuthStore((state) => state.user?.email || '');
   const address = pending.store_address || '';
   const phone = pending.store_phone || '';
   const email = pending.store_email || '';
   const timezone = pending.store_timezone || 'America/Denver';
   const currency = pending.store_currency || 'USD';
+  const signupPrefillEmail = pending.signup_email?.trim() || '';
+  const accountPrefillEmail = accountEmail.trim();
+  const prefillEmail = signupPrefillEmail || accountPrefillEmail;
+  const emailHelperText = signupPrefillEmail
+    ? 'Pre-filled from your signup email. Change if your shop uses a different address.'
+    : accountPrefillEmail
+      ? 'Pre-filled from your user email. Change if your shop uses a different address.'
+      : '';
+
+  useEffect(() => {
+    if (pending.store_email?.trim()) return;
+    if (!prefillEmail) return;
+    onUpdate({ store_email: prefillEmail.toLowerCase() });
+  }, [onUpdate, pending.store_email, prefillEmail]);
 
   // Errors are computed on every render so the UI reflects the latest value instantly.
   // A field only shows an error once it has been touched (non-empty) — empty fields
@@ -146,6 +163,9 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             {errors.email && (
               <p id="setup-store-email-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{errors.email}</p>
             )}
+            {!errors.email && emailHelperText && (
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">{emailHelperText}</p>
+            )}
           </div>
         </div>
 
@@ -188,20 +208,29 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
           <button
             type="button"
             onClick={onBack}
-            className="flex h-12 items-center gap-1 rounded-full px-4 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-700 dark:hover:text-surface-100"
+            className="btn btn-lg flex h-12 items-center gap-1 rounded-full px-4 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-700 dark:hover:text-surface-100"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
           </button>
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={!canAdvance}
-            className="flex h-12 items-center gap-2 rounded-full bg-primary-500 px-6 font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onSkip}
+              className="btn btn-lg flex h-12 items-center rounded-full px-4 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+            >
+              Skip this step
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={!canAdvance}
+              className="btn btn-lg flex h-12 items-center gap-2 rounded-full bg-primary-500 px-6 font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Continue
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

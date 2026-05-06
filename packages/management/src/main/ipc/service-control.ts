@@ -18,6 +18,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { z } from 'zod';
 import { assertRendererOrigin } from './management-api.js';
+import { auditIpcOperation } from '../services/ipc-audit-log.js';
+import { logger } from '../services/main-logger.js';
 
 const SERVICE_NAME = 'BizarreCRM';
 const DIRECT_PID_FILE = 'direct-server.json';
@@ -143,10 +145,7 @@ function getProjectRoot(): string | null {
   try {
     return resolveTrustedProjectRoot();
   } catch (err) {
-    console.error(
-      '[ServiceControl] Installation integrity check failed:',
-      err instanceof Error ? err.message : String(err)
-    );
+    logger.error('[ServiceControl] Installation integrity check failed', { error: err });
     return null;
   }
 }
@@ -333,12 +332,10 @@ function readDirectState(): DirectServerState | null {
       // stale/tampered and return null rather than using an untrusted root.
       const trustedRoot = resolveTrustedProjectRoot();
       if (!trustedRoot || path.resolve(parsed.root) !== path.resolve(trustedRoot)) {
-        console.warn(
-          '[readDirectState] root mismatch with trusted project root — ignoring stale PID file:',
-          parsed.root,
-          '!==',
-          trustedRoot
-        );
+        logger.warn('[readDirectState] root mismatch with trusted project root; ignoring stale PID file', {
+          pidRoot: parsed.root,
+          trustedRoot,
+        });
         return null;
       }
       return { pid: parsed.pid, root: parsed.root };
@@ -640,6 +637,34 @@ async function withServiceLock(action: () => Promise<CommandResult>): Promise<Co
   return serviceActionInFlight;
 }
 
+function commandSucceeded(result: CommandResult): boolean {
+  return result.success;
+}
+
+async function restartServerProcess(): Promise<CommandResult> {
+  const svc = getWindowsServiceStatus();
+  if (svc.installed) {
+    runArgs('sc', ['stop', SERVICE_NAME]);
+    let attempts = 0;
+    while (attempts < 10) {
+      const query = runArgs('sc', ['query', SERVICE_NAME]);
+      if (query.output.includes('STOPPED')) break;
+      await new Promise(r => setTimeout(r, 1000));
+      attempts++;
+    }
+    return runArgs('sc', ['start', SERVICE_NAME]);
+  }
+  if (hasPm2()) {
+    return pm2Run(['restart', 'bizarre-crm', '--update-env']);
+  }
+  stopDirectServer();
+  return startDirectServer();
+}
+
+export async function restartServerViaServiceControl(): Promise<CommandResult> {
+  return withServiceLock(restartServerProcess);
+}
+
 export function registerServiceControlIpc(): void {
   ipcMain.handle('service:get-status', async (event): Promise<ServiceStatus> => {
     assertRendererOrigin(event);
@@ -677,80 +702,64 @@ export function registerServiceControlIpc(): void {
 
   ipcMain.handle('service:start', async (event) => {
     assertRendererOrigin(event);
-    return withServiceLock(async () => {
-    const svc = getWindowsServiceStatus();
-    if (svc.installed) {
-      return runArgs('sc', ['start', SERVICE_NAME]);
-    }
-    if (hasPm2()) {
-      // Fire-and-forget: pm2 CLI will block up to 10 min on wait_ready,
-      // but we return as soon as the app shows online in `pm2 jlist`
-      // so the dashboard UI stays responsive.
-      const spawnResult = pm2Spawn(['start', 'ecosystem.config.js', '--update-env']);
-      if (!spawnResult.success) return spawnResult;
-      const state = await waitForPm2State('online', 30_000);
-      if (state === 'reached') {
-        return { success: true, output: 'Server online' };
+    return auditIpcOperation(event, 'service:start', undefined, () => withServiceLock(async () => {
+      const svc = getWindowsServiceStatus();
+      if (svc.installed) {
+        return runArgs('sc', ['start', SERVICE_NAME]);
       }
-      return {
-        success: false,
-        output: 'Server still warming up — check pm2 logs bizarre-crm for progress',
-      };
-    }
-    return startDirectServer();
-    }); // end withServiceLock
+      if (hasPm2()) {
+        // Fire-and-forget: pm2 CLI will block up to 10 min on wait_ready,
+        // but we return as soon as the app shows online in `pm2 jlist`
+        // so the dashboard UI stays responsive.
+        const spawnResult = pm2Spawn(['start', 'ecosystem.config.js', '--update-env']);
+        if (!spawnResult.success) return spawnResult;
+        const state = await waitForPm2State('online', 30_000);
+        if (state === 'reached') {
+          return { success: true, output: 'Server online' };
+        }
+        return {
+          success: false,
+          output: 'Server still warming up — check pm2 logs bizarre-crm for progress',
+        };
+      }
+      return startDirectServer();
+    }), commandSucceeded);
   });
 
   ipcMain.handle('service:stop', async (event) => {
     assertRendererOrigin(event);
-    return withServiceLock(async () => {
-    const svc = getWindowsServiceStatus();
-    if (svc.installed) {
-      return runArgs('sc', ['stop', SERVICE_NAME]);
-    }
-    if (hasPm2()) {
-      return pm2Run(['stop', 'bizarre-crm']);
-    }
-    return stopDirectServer();
-    }); // end withServiceLock
+    return auditIpcOperation(event, 'service:stop', undefined, () => withServiceLock(async () => {
+      const svc = getWindowsServiceStatus();
+      if (svc.installed) {
+        return runArgs('sc', ['stop', SERVICE_NAME]);
+      }
+      if (hasPm2()) {
+        return pm2Run(['stop', 'bizarre-crm']);
+      }
+      return stopDirectServer();
+    }), commandSucceeded);
   });
 
   ipcMain.handle('service:restart', async (event) => {
     assertRendererOrigin(event);
-    return withServiceLock(async () => {
-    const svc = getWindowsServiceStatus();
-    if (svc.installed) {
-      runArgs('sc', ['stop', SERVICE_NAME]);
-      let attempts = 0;
-      while (attempts < 10) {
-        const query = runArgs('sc', ['query', SERVICE_NAME]);
-        if (query.output.includes('STOPPED')) break;
-        await new Promise(r => setTimeout(r, 1000));
-        attempts++;
-      }
-      return runArgs('sc', ['start', SERVICE_NAME]);
-    }
-    if (hasPm2()) {
-      return pm2Run(['restart', 'bizarre-crm', '--update-env']);
-    }
-    stopDirectServer();
-    return startDirectServer();
-    }); // end withServiceLock
+    return auditIpcOperation(event, 'service:restart', undefined, restartServerViaServiceControl, commandSucceeded);
   });
 
   ipcMain.handle('service:emergency-stop', async (event) => {
     assertRendererOrigin(event);
-    // Kill everything
-    const svc = getWindowsServiceStatus();
-    if (svc.installed) {
-      runArgs('taskkill', ['/F', '/FI', `SERVICES eq ${SERVICE_NAME}`]);
-      runArgs('sc', ['stop', SERVICE_NAME]);
-    }
-    if (hasPm2()) {
-      pm2Run(['kill']);
-    }
-    stopDirectServer();
-    return { success: true, message: 'Emergency stop executed' };
+    return auditIpcOperation(event, 'service:emergency-stop', undefined, async () => {
+      // Kill everything
+      const svc = getWindowsServiceStatus();
+      if (svc.installed) {
+        runArgs('taskkill', ['/F', '/FI', `SERVICES eq ${SERVICE_NAME}`]);
+        runArgs('sc', ['stop', SERVICE_NAME]);
+      }
+      if (hasPm2()) {
+        pm2Run(['kill']);
+      }
+      stopDirectServer();
+      return { success: true, output: 'Emergency stop executed' };
+    }, commandSucceeded);
   });
 
   ipcMain.handle('service:set-auto-start', async (event, enabled: boolean) => {
@@ -758,64 +767,70 @@ export function registerServiceControlIpc(): void {
     // DASH-ELEC-077: validate boolean at runtime — TS types are erased over IPC;
     // a caller could pass "true" (string) or 1, which are truthy but not boolean.
     const validEnabled = z.boolean().parse(enabled);
-    const svc = getWindowsServiceStatus();
-    if (svc.installed) {
-      // NB: on Windows, `sc config` uses `start= <type>` — a SINGLE argv
-      // token with the trailing `=`. spawnSync preserves this correctly.
-      const startType = validEnabled ? 'auto' : 'demand';
-      return runArgs('sc', ['config', SERVICE_NAME, 'start=', startType]);
-    }
-    if (hasPm2() && validEnabled) {
-      return pm2Run(['save']);
-    }
-    return { success: false, output: 'Auto-start requires a Windows Service or PM2. Manual Start Server still works.' };
+    return auditIpcOperation(event, 'service:set-auto-start', { enabled: validEnabled }, async () => {
+      const svc = getWindowsServiceStatus();
+      if (svc.installed) {
+        // NB: on Windows, `sc config` uses `start= <type>` — a SINGLE argv
+        // token with the trailing `=`. spawnSync preserves this correctly.
+        const startType = validEnabled ? 'auto' : 'demand';
+        return runArgs('sc', ['config', SERVICE_NAME, 'start=', startType]);
+      }
+      if (hasPm2() && validEnabled) {
+        return pm2Run(['save']);
+      }
+      return { success: false, output: 'Auto-start requires a Windows Service or PM2. Manual Start Server still works.' };
+    }, commandSucceeded);
   });
 
   ipcMain.handle('service:disable', async (event) => {
     assertRendererOrigin(event);
-    const svc = getWindowsServiceStatus();
-    if (svc.installed) {
-      runArgs('sc', ['stop', SERVICE_NAME]);
-      return runArgs('sc', ['config', SERVICE_NAME, 'start=', 'disabled']);
-    }
-    if (hasPm2()) {
-      return pm2Run(['stop', 'bizarre-crm']);
-    }
-    return stopDirectServer();
+    return auditIpcOperation(event, 'service:disable', undefined, async () => {
+      const svc = getWindowsServiceStatus();
+      if (svc.installed) {
+        runArgs('sc', ['stop', SERVICE_NAME]);
+        return runArgs('sc', ['config', SERVICE_NAME, 'start=', 'disabled']);
+      }
+      if (hasPm2()) {
+        return pm2Run(['stop', 'bizarre-crm']);
+      }
+      return stopDirectServer();
+    }, commandSucceeded);
   });
 
   ipcMain.handle('service:kill-all', async (event) => {
     assertRendererOrigin(event);
-    // 1. Stop PM2 managed server
-    try { pm2Run(['kill']); } catch { /* ignore */ }
+    return auditIpcOperation(event, 'service:kill-all', undefined, async () => {
+      // 1. Stop PM2 managed server
+      try { pm2Run(['kill']); } catch { /* ignore */ }
 
-    // 2. Stop Windows Service if installed
-    const svc = getWindowsServiceStatus();
-    if (svc.installed) {
-      try { runArgs('sc', ['stop', SERVICE_NAME]); } catch { /* ignore */ }
-    }
+      // 2. Stop Windows Service if installed
+      const svc = getWindowsServiceStatus();
+      if (svc.installed) {
+        try { runArgs('sc', ['stop', SERVICE_NAME]); } catch { /* ignore */ }
+      }
 
-    // 3. DASH-ELEC-087: kill only the known direct-server PID, not all node.exe
-    // processes (which would also terminate VS Code helpers, dev servers, etc.)
-    // Fall back to /IM filter constrained to our command-line footprint when no
-    // PID file exists (e.g. service path already cleaned up the file).
-    const directState = readDirectState();
-    if (directState?.pid) {
-      try { runArgs('taskkill', ['/PID', String(directState.pid), '/T', '/F']); } catch { /* ignore */ }
-    } else {
-      // No known PID — use image-name filter scoped to our process name so we
-      // avoid touching unrelated node.exe instances owned by other apps.
-      try {
-        runArgs('taskkill', ['/F', '/FI', 'IMAGENAME eq node.exe', '/FI', 'WINDOWTITLE eq bizarre-crm*']);
-      } catch { /* ignore */ }
-    }
-    try { stopDirectServer(); } catch { /* ignore */ }
+      // 3. DASH-ELEC-087: kill only the known direct-server PID, not all node.exe
+      // processes (which would also terminate VS Code helpers, dev servers, etc.)
+      // Fall back to /IM filter constrained to our command-line footprint when no
+      // PID file exists (e.g. service path already cleaned up the file).
+      const directState = readDirectState();
+      if (directState?.pid) {
+        try { runArgs('taskkill', ['/PID', String(directState.pid), '/T', '/F']); } catch { /* ignore */ }
+      } else {
+        // No known PID — use image-name filter scoped to our process name so we
+        // avoid touching unrelated node.exe instances owned by other apps.
+        try {
+          runArgs('taskkill', ['/F', '/FI', 'IMAGENAME eq node.exe', '/FI', 'WINDOWTITLE eq bizarre-crm*']);
+        } catch { /* ignore */ }
+      }
+      try { stopDirectServer(); } catch { /* ignore */ }
 
-    // 4. Kill the dashboard itself
-    setTimeout(() => {
-      app.exit(0);
-    }, 500);
+      // 4. Kill the dashboard itself
+      setTimeout(() => {
+        app.exit(0);
+      }, 500);
 
-    return { success: true, message: 'Killing all processes...' };
+      return { success: true, output: 'Killing all processes...' };
+    }, commandSucceeded);
   });
 }

@@ -34,10 +34,12 @@ const CURRENT_KEY_VERSION = 1;
 /** Keys whose values should be encrypted at rest in store_config */
 export const ENCRYPTED_CONFIG_KEYS = new Set([
   'blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key',
+  'stripe_secret_key', 'stripe_publishable_key', 'stripe_webhook_secret',
   'sms_twilio_auth_token', 'sms_telnyx_api_key', 'sms_bandwidth_password',
   'sms_plivo_auth_token', 'sms_vonage_api_secret',
   'smtp_pass',
   'tcx_password',
+  'backup_s3_access_key', 'backup_s3_secret_key',
   // NOTE: RepairDesk / RepairShopr / MyRepairApp import keys are deliberately
   // NOT in this set. They are never persisted to store_config — they are
   // passed via the request body and only live in memory for the duration of

@@ -35,7 +35,7 @@ const OPTIONS = [
  * deep-links to /settings?tab=data&section=import once the user is fully
  * through the wizard.
  */
-export function StepImportHandoff({ pending, onUpdate, onNext, onBack }: StepProps) {
+export function StepImportHandoff({ pending, onUpdate, onNext, onBack, onSkip }: StepProps) {
   const selected = pending.setup_imported_legacy_data;
 
   const handlePick = (id: typeof OPTIONS[number]['id']) => {
@@ -87,24 +87,39 @@ export function StepImportHandoff({ pending, onUpdate, onNext, onBack }: StepPro
         </div>
       )}
 
+      {selected === 'later' && (
+        <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+          We'll remind you on the dashboard after setup, and Data & Import will stay available in Settings.
+        </div>
+      )}
+
       <div className="mt-8 flex items-center justify-between">
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+          className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!selected}
-          className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
-        >
-          Continue
-          <ArrowRight className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+          >
+            Skip this step
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={!selected}
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+          >
+            Continue
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

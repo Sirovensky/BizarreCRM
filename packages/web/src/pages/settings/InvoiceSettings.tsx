@@ -5,6 +5,11 @@ import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { SkeletonCard } from '@/components/shared/Skeleton';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  INLINE_LOGO_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 // ─── Field Rows ──────────────────────────────────────────────────────────────
 
@@ -92,11 +97,17 @@ function LogoUploadRow({ label, description, value, onChange }: {
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 500_000) {
-      toast.error('Logo must be under 500KB');
+    const error = await validateImageFile(file, {
+      maxBytes: INLINE_LOGO_MAX_BYTES,
+      label: 'Logo',
+      sniff: true,
+    });
+    if (error) {
+      toast.error(error);
+      e.target.value = '';
       return;
     }
     const reader = new FileReader();
@@ -118,7 +129,7 @@ function LogoUploadRow({ label, description, value, onChange }: {
             <img src={value} alt="Logo" className="h-12 w-auto max-w-[160px] rounded border border-surface-200 dark:border-surface-700 object-contain" />
             <button
               onClick={() => onChange('')}
-              className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"
+              className="btn-icon btn-xs absolute -right-1.5 -top-1.5 rounded-full bg-red-500 text-white hover:bg-red-600"
             >
               <X className="h-3 w-3" />
             </button>
@@ -126,13 +137,13 @@ function LogoUploadRow({ label, description, value, onChange }: {
         ) : (
           <button
             onClick={() => inputRef.current?.click()}
-            className="inline-flex items-center gap-2 rounded-lg border border-dashed border-surface-300 px-4 py-2 text-sm text-surface-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500"
+            className="btn btn-secondary btn-md border-dashed border-surface-300 text-surface-500 hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500"
           >
             <Upload className="h-4 w-4" />
             Upload Logo
           </button>
         )}
-        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <input ref={inputRef} type="file" accept={IMAGE_UPLOAD_ACCEPT} className="hidden" onChange={handleFile} />
       </div>
     </div>
   );
@@ -271,9 +282,9 @@ export function InvoiceSettings() {
           onClick={() => saveMutation.mutate(config)}
           disabled={!dirty || saveMutation.isPending}
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            'btn btn-md',
             dirty
-              ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+              ? 'btn-primary'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >
@@ -286,7 +297,7 @@ export function InvoiceSettings() {
         <SectionHeader title="General" />
         <LogoUploadRow
           label="Invoice Logo"
-          description="Logo displayed at the top of invoices (max 500KB)"
+          description="JPEG, PNG, WebP, or GIF. Max 500 KB."
           value={val('invoice_logo')}
           onChange={(v) => set('invoice_logo', v)}
         />

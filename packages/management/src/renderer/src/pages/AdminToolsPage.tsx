@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Wrench, Unlock, Cloud, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Lock, Key,
 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
-import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 
@@ -41,10 +40,11 @@ export function AdminToolsPage() {
   const [jwtRefresh, setJwtRefresh] = useState<string | null>(null);
   const [jwtInstructions, setJwtInstructions] = useState<string[] | null>(null);
 
-  // DASH-ELEC-173 (Fixer-C24 2026-04-25): replace window.confirm() with
-  // ConfirmDialog for visual + a11y consistency with Tenants/Sessions pages.
-  // confirmTarget tracks which destructive action's dialog is open.
+  // DASH-ELEC-057: track which destructive action needs the current
+  // super-admin TOTP code before the request leaves the renderer.
   const [confirmTarget, setConfirmTarget] = useState<null | 'reset' | 'rotateJwt' | 'backfillDns'>(null);
+  const [stepUpTotpCode, setStepUpTotpCode] = useState('');
+  const [stepUpError, setStepUpError] = useState<string | null>(null);
 
   // Rate-limit inspector
   const [rlRows, setRlRows] = useState<RateLimitRow[]>([]);
@@ -86,10 +86,37 @@ export function AdminToolsPage() {
       toast.error('Enter a valid tenant slug (lowercase, hyphens only).');
       return;
     }
-    setConfirmTarget('reset');
+    openStepUpChallenge('reset');
   }
 
-  async function performReset() {
+  function openStepUpChallenge(target: 'reset' | 'rotateJwt' | 'backfillDns') {
+    setStepUpTotpCode('');
+    setStepUpError(null);
+    setConfirmTarget(target);
+  }
+
+  function closeStepUpChallenge() {
+    setConfirmTarget(null);
+    setStepUpTotpCode('');
+    setStepUpError(null);
+  }
+
+  function handleStepUpConfirm() {
+    const code = stepUpTotpCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setStepUpError('Enter the current 6-digit TOTP code.');
+      return;
+    }
+    if (confirmTarget === 'reset') {
+      performReset(code);
+    } else if (confirmTarget === 'rotateJwt') {
+      performRotateJwt(code);
+    } else if (confirmTarget === 'backfillDns') {
+      performBackfillDns(code);
+    }
+  }
+
+  async function performReset(totpCode: string) {
     setConfirmTarget(null);
     setResetBusy(true);
     setResetResult(null);
@@ -97,6 +124,7 @@ export function AdminToolsPage() {
       const res = await getAPI().superAdmin.resetRateLimits({
         tenantSlug: resetScope === 'single' ? resetTenant : undefined,
         all: resetCategoriesAll,
+        totpCode,
       });
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
@@ -133,14 +161,14 @@ export function AdminToolsPage() {
   }
 
   function handleRotateJwt() {
-    setConfirmTarget('rotateJwt');
+    openStepUpChallenge('rotateJwt');
   }
 
-  async function performRotateJwt() {
+  async function performRotateJwt(totpCode: string) {
     setConfirmTarget(null);
     setJwtBusy(true);
     try {
-      const res = await getAPI().superAdmin.rotateJwtSecret(jwtPurpose);
+      const res = await getAPI().superAdmin.rotateJwtSecret(jwtPurpose, totpCode);
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setJwtAccess(res.data.nextJwtSecret ?? null);
@@ -158,15 +186,15 @@ export function AdminToolsPage() {
   }
 
   function handleBackfillDns() {
-    setConfirmTarget('backfillDns');
+    openStepUpChallenge('backfillDns');
   }
 
-  async function performBackfillDns() {
+  async function performBackfillDns(totpCode: string) {
     setConfirmTarget(null);
     setDnsBusy(true);
     setDnsResult(null);
     try {
-      const res = await getAPI().superAdmin.backfillCloudflareDns();
+      const res = await getAPI().superAdmin.backfillCloudflareDns(totpCode);
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         const { summary, rows } = res.data;
@@ -439,10 +467,9 @@ export function AdminToolsPage() {
         <ResultPanel result={dnsResult} />
       </ToolCard>
 
-      {/* DASH-ELEC-173 (Fixer-C24 2026-04-25): ConfirmDialog instances for the
-          three destructive operations. window.confirm was OS-modal which froze
-          the renderer focus and bypassed the app's a11y/focus-trap pattern. */}
-      <ConfirmDialog
+      {/* DASH-ELEC-057: preserve the confirmation copy, but require a fresh
+          TOTP code before dispatching any destructive Admin Tools request. */}
+      <StepUpConfirmDialog
         open={confirmTarget === 'reset'}
         title="Clear rate-limit rows?"
         message={
@@ -456,10 +483,16 @@ export function AdminToolsPage() {
         }
         confirmLabel="Clear rate limits"
         danger
-        onConfirm={performReset}
-        onCancel={() => setConfirmTarget(null)}
+        code={stepUpTotpCode}
+        error={stepUpError}
+        onCodeChange={(value) => {
+          setStepUpTotpCode(value);
+          setStepUpError(null);
+        }}
+        onConfirm={handleStepUpConfirm}
+        onCancel={closeStepUpChallenge}
       />
-      <ConfirmDialog
+      <StepUpConfirmDialog
         open={confirmTarget === 'rotateJwt'}
         title="Generate a new JWT secret?"
         message={
@@ -470,10 +503,16 @@ export function AdminToolsPage() {
         }
         confirmLabel="Generate secret"
         danger
-        onConfirm={performRotateJwt}
-        onCancel={() => setConfirmTarget(null)}
+        code={stepUpTotpCode}
+        error={stepUpError}
+        onCodeChange={(value) => {
+          setStepUpTotpCode(value);
+          setStepUpError(null);
+        }}
+        onConfirm={handleStepUpConfirm}
+        onCancel={closeStepUpChallenge}
       />
-      <ConfirmDialog
+      <StepUpConfirmDialog
         open={confirmTarget === 'backfillDns'}
         title="Backfill Cloudflare DNS records?"
         message={
@@ -481,8 +520,14 @@ export function AdminToolsPage() {
           'Idempotent — tenants that already have a record_id are skipped.'
         }
         confirmLabel="Run backfill"
-        onConfirm={performBackfillDns}
-        onCancel={() => setConfirmTarget(null)}
+        code={stepUpTotpCode}
+        error={stepUpError}
+        onCodeChange={(value) => {
+          setStepUpTotpCode(value);
+          setStepUpError(null);
+        }}
+        onConfirm={handleStepUpConfirm}
+        onCancel={closeStepUpChallenge}
       />
     </div>
   );
@@ -508,6 +553,141 @@ function ToolCard({ icon: Icon, iconColor, title, description, children }: ToolC
       </div>
       {children}
     </section>
+  );
+}
+
+interface StepUpConfirmDialogProps {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger?: boolean;
+  code: string;
+  error: string | null;
+  onCodeChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function StepUpConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel,
+  danger = false,
+  code,
+  error,
+  onCodeChange,
+  onConfirm,
+  onCancel,
+}: StepUpConfirmDialogProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const canConfirm = /^\d{6}$/.test(code.trim());
+
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Escape') {
+        onCancel();
+        return;
+      }
+      if (e.key === 'Enter' && canConfirm) {
+        e.preventDefault();
+        onConfirm();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const el = containerRef.current;
+      if (!el) return;
+      const focusable = Array.from(
+        el.querySelectorAll<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])')
+      ).filter((n) => !n.hasAttribute('disabled'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [canConfirm, onCancel, onConfirm],
+  );
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="step-up-dialog-title"
+        aria-describedby="step-up-dialog-message step-up-dialog-code-help"
+        tabIndex={-1}
+        className="w-[420px] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6 outline-none"
+        onKeyDown={handleKeyDown}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          {danger && <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />}
+          <div>
+            <h3 id="step-up-dialog-title" className="text-sm font-semibold text-surface-100">{title}</h3>
+            <p id="step-up-dialog-message" className="text-sm text-surface-400 mt-3">{message}</p>
+          </div>
+        </div>
+
+        <label htmlFor="step-up-totp-code" className="block text-xs text-surface-500 mb-2">
+          Current super-admin TOTP code
+        </label>
+        <input
+          ref={inputRef}
+          id="step-up-totp-code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]*"
+          maxLength={6}
+          value={code}
+          onChange={(e) => onCodeChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+          aria-describedby="step-up-dialog-code-help"
+          aria-invalid={error ? 'true' : 'false'}
+          className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 font-mono tracking-[0.3em] focus:border-accent-500 focus:outline-none"
+        />
+        <p id="step-up-dialog-code-help" className={`text-xs mt-2 ${error ? 'text-red-300' : 'text-surface-500'}`}>
+          {error ?? 'Required before this destructive action is sent to the server.'}
+        </p>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!canConfirm}
+            className={
+              danger
+                ? 'px-4 py-2 text-sm font-semibold rounded-lg transition-colors bg-red-600 text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-red-800 disabled:text-red-200'
+                : 'px-4 py-2 text-sm font-semibold rounded-lg transition-colors bg-accent-600 text-white hover:bg-accent-700 disabled:cursor-not-allowed disabled:opacity-50'
+            }
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

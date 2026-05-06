@@ -8,10 +8,10 @@ import { AlertCircle } from 'lucide-react';
  * (`hint`). Adopted incrementally — existing per-page red-500 borders /
  * `<p class="text-sm text-red-600 mt-1">` lines remain valid; new code and
  * page-touch refactors should consume this primitive instead of inventing
- * another visual treatment.
- *
- * AA-contrast colour pair (`#dc2626` on `#fef2f2` light / `#fecaca` on
- * `#7f1d1d` dark) verified via Tailwind palette.
+ * another visual treatment. Field/hint variants intentionally avoid
+ * `role="alert"` so a failed long form does not trigger one screen-reader
+ * announcement per invalid field; use the banner variant for submit-level
+ * announcements.
  */
 
 interface FormErrorProps {
@@ -38,7 +38,7 @@ export function FormError({
       <div
         id={id}
         role="alert"
-        className={`flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300 ${className}`}
+        className={`flex items-start gap-2 rounded-md border border-error-200 bg-error-50 p-3 text-sm text-error-700 dark:border-error-900 dark:bg-error-950 dark:text-error-300 ${className}`}
       >
         <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
         <span>{message}</span>
@@ -50,8 +50,7 @@ export function FormError({
     return (
       <p
         id={id}
-        role="alert"
-        className={`mt-1 text-xs text-red-600 dark:text-red-400 ${className}`}
+        className={`mt-1 text-xs text-error-600 dark:text-error-400 ${className}`}
       >
         {message}
       </p>
@@ -62,8 +61,7 @@ export function FormError({
   return (
     <p
       id={id}
-      role="alert"
-      className={`mt-1 text-sm text-red-600 dark:text-red-400 ${className}`}
+      className={`mt-1 text-sm text-error-600 dark:text-error-400 ${className}`}
     >
       {message}
     </p>

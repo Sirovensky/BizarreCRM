@@ -1,4 +1,4 @@
-import { useState, useCallback, DragEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, DragEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { GripVertical } from 'lucide-react';
@@ -66,6 +66,12 @@ function assignedName(ticket: KanbanTicket): string | null {
   return first_name || last_name || null;
 }
 
+function isRequestCanceled(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const maybe = err as { code?: unknown; name?: unknown };
+  return maybe.code === 'ERR_CANCELED' || maybe.name === 'CanceledError' || maybe.name === 'AbortError';
+}
+
 // ─── Card Component ────────────────────────────────────────────────
 
 interface CardProps {
@@ -124,6 +130,31 @@ export default function KanbanBoard() {
   const [dragOverStatus, setDragOverStatus] = useState<number | null>(null);
   const [showEmpty, setShowEmpty] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
+  const statusMutationControllersRef = useRef<Set<AbortController>>(new Set());
+  const boardMountedRef = useRef(true);
+
+  useEffect(() => {
+    boardMountedRef.current = true;
+    return () => {
+      boardMountedRef.current = false;
+      statusMutationControllersRef.current.forEach((controller) => controller.abort());
+      statusMutationControllersRef.current.clear();
+    };
+  }, []);
+
+  const beginStatusMutation = useCallback(() => {
+    const controller = new AbortController();
+    statusMutationControllersRef.current.add(controller);
+    return controller;
+  }, []);
+
+  const finishStatusMutation = useCallback((controller: AbortController) => {
+    statusMutationControllersRef.current.delete(controller);
+  }, []);
+
+  const shouldSuppressStatusFeedback = useCallback((controller: AbortController, err?: unknown) => (
+    controller.signal.aborted || !boardMountedRef.current || isRequestCanceled(err)
+  ), []);
 
   // WEB-FAD-006 (Fixer-B24 2026-04-25): renamed key from `['tickets-kanban']`
   // → `['tickets', 'kanban']` so WS prefix-match on TICKET_CREATED/UPDATED/
@@ -161,8 +192,8 @@ export default function KanbanBoard() {
   // column immediately on drop, rather than waiting ~200-400ms for the
   // server round-trip + invalidate. onError rolls the snapshot back.
   const statusMutation = useMutation({
-    mutationFn: ({ id, statusId }: { id: number; statusId: number }) =>
-      ticketApi.changeStatus(id, statusId),
+    mutationFn: ({ id, statusId, controller }: { id: number; statusId: number; controller: AbortController }) =>
+      ticketApi.changeStatus(id, statusId, controller.signal),
     onMutate: async ({ id, statusId }) => {
       await queryClient.cancelQueries({ queryKey: ['tickets', 'kanban'] });
       const prev = queryClient.getQueryData(['tickets', 'kanban']);
@@ -191,11 +222,14 @@ export default function KanbanBoard() {
       });
       return { prev };
     },
-    onError: (_err, _vars, ctx: { prev: unknown } | undefined) => {
+    onError: (err, vars, ctx: { prev: unknown } | undefined) => {
       if (ctx?.prev) queryClient.setQueryData(['tickets', 'kanban'], ctx.prev);
+      if (shouldSuppressStatusFeedback(vars.controller, err)) return;
       toast.error('Failed to update ticket status');
     },
-    onSettled: () => {
+    onSettled: (_data, err, vars) => {
+      finishStatusMutation(vars.controller);
+      if (shouldSuppressStatusFeedback(vars.controller, err)) return;
       queryClient.invalidateQueries({ queryKey: ['tickets', 'kanban'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
     },
@@ -250,10 +284,10 @@ export default function KanbanBoard() {
         }
       }
 
-      statusMutation.mutate({ id: dragTicketId, statusId: targetStatusId });
+      statusMutation.mutate({ id: dragTicketId, statusId: targetStatusId, controller: beginStatusMutation() });
       setDragTicketId(null);
     },
-    [dragTicketId, allColumns, statusMutation],
+    [dragTicketId, allColumns, statusMutation, beginStatusMutation],
   );
 
   const handleDragEnd = useCallback(() => {

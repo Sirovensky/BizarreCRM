@@ -127,6 +127,7 @@ interface UnifiedPosState {
   setPosPinVerified: (verified: boolean) => void;
 
   // Reset everything
+  clearDraft: () => void;
   resetAll: () => void;
 }
 
@@ -137,6 +138,7 @@ const DEFAULT_META: TicketMeta = {
   internalNotes: '',
   labels: '',
   discountReason: '',
+  referralSource: '',
 };
 
 // WEB-FH-001 / WEB-FH-002: mint a stable idempotency key. Pure helper so
@@ -253,6 +255,22 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
   posPinVerified: false,
   setPosPinVerified: (posPinVerified) => set({ posPinVerified }),
 
+  clearDraft: () => set({
+    customer: null,
+    cartItems: [],
+    drillState: { step: 'CATEGORY' },
+    discount: 0,
+    discountReason: '',
+    memberDiscountApplied: false,
+    meta: { ...DEFAULT_META },
+    sourceTicketId: null,
+    activeTab: 'repairs',
+    showCheckout: false,
+    posPinVerified: false,
+    // WEB-FH-001 / WEB-FH-002: cart fully reset → drop idempotency key so
+    // the next sale doesn't accidentally collide with the previous one.
+    checkoutIdempotencyKey: null,
+  }),
   resetAll: () => set({
     customer: null,
     cartItems: [],
@@ -275,14 +293,16 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
   storage: createJSONStorage(() => ({
     getItem: (name: string) => {
       const key = getUserPosKey();
-      return localStorage.getItem(key);
+      return sessionStorage.getItem(key) ?? localStorage.getItem(key);
     },
     setItem: (name: string, value: string) => {
       const key = getUserPosKey();
-      localStorage.setItem(key, value);
+      sessionStorage.setItem(key, value);
+      localStorage.removeItem(key);
     },
     removeItem: (name: string) => {
       const key = getUserPosKey();
+      sessionStorage.removeItem(key);
       localStorage.removeItem(key);
     },
   })),

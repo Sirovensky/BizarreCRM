@@ -13,6 +13,11 @@ import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, X, Loader2, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 // WEB-FD-012 (Fixer-426B 2026-04-26): typed response for benchApi.defects.report.
 interface DefectReportResponse {
@@ -83,9 +88,18 @@ export function DefectReporterButton({
     },
   });
 
-  const onPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const error = await validateImageFile(file, {
+      maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
+      label: `"${file.name}"`,
+    });
+    if (error) {
+      toast.error(error);
+      e.target.value = '';
+      return;
+    }
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
@@ -180,7 +194,7 @@ export function DefectReporterButton({
               <input
                 ref={photoRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={IMAGE_UPLOAD_ACCEPT}
                 onChange={onPhotoChange}
                 className="hidden"
               />

@@ -29,6 +29,7 @@ import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
 import { logActivity } from '../utils/activityLog.js';
 import { trackInterval } from '../utils/trackInterval.js';
+import { verifyTenantStripePaymentIntent } from '../services/tenantStripe.js';
 
 const logger = createLogger('invoices');
 const router = Router();
@@ -76,10 +77,15 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
     SELECT inv.*,
       c.first_name, c.last_name, c.email as customer_email, c.phone as customer_phone,
       c.organization,
-      u.first_name || ' ' || u.last_name as created_by_name
+      u.first_name || ' ' || u.last_name as created_by_name,
+      loc.id AS loc_id, loc.name AS loc_name, loc.address_line AS loc_address_line,
+      loc.city AS loc_city, loc.state AS loc_state, loc.postcode AS loc_postcode,
+      loc.country AS loc_country, loc.phone AS loc_phone, loc.email AS loc_email,
+      loc.timezone AS loc_timezone
     FROM invoices inv
     LEFT JOIN customers c ON c.id = inv.customer_id
     LEFT JOIN users u ON u.id = inv.created_by
+    LEFT JOIN locations loc ON loc.id = inv.location_id
     WHERE inv.id = ?
   `, id);
   if (!invoice) return null;
@@ -107,7 +113,38 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
     `, id, invoice.parent_invoice_id, invoice.parent_invoice_id),
   ]);
 
-  return { ...invoice, line_items, payments, deposit_invoices };
+  const {
+    loc_id,
+    loc_name,
+    loc_address_line,
+    loc_city,
+    loc_state,
+    loc_postcode,
+    loc_country,
+    loc_phone,
+    loc_email,
+    loc_timezone,
+    ...invoiceFields
+  } = invoice;
+
+  return {
+    ...invoiceFields,
+    location: loc_id ? {
+      id: loc_id,
+      name: loc_name,
+      address_line: loc_address_line,
+      city: loc_city,
+      state: loc_state,
+      postcode: loc_postcode,
+      country: loc_country,
+      phone: loc_phone,
+      email: loc_email,
+      timezone: loc_timezone,
+    } : null,
+    line_items,
+    payments,
+    deposit_invoices,
+  };
 }
 
 interface PostPaymentSideEffectsArgs {
@@ -726,40 +763,66 @@ router.put('/:id', requirePermission('invoices.edit'), async (req: Request<{ id:
 const recentPayments = new Map<string, number>();
 trackInterval(() => { const now = Date.now(); for (const [k, v] of recentPayments) { if (now - v > 30000) recentPayments.delete(k); } }, 30000);
 
-// POST /invoices/:id/payments
-// SEC-H25: recording a payment is a financial write — gate behind invoices.record_payment.
-router.post('/:id/payments', idempotent, requirePermission('invoices.record_payment'), async (req, res) => {
-  const db = req.db;
-  const adb = req.asyncDb;
-  const invoice = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', req.params.id);
-  if (!invoice) throw new AppError('Invoice not found', 404);
-  if (invoice.status === 'void') throw new AppError('Cannot add payment to voided invoice', 400);
+interface RecordInvoicePaymentArgs {
+  adb: AsyncDb;
+  db: import('better-sqlite3').Database;
+  invoiceId: number | string;
+  invoice?: any;
+  amount: unknown;
+  method?: unknown;
+  methodDetail?: unknown;
+  transactionId?: unknown;
+  processor?: unknown;
+  reference?: unknown;
+  notes?: unknown;
+  paymentType?: unknown;
+  userId: number;
+  tenantSlug?: string | null;
+  expectedCustomerId?: unknown;
+  deduplicate?: boolean;
+}
 
-  // SEC-H26: if the client provides customer_id in the body, verify it matches
-  // the invoice's customer. Prevents a caller from posting a payment against
-  // invoice A while declaring customer B — the mismatch could be a UI bug
-  // (wrong screen state), a forged request, or an account-mixing attack that
-  // shifts credit onto the wrong ledger.
-  if (req.body?.customer_id !== undefined && req.body.customer_id !== null) {
-    const bodyCustomerId = validateId(req.body.customer_id, 'customer_id');
-    if (bodyCustomerId !== invoice.customer_id) {
-      throw new AppError('customer_id does not match invoice.customer_id', 400);
-    }
-  }
+interface RecordInvoicePaymentResult {
+  paymentId: number;
+  updatedInvoice: any;
+  totalPaid: number;
+  amountDue: number;
+  status: string;
+  overpayment: number;
+}
 
-  const { method = 'cash', method_detail, transaction_id, notes, payment_type = 'payment' } = req.body;
-  // V7: Strictly positive (> 0). Rejects 0, -0.01, NaN, Infinity deterministically.
-  const amount = validatePositiveAmount(req.body.amount, 'payment amount');
+async function getInvoicePositivePaymentTotal(
+  adb: AsyncDb,
+  invoiceId: number | string,
+): Promise<number> {
+  // SCAN-757: CASE WHEN filters out NULL/negative rows so corrupt payment rows
+  // cannot propagate NaN or negative values into the running total.
+  const totalPaidRow = await adb.get<{ t: number }>(
+    'SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 THEN amount ELSE 0 END) as t FROM payments WHERE invoice_id = ?',
+    invoiceId,
+  );
+  return roundCents(totalPaidRow?.t || 0);
+}
 
-  // Validate payment_type
-  const validPaymentTypes = ['payment', 'deposit'];
-  if (!validPaymentTypes.includes(payment_type)) {
-    throw new AppError(`Invalid payment_type. Must be one of: ${validPaymentTypes.join(', ')}`, 400);
-  }
+async function getInvoiceRemainingBalance(
+  adb: AsyncDb,
+  invoice: any,
+): Promise<number> {
+  const invoiceTotal = Number(invoice.total ?? 0);
+  if (!Number.isFinite(invoiceTotal)) return Number.NaN;
+  const totalPaid = await getInvoicePositivePaymentTotal(adb, invoice.id);
+  return roundCents(invoiceTotal - totalPaid);
+}
 
+async function assertNoRecentDuplicatePayment(
+  adb: AsyncDb,
+  invoiceId: number | string,
+  amount: number,
+  userId: number,
+): Promise<void> {
   // Double-submit guard: same invoice + amount within 5 seconds = reject
   // SEC-M9: In-memory fast check + DB-backed check (survives restart)
-  const dedupKey = `${req.params.id}:${amount.toFixed(2)}:${req.user!.id}`;
+  const dedupKey = `${invoiceId}:${amount.toFixed(2)}:${userId}`;
   const lastPayment = recentPayments.get(dedupKey);
   if (lastPayment && Date.now() - lastPayment < 5000) {
     throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
@@ -770,51 +833,130 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
     WHERE invoice_id = ? AND ROUND(amount, 2) = ROUND(?, 2) AND user_id = ?
     AND created_at > datetime('now', '-10 seconds')
     LIMIT 1
-  `, req.params.id, amount, req.user!.id);
+  `, invoiceId, amount, userId);
   if (recentDbPayment) {
     throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
   }
   recentPayments.set(dedupKey, Date.now());
+}
+
+async function recordInvoicePayment({
+  adb,
+  db,
+  invoiceId,
+  invoice: providedInvoice,
+  amount: rawAmount,
+  method = 'cash',
+  methodDetail,
+  transactionId,
+  processor,
+  reference,
+  notes,
+  paymentType = 'payment',
+  userId,
+  tenantSlug,
+  expectedCustomerId,
+  deduplicate = true,
+}: RecordInvoicePaymentArgs): Promise<RecordInvoicePaymentResult> {
+  const invoice = providedInvoice ?? await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invoiceId);
+  if (!invoice) throw new AppError('Invoice not found', 404);
+  if (invoice.status === 'void') throw new AppError('Cannot add payment to voided invoice', 400);
+
+  // SEC-H26: if the client provides customer_id in the body, verify it matches
+  // the invoice's customer.
+  if (expectedCustomerId !== undefined && expectedCustomerId !== null) {
+    const bodyCustomerId = validateId(expectedCustomerId, 'customer_id');
+    if (bodyCustomerId !== invoice.customer_id) {
+      throw new AppError('customer_id does not match invoice.customer_id', 400);
+    }
+  }
+
+  const amount = validatePositiveAmount(rawAmount, 'payment amount');
+  let paymentMethodDetail = typeof methodDetail === 'string' ? methodDetail : null;
+  let paymentTransactionId = typeof transactionId === 'string' ? transactionId.trim() : '';
+  let paymentProcessor = typeof processor === 'string' ? processor.trim().toLowerCase() : null;
+  let paymentReference = typeof reference === 'string' ? reference.trim() : null;
+  let processorTransactionId: string | null = null;
+  let processorResponse: string | null = null;
+
+  if (String(method).toLowerCase() === 'stripe' || paymentProcessor === 'stripe') {
+    const verified = await verifyTenantStripePaymentIntent(db, paymentTransactionId || paymentReference, toCents(amount), {
+      allowedSources: ['invoice'],
+      expectedInvoiceId: invoice.id,
+      expectedCustomerId: invoice.customer_id ?? null,
+    });
+    const existingStripePayment = await adb.get<{ id: number }>(`
+      SELECT id FROM payments
+       WHERE LOWER(COALESCE(processor, '')) = 'stripe'
+         AND (
+           processor_transaction_id = ?
+           OR transaction_id = ?
+           OR reference = ?
+         )
+       LIMIT 1
+    `, verified.id, verified.id, verified.id);
+    if (existingStripePayment) {
+      throw new AppError('Stripe PaymentIntent has already been recorded', 409);
+    }
+    paymentMethodDetail = paymentMethodDetail || verified.paymentMethodDetail;
+    paymentTransactionId = verified.id;
+    paymentProcessor = 'stripe';
+    paymentReference = verified.latestChargeId ?? verified.id;
+    processorTransactionId = verified.id;
+    processorResponse = JSON.stringify(verified.raw);
+  }
+
+  const validPaymentTypes = ['payment', 'deposit'];
+  if (typeof paymentType !== 'string' || !validPaymentTypes.includes(paymentType)) {
+    throw new AppError(`Invalid payment_type. Must be one of: ${validPaymentTypes.join(', ')}`, 400);
+  }
+
+  if (deduplicate) {
+    await assertNoRecentDuplicatePayment(adb, invoice.id, amount, userId);
+  }
+
+  const invoiceTotal = Number(invoice.total ?? 0);
+  const predictedTotalPaid = roundCents(await getInvoicePositivePaymentTotal(adb, invoice.id) + amount);
+  const predictedRawAmountDue = roundCents(invoiceTotal - predictedTotalPaid);
+  const predictedStatus = predictedRawAmountDue <= 0 ? 'paid' : predictedTotalPaid > 0 ? 'partial' : 'unpaid';
+
+  // SEC-H113: enforce state-machine transition before writing payment rows.
+  assertInvoiceTransition(invoice.status, predictedStatus);
 
   const paymentResult = await adb.run(`
-    INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id, notes, payment_type, user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, req.params.id, amount, method, method_detail || null,
-    transaction_id || null, notes || null, payment_type, req.user!.id);
+    INSERT INTO payments (
+      invoice_id, amount, method, method_detail, transaction_id, notes, payment_type,
+      processor, reference, processor_transaction_id, processor_response, capture_state, user_id
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'captured', ?)
+  `, invoice.id, amount, method, paymentMethodDetail || null,
+    paymentTransactionId || null, notes || null, paymentType,
+    paymentProcessor, paymentReference, processorTransactionId, processorResponse, userId);
   const paymentId = paymentResult.lastInsertRowid as number;
 
-  // SCAN-757: CASE WHEN filters out NULL/negative rows so corrupt payment rows
-  // cannot propagate NaN or negative values into the running total.
-  const totalPaidRow = await adb.get<{ t: number }>('SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 THEN amount ELSE 0 END) as t FROM payments WHERE invoice_id = ?', req.params.id);
-  const totalPaidRaw = totalPaidRow?.t || 0;
-  const totalPaid = roundCents(totalPaidRaw);
-  const rawAmountDue = roundCents(invoice.total - totalPaid);
+  const totalPaid = await getInvoicePositivePaymentTotal(adb, invoice.id);
+  const rawAmountDue = roundCents(invoiceTotal - totalPaid);
 
   // M9: Detect overpayment — if the customer paid more than the invoice total,
-  // record the excess as a store credit (store_credits table exists per
-  // migration 026_refunds_credits.sql). The displayed amount_due is clamped
+  // record the excess as a store credit. The displayed amount_due is clamped
   // to 0 so the ledger does not go negative.
   const overpayment = rawAmountDue < 0 ? roundCents(-rawAmountDue) : 0;
   const displayAmountDue = Math.max(0, rawAmountDue);
   const status = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
-  // SEC-H113: enforce state-machine transition before writing
-  assertInvoiceTransition(invoice.status, status);
-
   await adb.run(`
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-  `, totalPaid, displayAmountDue, status, req.params.id);
+  `, totalPaid, displayAmountDue, status, invoice.id);
 
   // Post-payment side effects: loyalty points, commission, activity log, webhook.
-  // SCAN-623 / SCAN-627: extracted into shared helper so bulk path is identical.
   await postPaymentSideEffects({
     adb,
     db,
-    invoice: { ...invoice, id: Number(req.params.id) },
+    invoice: { ...invoice, id: Number(invoice.id) },
     paymentId,
     paymentAmount: amount,
-    paymentMethod: method,
-    userId: req.user!.id,
+    paymentMethod: String(method),
+    userId,
   });
 
   // SCAN-524: update customer last_interaction_at + lifetime_value_cents (fire-and-forget)
@@ -850,19 +992,54 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
       `,
         invoice.customer_id,
         overpayment,
-        req.params.id,
+        invoice.id,
         `Overpayment on invoice ${invoice.order_id}`,
-        req.user!.id,
+        userId,
       );
     } catch (creditErr: unknown) {
       // Do not fail the payment flow if the credit insert fails — log and continue.
       logger.warn(`[invoices] failed to record overpayment store credit`, { err: creditErr });
     }
   }
-  const updated = await getInvoiceDetail(adb, req.params.id as string);
-  broadcast(WS_EVENTS.PAYMENT_RECEIVED, updated, req.tenantSlug || null);
 
-  res.status(201).json({ success: true, data: updated });
+  const updatedInvoice = await getInvoiceDetail(adb, invoice.id);
+  broadcast(WS_EVENTS.PAYMENT_RECEIVED, updatedInvoice, tenantSlug || null);
+
+  return {
+    paymentId,
+    updatedInvoice,
+    totalPaid,
+    amountDue: displayAmountDue,
+    status,
+    overpayment,
+  };
+}
+
+// POST /invoices/:id/payments
+// SEC-H25: recording a payment is a financial write — gate behind invoices.record_payment.
+router.post('/:id/payments', idempotent, requirePermission('invoices.record_payment'), async (req, res) => {
+  const db = req.db;
+  const adb = req.asyncDb;
+  const { method = 'cash', method_detail, transaction_id, notes, payment_type = 'payment' } = req.body;
+  const payment = await recordInvoicePayment({
+    adb,
+    db,
+    invoiceId: req.params.id as string,
+    amount: req.body.amount,
+    method,
+    methodDetail: method_detail,
+    transactionId: transaction_id,
+    processor: req.body?.processor,
+    reference: req.body?.reference,
+    notes,
+    paymentType: payment_type,
+    userId: req.user!.id,
+    tenantSlug: req.tenantSlug || null,
+    expectedCustomerId: req.body?.customer_id,
+    deduplicate: true,
+  });
+
+  res.status(201).json({ success: true, data: payment.updatedInvoice });
 });
 
 // POST /invoices/:id/void (rate limited: 1 per minute per user)
@@ -1043,41 +1220,29 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
             errors.push({ invoice_id: id, error: 'Already paid' });
             continue;
           }
-          // SEC-H113: assert transition is legal
-          const allowed = LEGAL_INVOICE_TRANSITIONS[invoice.status];
-          if (allowed !== undefined && !allowed.includes('paid')) {
-            failCount++;
-            errors.push({ invoice_id: id, error: `Cannot transition invoice from '${invoice.status}' to 'paid'` });
-            continue;
-          }
-          // Record a payment for the remaining amount
-          const remaining = invoice.amount_due > 0 ? invoice.amount_due : invoice.total;
+          // Record a payment for the actual remaining balance. This mirrors
+          // POST /:id/payments by deriving amount_paid from payment rows rather
+          // than trusting possibly stale invoice.amount_due.
+          const remaining = await getInvoiceRemainingBalance(adb, invoice);
           // @audit-fixed: validate the payment amount before insert. Previously a corrupt
           // invoice row with NaN amount_due / total would write NaN into payments.
-          if (!Number.isFinite(Number(remaining)) || Number(remaining) <= 0) {
+          if (!Number.isFinite(remaining) || remaining <= 0) {
             failCount++;
             errors.push({ invoice_id: id, error: 'Invalid invoice balance — cannot mark paid' });
             continue;
           }
-          const bulkPayResult = await adb.run(`
-            INSERT INTO payments (invoice_id, amount, method, notes, user_id)
-            VALUES (?, ?, 'cash', 'Bulk mark-paid', ?)
-          `, id, remaining, req.user!.id);
-          const bulkPaymentId = bulkPayResult.lastInsertRowid as number;
-
-          await adb.run(`
-            UPDATE invoices SET amount_paid = total, amount_due = 0, status = 'paid', updated_at = datetime('now') WHERE id = ?
-          `, id);
-
-          // SCAN-623 / SCAN-627: shared post-payment side effects
-          await postPaymentSideEffects({
+          await recordInvoicePayment({
             adb,
             db,
-            invoice: { ...invoice, id: Number(id) },
-            paymentId: bulkPaymentId,
-            paymentAmount: Number(remaining),
-            paymentMethod: 'cash',
+            invoiceId: id,
+            invoice,
+            amount: remaining,
+            method: 'cash',
+            notes: 'Bulk mark-paid',
+            paymentType: 'payment',
             userId: req.user!.id,
+            tenantSlug: req.tenantSlug || null,
+            deduplicate: true,
           });
 
           successCount++;

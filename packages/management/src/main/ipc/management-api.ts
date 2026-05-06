@@ -3,10 +3,11 @@
  * Authentication uses the super admin 2FA flow exclusively.
  * Management API calls use the super admin JWT as Bearer token.
  */
-import { ipcMain, shell, app, dialog, BrowserWindow } from 'electron';
+import { ipcMain, shell, app, dialog, BrowserWindow, type IpcMainInvokeEvent, type SaveDialogOptions } from 'electron';
 import { spawn, spawnSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { isIP } from 'net';
 import { pathToFileURL } from 'url';
 import { z } from 'zod';
 import {
@@ -16,7 +17,15 @@ import {
   getServerBase,
   getCertPinningStatus,
 } from '../services/api-client.js';
+import {
+  clearDashboardCrashLog,
+  getDashboardCrashLog,
+  type DashboardCrashEntry,
+} from '../services/crash-store.js';
+import { auditIpcOperation } from '../services/ipc-audit-log.js';
+import { logger } from '../services/main-logger.js';
 import { allowClose, getMainWindow } from '../window.js';
+import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 
 // ── IPC Input Schemas (validated before any handler logic) ────────────
 
@@ -62,9 +71,29 @@ const SchemaRange = z.object({
 // uppercase letters, underscores, and lengths up to 256, allowing renderer
 // callers (delete/suspend/activate/repair/get-tenant) to target slugs that
 // could never have been created via the UI flow (e.g. `ADMIN_TENANT`).
+const SchemaSlugValue = z.string().regex(/^[a-z0-9-]{3,64}$/, 'slug must be 3-64 lowercase alphanumeric/hyphen characters');
 const SchemaSlug = z.object({
-  slug: z.string().regex(/^[a-z0-9-]{3,64}$/, 'slug must be 3-64 lowercase alphanumeric/hyphen characters'),
+  slug: SchemaSlugValue,
 });
+
+const SchemaTenantStatusAction = z.union([
+  SchemaSlugValue.transform((slug) => ({ slug, reason: undefined as string | undefined })),
+  z.object({
+    slug: SchemaSlugValue,
+    reason: z.string().max(1000, 'reason must be 1000 characters or fewer').optional(),
+  }).strict(),
+]);
+
+const TENANT_PLAN_NAMES = Object.keys(PLAN_DEFINITIONS) as [TenantPlan, ...TenantPlan[]];
+const SchemaTenantPlan = z.enum(TENANT_PLAN_NAMES);
+const SchemaTenantUpdate = z.object({
+  slug: SchemaSlugValue,
+  plan: SchemaTenantPlan.optional(),
+  name: z.string().trim().min(1).max(200).optional(),
+}).strict().refine(
+  (payload) => payload.plan !== undefined || payload.name !== undefined,
+  { message: 'At least one tenant field must be provided' },
+);
 
 const SchemaId = z.object({
   id: z.string().min(1).max(256),
@@ -77,6 +106,10 @@ const SchemaRoute = z.object({
 const SchemaFilename = z.object({
   filename: z.string().min(1).max(512).regex(/^[^/\\:*?"<>|]+$/),
 });
+
+const SchemaBackupUpload = z.object({
+  sourcePath: z.string().min(1).max(4096),
+}).strict();
 
 const SchemaAuditUpdateResult = z.object({
   afterSha: z.string().regex(/^[a-f0-9]{7,40}$/i).optional(),
@@ -95,6 +128,7 @@ const SchemaAuditLogParams = z.object({
   limit: z.number().int().min(1).max(500).optional(),
   offset: z.number().int().min(0).optional(),
   action: z.string().max(128).optional(),
+  username: z.string().trim().min(1).max(128).optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   tenant_slug: z.string().min(1).max(256).regex(/^[a-zA-Z0-9_-]+$/).optional(),
@@ -127,7 +161,7 @@ const SchemaCreateTenant = z.object({
   slug: z.string().regex(/^[a-z0-9-]{3,64}$/, 'slug must be 3-64 lowercase alphanumeric/hyphen characters'),
   shop_name: z.string().min(1).max(256),
   admin_email: z.string().email().max(256),
-  plan: z.enum(['free', 'pro']).optional(),
+  plan: SchemaTenantPlan.optional(),
   admin_first_name: z.string().min(1).max(256).optional(),
   admin_last_name: z.string().min(1).max(256).optional(),
 }).strict();
@@ -190,6 +224,60 @@ function serverToRendererBackupSettings(s: {
     last_backup: s.lastBackup ?? '',
     last_status: s.lastStatus ?? '',
   };
+}
+
+const BACKUP_METADATA_SUFFIX = '.meta.json';
+
+function isPortableBackupFilename(filename: string): boolean {
+  const isDb = filename.endsWith('.db') || filename.endsWith('.db.enc');
+  return isDb && (filename.startsWith('bizarre-crm-') || /^.+-t\d+-\d{4}-\d{2}/.test(filename));
+}
+
+async function getAdminBackupDirectory(): Promise<{ ok: true; dir: string } | { ok: false; message: string }> {
+  const res = await apiRequest('GET', '/api/v1/admin/status');
+  const body = bodyOf(res) as { success?: boolean; data?: { backup?: unknown }; message?: string };
+  if (!body.success) return { ok: false, message: body.message ?? 'Unable to read backup settings' };
+  const settings = body.data?.backup && typeof body.data.backup === 'object'
+    ? serverToRendererBackupSettings(body.data.backup as never)
+    : null;
+  const configuredPath = settings?.backup_path?.trim();
+  if (!configuredPath) return { ok: false, message: 'Backup path is not configured' };
+
+  let root: string | null = null;
+  if (!path.isAbsolute(configuredPath)) {
+    try { root = resolveTrustedProjectRoot(); } catch {}
+  }
+  const candidate = path.isAbsolute(configuredPath) || !root
+    ? configuredPath
+    : path.join(root, configuredPath);
+  const safeDir = assertSafePath(candidate);
+  if (!fs.existsSync(safeDir) || !fs.statSync(safeDir).isDirectory()) {
+    return { ok: false, message: 'Backup directory does not exist' };
+  }
+  return { ok: true, dir: safeDir };
+}
+
+function resolveBackupFileInDirectory(backupDir: string, filename: string): string {
+  if (!isPortableBackupFilename(filename)) {
+    throw new Error('Invalid backup filename');
+  }
+  const fullPath = path.join(backupDir, filename);
+  if (!isPathUnder(fullPath, backupDir) || path.resolve(fullPath) === path.resolve(backupDir)) {
+    throw new Error('Backup path escapes the configured backup directory');
+  }
+  return fullPath;
+}
+
+async function copyOptionalBackupMetadata(sourcePath: string, destinationPath: string, exclusive: boolean): Promise<boolean> {
+  const sourceMeta = `${sourcePath}${BACKUP_METADATA_SUFFIX}`;
+  if (!fs.existsSync(sourceMeta)) return false;
+  const destinationMeta = `${destinationPath}${BACKUP_METADATA_SUFFIX}`;
+  await fs.promises.copyFile(
+    sourceMeta,
+    destinationMeta,
+    exclusive ? fs.constants.COPYFILE_EXCL : 0,
+  );
+  return true;
 }
 
 // ── Env-editor whitelist (boot-time vars editable from dashboard) ────
@@ -270,6 +358,8 @@ const SchemaEnvSettingsUpdate = z
     { message: 'At least one key must be provided' }
   );
 
+const SchemaEnvConnectionTestTarget = z.enum(['captcha', 'stripe', 'cloudflare']);
+
 // Security-alerts list filter. All fields optional — server applies defaults.
 // page/limit are strict numbers (no coercion) so a rogue "limit=99999999"
 // sent from a compromised renderer can't evade the server's own cap.
@@ -285,7 +375,10 @@ const SchemaAlertId = z.number().int().positive();
 const SchemaResetRateLimits = z.object({
   tenantSlug: z.string().regex(/^[a-z0-9-]{1,64}$/).optional(),
   all: z.boolean().optional(),
+  totpCode: z.string().regex(/^\d{6}$/, 'TOTP code must be 6 digits'),
 }).strict();
+
+const SchemaStepUpTotpCode = z.string().regex(/^\d{6}$/, 'TOTP code must be 6 digits');
 
 const SchemaListRateLimits = z.object({
   lockedOnly: z.boolean().optional(),
@@ -504,7 +597,7 @@ function writeSnapshot(sha: string): void {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(getSnapshotFilePath(), sha, 'utf-8');
   } catch (err) {
-    console.error('[Update] Failed to persist rollback snapshot:', err);
+    logger.error('[Update] Failed to persist rollback snapshot', { error: err });
   }
 }
 
@@ -570,7 +663,7 @@ function verifyLatestSignedTag(root: string): {
   // the operator clicks "Install Update".
   const skipTagVerify = process.env['UPDATE_SKIP_TAG_VERIFY'] === 'true';
   if (skipTagVerify) {
-    console.warn(
+    logger.warn(
       '[Update] SEC-H95 / AUDIT-MGT-018: UPDATE_SKIP_TAG_VERIFY is set — ' +
       'signed-tag gate BYPASSED. This bypass is being reported to the audit log.'
     );
@@ -604,7 +697,7 @@ function verifyLatestSignedTag(root: string): {
     // DASH-ELEC-009: log stderr so operators can diagnose why describe failed
     // (e.g. no tags at all, shallow clone, corrupted repo).
     if (describeResult.stderr?.trim()) {
-      console.warn('[Update] git describe stderr:', describeResult.stderr.trim());
+      logger.warn('[Update] git describe stderr', { stderr: describeResult.stderr.trim() });
     }
     // Fallback: list tags sorted by version, pick highest.
     const listResult = spawnSync(
@@ -616,7 +709,7 @@ function verifyLatestSignedTag(root: string): {
       const first = listResult.stdout.trim().split('\n')[0]?.trim();
       if (first) tag = first;
     } else if (listResult.stderr?.trim()) {
-      console.warn('[Update] git tag list stderr:', listResult.stderr.trim());
+      logger.warn('[Update] git tag list stderr', { stderr: listResult.stderr.trim() });
     }
   }
 
@@ -647,7 +740,7 @@ function verifyLatestSignedTag(root: string): {
     };
   }
 
-  console.log(`[Update] SEC-H95: tag "${tag}" signature verified OK`);
+  logger.info('[Update] SEC-H95 tag signature verified OK', { tag });
   return { ok: true, tag };
 }
 
@@ -849,7 +942,7 @@ function writeEnvAtomic(envPath: string, content: string): void {
     // Backup is belt-and-suspenders — if it fails we still proceed with
     // the atomic write because the main goal is not leaving the .env in a
     // half-written state.
-    console.warn('[envAtomic] backup snapshot failed, continuing with write:', err instanceof Error ? err.message : err);
+    logger.warn('[envAtomic] backup snapshot failed, continuing with write', { error: err });
   }
   const tmpPath = envPath + '.tmp';
   fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
@@ -898,6 +991,326 @@ function upsertEnvKey(content: string, key: string, rawValue: string): string {
   }
   const sep = content === '' || content.endsWith('\n') ? '' : '\n';
   return `${content}${sep}${newLine}\n`;
+}
+
+type EnvConnectionTestTarget = z.infer<typeof SchemaEnvConnectionTestTarget>;
+type EnvConnectionTestStatus = 'pass' | 'warn' | 'fail';
+type EnvConnectionTestDetailTone = 'success' | 'warning' | 'danger' | 'muted';
+
+interface EnvConnectionTestDetail {
+  label: string;
+  value: string;
+  tone?: EnvConnectionTestDetailTone;
+}
+
+interface EnvConnectionTestResult {
+  target: EnvConnectionTestTarget;
+  status: EnvConnectionTestStatus;
+  summary: string;
+  checkedAt: string;
+  details: EnvConnectionTestDetail[];
+}
+
+function envConnectionResult(
+  target: EnvConnectionTestTarget,
+  status: EnvConnectionTestStatus,
+  summary: string,
+  details: EnvConnectionTestDetail[],
+): { success: true; data: EnvConnectionTestResult } {
+  return {
+    success: true,
+    data: {
+      target,
+      status,
+      summary,
+      checkedAt: new Date().toISOString(),
+      details,
+    },
+  };
+}
+
+function envValue(content: string, key: string): string {
+  return (readEnvKey(content, key) ?? '').trim();
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function fetchJsonWithTimeout(
+  url: string,
+  init: NonNullable<Parameters<typeof fetch>[1]>,
+  timeoutMs = 10_000,
+): Promise<{ ok: boolean; status: number; body: unknown }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const body = await response.json().catch(() => null) as unknown;
+    return { ok: response.ok, status: response.status, body };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function nestedString(body: unknown, pathParts: string[]): string | null {
+  let current: unknown = body;
+  for (const part of pathParts) {
+    if (!isPlainRecord(current)) return null;
+    current = current[part];
+  }
+  return typeof current === 'string' ? current : null;
+}
+
+function cloudflareError(body: unknown, fallback: string): string {
+  if (isPlainRecord(body) && Array.isArray(body['errors'])) {
+    const first = body['errors'][0];
+    if (isPlainRecord(first)) {
+      const code = typeof first['code'] === 'number' ? ` (${first['code']})` : '';
+      const message = typeof first['message'] === 'string' ? first['message'] : fallback;
+      return `${message}${code}`;
+    }
+  }
+  return fallback;
+}
+
+function publicIpv4Status(value: string): 'valid' | 'invalid' | 'private' {
+  if (isIP(value) !== 4) return 'invalid';
+  const parts = value.split('.').map((part) => Number.parseInt(part, 10));
+  const [a, b, c] = parts;
+  const reserved =
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0) ||
+    (a === 192 && b === 0 && c === 2) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113);
+  return reserved ? 'private' : 'valid';
+}
+
+async function testStripeEnvConnection(content: string): Promise<{ success: true; data: EnvConnectionTestResult }> {
+  const secretKey = envValue(content, 'STRIPE_SECRET_KEY');
+  const webhookSecret = envValue(content, 'STRIPE_WEBHOOK_SECRET');
+  const priceId = envValue(content, 'STRIPE_PRO_PRICE_ID');
+  const missing = [
+    secretKey ? null : 'STRIPE_SECRET_KEY',
+    webhookSecret ? null : 'STRIPE_WEBHOOK_SECRET',
+    priceId ? null : 'STRIPE_PRO_PRICE_ID',
+  ].filter((value): value is string => Boolean(value));
+  if (missing.length > 0) {
+    return envConnectionResult('stripe', 'fail', `Missing ${missing.join(', ')}.`, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Missing', value: missing.join(', '), tone: 'danger' },
+    ]);
+  }
+
+  const secretMode = secretKey.includes('_live_') ? 'live' : secretKey.includes('_test_') ? 'test' : 'unknown';
+  const webhookSecretLooksValid = webhookSecret.startsWith('whsec_');
+  if (!webhookSecretLooksValid) {
+    return envConnectionResult('stripe', 'fail', 'Stripe webhook secret must start with whsec_.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Webhook secret', value: 'present but not a whsec_ value', tone: 'danger' },
+    ]);
+  }
+
+  const account = await fetchJsonWithTimeout('https://api.stripe.com/v1/account', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${secretKey}` },
+  });
+  if (!account.ok) {
+    const message = nestedString(account.body, ['error', 'message']) ?? `Stripe account probe failed with HTTP ${account.status}`;
+    return envConnectionResult('stripe', 'fail', message, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'API authentication', value: `failed (${account.status})`, tone: 'danger' },
+    ]);
+  }
+
+  const price = await fetchJsonWithTimeout(`https://api.stripe.com/v1/prices/${encodeURIComponent(priceId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${secretKey}` },
+  });
+  if (!price.ok) {
+    const message = nestedString(price.body, ['error', 'message']) ?? `Stripe price probe failed with HTTP ${price.status}`;
+    return envConnectionResult('stripe', 'fail', message, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'API authentication', value: 'ok', tone: 'success' },
+      { label: 'Price ID', value: priceId, tone: 'danger' },
+    ]);
+  }
+
+  const accountId = isPlainRecord(account.body) && typeof account.body['id'] === 'string' ? account.body['id'] : 'verified';
+  const priceActive = isPlainRecord(price.body) ? price.body['active'] === true : false;
+  const priceLivemode = isPlainRecord(price.body) && typeof price.body['livemode'] === 'boolean' ? price.body['livemode'] : null;
+  const priceMode = priceLivemode === null ? 'unknown' : priceLivemode ? 'live' : 'test';
+  const warnings: string[] = [];
+  if (!priceActive) warnings.push('price is not active');
+  if (secretMode !== 'unknown' && priceMode !== 'unknown' && secretMode !== priceMode) {
+    warnings.push(`secret key is ${secretMode} mode but price is ${priceMode} mode`);
+  }
+
+  return envConnectionResult(
+    'stripe',
+    warnings.length > 0 ? 'warn' : 'pass',
+    warnings.length > 0
+      ? `Stripe API works, but ${warnings.join('; ')}.`
+      : 'Stripe API authentication works and the configured Pro price exists.',
+    [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Account', value: accountId, tone: 'success' },
+      { label: 'Secret key mode', value: secretMode, tone: secretMode === 'unknown' ? 'warning' : 'success' },
+      { label: 'Pro price', value: `${priceId}${priceActive ? '' : ' (inactive)'}`, tone: priceActive ? 'success' : 'warning' },
+      { label: 'Price mode', value: priceMode, tone: priceMode === 'unknown' || (secretMode !== 'unknown' && priceMode !== secretMode) ? 'warning' : 'success' },
+      { label: 'Webhook secret', value: 'present; Stripe never returns signing secrets, so this check can only validate presence/shape', tone: 'muted' },
+    ],
+  );
+}
+
+async function testCloudflareEnvConnection(content: string): Promise<{ success: true; data: EnvConnectionTestResult }> {
+  const token = envValue(content, 'CLOUDFLARE_API_TOKEN');
+  const zoneId = envValue(content, 'CLOUDFLARE_ZONE_ID');
+  const serverPublicIp = envValue(content, 'SERVER_PUBLIC_IP');
+  const missing = [
+    token ? null : 'CLOUDFLARE_API_TOKEN',
+    zoneId ? null : 'CLOUDFLARE_ZONE_ID',
+    serverPublicIp ? null : 'SERVER_PUBLIC_IP',
+  ].filter((value): value is string => Boolean(value));
+  if (missing.length > 0) {
+    return envConnectionResult('cloudflare', 'fail', `Missing ${missing.join(', ')}.`, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Missing', value: missing.join(', '), tone: 'danger' },
+    ]);
+  }
+
+  const ipStatus = publicIpv4Status(serverPublicIp);
+  if (ipStatus !== 'valid') {
+    return envConnectionResult(
+      'cloudflare',
+      'fail',
+      ipStatus === 'invalid' ? 'SERVER_PUBLIC_IP must be a valid IPv4 address.' : 'SERVER_PUBLIC_IP must be a public IPv4 address, not private/reserved.',
+      [
+        { label: 'Source', value: 'saved .env', tone: 'muted' },
+        { label: 'Server public IP', value: serverPublicIp, tone: 'danger' },
+      ],
+    );
+  }
+
+  const tokenProbe = await fetchJsonWithTimeout('https://api.cloudflare.com/client/v4/user/tokens/verify', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!tokenProbe.ok) {
+    return envConnectionResult('cloudflare', 'fail', cloudflareError(tokenProbe.body, `Cloudflare token probe failed with HTTP ${tokenProbe.status}`), [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Token', value: `failed (${tokenProbe.status})`, tone: 'danger' },
+    ]);
+  }
+
+  const dnsProbe = await fetchJsonWithTimeout(
+    `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(zoneId)}/dns_records?type=A&per_page=1`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!dnsProbe.ok) {
+    return envConnectionResult('cloudflare', 'fail', cloudflareError(dnsProbe.body, `Cloudflare DNS probe failed with HTTP ${dnsProbe.status}`), [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Token', value: 'valid', tone: 'success' },
+      { label: 'Zone DNS access', value: `failed (${dnsProbe.status})`, tone: 'danger' },
+    ]);
+  }
+
+  return envConnectionResult('cloudflare', 'pass', 'Cloudflare token is valid and can read DNS records for this zone.', [
+    { label: 'Source', value: 'saved .env', tone: 'muted' },
+    { label: 'Token', value: 'valid', tone: 'success' },
+    { label: 'Zone ID', value: zoneId, tone: 'success' },
+    { label: 'Server public IP', value: serverPublicIp, tone: 'success' },
+  ]);
+}
+
+async function testCaptchaEnvConnection(content: string): Promise<{ success: true; data: EnvConnectionTestResult }> {
+  const required = (envValue(content, 'SIGNUP_CAPTCHA_REQUIRED') || 'true').toLowerCase() !== 'false';
+  const secret = envValue(content, 'HCAPTCHA_SECRET');
+  if (!required && !secret) {
+    return envConnectionResult('captcha', 'warn', 'hCaptcha is disabled in saved .env; upstream bot protection must be in place.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Require hCaptcha', value: 'false', tone: 'warning' },
+      { label: 'Secret', value: 'not configured', tone: 'warning' },
+    ]);
+  }
+  if (!secret) {
+    return envConnectionResult('captcha', 'fail', 'HCAPTCHA_SECRET is missing while hCaptcha is required.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Require hCaptcha', value: required ? 'true' : 'false', tone: required ? 'danger' : 'warning' },
+      { label: 'Secret', value: 'missing', tone: 'danger' },
+    ]);
+  }
+
+  const body = new URLSearchParams({
+    secret,
+    response: 'management-dashboard-probe',
+  });
+  const probe = await fetchJsonWithTimeout('https://api.hcaptcha.com/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+  if (!probe.ok) {
+    return envConnectionResult('captcha', 'fail', `hCaptcha verification endpoint returned HTTP ${probe.status}.`, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Endpoint', value: `failed (${probe.status})`, tone: 'danger' },
+    ]);
+  }
+
+  const errorCodes = isPlainRecord(probe.body) && Array.isArray(probe.body['error-codes'])
+    ? probe.body['error-codes'].filter((value): value is string => typeof value === 'string')
+    : [];
+  if (errorCodes.includes('invalid-input-secret') || errorCodes.includes('missing-input-secret')) {
+    return envConnectionResult('captcha', 'fail', 'hCaptcha rejected the configured secret.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Endpoint', value: 'reachable', tone: 'success' },
+      { label: 'Secret', value: errorCodes.join(', '), tone: 'danger' },
+    ]);
+  }
+
+  const acceptedDummyToken =
+    isPlainRecord(probe.body) && probe.body['success'] === true;
+  return envConnectionResult(
+    'captcha',
+    acceptedDummyToken || errorCodes.includes('invalid-input-response') || errorCodes.includes('missing-input-response')
+      ? 'pass'
+      : 'warn',
+    acceptedDummyToken || errorCodes.includes('invalid-input-response') || errorCodes.includes('missing-input-response')
+      ? 'hCaptcha endpoint is reachable and the configured secret was accepted.'
+      : `hCaptcha endpoint is reachable, but returned an unexpected response: ${errorCodes.join(', ') || 'no error code'}.`,
+    [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Require hCaptcha', value: required ? 'true' : 'false', tone: required ? 'success' : 'warning' },
+      { label: 'Endpoint', value: 'reachable', tone: 'success' },
+      { label: 'Probe response', value: acceptedDummyToken ? 'accepted dummy token' : (errorCodes.join(', ') || 'no error code'), tone: acceptedDummyToken ? 'warning' : 'muted' },
+    ],
+  );
+}
+
+function testEnvConnectionFromContent(
+  content: string,
+  target: EnvConnectionTestTarget,
+): Promise<{ success: true; data: EnvConnectionTestResult }> {
+  switch (target) {
+    case 'stripe':
+      return testStripeEnvConnection(content);
+    case 'cloudflare':
+      return testCloudflareEnvConnection(content);
+    case 'captcha':
+      return testCaptchaEnvConnection(content);
+  }
 }
 
 function escapeRegex(s: string): string {
@@ -976,10 +1389,91 @@ function bodyOf<T extends { status: number; body: object }>(res: T): T['body'] &
   return { ...res.body, status: res.status };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function wrapHandler(fn: (...args: any[]) => Promise<any>) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return async (...args: any[]) => {
+interface ManagementCrashEntry {
+  id: string;
+  timestamp: string;
+  route: string;
+  errorMessage: string;
+  errorStack: string;
+  type: 'uncaughtException' | 'unhandledRejection';
+  recovered: boolean;
+  source?: string;
+  context?: unknown;
+}
+
+function crashTimestampValue(crash: { timestamp?: unknown }): number {
+  return typeof crash.timestamp === 'string' ? new Date(crash.timestamp).getTime() || 0 : 0;
+}
+
+function newestCrashesFirst<T extends { timestamp?: unknown }>(crashes: readonly T[]): T[] {
+  return [...crashes].sort((a, b) => crashTimestampValue(b) - crashTimestampValue(a));
+}
+
+function mergeDashboardCrashesIntoResponse<T extends { success?: unknown; data?: unknown }>(body: T): T {
+  const dashboardCrashes = getDashboardCrashLog();
+  if (body.success !== true || !Array.isArray(body.data) || dashboardCrashes.length === 0) {
+    return body;
+  }
+
+  return {
+    ...body,
+    data: newestCrashesFirst([
+      ...(body.data as ManagementCrashEntry[]),
+      ...dashboardCrashes,
+    ]),
+  };
+}
+
+function mergeDashboardCrashStatsIntoResponse<T extends { success?: unknown; data?: unknown }>(body: T): T {
+  const dashboardCrashes = getDashboardCrashLog();
+  if (
+    body.success !== true ||
+    !body.data ||
+    typeof body.data !== 'object' ||
+    Array.isArray(body.data) ||
+    dashboardCrashes.length === 0
+  ) {
+    return body;
+  }
+
+  const data = body.data as {
+    totalCrashes?: unknown;
+    disabledCount?: unknown;
+    recentCrashes?: unknown;
+    [key: string]: unknown;
+  };
+  const serverRecentCrashes = Array.isArray(data.recentCrashes)
+    ? (data.recentCrashes as ManagementCrashEntry[])
+    : [];
+  const recentCrashes: Array<ManagementCrashEntry | DashboardCrashEntry> = newestCrashesFirst([
+    ...serverRecentCrashes,
+    ...dashboardCrashes,
+  ]).slice(0, 10);
+
+  return {
+    ...body,
+    data: {
+      ...data,
+      totalCrashes: (typeof data.totalCrashes === 'number' ? data.totalCrashes : 0) + dashboardCrashes.length,
+      disabledCount: typeof data.disabledCount === 'number' ? data.disabledCount : 0,
+      recentCrashes,
+    },
+  };
+}
+
+function ipcResultSucceeded(result: unknown): boolean {
+  if (result && typeof result === 'object') {
+    const maybe = result as { success?: unknown; status?: unknown };
+    if (typeof maybe.success === 'boolean') return maybe.success;
+    if (typeof maybe.status === 'number') return maybe.status < 400;
+  }
+  return true;
+}
+
+function wrapHandler<T extends unknown[], R>(
+  fn: (event: IpcMainInvokeEvent, ...args: T) => Promise<R>,
+) {
+  return async (...args: [event: IpcMainInvokeEvent, ...args: T]) => {
     try {
       return await fn(...args);
     } catch (err: unknown) {
@@ -1032,16 +1526,13 @@ export function registerManagementIpc(): void {
   try {
     root = resolveTrustedProjectRoot();
   } catch (err) {
-    console.error(
-      '[Dashboard] Installation integrity check failed during IPC init:',
-      err instanceof Error ? err.message : String(err)
-    );
+    logger.error('[Dashboard] Installation integrity check failed during IPC init', { error: err });
   }
   if (root) {
     const envPath = path.resolve(path.join(root, '.env'));
     // Belt-and-braces: assert the resolved .env path is inside the root.
     if (!isPathUnder(envPath, root)) {
-      console.warn('[Dashboard] .env path escaped trusted root; refusing to read:', envPath);
+      logger.warn('[Dashboard] .env path escaped trusted root; refusing to read', { envPath });
     } else if (fs.existsSync(envPath)) {
       try {
         const content = fs.readFileSync(envPath, 'utf-8');
@@ -1050,7 +1541,7 @@ export function registerManagementIpc(): void {
           const port = parseInt(match[1], 10);
           if (port > 0 && port < 65536) {
             setServerPort(port);
-            console.log(`[Dashboard] API client targeting port ${port} (from .env)`);
+            logger.info('[Dashboard] API client targeting port from .env', { port });
           }
         }
       } catch { /* ignore — falls back to 443 */ }
@@ -1162,8 +1653,16 @@ export function registerManagementIpc(): void {
     if (!parsed.success) {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid tenant data' };
     }
-    const res = await apiRequest('POST', '/super-admin/api/tenants', parsed.data);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'super-admin:create-tenant',
+      { slug: parsed.data.slug },
+      async () => {
+        const res = await apiRequest('POST', '/super-admin/api/tenants', parsed.data);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   ipcMain.handle('super-admin:get-tenant', wrapHandler(async (event, slug: unknown) => {
@@ -1173,33 +1672,100 @@ export function registerManagementIpc(): void {
     return bodyOf(res);
   }));
 
-  ipcMain.handle('super-admin:suspend-tenant', wrapHandler(async (event, slug: unknown) => {
+  ipcMain.handle('super-admin:update-tenant', wrapHandler(async (event, payload: unknown) => {
     assertRendererOrigin(event);
-    const { slug: s } = SchemaSlug.parse({ slug });
-    const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/suspend`);
-    return bodyOf(res);
+    const parsed = SchemaTenantUpdate.safeParse(payload);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid tenant update payload' };
+    }
+    const { slug: s, plan, name } = parsed.data;
+    const updateBody: { plan?: TenantPlan; name?: string } = {};
+    if (plan !== undefined) updateBody.plan = plan;
+    if (name !== undefined) updateBody.name = name;
+    return auditIpcOperation(
+      event,
+      'super-admin:update-tenant',
+      { slug: s, fields: Object.keys(updateBody), ...updateBody },
+      async () => {
+        const res = await apiRequest('PUT', `/super-admin/api/tenants/${encodeURIComponent(s)}`, updateBody);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
-  ipcMain.handle('super-admin:activate-tenant', wrapHandler(async (event, slug: unknown) => {
+  ipcMain.handle('super-admin:suspend-tenant', wrapHandler(async (event, payload: unknown) => {
     assertRendererOrigin(event);
-    const { slug: s } = SchemaSlug.parse({ slug });
-    const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/activate`);
-    return bodyOf(res);
+    const parsed = SchemaTenantStatusAction.safeParse(payload);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid tenant action payload' };
+    }
+    const { slug: s } = parsed.data;
+    const reason = parsed.data.reason?.trim() ?? '';
+    if (!reason) {
+      return { success: false, message: 'Suspension reason is required' };
+    }
+    return auditIpcOperation(
+      event,
+      'super-admin:suspend-tenant',
+      { slug: s, reason },
+      async () => {
+        const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/suspend`, { reason });
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
+  }));
+
+  ipcMain.handle('super-admin:activate-tenant', wrapHandler(async (event, payload: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaTenantStatusAction.safeParse(payload);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid tenant action payload' };
+    }
+    const { slug: s } = parsed.data;
+    const reason = parsed.data.reason?.trim();
+    return auditIpcOperation(
+      event,
+      'super-admin:activate-tenant',
+      { slug: s, reason: reason || null },
+      async () => {
+        const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/activate`, reason ? { reason } : {});
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   ipcMain.handle('super-admin:delete-tenant', wrapHandler(async (event, slug: unknown) => {
     assertRendererOrigin(event);
     const { slug: s } = SchemaSlug.parse({ slug });
-    const res = await apiRequest('DELETE', `/super-admin/api/tenants/${encodeURIComponent(s)}`);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'super-admin:delete-tenant',
+      { slug: s },
+      async () => {
+        const res = await apiRequest('DELETE', `/super-admin/api/tenants/${encodeURIComponent(s)}`);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   // TPH6: additive repair for any tenant not in 'active' status.
   ipcMain.handle('super-admin:repair-tenant', wrapHandler(async (event, slug: unknown) => {
     assertRendererOrigin(event);
     const { slug: s } = SchemaSlug.parse({ slug });
-    const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/repair`);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'super-admin:repair-tenant',
+      { slug: s },
+      async () => {
+        const res = await apiRequest('POST', `/super-admin/api/tenants/${encodeURIComponent(s)}/repair`);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   // ── Per-Tenant Backup (super-admin only) ───────────────────────
@@ -1322,16 +1888,23 @@ export function registerManagementIpc(): void {
 
   ipcMain.handle('super-admin:update-config', wrapHandler(async (event, updates: unknown) => {
     assertRendererOrigin(event);
-    // AUDIT-MGT-003: Validate at the IPC boundary — only the server's known
-    // ALLOWED_CONFIG_KEYS are accepted (management_api_enabled,
-    // management_rate_limit_bypass). Unknown keys are rejected here before
-    // they reach the server's own whitelist check.
+    // AUDIT-MGT-003: Validate shape at the IPC boundary. The server's
+    // PLATFORM_CONFIG_FIELDS allowlist remains the source of truth for
+    // accepted keys so newly-added config flags do not need a second IPC patch.
     const parsed = SchemaUpdateConfig.safeParse(updates);
     if (!parsed.success) {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid config update' };
     }
-    const res = await apiRequest('PUT', '/super-admin/api/config', parsed.data);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'super-admin:update-config',
+      { keys: Object.keys(parsed.data) },
+      async () => {
+        const res = await apiRequest('PUT', '/super-admin/api/config', parsed.data);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   // ── Security Alerts ────────────────────────────────────────────
@@ -1384,23 +1957,53 @@ export function registerManagementIpc(): void {
     if (!parsed.success) {
       return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid input' };
     }
-    const res = await apiRequest('POST', '/super-admin/api/admin-tools/reset-rate-limits', parsed.data);
+    const { totpCode, ...serverPayload } = parsed.data;
+    const res = await apiRequest(
+      'POST',
+      '/super-admin/api/admin-tools/reset-rate-limits',
+      serverPayload,
+      'authenticated',
+      undefined,
+      { 'X-TOTP-Code': totpCode },
+    );
     return bodyOf(res);
   }));
 
-  ipcMain.handle('super-admin:backfill-cloudflare-dns', wrapHandler(async (event) => {
+  ipcMain.handle('super-admin:backfill-cloudflare-dns', wrapHandler(async (event, totpCode: unknown) => {
     assertRendererOrigin(event);
-    const res = await apiRequest('POST', '/super-admin/api/admin-tools/backfill-cloudflare-dns');
+    const parsed = SchemaStepUpTotpCode.safeParse(totpCode);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid TOTP code' };
+    }
+    const res = await apiRequest(
+      'POST',
+      '/super-admin/api/admin-tools/backfill-cloudflare-dns',
+      null,
+      'authenticated',
+      undefined,
+      { 'X-TOTP-Code': parsed.data },
+    );
     return bodyOf(res);
   }));
 
-  ipcMain.handle('super-admin:rotate-jwt-secret', wrapHandler(async (event, purpose: unknown) => {
+  ipcMain.handle('super-admin:rotate-jwt-secret', wrapHandler(async (event, purpose: unknown, totpCode: unknown) => {
     assertRendererOrigin(event);
     const parsed = z.enum(['access', 'refresh', 'both']).safeParse(purpose);
     if (!parsed.success) {
       return { success: false, message: 'Invalid purpose (expected access / refresh / both)' };
     }
-    const res = await apiRequest('POST', '/super-admin/api/rotate-jwt-secret', { purpose: parsed.data });
+    const parsedTotp = SchemaStepUpTotpCode.safeParse(totpCode);
+    if (!parsedTotp.success) {
+      return { success: false, message: parsedTotp.error.errors[0]?.message ?? 'Invalid TOTP code' };
+    }
+    const res = await apiRequest(
+      'POST',
+      '/super-admin/api/rotate-jwt-secret',
+      { purpose: parsed.data },
+      'authenticated',
+      undefined,
+      { 'X-TOTP-Code': parsedTotp.data },
+    );
     return bodyOf(res);
   }));
 
@@ -1513,6 +2116,7 @@ export function registerManagementIpc(): void {
     if (validated.limit !== undefined) qs.set('limit', String(validated.limit));
     if (validated.offset !== undefined) qs.set('offset', String(validated.offset));
     if (validated.action !== undefined) qs.set('action', validated.action);
+    if (validated.username !== undefined) qs.set('username', validated.username);
     if (validated.startDate !== undefined) qs.set('startDate', validated.startDate);
     if (validated.endDate !== undefined) qs.set('endDate', validated.endDate);
     const qsStr = qs.toString();
@@ -1531,8 +2135,34 @@ export function registerManagementIpc(): void {
   ipcMain.handle('super-admin:revoke-session', wrapHandler(async (event, id: unknown) => {
     assertRendererOrigin(event);
     const { id: sessionId } = SchemaId.parse({ id });
-    const res = await apiRequest('DELETE', `/super-admin/api/sessions/${encodeURIComponent(sessionId)}`);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'super-admin:revoke-session',
+      { sessionId },
+      async () => {
+        const res = await apiRequest('DELETE', `/super-admin/api/sessions/${encodeURIComponent(sessionId)}`);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
+  }));
+
+  ipcMain.handle('super-admin:revoke-all-sessions', wrapHandler(async (event) => {
+    assertRendererOrigin(event);
+    return auditIpcOperation(
+      event,
+      'super-admin:revoke-all-sessions',
+      undefined,
+      async () => {
+        const res = await apiRequest('POST', '/super-admin/api/sessions/revoke-all');
+        const body = bodyOf(res);
+        if ((body as { success?: unknown }).success === true) {
+          setSuperAdminToken(null);
+        }
+        return body;
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   // ── Crashes (management API) ───────────────────────────────────
@@ -1540,13 +2170,13 @@ export function registerManagementIpc(): void {
   ipcMain.handle('management:get-crashes', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/crashes');
-    return bodyOf(res);
+    return mergeDashboardCrashesIntoResponse(bodyOf(res));
   }));
 
   ipcMain.handle('management:get-crash-stats', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('GET', '/api/v1/management/crash-stats');
-    return bodyOf(res);
+    return mergeDashboardCrashStatsIntoResponse(bodyOf(res));
   }));
 
   ipcMain.handle('management:get-disabled-routes', wrapHandler(async (event) => {
@@ -1565,7 +2195,11 @@ export function registerManagementIpc(): void {
   ipcMain.handle('management:clear-crashes', wrapHandler(async (event) => {
     assertRendererOrigin(event);
     const res = await apiRequest('POST', '/api/v1/management/clear-crashes');
-    return bodyOf(res);
+    const body = bodyOf(res);
+    if ((body as { success?: unknown }).success === true) {
+      clearDashboardCrashLog();
+    }
+    return body;
   }));
 
   // ── Updates ────────────────────────────────────────────────────
@@ -1631,7 +2265,7 @@ export function registerManagementIpc(): void {
     // means the release was not approved by the key holder — abort hard.
     const tagCheck = verifyLatestSignedTag(root);
     if (!tagCheck.ok) {
-      console.error('[Update] SEC-H95 tag verification failed:', tagCheck.error);
+      logger.error('[Update] SEC-H95 tag verification failed', { error: tagCheck.error });
       return {
         success: false,
         error: 'TAG_VERIFICATION_FAILED',
@@ -1663,7 +2297,7 @@ export function registerManagementIpc(): void {
       : await dialog.showMessageBox(msgBoxOptions);
 
     if (confirmResult.response !== 0) {
-      console.log('[Update] Operator cancelled update at confirm dialog.');
+      logger.info('[Update] Operator cancelled update at confirm dialog');
       return {
         success: false,
         error: 'UPDATE_CANCELLED',
@@ -1677,9 +2311,9 @@ export function registerManagementIpc(): void {
     const head = captureGitHead(root);
     if (head.ok) {
       writeSnapshot(head.sha);
-      console.log('[Update] Captured pre-update commit:', head.sha);
+      logger.info('[Update] Captured pre-update commit', { sha: head.sha });
     } else {
-      console.warn('[Update] Could not capture pre-update commit (rollback disabled):', head.error);
+      logger.warn('[Update] Could not capture pre-update commit (rollback disabled)', { error: head.error });
     }
 
     // UP6 / AUDIT-MGT-018: Tell the server to record a 'launched' audit
@@ -1706,13 +2340,10 @@ export function registerManagementIpc(): void {
         }
       );
       if (!res.body?.success) {
-        console.warn('[Update] audit-update-launch endpoint returned failure:', res.body?.message);
+        logger.warn('[Update] audit-update-launch endpoint returned failure', { message: res.body?.message });
       }
     } catch (err) {
-      console.warn(
-        '[Update] Failed to record audit-update-launch (continuing with update):',
-        err instanceof Error ? err.message : String(err)
-      );
+      logger.warn('[Update] Failed to record audit-update-launch (continuing with update)', { error: err });
     }
 
     // UP4: We need to report honest spawn success/failure before the dashboard
@@ -1765,7 +2396,7 @@ export function registerManagementIpc(): void {
       });
 
       if (!spawnResult.ok) {
-        console.error('[Update] Failed to launch:', spawnResult.error);
+        logger.error('[Update] Failed to launch', { error: spawnResult.error });
         return {
           success: false,
           error: 'UPDATE_LAUNCH_FAILED',
@@ -1774,7 +2405,7 @@ export function registerManagementIpc(): void {
       }
 
       child.unref();
-      console.log('[Update] Launched update.bat (PID:', child.pid, ')');
+      logger.info('[Update] Launched update.bat', { pid: child.pid });
 
       // Close the dashboard after a short delay so the update script can kill it cleanly
       setTimeout(() => {
@@ -1791,7 +2422,7 @@ export function registerManagementIpc(): void {
       };
     } catch (err: unknown) {
       const rawMessage = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[Update] Failed to launch:', rawMessage);
+      logger.error('[Update] Failed to launch', { error: rawMessage });
       return {
         success: false,
         error: 'UPDATE_LAUNCH_FAILED',
@@ -1879,7 +2510,7 @@ export function registerManagementIpc(): void {
         };
       }
       clearSnapshot();
-      console.log('[Update] Rolled back to', sha);
+      logger.info('[Update] Rolled back to snapshot', { sha });
       return { success: true, data: { sha, stdout: result.stdout.trim() } };
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -1924,12 +2555,29 @@ export function registerManagementIpc(): void {
     })
   );
 
-  // ── Server Control (REST fallback) ─────────────────────────────
+  // ── Server Control (legacy REST-shaped aliases) ────────────────
 
   ipcMain.handle('management:restart-server', wrapHandler(async (event) => {
     assertRendererOrigin(event);
-    const res = await apiRequest('POST', '/api/v1/management/restart');
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'management:restart-server',
+      { canonical: 'service:restart' },
+      async () => {
+        // DASH-ELEC-084: Electron management owns local process control. Keep
+        // this legacy channel for older renderer bundles, but route it through
+        // the same sc.exe/PM2/direct implementation and mutex as service:restart.
+        const { restartServerViaServiceControl } = await import('./service-control.js');
+        const result = await restartServerViaServiceControl();
+        return {
+          success: result.success,
+          message: result.output,
+          output: result.output,
+          data: { canonical: 'service:restart' },
+        };
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   ipcMain.handle('management:stop-server', wrapHandler(async (event) => {
@@ -2075,14 +2723,110 @@ export function registerManagementIpc(): void {
     return bodyOf(res);
   }));
 
+  ipcMain.handle('admin:download-backup', wrapHandler(async (event, filename: unknown) => {
+    assertRendererOrigin(event);
+    const { filename: f } = SchemaFilename.parse({ filename });
+    const backupDir = await getAdminBackupDirectory();
+    if (!backupDir.ok) return { success: false, message: backupDir.message };
+
+    const sourcePath = resolveBackupFileInDirectory(backupDir.dir, f);
+    if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+      return { success: false, message: 'Backup not found' };
+    }
+
+    const parent = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    const saveDialogOptions: SaveDialogOptions = {
+      title: 'Download backup',
+      defaultPath: f,
+      buttonLabel: 'Download',
+      filters: [
+        { name: 'Backup files', extensions: ['db', 'enc'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+      properties: ['showOverwriteConfirmation', 'createDirectory'],
+    };
+    const saveResult = parent
+      ? await dialog.showSaveDialog(parent, saveDialogOptions)
+      : await dialog.showSaveDialog(saveDialogOptions);
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { success: false, message: 'Download canceled', canceled: true };
+    }
+
+    const destinationPath = path.resolve(saveResult.filePath);
+    if (!destinationPath.endsWith('.db') && !destinationPath.endsWith('.db.enc')) {
+      return { success: false, message: 'Destination must end in .db or .db.enc' };
+    }
+    if (path.resolve(sourcePath) === destinationPath) {
+      return { success: false, message: 'Choose a destination outside the active backup directory' };
+    }
+    if (fs.existsSync(`${sourcePath}${BACKUP_METADATA_SUFFIX}`) &&
+        fs.existsSync(`${destinationPath}${BACKUP_METADATA_SUFFIX}`)) {
+      return { success: false, message: 'A metadata sidecar already exists at the destination' };
+    }
+
+    await fs.promises.copyFile(sourcePath, destinationPath);
+    const copiedMetadata = await copyOptionalBackupMetadata(sourcePath, destinationPath, true);
+    return {
+      success: true,
+      data: {
+        path: destinationPath,
+        metadataPath: copiedMetadata ? `${destinationPath}${BACKUP_METADATA_SUFFIX}` : null,
+      },
+    };
+  }));
+
+  ipcMain.handle('admin:upload-backup', wrapHandler(async (event, payload: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaBackupUpload.safeParse(payload);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid upload path' };
+    }
+    const sourcePath = assertSafePath(parsed.data.sourcePath);
+    const filename = path.basename(sourcePath);
+    if (!isPortableBackupFilename(filename)) {
+      return { success: false, message: 'Backup filename must be a valid .db or .db.enc backup' };
+    }
+    if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+      return { success: false, message: 'Selected backup file does not exist' };
+    }
+
+    const backupDir = await getAdminBackupDirectory();
+    if (!backupDir.ok) return { success: false, message: backupDir.message };
+    const destinationPath = resolveBackupFileInDirectory(backupDir.dir, filename);
+    if (path.resolve(sourcePath) === path.resolve(destinationPath)) {
+      return { success: false, message: 'Selected file is already in the backup directory' };
+    }
+    if (fs.existsSync(destinationPath)) {
+      return { success: false, message: `A backup named "${filename}" already exists` };
+    }
+
+    await fs.promises.copyFile(sourcePath, destinationPath, fs.constants.COPYFILE_EXCL);
+    const copiedMetadata = await copyOptionalBackupMetadata(sourcePath, destinationPath, true);
+    return {
+      success: true,
+      data: {
+        filename,
+        metadataCopied: copiedMetadata,
+      },
+    };
+  }));
+
   // DASH-ELEC-255: backup + restore can take several minutes on large DBs;
   // give them a 5-minute ceiling instead of the default 30 s.
   const BACKUP_TIMEOUT_MS = 5 * 60 * 1000;
 
   ipcMain.handle('admin:run-backup', wrapHandler(async (event) => {
     assertRendererOrigin(event);
-    const res = await apiRequest('POST', '/api/v1/admin/backup', null, 'authenticated', BACKUP_TIMEOUT_MS);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'admin:run-backup',
+      undefined,
+      async () => {
+        const res = await apiRequest('POST', '/api/v1/admin/backup', null, 'authenticated', BACKUP_TIMEOUT_MS);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   ipcMain.handle('admin:update-backup-settings', wrapHandler(async (event, settings: unknown) => {
@@ -2099,19 +2843,35 @@ export function registerManagementIpc(): void {
     // Without this map the server silently ignored every field and returned
     // 200 with the unchanged settings.
     const serverPayload = rendererToServerBackupSettings(parsed.data);
-    const res = await apiRequest('PUT', '/api/v1/admin/backup-settings', serverPayload);
-    const body = bodyOf(res) as { success?: boolean; data?: unknown; message?: string };
-    if (body.success && body.data) {
-      return { ...body, data: serverToRendererBackupSettings(body.data as never) };
-    }
-    return body;
+    return auditIpcOperation(
+      event,
+      'admin:update-backup-settings',
+      { keys: Object.keys(parsed.data) },
+      async () => {
+        const res = await apiRequest('PUT', '/api/v1/admin/backup-settings', serverPayload);
+        const body = bodyOf(res) as { success?: boolean; data?: unknown; message?: string };
+        if (body.success && body.data) {
+          return { ...body, data: serverToRendererBackupSettings(body.data as never) };
+        }
+        return body;
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   ipcMain.handle('admin:delete-backup', wrapHandler(async (event, filename: unknown) => {
     assertRendererOrigin(event);
     const { filename: f } = SchemaFilename.parse({ filename });
-    const res = await apiRequest('DELETE', `/api/v1/admin/backups/${encodeURIComponent(f)}`);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'admin:delete-backup',
+      { filename: f },
+      async () => {
+        const res = await apiRequest('DELETE', `/api/v1/admin/backups/${encodeURIComponent(f)}`);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   ipcMain.handle('admin:restore-backup', wrapHandler(async (event, filename: unknown) => {
@@ -2120,8 +2880,16 @@ export function registerManagementIpc(): void {
     // Server guards this with a global mutex + safety-copy of the current DB
     // before swapping in the restore target, so a mid-restore crash still
     // leaves a rollback path. UI still confirms with type-the-filename below.
-    const res = await apiRequest('POST', `/api/v1/admin/backups/${encodeURIComponent(f)}/restore`, null, 'authenticated', BACKUP_TIMEOUT_MS);
-    return bodyOf(res);
+    return auditIpcOperation(
+      event,
+      'admin:restore-backup',
+      { filename: f },
+      async () => {
+        const res = await apiRequest('POST', `/api/v1/admin/backups/${encodeURIComponent(f)}/restore`, null, 'authenticated', BACKUP_TIMEOUT_MS);
+        return bodyOf(res);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   // ── Generic Env Settings Editor (SEC-H94 et al) ────────────────
@@ -2193,14 +2961,42 @@ export function registerManagementIpc(): void {
         return { success: false, message: `${key} contains forbidden characters` };
       }
     }
-    const env = readTrustedEnvFile();
-    if (!env.ok) return { success: false, message: env.message };
-    let content = env.content;
-    for (const [key, value] of Object.entries(parsed.data)) {
-      content = upsertEnvKey(content, key, value);
+    const keys = Object.keys(parsed.data);
+    return auditIpcOperation(
+      event,
+      'admin:set-env-settings',
+      { keys },
+      async () => {
+        const env = readTrustedEnvFile();
+        if (!env.ok) return { success: false, message: env.message };
+        let content = env.content;
+        for (const [key, value] of Object.entries(parsed.data)) {
+          content = upsertEnvKey(content, key, value);
+        }
+        writeEnvAtomic(env.path, content);
+        return { success: true, data: { keysUpdated: keys, requiresRestart: true } };
+      },
+      ipcResultSucceeded,
+    );
+  }));
+
+  ipcMain.handle('admin:test-env-connection', wrapHandler(async (event, target: unknown) => {
+    assertRendererOrigin(event);
+    const parsed = SchemaEnvConnectionTestTarget.safeParse(target);
+    if (!parsed.success) {
+      return { success: false, message: parsed.error.errors[0]?.message ?? 'Invalid connection test target' };
     }
-    writeEnvAtomic(env.path, content);
-    return { success: true, data: { keysUpdated: Object.keys(parsed.data), requiresRestart: true } };
+    return auditIpcOperation(
+      event,
+      'admin:test-env-connection',
+      { target: parsed.data },
+      async () => {
+        const env = readTrustedEnvFile();
+        if (!env.ok) return { success: false, message: env.message };
+        return testEnvConnectionFromContent(env.content, parsed.data);
+      },
+      ipcResultSucceeded,
+    );
   }));
 
   // ── Log viewer (PM2 stdout/stderr) ─────────────────────────────

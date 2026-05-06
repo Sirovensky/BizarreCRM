@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -7,6 +7,9 @@ import {
   Loader2,
   AlertCircle,
   ShieldCheck,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { superAdminApi, type SuperAdminTenant } from '@/api/endpoints';
@@ -421,6 +424,18 @@ export function TenantsListPage() {
     () => Boolean(superAdminTokenStore.get()),
   );
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 200);
+    return () => window.clearTimeout(id);
+  }, [search]);
 
   // When the superAdminClient response interceptor detects a 401/403 it
   // clears the token and dispatches SUPER_ADMIN_LOGOUT_EVENT. Drop back to
@@ -435,16 +450,45 @@ export function TenantsListPage() {
   const {
     data,
     isLoading,
+    isFetching,
     isError,
     refetch,
   } = useQuery({
-    queryKey: ['super-admin-tenants', statusFilter],
-    queryFn: () => superAdminApi.listTenants(statusFilter ? { status: statusFilter } : undefined),
+    queryKey: ['super-admin-tenants', { statusFilter, debouncedSearch, page, pageSize }],
+    queryFn: () => superAdminApi.listTenants({
+      page,
+      per_page: pageSize,
+      status: statusFilter || undefined,
+      search: debouncedSearch || undefined,
+    }),
     enabled: isAuthenticated,
     retry: false,
   });
 
   const tenants = data?.data?.data?.tenants ?? [];
+  const pagination = data?.data?.data?.pagination;
+  const currentPage = pagination?.page ?? page;
+  const totalPages = pagination?.total_pages ?? 1;
+  const perPage = pagination?.per_page ?? pageSize;
+  const totalTenants = pagination?.total ?? tenants.length;
+  const showingStart = totalTenants === 0 ? 0 : (currentPage - 1) * perPage + 1;
+  const showingEnd = totalTenants === 0 ? 0 : Math.min(currentPage * perPage, totalTenants);
+
+  useEffect(() => {
+    if (pagination && pagination.page !== page) {
+      setPage(pagination.page);
+    }
+  }, [pagination, page]);
+
+  const visiblePages = useMemo(() => {
+    const maxButtons = 7;
+    if (totalPages <= maxButtons) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const half = Math.floor(maxButtons / 2);
+    const start = Math.max(1, Math.min(currentPage - half, totalPages - maxButtons + 1));
+    return Array.from({ length: maxButtons }, (_, i) => start + i);
+  }, [currentPage, totalPages]);
 
   if (!isAuthenticated) {
     return (
@@ -462,14 +506,20 @@ export function TenantsListPage() {
           <div>
             <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Tenants</h1>
             <p className="text-sm text-surface-500 dark:text-surface-400">
-              {tenants.length} tenant{tenants.length !== 1 ? 's' : ''}
+              {totalTenants} tenant{totalTenants !== 1 ? 's' : ''}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isFetching && !isLoading && (
+            <Loader2 className="h-4 w-4 animate-spin text-surface-400" aria-label="Loading tenants" />
+          )}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
             className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
           >
             <option value="">All statuses</option>
@@ -494,6 +544,35 @@ export function TenantsListPage() {
         </div>
       </div>
 
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="relative w-full md:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+          <input
+            type="search"
+            aria-label="Search tenants"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search tenants"
+            className="w-full rounded-lg border border-surface-200 bg-white py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-surface-500 dark:text-surface-400">
+          Rows
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            className="rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+          >
+            {[10, 25, 50, 100].map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       {isError && (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <AlertCircle className="h-10 w-10 text-red-400" />
@@ -514,31 +593,74 @@ export function TenantsListPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="overflow-x-auto rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-surface-50 dark:bg-surface-800/80">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Tenant</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Admin Email</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Plan</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">DB Size</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Created</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tenants.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-surface-400">
-                    No tenants found.
-                  </td>
+        <div className="rounded-xl border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-surface-50 dark:bg-surface-800/80">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Tenant</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Admin Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Plan</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">DB Size</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Created</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Actions</th>
                 </tr>
-              ) : (
-                tenants.map((t) => <TenantRow key={t.id} tenant={t} />)
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {tenants.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-sm text-surface-400">
+                      No tenants found.
+                    </td>
+                  </tr>
+                ) : (
+                  tenants.map((t) => <TenantRow key={t.id} tenant={t} />)
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-col gap-3 border-t border-surface-100 px-4 py-3 text-sm text-surface-500 dark:border-surface-700 dark:text-surface-400 md:flex-row md:items-center md:justify-between">
+            <div>
+              Showing {showingStart}-{showingEnd} of {totalTenants}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 text-surface-600 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              {visiblePages.map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => setPage(pageNumber)}
+                  className={cn(
+                    'inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors',
+                    pageNumber === currentPage
+                      ? 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-950/40 dark:text-primary-300'
+                      : 'border-surface-200 text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700',
+                  )}
+                  aria-current={pageNumber === currentPage ? 'page' : undefined}
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 text-surface-600 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                aria-label="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

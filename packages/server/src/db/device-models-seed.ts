@@ -12,8 +12,8 @@ export interface DeviceModelSeed {
   manufacturer_slug: string;
   name: string;
   slug: string;
-  category: 'phone' | 'tablet' | 'laptop' | 'console' | 'other';
-  release_year?: number;
+  category: 'phone' | 'tablet' | 'laptop' | 'console' | 'tv' | 'other';
+  release_year: number;
   is_popular: boolean;
 }
 
@@ -39,6 +39,9 @@ export const MANUFACTURERS: ManufacturerSeed[] = [
   { name: 'Xbox',      slug: 'xbox' },
   { name: 'Steam',     slug: 'steam' },
   { name: 'TCL',       slug: 'tcl' },
+  { name: 'Vizio',     slug: 'vizio' },
+  { name: 'Hisense',   slug: 'hisense' },
+  { name: 'Philips',   slug: 'philips' },
   { name: 'Alcatel',   slug: 'alcatel' },
   { name: 'ZTE',       slug: 'zte' },
   { name: 'Xiaomi',    slug: 'xiaomi' },
@@ -325,4 +328,79 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   // ─── Steam Deck ──────────────────────────────────────────────────────────────
   { manufacturer_slug: 'steam', name: 'Steam Deck OLED', slug: 'steam-deck-oled', category: 'console', release_year: 2023, is_popular: true  },
   { manufacturer_slug: 'steam', name: 'Steam Deck',      slug: 'steam-deck',      category: 'console', release_year: 2022, is_popular: true  },
+
+  // ─── TVs ────────────────────────────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'UN43TU7000 43" LED',        slug: 'samsung-un43tu7000-43-led',        category: 'tv', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'UN50TU7000 50" LED',        slug: 'samsung-un50tu7000-50-led',        category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'UN55TU7000 55" LED',        slug: 'samsung-un55tu7000-55-led',        category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'QN55Q60A 55" QLED',         slug: 'samsung-qn55q60a-55-qled',         category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'QN65Q60A 65" QLED',         slug: 'samsung-qn65q60a-65-qled',         category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'QN65QN90A 65" Neo QLED',    slug: 'samsung-qn65qn90a-65-neo-qled',    category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'QN85QN90A 85" Neo QLED',    slug: 'samsung-qn85qn90a-85-neo-qled',    category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'QN65QN90B 65" Neo QLED',    slug: 'samsung-qn65qn90b-65-neo-qled',    category: 'tv', release_year: 2022, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'QN77S95C 77" OLED',         slug: 'samsung-qn77s95c-77-oled',         category: 'tv', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'PN60F5300 60" Plasma',      slug: 'samsung-pn60f5300-60-plasma',      category: 'tv', release_year: 2013, is_popular: false },
+
+  { manufacturer_slug: 'lg', name: '43UP7000 43" LED',      slug: 'lg-43up7000-43-led',      category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'lg', name: '50UP7000 50" LED',      slug: 'lg-50up7000-50-led',      category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'lg', name: '55UP8000 55" LED',      slug: 'lg-55up8000-55-led',      category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'lg', name: '65UP8000 65" LED',      slug: 'lg-65up8000-65-led',      category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'lg', name: '65NANO90 65" NanoCell LED', slug: 'lg-65nano90-65-nanocell-led', category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'lg', name: 'OLED55CX 55" OLED',     slug: 'lg-oled55cx-55-oled',     category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'lg', name: 'OLED65C1 65" OLED',     slug: 'lg-oled65c1-65-oled',     category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'lg', name: 'OLED65C2 65" OLED',     slug: 'lg-oled65c2-65-oled',     category: 'tv', release_year: 2022, is_popular: true  },
+  { manufacturer_slug: 'lg', name: 'OLED77C3 77" OLED',     slug: 'lg-oled77c3-77-oled',     category: 'tv', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'lg', name: '50PN4500 50" Plasma',   slug: 'lg-50pn4500-50-plasma',   category: 'tv', release_year: 2013, is_popular: false },
+
+  { manufacturer_slug: 'sony', name: 'XBR-43X800H 43" LED', slug: 'sony-xbr-43x800h-43-led', category: 'tv', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'sony', name: 'XBR-55X900H 55" LED', slug: 'sony-xbr-55x900h-55-led', category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'sony', name: 'XBR-65X900H 65" LED', slug: 'sony-xbr-65x900h-65-led', category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'sony', name: 'XR-55X90J 55" LED',   slug: 'sony-xr-55x90j-55-led',   category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'sony', name: 'XR-65X90J 65" LED',   slug: 'sony-xr-65x90j-65-led',   category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'sony', name: 'XR-55A80J 55" OLED',  slug: 'sony-xr-55a80j-55-oled',  category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'sony', name: 'XR-65A80J 65" OLED',  slug: 'sony-xr-65a80j-65-oled',  category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'sony', name: 'XR-65X90K 65" LED',   slug: 'sony-xr-65x90k-65-led',   category: 'tv', release_year: 2022, is_popular: true  },
+  { manufacturer_slug: 'sony', name: 'XR-85X90K 85" LED',   slug: 'sony-xr-85x90k-85-led',   category: 'tv', release_year: 2022, is_popular: false },
+  { manufacturer_slug: 'sony', name: 'XR-77A80L 77" OLED',  slug: 'sony-xr-77a80l-77-oled',  category: 'tv', release_year: 2023, is_popular: false },
+
+  { manufacturer_slug: 'vizio', name: 'V405-H19 40" LED',   slug: 'vizio-v405-h19-40-led',   category: 'tv', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'vizio', name: 'V505-J09 50" LED',   slug: 'vizio-v505-j09-50-led',   category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'vizio', name: 'V555-J01 55" LED',   slug: 'vizio-v555-j01-55-led',   category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'vizio', name: 'V655-J09 65" LED',   slug: 'vizio-v655-j09-65-led',   category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'vizio', name: 'M50Q7-H1 50" QLED',  slug: 'vizio-m50q7-h1-50-qled',  category: 'tv', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'vizio', name: 'M55Q7-J01 55" QLED', slug: 'vizio-m55q7-j01-55-qled', category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'vizio', name: 'M65Q7-J01 65" QLED', slug: 'vizio-m65q7-j01-65-qled', category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'vizio', name: 'P65Q9-H1 65" QLED',  slug: 'vizio-p65q9-h1-65-qled',  category: 'tv', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'vizio', name: 'P75Q9-J01 75" QLED', slug: 'vizio-p75q9-j01-75-qled', category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'vizio', name: 'OLED55-H1 55" OLED', slug: 'vizio-oled55-h1-55-oled', category: 'tv', release_year: 2020, is_popular: false },
+
+  { manufacturer_slug: 'hisense', name: '43A6G 43" LED',             slug: 'hisense-43a6g-43-led',             category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'hisense', name: '50A6G 50" LED',             slug: 'hisense-50a6g-50-led',             category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: '55A6G 55" LED',             slug: 'hisense-55a6g-55-led',             category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: '65A6G 65" LED',             slug: 'hisense-65a6g-65-led',             category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: '55U6G 55" QLED',            slug: 'hisense-55u6g-55-qled',            category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: '65U6G 65" QLED',            slug: 'hisense-65u6g-65-qled',            category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: '55U7G 55" QLED',            slug: 'hisense-55u7g-55-qled',            category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'hisense', name: '65U8G 65" QLED',            slug: 'hisense-65u8g-65-qled',            category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: '65U8H 65" Mini-LED QLED',   slug: 'hisense-65u8h-65-mini-led-qled',   category: 'tv', release_year: 2022, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: '75U8K 75" Mini-LED QLED',   slug: 'hisense-75u8k-75-mini-led-qled',   category: 'tv', release_year: 2023, is_popular: false },
+
+  { manufacturer_slug: 'tcl', name: '40S325 40" LED',  slug: 'tcl-40s325-40-led',  category: 'tv', release_year: 2019, is_popular: false },
+  { manufacturer_slug: 'tcl', name: '43S435 43" LED',  slug: 'tcl-43s435-43-led',  category: 'tv', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'tcl', name: '50S435 50" LED',  slug: 'tcl-50s435-50-led',  category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'tcl', name: '55S435 55" LED',  slug: 'tcl-55s435-55-led',  category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'tcl', name: '65S435 65" LED',  slug: 'tcl-65s435-65-led',  category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'tcl', name: '55R635 55" QLED', slug: 'tcl-55r635-55-qled', category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'tcl', name: '65R635 65" QLED', slug: 'tcl-65r635-65-qled', category: 'tv', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'tcl', name: '65R646 65" QLED', slug: 'tcl-65r646-65-qled', category: 'tv', release_year: 2021, is_popular: true  },
+  { manufacturer_slug: 'tcl', name: '75R655 75" QLED', slug: 'tcl-75r655-75-qled', category: 'tv', release_year: 2022, is_popular: false },
+
+  { manufacturer_slug: 'philips', name: '43PFL5604/F7 43" LED', slug: 'philips-43pfl5604-f7-43-led', category: 'tv', release_year: 2019, is_popular: false },
+  { manufacturer_slug: 'philips', name: '50PFL5604/F7 50" LED', slug: 'philips-50pfl5604-f7-50-led', category: 'tv', release_year: 2019, is_popular: false },
+  { manufacturer_slug: 'philips', name: '55PFL5604/F7 55" LED', slug: 'philips-55pfl5604-f7-55-led', category: 'tv', release_year: 2019, is_popular: true  },
+  { manufacturer_slug: 'philips', name: '65PFL5504/F7 65" LED', slug: 'philips-65pfl5504-f7-65-led', category: 'tv', release_year: 2019, is_popular: false },
+  { manufacturer_slug: 'philips', name: '50PFL5704/F7 50" LED', slug: 'philips-50pfl5704-f7-50-led', category: 'tv', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'philips', name: '55PFL5756/F7 55" LED', slug: 'philips-55pfl5756-f7-55-led', category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'philips', name: '65PFL5766/F7 65" LED', slug: 'philips-65pfl5766-f7-65-led', category: 'tv', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'philips', name: '65OLED706 65" OLED',   slug: 'philips-65oled706-65-oled',   category: 'tv', release_year: 2021, is_popular: false },
 ];

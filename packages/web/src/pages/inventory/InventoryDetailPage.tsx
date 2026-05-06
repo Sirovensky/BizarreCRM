@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { inventoryApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
 
 // Covers every field the detail form reads or writes. Loose `number | string`
 // types on numeric columns mirror the edit-field state shape (inputs return
@@ -43,6 +43,7 @@ export function InventoryDetailPage() {
   const [form, setForm] = useState<InventoryFormItem | null>(null);
   const [barcodeUrl, setBarcodeUrl] = useState<string | null>(null);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const currencySymbol = formatCurrencySymbol();
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory', id],
@@ -92,6 +93,8 @@ export function InventoryDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory', id] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['bin-locations'] });
+      queryClient.invalidateQueries({ queryKey: ['bin-heatmap'] });
       toast.success('Item updated');
       setEditMode(false);
     },
@@ -268,18 +271,18 @@ export function InventoryDetailPage() {
             <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Pricing</h2>
             <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'Cost Price', field: 'cost_price', prefix: '$' },
-                { label: 'Retail Price', field: 'retail_price', prefix: '$' },
-              ].map(({ label, field, prefix }) => (
+                { label: 'Cost Price', field: 'cost_price' },
+                { label: 'Retail Price', field: 'retail_price' },
+              ].map(({ label, field }) => (
                 <div key={field}>
                   <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">{label}</label>
                   {editMode ? (
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">{prefix}</span>
-                      <input type="number" step="0.01" min="0" value={f[field] || ''} onChange={(e) => setForm({ ...f, [field]: parseFloat(e.target.value) || 0 })} className="input w-full text-sm pl-6" />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">{currencySymbol}</span>
+                      <input type="number" step="0.01" min="0" value={f[field] || ''} onChange={(e) => setForm({ ...f, [field]: parseFloat(e.target.value) || 0 })} className="input w-full text-sm pl-12" />
                     </div>
                   ) : (
-                    <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{prefix}{Number(item[field]).toFixed(2)}</p>
+                    <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{formatCurrency(Number(item[field]) || 0)}</p>
                   )}
                 </div>
               ))}
@@ -415,7 +418,7 @@ export function InventoryDetailPage() {
                       {m.notes && <div className="text-xs text-surface-500 dark:text-surface-400 truncate">{m.notes}</div>}
                       <div className="text-xs text-surface-400">
                         {m.user_name && <span>{m.user_name} · </span>}
-                        {new Date(m.created_at).toLocaleString()}
+                        {formatDateTime(m.created_at)}
                       </div>
                     </div>
                   </div>
@@ -441,7 +444,7 @@ export function InventoryDetailPage() {
                         <span className="ml-2 text-xs text-surface-400">{h.changed_by_name}</span>
                       )}
                     </div>
-                    <span className="text-xs text-surface-400">{new Date(h.created_at).toLocaleDateString()}</span>
+                    <span className="text-xs text-surface-400">{formatDate(h.created_at)}</span>
                   </div>
                 ))}
               </div>

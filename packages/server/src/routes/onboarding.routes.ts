@@ -49,6 +49,7 @@ interface OnboardingStateResponse {
   first_invoice_at: string | null;
   first_payment_at: string | null;
   first_review_at: string | null;
+  sandbox_completed_at: string | null;
   nudge_day3_seen: boolean;
   nudge_day5_seen: boolean;
   nudge_day7_seen: boolean;
@@ -70,6 +71,7 @@ interface OnboardingRow {
   first_invoice_at: string | null;
   first_payment_at: string | null;
   first_review_at: string | null;
+  sandbox_completed_at: string | null;
   nudge_day3_seen: number;
   nudge_day5_seen: number;
   nudge_day7_seen: number;
@@ -169,6 +171,7 @@ function rowToResponse(row: OnboardingRow): OnboardingStateResponse {
     first_invoice_at: row.first_invoice_at,
     first_payment_at: row.first_payment_at,
     first_review_at: row.first_review_at,
+    sandbox_completed_at: row.sandbox_completed_at ?? null,
     nudge_day3_seen: Boolean(row.nudge_day3_seen),
     nudge_day5_seen: Boolean(row.nudge_day5_seen),
     nudge_day7_seen: Boolean(row.nudge_day7_seen),

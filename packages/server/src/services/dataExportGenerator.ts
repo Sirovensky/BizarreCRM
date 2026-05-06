@@ -94,6 +94,8 @@ const SENSITIVE_CONFIG_KEYS = new Set<string>([
   'smtp_pass',
   'tcx_password',
   'stripe_secret_key',
+  'stripe_publishable_key',
+  'stripe_webhook_secret',
   'twilio_auth_token',
 ]);
 

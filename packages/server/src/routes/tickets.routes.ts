@@ -11,7 +11,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission, JWT_SIGN_OPTIONS } from '../middleware/auth.js';
 import { config } from '../config.js';
-import { validatePrice, validateQuantity, roundCents, toCents, validateId } from '../utils/validate.js';
+import { validatePrice, validateQuantity, roundCents, toCents, validateId, validateRequiredString } from '../utils/validate.js';
 import { writeCommission } from '../utils/commissions.js';
 import { runAutomations } from '../services/automations.js';
 import { applyTicketStatusChange } from '../services/ticketStatus.js';
@@ -31,6 +31,15 @@ import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { logActivity } from '../utils/activityLog.js';
+import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
+import { normalizePhone } from '../utils/phone.js';
+import {
+  GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+  IMAGE_UPLOAD_FORMAT_ERROR,
+  IMAGE_UPLOAD_MIME_TYPES,
+  isSupportedImageMime,
+  sanitizedImageExtension,
+} from '../utils/imageUploadPolicy.js';
 
 const logger = createLogger('tickets.routes');
 
@@ -52,7 +61,7 @@ if (!fs.existsSync(config.uploadsPath)) {
   fs.mkdirSync(config.uploadsPath, { recursive: true });
 }
 
-const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_MIMES = IMAGE_UPLOAD_MIME_TYPES;
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -67,15 +76,18 @@ const upload = multer({
     },
     filename: (_req, file, cb) => {
       // Randomize filename to prevent path traversal and name collisions
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-      const safe = ext && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
-      cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${safe}`);
+      const ext = sanitizedImageExtension(file.originalname);
+      if (!ext) {
+        cb(new Error('Unsupported image file extension'), '');
+        return;
+      }
+      cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: GENERAL_IMAGE_UPLOAD_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIMES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, WebP, GIF images allowed'));
+    if (isSupportedImageMime(file.mimetype)) cb(null, true);
+    else cb(new Error(IMAGE_UPLOAD_FORMAT_ERROR));
   },
 });
 
@@ -84,6 +96,43 @@ const upload = multer({
 // ---------------------------------------------------------------------------
 type AnyRow = Record<string, any>;
 const maxLen = (val: string | undefined, max: number) => val && val.length > max ? val.slice(0, max) : val;
+const TICKET_ACTIVITY_FILTERS = new Set(['all', 'notes', 'sms', 'system']);
+const TICKET_ACTIVITY_DEFAULT_LIMIT = 100;
+const TICKET_ACTIVITY_MAX_LIMIT = 200;
+
+function parseTicketActivityLimit(value: unknown): number {
+  if (value === undefined || value === null || value === '') return TICKET_ACTIVITY_DEFAULT_LIMIT;
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new AppError('limit must be a positive integer', 400);
+  }
+  return Math.min(parsed, TICKET_ACTIVITY_MAX_LIMIT);
+}
+
+function encodeTicketActivityCursor(timestamp: string, sortId: number): string {
+  return Buffer.from(JSON.stringify({ timestamp, sort_id: sortId }), 'utf8').toString('base64url');
+}
+
+function parseTicketActivityCursor(value: unknown): { timestamp: string; sort_id: number } | null {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') throw new AppError('cursor must be a string', 400);
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+    if (
+      parsed
+      && typeof parsed.timestamp === 'string'
+      && Number.isInteger(parsed.sort_id)
+      && parsed.sort_id > 0
+    ) {
+      return { timestamp: parsed.timestamp, sort_id: parsed.sort_id };
+    }
+  } catch {
+    // Fall through to one canonical client error below.
+  }
+  throw new AppError('cursor is invalid', 400);
+}
 
 function parseAssignedToFilter(value: unknown, currentUserId?: number): number | null {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -211,6 +260,164 @@ async function getDefaultTaxClassIdAsync(adb: AsyncDb, itemType?: string): Promi
   return isNaN(id) || id <= 0 ? null : id;
 }
 
+type TicketDeviceQuoteLineKind = 'service' | 'misc';
+
+const MAX_MONEY_CENTS = 99_999_999;
+
+function validateMoneyCents(value: unknown, fieldName: string): number {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(num) || num < 0) {
+    throw new AppError(`${fieldName} must be a non-negative integer`, 400);
+  }
+  if (num > MAX_MONEY_CENTS) {
+    throw new AppError(`${fieldName} exceeds maximum`, 400);
+  }
+  return num;
+}
+
+function validateRequestDeviceScope(body: AnyRow, deviceId: number, ticketId: number): void {
+  if (body.device_id !== undefined && body.device_id !== null && Number(body.device_id) !== deviceId) {
+    throw new AppError('device_id does not match path device id', 400);
+  }
+  if (body.ticket_id !== undefined && body.ticket_id !== null && Number(body.ticket_id) !== ticketId) {
+    throw new AppError('ticket_id does not match device ticket id', 400);
+  }
+}
+
+function applyRepairPriceAdjustments(basePrice: number, flat: number, pct: number): number {
+  let price = basePrice;
+  if (pct !== 0) price *= (1 + pct / 100);
+  if (flat !== 0) price += flat;
+  return roundCurrency(price);
+}
+
+async function getRepairPriceAdjustmentsAsync(adb: AsyncDb): Promise<{ flat: number; pct: number }> {
+  const [flatRow, pctRow] = await Promise.all([
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_price_flat_adjustment'"),
+    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_price_pct_adjustment'"),
+  ]);
+  const safeNum = (raw: unknown): number => {
+    if (raw === null || raw === undefined || raw === '') return 0;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  return { flat: safeNum(flatRow?.value), pct: safeNum(pctRow?.value) };
+}
+
+async function resolveRepairServiceLaborPriceAsync(
+  adb: AsyncDb,
+  deviceModelId: number | null | undefined,
+  repairServiceId: number,
+  requestedLaborPrice: unknown,
+): Promise<number> {
+  const clientPrice = requestedLaborPrice !== undefined && requestedLaborPrice !== null && requestedLaborPrice !== ''
+    ? validatePrice(requestedLaborPrice, 'labor_price')
+    : null;
+  if (clientPrice !== null && clientPrice > 0) return clientPrice;
+
+  if (deviceModelId) {
+    const price = await adb.get<AnyRow>(`
+      SELECT labor_price
+      FROM repair_prices
+      WHERE device_model_id = ? AND repair_service_id = ? AND is_active = 1
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 1
+    `, deviceModelId, repairServiceId);
+    if (price) {
+      const adj = await getRepairPriceAdjustmentsAsync(adb);
+      return applyRepairPriceAdjustments(Number(price.labor_price) || 0, adj.flat, adj.pct);
+    }
+  }
+
+  return clientPrice ?? 0;
+}
+
+function serializeQuoteLine(row: AnyRow): AnyRow {
+  const unitPrice = Number(row.unit_price) || 0;
+  const total = Number(row.total) || 0;
+  const taxAmount = Number(row.tax_amount) || 0;
+  return {
+    id: row.id,
+    ticket_device_id: row.ticket_device_id,
+    kind: row.kind,
+    repair_service_id: row.repair_service_id ?? null,
+    name: row.description,
+    description: row.description,
+    quantity: row.quantity,
+    unit_price: unitPrice,
+    line_discount: Number(row.line_discount) || 0,
+    tax_amount: taxAmount,
+    tax_class_id: row.tax_class_id ?? null,
+    tax_inclusive: !!row.tax_inclusive,
+    total,
+    price_cents: toCents(unitPrice),
+    amount_cents: toCents(unitPrice),
+    total_cents: toCents(total),
+    tax_amount_cents: toCents(taxAmount),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    repair_service: row.repair_service_id
+      ? {
+          id: row.repair_service_id,
+          name: row.repair_service_name ?? row.description,
+          slug: row.repair_service_slug ?? null,
+          category: row.repair_service_category ?? null,
+        }
+      : null,
+  };
+}
+
+async function getTicketDeviceQuoteLineAsync(adb: AsyncDb, quoteLineId: number): Promise<AnyRow | undefined> {
+  return adb.get<AnyRow>(`
+    SELECT tdql.*,
+           rs.name AS repair_service_name,
+           rs.slug AS repair_service_slug,
+           rs.category AS repair_service_category
+    FROM ticket_device_quote_lines tdql
+    LEFT JOIN repair_services rs ON rs.id = tdql.repair_service_id
+    WHERE tdql.id = ?
+  `, quoteLineId);
+}
+
+async function insertTicketDeviceQuoteLineAsync(
+  adb: AsyncDb,
+  input: {
+    deviceId: number;
+    kind: TicketDeviceQuoteLineKind;
+    repairServiceId?: number | null;
+    description: string;
+    unitPrice: number;
+    taxClassId?: number | null;
+    taxInclusive?: boolean;
+  },
+): Promise<{ line: AnyRow; taxWarning: string | null }> {
+  const taxBase = input.unitPrice;
+  const taxResult = await calcTaxWithWarningAsync(adb, taxBase, input.taxClassId ?? null, input.taxInclusive ?? false);
+  const total = roundCurrency(taxBase + taxResult.amount);
+  const ts = now();
+  const result = await adb.run(`
+    INSERT INTO ticket_device_quote_lines
+      (ticket_device_id, kind, repair_service_id, description, quantity, unit_price,
+       line_discount, tax_amount, tax_class_id, tax_inclusive, total, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?, ?, ?, ?, ?)
+  `,
+    input.deviceId,
+    input.kind,
+    input.repairServiceId ?? null,
+    input.description,
+    input.unitPrice,
+    taxResult.amount,
+    input.taxClassId ?? null,
+    input.taxInclusive ? 1 : 0,
+    total,
+    ts,
+    ts,
+  );
+  const line = await getTicketDeviceQuoteLineAsync(adb, Number(result.lastInsertRowid));
+  if (!line) throw new AppError('Quote line was not created', 500);
+  return { line, taxWarning: taxResult.warning };
+}
+
 async function insertHistoryAsync(adb: AsyncDb, ticketId: number, userId: number | null, action: string, description: string, oldValue?: string | null, newValue?: string | null): Promise<void> {
   await adb.run(
     `INSERT INTO ticket_history (ticket_id, user_id, action, description, old_value, new_value)
@@ -280,12 +487,17 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
              ts.is_cancelled AS status_is_cancelled, ts.notify_customer AS status_notify_customer,
              ts.notification_template AS status_notification_template,
              u.first_name AS assigned_first, u.last_name AS assigned_last,
-             cb.first_name AS created_first, cb.last_name AS created_last
+             cb.first_name AS created_first, cb.last_name AS created_last,
+             loc.id AS loc_id, loc.name AS loc_name, loc.address_line AS loc_address_line,
+             loc.city AS loc_city, loc.state AS loc_state, loc.postcode AS loc_postcode,
+             loc.country AS loc_country, loc.phone AS loc_phone, loc.email AS loc_email,
+             loc.timezone AS loc_timezone
       FROM tickets t
       LEFT JOIN customers c ON c.id = t.customer_id
       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
       LEFT JOIN users u ON u.id = t.assigned_to
       LEFT JOIN users cb ON cb.id = t.created_by
+      LEFT JOIN locations loc ON loc.id = t.location_id
       WHERE t.id = ? AND t.is_deleted = 0
     `, ticketId),
     adb.all<AnyRow>(`
@@ -322,6 +534,7 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
     due_on: ticket.due_on,
     invoice_id: ticket.invoice_id,
     estimate_id: ticket.estimate_id,
+    location_id: ticket.location_id ?? null,
     is_deleted: ticket.is_deleted,
     created_by: ticket.created_by,
     created_at: ticket.created_at,
@@ -349,6 +562,18 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
     },
     assigned_user: ticket.assigned_to ? { id: ticket.assigned_to, first_name: ticket.assigned_first, last_name: ticket.assigned_last } : null,
     created_by_user: { id: ticket.created_by, first_name: ticket.created_first, last_name: ticket.created_last },
+    location: ticket.loc_id ? {
+      id: ticket.loc_id,
+      name: ticket.loc_name,
+      address_line: ticket.loc_address_line,
+      city: ticket.loc_city,
+      state: ticket.loc_state,
+      postcode: ticket.loc_postcode,
+      country: ticket.loc_country,
+      phone: ticket.loc_phone,
+      email: ticket.loc_email,
+      timezone: ticket.loc_timezone,
+    } : null,
   };
 
   // Round 2: per-device details + notes/history/payments in parallel
@@ -375,16 +600,27 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
     : Promise.resolve([]);
 
   const deviceDetailFetches = devices.map(async (d) => {
-    const [parts, photos, checklist] = await Promise.all([
+    const [parts, quoteLines, photos, checklist] = await Promise.all([
       adb.all<AnyRow>(`
         SELECT tdp.*, ii.name AS item_name, ii.sku AS item_sku
         FROM ticket_device_parts tdp
         LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
         WHERE tdp.ticket_device_id = ?
       `, d.id),
+      adb.all<AnyRow>(`
+        SELECT tdql.*,
+               rs.name AS repair_service_name,
+               rs.slug AS repair_service_slug,
+               rs.category AS repair_service_category
+        FROM ticket_device_quote_lines tdql
+        LEFT JOIN repair_services rs ON rs.id = tdql.repair_service_id
+        WHERE tdql.ticket_device_id = ?
+        ORDER BY tdql.id ASC
+      `, d.id),
       adb.all<AnyRow>('SELECT * FROM ticket_photos WHERE ticket_device_id = ? ORDER BY created_at ASC', d.id),
       adb.get<AnyRow>('SELECT * FROM ticket_checklists WHERE ticket_device_id = ?', d.id),
     ]);
+    const serializedQuoteLines = quoteLines.map(serializeQuoteLine);
     return {
       id: d.id, ticket_id: d.ticket_id, device_name: d.device_name, device_type: d.device_type,
       imei: d.imei, serial: d.serial, security_code: d.security_code, color: d.color, network: d.network,
@@ -397,7 +633,10 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
       created_at: d.created_at, updated_at: d.updated_at,
       status: d.status_id ? { id: d.status_id, name: d.status_name, color: d.status_color } : null,
       assigned_user: d.assigned_to ? { id: d.assigned_to, first_name: d.assigned_first, last_name: d.assigned_last } : null,
-      service: d.service_id ? { id: d.service_id, name: d.service_name } : null,
+      service: d.service_id || d.service_name ? { id: d.service_id, name: d.service_name } : null,
+      quote_lines: serializedQuoteLines,
+      service_lines: serializedQuoteLines.filter((line) => line.kind === 'service'),
+      misc_lines: serializedQuoteLines.filter((line) => line.kind === 'misc'),
       parts, photos,
       checklist: checklist ? { ...checklist, items: parseJsonCol(checklist.items, []) } : null,
     };
@@ -424,12 +663,18 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
 }
 
 async function recalcTicketTotalsAsync(adb: AsyncDb, ticketId: number): Promise<void> {
-  const [devices, parts, ticketRow] = await Promise.all([
+  const [devices, parts, quoteLines, ticketRow] = await Promise.all([
     adb.all<AnyRow>('SELECT price, line_discount, tax_amount, total FROM ticket_devices WHERE ticket_id = ?', ticketId),
     adb.all<AnyRow>(`
       SELECT tdp.quantity, tdp.price
       FROM ticket_device_parts tdp
       JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+      WHERE td.ticket_id = ?
+    `, ticketId),
+    adb.all<AnyRow>(`
+      SELECT tdql.quantity, tdql.unit_price, tdql.line_discount, tdql.tax_amount
+      FROM ticket_device_quote_lines tdql
+      JOIN ticket_devices td ON td.id = tdql.ticket_device_id
       WHERE td.ticket_id = ?
     `, ticketId),
     adb.get<AnyRow>('SELECT discount FROM tickets WHERE id = ?', ticketId),
@@ -443,6 +688,10 @@ async function recalcTicketTotalsAsync(adb: AsyncDb, ticketId: number): Promise<
   }
   for (const p of parts) {
     subtotal += p.quantity * p.price;
+  }
+  for (const line of quoteLines) {
+    subtotal += (line.quantity * line.unit_price) - line.line_discount;
+    totalTax += line.tax_amount;
   }
 
   const discount = ticketRow?.discount ?? 0;
@@ -1136,15 +1385,7 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     });
   }
 
-  // F15: Pre-fetch default warranty settings once (used per device if warranty_days not provided)
-  const [wVal, wUnit] = await Promise.all([
-    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'"),
-    adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'"),
-  ]);
-  const defaultWarrantyDays = (() => {
-    const rawVal = wVal?.value ? parseInt(wVal.value) : 0;
-    return wUnit?.value === 'months' ? rawVal * 30 : rawVal;
-  })();
+  const warrantyDefaults = await getRepairWarrantyDefaults(adb);
 
   // M10 fix: collect per-device tax warnings so the create response can surface them.
   const taxWarnings: string[] = [];
@@ -1161,6 +1402,9 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
     const taxAmount = taxResult.amount;
     if (taxResult.warning) taxWarnings.push(taxResult.warning);
     const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
+
+    const resolvedWarrantyDays = dev.warranty_days ?? resolveRepairWarrantyDays(warrantyDefaults, dev);
+    const resolvedWarranty = dev.warranty !== undefined ? dev.warranty : resolvedWarrantyDays > 0;
 
     const devResult = await adb.run(`
       INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
@@ -1191,8 +1435,8 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
       resolvedTaxClassId,
       dev.tax_inclusive ? 1 : 0,
       deviceTotal,
-      dev.warranty ? 1 : 0,
-      dev.warranty_days ?? defaultWarrantyDays,
+      resolvedWarranty ? 1 : 0,
+      resolvedWarrantyDays,
       dev.due_on ?? null,
       dev.device_location ?? null,
       dev.additional_notes ?? null,
@@ -2767,6 +3011,38 @@ router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncH
       // When not itemized: parts omitted from line items (single "Repair" line covers service,
       // parts totals are already in the ticket total)
     }
+
+    const quoteLines = await adb.all<AnyRow>(`
+      SELECT tdql.*,
+             rs.name AS repair_service_name
+      FROM ticket_device_quote_lines tdql
+      LEFT JOIN repair_services rs ON rs.id = tdql.repair_service_id
+      WHERE tdql.ticket_device_id = ?
+      ORDER BY tdql.id ASC
+    `, dev.id);
+
+    for (const line of quoteLines) {
+      const description = line.kind === 'service'
+        ? `Service: ${line.repair_service_name || line.description}`
+        : line.description;
+      await adb.run(`
+        INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price,
+                                        line_discount, tax_amount, tax_class_id, total, notes, created_at, updated_at)
+        VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        invoiceId,
+        description,
+        line.quantity,
+        line.unit_price,
+        line.line_discount,
+        line.tax_amount,
+        line.tax_class_id,
+        line.total,
+        line.kind === 'misc' ? 'One-off ticket quote line' : 'Repair-service ticket quote line',
+        now(),
+        now(),
+      );
+    }
   }
 
   // Link invoice to ticket
@@ -2806,6 +3082,298 @@ router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncH
       ...invoice,
       customer: { id: invoice!.customer_id, first_name: invoice!.first_name, last_name: invoice!.last_name, email: invoice!.email, phone: invoice!.phone },
       line_items: lineItems,
+    },
+  });
+}));
+
+// ===================================================================
+// GET /:id/activity - Unified, server-filtered ticket activity timeline
+// ===================================================================
+router.get('/:id/activity', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const ticketId = validateId(req.params.id, 'ticket id');
+  if (!ticketId) throw new AppError('Invalid ticket ID');
+
+  const rawFilter = Array.isArray(req.query.filter) ? req.query.filter[0] : req.query.filter;
+  const filter = typeof rawFilter === 'string' && rawFilter.trim()
+    ? rawFilter.trim().toLowerCase()
+    : 'all';
+  if (!TICKET_ACTIVITY_FILTERS.has(filter)) {
+    throw new AppError('filter must be one of all, notes, sms, system', 400);
+  }
+
+  const limit = parseTicketActivityLimit(req.query.limit);
+  const cursor = parseTicketActivityCursor(req.query.cursor);
+
+  const ticket = await adb.get<AnyRow>(`
+    SELECT t.id, c.phone, c.mobile
+    FROM tickets t
+    LEFT JOIN customers c ON c.id = t.customer_id
+    WHERE t.id = ? AND t.is_deleted = 0
+  `, ticketId);
+  if (!ticket) throw new AppError('Ticket not found', 404);
+
+  const phoneCandidates = new Set<string>();
+  for (const raw of [ticket.phone, ticket.mobile]) {
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    phoneCandidates.add(raw.trim());
+    const normalized = normalizePhone(raw);
+    if (normalized) phoneCandidates.add(normalized);
+  }
+  const phoneList = Array.from(phoneCandidates);
+  const smsWhereParts = ['(sm.entity_type = ? AND sm.entity_id = ?)'];
+  const smsParams: unknown[] = ['ticket', ticketId];
+  if (phoneList.length > 0) {
+    smsWhereParts.push(`sm.conv_phone IN (${phoneList.map(() => '?').join(', ')})`);
+    smsParams.push(...phoneList);
+  }
+  const smsWhere = `(${smsWhereParts.join(' OR ')})`;
+
+  const [notesCountRow, systemCountRow, smsCountRow] = await Promise.all([
+    adb.get<{ count: number }>('SELECT COUNT(*) AS count FROM ticket_notes WHERE ticket_id = ?', ticketId),
+    adb.get<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM ticket_history WHERE ticket_id = ? AND action <> 'note_added'",
+      ticketId,
+    ),
+    adb.get<{ count: number }>(
+      `SELECT COUNT(DISTINCT sm.id) AS count FROM sms_messages sm WHERE ${smsWhere}`,
+      ...smsParams,
+    ),
+  ]);
+
+  const activityParams: unknown[] = [
+    ticketId,
+    ticketId,
+    ...smsParams,
+    filter,
+    filter === 'notes' ? 'note' : filter,
+  ];
+
+  let cursorClause = '';
+  if (cursor) {
+    cursorClause = `
+      AND (
+        datetime(activity.timestamp) < datetime(?)
+        OR (datetime(activity.timestamp) = datetime(?) AND activity.sort_id < ?)
+      )
+    `;
+    activityParams.push(cursor.timestamp, cursor.timestamp, cursor.sort_id);
+  }
+  activityParams.push(limit + 1);
+
+  const rows = await adb.all<AnyRow>(
+    `
+    SELECT *
+    FROM (
+      SELECT
+        'note' AS entry_type,
+        'note-' || tn.id AS entry_id,
+        tn.id AS source_id,
+        (tn.id * 10 + 1) AS sort_id,
+        tn.created_at AS timestamp,
+        tn.id AS note_id,
+        tn.ticket_id AS note_ticket_id,
+        tn.ticket_device_id AS note_ticket_device_id,
+        tn.user_id AS note_user_id,
+        tn.type AS note_type,
+        tn.content AS note_content,
+        tn.is_flagged AS note_is_flagged,
+        tn.parent_id AS note_parent_id,
+        nu.first_name AS note_first_name,
+        nu.last_name AS note_last_name,
+        nu.avatar_url AS note_avatar_url,
+        NULL AS history_id,
+        NULL AS history_user_id,
+        NULL AS history_action,
+        NULL AS history_description,
+        NULL AS history_old_value,
+        NULL AS history_new_value,
+        NULL AS history_first_name,
+        NULL AS history_last_name,
+        NULL AS sms_id,
+        NULL AS sms_direction,
+        NULL AS sms_message,
+        NULL AS sms_status,
+        NULL AS sms_from_number,
+        NULL AS sms_to_number,
+        NULL AS sms_conv_phone,
+        NULL AS sms_sender_name
+      FROM ticket_notes tn
+      LEFT JOIN users nu ON nu.id = tn.user_id
+      WHERE tn.ticket_id = ?
+
+      UNION ALL
+
+      SELECT
+        'system' AS entry_type,
+        'sys-' || th.id AS entry_id,
+        th.id AS source_id,
+        (th.id * 10 + 2) AS sort_id,
+        th.created_at AS timestamp,
+        NULL AS note_id,
+        NULL AS note_ticket_id,
+        NULL AS note_ticket_device_id,
+        NULL AS note_user_id,
+        NULL AS note_type,
+        NULL AS note_content,
+        NULL AS note_is_flagged,
+        NULL AS note_parent_id,
+        NULL AS note_first_name,
+        NULL AS note_last_name,
+        NULL AS note_avatar_url,
+        th.id AS history_id,
+        th.user_id AS history_user_id,
+        th.action AS history_action,
+        th.description AS history_description,
+        th.old_value AS history_old_value,
+        th.new_value AS history_new_value,
+        hu.first_name AS history_first_name,
+        hu.last_name AS history_last_name,
+        NULL AS sms_id,
+        NULL AS sms_direction,
+        NULL AS sms_message,
+        NULL AS sms_status,
+        NULL AS sms_from_number,
+        NULL AS sms_to_number,
+        NULL AS sms_conv_phone,
+        NULL AS sms_sender_name
+      FROM ticket_history th
+      LEFT JOIN users hu ON hu.id = th.user_id
+      WHERE th.ticket_id = ? AND th.action <> 'note_added'
+
+      UNION ALL
+
+      SELECT
+        'sms' AS entry_type,
+        'sms-' || sm.id AS entry_id,
+        sm.id AS source_id,
+        (sm.id * 10 + 3) AS sort_id,
+        sm.created_at AS timestamp,
+        NULL AS note_id,
+        NULL AS note_ticket_id,
+        NULL AS note_ticket_device_id,
+        NULL AS note_user_id,
+        NULL AS note_type,
+        NULL AS note_content,
+        NULL AS note_is_flagged,
+        NULL AS note_parent_id,
+        NULL AS note_first_name,
+        NULL AS note_last_name,
+        NULL AS note_avatar_url,
+        NULL AS history_id,
+        NULL AS history_user_id,
+        NULL AS history_action,
+        NULL AS history_description,
+        NULL AS history_old_value,
+        NULL AS history_new_value,
+        NULL AS history_first_name,
+        NULL AS history_last_name,
+        sm.id AS sms_id,
+        sm.direction AS sms_direction,
+        sm.message AS sms_message,
+        sm.status AS sms_status,
+        sm.from_number AS sms_from_number,
+        sm.to_number AS sms_to_number,
+        sm.conv_phone AS sms_conv_phone,
+        CASE
+          WHEN su.id IS NULL THEN NULL
+          ELSE TRIM(COALESCE(su.first_name, '') || ' ' || COALESCE(su.last_name, ''))
+        END AS sms_sender_name
+      FROM sms_messages sm
+      LEFT JOIN users su ON su.id = sm.user_id
+      WHERE ${smsWhere}
+    ) activity
+    WHERE (? = 'all' OR activity.entry_type = ?)
+    ${cursorClause}
+    ORDER BY datetime(activity.timestamp) DESC, activity.sort_id DESC
+    LIMIT ?
+    `,
+    ...activityParams,
+  );
+
+  const hasMore = rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore && pageRows.length > 0
+    ? encodeTicketActivityCursor(pageRows[pageRows.length - 1].timestamp, pageRows[pageRows.length - 1].sort_id)
+    : null;
+
+  const entries = pageRows.map((row) => {
+    if (row.entry_type === 'note') {
+      return {
+        id: row.entry_id,
+        type: 'note',
+        timestamp: row.timestamp,
+        data: {
+          id: row.note_id,
+          ticket_id: row.note_ticket_id,
+          ticket_device_id: row.note_ticket_device_id,
+          user_id: row.note_user_id,
+          type: row.note_type,
+          content: row.note_content,
+          is_flagged: !!row.note_is_flagged,
+          parent_id: row.note_parent_id,
+          created_at: row.timestamp,
+          user: row.note_user_id ? {
+            id: row.note_user_id,
+            first_name: row.note_first_name,
+            last_name: row.note_last_name,
+            avatar_url: row.note_avatar_url,
+          } : null,
+        },
+      };
+    }
+    if (row.entry_type === 'sms') {
+      return {
+        id: row.entry_id,
+        type: 'sms',
+        timestamp: row.timestamp,
+        data: {
+          id: row.sms_id,
+          direction: row.sms_direction,
+          message: row.sms_message,
+          status: row.sms_status,
+          from_number: row.sms_from_number,
+          to_number: row.sms_to_number,
+          conv_phone: row.sms_conv_phone,
+          sender_name: row.sms_sender_name,
+          created_at: row.timestamp,
+        },
+      };
+    }
+    return {
+      id: row.entry_id,
+      type: 'system',
+      timestamp: row.timestamp,
+      data: {
+        id: row.history_id,
+        ticket_id: ticketId,
+        user_id: row.history_user_id,
+        action: row.history_action,
+        description: row.history_description,
+        old_value: row.history_old_value,
+        new_value: row.history_new_value,
+        created_at: row.timestamp,
+        user: row.history_user_id ? {
+          id: row.history_user_id,
+          first_name: row.history_first_name,
+          last_name: row.history_last_name,
+        } : null,
+      },
+    };
+  });
+
+  const counts = {
+    notes: notesCountRow?.count ?? 0,
+    sms: smsCountRow?.count ?? 0,
+    system: systemCountRow?.count ?? 0,
+  };
+
+  res.json({
+    success: true,
+    data: {
+      entries,
+      counts: { ...counts, all: counts.notes + counts.sms + counts.system },
+      next_cursor: nextCursor,
     },
   });
 }));
@@ -2929,6 +3497,10 @@ router.post('/:id/devices', requirePermission('tickets.edit'), asyncHandler(asyn
     );
   }
 
+  const warrantyDefaults = await getRepairWarrantyDefaults(adb);
+  const resolvedWarrantyDays = dev.warranty_days ?? resolveRepairWarrantyDays(warrantyDefaults, dev);
+  const resolvedWarranty = dev.warranty !== undefined ? dev.warranty : resolvedWarrantyDays > 0;
+
   const result = await adb.run(`
     INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
                                 color, network, status_id, assigned_to, service_id, price, line_discount,
@@ -2954,8 +3526,8 @@ router.post('/:id/devices', requirePermission('tickets.edit'), asyncHandler(asyn
     resolvedTaxClassId,
     dev.tax_inclusive ? 1 : 0,
     deviceTotal,
-    dev.warranty ? 1 : 0,
-    dev.warranty_days ?? 0,
+    resolvedWarranty ? 1 : 0,
+    resolvedWarrantyDays,
     dev.due_on ?? null,
     dev.device_location ?? null,
     dev.additional_notes ?? null,
@@ -3245,6 +3817,113 @@ router.post('/devices/:deviceId/parts', requirePermission('tickets.edit'), async
   broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id }, req.tenantSlug || null);
 
   res.status(201).json({ success: true, data: part });
+}));
+
+// ===================================================================
+// POST /devices/:deviceId/services - Add repair-service quote line
+// ===================================================================
+router.post('/devices/:deviceId/services', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const deviceId = validateId(req.params.deviceId, 'device id');
+  const userId = req.user!.id;
+
+  const device = await adb.get<AnyRow>(`
+    SELECT td.id, td.ticket_id, td.device_name, td.device_model_id, t.order_id
+    FROM ticket_devices td
+    JOIN tickets t ON t.id = td.ticket_id
+    WHERE td.id = ? AND t.is_deleted = 0
+  `, deviceId);
+  if (!device) throw new AppError('Device not found', 404);
+
+  await assertTicketMutable(adb, device.ticket_id, req.user?.role);
+  validateRequestDeviceScope(req.body ?? {}, deviceId, device.ticket_id);
+
+  const repairServiceId = validateId(req.body?.repair_service_id, 'repair_service_id');
+  const service = await adb.get<AnyRow>('SELECT * FROM repair_services WHERE id = ?', repairServiceId);
+  if (!service) throw new AppError('Repair service not found', 404);
+  if (service.is_active === 0) throw new AppError('Repair service is inactive', 400);
+
+  const description = req.body?.name !== undefined && req.body?.name !== null && String(req.body.name).trim()
+    ? validateRequiredString(req.body.name, 'name', 500)
+    : validateRequiredString(service.name, 'name', 500);
+  const laborPrice = await resolveRepairServiceLaborPriceAsync(
+    adb,
+    device.device_model_id,
+    repairServiceId,
+    req.body?.labor_price,
+  );
+  const taxClassId = req.body?.tax_class_id !== undefined && req.body?.tax_class_id !== null
+    ? validateId(req.body.tax_class_id, 'tax_class_id')
+    : await getDefaultTaxClassIdAsync(adb, 'service');
+  const taxInclusive = !!req.body?.tax_inclusive;
+
+  const { line, taxWarning } = await insertTicketDeviceQuoteLineAsync(adb, {
+    deviceId,
+    kind: 'service',
+    repairServiceId,
+    description,
+    unitPrice: laborPrice,
+    taxClassId,
+    taxInclusive,
+  });
+
+  await recalcTicketTotalsAsync(adb, device.ticket_id);
+  await insertHistoryAsync(adb, device.ticket_id, userId, 'service_added', `Service added: ${description}`);
+
+  const responsePayload = serializeQuoteLine(line);
+  if (taxWarning) responsePayload.tax_warning = taxWarning;
+
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id }, req.tenantSlug || null);
+
+  res.status(201).json({ success: true, data: responsePayload });
+}));
+
+// ===================================================================
+// POST /devices/:deviceId/misc - Add one-off misc quote line
+// ===================================================================
+router.post('/devices/:deviceId/misc', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const deviceId = validateId(req.params.deviceId, 'device id');
+  const userId = req.user!.id;
+
+  const device = await adb.get<AnyRow>(`
+    SELECT td.id, td.ticket_id, td.device_name, t.order_id
+    FROM ticket_devices td
+    JOIN tickets t ON t.id = td.ticket_id
+    WHERE td.id = ? AND t.is_deleted = 0
+  `, deviceId);
+  if (!device) throw new AppError('Device not found', 404);
+
+  await assertTicketMutable(adb, device.ticket_id, req.user?.role);
+  validateRequestDeviceScope(req.body ?? {}, deviceId, device.ticket_id);
+
+  const description = validateRequiredString(req.body?.name, 'name', 500);
+  const amountCents = validateMoneyCents(req.body?.amount_cents, 'amount_cents');
+  const unitPrice = roundCurrency(amountCents / 100);
+  const taxClassId = req.body?.tax_class_id !== undefined && req.body?.tax_class_id !== null
+    ? validateId(req.body.tax_class_id, 'tax_class_id')
+    : await getDefaultTaxClassIdAsync(adb, 'service');
+  const taxInclusive = !!req.body?.tax_inclusive;
+
+  const { line, taxWarning } = await insertTicketDeviceQuoteLineAsync(adb, {
+    deviceId,
+    kind: 'misc',
+    repairServiceId: null,
+    description,
+    unitPrice,
+    taxClassId,
+    taxInclusive,
+  });
+
+  await recalcTicketTotalsAsync(adb, device.ticket_id);
+  await insertHistoryAsync(adb, device.ticket_id, userId, 'misc_added', `Misc quote line added: ${description}`);
+
+  const responsePayload = serializeQuoteLine(line);
+  if (taxWarning) responsePayload.tax_warning = taxWarning;
+
+  broadcast(WS_EVENTS.TICKET_UPDATED, { id: device.ticket_id }, req.tenantSlug || null);
+
+  res.status(201).json({ success: true, data: responsePayload });
 }));
 
 // ===================================================================
@@ -4171,6 +4850,30 @@ router.post('/:id/duplicate', requirePermission('tickets.create'), asyncHandler(
         part.serial,
         part.catalog_item_id ?? null,
         part.supplier_url ?? null,
+        now(),
+        now(),
+      );
+    }
+
+    const quoteLines = await adb.all<AnyRow>('SELECT * FROM ticket_device_quote_lines WHERE ticket_device_id = ? ORDER BY id ASC', dev.id);
+    for (const line of quoteLines) {
+      await adb.run(`
+        INSERT INTO ticket_device_quote_lines
+          (ticket_device_id, kind, repair_service_id, description, quantity, unit_price,
+           line_discount, tax_amount, tax_class_id, tax_inclusive, total, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+        newDeviceId,
+        line.kind,
+        line.repair_service_id ?? null,
+        line.description,
+        line.quantity,
+        line.unit_price,
+        line.line_discount,
+        line.tax_amount,
+        line.tax_class_id ?? null,
+        line.tax_inclusive,
+        line.total,
         now(),
         now(),
       );

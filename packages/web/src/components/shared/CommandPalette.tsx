@@ -48,7 +48,7 @@ interface PageJumpEntry {
 }
 
 const PAGE_JUMPS: PageJumpEntry[] = [
-  { display: 'Dashboard', path: '/dashboard' },
+  { display: 'Dashboard', path: '/', aliases: ['home'] },
   { display: 'POS', path: '/pos', aliases: ['point of sale', 'register', 'checkout'] },
   { display: 'Tickets', path: '/tickets', aliases: ['repairs'] },
   { display: 'Customers', path: '/customers', aliases: ['clients'] },
@@ -61,8 +61,7 @@ const PAGE_JUMPS: PageJumpEntry[] = [
   { display: 'Leads', path: '/leads' },
   { display: 'Pipeline', path: '/pipeline' },
   { display: 'Calendar', path: '/calendar', aliases: ['appointments', 'schedule'] },
-  { display: 'Marketing', path: '/marketing' },
-  { display: 'Campaigns', path: '/campaigns' },
+  { display: 'Marketing Campaigns', path: '/marketing/campaigns', aliases: ['marketing', 'campaigns'] },
   { display: 'Automations', path: '/automations', aliases: ['workflows'] },
   { display: 'Reviews', path: '/reviews', aliases: ['nps', 'reputation'] },
   { display: 'Voice Calls', path: '/voice', aliases: ['phone', 'recordings'] },
@@ -71,11 +70,11 @@ const PAGE_JUMPS: PageJumpEntry[] = [
   { display: 'Loaners', path: '/loaners', aliases: ['loaner devices'] },
   { display: 'Subscriptions', path: '/subscriptions', aliases: ['memberships', 'recurring'] },
   { display: 'Gift Cards', path: '/gift-cards' },
-  { display: 'Referrals', path: '/referrals' },
-  { display: 'Team', path: '/team' },
+  { display: 'Referrals', path: '/marketing/referrals' },
+  { display: 'My Queue', path: '/team/my-queue', aliases: ['team', 'queue'] },
   { display: 'Performance Reviews', path: '/team/reviews', aliases: ['employee reviews'] },
   { display: 'Goals', path: '/team/goals' },
-  { display: 'Billing', path: '/billing', aliases: ['subscription', 'plan'] },
+  { display: 'Billing', path: '/settings/billing', aliases: ['subscription', 'plan'] },
   { display: 'Reports', path: '/reports', aliases: ['analytics'] },
   { display: 'Settings', path: '/settings', aliases: ['preferences', 'configuration'] },
 ];
@@ -364,7 +363,7 @@ export function CommandPalette() {
     const config = typeConfig[type];
     return {
       element: (
-        <div key={type}>
+        <div key={type} role="group" aria-label={config.label}>
           <div className="flex items-center gap-2 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-surface-400 dark:text-surface-500">
             <span className={cn('flex h-5 w-5 items-center justify-center rounded', config.color)}>
               {config.icon}
@@ -378,6 +377,9 @@ export function CommandPalette() {
             return (
               <button
                 key={`${type}-${item.pagePath ?? item.id}`}
+                id={`command-palette-option-${globalIdx}`}
+                role="option"
+                aria-selected={isSelected}
                 data-selected={isSelected}
                 onClick={() => navigateTo(item)}
                 onMouseEnter={() => setSelectedIndex(globalIdx)}
@@ -431,6 +433,7 @@ export function CommandPalette() {
   const hasQuery = query.trim().length >= MIN_QUERY_LENGTH;
   const showNoResults = hasQuery && !loading && results && !hasResults;
   const showRecent = query.trim().length === 0 && recentSearches.length > 0;
+  const activeOptionId = hasResults ? `command-palette-option-${selectedIndex}` : undefined;
 
   return (
     <>
@@ -465,6 +468,9 @@ export function CommandPalette() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
+              aria-autocomplete="list"
+              aria-controls="command-palette-results"
+              aria-activedescendant={activeOptionId}
               placeholder="Search pages, tickets, customers, inventory, invoices..."
               className="h-14 flex-1 bg-transparent text-base text-surface-800 outline-none placeholder:text-surface-400 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
@@ -472,7 +478,7 @@ export function CommandPalette() {
               <button
                 aria-label="Clear search"
                 onClick={() => { setQuery(''); inputRef.current?.focus(); }}
-                className="flex h-6 w-6 items-center justify-center rounded-md text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-300"
+                className="btn-icon btn-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -484,7 +490,10 @@ export function CommandPalette() {
 
           {/* Results area */}
           <div
+            id="command-palette-results"
             ref={listRef}
+            role={hasResults ? 'listbox' : undefined}
+            aria-label={hasResults ? 'Search results' : undefined}
             className="max-h-[60vh] overflow-y-auto overscroll-contain"
           >
             {/* Recent searches */}

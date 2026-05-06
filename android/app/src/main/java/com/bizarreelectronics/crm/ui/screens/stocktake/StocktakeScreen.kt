@@ -14,7 +14,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
  * Nav arguments:
  *   [onBack]     — pops back to inventory list when in DRAFT or COMMITTED.
  *   [onScanClick] — navigates to BarcodeScanScreen; result arrives via
- *                  savedStateHandle key "stocktake_barcode".
+ *                  savedStateHandle key "scanned_barcode".
  */
 @Composable
 fun StocktakeScreen(

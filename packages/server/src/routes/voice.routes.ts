@@ -17,6 +17,7 @@ import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { createLogger } from '../utils/logger.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { initiateThreeCxCall, isThreeCxConfigured } from '../services/threeCx.js';
 
 const logger = createLogger('voice.routes');
 
@@ -67,6 +68,28 @@ const router = Router();
 
 type AnyRow = Record<string, any>;
 
+const CALL_LOG_PUBLIC_SELECT = `
+  cl.id,
+  cl.direction,
+  cl.from_number,
+  cl.to_number,
+  cl.conv_phone,
+  cl.provider,
+  cl.provider_call_id,
+  cl.status,
+  cl.duration_secs,
+  cl.recording_url,
+  cl.transcription,
+  cl.transcription_status,
+  cl.call_mode,
+  cl.user_id,
+  cl.entity_type,
+  cl.entity_id,
+  cl.created_at,
+  cl.updated_at,
+  u.first_name || ' ' || u.last_name AS user_name
+`;
+
 const recordingsDir = path.join(config.uploadsPath, 'recordings');
 if (!fs.existsSync(recordingsDir)) fs.mkdirSync(recordingsDir, { recursive: true });
 
@@ -102,11 +125,6 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
     return;
   }
 
-  const provider = getSmsProvider();
-  if (!provider.initiateCall) {
-    throw new AppError('Voice calls not supported by current provider', 400);
-  }
-
   const voiceCfg = getVoiceConfig(db);
   const storePhone = (await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_phone'"))?.value || '';
   const autoRecord = voiceCfg.voice_auto_record === '1' || voiceCfg.voice_auto_record === 'true';
@@ -133,13 +151,25 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
 
   const convPhone = to.replace(/\D/g, '').replace(/^1/, '');
 
-  const result = await provider.initiateCall(to, storePhone, {
-    mode: mode || 'bridge',
-    pushTo,
-    record: autoRecord,
-    transcribe: autoTranscribe,
-    callbackBaseUrl,
-  });
+  const useThreeCx = isThreeCxConfigured(db);
+  const provider = useThreeCx ? null : getSmsProvider();
+  if (!useThreeCx && !provider?.initiateCall) {
+    throw new AppError('Voice calls not supported by current provider', 400);
+  }
+
+  const result = useThreeCx
+    ? await initiateThreeCxCall(db, to, {
+        crm_user_id: req.user!.id,
+        crm_entity_type: entity_type || '',
+        crm_entity_id: entity_id || '',
+      })
+    : await provider!.initiateCall!(to, storePhone, {
+        mode: mode || 'bridge',
+        pushTo,
+        record: autoRecord,
+        transcribe: autoTranscribe,
+        callbackBaseUrl,
+      });
 
   // Log to call_logs
   const logResult = await adb.run(`
@@ -148,7 +178,7 @@ router.post('/call', asyncHandler(async (req: Request, res: Response) => {
     VALUES ('outbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     storePhone, to, convPhone,
-    provider.name, result.callId || null,
+    result.providerName, result.callId || null,
     result.success ? 'initiated' : 'failed',
     mode || 'bridge',
     req.user!.id,
@@ -205,7 +235,7 @@ router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
   const offset = (page - 1) * pageSize;
 
   const calls = await adb.all<AnyRow>(`
-    SELECT cl.*, u.first_name || ' ' || u.last_name AS user_name
+    SELECT ${CALL_LOG_PUBLIC_SELECT}
     FROM call_logs cl
     LEFT JOIN users u ON u.id = cl.user_id
     ${where}
@@ -228,7 +258,7 @@ router.get('/calls', asyncHandler(async (req: Request, res: Response) => {
 router.get('/calls/:id', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const call = await adb.get<AnyRow>(`
-    SELECT cl.*, u.first_name || ' ' || u.last_name AS user_name
+    SELECT ${CALL_LOG_PUBLIC_SELECT}
     FROM call_logs cl
     LEFT JOIN users u ON u.id = cl.user_id
     WHERE cl.id = ?

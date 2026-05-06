@@ -117,9 +117,9 @@ export function MiscTab() {
         <button
           onClick={handleAdd}
           disabled={!name.trim() || !price}
-          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-md w-full bg-primary-600 !font-semibold text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
         >
-          <Plus className="mr-1.5 inline h-4 w-4" />
+          <Plus className="h-4 w-4" />
           Add to Cart
         </button>
       </div>

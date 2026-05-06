@@ -17,7 +17,7 @@ const THEME_OPTIONS: Array<{ id: ThemeOption; label: string; description: string
  * wizard reflects the choice. This gives the user a visceral preview of what
  * their dashboard will feel like.
  */
-export function StepWelcome({ pending, onUpdate, onNext }: StepProps) {
+export function StepWelcome({ pending, onUpdate, onNext, onSkip }: StepProps) {
   const { theme, setTheme } = useUiStore();
   const storeName = pending.store_name || '';
 
@@ -97,12 +97,19 @@ export function StepWelcome({ pending, onUpdate, onNext }: StepProps) {
           </p>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onSkip}
+            className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+          >
+            Skip this step
+          </button>
           <button
             type="button"
             onClick={onNext}
             disabled={!canAdvance}
-            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Next — Store info
             <ArrowRight className="h-4 w-4" />

@@ -18,6 +18,7 @@ import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 import { hashEstimateApprovalToken } from '../services/estimateApprovalTokenHashBackfill.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 /**
  * S20-E1: Constant-time comparison for approval tokens. Previously we used
@@ -42,6 +43,14 @@ function constantTimeEquals(token: string, storedHash: string): boolean {
 const router = Router();
 const logger = createLogger('estimates');
 
+type AnyRow = Record<string, any>;
+interface TableColumn {
+  name: string;
+  notnull: number;
+  pk: number;
+  dflt_value: unknown;
+}
+
 // SEC-H10: Rate limit constants for estimate approval (10 attempts per minute per IP)
 const APPROVAL_RATE_LIMIT = 10;
 const APPROVAL_RATE_WINDOW = 60_000; // 1 minute
@@ -56,12 +65,188 @@ const APPROVAL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 // V12: Max line items per estimate (prevents 100k-item DoS payload)
 const MAX_ESTIMATE_LINE_ITEMS = 500;
 
+function optionalTaxClassId(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  return validateId(value, 'line_items.tax_class_id');
+}
+
 // Helpers to format timestamps for SQLite TEXT columns ("YYYY-MM-DD HH:MM:SS")
 function sqlNow(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
 }
 function sqlTimestamp(date: Date): string {
   return date.toISOString().replace('T', ' ').substring(0, 19);
+}
+
+async function tableColumns(adb: AsyncDb, tableName: string): Promise<Map<string, TableColumn>> {
+  const rows = await adb.all<TableColumn>(`PRAGMA table_info(${tableName})`);
+  return new Map(rows.map((row) => [row.name, row]));
+}
+
+function hasColumns(columns: Map<string, TableColumn>, names: string[]): boolean {
+  return names.every((name) => columns.has(name));
+}
+
+async function updateSharedParentRows(
+  adb: AsyncDb,
+  tableName: 'attachments' | 'photos',
+  estimateId: number,
+  ticketId: number,
+): Promise<number> {
+  const columns = await tableColumns(adb, tableName);
+  if (!hasColumns(columns, ['estimate_id', 'ticket_id'])) return 0;
+
+  const assignments = ['ticket_id = ?'];
+  if (columns.has('updated_at')) assignments.push("updated_at = datetime('now')");
+  const result = await adb.run(
+    `UPDATE ${tableName}
+        SET ${assignments.join(', ')}
+      WHERE estimate_id = ?
+        AND (ticket_id IS NULL OR ticket_id = 0)`,
+    ticketId,
+    estimateId,
+  );
+  return result.changes;
+}
+
+async function copyEstimateAttachmentsToTicket(
+  adb: AsyncDb,
+  estimateId: number,
+  ticketId: number,
+): Promise<number> {
+  const sourceColumns = await tableColumns(adb, 'estimate_attachments');
+  const destColumns = await tableColumns(adb, 'ticket_attachments');
+  if (!sourceColumns.has('estimate_id') || !destColumns.has('ticket_id')) return 0;
+
+  const copyColumns = [...sourceColumns.keys()].filter((name) => {
+    const source = sourceColumns.get(name);
+    return name !== 'id'
+      && name !== 'estimate_id'
+      && name !== 'ticket_id'
+      && source?.pk !== 1
+      && destColumns.has(name);
+  });
+  const insertColumns = ['ticket_id', ...copyColumns];
+  const selectColumns = ['?', ...copyColumns.map((name) => `ea.${name}`)];
+
+  const result = await adb.run(
+    `INSERT INTO ticket_attachments (${insertColumns.join(', ')})
+     SELECT ${selectColumns.join(', ')}
+       FROM estimate_attachments ea
+      WHERE ea.estimate_id = ?`,
+    ticketId,
+    estimateId,
+  );
+  return result.changes;
+}
+
+async function repointEstimateTicketPhotos(
+  adb: AsyncDb,
+  estimateId: number,
+  ticketId: number,
+  firstDeviceId: number | null,
+): Promise<number> {
+  const columns = await tableColumns(adb, 'ticket_photos');
+  if (!columns.has('estimate_id')) return 0;
+
+  const assignments: string[] = [];
+  const params: unknown[] = [];
+  if (columns.has('ticket_id')) {
+    assignments.push('ticket_id = ?');
+    params.push(ticketId);
+  }
+  if (columns.has('ticket_device_id') && firstDeviceId != null) {
+    assignments.push('ticket_device_id = COALESCE(NULLIF(ticket_device_id, 0), ?)');
+    params.push(firstDeviceId);
+  }
+  if (columns.has('updated_at')) assignments.push("updated_at = datetime('now')");
+  if (assignments.length === 0) return 0;
+
+  const guards = ['estimate_id = ?'];
+  params.push(estimateId);
+  if (columns.has('ticket_id')) {
+    guards.push('(ticket_id IS NULL OR ticket_id = 0)');
+  } else if (columns.has('ticket_device_id') && firstDeviceId != null) {
+    guards.push('(ticket_device_id IS NULL OR ticket_device_id = 0)');
+  }
+
+  const result = await adb.run(
+    `UPDATE ticket_photos
+        SET ${assignments.join(', ')}
+      WHERE ${guards.join(' AND ')}`,
+    ...params,
+  );
+  return result.changes;
+}
+
+async function copyEstimatePhotosToTicket(
+  adb: AsyncDb,
+  estimateId: number,
+  ticketId: number,
+  firstDeviceId: number | null,
+): Promise<number> {
+  const sourceColumns = await tableColumns(adb, 'estimate_photos');
+  const destColumns = await tableColumns(adb, 'ticket_photos');
+  if (!sourceColumns.has('estimate_id') || !sourceColumns.has('file_path') || !destColumns.has('file_path')) return 0;
+  if (destColumns.get('ticket_device_id')?.notnull === 1 && firstDeviceId == null) return 0;
+
+  const insertColumns: string[] = [];
+  const selectColumns: string[] = [];
+
+  if (destColumns.has('ticket_id')) {
+    insertColumns.push('ticket_id');
+    selectColumns.push('?');
+  }
+  if (destColumns.has('ticket_device_id') && firstDeviceId != null) {
+    insertColumns.push('ticket_device_id');
+    selectColumns.push('?');
+  }
+  if (destColumns.has('type')) {
+    insertColumns.push('type');
+    selectColumns.push(sourceColumns.has('type') ? "CASE WHEN ep.type IN ('pre', 'post') THEN ep.type ELSE 'pre' END" : "'pre'");
+  }
+  insertColumns.push('file_path');
+  selectColumns.push('ep.file_path');
+  if (destColumns.has('caption')) {
+    insertColumns.push('caption');
+    selectColumns.push(sourceColumns.has('caption') ? 'ep.caption' : 'NULL');
+  }
+  if (destColumns.has('created_at')) {
+    insertColumns.push('created_at');
+    selectColumns.push(sourceColumns.has('created_at') ? "COALESCE(ep.created_at, datetime('now'))" : "datetime('now')");
+  }
+  if (destColumns.has('updated_at')) {
+    insertColumns.push('updated_at');
+    selectColumns.push(sourceColumns.has('updated_at') ? "COALESCE(ep.updated_at, datetime('now'))" : "datetime('now')");
+  }
+
+  const params: unknown[] = [];
+  if (destColumns.has('ticket_id')) params.push(ticketId);
+  if (destColumns.has('ticket_device_id') && firstDeviceId != null) params.push(firstDeviceId);
+  params.push(estimateId);
+
+  const result = await adb.run(
+    `INSERT INTO ticket_photos (${insertColumns.join(', ')})
+     SELECT ${selectColumns.join(', ')}
+       FROM estimate_photos ep
+      WHERE ep.estimate_id = ?`,
+    ...params,
+  );
+  return result.changes;
+}
+
+async function preserveEstimateFilesOnTicket(adb: AsyncDb, estimateId: number, ticketId: number): Promise<void> {
+  const firstDevice = await adb.get<{ id: number }>(
+    'SELECT id FROM ticket_devices WHERE ticket_id = ? ORDER BY id ASC LIMIT 1',
+    ticketId,
+  );
+  const firstDeviceId = firstDevice?.id ?? null;
+
+  await updateSharedParentRows(adb, 'attachments', estimateId, ticketId);
+  await copyEstimateAttachmentsToTicket(adb, estimateId, ticketId);
+  await updateSharedParentRows(adb, 'photos', estimateId, ticketId);
+  await repointEstimateTicketPhotos(adb, estimateId, ticketId, firstDeviceId);
+  await copyEstimatePhotosToTicket(adb, estimateId, ticketId, firstDeviceId);
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +371,7 @@ router.post(
         quantity: qty,
         unit_price: price,
         tax_amount: tax,
+        tax_class_id: optionalTaxClassId(item.tax_class_id),
         line_subtotal: qty * price,
         line_total: qty * price + tax,
       };
@@ -286,8 +472,8 @@ router.post(
 
     for (const item of normalizedItems) {
       await adb.run(`
-        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
         estimateId,
         item.inventory_item_id,
@@ -295,6 +481,7 @@ router.post(
         item.quantity,
         item.unit_price,
         item.tax_amount,
+        item.tax_class_id,
         item.line_total,
       );
     }
@@ -419,18 +606,21 @@ router.post(
         const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', estId);
         for (const item of lineItems) {
           await adb.run(`
-            INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, tax_class_id, total, additional_notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `,
             ticketId,
             item.description || 'From Estimate',
             item.inventory_item_id,
             item.unit_price * item.quantity,
             item.tax_amount,
+            item.tax_class_id ?? null,
             item.total,
             null,
           );
         }
+
+        await preserveEstimateFilesOnTicket(adb, estId, ticketId);
 
         // Carry estimate notes over as the first ticket note so they aren't lost.
         if (estimate.notes) {
@@ -620,6 +810,7 @@ router.put(
           quantity: qty,
           unit_price: price,
           tax_amount: tax,
+          tax_class_id: optionalTaxClassId(item.tax_class_id),
           line_subtotal: qty * price,
           line_total: qty * price + tax,
         };
@@ -636,9 +827,9 @@ router.put(
       await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
       for (const item of normalizedItems) {
         await adb.run(`
-          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.line_total);
+          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.tax_class_id, item.line_total);
       }
 
       const total = subtotal - effectiveDiscount + totalTax;
@@ -840,18 +1031,21 @@ router.post(
       const lineItems = await adb.all<any>('SELECT * FROM estimate_line_items WHERE estimate_id = ?', id);
       for (const item of lineItems) {
         await adb.run(`
-          INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, total, additional_notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO ticket_devices (ticket_id, device_name, service_id, price, tax_amount, tax_class_id, total, additional_notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
           ticketId,
           item.description || 'From Estimate',
           item.inventory_item_id,
           item.unit_price * item.quantity,
           item.tax_amount,
+          item.tax_class_id ?? null,
           item.total,
           null,
         );
       }
+
+      await preserveEstimateFilesOnTicket(adb, id, ticketId);
 
       // Carry estimate notes over as the first ticket note so they aren't lost.
       if (estimate.notes) {

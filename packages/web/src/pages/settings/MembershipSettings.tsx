@@ -108,14 +108,14 @@ function TierCard({ tier, onEdit, onDelete }: {
             <button
               aria-label="Edit"
               onClick={onEdit}
-              className="rounded-lg p-1.5 text-surface-400 hover:text-surface-700 hover:bg-white/60 dark:hover:text-surface-200 dark:hover:bg-surface-800/60 transition-colors"
+              className="btn-icon btn-xs text-surface-400 hover:text-surface-700 hover:bg-white/60 dark:hover:text-surface-200 dark:hover:bg-surface-800/60"
             >
               <Pencil className="h-4 w-4" />
             </button>
             <button
               aria-label="Delete"
               onClick={onDelete}
-              className="rounded-lg p-1.5 text-surface-400 hover:text-red-600 hover:bg-white/60 dark:hover:text-red-400 dark:hover:bg-surface-800/60 transition-colors"
+              className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-white/60 dark:hover:text-red-400 dark:hover:bg-surface-800/60"
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -190,7 +190,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">
           {initial.name ? 'Edit Tier' : 'New Membership Tier'}
         </h3>
-        <button aria-label="Close" type="button" onClick={onCancel} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+        <button aria-label="Close" type="button" onClick={onCancel} className="btn-icon btn-xs text-surface-400">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -291,7 +291,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               type="button"
               onClick={addBenefit}
               disabled={!newBenefit.trim()}
-              className="px-3 py-2 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+              className="btn btn-primary btn-sm"
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -306,7 +306,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
                     aria-label="Remove benefit"
                     type="button"
                     onClick={() => removeBenefit(i)}
-                    className="text-surface-400 hover:text-red-500 transition-colors"
+                    className="btn-icon btn-xs text-surface-400 hover:text-red-500"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -322,14 +322,14 @@ function TierForm({ initial, onSave, onCancel, saving }: {
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+          className="btn btn-secondary btn-sm border border-surface-200 dark:border-surface-700"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+          className="btn btn-primary btn-sm"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {initial.name ? 'Update Tier' : 'Create Tier'}
@@ -482,7 +482,7 @@ export function MembershipSettings() {
           {!showForm && (
             <button
               onClick={() => { setEditingTier(null); setShowForm(true); }}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
+              className="btn btn-primary btn-md"
             >
               <Plus className="h-4 w-4" />
               Add Tier

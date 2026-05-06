@@ -23,7 +23,7 @@
  * that need admin — currently only service restart — show a UAC consent
  * prompt at click-time instead of at launch-time.
  */
-import { app, BrowserWindow, Menu, crashReporter } from 'electron';
+import { app, BrowserWindow, Menu, crashReporter, powerMonitor } from 'electron';
 import { spawn } from 'node:child_process';
 import fs from 'fs';
 import path from 'path';
@@ -32,6 +32,8 @@ import { registerManagementIpc } from './ipc/management-api.js';
 import { registerServiceControlIpc } from './ipc/service-control.js';
 import { registerSystemInfoIpc } from './ipc/system-info.js';
 import { setSuperAdminToken } from './services/api-client.js';
+import { recordDashboardCrash } from './services/crash-store.js';
+import { logger } from './services/main-logger.js';
 
 // ── Console redirect (packaged app only) ────────────────────────────
 // When launched from setup.bat via `start ""`, the EXE inherits the CMD's
@@ -132,8 +134,8 @@ if (app.isPackaged) {
 // ── Crash safety: log but don't crash the dashboard ─────────────────
 
 process.on('uncaughtException', (error) => {
-  console.error('[Dashboard] Uncaught exception:', error.message);
-  console.error(error.stack);
+  const crash = recordDashboardCrash('uncaughtException', error);
+  logger.error('[Dashboard] Uncaught exception', { error, crashId: crash?.id });
 });
 
 process.on('unhandledRejection', (reason) => {
@@ -141,7 +143,8 @@ process.on('unhandledRejection', (reason) => {
   // Authorization headers, JWT payloads, or cleartext passwords from
   // failed Zod parses (DASH-ELEC-110).
   const msg = reason instanceof Error ? reason.message : String(reason);
-  console.error('[Dashboard] Unhandled rejection:', msg);
+  const crash = recordDashboardCrash('unhandledRejection', reason);
+  logger.error('[Dashboard] Unhandled rejection', { reason: msg, crashId: crash?.id });
 });
 
 // ── Elevated spawn (UAC on-demand) ──────────────────────────────────
@@ -205,7 +208,7 @@ export function spawnElevated(
   const commandBasename = path.basename(command).toLowerCase();
   if (!ELEVATED_COMMAND_ALLOWLIST.has(commandBasename)) {
     const msg = `[Dashboard] spawnElevated rejected: '${command}' is not in the elevated-command allowlist.`;
-    console.error(msg);
+    logger.error('[Dashboard] spawnElevated rejected command outside allowlist', { command });
     return { started: false, message: msg };
   }
 
@@ -239,7 +242,7 @@ export function spawnElevated(
     );
     child.unref();
     child.on('error', (err) => {
-      console.error('[Dashboard] spawnElevated failed to launch:', err.message);
+      logger.error('[Dashboard] spawnElevated failed to launch', { error: err });
     });
     return {
       started: true,
@@ -247,7 +250,7 @@ export function spawnElevated(
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[Dashboard] spawnElevated threw:', message);
+    logger.error('[Dashboard] spawnElevated threw', { error: message });
     return { started: false, message };
   }
 }
@@ -258,28 +261,143 @@ registerManagementIpc();
 registerServiceControlIpc();
 registerSystemInfoIpc();
 
-// ── MGT-017: Custom-protocol handler stub ────────────────────────────
-// Infrastructure only — no renderer code consumes this URL scheme yet.
+const POWER_RESUME_EVENT = 'system:power-resume';
+
+function notifyRendererPowerResume(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(POWER_RESUME_EVENT);
+    }
+  }
+}
+
+// ── MGT-017 / DASH-ELEC-190: Custom-protocol deep links ───────────────
 // Registers the `bizarrecrm-dashboard://` deep-link scheme so the OS
-// can route protocol links to this app. Actual link handling is done in:
+// can route protocol links to this app. Link handling is done in:
 //   • macOS: `open-url` event below
 //   • Windows: `second-instance` argv scanner (in MGT-016 handler below)
 //
-// Security: only URLs whose scheme is exactly 'bizarrecrm-dashboard:'
-// are accepted. Any other scheme is logged and ignored.
+// Security: only URLs whose scheme is exactly 'bizarrecrm-dashboard:' are
+// accepted, and only a hard-coded set of renderer routes may be opened.
 const ALLOWED_PROTOCOL_SCHEME = 'bizarrecrm-dashboard:';
+const ACTIVITY_PROTOCOL_TABS = new Set(['alerts', 'audit', 'sessions', 'tenant-auth']);
+const DIAGNOSTICS_PROTOCOL_TABS = new Set(['notifications', 'webhooks', 'automations']);
+const PROTOCOL_ROUTE_ALIASES = new Map<string, string>([
+  ['', '/'],
+  ['home', '/'],
+  ['overview', '/'],
+  ['dashboard', '/'],
+  ['tenants', '/tenants'],
+  ['server', '/server'],
+  ['backups', '/backups'],
+  ['backup', '/backups'],
+  ['crashes', '/crashes'],
+  ['crash-monitor', '/crashes'],
+  ['updates', '/updates'],
+  ['activity', '/activity'],
+  ['alerts', '/activity?tab=alerts'],
+  ['audit', '/activity?tab=audit'],
+  ['sessions', '/activity?tab=sessions'],
+  ['tenant-auth', '/activity?tab=tenant-auth'],
+  ['tools', '/tools'],
+  ['admin-tools', '/tools'],
+  ['logs', '/logs'],
+  ['diagnostics', '/diagnostics'],
+  ['notifications', '/diagnostics?tab=notifications'],
+  ['webhooks', '/diagnostics?tab=webhooks'],
+  ['automation-runs', '/diagnostics?tab=automations'],
+  ['automations', '/diagnostics?tab=automations'],
+  ['comms', '/diagnostics?tab=notifications'],
+  ['settings', '/settings'],
+]);
+
+let pendingProtocolRoute: string | null = null;
+
+function normalizeProtocolTarget(parsed: URL): string {
+  const routeParam = parsed.searchParams.get('route')?.trim();
+  if (routeParam) {
+    return routeParam.replace(/^\/+|\/+$/g, '').toLowerCase();
+  }
+
+  const host = parsed.hostname === 'open' ? '' : parsed.hostname;
+  const pathPart = decodeURIComponent(parsed.pathname).replace(/^\/+|\/+$/g, '');
+  return [host, pathPart].filter(Boolean).join('/').toLowerCase();
+}
+
+function appendAllowedProtocolTab(route: string, parsed: URL): string {
+  const tab = parsed.searchParams.get('tab')?.trim().toLowerCase();
+  if (!tab || route.includes('?')) return route;
+  if (route === '/activity' && ACTIVITY_PROTOCOL_TABS.has(tab)) {
+    return `${route}?tab=${encodeURIComponent(tab)}`;
+  }
+  if (route === '/diagnostics' && DIAGNOSTICS_PROTOCOL_TABS.has(tab)) {
+    return `${route}?tab=${encodeURIComponent(tab)}`;
+  }
+  return route;
+}
+
+function routeFromProtocolUrl(parsed: URL): string | null {
+  const target = normalizeProtocolTarget(parsed);
+  const route = PROTOCOL_ROUTE_ALIASES.get(target);
+  if (!route) return null;
+  return appendAllowedProtocolTab(route, parsed);
+}
+
+function focusWindow(win: BrowserWindow): void {
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function navigateWindowToRoute(win: BrowserWindow, route: string): void {
+  const hash = `#${route}`;
+  const script = `window.location.hash = ${JSON.stringify(hash)};`;
+  const applyRoute = () => {
+    void win.webContents.executeJavaScript(script).catch((err: unknown) => {
+      logger.warn('[Dashboard] MGT-017: failed to apply protocol route', { route, error: err });
+    });
+  };
+
+  if (win.webContents.isLoading()) {
+    win.webContents.once('did-finish-load', applyRoute);
+  } else {
+    applyRoute();
+  }
+}
+
+function navigateOrQueueProtocolRoute(route: string): void {
+  const win = getMainWindow();
+  if (!win) {
+    pendingProtocolRoute = route;
+    return;
+  }
+  focusWindow(win);
+  navigateWindowToRoute(win, route);
+}
+
+function flushPendingProtocolRoute(): void {
+  if (!pendingProtocolRoute) return;
+  const route = pendingProtocolRoute;
+  pendingProtocolRoute = null;
+  navigateOrQueueProtocolRoute(route);
+}
 
 function handleProtocolUrl(url: string): void {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== ALLOWED_PROTOCOL_SCHEME) {
-      console.warn('[Dashboard] MGT-017: rejected unknown protocol URL scheme:', parsed.protocol);
+      logger.warn('[Dashboard] MGT-017: rejected unknown protocol URL scheme', { protocol: parsed.protocol });
       return;
     }
-    // Placeholder — renderer integration is a future task.
-    console.log('[Dashboard] MGT-017: received protocol URL:', url);
+    const route = routeFromProtocolUrl(parsed);
+    if (!route) {
+      logger.warn('[Dashboard] MGT-017: rejected unsupported protocol target', { url });
+      return;
+    }
+    logger.info('[Dashboard] MGT-017: routing protocol URL', { route });
+    navigateOrQueueProtocolRoute(route);
   } catch {
-    console.warn('[Dashboard] MGT-017: malformed protocol URL received');
+    logger.warn('[Dashboard] MGT-017: malformed protocol URL received');
   }
 }
 
@@ -343,17 +461,28 @@ app.whenReady().then(() => {
   // SEC: Only log path/packaging details in development — avoids leaking the
   // local username and install layout to disk in packaged (production) builds.
   if (!app.isPackaged) {
-    console.log('[Dashboard] App path:', app.getAppPath());
-    console.log('[Dashboard] isPackaged:', app.isPackaged);
+    logger.info('[Dashboard] App path', { appPath: app.getAppPath() });
+    logger.info('[Dashboard] isPackaged', { isPackaged: app.isPackaged });
   }
   // Log the crash-dump directory so the operator can locate minidumps if
   // needed for manual bug reports.
-  console.log('[Dashboard] Crash dump path:', app.getPath('crashDumps'));
+  logger.info('[Dashboard] Crash dump path', { path: app.getPath('crashDumps') });
   createWindow();
+  powerMonitor.on('resume', () => {
+    logger.info('[Dashboard] System resumed from sleep; refreshing renderer health state');
+    notifyRendererPowerResume();
+  });
+  const launchProtocolUrl = process.argv.find((arg) => arg.startsWith('bizarrecrm-dashboard:'));
+  if (launchProtocolUrl) {
+    handleProtocolUrl(launchProtocolUrl);
+  } else {
+    flushPendingProtocolRoute();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+      flushPendingProtocolRoute();
     }
   });
 });

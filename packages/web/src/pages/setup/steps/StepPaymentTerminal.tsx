@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { settingsApi } from '@/api/endpoints';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -28,10 +29,9 @@ import type { StepProps } from '../wizardTypes';
  *      above are non-empty (you can't pair without auth). Persisted to
  *      `blockchyp_terminal_name`, `blockchyp_terminal_ip`.
  *
- * "Test connection" is a stub — the real BlockChyp heartbeat call is wired up
- * by the BlockChyp service in a later batch. For now it shows a toast and
- * flips a placeholder status pill (idle → checking → unverified). This keeps
- * the UI honest: we never claim a connection succeeded when no call was made.
+ * "Test connection" calls the backend hardware test endpoint with the
+ * unsaved credentials currently on-screen. The backend runs a BlockChyp ping
+ * and a LAN reachability check for the terminal IP.
  *
  * Skip path: user clicks Skip → onNext() advances without enrolling. The POS
  * will show a "card payments disabled" banner until creds are saved later
@@ -109,6 +109,11 @@ export function StepPaymentTerminal({
   const credsComplete =
     apiKey.trim().length > 0 && bearer.trim().length > 0 && signing.trim().length > 0;
   const ipValid = terminalIp.trim().length === 0 || IPV4_RE.test(terminalIp.trim());
+  const canContinue =
+    credsComplete &&
+    terminalName.trim().length > 0 &&
+    terminalIp.trim().length > 0 &&
+    ipValid;
 
   // Push every change up so the wizard shell's bulk PUT /settings/config
   // captures partial state even if the user backs out and the shell flushes
@@ -150,7 +155,7 @@ export function StepPaymentTerminal({
     persist({ ip: v });
   };
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
     if (!credsComplete) {
       toast.error('Enter BlockChyp credentials first.');
       return;
@@ -160,15 +165,25 @@ export function StepPaymentTerminal({
       return;
     }
     setTestStatus('checking');
-    // Stub — the real BlockChyp heartbeat is wired up by the BlockChyp
-    // service in a later batch. We deliberately do NOT mark success here;
-    // we mark "unverified" so nobody mistakes this for a real check.
-    window.setTimeout(() => {
-      setTestStatus('unverified');
-      toast('Heartbeat will be wired with BlockChyp service once creds verified.', {
-        icon: 'i',
+    try {
+      await settingsApi.testBlockChypHardware({
+        api_key: apiKey,
+        bearer_token: bearer,
+        signing_key: signing,
+        terminal_name: terminalName || 'Front Counter',
+        terminal_ip: terminalIp,
       });
-    }, 400);
+      setTestStatus('ok');
+      toast.success('BlockChyp connection verified');
+    } catch (err: unknown) {
+      setTestStatus('fail');
+      const message =
+        (err as { response?: { data?: { message?: string; data?: { message?: string } } }; message?: string })?.response?.data?.data?.message ||
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'BlockChyp connection test failed.';
+      toast.error(message);
+    }
   };
 
   const handleSkip = () => {
@@ -339,7 +354,7 @@ export function StepPaymentTerminal({
                   terminalIp.trim().length === 0 ||
                   !ipValid
                 }
-                className="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+                className="btn btn-md inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
               >
                 {testStatus === 'checking' ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -354,7 +369,7 @@ export function StepPaymentTerminal({
               </button>
               {testStatus === 'unverified' ? (
                 <span className="text-xs font-medium text-surface-500 dark:text-surface-400">
-                  Stub &mdash; real heartbeat lands with BlockChyp service.
+                  Not verified
                 </span>
               ) : testStatus === 'ok' ? (
                 <span className="text-xs font-medium text-green-700 dark:text-green-400">
@@ -374,7 +389,7 @@ export function StepPaymentTerminal({
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -383,16 +398,16 @@ export function StepPaymentTerminal({
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+              className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
               title="Set up later from Settings &rarr; Payments."
             >
-              Skip
+              Skip this step
             </button>
             <button
               type="button"
               onClick={onNext}
-              disabled={!ipValid}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!canContinue}
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

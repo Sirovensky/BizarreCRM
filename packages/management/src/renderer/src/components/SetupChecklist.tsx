@@ -22,13 +22,19 @@ const ITEM_COLOR: Record<'pass' | 'fail' | 'warn', string> = {
   fail: 'text-red-400',
   warn: 'text-amber-400',
 };
+const TIER_COLOR: Record<'required' | 'recommended', string> = {
+  required: 'border-red-900/50 bg-red-950/30 text-red-300',
+  recommended: 'border-surface-700 bg-surface-800/60 text-surface-300',
+};
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
+type CheckTier = 'required' | 'recommended';
 
 interface CheckItem {
   id: string;
   label: string;
   status: CheckStatus;
+  tier: CheckTier;
   detail: string;
   /** Optional dashboard link to take action. */
   to?: string;
@@ -89,22 +95,23 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   // not loaded yet still happens AFTER every hook has run (React's rules
   // of hooks enforce "same number & order of hooks every render").
   const checks: CheckItem[] = useMemo(() => {
-    if (!envFields) return [];
+    const envLoaded = !!envFields;
     const envValue = (key: string): string =>
-      envFields.find((f) => f.key === key)?.value ?? '';
+      envFields?.find((f) => f.key === key)?.value ?? '';
     const envHasSecret = (key: string): boolean =>
-      envFields.find((f) => f.key === key)?.hasValue ?? false;
+      envFields?.find((f) => f.key === key)?.hasValue ?? false;
 
     const out: CheckItem[] = [];
 
   // Captcha — only required when multi-tenant prod with require=true.
   const captchaRequired = envValue('SIGNUP_CAPTCHA_REQUIRED') !== 'false';
-  if (isMultiTenant) {
+  if (envLoaded && isMultiTenant) {
     if (captchaRequired) {
       out.push({
         id: 'hcaptcha',
         label: 'hCaptcha secret',
         status: envHasSecret('HCAPTCHA_SECRET') ? 'pass' : 'fail',
+        tier: 'required',
         detail: envHasSecret('HCAPTCHA_SECRET')
           ? 'HCAPTCHA_SECRET is set; signup endpoint protected.'
           : 'Multi-tenant prod requires HCAPTCHA_SECRET — server will refuse to boot. Either paste the secret or flip the toggle to skip captcha.',
@@ -115,6 +122,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         id: 'hcaptcha-bypass',
         label: 'Signup bot protection',
         status: 'warn',
+        tier: 'recommended',
         detail: 'SIGNUP_CAPTCHA_REQUIRED=false — relying on upstream Cloudflare/WAF. Confirm the edge filter is actually catching abusive signups.',
         to: '/settings',
       });
@@ -122,12 +130,13 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   }
 
   // Cloudflare — only meaningful in multi-tenant.
-  if (isMultiTenant) {
+  if (envLoaded && isMultiTenant) {
     const cfComplete = envHasSecret('CLOUDFLARE_API_TOKEN') && envValue('CLOUDFLARE_ZONE_ID') && envValue('SERVER_PUBLIC_IP');
     out.push({
       id: 'cloudflare',
       label: 'Cloudflare DNS auto-provisioning',
       status: cfComplete ? 'pass' : 'warn',
+      tier: 'recommended',
       detail: cfComplete
         ? 'Token + Zone + Public IP all set. New tenant subdomains will auto-create DNS records.'
         : 'Missing one of CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID / SERVER_PUBLIC_IP. New tenant signups will not get DNS records automatically.',
@@ -136,43 +145,56 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
   }
 
   // Stripe — billing. Optional but warn if partial (a known foot-gun).
-  const stripeKeys = [envHasSecret('STRIPE_SECRET_KEY'), envHasSecret('STRIPE_WEBHOOK_SECRET'), !!envValue('STRIPE_PRO_PRICE_ID')];
-  const stripeFilledCount = stripeKeys.filter(Boolean).length;
-  if (stripeFilledCount === 3) {
-    out.push({
-      id: 'stripe',
-      label: 'Stripe billing',
-      status: 'pass',
-      detail: 'All three Stripe keys set. /billing routes operational.',
-      to: '/settings',
-    });
-  } else if (stripeFilledCount > 0) {
-    out.push({
-      id: 'stripe',
-      label: 'Stripe billing',
-      status: 'fail',
-      detail: `${stripeFilledCount} / 3 keys set. Partially-configured Stripe makes /billing fail at runtime — finish all three or clear them.`,
-      to: '/settings',
-    });
-  } else {
-    // Not configured at all is OK — billing simply disabled.
-    out.push({
-      id: 'stripe',
-      label: 'Stripe billing',
-      status: 'warn',
-      detail: 'Not configured — paid-plan upgrades disabled. Add the three Stripe keys when ready to charge.',
-      to: '/settings',
-    });
+  if (envLoaded) {
+    const stripeKeys = [envHasSecret('STRIPE_SECRET_KEY'), envHasSecret('STRIPE_WEBHOOK_SECRET'), !!envValue('STRIPE_PRO_PRICE_ID')];
+    const stripeFilledCount = stripeKeys.filter(Boolean).length;
+    if (stripeFilledCount === 3) {
+      out.push({
+        id: 'stripe',
+        label: 'Stripe billing',
+        status: 'pass',
+        tier: 'recommended',
+        detail: 'All three Stripe keys set. /billing routes operational.',
+        to: '/settings',
+      });
+    } else if (stripeFilledCount > 0) {
+      out.push({
+        id: 'stripe',
+        label: 'Stripe billing',
+        status: 'fail',
+        tier: 'recommended',
+        detail: `${stripeFilledCount} / 3 keys set. Partially-configured Stripe makes /billing fail at runtime — finish all three or clear them.`,
+        to: '/settings',
+      });
+    } else {
+      // Not configured at all is OK — billing simply disabled.
+      out.push({
+        id: 'stripe',
+        label: 'Stripe billing',
+        status: 'warn',
+        tier: 'recommended',
+        detail: 'Not configured — paid-plan upgrades disabled. Add the three Stripe keys when ready to charge.',
+        to: '/settings',
+      });
+    }
   }
 
   // Backups
   if (backupCount === null) {
-    // Loading — skip.
+    out.push({
+      id: 'backups',
+      label: 'Backups',
+      status: 'warn',
+      tier: 'required',
+      detail: 'Checking backup history. Keep at least one recent local backup and one off-machine copy.',
+      to: '/backups',
+    });
   } else if (backupCount === 0) {
     out.push({
       id: 'backups',
       label: 'Backups',
       status: 'fail',
+      tier: 'required',
       detail: 'No backups have ever completed. Run a manual backup before relying on this server.',
       to: '/backups',
     });
@@ -184,6 +206,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         id: 'backups',
         label: 'Backups',
         status: 'pass',
+        tier: 'required',
         detail: `${backupCount} backups; last completed ${humanAge(ageMs)} ago.`,
         to: '/backups',
       });
@@ -192,6 +215,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         id: 'backups',
         label: 'Backups',
         status: 'warn',
+        tier: 'required',
         detail: `Last backup was ${humanAge(ageMs)} ago — verify the schedule is firing.`,
         to: '/backups',
       });
@@ -200,6 +224,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         id: 'backups',
         label: 'Backups',
         status: 'fail',
+        tier: 'required',
         detail: `Last backup was ${humanAge(ageMs)} ago — well past the 72h threshold.`,
         to: '/backups',
       });
@@ -211,15 +236,18 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
     envValue('DISABLE_OUTBOUND_EMAIL') === 'true' ||
     envValue('DISABLE_OUTBOUND_SMS') === 'true' ||
     envValue('DISABLE_OUTBOUND_VOICE') === 'true';
-  if (anyKill) {
-    out.push({
-      id: 'killswitches',
-      label: 'Outbound kill switches',
-      status: 'warn',
-      detail: 'One or more outbound channels are DISABLED. Customers will not receive notifications until you turn them back on.',
-      to: '/settings',
-    });
-  }
+  out.push({
+    id: 'killswitches',
+    label: 'Outbound kill switches',
+    status: !envLoaded ? 'warn' : anyKill ? 'warn' : 'pass',
+    tier: 'required',
+    detail: !envLoaded
+      ? 'Checking outbound kill-switch state for email, SMS, and voice.'
+      : anyKill
+        ? 'One or more outbound channels are DISABLED. Customers will not receive notifications until you turn them back on.'
+        : 'Email, SMS, and voice kill switches are off.',
+    to: '/settings',
+  });
 
   // Security alerts unack count from the live stats poll (no extra fetch).
   const unack = stats?.unacknowledgedSecurityAlerts ?? 0;
@@ -228,6 +256,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
       id: 'unack-alerts',
       label: 'Security alerts',
       status: unack > 10 ? 'fail' : 'warn',
+      tier: 'required',
       detail: `${unack} unacknowledged ${unack === 1 ? 'alert' : 'alerts'}. Review and clear from the Activity → Security Alerts tab.`,
       to: '/activity',
       toHash: '?tab=alerts',
@@ -248,7 +277,7 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
     if (allGood && collapsedWhenComplete) setExpanded(false);
   }, [allGood, collapsedWhenComplete]);
 
-  if (!envFields || checks.length === 0) return null;
+  if (checks.length === 0) return null;
 
   // DASH-ELEC-250: sort by severity so blocking items surface at the top.
   const SEVERITY_ORDER: Record<string, number> = { fail: 0, warn: 1, pass: 2 };
@@ -287,6 +316,9 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
                 <Icon className={cn('w-4 h-4 mt-0.5 flex-shrink-0', colorCls)} />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-medium text-surface-200">{c.label}</div>
+                  <span className={cn('mt-1 inline-flex rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide', TIER_COLOR[c.tier])}>
+                    {c.tier === 'required' ? 'Required' : 'Recommended'}
+                  </span>
                   <div className="text-[11px] text-surface-400 mt-0.5 leading-relaxed">{c.detail}</div>
                 </div>
                 {c.docsUrl && (

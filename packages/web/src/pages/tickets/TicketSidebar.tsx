@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -77,6 +77,52 @@ function formatTicketId(orderId: string | number) {
   return `T-${str.padStart(4, '0')}`;
 }
 
+function isRequestCanceled(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const maybe = err as { code?: unknown; name?: unknown };
+  return maybe.code === 'ERR_CANCELED' || maybe.name === 'CanceledError' || maybe.name === 'AbortError';
+}
+
+interface TicketMutationScope {
+  controller: AbortController;
+  routeTicketId: number;
+}
+
+function useTicketMutationGuard(ticketId: number) {
+  const controllersRef = useRef<Set<AbortController>>(new Set());
+  const activeTicketIdRef = useRef(ticketId);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    activeTicketIdRef.current = ticketId;
+    return () => {
+      mountedRef.current = false;
+      controllersRef.current.forEach((controller) => controller.abort());
+      controllersRef.current.clear();
+    };
+  }, [ticketId]);
+
+  const beginMutation = useCallback((): TicketMutationScope => {
+    const controller = new AbortController();
+    controllersRef.current.add(controller);
+    return { controller, routeTicketId: ticketId };
+  }, [ticketId]);
+
+  const finishMutation = useCallback((controller: AbortController) => {
+    controllersRef.current.delete(controller);
+  }, []);
+
+  const shouldSuppressMutationFeedback = useCallback((scope: TicketMutationScope, err?: unknown) => (
+    scope.controller.signal.aborted ||
+    !mountedRef.current ||
+    scope.routeTicketId !== activeTicketIdRef.current ||
+    isRequestCanceled(err)
+  ), []);
+
+  return { beginMutation, finishMutation, shouldSuppressMutationFeedback };
+}
+
 const LINK_TYPE_LABELS: Record<string, string> = {
   related: 'Related',
   duplicate: 'Duplicate',
@@ -91,6 +137,7 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
   const [linkType, setLinkType] = useState<string>('related');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { beginMutation, finishMutation, shouldSuppressMutationFeedback } = useTicketMutationGuard(ticketId);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -113,24 +160,39 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
     .filter((t: any) => t.id !== ticketId && !links.some((l: any) => l.linked_ticket_id === t.id));
 
   const linkMut = useMutation({
-    mutationFn: (linkedTicketId: number) =>
-      ticketApi.link(ticketId, { linked_ticket_id: linkedTicketId, link_type: linkType }),
-    onSuccess: () => {
+    mutationFn: ({ routeTicketId, linkedTicketId, selectedLinkType, controller }: TicketMutationScope & { linkedTicketId: number; selectedLinkType: string }) =>
+      ticketApi.link(routeTicketId, { linked_ticket_id: linkedTicketId, link_type: selectedLinkType }, controller.signal),
+    onSuccess: (_data, vars) => {
+      if (shouldSuppressMutationFeedback(vars)) return;
       toast.success('Tickets linked');
-      queryClient.invalidateQueries({ queryKey: ['ticket-links', ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-links', vars.routeTicketId] });
       setShowAdd(false);
       setSearch('');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to link'),
+    onError: (err: any, vars) => {
+      if (shouldSuppressMutationFeedback(vars, err)) return;
+      toast.error(err?.response?.data?.message || 'Failed to link');
+    },
+    onSettled: (_data, _err, vars) => {
+      finishMutation(vars.controller);
+    },
   });
 
   const unlinkMut = useMutation({
-    mutationFn: (linkId: number) => ticketApi.deleteLink(linkId),
-    onSuccess: () => {
+    mutationFn: ({ linkId, controller }: TicketMutationScope & { linkId: number }) =>
+      ticketApi.deleteLink(linkId, controller.signal),
+    onSuccess: (_data, vars) => {
+      if (shouldSuppressMutationFeedback(vars)) return;
       toast.success('Link removed');
-      queryClient.invalidateQueries({ queryKey: ['ticket-links', ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-links', vars.routeTicketId] });
     },
-    onError: () => toast.error('Failed to remove link'),
+    onError: (err, vars) => {
+      if (shouldSuppressMutationFeedback(vars, err)) return;
+      toast.error('Failed to remove link');
+    },
+    onSettled: (_data, _err, vars) => {
+      finishMutation(vars.controller);
+    },
   });
 
   return (
@@ -183,7 +245,7 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
               {searchResults.map((t: any) => (
                 <button
                   key={t.id}
-                  onClick={() => linkMut.mutate(t.id)}
+                  onClick={() => linkMut.mutate({ ...beginMutation(), linkedTicketId: t.id, selectedLinkType: linkType })}
                   className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-50 dark:hover:bg-surface-700"
                 >
                   <span className="font-medium text-primary-600 dark:text-primary-400">
@@ -228,7 +290,7 @@ function LinkedTicketsCard({ ticketId }: { ticketId: number }) {
               </span>
             </button>
             <button
-              onClick={() => unlinkMut.mutate(link.id)}
+              onClick={() => unlinkMut.mutate({ ...beginMutation(), linkId: link.id })}
               className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-surface-400 hover:text-red-500 transition-all"
               title="Remove link"
             >
@@ -249,6 +311,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [note, setNote] = useState('');
+  const { beginMutation, finishMutation, shouldSuppressMutationFeedback } = useTicketMutationGuard(ticketId);
 
   const { data: apptData } = useQuery({
     queryKey: ['ticket-appointments', ticketId],
@@ -257,21 +320,29 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
   const appointments: any[] = apptData?.data?.data || [];
 
   const createMut = useMutation({
-    mutationFn: () => ticketApi.createAppointment(ticketId, {
-      start_time: startTime,
-      end_time: endTime || undefined,
-      note: note || undefined,
-    }),
-    onSuccess: () => {
+    mutationFn: ({ routeTicketId, appointmentStart, appointmentEnd, appointmentNote, controller }: TicketMutationScope & { appointmentStart: string; appointmentEnd: string; appointmentNote: string }) =>
+      ticketApi.createAppointment(routeTicketId, {
+        start_time: appointmentStart,
+        end_time: appointmentEnd || undefined,
+        note: appointmentNote || undefined,
+      }, controller.signal),
+    onSuccess: (_data, vars) => {
+      if (shouldSuppressMutationFeedback(vars)) return;
       toast.success('Appointment created');
-      queryClient.invalidateQueries({ queryKey: ['ticket-appointments', ticketId] });
-      queryClient.invalidateQueries({ queryKey: ['ticket-history', ticketId] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-appointments', vars.routeTicketId] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-history', vars.routeTicketId] });
       setShowForm(false);
       setStartTime('');
       setEndTime('');
       setNote('');
     },
-    onError: () => toast.error('Failed to create appointment'),
+    onError: (err, vars) => {
+      if (shouldSuppressMutationFeedback(vars, err)) return;
+      toast.error('Failed to create appointment');
+    },
+    onSettled: (_data, _err, vars) => {
+      finishMutation(vars.controller);
+    },
   });
 
   return (
@@ -332,7 +403,12 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
               Cancel
             </button>
             <button
-              onClick={() => createMut.mutate()}
+              onClick={() => createMut.mutate({
+                ...beginMutation(),
+                appointmentStart: startTime,
+                appointmentEnd: endTime,
+                appointmentNote: note,
+              })}
               disabled={!startTime || createMut.isPending}
               className="rounded bg-primary-600 px-3 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
@@ -416,12 +492,14 @@ export function TicketSidebar({
   // full employee object out of the passed-in list so the rendered name
   // matches without the cache being stale.
   const queryClient = useQueryClient();
+  const { beginMutation, finishMutation, shouldSuppressMutationFeedback } = useTicketMutationGuard(ticketId);
   const assignMut = useMutation({
-    mutationFn: (userId: number | null) => ticketApi.update(ticketId, { assigned_to: userId }),
-    onMutate: async (userId) => {
-      await queryClient.cancelQueries({ queryKey: ['ticket', ticketId] });
-      const prev = queryClient.getQueryData(['ticket', ticketId]);
-      queryClient.setQueryData(['ticket', ticketId], (old: any) => {
+    mutationFn: ({ routeTicketId, userId, controller }: TicketMutationScope & { userId: number | null }) =>
+      ticketApi.update(routeTicketId, { assigned_to: userId }, controller.signal),
+    onMutate: async ({ routeTicketId, userId }) => {
+      await queryClient.cancelQueries({ queryKey: ['ticket', routeTicketId] });
+      const prev = queryClient.getQueryData(['ticket', routeTicketId]);
+      queryClient.setQueryData(['ticket', routeTicketId], (old: any) => {
         if (!old) return old;
         const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const t = clone?.data?.data;
@@ -445,12 +523,20 @@ export function TicketSidebar({
       });
       return { prev };
     },
-    onError: (_err, _vars, ctx: any) => {
-      if (ctx?.prev) queryClient.setQueryData(['ticket', ticketId], ctx.prev);
+    onError: (err, vars, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['ticket', vars.routeTicketId], ctx.prev);
+      if (shouldSuppressMutationFeedback(vars, err)) return;
       toast.error('Failed to assign');
     },
-    onSuccess: () => toast.success('Ticket assigned'),
-    onSettled: () => invalidateTicket(),
+    onSuccess: (_data, vars) => {
+      if (shouldSuppressMutationFeedback(vars)) return;
+      toast.success('Ticket assigned');
+    },
+    onSettled: (_data, err, vars) => {
+      finishMutation(vars.controller);
+      if (shouldSuppressMutationFeedback(vars, err)) return;
+      invalidateTicket();
+    },
   });
 
   return (
@@ -579,7 +665,7 @@ export function TicketSidebar({
                 <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
                   {currentUser && (!assigned || assigned.id !== currentUser.id) && (
                     <button
-                      onClick={() => { assignMut.mutate(currentUser.id); setShowAssignDropdown(false); }}
+                      onClick={() => { assignMut.mutate({ ...beginMutation(), userId: currentUser.id }); setShowAssignDropdown(false); }}
                       className="w-full px-3 py-2 text-left text-xs font-medium text-teal-600 hover:bg-teal-50 dark:text-teal-400 dark:hover:bg-teal-900/20"
                     >
                       Assign to me
@@ -588,7 +674,7 @@ export function TicketSidebar({
                   {employees.map((emp: any) => (
                     <button
                       key={emp.id}
-                      onClick={() => { assignMut.mutate(emp.id); setShowAssignDropdown(false); }}
+                      onClick={() => { assignMut.mutate({ ...beginMutation(), userId: emp.id }); setShowAssignDropdown(false); }}
                       className={cn('w-full px-3 py-1.5 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700',
                         ticket?.assigned_to === emp.id ? 'font-bold text-teal-600 dark:text-teal-400' : 'text-surface-700 dark:text-surface-300'
                       )}
@@ -598,7 +684,7 @@ export function TicketSidebar({
                   ))}
                   {assigned && (
                     <button
-                      onClick={() => { assignMut.mutate(null); setShowAssignDropdown(false); }}
+                      onClick={() => { assignMut.mutate({ ...beginMutation(), userId: null }); setShowAssignDropdown(false); }}
                       className="w-full border-t border-surface-200 px-3 py-1.5 text-left text-xs text-red-500 hover:bg-red-50 dark:border-surface-700 dark:hover:bg-red-900/10"
                     >
                       Unassign

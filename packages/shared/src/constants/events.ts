@@ -18,6 +18,7 @@ export const WS_EVENTS = {
   // SMS
   SMS_RECEIVED: 'sms:received',
   SMS_SENT: 'sms:sent',
+  SMS_STATUS_UPDATED: 'sms:status_updated',
 
   // Inventory
   INVENTORY_STOCK_CHANGED: 'inventory:stock_changed',

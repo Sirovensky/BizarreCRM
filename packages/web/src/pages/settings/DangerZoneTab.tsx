@@ -70,7 +70,7 @@ export function DangerZoneTab() {
             type="button"
             onClick={() => setOpen(true)}
             disabled={!isAdmin}
-            className="mt-4 inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-danger btn-lg mt-4 rounded-md shadow-sm"
           >
             <AlertTriangle className="h-4 w-4" />
             Request Account Termination
@@ -197,7 +197,7 @@ function TerminationModal({ onClose }: TerminationModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="text-surface-400 hover:text-surface-600"
+              className="btn btn-ghost btn-sm text-surface-400 hover:text-surface-600"
             >
               Cancel
             </button>
@@ -287,14 +287,14 @@ function StepIntro({ onBegin, onCancel }: { onBegin: () => void; onCancel: () =>
         <button
           type="button"
           onClick={onBegin}
-          className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700"
+          className="btn btn-danger btn-sm rounded-md shadow-sm"
         >
           Continue
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-surface-300 dark:border-surface-700 px-4 py-2 text-sm font-semibold text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800"
+          className="btn btn-secondary btn-sm rounded-md border border-surface-300 dark:border-surface-700"
         >
           Nevermind
         </button>
@@ -324,7 +324,7 @@ function StepRequest({
           type="button"
           onClick={onRequest}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-danger btn-sm rounded-md shadow-sm"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
           Request Account Termination
@@ -332,7 +332,7 @@ function StepRequest({
         <button
           type="button"
           onClick={onBack}
-          className="rounded-md border border-surface-300 dark:border-surface-700 px-4 py-2 text-sm font-semibold text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800"
+          className="btn btn-secondary btn-sm rounded-md border border-surface-300 dark:border-surface-700"
         >
           Back
         </button>
@@ -381,7 +381,7 @@ function StepConfirmSlug({
           type="button"
           onClick={onConfirm}
           disabled={loading || typedSlug.length === 0}
-          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-danger btn-sm rounded-md shadow-sm"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Confirm slug
@@ -389,7 +389,7 @@ function StepConfirmSlug({
         <button
           type="button"
           onClick={onBack}
-          className="rounded-md border border-surface-300 dark:border-surface-700 px-4 py-2 text-sm font-semibold text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800"
+          className="btn btn-secondary btn-sm rounded-md border border-surface-300 dark:border-surface-700"
         >
           Back
         </button>
@@ -436,7 +436,7 @@ function StepConfirmPhrase({
           type="button"
           onClick={onFinalize}
           disabled={loading || !canFinalize}
-          className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-danger btn-sm rounded-md shadow-sm"
         >
           {loading && <Loader2 className="h-4 w-4 animate-spin" />}
           Permanently delete my account
@@ -444,7 +444,7 @@ function StepConfirmPhrase({
         <button
           type="button"
           onClick={onBack}
-          className="rounded-md border border-surface-300 dark:border-surface-700 px-4 py-2 text-sm font-semibold text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800"
+          className="btn btn-secondary btn-sm rounded-md border border-surface-300 dark:border-surface-700"
         >
           Back
         </button>
@@ -488,7 +488,7 @@ function StepDone({ data, onClose }: { data: DoneState; onClose: () => void }) {
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md border border-surface-300 dark:border-surface-700 px-4 py-2 text-sm font-semibold text-surface-700 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800"
+          className="btn btn-secondary btn-sm rounded-md border border-surface-300 dark:border-surface-700"
         >
           Close
         </button>

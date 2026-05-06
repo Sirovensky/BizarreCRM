@@ -204,7 +204,7 @@ function ResetFooter({ confirming, running, onConfirm, onCancel }: ResetFooterPr
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg border border-surface-200 px-3 py-1 text-xs text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="btn btn-secondary btn-xs border border-surface-200 dark:border-surface-700"
           >
             Cancel
           </button>
@@ -214,8 +214,8 @@ function ResetFooter({ confirming, running, onConfirm, onCancel }: ResetFooterPr
           onClick={onConfirm}
           disabled={running}
           className={cn(
-            'rounded-lg px-3 py-1 text-xs font-semibold text-white transition-colors',
-            confirming ? 'bg-red-600 hover:bg-red-700' : 'bg-surface-700 hover:bg-surface-800'
+            'btn btn-xs text-white',
+            confirming ? 'btn-danger' : 'bg-surface-700 hover:bg-surface-800'
           )}
         >
           {running ? <Loader2 className="h-3 w-3 animate-spin" /> : confirming ? 'Yes, reset' : 'Reset to defaults'}

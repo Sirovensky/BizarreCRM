@@ -10,6 +10,8 @@ import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { reverseCommission } from '../utils/commissions.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { createLogger } from '../utils/logger.js';
+import { isBlockChypEnabled, processRefund } from '../services/blockchyp.js';
+import { refundTenantStripePayment } from '../services/tenantStripe.js';
 
 const logger = createLogger('refunds.routes');
 
@@ -63,6 +65,14 @@ interface RefundRow {
   reason: string | null;
   method: string | null;
   status: string;
+}
+
+interface BlockChypRefundPaymentRow {
+  id: number;
+  processor_transaction_id: string | null;
+  transaction_id: string | null;
+  reference?: string | null;
+  amount: number;
 }
 
 interface StoreCreditRow {
@@ -299,6 +309,180 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
       expectChangesError: 'Refund is no longer pending',
     },
   ];
+
+  const refundMethod = String(refund.method ?? '').toLowerCase();
+  const needsProcessorClaim = Boolean(
+    refund.invoice_id
+    && refund.type === 'refund'
+    && (refundMethod === 'blockchyp' || refundMethod === 'stripe')
+  );
+  const clearProcessorClaim = async (message: string): Promise<void> => {
+    if (!needsProcessorClaim) return;
+    await adb.run(
+      `UPDATE refunds
+          SET processor_pending_at = NULL,
+              processor_error = ?,
+              updated_at = ?
+        WHERE id = ?
+          AND status = 'pending'`,
+      message,
+      now(),
+      id,
+    );
+  };
+  if (needsProcessorClaim) {
+    const claimResult = await adb.run(
+      `UPDATE refunds
+          SET processor_pending_at = ?,
+              processor_error = NULL,
+              updated_at = ?
+        WHERE id = ?
+          AND status = 'pending'
+          AND processor_pending_at IS NULL`,
+      now(),
+      now(),
+      id,
+    );
+    if (claimResult.changes === 0) {
+      throw new AppError('Refund processor action is already in progress', 409);
+    }
+  }
+
+  let blockChypRefundResult: Awaited<ReturnType<typeof processRefund>> | null = null;
+  let stripeRefundResult: Awaited<ReturnType<typeof refundTenantStripePayment>> | null = null;
+  if (refund.invoice_id && refund.type === 'refund' && refundMethod === 'blockchyp') {
+    if (!isBlockChypEnabled(db)) {
+      await clearProcessorClaim('BlockChyp terminal is not enabled');
+      throw new AppError('BlockChyp terminal is not enabled', 400);
+    }
+    const originalPayment = await adb.get<BlockChypRefundPaymentRow>(
+      `SELECT id, processor_transaction_id, transaction_id, amount
+         FROM payments
+        WHERE invoice_id = ?
+          AND method = 'BlockChyp'
+          AND COALESCE(capture_state, 'captured') = 'captured'
+          AND COALESCE(processor_transaction_id, transaction_id) IS NOT NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      refund.invoice_id,
+    );
+    const originalTransactionId = originalPayment?.processor_transaction_id ?? originalPayment?.transaction_id ?? null;
+    if (!originalPayment || !originalTransactionId) {
+      await clearProcessorClaim('No captured BlockChyp payment transaction found for this refund');
+      throw new AppError('No captured BlockChyp payment transaction found for this refund', 400);
+    }
+
+    blockChypRefundResult = await processRefund(db, refund.amount, originalTransactionId, String(id));
+    if (!blockChypRefundResult.success) {
+      await clearProcessorClaim(blockChypRefundResult.error || 'BlockChyp refund failed');
+      audit(db, 'blockchyp_refund_failed', req.user!.id, req.ip || 'unknown', {
+        refund_id: id,
+        invoice_id: refund.invoice_id,
+        amount: refund.amount,
+        payment_id: originalPayment.id,
+        original_transaction_id: originalTransactionId,
+        transaction_ref: blockChypRefundResult.transactionRef,
+        error: blockChypRefundResult.error,
+        test_mode: blockChypRefundResult.testMode,
+      });
+      throw new AppError(blockChypRefundResult.error || 'BlockChyp refund failed', 400);
+    }
+
+    tx[0] = {
+      sql: `UPDATE refunds
+               SET status = ?,
+                   approved_by = ?,
+                   processor = 'blockchyp',
+                   processor_transaction_id = ?,
+                   processor_response = ?,
+                   signature_file = ?,
+                   signature_file_path = ?,
+                   accepted_terms_name = ?,
+                   accepted_terms_text = ?,
+                   accepted_terms_hash = ?,
+                   accepted_terms_accepted_at = ?,
+                   processor_pending_at = NULL,
+                   processor_error = NULL,
+                   updated_at = ?
+             WHERE id = ? AND status = 'pending'`,
+      params: [
+        'completed',
+        req.user!.id,
+        blockChypRefundResult.transactionId ?? null,
+        blockChypRefundResult.receiptSuggestions ? JSON.stringify(blockChypRefundResult.receiptSuggestions) : null,
+        blockChypRefundResult.signatureFile ?? null,
+        blockChypRefundResult.signatureFilePath ?? null,
+        blockChypRefundResult.acceptedTerms?.name ?? null,
+        blockChypRefundResult.acceptedTerms?.content ?? null,
+        blockChypRefundResult.acceptedTerms?.contentHash ?? null,
+        blockChypRefundResult.acceptedTerms?.acceptedAt ?? null,
+        now(),
+        id,
+      ],
+      expectChanges: true,
+      expectChangesError: 'Refund is no longer pending',
+    };
+  }
+
+  if (refund.invoice_id && refund.type === 'refund' && refundMethod === 'stripe') {
+    const originalPayment = await adb.get<BlockChypRefundPaymentRow>(
+      `SELECT id, processor_transaction_id, transaction_id, reference, amount
+         FROM payments
+        WHERE invoice_id = ?
+          AND (LOWER(method) = 'stripe' OR LOWER(COALESCE(processor, '')) = 'stripe')
+          AND COALESCE(capture_state, 'captured') = 'captured'
+          AND COALESCE(processor_transaction_id, transaction_id, reference) IS NOT NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      refund.invoice_id,
+    );
+    const paymentIntentId = originalPayment?.processor_transaction_id
+      ?? originalPayment?.transaction_id
+      ?? originalPayment?.reference
+      ?? null;
+    if (!originalPayment || !paymentIntentId) {
+      await clearProcessorClaim('No captured Stripe payment intent found for this refund');
+      throw new AppError('No captured Stripe payment intent found for this refund', 400);
+    }
+
+    stripeRefundResult = await refundTenantStripePayment(db, paymentIntentId, refund.amount, String(id));
+    if (!stripeRefundResult.success) {
+      await clearProcessorClaim(stripeRefundResult.error || 'Stripe refund failed');
+      audit(db, 'stripe_refund_failed', req.user!.id, req.ip || 'unknown', {
+        refund_id: id,
+        invoice_id: refund.invoice_id,
+        amount: refund.amount,
+        payment_id: originalPayment.id,
+        payment_intent_id: paymentIntentId,
+        error: stripeRefundResult.error,
+      });
+      throw new AppError(stripeRefundResult.error || 'Stripe refund failed', 400);
+    }
+
+    tx[0] = {
+      sql: `UPDATE refunds
+               SET status = ?,
+                   approved_by = ?,
+                   processor = 'stripe',
+                   processor_transaction_id = ?,
+                   processor_response = ?,
+                   processor_pending_at = NULL,
+                   processor_error = NULL,
+                   updated_at = ?
+             WHERE id = ? AND status = 'pending'`,
+      params: [
+        'completed',
+        req.user!.id,
+        stripeRefundResult.refundId ?? null,
+        stripeRefundResult.raw ? JSON.stringify(stripeRefundResult.raw) : null,
+        now(),
+        id,
+      ],
+      expectChanges: true,
+      expectChangesError: 'Refund is no longer pending',
+    };
+  }
+
   if (invoiceUpdate) tx.push(invoiceUpdate);
   try {
     await adb.transaction(tx);
@@ -400,6 +584,11 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
     amount: refund.amount,
     type: refund.type,
     invoice_id: refund.invoice_id,
+    processor: blockChypRefundResult ? 'blockchyp' : undefined,
+    processor_transaction_id: blockChypRefundResult?.transactionId ?? undefined,
+    stripe_refund_id: stripeRefundResult?.refundId ?? undefined,
+    accepted_terms_hash: blockChypRefundResult?.acceptedTerms?.contentHash ?? undefined,
+    accepted_terms_name: blockChypRefundResult?.acceptedTerms?.name ?? undefined,
   });
   res.json({
     success: true,

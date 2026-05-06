@@ -76,13 +76,15 @@ function captureUtmFromLocation(): string {
 
 // ─── Status config ───────────────────────────────────────────────
 const LEAD_STATUSES = [
-  { value: '', label: 'All' },
   { value: 'new', label: 'New', color: '#3b82f6' },
   { value: 'contacted', label: 'Contacted', color: '#8b5cf6' },
   { value: 'scheduled', label: 'Scheduled', color: '#f59e0b' },
+  { value: 'qualified', label: 'Qualified', color: '#06b6d4' },
+  { value: 'proposal', label: 'Proposal', color: '#ec4899' },
   { value: 'converted', label: 'Converted', color: '#22c55e' },
   { value: 'lost', label: 'Lost', color: '#ef4444' },
 ] as const;
+const LEAD_STATUS_FILTERS = [{ value: '', label: 'All' }, ...LEAD_STATUSES] as const;
 
 const SERVICE_TYPE_LABELS: Record<number, string> = {
   1: 'Mail In',
@@ -130,6 +132,9 @@ function LeadScoreBadge({ score }: { score: number }) {
     </div>
   );
 }
+
+const INLINE_ACTION_FOCUS_CLASS =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-900';
 
 // ─── Skeleton rows ──────────────────────────────────────────────
 function SkeletonRow() {
@@ -366,6 +371,7 @@ export function LeadListPage() {
   // WEB-W2-035: row selection for bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const bulkMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -382,6 +388,34 @@ export function LeadListPage() {
 
   // Clear selection when page/filters change
   useEffect(() => { setSelectedIds(new Set()); }, [page, keyword, statusFilter, sortBy, sortOrder]);
+
+  useEffect(() => {
+    if (!bulkMenuOpen) return;
+
+    function dismissIfOutside(e: PointerEvent | FocusEvent) {
+      const target = e.target;
+      if (target instanceof Node && !bulkMenuRef.current?.contains(target)) {
+        setBulkMenuOpen(false);
+      }
+    }
+
+    function dismissOnEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setBulkMenuOpen(false);
+    }
+
+    document.addEventListener('pointerdown', dismissIfOutside, true);
+    document.addEventListener('focusin', dismissIfOutside, true);
+    document.addEventListener('keydown', dismissOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissIfOutside, true);
+      document.removeEventListener('focusin', dismissIfOutside, true);
+      document.removeEventListener('keydown', dismissOnEscape);
+    };
+  }, [bulkMenuOpen]);
+
+  useEffect(() => {
+    if (selectedIds.size === 0) setBulkMenuOpen(false);
+  }, [selectedIds.size]);
 
   // Fetch users
   const { data: usersData } = useQuery({
@@ -571,7 +605,7 @@ export function LeadListPage() {
 
       {/* Status filter pills */}
       <div className="mb-4 flex flex-wrap gap-2">
-        {LEAD_STATUSES.map((s) => {
+        {LEAD_STATUS_FILTERS.map((s) => {
           const color = 'color' in s ? s.color : '#6b7280';
           const isActive = statusFilter === s.value;
           return (
@@ -629,7 +663,7 @@ export function LeadListPage() {
             </button>
             <div className="ml-auto flex items-center gap-2">
               {/* Bulk status change */}
-              <div className="relative">
+              <div ref={bulkMenuRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setBulkMenuOpen((v) => !v)}
@@ -641,7 +675,7 @@ export function LeadListPage() {
                 </button>
                 {bulkMenuOpen && (
                   <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
-                    {LEAD_STATUSES.filter((s) => s.value).map((s) => (
+                    {LEAD_STATUSES.map((s) => (
                       <button
                         key={s.value}
                         type="button"
@@ -790,14 +824,19 @@ export function LeadListPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          type="button"
                           onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }}
-                          className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-200"
+                          className={cn(
+                            'rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-200',
+                            INLINE_ACTION_FOCUS_CLASS,
+                          )}
                           title="View Lead"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
                         {lead.status !== 'converted' && (
                           <button
+                            type="button"
                             onClick={async (e) => {
                               // WEB-FM-020 — Fixer-C28: try/catch swallows confirm-modal teardown rejection
                               e.stopPropagation();
@@ -810,13 +849,17 @@ export function LeadListPage() {
                               }
                             }}
                             disabled={convertMut.isPending}
-                            className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400"
+                            className={cn(
+                              'rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400',
+                              INLINE_ACTION_FOCUS_CLASS,
+                            )}
                             title="Convert to Ticket"
                           >
                             <ArrowRightLeft className="h-4 w-4" />
                           </button>
                         )}
                         <button
+                          type="button"
                           onClick={async (e) => {
                             // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal promise
                             e.stopPropagation();
@@ -828,7 +871,10 @@ export function LeadListPage() {
                               toast.error(formatApiError(err));
                             }
                           }}
-                          className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                          className={cn(
+                            'rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400',
+                            INLINE_ACTION_FOCUS_CLASS,
+                          )}
                           title="Delete Lead"
                         >
                           <Trash2 className="h-4 w-4" />

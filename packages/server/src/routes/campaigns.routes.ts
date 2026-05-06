@@ -12,6 +12,7 @@
  *   GET    /campaigns/:id/stats              — sent/replied/converted counts
  *   POST   /campaigns/review-request/trigger — hook from ticket pickup event
  *   POST   /campaigns/birthday/dispatch      — daily cron helper
+ *   POST   /campaigns/winback/dispatch       — daily cron helper
  *   POST   /campaigns/churn-warning/dispatch — daily cron helper
  *
  * TCPA compliance:
@@ -120,10 +121,180 @@ interface RecipientRow {
   email: string | null;
   phone: string | null;
   mobile: string | null;
+  birthday?: string | null;
+  last_interaction_at?: string | null;
+  customer_created_at?: string | null;
+  invoice_number?: string | null;
   sms_opt_in: number;
   email_opt_in: number;
   /** TCPA strict marketing consent (migration 063). Required = 1 for bulk marketing sends. */
   sms_consent_marketing: number;
+}
+
+type TriggerRuleObject = Record<string, unknown>;
+
+function parseCampaignTriggerRule(campaign: Pick<CampaignRow, 'trigger_rule_json'>): TriggerRuleObject {
+  if (!campaign.trigger_rule_json) return {};
+  try {
+    const parsed = JSON.parse(campaign.trigger_rule_json);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as TriggerRuleObject;
+    }
+  } catch {
+    // Malformed JSON should have been rejected on write. Treat old/corrupt
+    // rows as "use defaults" so dispatch remains available instead of taking
+    // the campaign worker down.
+  }
+  return {};
+}
+
+function triggerInt(rule: TriggerRuleObject, keys: readonly string[], fallback: number, min: number, max: number): number {
+  for (const key of keys) {
+    const value = rule[key];
+    const parsed = typeof value === 'number' ? value : (typeof value === 'string' ? Number(value) : NaN);
+    if (Number.isFinite(parsed)) {
+      return Math.max(min, Math.min(max, Math.floor(parsed)));
+    }
+  }
+  return fallback;
+}
+
+function birthdayDaysBefore(campaign: CampaignRow): number {
+  return triggerInt(parseCampaignTriggerRule(campaign), ['days_before', 'birthday_days_before'], 7, 0, 30);
+}
+
+function winbackInactiveDays(campaign: CampaignRow): number {
+  return triggerInt(parseCampaignTriggerRule(campaign), ['inactive_days', 'last_interaction_days'], 90, 1, 730);
+}
+
+function unpaidInvoiceDays(campaign: CampaignRow): number {
+  return triggerInt(parseCampaignTriggerRule(campaign), ['unpaid_days', 'days_overdue', 'invoice_age_days'], 14, 1, 365);
+}
+
+const BIRTHDAY_DAYS_UNTIL_SQL = `
+  CAST((
+    julianday(
+      CASE
+        WHEN date(strftime('%Y','now') || '-' || c.birthday) >= date('now')
+          THEN date(strftime('%Y','now') || '-' || c.birthday)
+        ELSE date(printf('%04d-%s', CAST(strftime('%Y','now') AS INTEGER) + 1, c.birthday))
+      END
+    ) - julianday(date('now'))
+  ) AS INTEGER)
+`;
+
+function marketingChannelWhere(channel: CampaignChannel): string {
+  const smsContactable = `
+    (COALESCE(c.sms_opt_in,0) = 1
+      AND COALESCE(c.sms_consent_marketing,0) = 1
+      AND COALESCE(NULLIF(c.mobile,''), NULLIF(c.phone,'')) IS NOT NULL)
+  `;
+  const emailContactable = `
+    (COALESCE(c.email_opt_in,0) = 1
+      AND NULLIF(c.email,'') IS NOT NULL)
+  `;
+  if (channel === 'sms') return smsContactable;
+  if (channel === 'email') return emailContactable;
+  return `(${smsContactable} OR ${emailContactable})`;
+}
+
+function duplicateSuppressionWhere(windowSql: string): string {
+  return `NOT EXISTS (
+    SELECT 1 FROM campaign_sends cs
+     WHERE cs.campaign_id = ?
+       AND cs.customer_id = c.id
+       AND cs.status = 'sent'
+       AND cs.sent_at >= datetime('now','-${windowSql}')
+  )`;
+}
+
+function buildEligibleRecipientQuery(
+  campaign: CampaignRow,
+  opts: { count?: boolean; limit?: number | null } = {},
+): { sql: string; params: unknown[] } {
+  const where: string[] = ['c.is_deleted = 0', marketingChannelWhere(campaign.channel)];
+  const joins: string[] = [];
+  const whereParams: unknown[] = [];
+  const selectParams: unknown[] = [];
+  let extraSelect = '';
+
+  if (campaign.segment_id) {
+    joins.push('JOIN customer_segment_members m ON m.customer_id = c.id');
+    where.push('m.segment_id = ?');
+    whereParams.push(campaign.segment_id);
+  }
+
+  if (campaign.type === 'birthday') {
+    const days = birthdayDaysBefore(campaign);
+    where.push('c.birthday IS NOT NULL');
+    where.push(`${BIRTHDAY_DAYS_UNTIL_SQL} BETWEEN 0 AND ?`);
+    whereParams.push(days);
+    where.push(duplicateSuppressionWhere('335 days'));
+    whereParams.push(campaign.id);
+  } else if (campaign.type === 'winback') {
+    const inactiveDays = winbackInactiveDays(campaign);
+    where.push("CAST((julianday('now') - julianday(COALESCE(c.last_interaction_at, c.created_at))) AS INTEGER) >= ?");
+    whereParams.push(inactiveDays);
+    where.push(duplicateSuppressionWhere('30 days'));
+    whereParams.push(campaign.id);
+  } else if (campaign.type === 'churn_warning') {
+    const unpaidDays = unpaidInvoiceDays(campaign);
+    const invoiceAgePredicate = `
+      i.customer_id = c.id
+      AND COALESCE(i.amount_due,0) > 0
+      AND COALESCE(i.status,'') NOT IN ('void','cancelled','paid')
+      AND julianday(COALESCE(i.due_date, i.created_at)) <= julianday('now', ?)
+    `;
+    const ageModifier = `-${unpaidDays} days`;
+    extraSelect = `, (
+      SELECT i.order_id
+        FROM invoices i
+       WHERE ${invoiceAgePredicate}
+       ORDER BY julianday(COALESCE(i.due_date, i.created_at)) ASC, i.id ASC
+       LIMIT 1
+    ) AS invoice_number`;
+    selectParams.push(ageModifier);
+    where.push(`EXISTS (SELECT 1 FROM invoices i WHERE ${invoiceAgePredicate})`);
+    whereParams.push(ageModifier);
+    where.push(duplicateSuppressionWhere('30 days'));
+    whereParams.push(campaign.id);
+  }
+
+  const limit = opts.limit == null ? '' : ` LIMIT ${Math.max(1, Math.floor(opts.limit))}`;
+  if (opts.count) {
+    return {
+      sql: `
+        SELECT COUNT(*) AS total
+          FROM customers c
+          ${joins.join('\n')}
+         WHERE ${where.join(' AND ')}
+      `,
+      params: whereParams,
+    };
+  }
+
+  return {
+    sql: `
+      SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
+             c.birthday, c.last_interaction_at, c.created_at AS customer_created_at,
+             COALESCE(c.sms_opt_in,0) AS sms_opt_in,
+             COALESCE(c.email_opt_in,0) AS email_opt_in,
+             COALESCE(c.sms_consent_marketing,0) AS sms_consent_marketing
+             ${extraSelect}
+        FROM customers c
+        ${joins.join('\n')}
+       WHERE ${where.join(' AND ')}
+       ORDER BY c.id
+       ${limit}
+    `,
+    params: [...selectParams, ...whereParams],
+  };
+}
+
+async function countEligibleRecipients(adb: AsyncDb, campaign: CampaignRow): Promise<number> {
+  const query = buildEligibleRecipientQuery(campaign, { count: true });
+  const row = await adb.get<{ total: number }>(query.sql, ...query.params);
+  return row?.total ?? 0;
 }
 
 // -----------------------------------------------------------------------------
@@ -170,43 +341,8 @@ async function fetchEligibleRecipients(
   campaign: CampaignRow,
   limit: number | null = null,
 ): Promise<RecipientRow[]> {
-  // SCAN-570: include sms_consent_marketing (migration 063) so filterByChannel
-  // can enforce strict TCPA marketing consent for bulk SMS blasts.
-  const baseSelect = `
-    SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
-           COALESCE(c.sms_opt_in,0) AS sms_opt_in,
-           COALESCE(c.email_opt_in,0) AS email_opt_in,
-           COALESCE(c.sms_consent_marketing,0) AS sms_consent_marketing
-      FROM customers c`;
-  // SCAN-570: SMS marketing blasts require BOTH sms_opt_in AND sms_consent_marketing.
-  // email_consent_marketing column does not exist (not in any migration); email
-  // continues to gate on email_opt_in only — which is correct per TCPA for email.
-  const filterByChannel = (rows: RecipientRow[]): RecipientRow[] => {
-    return rows.filter((r) => {
-      const smsEligible = r.sms_opt_in === 1 && r.sms_consent_marketing === 1;
-      if (campaign.channel === 'sms' && !smsEligible) return false;
-      if (campaign.channel === 'email' && !r.email_opt_in) return false;
-      if (campaign.channel === 'both' && !smsEligible && !r.email_opt_in) return false;
-      return true;
-    });
-  };
-
-  if (campaign.segment_id) {
-    const rows = await adb.all<RecipientRow>(
-      `${baseSelect}
-       JOIN customer_segment_members m ON m.customer_id = c.id
-       WHERE m.segment_id = ?
-       ${limit ? 'LIMIT ' + Math.max(1, Math.floor(limit)) : ''}`,
-      campaign.segment_id,
-    );
-    return filterByChannel(rows);
-  }
-
-  // No segment = every customer (defensive — we still cap to 5k).
-  const rows = await adb.all<RecipientRow>(
-    `${baseSelect} ORDER BY c.id LIMIT ${limit ?? 5_000}`,
-  );
-  return filterByChannel(rows);
+  const query = buildEligibleRecipientQuery(campaign, { limit: limit ?? 5_000 });
+  return adb.all<RecipientRow>(query.sql, ...query.params);
 }
 
 // -----------------------------------------------------------------------------
@@ -238,21 +374,28 @@ async function dispatchCampaign(
   const providerStatus = isProviderRealOrSimulated(provider);
   const providerIsReal = providerStatus.real;
 
+  const canSendSms = (recipient: RecipientRow): boolean => {
+    if (!recipient.sms_opt_in) return false;
+    if (campaign.type === 'review_request') return true;
+    return recipient.sms_consent_marketing === 1;
+  };
+  const canSendEmail = (recipient: RecipientRow): boolean => recipient.email_opt_in === 1;
+
   for (const recipient of recipients) {
     const phone = recipient.mobile || recipient.phone;
     const ctx = {
       first_name: recipient.first_name ?? 'there',
       last_name: recipient.last_name ?? '',
+      invoice_number: recipient.invoice_number ?? '',
     };
     const body = renderTemplate(campaign.template_body, ctx);
 
     // SMS path
     if (campaign.channel === 'sms' || campaign.channel === 'both') {
-      if (!phone) {
+      if (!phone || !canSendSms(recipient)) {
         skipped += 1;
-        continue;
-      }
-      if (!providerIsReal) {
+        if (campaign.channel === 'sms') continue;
+      } else if (!providerIsReal) {
         failed += 1;
         await adb.run(
           `INSERT INTO campaign_sends (campaign_id, customer_id, status, response)
@@ -261,39 +404,39 @@ async function dispatchCampaign(
           recipient.id,
           'SMS provider not configured (console fallback)',
         );
-        continue;
-      }
-      try {
-        const result = await sendSmsTenant(db, tenantSlug, phone, body);
-        if (result?.success) {
-          sent += 1;
-          await adb.run(
-            `INSERT INTO campaign_sends (campaign_id, customer_id, status) VALUES (?, ?, 'sent')`,
-            campaign.id,
-            recipient.id,
-          );
-        } else {
+      } else {
+        try {
+          const result = await sendSmsTenant(db, tenantSlug, phone, body);
+          if (result?.success) {
+            sent += 1;
+            await adb.run(
+              `INSERT INTO campaign_sends (campaign_id, customer_id, status) VALUES (?, ?, 'sent')`,
+              campaign.id,
+              recipient.id,
+            );
+          } else {
+            failed += 1;
+            await adb.run(
+              `INSERT INTO campaign_sends (campaign_id, customer_id, status, response) VALUES (?, ?, 'failed', ?)`,
+              campaign.id,
+              recipient.id,
+              result?.error ?? 'unknown SMS provider error',
+            );
+          }
+        } catch (err) {
           failed += 1;
           await adb.run(
             `INSERT INTO campaign_sends (campaign_id, customer_id, status, response) VALUES (?, ?, 'failed', ?)`,
             campaign.id,
             recipient.id,
-            result?.error ?? 'unknown SMS provider error',
+            err instanceof Error ? err.message : String(err),
           );
         }
-      } catch (err) {
-        failed += 1;
-        await adb.run(
-          `INSERT INTO campaign_sends (campaign_id, customer_id, status, response) VALUES (?, ?, 'failed', ?)`,
-          campaign.id,
-          recipient.id,
-          err instanceof Error ? err.message : String(err),
-        );
       }
     }
 
     // Email path
-    if ((campaign.channel === 'email' || campaign.channel === 'both') && recipient.email) {
+    if ((campaign.channel === 'email' || campaign.channel === 'both') && recipient.email && canSendEmail(recipient)) {
       if (!isEmailConfigured(db)) {
         failed += 1;
         // Record the failure reason so the stats endpoint surfaces "why
@@ -613,51 +756,9 @@ router.post(
     }));
 
     // Count without limit (use a separate COUNT query to avoid OOMing on the
-    // full recipient list when the owner only wants a preview).
-    let total = 0;
-    if (campaign.segment_id) {
-      // SCAN-570: preview count mirrors fetchEligibleRecipients — SMS requires
-      // sms_opt_in AND sms_consent_marketing (strict TCPA marketing consent).
-      const row = await adb.get<{ total: number }>(
-        `SELECT COUNT(*) AS total
-           FROM customers c
-           JOIN customer_segment_members m ON m.customer_id = c.id
-          WHERE m.segment_id = ?
-            AND (
-              (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1) OR
-              (? = 'email' AND COALESCE(c.email_opt_in,0) = 1) OR
-              (? = 'both'  AND (
-                (COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1)
-                OR COALESCE(c.email_opt_in,0) = 1
-              ))
-            )`,
-        campaign.segment_id,
-        campaign.channel,
-        campaign.channel,
-        campaign.channel,
-      );
-      total = row?.total ?? 0;
-    } else {
-      // No segment = all customers; count them directly so the preview shows a
-      // real estimate rather than the misleading 0 it returned before this fix.
-      // SCAN-570: same strict-consent condition as the segmented path above.
-      const row = await adb.get<{ total: number }>(
-        `SELECT COUNT(*) AS total
-           FROM customers c
-          WHERE (
-            (? = 'sms'   AND COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1) OR
-            (? = 'email' AND COALESCE(c.email_opt_in,0) = 1) OR
-            (? = 'both'  AND (
-              (COALESCE(c.sms_opt_in,0) = 1 AND COALESCE(c.sms_consent_marketing,0) = 1)
-              OR COALESCE(c.email_opt_in,0) = 1
-            ))
-          )`,
-        campaign.channel,
-        campaign.channel,
-        campaign.channel,
-      );
-      total = row?.total ?? 0;
-    }
+    // full recipient list when the owner only wants a preview). This mirrors
+    // the same trigger-rule predicate used by run-now and cron dispatch.
+    const total = await countEligibleRecipients(adb, campaign);
 
     res.json({
       success: true,
@@ -863,18 +964,50 @@ router.post(
       if (seg) await refreshSegmentMembership(adb, seg);
     }
 
-    // Extra guard: filter to birthdays within 7 days even if segment rule is
-    // stale, so we never spam someone a month early.
-    const allRecipients = await fetchEligibleRecipients(adb, campaign);
-    const today = new Date();
-    const within = allRecipients.filter((r: any) => {
-      if (!r.birthday) return true; // segment already narrowed; keep
-      return daysUntilBirthday(r.birthday, today) <= 7;
-    });
-
-    const result = await dispatchCampaign(db, adb, req.tenantSlug || null, campaign, within);
+    const recipients = await fetchEligibleRecipients(adb, campaign);
+    const result = await dispatchCampaign(db, adb, req.tenantSlug || null, campaign, recipients);
 
     audit(db, 'birthday_campaign_dispatched', req.user!.id, req.ip || 'unknown', {
+      campaign_id: campaign.id,
+      attempted: result.attempted,
+      sent: result.sent,
+    });
+
+    res.json({ success: true, data: result });
+  }),
+);
+
+router.post(
+  '/winback/dispatch',
+  asyncHandler(async (req, res) => {
+    requireAdminCampaigns(req);
+    rateLimitCampaignDispatch(req);
+    const db = req.db;
+    const adb = req.asyncDb;
+
+    const campaign = await adb.get<CampaignRow>(
+      `SELECT * FROM marketing_campaigns WHERE type = 'winback' AND status = 'active' LIMIT 1`,
+    );
+    if (!campaign) {
+      res.json({
+        success: true,
+        data: { sent: 0, message: 'No active winback campaign' },
+      });
+      return;
+    }
+
+    if (campaign.segment_id) {
+      const seg = await adb.get<any>(
+        `SELECT * FROM customer_segments WHERE id = ?`,
+        campaign.segment_id,
+      );
+      if (seg) await refreshSegmentMembership(adb, seg);
+    }
+
+    const recipients = await fetchEligibleRecipients(adb, campaign);
+    const result = await dispatchCampaign(db, adb, req.tenantSlug || null, campaign, recipients);
+
+    audit(db, 'winback_campaign_dispatched', req.user!.id, req.ip || 'unknown', {
       campaign_id: campaign.id,
       attempted: result.attempted,
       sent: result.sent,
@@ -903,37 +1036,8 @@ router.post(
       return;
     }
 
-    // Find invoices with balance > 0 and older than 14 days, grouped by customer.
-    // Uses amount_due (materialised column on invoices) instead of re-computing
-    // total - paid on the fly — faster and matches the invoice route logic.
-    // SCAN-570: include sms_consent_marketing so the eligibility filter below
-    // can enforce strict TCPA marketing consent for SMS channel sends.
-    const unpaid = await adb.all<RecipientRow>(
-      `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
-              COALESCE(c.sms_opt_in,0) AS sms_opt_in,
-              COALESCE(c.email_opt_in,0) AS email_opt_in,
-              COALESCE(c.sms_consent_marketing,0) AS sms_consent_marketing
-         FROM customers c
-         JOIN invoices i ON i.customer_id = c.id
-        WHERE COALESCE(i.amount_due,0) > 0
-          AND i.created_at <= datetime('now','-14 days')
-          AND NOT EXISTS (
-              SELECT 1 FROM campaign_sends cs
-               WHERE cs.campaign_id = ?
-                 AND cs.customer_id = c.id
-                 AND cs.sent_at >= datetime('now','-30 days')
-          )
-        GROUP BY c.id
-        LIMIT 500`,
-      campaign.id,
-    );
-
-    // SCAN-570: SMS marketing requires sms_opt_in AND sms_consent_marketing.
-    const eligible = unpaid.filter(
-      (r) => (r.sms_opt_in === 1 && r.sms_consent_marketing === 1) || r.email_opt_in === 1,
-    );
-
-    const result = await dispatchCampaign(db, adb, req.tenantSlug || null, campaign, eligible);
+    const recipients = await fetchEligibleRecipients(adb, campaign, 500);
+    const result = await dispatchCampaign(db, adb, req.tenantSlug || null, campaign, recipients);
 
     audit(db, 'churn_warning_dispatched', req.user!.id, req.ip || 'unknown', {
       campaign_id: campaign.id,
@@ -944,21 +1048,5 @@ router.post(
     res.json({ success: true, data: result });
   }),
 );
-
-// -----------------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------------
-
-function daysUntilBirthday(mmdd: string, today: Date): number {
-  const match = /^(\d{2})-(\d{2})$/.exec(mmdd);
-  if (!match) return 999;
-  const m = Number(match[1]);
-  const d = Number(match[2]);
-  if (m < 1 || m > 12 || d < 1 || d > 31) return 999;
-  const year = today.getFullYear();
-  let target = new Date(year, m - 1, d).getTime();
-  if (target < today.getTime()) target = new Date(year + 1, m - 1, d).getTime();
-  return Math.max(0, Math.round((target - today.getTime()) / 86_400_000));
-}
 
 export default router;

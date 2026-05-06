@@ -23,14 +23,103 @@ import { escapeLike } from '../utils/query.js';
 import { parsePageSize } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { logActivity } from '../utils/activityLog.js';
+import {
+  IMAGE_UPLOAD_FORMAT_ERROR,
+  IMAGE_UPLOAD_MIME_TYPES,
+  isSupportedImageMime,
+  sanitizedImageExtension,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+} from '../utils/imageUploadPolicy.js';
 
 const logger = createLogger('inventory');
 
 const router = Router();
 const maxLen = (val: string | undefined, max: number) => val && val.length > max ? val.slice(0, max) : val;
 
+function normalizeBinText(value: unknown): string {
+  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, 80) : '';
+}
+
+function binLocationCode(location: string, shelf: string, bin: string): string {
+  const raw = [location, shelf, bin].filter(Boolean).join('-') || 'UNASSIGNED';
+  const normalized = raw
+    .toUpperCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^A-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  if (normalized.length <= 40) return normalized || 'UNASSIGNED';
+  const hash = crypto.createHash('sha1').update(normalized).digest('hex').slice(0, 8).toUpperCase();
+  return `${normalized.slice(0, 31)}-${hash}`;
+}
+
+async function syncInventoryBinAssignmentFromFields(input: {
+  adb: AsyncDb;
+  db: any;
+  userId: number;
+  ip: string;
+  inventoryItemId: number;
+  location: unknown;
+  shelf: unknown;
+  bin: unknown;
+}): Promise<void> {
+  const location = normalizeBinText(input.location);
+  const shelf = normalizeBinText(input.shelf);
+  const bin = normalizeBinText(input.bin);
+
+  if (!location && !shelf && !bin) {
+    await input.adb.run(
+      'DELETE FROM inventory_bin_assignments WHERE inventory_item_id = ?',
+      input.inventoryItemId,
+    );
+    audit(input.db, 'inventory_bin_unassigned', input.userId, input.ip, {
+      inventory_item_id: input.inventoryItemId,
+      source: 'inventory_detail_fields',
+    });
+    return;
+  }
+
+  const code = binLocationCode(location, shelf, bin);
+  await input.adb.run(
+    `INSERT INTO bin_locations (code, description, aisle, shelf, bin, is_active)
+     VALUES (?, ?, ?, ?, ?, 1)
+     ON CONFLICT(code) DO UPDATE SET
+       description = excluded.description,
+       aisle = excluded.aisle,
+       shelf = excluded.shelf,
+       bin = excluded.bin,
+       is_active = 1`,
+    code,
+    [location, shelf, bin].filter(Boolean).join(' / '),
+    location || null,
+    shelf || null,
+    bin || null,
+  );
+  const binRow = await input.adb.get<{ id: number }>(
+    'SELECT id FROM bin_locations WHERE code = ? AND is_active = 1',
+    code,
+  );
+  if (!binRow) throw new AppError('Failed to resolve bin location assignment', 500);
+
+  await input.adb.run(
+    `INSERT INTO inventory_bin_assignments (inventory_item_id, bin_location_id)
+     VALUES (?, ?)
+     ON CONFLICT(inventory_item_id) DO UPDATE SET
+       bin_location_id = excluded.bin_location_id,
+       assigned_at = datetime('now')`,
+    input.inventoryItemId,
+    binRow.id,
+  );
+  audit(input.db, 'inventory_bin_assigned', input.userId, input.ip, {
+    inventory_item_id: input.inventoryItemId,
+    bin_location_id: binRow.id,
+    bin_code: code,
+    source: 'inventory_detail_fields',
+  });
+}
+
 // ENR-INV9: Multer setup for inventory image uploads
-const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_IMAGE_MIMES = IMAGE_UPLOAD_MIME_TYPES;
 const inventoryImageUpload = multer({
   storage: multer.diskStorage({
     destination: (req: any, _file: any, cb: any) => {
@@ -45,18 +134,18 @@ const inventoryImageUpload = multer({
       // F3: Reject instead of silently falling back to .jpg. An unrecognized
       // extension means the filename can't be trusted — bail out so the upload
       // handler returns a clean 400 instead of mis-labeling the stored file.
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-      if (!ext || !['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext)) {
+      const ext = sanitizedImageExtension(file.originalname);
+      if (!ext) {
         cb(new Error('Unsupported image file extension'), '');
         return;
       }
       cb(null, `inv-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: SMALL_IMAGE_UPLOAD_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_IMAGE_MIMES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, WebP, GIF images allowed'));
+    if (isSupportedImageMime(file.mimetype)) cb(null, true);
+    else cb(new Error(IMAGE_UPLOAD_FORMAT_ERROR));
   },
 });
 
@@ -335,7 +424,7 @@ router.get('/categories', async (req, res) => {
 
 // ==================== ENR-INV1: Auto-reorder / PO generation ====================
 
-// POST /inventory/auto-reorder — Find low-stock reorderable items, group by supplier, create POs
+// POST /inventory/auto-reorder — Find low-stock saved rules, group by supplier, create POs
 // SEC-H25: auto-reorder creates purchase orders — gate behind inventory.bulk_action.
 // The inline role check below is kept as defence-in-depth.
 router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (req, res) => {
@@ -343,22 +432,58 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (
   if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   const adb: AsyncDb = req.asyncDb;
 
-  // Find all items needing reorder: in_stock <= reorder_level, reorder_level > 0, is_reorderable = 1
+  // Saved rules are the source of truth for min/reorder quantities. The
+  // inventory item supplier is only a fallback when a rule leaves supplier blank.
   const lowStockItems = await adb.all<any>(`
-    SELECT i.id, i.name, i.sku, i.in_stock, i.reorder_level, i.desired_stock_level,
-           i.cost_price, i.supplier_id, s.name as supplier_name
-    FROM inventory_items i
-    LEFT JOIN suppliers s ON s.id = i.supplier_id
+    SELECT i.id,
+           i.name,
+           i.sku,
+           i.in_stock,
+           i.cost_price,
+           r.min_qty,
+           r.reorder_qty,
+           r.lead_time_days,
+           r.preferred_supplier_id,
+           COALESCE(r.preferred_supplier_id, i.supplier_id) AS supplier_id,
+           s.name as supplier_name
+    FROM inventory_auto_reorder_rules r
+    JOIN inventory_items i ON i.id = r.inventory_item_id
+    LEFT JOIN suppliers s ON s.id = COALESCE(r.preferred_supplier_id, i.supplier_id)
     WHERE i.is_active = 1
-      AND i.in_stock <= i.reorder_level
-      AND i.reorder_level > 0
+      AND i.item_type != 'service'
       AND i.is_reorderable = 1
-      AND i.supplier_id IS NOT NULL
-    ORDER BY i.supplier_id, i.name
+      AND r.is_enabled = 1
+      AND i.in_stock <= r.min_qty
+      AND r.reorder_qty > 0
+      AND COALESCE(r.preferred_supplier_id, i.supplier_id) IS NOT NULL
+    ORDER BY supplier_id, i.name
+  `);
+
+  const skippedNoSupplier = await adb.all<any>(`
+    SELECT i.id, i.name, i.sku
+    FROM inventory_auto_reorder_rules r
+    JOIN inventory_items i ON i.id = r.inventory_item_id
+    WHERE i.is_active = 1
+      AND i.item_type != 'service'
+      AND i.is_reorderable = 1
+      AND r.is_enabled = 1
+      AND i.in_stock <= r.min_qty
+      AND r.reorder_qty > 0
+      AND COALESCE(r.preferred_supplier_id, i.supplier_id) IS NULL
+    ORDER BY i.name
   `);
 
   if (lowStockItems.length === 0) {
-    res.json({ success: true, data: { orders_created: 0, items_ordered: 0, orders: [] } });
+    res.json({
+      success: true,
+      data: {
+        orders_created: 0,
+        items_ordered: 0,
+        skipped_no_supplier: skippedNoSupplier.length,
+        skipped_items: skippedNoSupplier,
+        orders: [],
+      },
+    });
     return;
   }
 
@@ -380,11 +505,13 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (
 
     let subtotal = 0;
     const poItems: { inventory_item_id: number; quantity_ordered: number; cost_price: number; name: string }[] = [];
+    const maxLeadDays = Math.max(0, ...items.map((item) => Number(item.lead_time_days ?? 0) || 0));
+    const expectedDate = maxLeadDays > 0
+      ? new Date(Date.now() + maxLeadDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      : null;
 
     for (const item of items) {
-      // desired_stock_level if set, otherwise reorder_level * 2
-      const target = item.desired_stock_level > 0 ? item.desired_stock_level : item.reorder_level * 2;
-      const qtyNeeded = Math.max(1, target - item.in_stock);
+      const qtyNeeded = Math.max(1, Number(item.reorder_qty));
       const lineTotal = qtyNeeded * item.cost_price;
       subtotal += lineTotal;
       poItems.push({
@@ -396,9 +523,9 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (
     }
 
     const result = await adb.run(`
-      INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, orderId, supplierId, subtotal, subtotal, 'Auto-generated reorder', req.user!.id);
+      INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, expected_date, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, orderId, supplierId, subtotal, subtotal, 'Auto-generated reorder from saved rules', expectedDate, req.user!.id);
 
     const poId = result.lastInsertRowid;
     for (const poItem of poItems) {
@@ -414,11 +541,17 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (
       supplier_id: supplierId,
       supplier_name: items[0].supplier_name,
       subtotal,
+      expected_date: expectedDate,
       items: poItems.map(i => ({ name: i.name, quantity_ordered: i.quantity_ordered, cost_price: i.cost_price })),
     });
   }
 
-  audit(req.db, 'inventory_auto_reorder', req.user!.id, req.ip || 'unknown', { orders_created: createdOrders.length, items_ordered: createdOrders.reduce((sum, o) => sum + o.items.length, 0) });
+  audit(req.db, 'inventory_auto_reorder', req.user!.id, req.ip || 'unknown', {
+    orders_created: createdOrders.length,
+    items_ordered: createdOrders.reduce((sum, o) => sum + o.items.length, 0),
+    skipped_no_supplier: skippedNoSupplier.length,
+    source: 'inventory_auto_reorder_rules',
+  });
 
   const totalItems = createdOrders.reduce((sum, o) => sum + o.items.length, 0);
   res.json({
@@ -426,6 +559,8 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (
     data: {
       orders_created: createdOrders.length,
       items_ordered: totalItems,
+      skipped_no_supplier: skippedNoSupplier.length,
+      skipped_items: skippedNoSupplier,
       orders: createdOrders,
     },
   });
@@ -1038,6 +1173,19 @@ router.post('/', requirePermission('inventory.create'), async (req, res) => {
     supplier_id || null, image_url || null,
     location || '', shelf || '', bin || '', itemLocationId);
 
+  if (location || shelf || bin) {
+    await syncInventoryBinAssignmentFromFields({
+      adb,
+      db: req.db,
+      userId: req.user!.id,
+      ip: req.ip || 'unknown',
+      inventoryItemId: Number(result.lastInsertRowid),
+      location,
+      shelf,
+      bin,
+    });
+  }
+
   // Record initial stock movement
   if (in_stock > 0 && item_type !== 'service') {
     await adb.run(`
@@ -1153,6 +1301,18 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
     resolvedLocationId, req.params.id);
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
+  if (location !== undefined || shelf !== undefined || bin !== undefined) {
+    await syncInventoryBinAssignmentFromFields({
+      adb,
+      db: req.db,
+      userId: req.user!.id,
+      ip: req.ip || 'unknown',
+      inventoryItemId: Number(req.params.id),
+      location: (item as any)?.location,
+      shelf: (item as any)?.shelf,
+      bin: (item as any)?.bin,
+    });
+  }
   audit(req.db, 'inventory_item_updated', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.json({ success: true, data: item });

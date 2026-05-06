@@ -32,6 +32,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.data.remote.api.NotificationPreferencePatchDto
+import com.bizarreelectronics.crm.data.remote.api.NotificationPreferencesPatchRequest
+import com.bizarreelectronics.crm.data.remote.api.NotificationQuietHoursDto
+import com.bizarreelectronics.crm.data.repository.NotificationPreferencesRepository
 import com.bizarreelectronics.crm.data.sync.FcmTokenRetryWorker
 import com.bizarreelectronics.crm.service.NotificationHistoryStore
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -39,6 +43,8 @@ import com.bizarreelectronics.crm.util.DeviceTokenManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.launch
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -105,6 +111,7 @@ class NotificationSettingsViewModel @Inject constructor(
     private val appPreferences: AppPreferences,
     private val notificationHistoryStore: NotificationHistoryStore,
     private val deviceTokenManager: DeviceTokenManager,
+    private val notificationPreferencesRepository: NotificationPreferencesRepository,
 ) : ViewModel() {
 
     /** §73 — Full 21-event matrix matching the ActionPlan §73 table. */
@@ -259,7 +266,7 @@ class NotificationSettingsViewModel @Inject constructor(
         }
     }
 
-    private val _state = MutableStateFlow(
+    private fun buildUiStateFromPreferences(): NotificationSettingsUiState =
         NotificationSettingsUiState(
             emailAlerts = appPreferences.notifEmailAlertsEnabled,
             smsAlerts = appPreferences.notifSmsAlertsEnabled,
@@ -273,9 +280,89 @@ class NotificationSettingsViewModel @Inject constructor(
             eventMatrix = buildMatrix(),
             channelSoundUris = buildSoundUris(),
             recentHistory = notificationHistoryStore.snapshot(),
-        ),
-    )
+        )
+
+    private val _state = MutableStateFlow(buildUiStateFromPreferences())
     val state: StateFlow<NotificationSettingsUiState> = _state.asStateFlow()
+
+    private var notificationSyncJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            if (notificationPreferencesRepository.refreshLocalFromServer()) {
+                _state.value = buildUiStateFromPreferences()
+            }
+        }
+    }
+
+    private fun scheduleServerSync() {
+        notificationSyncJob?.cancel()
+        notificationSyncJob = viewModelScope.launch {
+            delay(600L)
+            notificationPreferencesRepository.patchServer(
+                NotificationPreferencesPatchRequest(buildServerPreferencesSnapshot(_state.value)),
+            )
+        }
+    }
+
+    private fun buildServerPreferencesSnapshot(
+        state: NotificationSettingsUiState,
+    ): List<NotificationPreferencePatchDto> {
+        val quietHours = NotificationQuietHoursDto(
+            enabled = state.quietHoursEnabled,
+            startMinutes = state.quietHoursStartMinutes,
+            endMinutes = state.quietHoursEndMinutes,
+        )
+        val preferences = mutableListOf(
+            NotificationPreferencePatchDto(
+                eventType = NotificationPreferencesRepository.EVENT_GLOBAL,
+                channel = NotificationPreferencesRepository.CHANNEL_IN_APP,
+                enabled = true,
+                quietHours = quietHours,
+            ),
+            NotificationPreferencePatchDto(
+                eventType = NotificationPreferencesRepository.EVENT_GLOBAL,
+                channel = NotificationPreferencesRepository.CHANNEL_EMAIL,
+                enabled = state.emailAlerts,
+            ),
+            NotificationPreferencePatchDto(
+                eventType = NotificationPreferencesRepository.EVENT_GLOBAL,
+                channel = NotificationPreferencesRepository.CHANNEL_SMS,
+                enabled = state.smsAlerts,
+            ),
+            NotificationPreferencePatchDto(
+                eventType = NotificationPreferencesRepository.EVENT_GLOBAL,
+                channel = NotificationPreferencesRepository.CHANNEL_PUSH,
+                enabled = state.pushNotifications,
+            ),
+            NotificationPreferencePatchDto(
+                eventType = NotificationPreferencesRepository.EVENT_LOW_STOCK,
+                channel = NotificationPreferencesRepository.CHANNEL_IN_APP,
+                enabled = state.lowStockAlerts,
+            ),
+            NotificationPreferencePatchDto(
+                eventType = NotificationPreferencesRepository.EVENT_TICKET_CREATED,
+                channel = NotificationPreferencesRepository.CHANNEL_IN_APP,
+                enabled = state.newTicketAlerts,
+            ),
+            NotificationPreferencePatchDto(
+                eventType = NotificationPreferencesRepository.EVENT_APPOINTMENT_REMINDER,
+                channel = NotificationPreferencesRepository.CHANNEL_IN_APP,
+                enabled = state.appointmentReminderAlerts,
+            ),
+        )
+        notifEvents.forEach { event ->
+            channels.forEach { channel ->
+                val key = "${event.id}_${channel.id}"
+                preferences += NotificationPreferencePatchDto(
+                    eventType = event.id,
+                    channel = channel.id,
+                    enabled = state.eventMatrix[key] ?: (event.defaultsOn[channel.id] ?: false),
+                )
+            }
+        }
+        return preferences.distinctBy { "${it.eventType}:${it.channel}" }
+    }
 
     /** §73.8 — Refresh the history snapshot (called when screen becomes visible). */
     fun refreshHistory() {
@@ -314,47 +401,56 @@ class NotificationSettingsViewModel @Inject constructor(
     fun setEmailAlerts(enabled: Boolean) {
         appPreferences.notifEmailAlertsEnabled = enabled
         _state.value = _state.value.copy(emailAlerts = enabled)
+        scheduleServerSync()
     }
 
     fun setSmsAlerts(enabled: Boolean) {
         appPreferences.notifSmsAlertsEnabled = enabled
         _state.value = _state.value.copy(smsAlerts = enabled)
+        scheduleServerSync()
     }
 
     fun setPushNotifications(enabled: Boolean) {
         appPreferences.notifPushEnabled = enabled
         _state.value = _state.value.copy(pushNotifications = enabled)
+        scheduleServerSync()
     }
 
     fun setLowStockAlerts(enabled: Boolean) {
         appPreferences.notifLowStockEnabled = enabled
         _state.value = _state.value.copy(lowStockAlerts = enabled)
+        scheduleServerSync()
     }
 
     fun setNewTicketAlerts(enabled: Boolean) {
         appPreferences.notifNewTicketEnabled = enabled
         _state.value = _state.value.copy(newTicketAlerts = enabled)
+        scheduleServerSync()
     }
 
     fun setAppointmentReminderAlerts(enabled: Boolean) {
         appPreferences.notifAppointmentReminderEnabled = enabled
         _state.value = _state.value.copy(appointmentReminderAlerts = enabled)
+        scheduleServerSync()
     }
 
     // §13.2 quiet hours
     fun setQuietHoursEnabled(enabled: Boolean) {
         appPreferences.quietHoursEnabled = enabled
         _state.value = _state.value.copy(quietHoursEnabled = enabled)
+        scheduleServerSync()
     }
 
     fun setQuietHoursStart(minutes: Int) {
         appPreferences.quietHoursStartMinutes = minutes
         _state.value = _state.value.copy(quietHoursStartMinutes = minutes)
+        scheduleServerSync()
     }
 
     fun setQuietHoursEnd(minutes: Int) {
         appPreferences.quietHoursEndMinutes = minutes
         _state.value = _state.value.copy(quietHoursEndMinutes = minutes)
+        scheduleServerSync()
     }
 
     // L1991 — per-event matrix toggle.
@@ -371,6 +467,7 @@ class NotificationSettingsViewModel @Inject constructor(
         appPreferences.setNotifMatrixEnabled(eventId, channelId, enabled)
         val key = "${eventId}_$channelId"
         _state.update { it.copy(eventMatrix = it.eventMatrix + (key to enabled)) }
+        scheduleServerSync()
     }
 
     /** §73.1 — User confirmed enabling SMS on a high-volume event. */
@@ -384,6 +481,7 @@ class NotificationSettingsViewModel @Inject constructor(
             pendingHighVolumeSmsEvent = null,
             pendingHighVolumeSmsChannel = null,
         ) }
+        scheduleServerSync()
     }
 
     /** §73.1 — User cancelled enabling SMS on a high-volume event. */
@@ -406,6 +504,7 @@ class NotificationSettingsViewModel @Inject constructor(
             }
         }
         _state.update { it.copy(eventMatrix = newMatrix) }
+        scheduleServerSync()
     }
 
     // §73.1 — whether to show the high-volume SMS warning for this event + channel combo.

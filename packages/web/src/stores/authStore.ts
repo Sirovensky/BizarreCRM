@@ -9,6 +9,18 @@ import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
 // data, and last-message WebSocket state.
 const AUTH_CLEAR_EVENT = 'bizarre-crm:auth-cleared';
 const AUTH_READY_EVENT = 'bizarre-crm:auth-ready';
+const AUTH_BROADCAST_KEY = 'bizarre-crm:auth-broadcast';
+const AUTH_TAB_ID = (() => {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+})();
+type AuthBroadcastMessage = { type: 'cleared' | 'ready'; source: string; ts: number };
+const authBroadcastChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
+  ? new BroadcastChannel('bizarre-crm:auth')
+  : null;
 // WEB-FI-005 / FIXED-by-Fixer-A11 2026-04-25 — used to ask the App-level
 // router bridge to navigate to /login via react-router instead of a hard
 // `window.location.href = '/login'` reload. The hard reload was discarding
@@ -37,25 +49,38 @@ function requestLoginNav(): void {
   }, 0);
 }
 export { REQUEST_LOGIN_NAV_EVENT };
-function emitAuthCleared(): void {
+function clearLegacyAccessToken(): void {
+  try { localStorage.removeItem('accessToken'); } catch { /* legacy cleanup only */ }
+}
+function broadcastAuth(type: AuthBroadcastMessage['type']): void {
+  if (typeof window === 'undefined') return;
+  const msg: AuthBroadcastMessage = { type, source: AUTH_TAB_ID, ts: Date.now() };
+  try { authBroadcastChannel?.postMessage(msg); } catch { /* best-effort */ }
+  try {
+    localStorage.setItem(AUTH_BROADCAST_KEY, JSON.stringify(msg));
+  } catch {
+    /* storage disabled — BroadcastChannel may still have worked */
+  }
+}
+function emitAuthCleared(broadcast = true): void {
   if (typeof window === 'undefined') return;
   try {
     window.dispatchEvent(new CustomEvent(AUTH_CLEAR_EVENT));
   } catch (err) {
     console.warn('Failed to emit auth-cleared event', err);
   }
+  if (broadcast) broadcastAuth('cleared');
 }
-// Fired whenever a fresh access token becomes available (login, switchUser,
-// or silent refresh via checkAuth). Listeners like useWebSocket use this to
-// (re)connect now that authentication is live, rather than waiting for the
-// next tab-visibility change.
-function emitAuthReady(): void {
+// Fired whenever the cookie-backed tenant session becomes available. Listeners
+// like useWebSocket use this to (re)connect now that authentication is live.
+function emitAuthReady(broadcast = true): void {
   if (typeof window === 'undefined') return;
   try {
     window.dispatchEvent(new CustomEvent(AUTH_READY_EVENT));
   } catch (err) {
     console.warn('Failed to emit auth-ready event', err);
   }
+  if (broadcast) broadcastAuth('ready');
 }
 export { AUTH_CLEAR_EVENT, AUTH_READY_EVENT };
 
@@ -86,13 +111,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isLoading: true,
 
-  completeLogin: (accessToken, _refreshToken, user) => {
+  completeLogin: (_accessToken, _refreshToken, user) => {
     // Clear any previous tenant's cached data before storing new credentials.
     // This prevents Tenant B from seeing Tenant A's React Query cache entries
     // when the same browser session is reused for a different login.
-    emitAuthCleared();
-    // Only store access token in localStorage; refresh token is in httpOnly cookie
-    localStorage.setItem('accessToken', accessToken);
+    emitAuthCleared(false);
+    clearLegacyAccessToken();
     set({ user, isAuthenticated: true, isLoading: false });
     emitAuthReady();
   },
@@ -103,7 +127,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       // but surface the failure so it's not invisible (server-side session may linger).
       console.warn('[auth] /auth/logout failed; clearing local session anyway', err);
     }
-    localStorage.removeItem('accessToken');
+    clearLegacyAccessToken();
     set({ user: null, isAuthenticated: false, isLoading: false });
     // @audit-fixed: notify listeners (queryClient, planStore, ws state) so the
     // next user does not inherit cached data from the user that just logged out.
@@ -118,57 +142,35 @@ export const useAuthStore = create<AuthState>((set) => ({
     // (ticket/customer lists) and the WS socket kept subscriptions from
     // the outgoing user. Emit the clear BEFORE calling the API so listeners
     // tear down state while the PIN is still being validated.
-    emitAuthCleared();
+    emitAuthCleared(false);
     const res = await api.post('/auth/switch-user', { pin });
-    const { accessToken, user } = res.data.data;
-    localStorage.setItem('accessToken', accessToken);
+    const { user } = res.data.data;
+    clearLegacyAccessToken();
     set({ user, isAuthenticated: true });
     emitAuthReady();
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-      // WEB-FI-016: only attempt the cookie-based refresh when the
-      // non-httpOnly `csrf_token` cookie is present. That cookie is set
-      // alongside the httpOnly refresh cookie at login, so its absence is
-      // a reliable proxy for "this browser has never authenticated" — and
-      // skipping the POST avoids a guaranteed 401 on every fresh tenant
-      // landing visit (which polluted server logs and added latency to
-      // the unauthenticated render).
-      const hasRefreshSession = typeof document !== 'undefined'
-        && /(?:^|;\s*)csrf_token=/.test(document.cookie);
-      if (!hasRefreshSession) {
-        set({ isLoading: false, isAuthenticated: false });
-        return;
-      }
-      // No access token — try refreshing via httpOnly cookie before giving up
-      try {
-        const refreshRes = await api.post('/auth/refresh');
-        const { accessToken, user } = refreshRes.data.data;
-        localStorage.setItem('accessToken', accessToken);
-        set({ user, isAuthenticated: true, isLoading: false });
-        emitAuthReady();
-        return;
-      } catch {
-        set({ isLoading: false, isAuthenticated: false });
-        return;
-      }
+    clearLegacyAccessToken();
+    const hasRefreshSession = typeof document !== 'undefined'
+      && /(?:^|;\s*)csrf_token=/.test(document.cookie);
+    if (!hasRefreshSession) {
+      set({ user: null, isLoading: false, isAuthenticated: false });
+      return;
     }
     try {
       const res = await api.get('/auth/me');
       set({ user: res.data.data, isAuthenticated: true, isLoading: false });
-      emitAuthReady();
+      emitAuthReady(false);
     } catch {
       // Access token expired — try refresh before logging out
       try {
         const refreshRes = await api.post('/auth/refresh');
-        const { accessToken, user } = refreshRes.data.data;
-        localStorage.setItem('accessToken', accessToken);
+        const { user } = refreshRes.data.data;
         set({ user, isAuthenticated: true, isLoading: false });
-        emitAuthReady();
+        emitAuthReady(false);
       } catch {
-        localStorage.removeItem('accessToken');
+        clearLegacyAccessToken();
         set({ user: null, isAuthenticated: false, isLoading: false });
       }
     }
@@ -200,85 +202,43 @@ if (typeof window !== 'undefined') {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// WEB-FO-002: cross-tab auth sync via the `storage` event.
-// localStorage writes in tab A fire a `storage` event in every other
-// tab on the same origin. We listen for changes to `accessToken` and
-// either force-logout (token removed in another tab) or re-hydrate
-// the user (token added/changed in another tab — typically a sign-in
-// or silent refresh). Without this, two tabs of the same user can
-// drift indefinitely: one logs out and the other keeps showing
-// protected pages until the next 401 round-trip.
+// Cross-tab auth sync without storing bearer tokens.
+// We broadcast only a non-secret event marker, then sibling tabs re-hydrate
+// from the httpOnly cookie via /auth/me or clear local UI state.
 // ──────────────────────────────────────────────────────────────────
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e: StorageEvent) => {
-    if (e.key !== 'accessToken') return;
-    // Token removed in another tab → mirror the logout here. Don't
-    // call api/logout (the other tab already did) and don't navigate
-    // if we're already on /login.
-    if (e.newValue === null) {
-      const wasAuthed = useAuthStore.getState().isAuthenticated;
-      useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
-      emitAuthCleared();
-      if (wasAuthed && !window.location.pathname.startsWith('/login')) {
-        // WEB-FI-005: prefer SPA nav so the React tree (and useDraft
-        // beforeunload flush) survives. Falls back to hard nav if no
-        // bridge is mounted.
-        requestLoginNav();
-      }
-      return;
+function handleAuthBroadcastMessage(msg: AuthBroadcastMessage): void {
+  if (!msg || msg.source === AUTH_TAB_ID) return;
+  if (msg.type === 'cleared') {
+    const wasAuthed = useAuthStore.getState().isAuthenticated;
+    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+    emitAuthCleared(false);
+    if (wasAuthed && !window.location.pathname.startsWith('/login')) {
+      requestLoginNav();
     }
-    // Token added/changed in another tab → silently re-hydrate the
-    // user via /auth/me so this tab picks up the new identity (login
-    // or switchUser elsewhere). checkAuth() also covers refresh-token
-    // rotation so this tab uses the freshest access token on next req.
-    if (e.newValue && e.newValue !== e.oldValue) {
-      // WEB-FAE-009: detect cross-tenant token clobber before re-hydrating.
-      // JWT payloads are Base64URL-encoded and safe to read client-side
-      // (we are not verifying the signature — only comparing the tenantSlug
-      // claim to catch kiosk/shared-device accidents; server still enforces
-      // authN). If the new token belongs to a different tenantSlug, bail out
-      // and hard-redirect rather than silently swapping tenant context.
-      const readJwtSlug = (token: string | null): string | null => {
-        if (!token) return null;
-        try {
-          const parts = token.split('.');
-          if (parts.length !== 3) return null;
-          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-          return typeof payload?.tenantSlug === 'string' ? payload.tenantSlug : null;
-        } catch { return null; }
-      };
-      const oldSlug = readJwtSlug(e.oldValue);
-      const newSlug = readJwtSlug(e.newValue);
-      if (oldSlug && newSlug && oldSlug !== newSlug) {
-        // A different tenant's token appeared — forcibly log out and
-        // surface a clear message rather than blending two tenants' data.
-        useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
-        emitAuthCleared();
-        // react-hot-toast is bundled with the app; broadcast the warning
-        // via a custom event so main.tsx (which imports toast) can pick it
-        // up without a dynamic import inside a sync event handler.
-        window.dispatchEvent(new CustomEvent('bizarre-crm:cross-tenant-token', {
-          detail: { message: 'Account changed in another tab. Please sign in again.' },
-        }));
-        if (!window.location.pathname.startsWith('/login')) {
-          requestLoginNav();
-        }
-        return;
-      }
+    return;
+  }
 
-      // Wipe per-user caches in this tab before /auth/me lands so a
-      // tenant-switch doesn't bleed state across tabs.
-      // WEB-FAE-004: also pre-emptively flip auth state to "loading"
-      // so any in-flight TanStack queries keyed off the old tenant
-      // don't keep their hydrated payloads visible while /auth/me
-      // races to resolve. Defer checkAuth one microtask so the cache
-      // clear (sync listener in main.tsx) plus the React state flush
-      // both settle before the network request fires.
-      useAuthStore.setState({ isLoading: true });
-      emitAuthCleared();
-      queueMicrotask(() => {
-        useAuthStore.getState().checkAuth();
-      });
+  if (msg.type === 'ready') {
+    useAuthStore.setState({ isLoading: true });
+    emitAuthCleared(false);
+    queueMicrotask(() => {
+      useAuthStore.getState().checkAuth();
+    });
+  }
+}
+
+if (typeof window !== 'undefined') {
+  authBroadcastChannel?.addEventListener('message', (event: MessageEvent) => {
+    handleAuthBroadcastMessage(event.data as AuthBroadcastMessage);
+  });
+
+  window.addEventListener('storage', (e: StorageEvent) => {
+    if (e.key === AUTH_BROADCAST_KEY && e.newValue) {
+      try {
+        handleAuthBroadcastMessage(JSON.parse(e.newValue) as AuthBroadcastMessage);
+      } catch {
+        /* ignore malformed storage marker */
+      }
     }
   });
 }

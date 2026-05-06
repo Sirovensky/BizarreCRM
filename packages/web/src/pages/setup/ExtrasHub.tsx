@@ -159,7 +159,7 @@ export function ExtrasHub({ completedCards, onOpenCard, onFinish, onBack }: Extr
         <button
           type="button"
           onClick={() => setShowMore((s) => !s)}
-          className="mx-auto flex items-center gap-1.5 rounded-full border border-surface-200 bg-white px-4 py-1.5 text-xs font-medium text-surface-600 shadow-sm transition-colors hover:border-surface-300 hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-surface-600 dark:hover:bg-surface-700"
+          className="btn btn-sm mx-auto flex items-center gap-1.5 rounded-full border border-surface-200 bg-white px-4 py-1.5 text-xs font-medium text-surface-600 shadow-sm transition-colors hover:border-surface-300 hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-surface-600 dark:hover:bg-surface-700"
         >
           {showMore ? (
             <>
@@ -188,7 +188,7 @@ export function ExtrasHub({ completedCards, onOpenCard, onFinish, onBack }: Extr
         <button
           type="button"
           onClick={onFinish}
-          className={`flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-semibold shadow-lg transition-colors ${
+          className={`btn btn-xl flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-semibold shadow-lg transition-colors ${
             completedCount === TOTAL_COUNT
               ? 'bg-green-600 text-white hover:bg-green-700'
               : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
@@ -199,7 +199,7 @@ export function ExtrasHub({ completedCards, onOpenCard, onFinish, onBack }: Extr
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-1 text-xs font-medium text-surface-500 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+          className="btn btn-sm flex items-center gap-1 text-xs font-medium text-surface-500 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
         >
           <ArrowLeft className="h-3 w-3" />
           Back to trial info

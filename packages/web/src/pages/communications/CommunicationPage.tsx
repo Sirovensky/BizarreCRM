@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Send, MessageSquare, Plus, Phone, User, AlertCircle,
@@ -10,11 +10,22 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi, emailApi } from '@/api/endpoints';
+import type { SmsFollowupReminder } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
-import { formatPhone, formatCurrency } from '@/utils/format';
+import {
+  formatPhone,
+  formatCurrency,
+  formatShortDateTime,
+  formatTime as formatSharedTime,
+} from '@/utils/format';
 import { obfuscatePhoneForStorageKey } from '@/utils/phoneFormat';
 import { useDraft } from '@/hooks/useDraft';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 // Team-inbox enrichment (audit §51) — all new components are additive.
 import { TeamInboxHeader } from './components/TeamInboxHeader';
 import { ConversationAssignee } from './components/ConversationAssignee';
@@ -151,6 +162,10 @@ interface CustomerTicketsPayload {
   tickets?: Array<{ id: number; order_id: string; status_name?: string; status_color?: string }>;
 }
 
+interface SmsRemindersPayload {
+  reminders: SmsFollowupReminder[];
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 /** Parse an ISO date string as UTC (SQLite datetime('now') returns UTC without Z suffix) */
@@ -172,18 +187,15 @@ function formatTime(iso: string) {
   const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffDays === 0) {
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return formatSharedTime(d);
   }
   if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return d.toLocaleDateString('en-US', { weekday: 'short' });
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function formatMessageTime(iso: string) {
-  return parseUtc(iso).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatSharedTime(parseUtc(iso));
 }
 
 function formatMessageDate(iso: string) {
@@ -194,7 +206,23 @@ function formatMessageDate(iso: string) {
 
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+}
+
+function reminderDueMs(reminder: Pick<SmsFollowupReminder, 'due_at'>): number {
+  const ms = parseUtc(reminder.due_at).getTime();
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+}
+
+function reminderDisplayName(reminder: SmsFollowupReminder): string {
+  const customerName = reminder.customer_name?.trim();
+  return customerName || formatPhone(reminder.phone || reminder.conv_phone);
+}
+
+function formatReminderDueAt(iso: string): string {
+  const d = parseUtc(iso);
+  if (isNaN(d.getTime())) return 'scheduled time';
+  return formatShortDateTime(d);
 }
 
 function truncate(text: string, len: number) {
@@ -1087,6 +1115,9 @@ function ThreadSearchBar({
 // ─── Main Component ─────────────────────────────────────────────────
 export function CommunicationPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const reminderParam = searchParams.get('reminder_id');
+  const reminderDeepLinkId = reminderParam ? Number(reminderParam) : null;
   const [mainView, setMainView] = useState<'messages' | 'calls' | 'email'>('messages');
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
@@ -1171,11 +1202,12 @@ export function CommunicationPage() {
   const { data: convData, isLoading: convLoading } = useQuery({
     // WEB-S6-034: include debouncedSearch in the cache key so a new search
     // triggers a fresh server-side fetch.
-    queryKey: ['sms-conversations', includeArchived, debouncedSearch],
+    queryKey: ['sms-conversations', includeArchived, debouncedSearch, assignedFilter],
     queryFn: () => {
       const params: Record<string, string> = {};
       if (includeArchived) params['include_archived'] = '1';
       if (debouncedSearch) params['q'] = debouncedSearch;
+      if (assignedFilter !== 'all') params['assigned_to'] = assignedFilter;
       return smsApi.conversations(Object.keys(params).length ? params as any : undefined);
     },
     staleTime: 30_000,
@@ -1250,43 +1282,105 @@ export function CommunicationPage() {
       : (ctRaw as CustomerTicketsPayload | undefined)?.tickets
   ) ?? [];
 
-  // Reminder helpers
-  // WEB-FO-005 (FIXED-by-Fixer-A3 2026-04-25): two tabs setting reminders
-  // concurrently used to lose one of them via read-modify-write race —
-  // tab A reads `[r1]`, tab B reads `[r1]`, A writes `[r1, r2]`, B writes
-  // `[r1, r3]`, r2 vanishes. Wrap the RMW in `navigator.locks.request`
-  // when available so cross-tab access is serialized; fall back to a
-  // best-effort retry-on-mismatch CAS that re-reads after writing and
-  // re-applies the append if storage shifted underneath us.
+  const invalidateReminderQueries = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['sms-reminders'] });
+    queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    queryClient.invalidateQueries({ queryKey: ['notification-count'] });
+  }, [queryClient]);
+
+  const { data: remindersData } = useQuery({
+    queryKey: ['sms-reminders', 'pending'],
+    queryFn: () => smsApi.reminders({ status: 'pending' }),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+  const remindersPayload = unwrap<SmsRemindersPayload>(remindersData as AxiosLike<SmsRemindersPayload>);
+  const pendingReminders = useMemo(
+    () => remindersPayload?.reminders ?? [],
+    [remindersPayload],
+  );
+
+  const { data: reminderByIdData } = useQuery({
+    queryKey: ['sms-reminders', 'id', reminderDeepLinkId],
+    queryFn: () => smsApi.reminders({ status: 'all', id: reminderDeepLinkId! }),
+    enabled: !!reminderDeepLinkId && Number.isFinite(reminderDeepLinkId),
+    staleTime: 10_000,
+  });
+  const reminderById = unwrap<SmsRemindersPayload>(reminderByIdData as AxiosLike<SmsRemindersPayload>)?.reminders?.[0];
+
+  useEffect(() => {
+    if (!reminderDeepLinkId || !Number.isFinite(reminderDeepLinkId)) return;
+    const reminder = reminderById ?? pendingReminders.find((r) => r.id === reminderDeepLinkId);
+    if (!reminder) return;
+    setMainView('messages');
+    setActiveTab('all');
+    setSelectedPhone(reminder.conv_phone);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('reminder_id');
+      return next;
+    }, { replace: true });
+  }, [pendingReminders, reminderById, reminderDeepLinkId, setSearchParams]);
+
+  const nowMs = Date.now();
+  const dueReminders = pendingReminders.filter((reminder) => reminderDueMs(reminder) <= nowMs);
+  const selectedReminders = selectedPhone
+    ? pendingReminders.filter((reminder) => reminder.conv_phone === selectedPhone)
+    : [];
+  const selectedDueReminders = selectedReminders.filter((reminder) => reminderDueMs(reminder) <= nowMs);
+  const selectedFutureReminders = selectedReminders.filter((reminder) => reminderDueMs(reminder) > nowMs);
+
+  const createReminderMutation = useMutation({
+    mutationFn: (input: { phone: string; label: string; ms: number }) => smsApi.createReminder({
+      phone: input.phone,
+      label: input.label,
+      due_at: new Date(Date.now() + input.ms).toISOString(),
+    }),
+    onSuccess: (_res, input) => {
+      invalidateReminderQueries();
+      toast.success(`Reminder set: ${input.label}`);
+      setShowReminder(false);
+    },
+    onError: () => toast.error('Failed to set reminder'),
+  });
+
+  const completeReminderMutation = useMutation({
+    mutationFn: (id: number) => smsApi.completeReminder(id),
+    onSuccess: () => {
+      invalidateReminderQueries();
+      toast.success('Reminder completed');
+    },
+    onError: () => toast.error('Failed to complete reminder'),
+  });
+
+  const snoozeReminderMutation = useMutation({
+    mutationFn: (input: { id: number; ms: number }) => smsApi.snoozeReminder(input.id, {
+      due_at: new Date(Date.now() + input.ms).toISOString(),
+    }),
+    onSuccess: () => {
+      invalidateReminderQueries();
+      toast.success('Reminder snoozed');
+    },
+    onError: () => toast.error('Failed to snooze reminder'),
+  });
+
+  const cancelReminderMutation = useMutation({
+    mutationFn: (id: number) => smsApi.cancelReminder(id),
+    onSuccess: () => {
+      invalidateReminderQueries();
+      toast.success('Reminder cancelled');
+    },
+    onError: () => toast.error('Failed to cancel reminder'),
+  });
+
+  const reminderActionPending = createReminderMutation.isPending
+    || completeReminderMutation.isPending
+    || snoozeReminderMutation.isPending
+    || cancelReminderMutation.isPending;
+
   const handleSetReminder = useCallback((phone: string, label: string, ms: number) => {
-    const newEntry = { phone, label, due: Date.now() + ms, created: Date.now() };
-    const apply = () => {
-      const raw = localStorage.getItem('sms_reminders') || '[]';
-      let list: Array<typeof newEntry> = [];
-      try { list = JSON.parse(raw); } catch { list = []; }
-      if (!Array.isArray(list)) list = [];
-      list.push(newEntry);
-      localStorage.setItem('sms_reminders', JSON.stringify(list));
-    };
-    const locks = (navigator as Navigator & {
-      locks?: { request: (name: string, cb: () => void | Promise<void>) => Promise<void> };
-    }).locks;
-    if (locks?.request) {
-      void locks.request('sms_reminders', () => { apply(); });
-    } else {
-      // Fallback: CAS-style — write, then re-read; if we don't see our entry
-      // (another tab raced), re-apply once.
-      apply();
-      try {
-        const verify = JSON.parse(localStorage.getItem('sms_reminders') || '[]');
-        const seen = Array.isArray(verify)
-          && verify.some((e: typeof newEntry) => e?.created === newEntry.created && e?.phone === newEntry.phone);
-        if (!seen) apply();
-      } catch { /* ignore */ }
-    }
-    toast.success(`Reminder set: ${label}`);
-    setShowReminder(false);
-  }, []);
+    createReminderMutation.mutate({ phone, label, ms });
+  }, [createReminderMutation]);
 
   // Flag/pin mutations
   const toggleFlagMut = useMutation({
@@ -1469,6 +1563,15 @@ export function CommunicationPage() {
   const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const validationError = await validateImageFile(file, {
+      maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
+      label: `"${file.name}"`,
+    });
+    if (validationError) {
+      toast.error(validationError);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+      return;
+    }
     setUploading(true);
     try {
       const res = await smsApi.uploadMedia(file);
@@ -1843,6 +1946,57 @@ export function CommunicationPage() {
                 Or review team-inbox stats while you wait.
               </p>
             </div>
+            {dueReminders.length > 0 && (
+              <div className="w-full max-w-2xl rounded-lg border border-amber-200 bg-amber-50 p-3 text-left shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  <Bell className="h-4 w-4" />
+                  {dueReminders.length} SMS follow-up{dueReminders.length === 1 ? '' : 's'} due
+                </div>
+                <div className="space-y-2">
+                  {dueReminders.slice(0, 4).map((reminder) => (
+                    <div
+                      key={reminder.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-white px-3 py-2 text-sm text-surface-700 dark:bg-surface-900/80 dark:text-surface-200"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMainView('messages');
+                          setActiveTab('all');
+                          setSelectedPhone(reminder.conv_phone);
+                        }}
+                        className="min-w-0 flex-1 text-left hover:text-primary-600"
+                      >
+                        <span className="block truncate font-medium">{reminderDisplayName(reminder)}</span>
+                        <span className="block truncate text-xs text-surface-500 dark:text-surface-400">
+                          {reminder.label} · due {formatReminderDueAt(reminder.due_at)}
+                        </span>
+                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => completeReminderMutation.mutate(reminder.id)}
+                          disabled={reminderActionPending}
+                          className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 dark:text-green-300 dark:hover:bg-green-900/20"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Done
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => snoozeReminderMutation.mutate({ id: reminder.id, ms: 3600_000 })}
+                          disabled={reminderActionPending}
+                          className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:text-amber-300 dark:hover:bg-amber-900/30"
+                        >
+                          <Clock className="h-3.5 w-3.5" />
+                          1h
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid w-full max-w-xl gap-3 md:grid-cols-2">
               <TemplateAnalyticsCard />
               <FailedSendRetryList />
@@ -2049,9 +2203,14 @@ export function CommunicationPage() {
                                 <button
                                   key={opt.label}
                                   onClick={() => handleSetReminder(selectedPhone!, opt.label, opt.ms)}
-                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700"
+                                  disabled={createReminderMutation.isPending}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-300 dark:hover:bg-surface-700"
                                 >
-                                  <Clock className="h-3.5 w-3.5 text-surface-400" />
+                                  {createReminderMutation.isPending ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-surface-400" />
+                                  ) : (
+                                    <Clock className="h-3.5 w-3.5 text-surface-400" />
+                                  )}
                                   {opt.label}
                                 </button>
                               ))}
@@ -2064,6 +2223,76 @@ export function CommunicationPage() {
                 })()}
               </div>
             </div>
+
+            {selectedReminders.length > 0 && (
+              <div className={cn(
+                'border-b px-4 py-2',
+                selectedDueReminders.length > 0
+                  ? 'border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20'
+                  : 'border-surface-200 bg-surface-50 dark:border-surface-700 dark:bg-surface-800',
+              )}>
+                <div className="flex flex-col gap-2">
+                  {(selectedDueReminders.length > 0 ? selectedDueReminders : selectedFutureReminders.slice(0, 2)).map((reminder) => {
+                    const due = reminderDueMs(reminder) <= nowMs;
+                    return (
+                      <div key={reminder.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Bell className={cn(
+                            'h-4 w-4 shrink-0',
+                            due ? 'text-amber-600 dark:text-amber-300' : 'text-surface-400',
+                          )} />
+                          <div className="min-w-0">
+                            <div className={cn(
+                              'truncate font-medium',
+                              due ? 'text-amber-900 dark:text-amber-100' : 'text-surface-700 dark:text-surface-200',
+                            )}>
+                              {due ? 'Follow-up due' : 'Reminder set'}: {reminder.label}
+                            </div>
+                            <div className="truncate text-xs text-surface-500 dark:text-surface-400">
+                              Due {formatReminderDueAt(reminder.due_at)}
+                              {reminder.note ? ` · ${truncate(reminder.note, 120)}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {due && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => completeReminderMutation.mutate(reminder.id)}
+                                disabled={reminderActionPending}
+                                className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 dark:text-green-300 dark:hover:bg-green-900/20"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                Complete
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => snoozeReminderMutation.mutate({ id: reminder.id, ms: 3600_000 })}
+                                disabled={reminderActionPending}
+                                className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:text-amber-300 dark:hover:bg-amber-900/30"
+                              >
+                                <Clock className="h-3.5 w-3.5" />
+                                Snooze 1h
+                              </button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => cancelReminderMutation.mutate(reminder.id)}
+                            disabled={reminderActionPending}
+                            className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-surface-500 hover:bg-surface-100 disabled:opacity-50 dark:text-surface-300 dark:hover:bg-surface-700"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Thread search bar (COM-2) */}
             <ThreadSearchBar messages={messages} scrollContainerRef={messagesContainerRef} />
@@ -2200,7 +2429,7 @@ export function CommunicationPage() {
               )}
               <div className="flex items-end gap-2">
                 {/* Image attach button */}
-                <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" className="hidden" onChange={handleImageSelect} />
+                <input ref={imageInputRef} type="file" accept={IMAGE_UPLOAD_ACCEPT} className="hidden" onChange={handleImageSelect} />
                 <button
                   onClick={() => imageInputRef.current?.click()}
                   disabled={uploading}

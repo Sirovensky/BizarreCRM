@@ -45,3 +45,55 @@ export function parsePage(raw: unknown): number {
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.floor(n);
 }
+
+export interface KnownTotalPaginationOptions {
+  page: unknown;
+  pageSize: number;
+  total: number;
+  /**
+   * Some legacy endpoints report one page for an empty result set. Leave the
+   * default at 0 for routes that already expose `total_pages: 0`.
+   */
+  minimumTotalPages?: 0 | 1;
+}
+
+export interface KnownTotalPagination {
+  requestedPage: number;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  offset: number;
+  outOfBounds: boolean;
+}
+
+/**
+ * Build pagination metadata when the route already knows the filtered total.
+ *
+ * This caps huge/out-of-range page requests before an OFFSET is built, so
+ * callers can return the last known page plus an `out_of_bounds` flag instead
+ * of spending work on a sparse empty page.
+ */
+export function paginateKnownTotal(options: KnownTotalPaginationOptions): KnownTotalPagination {
+  const requestedPage = parsePage(options.page);
+  const pageSize = Number.isFinite(options.pageSize) && options.pageSize > 0
+    ? Math.floor(options.pageSize)
+    : DEFAULT_PAGE_SIZE;
+  const total = Number.isFinite(options.total) && options.total > 0
+    ? Math.floor(options.total)
+    : 0;
+  const minimumTotalPages = options.minimumTotalPages ?? 0;
+  const totalPages = Math.max(minimumTotalPages, Math.ceil(total / pageSize));
+  const lastPage = Math.max(1, totalPages);
+  const page = Math.min(requestedPage, lastPage);
+
+  return {
+    requestedPage,
+    page,
+    pageSize,
+    total,
+    totalPages,
+    offset: (page - 1) * pageSize,
+    outOfBounds: requestedPage > lastPage,
+  };
+}

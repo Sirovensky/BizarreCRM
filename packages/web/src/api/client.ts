@@ -15,6 +15,7 @@ const AUTH_REFRESH_URL = `${API_BASE}${AUTH_REFRESH_PATH}`;
  * being silently logged out with no feedback.
  */
 export const LOGOUT_REQUIRED_EVENT = 'bizarre-crm:logout-required';
+const AUTH_READY_EVENT = 'bizarre-crm:auth-ready';
 
 interface LogoutRequiredDetail {
   reason: 'refresh-failed' | 'session-expired' | 'forced';
@@ -38,6 +39,14 @@ function emitLogoutRequired(reason: LogoutRequiredDetail['reason']) {
   } catch (err) {
     // Environments without window (SSR/tests) — best-effort only
     devWarn('Failed to emit logout-required event', err);
+  }
+}
+
+function emitAuthReady() {
+  try {
+    window.dispatchEvent(new CustomEvent(AUTH_READY_EVENT));
+  } catch (err) {
+    devWarn('Failed to emit auth-ready event', err);
   }
 }
 
@@ -73,9 +82,9 @@ const client = axios.create({
 // parallel and the second wins — invalidating the first caller's new token.
 // `sharedRefreshPromise` is the single slot: any caller that finds it
 // populated awaits the existing promise instead of starting a new one.
-let sharedRefreshPromise: Promise<string> | null = null;
+let sharedRefreshPromise: Promise<void> | null = null;
 
-async function performRefresh(): Promise<string> {
+async function performRefresh(): Promise<void> {
   if (sharedRefreshPromise) return sharedRefreshPromise;
   sharedRefreshPromise = (async () => {
     try {
@@ -95,10 +104,11 @@ async function performRefresh(): Promise<string> {
           timeout: 10_000,
         },
       );
-      const accessToken = res.data?.data?.accessToken;
-      if (!accessToken) throw new Error('Refresh response missing access token');
-      localStorage.setItem('accessToken', accessToken);
-      return accessToken;
+      if (res.data?.success !== true) {
+        throw new Error('Refresh response was not successful');
+      }
+      emitAuthReady();
+      scheduleTokenRefresh();
     } finally {
       // Always clear the slot so the next expiry cycle can refresh again.
       sharedRefreshPromise = null;
@@ -107,85 +117,45 @@ async function performRefresh(): Promise<string> {
   return sharedRefreshPromise;
 }
 
-// Proactive token refresh — refresh 5 min before expiry
+// Proactive cookie-session refresh — refresh on a coarse timer because the
+// access JWT is now httpOnly and intentionally unreadable to JS.
 let refreshScheduled = false;
-// WEB-FD-017: cache the decoded `exp` claim keyed by the raw token string.
-// Every authenticated request used to base64-decode + JSON.parse the JWT
-// payload; on a page that fires N requests this is N decodes for the same
-// token. Skip the work whenever the token string hasn't changed.
-let cachedTokenForExp: string | null = null;
-let cachedTokenExpMs: number | null = null;
-function scheduleTokenRefresh() {
-  if (refreshScheduled) return;
-  const token = localStorage.getItem('accessToken');
-  if (!token) return;
-  try {
-    let expMs: number;
-    if (token === cachedTokenForExp && cachedTokenExpMs != null) {
-      expMs = cachedTokenExpMs;
-    } else {
-      const parts = token.split('.');
-      if (parts.length < 3) throw new Error('malformed');
-      if (parts[1].length > 4096) throw new Error('payload too large');
-      const decoded = atob(parts[1]);
-      if (decoded.length > 8192) throw new Error('decoded payload too large');
-      const payload = JSON.parse(decoded);
-      // Without this guard, a token with a missing or non-numeric `exp` would
-      // turn expiresIn into NaN, Math.max(NaN, 10_000) into NaN, and setTimeout
-      // into a 0-ms fire — causing a refresh storm on every request.
-      if (typeof payload?.exp !== 'number' || !Number.isFinite(payload.exp)) {
-        throw new Error('token missing numeric exp claim');
-      }
-      expMs = payload.exp * 1000;
-      cachedTokenForExp = token;
-      cachedTokenExpMs = expMs;
-    }
-    const expiresIn = expMs - Date.now();
-    const refreshIn = Math.max(expiresIn - 5 * 60 * 1000, 10_000); // 5 min before expiry, min 10s
-    refreshScheduled = true;
-    setTimeout(async () => {
-      refreshScheduled = false;
-      try {
-        await performRefresh();
-        scheduleTokenRefresh(); // Schedule next refresh
-      } catch (err) {
-        // Refresh failed — let the 401 interceptor handle it on the next request
-        devWarn('Proactive token refresh failed:', err);
-      }
-    }, refreshIn);
-  } catch (err) {
-    // Invalid token format — reset scheduling flag so future requests can
-    // re-enter scheduleTokenRefresh instead of being silently skipped.
-    refreshScheduled = false;
-    // Clear the malformed token so it doesn't block every subsequent request.
-    // Only remove it if it hasn't been replaced by a concurrent refresh.
-    const cleared = localStorage.getItem('accessToken') === token;
-    if (cleared) {
-      localStorage.removeItem('accessToken');
-      cachedTokenForExp = null;
-      cachedTokenExpMs = null;
-    }
-    devWarn('Could not decode access token for refresh scheduling:', err);
-    // SCAN-1084: a malformed token left the auth store thinking we were
-    // authenticated until the NEXT API call 401'd. During that window the
-    // UI rendered protected routes with no Authorization header and POSTs
-    // silently failed. Emit the same event the 401 interceptor uses so the
-    // store flips immediately.
-    if (cleared) emitLogoutRequired('refresh-failed');
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+const COOKIE_ACCESS_REFRESH_MS = 55 * 60 * 1000;
+
+function clearRefreshState() {
+  refreshScheduled = false;
+  sharedRefreshPromise = null;
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
   }
 }
 
-// Request interceptor: attach auth token + CSRF header for refresh calls
+function scheduleTokenRefresh() {
+  if (refreshScheduled) return;
+  if (!getCsrfTokenCookie()) return;
+  refreshScheduled = true;
+  refreshTimer = setTimeout(async () => {
+    refreshScheduled = false;
+    refreshTimer = null;
+    try {
+      await performRefresh();
+    } catch (err) {
+      // Refresh failed — let the 401 interceptor handle it on the next request.
+      devWarn('Proactive token refresh failed:', err);
+    }
+  }, COOKIE_ACCESS_REFRESH_MS);
+}
+
+// Request interceptor: send cookies and attach CSRF for cookie-auth mutations.
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const csrfToken = getCsrfTokenCookie();
+  if (csrfToken) {
     scheduleTokenRefresh();
   }
-  // SEC-H89: Automatically attach the CSRF double-submit token for every
-  // POST to /auth/refresh, regardless of which callsite triggered it.
-  if (config.url?.includes(AUTH_REFRESH_PATH) && config.method?.toUpperCase() === 'POST') {
-    const csrfToken = getCsrfTokenCookie();
+  const method = config.method?.toUpperCase();
+  if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
     if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
   }
   return config;
@@ -199,26 +169,14 @@ const logoutClient = axios.create({ baseURL: API_BASE, withCredentials: true });
 function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
   if (isLoggingOut) return;
   isLoggingOut = true;
-  // WEB-FD-004 (FIXED-by-Fixer-A3 2026-04-25): previously this read the
-  // access token, removed it, then sent the *captured* token in the
-  // Authorization header asynchronously. Two failure modes:
-  //   (1) a parallel tab refreshed between read and post → we hit
-  //       /auth/logout with an already-rotated token, server 401s, and
-  //       the actually-current token in localStorage stays valid in the
-  //       sibling tab.
-  //   (2) the captured token sat in this closure (and on the wire) for
-  //       the lifetime of the request — extra exposure window.
-  // Fix: invalidate the access token in localStorage atomically, then call
-  // /auth/logout with `withCredentials` only. The server identifies the
-  // session via the refresh-token httpOnly cookie + CSRF double-submit,
-  // which is the canonical mechanism for logout already.
-  localStorage.removeItem('accessToken');
+  // Tenant access tokens now live in httpOnly cookies. Drop any legacy
+  // localStorage residue, then call /auth/logout with credentials + CSRF.
+  try { localStorage.removeItem('accessToken'); } catch { /* legacy cleanup only */ }
   // @audit-fixed: drop any pending proactive-refresh promise so the next login
   // can re-arm scheduling cleanly. Without this, `refreshScheduled` and a stale
   // `sharedRefreshPromise` would survive the logout and the new session would
   // skip its first proactive refresh window.
-  refreshScheduled = false;
-  sharedRefreshPromise = null;
+  clearRefreshState();
   // Forward the CSRF double-submit token so the server accepts the
   // unauthenticated logout call.
   const csrfToken = getCsrfTokenCookie();
@@ -238,15 +196,15 @@ function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
     });
 }
 
-// @audit-fixed: clear scheduling/refresh state when the auth store fires a
-// graceful logout (`bizarre-crm:auth-cleared`). The 401 path already calls
-// forceLogout() which resets these, but a manual user-initiated logout goes
-// through authStore.logout() which only clears localStorage — without this
-// listener, the next login would skip the first proactive-refresh window.
+// Clear scheduling/refresh state when the auth store fires a graceful logout.
 if (typeof window !== 'undefined') {
+  try { window.localStorage.removeItem('accessToken'); } catch { /* legacy cleanup only */ }
   window.addEventListener('bizarre-crm:auth-cleared', () => {
-    refreshScheduled = false;
-    sharedRefreshPromise = null;
+    try { window.localStorage.removeItem('accessToken'); } catch { /* legacy cleanup only */ }
+    clearRefreshState();
+  });
+  window.addEventListener(AUTH_READY_EVENT, () => {
+    scheduleTokenRefresh();
   });
 }
 
@@ -320,8 +278,7 @@ client.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       try {
-        const accessToken = await performRefresh();
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        await performRefresh();
         // WEB-FI-003 fix: if the retried request still 401s the response was
         // previously rejected to the caller WITHOUT a logout — the auth store
         // still thought the user was authenticated, so the user kept seeing

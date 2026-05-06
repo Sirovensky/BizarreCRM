@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Lock, Loader2 } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
+import { Button } from './Button';
 
 // WEB-FC-005: focusable selector for in-modal Tab cycle
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -170,6 +171,9 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
   };
 
   return (
+    // WEB-UIUX-26: no backdrop click-to-close here by design. This dialog gates
+    // POS/security-sensitive actions, so accidental outside taps should not
+    // silently discard a partially typed PIN.
     <div data-state="open" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-in fade-in-0 duration-200 motion-reduce:animate-none">
       <div
         ref={dialogRef}
@@ -185,14 +189,17 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             <Lock aria-hidden="true" className="h-4 w-4 text-surface-500" />
             <h2 id="pin-modal-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">{title}</h2>
           </div>
-          <button
+          <Button
             type="button"
             aria-label="Close"
             onClick={onCancel}
-            className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800"
+            variant="ghost"
+            size="xs"
+            iconOnly
+            className="text-surface-400"
           >
             <X aria-hidden="true" className="h-5 w-5" />
-          </button>
+          </Button>
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
@@ -227,20 +234,24 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
           )}
 
           <div className="flex gap-3">
-            <button
+            <Button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-surface-300 px-4 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+              variant="secondary"
+              size="sm"
+              fullWidth
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
               disabled={!pin.trim() || verifying || isLocked}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-50"
+              size="sm"
+              fullWidth
+              leadingIcon={verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
             >
-              {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
-            </button>
+              Verify
+            </Button>
           </div>
         </form>
       </div>

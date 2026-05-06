@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, Loader2, AlertCircle, ExternalLink, Phone, MessageSquare, Mic, Bot } from 'lucide-react';
-import { ComingSoonBadge } from './components/ComingSoonBadge';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import axios from '@/api/client';
@@ -36,6 +35,11 @@ export function SmsVoiceSettings() {
   // WEB-W1-029: auto-reply controlled state
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [autoReplyMessage, setAutoReplyMessage] = useState('');
+  const [tcxConfig, setTcxConfig] = useState({
+    tcx_host: '',
+    tcx_extension: '',
+    tcx_password: '',
+  });
 
   // Load provider registry
   const { data: providersData } = useQuery({
@@ -73,6 +77,11 @@ export function SmsVoiceSettings() {
     // WEB-W1-029: populate auto-reply state
     setAutoReplyEnabled(cfg.auto_reply_enabled === '1');
     setAutoReplyMessage(cfg.auto_reply_message || '');
+    setTcxConfig({
+      tcx_host: cfg.tcx_host || '',
+      tcx_extension: cfg.tcx_extension || '',
+      tcx_password: cfg.tcx_password || '',
+    });
   }, [configData]);
 
   const providers = providersData || [];
@@ -133,6 +142,9 @@ export function SmsVoiceSettings() {
       // WEB-W1-029: persist auto-reply settings
       entries['auto_reply_enabled'] = autoReplyEnabled ? '1' : '0';
       entries['auto_reply_message'] = autoReplyMessage;
+      entries['tcx_host'] = tcxConfig.tcx_host;
+      entries['tcx_extension'] = tcxConfig.tcx_extension;
+      if (tcxConfig.tcx_password) entries['tcx_password'] = tcxConfig.tcx_password;
 
       await settingsApi.updateConfig(entries);
       // Reload provider on server
@@ -210,13 +222,13 @@ export function SmsVoiceSettings() {
               <button
                 onClick={handleTestConnection}
                 disabled={testing}
-                className="rounded-lg border border-surface-300 dark:border-surface-600 px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="btn btn-secondary btn-sm border border-surface-300 dark:border-surface-600"
               >
                 {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
               </button>
               <button
                 onClick={handleSave}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700"
+                className="btn btn-primary btn-sm"
               >
                 Save Provider
               </button>
@@ -251,7 +263,7 @@ export function SmsVoiceSettings() {
               <code className="flex-1 text-xs bg-surface-100 dark:bg-surface-800 px-2 py-1.5 rounded border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 truncate">{wh.url}</code>
               <button
                 onClick={() => copyToClipboard(wh.url, wh.label)}
-                className="text-surface-400 hover:text-primary-600 flex-shrink-0"
+                className="btn-icon btn-xs text-surface-400 hover:text-primary-600"
                 title="Copy to clipboard"
               >
                 {copiedField === wh.label ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
@@ -354,39 +366,39 @@ export function SmsVoiceSettings() {
           )}
           <button
             onClick={handleSave}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700"
+            className="btn btn-primary btn-sm"
           >
             Save Auto-Reply
           </button>
         </div>
       </section>
 
-      {/* 3CX Integration — WEB-W1-030: Coming Soon */}
+      {/* 3CX Integration */}
       <section>
         <div className="flex items-center gap-2 mb-3">
           <Phone className="w-4 h-4 text-surface-500" />
           <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-200">3CX Phone System</h3>
-          <ComingSoonBadge status="coming_soon" />
         </div>
-        <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 p-4 max-w-lg opacity-60 pointer-events-none select-none">
+        <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 p-4 max-w-lg">
           <div className="space-y-3">
             {[
-              { key: 'tcx_server', label: '3CX Server URL', placeholder: 'https://your-3cx.domain.com' },
+              { key: 'tcx_host', label: '3CX Server URL', placeholder: 'https://your-3cx.domain.com', type: 'text' },
               { key: 'tcx_extension', label: 'Extension', placeholder: '101' },
-              { key: 'tcx_api_key', label: 'API Key', placeholder: 'Paste your 3CX API key' },
+              { key: 'tcx_password', label: 'API Key / Password', placeholder: 'Paste your 3CX API key', type: 'password' },
             ].map(f => (
               <div key={f.key}>
                 <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">{f.label}</label>
                 <input
-                  type="text"
+                  type={f.type || 'text'}
                   placeholder={f.placeholder}
-                  disabled
-                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 px-3 py-2 text-sm text-surface-400 cursor-not-allowed"
+                  value={tcxConfig[f.key as keyof typeof tcxConfig]}
+                  onChange={(e) => setTcxConfig((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100"
                 />
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-surface-400">3CX click-to-call and call logging will be available in a future release.</p>
+          <p className="mt-3 text-xs text-surface-400">When all 3CX fields are saved, CRM click-to-call uses 3CX Call Control. Leave them blank to use the selected SMS/voice provider.</p>
         </div>
       </section>
 

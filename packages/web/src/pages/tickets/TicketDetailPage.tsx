@@ -22,7 +22,7 @@ import { TicketPayments } from './TicketPayments';
 import { TicketSidebar } from './TicketSidebar';
 // D4-4: granular ErrorBoundary isolates a sub-component crash to its own tab
 // instead of collapsing the entire route to the PageErrorBoundary fallback.
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ErrorBoundary } from '@/components/shared/PageErrorBoundary';
 
 // Audit section 44 — technician bench workflow. Additive-only imports; the
 // components are safe no-ops when their feature flag is off.
@@ -41,6 +41,25 @@ function formatTicketId(orderId: string | number) {
   const str = String(orderId);
   if (str.startsWith('T-')) return str;
   return `T-${str.padStart(4, '0')}`;
+}
+
+function isRequestCanceled(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const maybe = err as { code?: unknown; name?: unknown };
+  return maybe.code === 'ERR_CANCELED' || maybe.name === 'CanceledError' || maybe.name === 'AbortError';
+}
+
+function statusFlagEnabled(value: unknown): boolean {
+  return value === true || value === 1 || value === '1';
+}
+
+interface TicketMutationScope {
+  controller: AbortController;
+  routeTicketId: number;
+}
+
+interface TicketStatusMutationScope extends TicketMutationScope {
+  statusId: number;
 }
 
 // ─── Loading skeleton ───────────────────────────────────────────────
@@ -78,12 +97,23 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
   const [isPending, setIsPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const mergeAbortRef = useRef<AbortController | null>(null);
+  const dialogActiveRef = useRef(true);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(debounceRef.current);
   }, [search]);
+
+  useEffect(() => {
+    dialogActiveRef.current = true;
+    return () => {
+      dialogActiveRef.current = false;
+      mergeAbortRef.current?.abort();
+      mergeAbortRef.current = null;
+    };
+  }, []);
 
   const { data: results, isLoading } = useQuery({
     queryKey: ['tickets-merge-search', debouncedSearch],
@@ -96,18 +126,24 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
 
   async function handleMerge() {
     if (!selectedId) return;
+    mergeAbortRef.current?.abort();
+    const controller = new AbortController();
+    mergeAbortRef.current = controller;
     setIsPending(true);
     try {
-      await ticketApi.merge(ticketId, selectedId);
+      await ticketApi.merge(ticketId, selectedId, controller.signal);
+      if (controller.signal.aborted || !dialogActiveRef.current) return;
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       toast.success('Tickets merged successfully');
       onMerged();
       onClose();
     } catch (err: unknown) {
+      if (controller.signal.aborted || !dialogActiveRef.current || isRequestCanceled(err)) return;
       const msg = err instanceof Error ? err.message : 'Merge failed';
       toast.error(msg);
     } finally {
-      setIsPending(false);
+      if (mergeAbortRef.current === controller) mergeAbortRef.current = null;
+      if (!controller.signal.aborted && dialogActiveRef.current) setIsPending(false);
     }
   }
 
@@ -199,6 +235,41 @@ export function TicketDetailPage() {
   const queryClient = useQueryClient();
   const ticketId = Number(id);
   const isValidId = id != null && !isNaN(ticketId) && ticketId > 0;
+  const ticketMutationControllersRef = useRef<Set<AbortController>>(new Set());
+  const activeTicketIdRef = useRef(ticketId);
+  const detailMountedRef = useRef(true);
+
+  useEffect(() => {
+    detailMountedRef.current = true;
+    activeTicketIdRef.current = ticketId;
+    return () => {
+      detailMountedRef.current = false;
+      ticketMutationControllersRef.current.forEach((controller) => controller.abort());
+      ticketMutationControllersRef.current.clear();
+    };
+  }, [ticketId]);
+
+  const beginTicketMutation = useCallback((): TicketMutationScope => {
+    const controller = new AbortController();
+    ticketMutationControllersRef.current.add(controller);
+    return { controller, routeTicketId: ticketId };
+  }, [ticketId]);
+
+  const beginStatusMutation = useCallback((statusId: number): TicketStatusMutationScope => ({
+    ...beginTicketMutation(),
+    statusId,
+  }), [beginTicketMutation]);
+
+  const finishTicketMutation = useCallback((controller: AbortController) => {
+    ticketMutationControllersRef.current.delete(controller);
+  }, []);
+
+  const shouldSuppressTicketMutationFeedback = useCallback((scope: TicketMutationScope, err?: unknown) => (
+    scope.controller.signal.aborted ||
+    !detailMountedRef.current ||
+    scope.routeTicketId !== activeTicketIdRef.current ||
+    isRequestCanceled(err)
+  ), []);
 
   // ─── Fetch ticket ─────────────────────────────────────────────────
   const { data: ticketData, isLoading, error } = useQuery({
@@ -261,19 +332,24 @@ export function TicketDetailPage() {
   const employees: EmployeeMin[] = employeesData?.data?.data || [];
 
   // ─── Mutations ────────────────────────────────────────────────────
+  const invalidateTicketById = useCallback((targetTicketId: number) => {
+    queryClient.invalidateQueries({ queryKey: ['ticket', targetTicketId] });
+    queryClient.invalidateQueries({ queryKey: ['ticket-history', targetTicketId] });
+  }, [queryClient]);
+
   const invalidateTicket = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['ticket', ticketId] });
-    queryClient.invalidateQueries({ queryKey: ['ticket-history', ticketId] });
-  }, [queryClient, ticketId]);
+    invalidateTicketById(ticketId);
+  }, [invalidateTicketById, ticketId]);
 
   // D4-1: Optimistic status swap on the detail cache so the status pill
   // updates instantly instead of after the server round-trip + refetch.
   const changeStatusMut = useMutation({
-    mutationFn: (statusId: number) => ticketApi.changeStatus(ticketId, statusId),
-    onMutate: async (newStatusId) => {
-      await queryClient.cancelQueries({ queryKey: ['ticket', ticketId] });
-      const prev = queryClient.getQueryData(['ticket', ticketId]);
-      queryClient.setQueryData(['ticket', ticketId], (old: any) => {
+    mutationFn: ({ routeTicketId, statusId, controller }: TicketStatusMutationScope) =>
+      ticketApi.changeStatus(routeTicketId, statusId, controller.signal),
+    onMutate: async ({ routeTicketId, statusId: newStatusId }) => {
+      await queryClient.cancelQueries({ queryKey: ['ticket', routeTicketId] });
+      const prev = queryClient.getQueryData(['ticket', routeTicketId]);
+      queryClient.setQueryData(['ticket', routeTicketId], (old: any) => {
         if (!old) return old;
         // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone over
         // JSON.parse(JSON.stringify(...)) — preserves Dates/undefined that
@@ -289,12 +365,15 @@ export function TicketDetailPage() {
       });
       return { prev, prevStatusId: prev ? (prev as any)?.data?.data?.status_id : null };
     },
-    onError: (_err, _vars, ctx: any) => {
-      if (ctx?.prev) queryClient.setQueryData(['ticket', ticketId], ctx.prev);
+    onError: (err, vars, ctx: any) => {
+      if (ctx?.prev) queryClient.setQueryData(['ticket', vars.routeTicketId], ctx.prev);
+      if (shouldSuppressTicketMutationFeedback(vars, err)) return;
       toast.error('Failed to change status');
     },
-    onSuccess: (_data, newStatusId, ctx: any) => {
+    onSuccess: (_data, vars, ctx: any) => {
+      if (shouldSuppressTicketMutationFeedback(vars)) return;
       const prevStatusId = ctx?.prevStatusId ?? ticket?.status_id;
+      const newStatusId = vars.statusId;
       const newName = statuses.find((s) => s.id === newStatusId)?.name ?? 'Unknown';
       toast((t) => (
         <span className="flex items-center gap-2 text-sm">
@@ -302,7 +381,7 @@ export function TicketDetailPage() {
           {prevStatusId != null && prevStatusId !== newStatusId && (
             <button
               className="ml-2 rounded bg-surface-200 px-2 py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
-              onClick={() => { toast.dismiss(t.id); changeStatusMut.mutate(prevStatusId); }}
+              onClick={() => { toast.dismiss(t.id); changeStatusMut.mutate(beginStatusMutation(prevStatusId)); }}
             >
               Undo
             </button>
@@ -310,8 +389,10 @@ export function TicketDetailPage() {
         </span>
       ), { duration: 5000 });
     },
-    onSettled: () => {
-      invalidateTicket();
+    onSettled: (_data, err, vars) => {
+      finishTicketMutation(vars.controller);
+      if (shouldSuppressTicketMutationFeedback(vars, err)) return;
+      invalidateTicketById(vars.routeTicketId);
     },
   });
 
@@ -356,23 +437,39 @@ export function TicketDetailPage() {
   };
 
   const cloneWarrantyMut = useMutation({
-    mutationFn: () => ticketApi.cloneWarranty(ticketId),
-    onSuccess: (res) => {
+    mutationFn: (scope: TicketMutationScope) =>
+      ticketApi.cloneWarranty(scope.routeTicketId, scope.controller.signal),
+    onSuccess: (res, scope) => {
+      if (shouldSuppressTicketMutationFeedback(scope)) return;
       const newTicket = res?.data?.data;
       toast.success('Warranty case created');
       if (newTicket?.id) navigate(`/tickets/${newTicket.id}`);
     },
-    onError: () => toast.error('Failed to clone ticket as warranty'),
+    onError: (err, scope) => {
+      if (shouldSuppressTicketMutationFeedback(scope, err)) return;
+      toast.error('Failed to clone ticket as warranty');
+    },
+    onSettled: (_data, _err, scope) => {
+      finishTicketMutation(scope.controller);
+    },
   });
 
   const duplicateMut = useMutation({
-    mutationFn: () => ticketApi.duplicate(ticketId),
-    onSuccess: (res) => {
+    mutationFn: (scope: TicketMutationScope) =>
+      ticketApi.duplicate(scope.routeTicketId, scope.controller.signal),
+    onSuccess: (res, scope) => {
+      if (shouldSuppressTicketMutationFeedback(scope)) return;
       const newTicket = res?.data?.data;
       toast.success('Ticket duplicated');
       if (newTicket?.id) navigate(`/tickets/${newTicket.id}`);
     },
-    onError: () => toast.error('Failed to duplicate ticket'),
+    onError: (err, scope) => {
+      if (shouldSuppressTicketMutationFeedback(scope, err)) return;
+      toast.error('Failed to duplicate ticket');
+    },
+    onSettled: (_data, _err, scope) => {
+      finishTicketMutation(scope.controller);
+    },
   });
 
   const currentUser = useAuthStore((s) => s.user);
@@ -451,6 +548,16 @@ export function TicketDetailPage() {
   const photosCount = devices.reduce((sum, d) => sum + (((d as unknown as { photos?: unknown[] }).photos?.length) || 0), 0);
   const partsCount = devices.reduce((sum, d) => sum + ((d.parts?.length) || 0), 0);
   const notesCount = notes.length + history.length + smsMessages.length;
+  const isClosedStatus = statusFlagEnabled(currentStatus?.is_closed);
+  const isCancelledStatus = statusFlagEnabled(currentStatus?.is_cancelled);
+  const isTerminalTicketStatus = isClosedStatus || isCancelledStatus;
+  const qcSignOffBlockedMessage = isTerminalTicketStatus
+    ? `QC sign-off is unavailable after a ticket is ${isCancelledStatus ? 'cancelled' : 'closed'}. Move it to an active repair status to sign off.`
+    : null;
+
+  useEffect(() => {
+    if (isTerminalTicketStatus && showQcSignOff) setShowQcSignOff(false);
+  }, [isTerminalTicketStatus, showQcSignOff]);
 
   // ─── Loading state ────────────────────────────────────────────────
   if (isLoading) {
@@ -499,14 +606,14 @@ export function TicketDetailPage() {
         statuses={statuses}
         currentStatus={currentStatus}
         isChangingStatus={changeStatusMut.isPending}
-        onChangeStatus={(sId) => changeStatusMut.mutate(sId)}
+        onChangeStatus={(sId) => changeStatusMut.mutate(beginStatusMutation(sId))}
         onDelete={() => setShowDeleteConfirm(true)}
         onMerge={() => {
           if (currentUser?.role !== 'admin') { toast.error('Only admins can merge tickets'); return; }
           setShowMerge(true);
         }}
-        onCloneWarranty={() => cloneWarrantyMut.mutate()}
-        onDuplicate={() => duplicateMut.mutate()}
+        onCloneWarranty={() => cloneWarrantyMut.mutate(beginTicketMutation())}
+        onDuplicate={() => duplicateMut.mutate(beginTicketMutation())}
         onHandoff={() => setShowHandoff(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -521,7 +628,7 @@ export function TicketDetailPage() {
         <div className="space-y-6">
           {/* Device cards + photos tab — isolated so a render bug in the parts
               search or photo grid doesn't take down the activity timeline. */}
-          <ErrorBoundary>
+          <ErrorBoundary variant="section" boundaryName="TicketDevicesBoundary">
             <TicketDevices
               ticket={ticket}
               ticketId={ticketId}
@@ -539,7 +646,7 @@ export function TicketDetailPage() {
 
           {/* Activity timeline — isolated so a malformed note or history row
               doesn't block the user from editing devices. */}
-          <ErrorBoundary>
+          <ErrorBoundary variant="section" boundaryName="TicketNotesBoundary">
             <TicketNotes
               ticketId={ticketId}
               notes={notes}
@@ -589,12 +696,31 @@ export function TicketDetailPage() {
 
           {/* Audit 44.10 — QC sign-off launcher */}
           <button
-            onClick={() => setShowQcSignOff(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40"
+            type="button"
+            onClick={() => {
+              if (isTerminalTicketStatus) return;
+              setShowQcSignOff(true);
+            }}
+            disabled={isTerminalTicketStatus}
+            aria-describedby={qcSignOffBlockedMessage ? 'qc-signoff-terminal-note' : undefined}
+            title={qcSignOffBlockedMessage ?? undefined}
+            className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+              isTerminalTicketStatus
+                ? 'cursor-not-allowed border-surface-200 bg-surface-50 text-surface-400 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-500'
+                : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40'
+            }`}
           >
             <CheckCircle2 className="h-4 w-4" />
-            QC sign-off
+            {isTerminalTicketStatus ? 'QC sign-off locked' : 'QC sign-off'}
           </button>
+          {qcSignOffBlockedMessage && (
+            <p
+              id="qc-signoff-terminal-note"
+              className="-mt-2 text-xs leading-5 text-surface-500 dark:text-surface-400"
+            >
+              {qcSignOffBlockedMessage}
+            </p>
+          )}
 
           {/* Billing + Invoice cards */}
           <TicketPayments
@@ -647,7 +773,7 @@ export function TicketDetailPage() {
     )}
 
     {/* Audit 44.10 — QC Sign-Off Modal */}
-    {showQcSignOff && (
+    {showQcSignOff && !isTerminalTicketStatus && (
       <QcSignOffModal
         ticketId={ticketId}
         ticketDeviceId={devices[0]?.id}

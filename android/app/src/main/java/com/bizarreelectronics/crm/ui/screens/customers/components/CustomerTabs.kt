@@ -7,6 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,20 +24,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CardMembership
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.ripple
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,10 +58,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.api.Membership
+import com.bizarreelectronics.crm.data.remote.dto.CustomerAddress
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAsset
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore
@@ -62,6 +75,7 @@ import com.bizarreelectronics.crm.ui.components.TagChip
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
+import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import com.bizarreelectronics.crm.util.toCentsOrZero
 
 private val TABS = listOf("Info", "Tickets", "Invoices", "Communications", "Assets")
@@ -79,6 +93,7 @@ private val TABS = listOf("Info", "Tickets", "Invoices", "Communications", "Asse
  * @param recentTickets   Ticket tab data; null = loading.
  * @param invoices        Invoice tab data; null = loading.
  * @param notes           Communications tab data; null = loading.
+ * @param addresses       Normalized address rows; null/empty falls back to customer fields.
  * @param assets          Assets tab data; null = loading.
  * @param noteDraft       Current note composer text.
  * @param isPostingNote   True while a note POST is in flight.
@@ -86,8 +101,10 @@ private val TABS = listOf("Info", "Tickets", "Invoices", "Communications", "Asse
  * @param onPostNote      Post note callback.
  * @param onNavigateToTicket Navigate to ticket detail.
  * @param onCreateTicket  Create ticket callback.
- * @param onCall          Call primary phone.
- * @param onSms           SMS primary phone.
+ * @param onCall          Open phone action choices for the selected number.
+ * @param onSms           Kept for callers that still expose SMS directly.
+ * @param onEmail         Open email action choices for the selected address.
+ * @param onAddress       Open address action choices for maps/copy.
  * @param onShare         Share vCard.
  * @param onDelete        Delete customer.
  * @param onRecalculateHealth Trigger health score recalculation.
@@ -102,6 +119,7 @@ fun CustomerDetailTabs(
     recentTickets: List<TicketListItem>?,
     invoices: List<InvoiceListItem>?,
     notes: List<CustomerNote>?,
+    addresses: List<CustomerAddress>? = null,
     assets: List<CustomerAsset>?,
     noteDraft: String,
     isPostingNote: Boolean,
@@ -111,6 +129,8 @@ fun CustomerDetailTabs(
     onCreateTicket: (() -> Unit)?,
     onCall: ((String) -> Unit)?,
     onSms: ((String) -> Unit)?,
+    onEmail: ((String) -> Unit)? = null,
+    onAddress: ((String) -> Unit)? = null,
     onShare: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
     onRecalculateHealth: (() -> Unit)? = null,
@@ -180,8 +200,11 @@ fun CustomerDetailTabs(
                     healthScore = healthScore,
                     ltvTier = ltvTier,
                     membership = membership,
+                    addresses = addresses,
                     onCall = onCall,
                     onSms = onSms,
+                    onEmail = onEmail,
+                    onAddress = onAddress,
                     onCreateTicket = onCreateTicket,
                     onShare = onShare,
                     onDelete = onDelete,
@@ -218,14 +241,25 @@ private fun InfoTab(
     healthScore: CustomerHealthScore?,
     ltvTier: CustomerLtvTier?,
     membership: Membership?,
+    addresses: List<CustomerAddress>?,
     onCall: ((String) -> Unit)?,
     onSms: ((String) -> Unit)?,
+    onEmail: ((String) -> Unit)?,
+    onAddress: ((String) -> Unit)?,
     onCreateTicket: (() -> Unit)?,
     onShare: (() -> Unit)?,
     onDelete: (() -> Unit)?,
     onRecalculateHealth: (() -> Unit)?,
 ) {
-    val primaryPhone = customer.mobile ?: customer.phone
+    val phoneRows = remember(customer.mobile, customer.phone) {
+        buildList {
+            customer.mobile?.takeIf { it.isNotBlank() }?.let { add("Mobile" to it) }
+            customer.phone?.takeIf { it.isNotBlank() }?.let { add("Phone" to it) }
+        }.distinctBy { it.second }
+    }
+    val addressRows = remember(addresses, customer) {
+        customerAddressesOrFallback(addresses, customer)
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -265,17 +299,36 @@ private fun InfoTab(
             }
         }
 
-        // Quick actions chip row
         item {
-            CustomerQuickActions(
-                phone = primaryPhone,
+            CustomerContactInfoCard(
+                phoneRows = phoneRows,
                 email = customer.email,
-                onCall = primaryPhone?.let { p -> onCall?.let { { it(p) } } },
-                onSms = primaryPhone?.let { p -> onSms?.let { { it(p) } } },
-                onNewTicket = onCreateTicket,
-                onShare = onShare,
-                onDelete = onDelete,
+                organization = customer.organization,
+                onPhoneSelected = onCall ?: onSms,
+                onEmailSelected = onEmail,
             )
+        }
+
+        if (addressRows.isNotEmpty()) {
+            item {
+                CustomerAddressesCard(
+                    addresses = addressRows,
+                    onAddressSelected = onAddress,
+                )
+            }
+        }
+
+        // Quick actions stay focused on record actions; contact actions live in the rows above.
+        if (onCreateTicket != null || onShare != null || onDelete != null) {
+            item {
+                CustomerQuickActions(
+                    phone = null,
+                    email = null,
+                    onNewTicket = onCreateTicket,
+                    onShare = onShare,
+                    onDelete = onDelete,
+                )
+            }
         }
 
         // §38.3 — membership summary card (shown only when member)
@@ -286,6 +339,252 @@ private fun InfoTab(
         }
     }
 }
+
+@Composable
+private fun CustomerContactInfoCard(
+    phoneRows: List<Pair<String, String>>,
+    email: String?,
+    organization: String?,
+    onPhoneSelected: ((String) -> Unit)?,
+    onEmailSelected: ((String) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    BrandCard(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Contact info",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+
+            val hasContactInfo = phoneRows.isNotEmpty() ||
+                !email.isNullOrBlank() ||
+                !organization.isNullOrBlank()
+
+            if (!hasContactInfo) {
+                Text(
+                    "No phone or email on file",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            phoneRows.forEach { (label, phone) ->
+                CustomerContactInfoRow(
+                    icon = Icons.Default.Phone,
+                    label = label,
+                    value = formatPhoneDisplay(phone),
+                    onClick = onPhoneSelected?.let { cb -> { cb(phone) } },
+                )
+            }
+
+            if (!email.isNullOrBlank()) {
+                CustomerContactInfoRow(
+                    icon = Icons.Default.Email,
+                    label = "Email",
+                    value = email,
+                    onClick = onEmailSelected?.let { cb -> { cb(email) } },
+                )
+            }
+
+            if (!organization.isNullOrBlank()) {
+                CustomerContactInfoRow(
+                    icon = Icons.Default.Business,
+                    label = "Organization",
+                    value = organization,
+                    onClick = null,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CustomerContactInfoRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val actionModifier = if (onClick != null) {
+        Modifier
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) { role = Role.Button }
+    } else {
+        Modifier
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(actionModifier)
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (onClick != null) {
+            Icon(
+                Icons.Default.MoreVert,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CustomerAddressesCard(
+    addresses: List<CustomerAddress>,
+    onAddressSelected: ((String) -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    BrandCard(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Addresses",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            addresses.forEachIndexed { index, address ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+                val addressText = address.displayText()
+                val interactionSource = remember { MutableInteractionSource() }
+                val actionModifier = if (onAddressSelected != null) {
+                    Modifier
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = ripple(),
+                        ) { onAddressSelected(addressText) }
+                        .semantics(mergeDescendants = true) { role = Role.Button }
+                } else {
+                    Modifier
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(actionModifier)
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            address.displayLabel(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            addressText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    if (onAddressSelected != null) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun customerAddressesOrFallback(
+    addresses: List<CustomerAddress>?,
+    customer: CustomerEntity,
+): List<CustomerAddress> {
+    val serverRows = addresses.orEmpty().filter { it.displayText().isNotBlank() }
+    if (serverRows.isNotEmpty()) return serverRows
+
+    val fallback = CustomerAddress(
+        id = "customer:${customer.id}:primary",
+        customerId = customer.id,
+        type = "primary",
+        label = "Primary / billing",
+        isPrimary = true,
+        address1 = customer.address1.trimmedOrNull(),
+        address2 = customer.address2.trimmedOrNull(),
+        city = customer.city.trimmedOrNull(),
+        state = customer.state.trimmedOrNull(),
+        postcode = customer.postcode.trimmedOrNull(),
+        country = customer.country.trimmedOrNull(),
+    )
+    return listOf(fallback).filter { it.displayText().isNotBlank() }
+}
+
+private fun CustomerAddress.displayLabel(): String =
+    label.trimmedOrNull()
+        ?: when (type.trimmedOrNull()?.lowercase()) {
+            "billing" -> "Billing"
+            "shipping" -> "Shipping"
+            "primary" -> "Primary / billing"
+            else -> "Address"
+        }
+
+private fun CustomerAddress.displayText(): String {
+    formatted.trimmedOrNull()?.let { return it }
+    val cityStatePostcode = listOfNotNull(
+        city.trimmedOrNull(),
+        state.trimmedOrNull(),
+        postcode.trimmedOrNull(),
+    ).joinToString(", ")
+    return listOfNotNull(
+        address1.trimmedOrNull(),
+        address2.trimmedOrNull(),
+        cityStatePostcode.takeIf { it.isNotBlank() },
+        country.trimmedOrNull(),
+    ).joinToString("\n")
+}
+
+private fun String?.trimmedOrNull(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
 
 // ─── Health score ring (plan:L892) ──────────────────────────────────────────
 

@@ -58,6 +58,8 @@ interface BlockChypConfig {
   sigFormat: 'png' | 'jpg';
   sigWidth: number;
   autoCloseTicket: boolean;
+  invoiceSignatureTerms: string;
+  invoiceRefundTerms: string;
 }
 
 export function getBlockChypConfig(db: Database.Database): BlockChypConfig {
@@ -76,6 +78,8 @@ export function getBlockChypConfig(db: Database.Database): BlockChypConfig {
     sigFormat: (getConfigValue(db, 'blockchyp_sig_format') as 'png' | 'jpg') || 'png',
     sigWidth: parseInt(getConfigValue(db, 'blockchyp_sig_width') || '400', 10),
     autoCloseTicket: getConfigValue(db, 'blockchyp_auto_close_ticket') === 'true',
+    invoiceSignatureTerms: getConfigValue(db, 'invoice_signature_terms') || '',
+    invoiceRefundTerms: getConfigValue(db, 'invoice_refund_terms') || '',
   };
 }
 
@@ -219,6 +223,15 @@ export interface SavedSignature {
   absolutePath: string;
 }
 
+export interface AcceptedTerms {
+  name: string;
+  content: string;
+  contentHash: string;
+  acceptedAt: string;
+  transactionId?: string;
+  transactionRef?: string;
+}
+
 function saveSignatureFile(sigFileHex: string, format: string): SavedSignature {
   const buffer = Buffer.from(sigFileHex, 'hex');
   const ext = format === 'jpg' ? '.jpg' : '.png';
@@ -226,6 +239,75 @@ function saveSignatureFile(sigFileHex: string, format: string): SavedSignature {
   const absolutePath = path.join(config.uploadsPath, filename);
   fs.writeFileSync(absolutePath, buffer);
   return { filename, absolutePath };
+}
+
+function normalizeTerms(value: string | null | undefined): string {
+  return (value ?? '').trim();
+}
+
+function hashTerms(value: string): string {
+  return crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function termsName(kind: 'payment' | 'refund'): string {
+  return kind === 'refund' ? 'Refund Agreement' : 'Invoice Payment Agreement';
+}
+
+async function captureTerminalTerms(
+  client: ReturnType<typeof BlockChyp.newClient>,
+  cfg: BlockChypConfig,
+  input: {
+    kind: 'payment' | 'refund';
+    content: string;
+    transactionRef?: string;
+    transactionId?: string;
+  },
+): Promise<{
+  acceptedTerms: AcceptedTerms;
+  signatureFile?: string;
+  signatureFilePath?: string;
+}> {
+  const request = new BlockChyp.TermsAndConditionsRequest();
+  request.terminalName = cfg.terminalName;
+  request.test = cfg.testMode;
+  request.tcAlias = null;
+  request.tcName = termsName(input.kind);
+  request.tcContent = input.content;
+  request.contentHash = hashTerms(input.content);
+  request.sigFormat = cfg.sigFormat as "" | "png" | "jpg" | "gif";
+  request.sigWidth = cfg.sigWidth;
+  request.sigRequired = true;
+  request.transactionRef = input.transactionRef;
+  request.transactionId = input.transactionId ?? null;
+
+  const response = await blockchypBreaker.run(() =>
+    client.termsAndConditions(request),
+  );
+  const data = response.data;
+  if (!data.success) {
+    throw new Error(data.error ?? data.responseDescription ?? 'Customer declined terms or terminal error');
+  }
+
+  let signatureFile: string | undefined;
+  let signatureFilePath: string | undefined;
+  if (data.sigFile) {
+    const saved = saveSignatureFile(data.sigFile, cfg.sigFormat);
+    signatureFile = saved.filename;
+    signatureFilePath = saved.absolutePath;
+  }
+
+  return {
+    signatureFile,
+    signatureFilePath,
+    acceptedTerms: {
+      name: request.tcName,
+      content: input.content,
+      contentHash: request.contentHash,
+      acceptedAt: new Date().toISOString(),
+      transactionId: data.transactionId ?? input.transactionId,
+      transactionRef: data.transactionRef ?? input.transactionRef,
+    },
+  };
 }
 
 /**
@@ -278,6 +360,46 @@ export async function testConnection(db: Database.Database, terminalNameOverride
     const response = await blockchypBreaker.run(() => client.ping(request));
     const data = response.data;
 
+    return {
+      success: !!data.success,
+      terminalName,
+      firmwareVersion: (data as any).firmwareVersion ?? undefined,
+      error: data.success ? undefined : (data.error ?? 'Unknown error'),
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Connection failed';
+    return { success: false, terminalName, error: message };
+  }
+}
+
+export async function testConnectionWithCredentials(input: {
+  apiKey: string;
+  bearerToken: string;
+  signingKey: string;
+  terminalName?: string;
+  testMode?: boolean;
+}): Promise<TestConnectionResult> {
+  const apiKey = input.apiKey.trim();
+  const bearerToken = input.bearerToken.trim();
+  const signingKey = input.signingKey.trim();
+  const terminalName = input.terminalName?.trim() || 'Front Counter';
+  if (!apiKey || !bearerToken || !signingKey) {
+    return { success: false, terminalName, error: 'API key, bearer token, and signing key are required' };
+  }
+
+  try {
+    const client = BlockChyp.newClient({ apiKey, bearerToken, signingKey });
+    (client as any).gatewayTimeout = 15;
+    if (input.testMode) {
+      client.setGatewayHost('https://test.blockchyp.com');
+      (client as any).cloudRelay = true;
+    }
+
+    const request = new BlockChyp.PingRequest();
+    request.terminalName = terminalName;
+    request.test = input.testMode === true;
+    const response = await blockchypBreaker.run(() => client.ping(request));
+    const data = response.data;
     return {
       success: !!data.success,
       terminalName,
@@ -399,6 +521,7 @@ export interface ProcessPaymentResult {
   signatureFilePath?: string;
   transactionRef?: string;
   testMode?: boolean;
+  acceptedTerms?: AcceptedTerms;
   receiptSuggestions?: Record<string, unknown>;
   error?: string;
   responseDescription?: string;
@@ -449,6 +572,11 @@ export async function processPayment(
   // which is stale by definition after a network-level timeout.
   const cacheHash = credentialsHash(cfgSnapshot);
   const transactionRef = buildUniqueTransactionRef(db, `payment-${ticketOrderId}`);
+  const paymentTerms = normalizeTerms(cfgSnapshot.invoiceSignatureTerms);
+  let acceptedTerms: AcceptedTerms | undefined;
+  let termsSignatureFile: string | undefined;
+  let termsSignatureFilePath: string | undefined;
+  let chargeDispatched = false;
 
   // BL10: Re-read just before firing the request. If the flag flipped, log
   // a critical error and refuse to proceed. Better to fail loud than to
@@ -470,6 +598,17 @@ export async function processPayment(
   }
 
   try {
+    if (cfgSnapshot.sigRequiredPayment && paymentTerms) {
+      const termsResult = await captureTerminalTerms(client, cfgSnapshot, {
+        kind: 'payment',
+        content: paymentTerms,
+        transactionRef,
+      });
+      acceptedTerms = termsResult.acceptedTerms;
+      termsSignatureFile = termsResult.signatureFile;
+      termsSignatureFilePath = termsResult.signatureFilePath;
+    }
+
     const request = new BlockChyp.AuthorizationRequest();
     request.terminalName = cfgSnapshot.terminalName;
     request.test = lockedTestMode;
@@ -483,16 +622,18 @@ export async function processPayment(
     if (cfgSnapshot.promptForTip) {
       request.promptForTip = true;
     }
-    if (!cfgSnapshot.sigRequiredPayment) {
+    if (!cfgSnapshot.sigRequiredPayment || acceptedTerms) {
       request.disableSignature = true;
     }
     request.sigFormat = cfgSnapshot.sigFormat as "" | "png" | "jpg" | "gif";
     request.sigWidth = cfgSnapshot.sigWidth;
 
+    chargeDispatched = true;
     const response = await blockchypBreaker.run(() => client.charge(request));
     const data = response.data;
 
     if (!data.approved) {
+      if (termsSignatureFilePath) deleteSignatureFile(termsSignatureFilePath);
       return {
         success: false,
         transactionRef,
@@ -502,8 +643,8 @@ export async function processPayment(
       };
     }
 
-    let signatureFile: string | undefined;
-    let signatureFilePath: string | undefined;
+    let signatureFile: string | undefined = termsSignatureFile;
+    let signatureFilePath: string | undefined = termsSignatureFilePath;
     if (data.sigFile) {
       const saved = saveSignatureFile(data.sigFile, cfgSnapshot.sigFormat);
       signatureFile = saved.filename;
@@ -521,10 +662,21 @@ export async function processPayment(
       signatureFilePath,
       transactionRef,
       testMode: lockedTestMode,
+      acceptedTerms,
       receiptSuggestions: data.receiptSuggestions as unknown as Record<string, unknown> | undefined,
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Terminal communication failed';
+
+    if (!chargeDispatched) {
+      if (termsSignatureFilePath) deleteSignatureFile(termsSignatureFilePath);
+      return {
+        success: false,
+        transactionRef,
+        testMode: lockedTestMode,
+        error: message,
+      };
+    }
 
     // SEC-M34: On any network/timeout error from the charge call, the terminal
     // may have already authorised the card (it had local connectivity to the
@@ -551,14 +703,20 @@ export async function processPayment(
     // Step 2: query terminal status.
     // reconcileAfterTimeout throws BlockChypIndeterminateError if the query
     // itself fails — let that propagate to the caller so it can return 202.
-    const reconcile = await reconcileAfterTimeout(client, transactionRef, lockedTestMode);
+    let reconcile: Awaited<ReturnType<typeof reconcileAfterTimeout>>;
+    try {
+      reconcile = await reconcileAfterTimeout(client, transactionRef, lockedTestMode);
+    } catch (reconcileErr) {
+      if (termsSignatureFilePath) deleteSignatureFile(termsSignatureFilePath);
+      throw reconcileErr;
+    }
 
     if (reconcile.reconciled) {
       // Terminal confirms the charge was Approved — synthesise the same
       // ProcessPaymentResult shape a direct charge would have returned.
       const d = reconcile.data;
-      let signatureFile: string | undefined;
-      let signatureFilePath: string | undefined;
+      let signatureFile: string | undefined = termsSignatureFile;
+      let signatureFilePath: string | undefined = termsSignatureFilePath;
       if (d.sigFile) {
         const saved = saveSignatureFile(d.sigFile, cfgSnapshot.sigFormat);
         signatureFile = saved.filename;
@@ -580,6 +738,7 @@ export async function processPayment(
         signatureFilePath,
         transactionRef,
         testMode: lockedTestMode,
+        acceptedTerms,
         receiptSuggestions: d.receiptSuggestions as unknown as Record<string, unknown> | undefined,
       };
     }
@@ -590,12 +749,298 @@ export async function processPayment(
       transactionRef,
       ticketOrderId,
     });
+    if (termsSignatureFilePath) deleteSignatureFile(termsSignatureFilePath);
     return {
       success: false,
       transactionRef,
       testMode: lockedTestMode,
       error: message,
     };
+  }
+}
+
+export interface ProcessRefundResult {
+  success: boolean;
+  transactionId?: string;
+  authCode?: string;
+  amount?: string;
+  cardType?: string;
+  last4?: string;
+  signatureFile?: string;
+  signatureFilePath?: string;
+  transactionRef?: string;
+  testMode?: boolean;
+  acceptedTerms?: AcceptedTerms;
+  receiptSuggestions?: Record<string, unknown>;
+  error?: string;
+  responseDescription?: string;
+}
+
+export async function processRefund(
+  db: Database.Database,
+  amount: number,
+  originalTransactionId: string,
+  refundOrderRef: string,
+): Promise<ProcessRefundResult> {
+  const cfgSnapshot = getBlockChypConfig(db);
+  const client = getClient(db, cfgSnapshot);
+  const transactionRef = buildUniqueTransactionRef(db, `refund-${refundOrderRef}`);
+  const refundTerms = normalizeTerms(cfgSnapshot.invoiceRefundTerms);
+  let acceptedTerms: AcceptedTerms | undefined;
+  let termsSignatureFile: string | undefined;
+  let termsSignatureFilePath: string | undefined;
+
+  try {
+    if (refundTerms) {
+      const termsResult = await captureTerminalTerms(client, cfgSnapshot, {
+        kind: 'refund',
+        content: refundTerms,
+        transactionRef,
+      });
+      acceptedTerms = termsResult.acceptedTerms;
+      termsSignatureFile = termsResult.signatureFile;
+      termsSignatureFilePath = termsResult.signatureFilePath;
+    }
+
+    const request = new BlockChyp.RefundRequest();
+    request.terminalName = cfgSnapshot.terminalName;
+    request.test = cfgSnapshot.testMode;
+    request.amount = amount.toFixed(2);
+    request.transactionId = originalTransactionId;
+    request.transactionRef = transactionRef;
+    request.sigFormat = cfgSnapshot.sigFormat as "" | "png" | "jpg" | "gif";
+    request.sigWidth = cfgSnapshot.sigWidth;
+    if (acceptedTerms) {
+      request.disableSignature = true;
+    }
+
+    const response = await blockchypBreaker.run(() => client.refund(request));
+    const data = response.data;
+    if (!data.approved) {
+      if (termsSignatureFilePath) deleteSignatureFile(termsSignatureFilePath);
+      return {
+        success: false,
+        transactionRef,
+        testMode: cfgSnapshot.testMode,
+        error: data.responseDescription ?? data.error ?? 'Refund declined',
+        responseDescription: data.responseDescription ?? undefined,
+      };
+    }
+
+    let signatureFile: string | undefined = termsSignatureFile;
+    let signatureFilePath: string | undefined = termsSignatureFilePath;
+    if (data.sigFile) {
+      const saved = saveSignatureFile(data.sigFile, cfgSnapshot.sigFormat);
+      signatureFile = saved.filename;
+      signatureFilePath = saved.absolutePath;
+    }
+
+    return {
+      success: true,
+      transactionId: data.transactionId ?? undefined,
+      authCode: data.authCode ?? undefined,
+      amount: data.authorizedAmount ?? undefined,
+      cardType: data.paymentType ?? undefined,
+      last4: data.maskedPan?.slice(-4) ?? undefined,
+      signatureFile,
+      signatureFilePath,
+      transactionRef,
+      testMode: cfgSnapshot.testMode,
+      acceptedTerms,
+      receiptSuggestions: data.receiptSuggestions as unknown as Record<string, unknown> | undefined,
+    };
+  } catch (err: unknown) {
+    if (termsSignatureFilePath) deleteSignatureFile(termsSignatureFilePath);
+    const message = err instanceof Error ? err.message : 'Refund processing failed';
+    return {
+      success: false,
+      transactionRef,
+      testMode: cfgSnapshot.testMode,
+      error: message,
+    };
+  }
+}
+
+export interface ProcessorActionResult {
+  success: boolean;
+  transactionId?: string;
+  transactionRef?: string;
+  authCode?: string;
+  batchId?: string;
+  testMode?: boolean;
+  response?: Record<string, unknown>;
+  error?: string;
+  responseDescription?: string;
+}
+
+export async function voidCharge(
+  db: Database.Database,
+  originalTransactionId: string,
+  orderRef: string,
+): Promise<ProcessorActionResult> {
+  const transactionId = originalTransactionId.trim();
+  if (!transactionId) {
+    return { success: false, error: 'transaction_id is required' };
+  }
+
+  const cfgSnapshot = getBlockChypConfig(db);
+  const client = getClient(db, cfgSnapshot);
+  const transactionRef = buildUniqueTransactionRef(db, `void-${orderRef}`);
+
+  try {
+    const request = new BlockChyp.VoidRequest();
+    request.test = cfgSnapshot.testMode;
+    request.transactionId = transactionId;
+    request.transactionRef = transactionRef;
+
+    const response = await blockchypBreaker.run(() => client.void(request));
+    const data = response.data;
+    const success = data.success === true && data.approved !== false;
+    if (!success) {
+      return {
+        success: false,
+        transactionId: data.transactionId ?? transactionId,
+        transactionRef: data.transactionRef ?? transactionRef,
+        testMode: cfgSnapshot.testMode,
+        response: data as unknown as Record<string, unknown>,
+        error: data.error ?? data.responseDescription ?? 'Void declined',
+        responseDescription: data.responseDescription ?? undefined,
+      };
+    }
+
+    return {
+      success: true,
+      transactionId: data.transactionId ?? transactionId,
+      transactionRef: data.transactionRef ?? transactionRef,
+      authCode: data.authCode ?? undefined,
+      batchId: data.batchId ?? undefined,
+      testMode: cfgSnapshot.testMode,
+      response: data as unknown as Record<string, unknown>,
+      responseDescription: data.responseDescription ?? undefined,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Void processing failed';
+    return {
+      success: false,
+      transactionId,
+      transactionRef,
+      testMode: cfgSnapshot.testMode,
+      error: message,
+    };
+  }
+}
+
+export async function captureCharge(
+  db: Database.Database,
+  originalTransactionId: string,
+  amount: number | null,
+  orderRef: string,
+): Promise<ProcessorActionResult> {
+  const transactionId = originalTransactionId.trim();
+  if (!transactionId) {
+    return { success: false, error: 'transaction_id is required' };
+  }
+
+  const cfgSnapshot = getBlockChypConfig(db);
+  const client = getClient(db, cfgSnapshot);
+  const transactionRef = buildUniqueTransactionRef(db, `capture-${orderRef}`);
+
+  try {
+    const request = new BlockChyp.CaptureRequest();
+    request.test = cfgSnapshot.testMode;
+    request.transactionId = transactionId;
+    request.transactionRef = transactionRef;
+    if (amount !== null) {
+      request.amount = amount.toFixed(2);
+    }
+
+    const response = await blockchypBreaker.run(() => client.capture(request));
+    const data = response.data;
+    const success = data.success === true && data.approved !== false;
+    if (!success) {
+      return {
+        success: false,
+        transactionId: data.transactionId ?? transactionId,
+        transactionRef: data.transactionRef ?? transactionRef,
+        testMode: cfgSnapshot.testMode,
+        response: data as unknown as Record<string, unknown>,
+        error: data.error ?? data.responseDescription ?? 'Capture declined',
+        responseDescription: data.responseDescription ?? undefined,
+      };
+    }
+
+    return {
+      success: true,
+      transactionId: data.transactionId ?? transactionId,
+      transactionRef: data.transactionRef ?? transactionRef,
+      authCode: data.authCode ?? undefined,
+      batchId: data.batchId ?? undefined,
+      testMode: cfgSnapshot.testMode,
+      response: data as unknown as Record<string, unknown>,
+      responseDescription: data.responseDescription ?? undefined,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Capture processing failed';
+    return {
+      success: false,
+      transactionId,
+      transactionRef,
+      testMode: cfgSnapshot.testMode,
+      error: message,
+    };
+  }
+}
+
+export interface TokenVerificationResult {
+  success: boolean;
+  token?: string;
+  maskedPan?: string;
+  cardType?: string;
+  expMonth?: string;
+  expYear?: string;
+  error?: string;
+  responseDescription?: string;
+}
+
+export async function verifyCustomerToken(
+  db: Database.Database,
+  token: string,
+): Promise<TokenVerificationResult> {
+  const normalized = token.trim();
+  if (!normalized || normalized.length > 512 || /[\x00-\x1F\x7F]/.test(normalized)) {
+    return { success: false, error: 'Invalid BlockChyp payment token' };
+  }
+
+  const cfgSnapshot = getBlockChypConfig(db);
+  const client = getClient(db, cfgSnapshot);
+
+  try {
+    const request = new BlockChyp.TokenMetadataRequest();
+    request.test = cfgSnapshot.testMode;
+    request.token = normalized;
+
+    const response = await blockchypBreaker.run(() => client.tokenMetadata(request));
+    const data = response.data;
+    if (!data.success || !data.token) {
+      return {
+        success: false,
+        error: data.error ?? data.responseDescription ?? 'BlockChyp token was not found',
+        responseDescription: data.responseDescription ?? undefined,
+      };
+    }
+
+    return {
+      success: true,
+      token: data.token.token ?? normalized,
+      maskedPan: data.token.maskedPan ?? undefined,
+      cardType: data.token.paymentType ?? undefined,
+      expMonth: data.token.expiryMonth ?? undefined,
+      expYear: data.token.expiryYear ?? undefined,
+      responseDescription: data.responseDescription ?? undefined,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Token verification failed';
+    return { success: false, error: message };
   }
 }
 

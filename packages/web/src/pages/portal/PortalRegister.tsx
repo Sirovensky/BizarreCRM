@@ -1,10 +1,53 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as api from './portalApi';
 
+type CaptchaProvider = api.PortalCaptchaProvider;
+
+interface CaptchaRenderOptions {
+  sitekey: string;
+  callback: (token: string) => void;
+  'expired-callback': () => void;
+  'error-callback': () => void;
+}
+
+interface CaptchaWidgetApi {
+  render: (container: HTMLElement, options: CaptchaRenderOptions) => string | number;
+  reset: (widgetId?: string | number) => void;
+  remove?: (widgetId: string | number) => void;
+}
+
+declare global {
+  interface Window {
+    turnstile?: CaptchaWidgetApi;
+    grecaptcha?: CaptchaWidgetApi;
+  }
+}
+
+const CAPTCHA_SCRIPTS: Record<CaptchaProvider, string> = {
+  hcaptcha: 'https://js.hcaptcha.com/1/api.js?render=explicit',
+  turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
+  recaptcha: 'https://www.google.com/recaptcha/api.js?render=explicit',
+};
+
+const CAPTCHA_SCRIPT_PREFIXES: Record<CaptchaProvider, string> = {
+  hcaptcha: 'https://js.hcaptcha.com/1/api.js',
+  turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js',
+  recaptcha: 'https://www.google.com/recaptcha/api.js',
+};
+
+function getCaptchaApi(provider: CaptchaProvider): CaptchaWidgetApi | undefined {
+  if (provider === 'hcaptcha') return window.hcaptcha;
+  if (provider === 'turnstile') return window.turnstile;
+  return window.grecaptcha;
+}
+
 function mapRegisterError(err: unknown): string {
-  const status = (err as { response?: { status?: number } })?.response?.status;
+  const response = (err as { response?: { status?: number; data?: { message?: string } } })?.response;
+  const status = response?.status;
+  const message = response?.data?.message;
   if (status === 400) return 'Invalid information — please check your inputs';
   if (status === 401) return 'Registration failed — please try again';
+  if (status === 403) return message || 'Please complete the verification check';
   if (status === 409) return 'Account already exists — try signing in';
   if (status === 429) return 'Too many attempts — please wait a moment';
   if (status !== undefined && status >= 500) return 'Server error — please try again later';
@@ -26,6 +69,114 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
   const [pinConfirm, setPinConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [captchaConfig, setCaptchaConfig] = useState<api.RegisterCaptchaConfig>({ enabled: false });
+  const [captchaReady, setCaptchaReady] = useState(true);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaError, setCaptchaError] = useState('');
+  const captchaContainerRef = useRef<HTMLDivElement | null>(null);
+  const captchaWidgetIdRef = useRef<string | number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getRegisterCaptchaConfig()
+      .then(config => {
+        if (cancelled) return;
+        setCaptchaConfig(config);
+        setCaptchaReady(!config.enabled);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCaptchaConfig({ enabled: false });
+        setCaptchaReady(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!captchaConfig.enabled || !captchaConfig.provider || !captchaConfig.site_key) {
+      setCaptchaReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    const provider = captchaConfig.provider;
+    const siteKey = captchaConfig.site_key;
+
+    function renderWidget() {
+      const container = captchaContainerRef.current;
+      const widget = getCaptchaApi(provider);
+      if (cancelled || !container || !widget || captchaWidgetIdRef.current !== null) return;
+
+      try {
+        captchaWidgetIdRef.current = widget.render(container, {
+          sitekey: siteKey,
+          callback: (token: string) => {
+            setCaptchaToken(token);
+            setCaptchaError('');
+            setError('');
+          },
+          'expired-callback': () => setCaptchaToken(''),
+          'error-callback': () => {
+            setCaptchaToken('');
+            setCaptchaError('Verification check failed. Please try again.');
+          },
+        });
+        setCaptchaReady(true);
+      } catch {
+        setCaptchaReady(false);
+        setCaptchaError('Could not load the verification check. Please refresh and try again.');
+      }
+    }
+
+    setCaptchaReady(false);
+    setCaptchaToken('');
+    setCaptchaError('');
+    captchaWidgetIdRef.current = null;
+    if (getCaptchaApi(provider)) {
+      renderWidget();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        `script[src^="${CAPTCHA_SCRIPT_PREFIXES[provider]}"]`,
+      );
+      const script = existingScript ?? document.createElement('script');
+      const onLoad = () => renderWidget();
+      const onError = () => {
+        if (cancelled) return;
+        setCaptchaReady(false);
+        setCaptchaError('Could not load the verification check. Please refresh and try again.');
+      };
+
+      script.addEventListener('load', onLoad, { once: true });
+      script.addEventListener('error', onError, { once: true });
+      if (!existingScript) {
+        script.src = CAPTCHA_SCRIPTS[provider];
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      const widget = getCaptchaApi(provider);
+      if (captchaWidgetIdRef.current !== null && widget?.remove) {
+        widget.remove(captchaWidgetIdRef.current);
+      }
+      if (captchaContainerRef.current) {
+        captchaContainerRef.current.innerHTML = '';
+      }
+      captchaWidgetIdRef.current = null;
+    };
+  }, [captchaConfig.enabled, captchaConfig.provider, captchaConfig.site_key]);
+
+  function resetCaptcha() {
+    if (!captchaConfig.enabled || !captchaConfig.provider) return;
+    setCaptchaToken('');
+    const widget = getCaptchaApi(captchaConfig.provider);
+    if (widget && captchaWidgetIdRef.current !== null) {
+      widget.reset(captchaWidgetIdRef.current);
+    }
+  }
 
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
@@ -34,12 +185,17 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
       setError('Please enter a valid phone number');
       return;
     }
+    if (captchaConfig.enabled && !captchaToken) {
+      setError('Please complete the verification check');
+      return;
+    }
     setLoading(true);
     try {
-      await api.sendVerificationCode(phone.trim());
+      await api.sendVerificationCode(phone.trim(), captchaConfig.enabled ? captchaToken : undefined);
       setStep('code');
     } catch (err: unknown) {
       setError(mapRegisterError(err));
+      resetCaptcha();
     } finally {
       setLoading(false);
     }
@@ -135,9 +291,21 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
                   autoComplete="tel"
                 />
               </div>
+              {captchaConfig.enabled && (
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Verification</label>
+                  <div ref={captchaContainerRef} style={{ minHeight: 78 }} />
+                  {!captchaReady && !captchaError && (
+                    <p className="mt-2 text-xs text-surface-500 dark:text-surface-400">Loading verification...</p>
+                  )}
+                  {captchaError && (
+                    <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-300">{captchaError}</p>
+                  )}
+                </div>
+              )}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (captchaConfig.enabled && !captchaReady)}
                 className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
               >
                 {loading ? 'Sending...' : 'Send Verification Code'}

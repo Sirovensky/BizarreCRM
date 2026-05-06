@@ -220,14 +220,14 @@ export function TeamChatPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto h-[calc(100vh-3rem)]">
+    <div className="p-6 max-w-7xl mx-auto h-[calc(100vh-3rem)] text-surface-900 dark:text-surface-100">
       <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-800 inline-flex items-center">
+        <h1 className="text-2xl font-bold text-surface-800 dark:text-surface-100 inline-flex items-center">
           <MessageSquare className="w-6 h-6 mr-2 text-primary-500" /> Team Chat
         </h1>
         {canCreateGeneralChannel ? (
           <button
-            className="px-3 py-1.5 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center"
+            className="px-3 py-1.5 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             onClick={() => setShowNew(true)}
           >
             <Plus className="w-4 h-4 mr-1" /> Channel
@@ -235,20 +235,20 @@ export function TeamChatPage() {
         ) : null}
       </header>
       {!canCreateGeneralChannel && (
-        <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+        <div className="mb-4 rounded-md border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200">
           Team chat is read/write for messages. New general channels are admin-only.
         </div>
       )}
 
       <div className="grid grid-cols-[220px_1fr] gap-4 h-[calc(100%-3rem)]">
-        <aside className="bg-white rounded-lg shadow border p-2 overflow-y-auto">
+        <aside className="bg-white rounded-lg shadow border border-surface-200 p-2 overflow-y-auto dark:bg-surface-900 dark:border-surface-700">
           {channels.map((c) => (
             <button
               key={c.id}
               className={`w-full text-left px-3 py-2 rounded text-sm ${
                 selectedChannelId === c.id
-                  ? 'bg-primary-100 text-primary-800 font-semibold'
-                  : 'hover:bg-gray-50'
+                  ? 'bg-primary-100 text-primary-800 font-semibold dark:bg-primary-500/15 dark:text-primary-200'
+                  : 'text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800'
               }`}
               onClick={() => { setSelectedChannelId(c.id); setOlderMessages([]); setHasOlder(true); }}
             >
@@ -257,12 +257,12 @@ export function TeamChatPage() {
           ))}
         </aside>
 
-        <section className="bg-white rounded-lg shadow border flex flex-col overflow-hidden">
+        <section className="bg-white rounded-lg shadow border border-surface-200 flex flex-col overflow-hidden dark:bg-surface-900 dark:border-surface-700">
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
             {messages.length > 0 && hasOlder && (
               <div className="flex justify-center pb-2">
                 <button
-                  className="px-3 py-1 text-xs rounded border text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center gap-1"
+                  className="px-3 py-1 text-xs rounded border border-surface-200 text-surface-600 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center gap-1 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
                   disabled={loadingOlder}
                   onClick={loadOlder}
                 >
@@ -272,24 +272,24 @@ export function TeamChatPage() {
               </div>
             )}
             {messages.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-8">No messages yet. Say hi.</p>
+              <p className="text-sm text-surface-500 text-center py-8 dark:text-surface-400">No messages yet. Say hi.</p>
             )}
             {messages.map((m) => (
               <div key={m.id} className="text-sm">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-semibold text-gray-800">
+                  <span className="font-semibold text-surface-800 dark:text-surface-100">
                     {m.first_name} {m.last_name}
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-surface-400 dark:text-surface-500">
                     {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <div className="text-gray-700 whitespace-pre-wrap break-words">{m.body}</div>
+                <div className="text-surface-700 whitespace-pre-wrap break-words dark:text-surface-300">{m.body}</div>
               </div>
             ))}
             <div ref={messagesEndRef} />
           </div>
-          <div className="border-t p-3 relative">
+          <div className="border-t border-surface-200 p-3 relative dark:border-surface-700">
             {showMentions && selectedChannelId && (
               <MentionPicker
                 onPick={insertMention}
@@ -299,7 +299,7 @@ export function TeamChatPage() {
             <div className="flex gap-2">
               <textarea
                 ref={inputRef}
-                className="flex-1 border rounded px-3 py-2 text-sm resize-none"
+                className="flex-1 border border-surface-300 rounded px-3 py-2 text-sm resize-none bg-white text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
                 rows={2}
                 placeholder="Type a message... use @username to mention someone"
                 value={draft}
@@ -319,9 +319,10 @@ export function TeamChatPage() {
                 }}
               />
               <button
-                className="px-4 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center"
+                className="px-4 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 disabled={!draft.trim() || sendMut.isPending}
                 onClick={() => sendMut.mutate()}
+                aria-label="Send message"
               >
                 {sendMut.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -330,8 +331,8 @@ export function TeamChatPage() {
                 )}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Press Cmd/Ctrl + Enter to send.
+            <p className="text-xs text-surface-400 mt-1 dark:text-surface-500">
+              Press Enter to send. Shift + Enter adds a new line.
             </p>
           </div>
         </section>
@@ -348,15 +349,15 @@ export function TeamChatPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-channel-title"
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5 dark:bg-surface-900"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="new-channel-title" className="text-lg font-bold mb-4">New channel</h2>
+            <h2 id="new-channel-title" className="text-lg font-bold mb-4 text-surface-900 dark:text-surface-100">New channel</h2>
             <label className="block mb-3">
-              <span className="text-xs font-semibold text-gray-600">Channel name</span>
+              <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Channel name</span>
               <input
                 type="text"
-                className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                className="mt-1 w-full border border-surface-300 rounded px-2 py-1.5 text-sm bg-white text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
                 value={newChannelName}
                 onChange={(e) => setNewChannelName(e.target.value)}
                 placeholder="e.g. front-desk"
@@ -364,13 +365,13 @@ export function TeamChatPage() {
             </label>
             <div className="flex gap-2">
               <button
-                className="flex-1 px-3 py-2 border rounded text-sm hover:bg-gray-50"
+                className="flex-1 px-3 py-2 border border-surface-200 rounded text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
                 onClick={() => setShowNew(false)}
               >
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700"
+                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 disabled={!newChannelName || createChannelMut.isPending}
                 onClick={() => createChannelMut.mutate()}
               >

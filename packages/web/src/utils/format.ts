@@ -65,6 +65,21 @@ export function formatCurrency(
   }
 }
 
+export function formatCurrencySymbol(currencyOverride?: string, localeOverride?: string): string {
+  const code = currencyOverride ?? _currencyCode;
+  try {
+    const parts = new Intl.NumberFormat(localeOverride ?? _locale, {
+      style: 'currency',
+      currency: code,
+      currencyDisplay: 'narrowSymbol',
+    }).formatToParts(0);
+    return parts.find((part) => part.type === 'currency')?.value ?? code;
+  } catch (err) {
+    console.error(`[formatCurrencySymbol] format failed for code "${code}"`, err);
+    return code;
+  }
+}
+
 /**
  * Format integer cents as a currency string. Prefer this over
  * `formatCurrency(cents / 100)` because it never rounds at the display
@@ -169,6 +184,45 @@ export function timeAgo(iso: string): string {
 
 // ─── Phone ──────────────────────────────────────────────────────────────────
 
+function groupInternationalNationalNumber(countryCode: string, national: string): string {
+  if (countryCode === '44') {
+    if (national.startsWith('20') && national.length === 10) {
+      return `${national.slice(0, 2)} ${national.slice(2, 6)} ${national.slice(6)}`;
+    }
+    if (national.length === 10) {
+      return `${national.slice(0, 4)} ${national.slice(4)}`;
+    }
+  }
+
+  if (countryCode === '61' && national.length === 9) {
+    if (national.startsWith('4')) {
+      return `${national.slice(0, 1)} ${national.slice(1, 5)} ${national.slice(5)}`;
+    }
+    return `${national.slice(0, 1)} ${national.slice(1, 5)} ${national.slice(5)}`;
+  }
+
+  if (countryCode === '52' && national.length === 10) {
+    return `${national.slice(0, 2)} ${national.slice(2, 6)} ${national.slice(6)}`;
+  }
+
+  const groups: string[] = [];
+  for (let i = 0; i < national.length; i += i === 0 && national.length % 3 !== 0 ? national.length % 3 : 3) {
+    const size = i === 0 && national.length % 3 !== 0 ? national.length % 3 : 3;
+    groups.push(national.slice(i, i + size));
+  }
+  return groups.filter(Boolean).join(' ');
+}
+
+function formatKnownInternationalPhone(digits: string): string | null {
+  const normalized = digits.startsWith('00') ? digits.slice(2) : digits;
+  const knownCodes = ['44', '61', '52'];
+  const countryCode = knownCodes.find((code) => normalized.startsWith(code));
+  if (!countryCode) return null;
+  const national = normalized.slice(countryCode.length);
+  if (!national) return `+${countryCode}`;
+  return `+${countryCode} ${groupInternationalNationalNumber(countryCode, national)}`;
+}
+
 // @audit-fixed: previously this returned 11-digit non-US numbers stripped of
 // their plus and any spacing because the early branches only matched US
 // patterns. Non-US callers (UK +44, AU +61, etc.) now keep their original
@@ -189,8 +243,12 @@ export function formatPhone(phone: string | null | undefined): string {
   // International or extension-bearing input: preserve the user's formatting,
   // but make sure we keep a leading "+" if the raw string had one.
   const trimmed = phone.trim();
+  const international = formatKnownInternationalPhone(
+    trimmed.startsWith('+') || digits.startsWith('00') || digits.length >= 11 ? digits : '',
+  );
+  if (international) return international;
   if (trimmed.startsWith('+')) return trimmed;
-  if (digits.length > 11) return `+${digits}`;
+  if (digits.length > 11) return formatKnownInternationalPhone(digits) ?? `+${digits}`;
   // WEB-FD-018 (Fixer-C12 2026-04-25): half-formatted US numbers (e.g. user
   // typed "(303) 261-19" while still entering it) used to echo back raw with
   // no `+1` hint, so display surfaces showed an inconsistent mix of

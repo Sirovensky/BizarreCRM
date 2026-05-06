@@ -112,13 +112,13 @@ export function RolesMatrixPage() {
     <div className="p-6 max-w-6xl mx-auto">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 inline-flex items-center">
-            <Shield className="w-6 h-6 mr-2 text-purple-500" /> Roles & Permissions
+          <h1 className="text-2xl font-bold text-surface-800 dark:text-surface-100 inline-flex items-center">
+            <Shield className="w-6 h-6 mr-2 text-purple-500 dark:text-purple-400" /> Roles & Permissions
           </h1>
-          <p className="text-sm text-gray-500">Toggle which features each role can access.</p>
+          <p className="text-sm text-surface-500 dark:text-surface-400">Toggle which features each role can access.</p>
         </div>
         <button
-          className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 inline-flex items-center"
+          className="px-3 py-1.5 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-500 inline-flex items-center"
           onClick={() => setShowNew(true)}
         >
           <Plus className="w-4 h-4 mr-1" /> New role
@@ -126,30 +126,32 @@ export function RolesMatrixPage() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-4">
-        <aside className="bg-white rounded-lg shadow border p-2">
+        <aside className="bg-white dark:bg-surface-900 rounded-lg shadow border border-surface-200 dark:border-surface-700 p-2">
           {roles.map((r) => (
             <button
               key={r.id}
               className={`w-full text-left px-3 py-2 rounded text-sm ${
-                selectedRoleId === r.id ? 'bg-purple-100 text-purple-800 font-semibold' : 'hover:bg-gray-50'
+                selectedRoleId === r.id
+                  ? 'bg-purple-100 text-purple-800 font-semibold dark:bg-purple-900/40 dark:text-purple-200'
+                  : 'text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800/70'
               }`}
               onClick={() => setSelectedRoleId(r.id)}
             >
               <div className="capitalize">{r.name}</div>
               {r.description && (
-                <div className="text-xs text-gray-500 line-clamp-1">{r.description}</div>
+                <div className="text-xs text-surface-500 dark:text-surface-400 line-clamp-1">{r.description}</div>
               )}
               {BUILTIN.includes(r.name) && (
-                <span className="text-xs text-gray-400">built-in</span>
+                <span className="text-xs text-surface-400 dark:text-surface-500">built-in</span>
               )}
             </button>
           ))}
         </aside>
 
-        <section className="bg-white rounded-lg shadow border p-4">
-          {!selectedRoleId && <p className="text-gray-500">Pick a role to edit.</p>}
+        <section className="bg-white dark:bg-surface-900 rounded-lg shadow border border-surface-200 dark:border-surface-700 p-4">
+          {!selectedRoleId && <p className="text-surface-500 dark:text-surface-400">Pick a role to edit.</p>}
           {matrixLoading && (
-            <div className="flex items-center justify-center py-12 text-gray-500">
+            <div className="flex items-center justify-center py-12 text-surface-500 dark:text-surface-400">
               <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading...
             </div>
           )}
@@ -157,16 +159,16 @@ export function RolesMatrixPage() {
             <div className="space-y-5">
               {Object.entries(grouped).map(([group, entries]) => (
                 <div key={group}>
-                  <h3 className="text-xs font-bold uppercase text-gray-500 mb-2 border-b pb-1">{group}</h3>
+                  <h3 className="text-xs font-bold uppercase text-surface-500 dark:text-surface-400 mb-2 border-b border-surface-200 dark:border-surface-700 pb-1">{group}</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1">
                     {entries.map((m) => (
                       <label
                         key={m.key}
-                        className="flex items-center text-sm py-1 cursor-pointer hover:bg-gray-50 px-2 rounded"
+                        className="flex items-center text-sm py-1 cursor-pointer text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-800/70 px-2 rounded"
                       >
                         <input
                           type="checkbox"
-                          className="mr-2 h-4 w-4"
+                          className="mr-2 h-4 w-4 accent-purple-600 dark:accent-purple-500"
                           checked={m.allowed}
                           disabled={updateMut.isPending}
                           onChange={(e) =>
@@ -192,36 +194,36 @@ export function RolesMatrixPage() {
           aria-labelledby="new-role-title"
           onClick={(e) => { if (e.target === e.currentTarget) setShowNew(false); }}
         >
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-surface-900 rounded-lg shadow-xl max-w-md w-full p-5 text-surface-900 dark:text-surface-100" onClick={(e) => e.stopPropagation()}>
             <h2 id="new-role-title" className="text-lg font-bold mb-4">New role</h2>
             <label className="block mb-3">
-              <span className="text-xs font-semibold text-gray-600">Name</span>
+              <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Name</span>
               <input
                 type="text"
-                className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                className="mt-1 w-full border border-surface-300 bg-white rounded px-2 py-1.5 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
                 placeholder="e.g. parts_clerk"
               />
             </label>
             <label className="block mb-3">
-              <span className="text-xs font-semibold text-gray-600">Description (optional)</span>
+              <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Description (optional)</span>
               <input
                 type="text"
-                className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
+                className="mt-1 w-full border border-surface-300 bg-white rounded px-2 py-1.5 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
               />
             </label>
             <div className="flex gap-2">
               <button
-                className="flex-1 px-3 py-2 border rounded text-sm hover:bg-gray-50"
+                className="flex-1 px-3 py-2 border border-surface-200 dark:border-surface-700 rounded text-sm text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-800"
                 onClick={() => setShowNew(false)}
               >
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 inline-flex items-center justify-center"
+                className="flex-1 px-3 py-2 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-500 inline-flex items-center justify-center"
                 disabled={!newName || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

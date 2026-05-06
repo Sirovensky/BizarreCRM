@@ -17,6 +17,23 @@ interface ShortcutEntry {
   description: string;
 }
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((element) => {
+    if (element.hasAttribute('disabled') || element.getAttribute('aria-hidden') === 'true') return false;
+    const style = window.getComputedStyle(element);
+    return style.visibility !== 'hidden' && style.display !== 'none';
+  });
+}
+
 // Keep in sync with the global keydown handlers in Header.tsx / App.tsx /
 // POS pages. If a binding moves, update this list — it's the ONLY place we
 // advertise shortcuts to the user so a stale entry is a real problem.
@@ -25,6 +42,7 @@ const SHORTCUTS: ReadonlyArray<{ section: string; items: ReadonlyArray<ShortcutE
     section: 'Global',
     items: [
       { keys: ['Ctrl', 'K'], description: 'Open command palette / search' },
+      { keys: ['F6'], description: 'Open command palette / search' },
       { keys: ['Esc'], description: 'Close modal or dialog' },
       { keys: ['?'], description: 'Show this reference card' },
     ],
@@ -45,7 +63,7 @@ const SHORTCUTS: ReadonlyArray<{ section: string; items: ReadonlyArray<ShortcutE
       { keys: ['F3'], description: 'Misc tab' },
       { keys: ['F4'], description: 'Customer search' },
       { keys: ['Shift', 'F5'], description: 'Complete sale' },
-      { keys: ['F6'], description: 'Returns' },
+      { keys: ['F6'], description: 'Open return workflow' },
     ],
   },
   {
@@ -64,22 +82,78 @@ interface ShortcutReferenceCardProps {
 
 export function ShortcutReferenceCard({ open, onClose }: ShortcutReferenceCardProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
-  // Close on Escape and outside click.
+  useEffect(() => {
+    if (!open) return;
+
+    const activeElement = document.activeElement;
+    restoreFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null;
+
+    const frame = window.requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusTarget = getFocusableElements(panel)[0] ?? panel;
+      focusTarget.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      const restoreTarget = restoreFocusRef.current;
+      restoreFocusRef.current = null;
+      if (restoreTarget && document.contains(restoreTarget)) {
+        window.requestAnimationFrame(() => restoreTarget.focus());
+      }
+    };
+  }, [open]);
+
+  // Close on Escape/outside click, and keep keyboard focus inside the modal.
   useEffect(() => {
     if (!open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      const panel = panelRef.current;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !panel) return;
+
+      const focusable = getFocusableElements(panel);
+      if (focusable.length === 0) {
+        e.preventDefault();
+        panel.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement as HTMLElement | null;
+
+      if (!activeElement || !panel.contains(activeElement)) {
+        e.preventDefault();
+        first.focus();
+        return;
+      }
+
+      if (e.shiftKey && activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     const handleClick = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    document.addEventListener('keydown', handleKey);
+    document.addEventListener('keydown', handleKey, true);
     document.addEventListener('mousedown', handleClick);
     return () => {
-      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('keydown', handleKey, true);
       document.removeEventListener('mousedown', handleClick);
     };
   }, [open, onClose]);
@@ -87,12 +161,13 @@ export function ShortcutReferenceCard({ open, onClose }: ShortcutReferenceCardPr
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/20 p-4 pt-20 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[10000] flex items-start justify-center bg-black/20 p-4 pt-20 backdrop-blur-sm">
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="shortcut-card-title"
+        tabIndex={-1}
         className="w-full max-w-md overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-900"
       >
         <div className="flex items-center justify-between border-b border-surface-100 px-5 py-4 dark:border-surface-800">

@@ -70,17 +70,17 @@ export function ReviewPromptModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6"
+        className="w-full max-w-sm rounded-lg border border-surface-200 bg-white p-6 shadow-xl dark:border-surface-700 dark:bg-surface-800"
       >
         {phase === 'ask' ? (
           <>
             <h2
               id="review-title"
-              className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1"
+              className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1"
             >
               {t('review.title')}
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+            <p className="text-sm text-surface-600 dark:text-surface-300 mb-4">
               {t('review.prompt')}
             </p>
             <div
@@ -98,9 +98,9 @@ export function ReviewPromptModal({
                   onMouseEnter={() => setHover(n)}
                   onMouseLeave={() => setHover(0)}
                   onClick={() => setRating(n)}
-                  className="text-3xl transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 rounded"
+                  className="text-3xl transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-surface-800 rounded"
                 >
-                  <span className={n <= displayRating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}>
+                  <span className={n <= displayRating ? 'text-yellow-400' : 'text-surface-300 dark:text-surface-600'}>
                     {'\u2605'}
                   </span>
                 </button>
@@ -108,7 +108,7 @@ export function ReviewPromptModal({
             </div>
             <label
               htmlFor="review-comment"
-              className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1"
+              className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1"
             >
               {t('review.comment_label')}
             </label>
@@ -118,13 +118,13 @@ export function ReviewPromptModal({
               onChange={(e) => setComment(e.target.value)}
               rows={3}
               maxLength={2000}
-              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 p-2 mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+              className="w-full rounded border border-surface-300 bg-white p-2 mb-4 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100 dark:focus-visible:ring-offset-surface-800"
             />
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 rounded border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                className="flex-1 rounded border border-surface-300 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
               >
                 Later
               </button>
@@ -145,7 +145,7 @@ export function ReviewPromptModal({
             <div className="text-4xl mb-2" aria-hidden="true">
               {'\u{1F64F}'}
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-4">
               {t('review.thanks')}
             </h2>
             <button
@@ -160,10 +160,10 @@ export function ReviewPromptModal({
 
         {phase === 'google' && googleUrl ? (
           <div className="text-center">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
               {t('review.thanks')}
             </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+            <p className="text-sm text-surface-600 dark:text-surface-300 mb-4">
               {t('review.google_prompt')}
             </p>
             <div className="flex flex-col gap-2">
@@ -179,7 +179,7 @@ export function ReviewPromptModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-sm text-gray-500 dark:text-gray-400 py-1"
+                className="text-sm text-surface-500 py-1 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
               >
                 Maybe later
               </button>

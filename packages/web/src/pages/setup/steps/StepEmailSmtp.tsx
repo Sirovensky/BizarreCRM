@@ -57,6 +57,13 @@ export function StepEmailSmtp({
   );
 
   const canTest = !!(pending.smtp_host && pending.smtp_port);
+  const canContinue = Boolean(
+    pending.smtp_host?.trim() &&
+    pending.smtp_port?.trim() &&
+    pending.smtp_user?.trim() &&
+    pending.smtp_pass?.trim() &&
+    pending.smtp_from?.trim(),
+  );
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -139,7 +146,7 @@ export function StepEmailSmtp({
             type="button"
             onClick={handleTestConnection}
             disabled={!canTest || testing}
-            className="flex items-center gap-2 rounded-lg border border-surface-300 bg-surface-50 px-4 py-2 text-sm font-medium text-surface-700 transition-colors hover:bg-surface-100 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
+            className="btn btn-md flex items-center gap-2 rounded-lg border border-surface-300 bg-surface-50 px-4 py-2 text-sm font-medium text-surface-700 transition-colors hover:bg-surface-100 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
           >
             {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
             {testing ? 'Testing…' : 'Test connection'}
@@ -167,7 +174,7 @@ export function StepEmailSmtp({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+          className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
@@ -176,14 +183,15 @@ export function StepEmailSmtp({
           <button
             type="button"
             onClick={handleSkip}
-            className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
-            Skip
+            Skip this step
           </button>
           <button
             type="button"
             onClick={onNext}
-            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            disabled={!canContinue}
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Continue
             <ArrowRight className="h-4 w-4" />

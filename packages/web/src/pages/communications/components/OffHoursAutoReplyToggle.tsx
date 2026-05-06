@@ -8,9 +8,10 @@ import { cn } from '@/utils/cn';
 /**
  * Off-hours auto-reply toggle — audit §51.13.
  *
- * Switchable flag stored in store_config under:
- *   - inbox_off_hours_autoreply_enabled ('0' | '1')
- *   - inbox_off_hours_autoreply_message (string body)
+ * Switchable flag stored in store_config under the same keys the inbound SMS
+ * auto-reply engine consumes:
+ *   - auto_reply_enabled ('0' | '1')
+ *   - auto_reply_message (string body)
  *
  * The actual business-hours logic lives in the existing automations engine
  * — this component just flips the flag. When enabled, the automations
@@ -23,8 +24,8 @@ interface OffHoursAutoReplyToggleProps {
 }
 
 interface ConfigResponse {
-  inbox_off_hours_autoreply_enabled?: string;
-  inbox_off_hours_autoreply_message?: string;
+  auto_reply_enabled?: string;
+  auto_reply_message?: string;
 }
 
 async function fetchConfig(): Promise<ConfigResponse> {
@@ -34,8 +35,8 @@ async function fetchConfig(): Promise<ConfigResponse> {
   );
   const data = res.data.data || {};
   return {
-    inbox_off_hours_autoreply_enabled: data.inbox_off_hours_autoreply_enabled,
-    inbox_off_hours_autoreply_message: data.inbox_off_hours_autoreply_message,
+    auto_reply_enabled: data.auto_reply_enabled,
+    auto_reply_message: data.auto_reply_message,
   };
 }
 
@@ -55,12 +56,12 @@ export function OffHoursAutoReplyToggle({ className }: OffHoursAutoReplyTogglePr
   });
 
   useEffect(() => {
-    if (config?.inbox_off_hours_autoreply_message && !editing) {
-      setDraft(config.inbox_off_hours_autoreply_message);
+    if (config?.auto_reply_message && !editing) {
+      setDraft(config.auto_reply_message);
     }
   }, [config, editing]);
 
-  const enabled = config?.inbox_off_hours_autoreply_enabled === '1';
+  const enabled = config?.auto_reply_enabled === '1' || config?.auto_reply_enabled === 'true';
 
   const saveMut = useMutation({
     mutationFn: updateConfig,
@@ -73,12 +74,12 @@ export function OffHoursAutoReplyToggle({ className }: OffHoursAutoReplyTogglePr
 
   function toggle() {
     saveMut.mutate({
-      inbox_off_hours_autoreply_enabled: enabled ? '0' : '1',
+      auto_reply_enabled: enabled ? '0' : '1',
     });
   }
 
   function saveMessage() {
-    saveMut.mutate({ inbox_off_hours_autoreply_message: draft });
+    saveMut.mutate({ auto_reply_message: draft });
     setEditing(false);
   }
 
@@ -127,7 +128,7 @@ export function OffHoursAutoReplyToggle({ className }: OffHoursAutoReplyTogglePr
               <button
                 onClick={() => {
                   setEditing(false);
-                  setDraft(config?.inbox_off_hours_autoreply_message ?? '');
+                  setDraft(config?.auto_reply_message ?? '');
                 }}
                 className="rounded px-2 py-0.5 text-[10px] text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700"
               >

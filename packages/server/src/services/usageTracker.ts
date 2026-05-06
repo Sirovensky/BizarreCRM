@@ -53,16 +53,17 @@ export function incrementTicketCount(tenantId: number | undefined): void {
  * route handlers must guard with that flag before calling this. Documented
  * here so the next caller doesn't repeat the mistake.
  */
-export function incrementSmsCount(tenantId: number | undefined): void {
+export function incrementSmsCount(tenantId: number | undefined, count = 1): void {
   if (!config.multiTenant || !tenantId) return;
+  const delta = Number.isFinite(count) && count > 0 ? Math.ceil(count) : 1;
   const masterDb = getMasterDb();
   if (!masterDb) return;
   const month = getCurrentMonth();
   masterDb.prepare(`
     INSERT INTO tenant_usage (tenant_id, month, sms_sent)
-    VALUES (?, ?, 1)
-    ON CONFLICT(tenant_id, month) DO UPDATE SET sms_sent = sms_sent + 1
-  `).run(tenantId, month);
+    VALUES (?, ?, ?)
+    ON CONFLICT(tenant_id, month) DO UPDATE SET sms_sent = sms_sent + excluded.sms_sent
+  `).run(tenantId, month, delta);
 }
 
 /**

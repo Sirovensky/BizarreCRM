@@ -1,11 +1,8 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, Shield, ScrollText, ChevronRight, AlertTriangle } from 'lucide-react';
-import { getAPI } from '@/api/bridge';
-import type { SecurityAlert } from '@/api/bridge';
-import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import { useServerStore } from '@/stores/serverStore';
+import { useRecentActivityQuery } from '@/hooks/useManagementQueries';
 import { cn } from '@/utils/cn';
 
 // DASH-ELEC-151 (Fixer-C25 2026-04-25): Tailwind-purge-safe explicit color
@@ -18,21 +15,13 @@ const SEVERITY_COLOR: Record<string, string> = {
   info: 'text-sky-400',
 };
 
-interface AuditEntry {
-  id: number;
-  admin_username: string;
-  action: string;
-  details: string;
-  ip_address: string;
-  created_at: string;
-}
-
 /**
  * Compact Overview card: last 3 audit entries + last 3 unacknowledged security
  * alerts. Read-only preview — clicking either half jumps to the full Activity
  * page on the matching tab. Single component so the Overview grid layout sees
- * one block and the internal split is a render-detail. Refreshes on mount
- * only — operators who want a live stream go to the dedicated page.
+ * one block and the internal split is a render-detail. Refreshes quietly on a
+ * low-frequency query interval; operators who want a live stream go to the
+ * dedicated page.
  *
  * Gated on multi-tenant because the endpoints are super-admin only. Single-
  * tenant installs have no master audit log to render.
@@ -40,41 +29,9 @@ interface AuditEntry {
 export function RecentActivityWidget() {
   const stats = useServerStore((s) => s.stats);
   const isMultiTenant = stats?.multiTenant ?? false;
-
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
-  const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!isMultiTenant) { setLoading(false); return; }
-    // DASH-ELEC-011 (Fixer-B26 2026-04-25): swap ad-hoc `cancelled` boolean
-    // for an AbortController. The IPC bridge doesn't accept a signal yet,
-    // but `signal.aborted` is the same gating semantics as the boolean and
-    // promotes us to the standard primitive — when the bridge gains signal
-    // support, we just thread `controller.signal` through getAPI() calls.
-    const controller = new AbortController();
-    const { signal } = controller;
-    Promise.all([
-      getAPI().superAdmin.getAuditLog({ limit: 5 }),
-      getAPI().superAdmin.listSecurityAlerts({ acknowledged: 0, limit: 3 }),
-    ])
-      .then(([auditRes, alertsRes]) => {
-        if (signal.aborted) return;
-        if (handleApiResponse(auditRes) || handleApiResponse(alertsRes)) return;
-        if (auditRes.success && auditRes.data) {
-          const list = Array.isArray(auditRes.data)
-            ? (auditRes.data as AuditEntry[])
-            : ((auditRes.data as { logs?: AuditEntry[] }).logs ?? []);
-          setAudit(list.slice(0, 3));
-        }
-        if (alertsRes.success && alertsRes.data) {
-          setAlerts(alertsRes.data.alerts.slice(0, 3));
-        }
-      })
-      .catch((err) => { if (!signal.aborted) console.warn('[RecentActivity] fetch failed', err); })
-      .finally(() => { if (!signal.aborted) setLoading(false); });
-    return () => { controller.abort(); };
-  }, [isMultiTenant]);
+  const { data, isLoading } = useRecentActivityQuery(isMultiTenant);
+  const audit = data?.audit ?? [];
+  const alerts = data?.alerts ?? [];
 
   if (!isMultiTenant) return null;
 
@@ -93,7 +50,7 @@ export function RecentActivityWidget() {
         </Link>
       </div>
 
-      {loading ? (
+      {isLoading ? (
         <p className="text-xs text-surface-500" aria-live="polite" aria-busy="true">Loading…</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

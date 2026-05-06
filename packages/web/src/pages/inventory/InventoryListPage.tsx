@@ -527,10 +527,11 @@ export function InventoryListPage() {
         </button>
         <label className="inline-flex items-center gap-2 cursor-pointer select-none">
           <span className={cn('text-sm font-medium', reorderableFilter ? 'text-teal-600 dark:text-teal-400' : 'text-surface-500 dark:text-surface-400')}>
-            PLP / MS
+            PLP / MobileSentrix
           </span>
           <button
             role="switch"
+            aria-label="Show PLP and MobileSentrix supplier parts"
             aria-checked={reorderableFilter}
             onClick={() => {
               const p = new URLSearchParams(searchParams);

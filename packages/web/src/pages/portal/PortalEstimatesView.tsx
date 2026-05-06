@@ -157,10 +157,10 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
 
 function EstimateStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    sent: 'bg-amber-100 text-amber-700',
-    approved: 'bg-green-100 text-green-700',
-    draft: 'bg-surface-100 text-surface-600',
-    converted: 'bg-primary-100 text-primary-700',
+    sent: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    draft: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
+    converted: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>
@@ -168,4 +168,3 @@ function EstimateStatusBadge({ status }: { status: string }) {
     </span>
   );
 }
-

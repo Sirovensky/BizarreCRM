@@ -1,17 +1,18 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff, LockOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { posApi, blockchypApi } from '@/api/endpoints';
+import { posApi, blockchypApi, settingsApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
 import { useUnifiedPosStore } from './store';
 import { useSettings } from '@/hooks/useSettings';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { PinModal } from '@/components/shared/PinModal';
 import { CashDrawerWidget } from './CashDrawerWidget';
 import type { RepairCartItem } from './types';
+import { submitTrainingTransaction, useIsTraining } from './TrainingModeBanner';
 
 // ─── Cash In/Out Modal ──────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ function CashModal({ type, onClose }: CashModalProps) {
           <h3 id="cash-modal-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Cash {type === 'in' ? 'In' : 'Out'}
           </h3>
-          <button aria-label="Close" onClick={onClose} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onClose} className="btn-icon btn-xs">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -104,7 +105,7 @@ function CashModal({ type, onClose }: CashModalProps) {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-md w-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {submitting ? 'Processing...' : `Confirm Cash ${type === 'in' ? 'In' : 'Out'}`}
           </button>
@@ -158,7 +159,7 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
           <h3 id="signature-gate-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Customer Signature Required
           </h3>
-          <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onCancel} className="btn-icon btn-xs">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -173,7 +174,7 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
               </p>
               <button
                 onClick={onBypass}
-                className="mt-2 flex items-center gap-1.5 rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-400 dark:hover:bg-amber-500/10"
+                className="btn btn-sm mt-2 border border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-400 dark:hover:bg-amber-500/10"
               >
                 <ShieldOff className="h-4 w-4" />
                 Skip Signature
@@ -190,7 +191,7 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
               </p>
               <button
                 onClick={onProceed}
-                className="mt-2 rounded-lg bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+                className="btn btn-md mt-2 bg-teal-600 !px-6 !font-semibold text-white hover:bg-teal-700"
               >
                 Create Ticket
               </button>
@@ -207,14 +208,14 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
               <div className="flex gap-3">
                 <button
                   onClick={onRetry}
-                  className="flex items-center gap-1.5 rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+                  className="btn btn-sm border border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
                 >
                   <Pen className="h-4 w-4" />
                   Retry
                 </button>
                 <button
                   onClick={onBypass}
-                  className="flex items-center gap-1.5 rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-400 dark:hover:bg-amber-500/10"
+                  className="btn btn-sm border border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-400 dark:hover:bg-amber-500/10"
                 >
                   <ShieldOff className="h-4 w-4" />
                   Skip Signature
@@ -231,7 +232,9 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
 // ─── BottomActions ──────────────────────────────────────────────────
 
 export function BottomActions() {
-  const { cartItems, resetAll, setShowCheckout, setShowSuccess, customer, discount, discountReason, meta, sourceTicketId, setPosPinVerified } = useUnifiedPosStore();
+  const { cartItems, resetAll, setShowCheckout, setShowSuccess, customer, discount, discountReason, meta, setMeta, sourceTicketId, setPosPinVerified } = useUnifiedPosStore();
+  const queryClient = useQueryClient();
+  const isTraining = useIsTraining();
   const [cashModal, setCashModal] = useState<'in' | 'out' | null>(null);
   const [creatingTicket, setCreatingTicket] = useState(false);
   const [pinAction, setPinAction] = useState<'ticket' | 'checkout' | 'manager' | null>(null);
@@ -285,15 +288,25 @@ export function BottomActions() {
   const [sigError, setSigError] = useState('');
   const [sigFile, setSigFile] = useState<string | null>(null);
 
+  const hasItems = cartItems.length > 0;
+  const hasRepair = cartItems.some((i) => i.type === 'repair');
+
   const requirePinSale = getSetting('pos_require_pin_sale') === '1';
   const requirePinTicket = getSetting('pos_require_pin_ticket') === '1';
+  const requireReferral = getSetting('pos_require_referral') === '1' || getSetting('pos_require_referral') === 'true';
+
+  const { data: referralSourcesData } = useQuery({
+    queryKey: ['settings', 'referral-sources'],
+    queryFn: () => settingsApi.getReferralSources(),
+    enabled: requireReferral && hasRepair,
+    staleTime: 60_000,
+  });
+  const referralSources: Array<{ id: number; name: string }> =
+    referralSourcesData?.data?.data?.referral_sources || referralSourcesData?.data?.data || [];
 
   // pinVerifiedRef is kept for the create-ticket path (no store read needed);
   // checkout path uses store.posPinVerified so CheckoutModal can read it.
   const pinVerifiedRef = useRef(false);
-
-  const hasItems = cartItems.length > 0;
-  const hasRepair = cartItems.some((i) => i.type === 'repair');
 
   const handleCancel = async () => {
     if (hasItems || customer) {
@@ -325,6 +338,7 @@ export function BottomActions() {
       line_discount: r.lineDiscount,
       parts: r.parts,
       taxable: r.taxable,
+      due_on: r.device.due_date ?? null,
     }));
 
     return {
@@ -334,6 +348,7 @@ export function BottomActions() {
       ticket: {
         devices,
         source: meta.source,
+        referral_source: meta.referralSource || undefined,
         assigned_to: meta.assignedTo,
         discount,
         discount_reason: discountReason,
@@ -356,10 +371,42 @@ export function BottomActions() {
       toast.error('Please select or create a customer first');
       return;
     }
+    if (requireReferral && !meta.referralSource) {
+      toast.error('Select a referral source');
+      return;
+    }
 
     setCreatingTicket(true);
     try {
       const payload = buildTicketPayload(signatureFile);
+      if (isTraining) {
+        await submitTrainingTransaction({
+          cart: payload,
+          total_cents: cartTotalCents,
+          kind: 'create_ticket',
+        });
+        await queryClient.invalidateQueries({ queryKey: ['onboarding-state'] });
+        await queryClient.invalidateQueries({ queryKey: ['onboarding', 'state'] });
+        setShowSuccess({
+          mode: 'create_ticket',
+          ticket: {
+            id: 0,
+            order_id: 'TRAINING',
+            c_first_name: 'Training',
+            c_last_name: 'Session',
+            devices: payload.ticket.devices.map((device, index) => ({
+              id: index + 1,
+              device_name: device.device_name,
+              device_type: device.device_type,
+              service_name: device.service_name,
+            })),
+          },
+          total: cartTotalCents / 100,
+          customer_name: 'Training session',
+        });
+        window.dispatchEvent(new CustomEvent('pos:ticket-saved'));
+        return;
+      }
       // WEB-FH-001 / WEB-FH-002: same stable cart-session idempotency key
       // as the checkout path — covers the create-ticket-without-payment
       // double-submit case (button click + keyboard Enter race).
@@ -422,7 +469,7 @@ export function BottomActions() {
         <div className="flex items-center gap-3">
           <button
             onClick={handleCancel}
-            className="rounded-lg border border-red-300 px-5 py-2.5 text-base font-medium text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+            className="btn btn-lg border border-red-300 !px-5 text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
           >
             Cancel
           </button>
@@ -435,7 +482,7 @@ export function BottomActions() {
                 toast.error('Failed to open drawer');
               }
             }}
-            className="rounded-lg border border-surface-300 px-4 py-2.5 text-sm font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800 flex items-center gap-1.5"
+            className="btn btn-lg border border-surface-300 text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
             title="Open cash drawer"
           >
             <LockOpen className="h-4 w-4" />
@@ -445,6 +492,19 @@ export function BottomActions() {
           <CashDrawerWidget />
         </div>
         <div className="flex items-center gap-4">
+          {requireReferral && hasRepair && !sourceTicketId && (
+            <select
+              value={meta.referralSource}
+              onChange={(e) => setMeta({ referralSource: e.target.value })}
+              aria-label="Referral source"
+              className="h-10 w-44 rounded-lg border border-surface-300 bg-white px-3 text-sm text-surface-800 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+            >
+              <option value="">Referral source...</option>
+              {referralSources.map((src) => (
+                <option key={src.id} value={src.name}>{src.name}</option>
+              ))}
+            </select>
+          )}
           <button
             data-tutorial-target="ticket:save-ticket-button"
             onClick={() => {
@@ -454,7 +514,7 @@ export function BottomActions() {
             disabled={!hasRepair || creatingTicket || !!sourceTicketId}
             title={sourceTicketId ? 'Checking out existing ticket — use Checkout' : !hasRepair ? 'Add a repair to create ticket' : ''}
             className={cn(
-              'rounded-lg px-8 py-2.5 text-base font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
+              'btn btn-lg !px-8 !font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               hasRepair && !sourceTicketId
                 ? 'bg-teal-600 text-white hover:bg-teal-700'
                 : 'bg-surface-200 text-surface-400 dark:bg-surface-700 dark:text-surface-500',
@@ -469,6 +529,10 @@ export function BottomActions() {
                 toast.error('Please select or create a customer first');
                 return;
               }
+              if (requireReferral && cartItems.some(i => i.type === 'repair') && !meta.referralSource) {
+                toast.error('Select a referral source');
+                return;
+              }
               // Audit §43.12 — manager PIN on high-value sales, threshold in
               // store_config.pos_manager_pin_threshold. Checked first so it
               // nests with the existing cashier-PIN and signature gates.
@@ -479,7 +543,7 @@ export function BottomActions() {
             disabled={!hasItems}
             title={needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
             className={cn(
-              'rounded-lg border px-6 py-2.5 text-base font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
+              'btn btn-lg border !px-6 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               hasItems
                 ? 'border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800'
                 : 'border-surface-200 text-surface-400 dark:border-surface-700 dark:text-surface-500',
@@ -600,7 +664,7 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
           <h3 id="manager-pin-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Manager PIN required
           </h3>
-          <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onCancel} className="btn-icon btn-xs">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -625,14 +689,14 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 rounded-lg border border-surface-300 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+              className="btn btn-sm flex-1 border border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!pin.trim() || verifying}
-              className="flex-1 rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="btn btn-sm flex-1 bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {verifying ? 'Verifying…' : 'Approve'}
             </button>

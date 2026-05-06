@@ -9,41 +9,31 @@ import {
   ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles, Rocket, FlaskConical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi, customerApi, ticketApi, invoiceApi, expenseApi } from '@/api/endpoints';
+import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi, customerApi, ticketApi, invoiceApi, expenseApi, rolesApi } from '@/api/endpoints';
+import type { RolePermissionEntry, RoleRecord } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { DEFAULT_PRIMARY_ACCENT } from '@/utils/themeAccent';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
 import { formatNumber, formatCurrency } from '@/utils/format';
-import { RepairPricingTab } from './RepairPricingTab';
-import { TicketsRepairsSettings } from './TicketsRepairsSettings';
-import { PosSettings } from './PosSettings';
-import { InvoiceSettings } from './InvoiceSettings';
-import { ReceiptSettings } from './ReceiptSettings';
-import { ConditionsTab } from './ConditionsTab';
-import { NotificationTemplatesTab } from './NotificationTemplatesTab';
-import { BlockChypSettings } from './BlockChypSettings';
-const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ default: m.SmsVoiceSettings })));
-import { AuditLogsTab } from './AuditLogsTab';
-import { AutomationsTab } from './AutomationsTab';
-import { MembershipSettings } from './MembershipSettings';
-import { BillingTab } from './BillingTab';
 // FA-M7: DeviceTemplatesPage is a standalone admin editor. Before this change
 // it was only reachable by typing the URL (/settings/device-templates was
 // never defined). Mount it as a Settings tab so the DeviceTemplatePicker
 // empty-state message ("Settings → Device Templates") is actually reachable.
-import { DeviceTemplatesPage } from './DeviceTemplatesPage';
 // PROD59: tenant self-service termination (Settings > Danger Zone).
-import { DangerZoneTab } from './DangerZoneTab';
 import { SkeletonCard } from '@/components/shared/Skeleton';
-import { DataTab } from './DataTab';
 import { usePlanStore } from '@/stores/planStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { PlanFeatures } from '@bizarre-crm/shared';
 import { Sun, Moon, Monitor } from 'lucide-react';
 
 // Configuration-UX enrichment (critical audit section 50)
-import { SetupProgressTab } from './tabs/SetupProgressTab';
 import { SettingsSearch } from './components/SettingsSearch';
 import {
   UnsavedChangesProvider,
@@ -55,6 +45,26 @@ import { SettingsGlobalSearch } from './components/SettingsGlobalSearch';
 import { SettingsTemplatePicker } from './components/SettingsTemplatePicker';
 import { getComingSoonCount, getLiveCount } from './settingsMetadata';
 import { ComingSoonBadge } from './components/ComingSoonBadge';
+
+const SetupProgressTab = lazy(() => import('./tabs/SetupProgressTab').then(m => ({ default: m.SetupProgressTab })));
+const BillingTab = lazy(() => import('./BillingTab').then(m => ({ default: m.BillingTab })));
+const TenantStripeSettings = lazy(() => import('./TenantStripeSettings').then(m => ({ default: m.TenantStripeSettings })));
+const BlockChypSettings = lazy(() => import('./BlockChypSettings').then(m => ({ default: m.BlockChypSettings })));
+const CustomerGroupsTab = lazy(() => import('./CustomerGroupsTab').then(m => ({ default: m.CustomerGroupsTab })));
+const RepairPricingTab = lazy(() => import('./RepairPricingTab').then(m => ({ default: m.RepairPricingTab })));
+const DeviceTemplatesPage = lazy(() => import('./DeviceTemplatesPage').then(m => ({ default: m.DeviceTemplatesPage })));
+const TicketsRepairsSettings = lazy(() => import('./TicketsRepairsSettings').then(m => ({ default: m.TicketsRepairsSettings })));
+const PosSettings = lazy(() => import('./PosSettings').then(m => ({ default: m.PosSettings })));
+const InvoiceSettings = lazy(() => import('./InvoiceSettings').then(m => ({ default: m.InvoiceSettings })));
+const ReceiptSettings = lazy(() => import('./ReceiptSettings').then(m => ({ default: m.ReceiptSettings })));
+const ConditionsTab = lazy(() => import('./ConditionsTab').then(m => ({ default: m.ConditionsTab })));
+const NotificationTemplatesTab = lazy(() => import('./NotificationTemplatesTab').then(m => ({ default: m.NotificationTemplatesTab })));
+const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ default: m.SmsVoiceSettings })));
+const AutomationsTab = lazy(() => import('./AutomationsTab').then(m => ({ default: m.AutomationsTab })));
+const MembershipSettings = lazy(() => import('./MembershipSettings').then(m => ({ default: m.MembershipSettings })));
+const DataTab = lazy(() => import('./DataTab').then(m => ({ default: m.DataTab })));
+const AuditLogsTab = lazy(() => import('./AuditLogsTab').then(m => ({ default: m.AuditLogsTab })));
+const DangerZoneTab = lazy(() => import('./DangerZoneTab').then(m => ({ default: m.DangerZoneTab })));
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -99,6 +109,13 @@ interface UserRecord {
 
 // ─── Reusable Components ──────────────────────────────────────────────────────
 
+function finiteProgressPercent(numerator: unknown, denominator: unknown): number {
+  const current = Number(numerator);
+  const total = Number(denominator);
+  if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.max(0, Math.min(100, (current / total) * 100));
+}
+
 function LoadingState() {
   // WEB-FQ-005: align Settings loading affordance with the shared Skeleton
   // ramp instead of mixing spinner + "Loading..." text. role="status" +
@@ -141,7 +158,7 @@ const TABS: TabConfig[] = [
   { key: 'statuses', label: 'Ticket Statuses', icon: ListChecks },
   { key: 'tax', label: 'Tax Classes', icon: Receipt },
   { key: 'payment', label: 'Payment Methods', icon: CreditCard },
-  { key: 'payment-terminal', label: 'Payment Terminal', icon: Shield },
+  { key: 'payment-terminal', label: 'Payment Processing', icon: Shield },
   { key: 'customer-groups', label: 'Customer Groups', icon: Tag },
   { key: 'users', label: 'Users', icon: Users },
   { key: 'repair-pricing', label: 'Repair Pricing', icon: Wrench },
@@ -227,6 +244,20 @@ function StoreInfoTab() {
     onError: () => toast.error('Failed to upload logo'),
   });
 
+  const handleStoreLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const error = await validateImageFile(file, {
+        maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
+        label: `"${file.name}"`,
+        sniff: true,
+      });
+      if (error) toast.error(error);
+      else logoMutation.mutate(file);
+    }
+    e.target.value = '';
+  };
+
   // Business hours
   const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
   const DAY_LABELS: Record<string, string> = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
@@ -272,9 +303,9 @@ function StoreInfoTab() {
           onClick={() => saveMutation.mutate(form)}
           disabled={!dirty || saveMutation.isPending}
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            'btn btn-md',
             dirty
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              ? 'btn-primary'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >
@@ -302,23 +333,19 @@ function StoreInfoTab() {
             <input
               ref={logoInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
+              accept={IMAGE_UPLOAD_ACCEPT}
               className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) logoMutation.mutate(file);
-                e.target.value = '';
-              }}
+              onChange={handleStoreLogoChange}
             />
             <button
               onClick={() => logoInputRef.current?.click()}
               disabled={logoMutation.isPending}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+              className="btn btn-secondary btn-sm border border-surface-200 dark:border-surface-700"
             >
               {logoMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {form['store_logo'] ? 'Change Logo' : 'Upload Logo'}
             </button>
-            <p className="text-xs text-surface-400 mt-1">JPEG, PNG, WebP or GIF. Max 5MB. Used on invoices and receipts.</p>
+            <p className="text-xs text-surface-400 mt-1">JPEG, PNG, WebP, or GIF. Max 5 MB. Convert HEIC, TIFF, or DNG to JPEG first.</p>
           </div>
         </div>
       </div>
@@ -490,7 +517,7 @@ function AppearanceSection() {
                 <button
                   type="button"
                   onClick={() => navigate('/setup')}
-                  className="mt-3 rounded-lg bg-primary-600 px-4 py-2 text-xs font-semibold text-primary-950 hover:bg-primary-700"
+                  className="btn btn-primary btn-sm mt-3"
                 >
                   Resume setup wizard
                 </button>
@@ -544,7 +571,7 @@ function ReferralSourcesSection() {
           <button
             onClick={() => newSource.trim() && createMut.mutate(newSource.trim())}
             disabled={!newSource.trim()}
-            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-primary btn-sm"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -579,7 +606,7 @@ function ThemeCustomizationSection() {
 
   useEffect(() => {
     if (configData) {
-      setPrimaryColor(configData['theme_primary_color'] || '#3b82f6');
+      setPrimaryColor(configData['theme_primary_color'] || DEFAULT_PRIMARY_ACCENT);
       setDirty(false);
     }
   }, [configData]);
@@ -595,6 +622,7 @@ function ThemeCustomizationSection() {
   });
 
   const PRESET_COLORS = [
+    { label: 'Cream', value: DEFAULT_PRIMARY_ACCENT },
     { label: 'Blue', value: '#3b82f6' },
     { label: 'Indigo', value: '#6366f1' },
     { label: 'Violet', value: '#8b5cf6' },
@@ -618,9 +646,9 @@ function ThemeCustomizationSection() {
           onClick={() => saveMut.mutate({ theme_primary_color: primaryColor })}
           disabled={!dirty || saveMut.isPending}
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            'btn btn-md',
             dirty
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              ? 'btn-primary'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >
@@ -642,8 +670,8 @@ function ThemeCustomizationSection() {
               type="text"
               value={primaryColor}
               onChange={(e) => { setPrimaryColor(e.target.value); setDirty(true); }}
-              placeholder="#3b82f6"
-              className="w-32 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={DEFAULT_PRIMARY_ACCENT}
+              className="w-32 px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono focus-visible:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -654,14 +682,14 @@ function ThemeCustomizationSection() {
                 title={c.label}
                 className={cn(
                   'h-7 w-7 rounded-full border-2 transition-all',
-                  primaryColor === c.value ? 'border-white dark:border-surface-100 ring-2 ring-offset-1 ring-blue-500' : 'border-transparent hover:border-surface-300'
+                  primaryColor === c.value ? 'border-white dark:border-surface-100 ring-2 ring-offset-1 ring-primary-500' : 'border-transparent hover:border-surface-300'
                 )}
                 style={{ backgroundColor: c.value }}
               />
             ))}
           </div>
           <p className="text-xs text-surface-400 mt-2">
-            This color will be stored as a theme preference. Full CSS variable theming can be wired in future updates.
+            Saved colors apply to primary buttons, links, focus rings, selected rows, and branded accents across the app.
           </p>
         </div>
       </div>
@@ -734,9 +762,9 @@ function WebhookConfigSection() {
           onClick={() => saveMut.mutate({ webhook_url: webhookUrl, webhook_events: JSON.stringify(webhookEvents) })}
           disabled={!dirty || saveMut.isPending}
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            'btn btn-md',
             dirty
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              ? 'btn-primary'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >
@@ -837,7 +865,7 @@ function SettingsExportImportSection() {
       <div className="p-5 flex flex-wrap gap-3">
         <button
           onClick={handleExport}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+          className="btn btn-secondary btn-md border border-surface-200 dark:border-surface-700"
         >
           <FolderDown className="h-4 w-4" />
           Export Settings
@@ -856,7 +884,7 @@ function SettingsExportImportSection() {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={importing}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-secondary btn-md border border-surface-200 dark:border-surface-700"
         >
           {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderUp className="h-4 w-4" />}
           Import Settings
@@ -931,7 +959,7 @@ function StatusesTab() {
           <h3 className="font-semibold text-surface-900 dark:text-surface-100">Ticket Statuses</h3>
           <button
             onClick={() => setShowAdd(!showAdd)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="btn btn-primary btn-md"
           >
             <Plus className="h-4 w-4" /> Add Status
           </button>
@@ -993,12 +1021,12 @@ function StatusesTab() {
                 <button
                   onClick={() => createMutation.mutate(addForm)}
                   disabled={!addForm.name || createMutation.isPending}
-                  className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                  className="btn btn-primary btn-sm"
                 >
                   {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   Create
                 </button>
-                <button onClick={() => setShowAdd(false)} className="px-3 py-2 text-sm text-surface-500 hover:text-surface-700 dark:hover:text-surface-300">
+                <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-sm text-surface-500 hover:text-surface-700 dark:hover:text-surface-300">
                   Cancel
                 </button>
               </div>
@@ -1045,11 +1073,11 @@ function StatusesTab() {
                     <button
                       onClick={() => updateMutation.mutate({ id: s.id, data: editForm })}
                       disabled={updateMutation.isPending}
-                      className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                      className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30"
                     >
                       {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     </button>
-                    <button onClick={() => setEditing(null)} className="p-1.5 text-surface-400 hover:text-surface-600 rounded">
+                    <button onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
@@ -1067,7 +1095,7 @@ function StatusesTab() {
                       {!!s.notify_customer && <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full px-2 py-0.5">Notifies</span>}
                     </div>
                     <div className="flex gap-1 ml-2">
-                      <button aria-label="Edit" onClick={() => startEdit(s)} className="p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors">
+                      <button aria-label="Edit" onClick={() => startEdit(s)} className="btn-icon btn-xs text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
@@ -1077,7 +1105,7 @@ function StatusesTab() {
                             deleteMutation.mutate(s.id);
                           }
                         }}
-                        className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
+                        className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1151,7 +1179,7 @@ function TaxClassesTab() {
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Tax Classes</h3>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="btn btn-primary btn-md"
         >
           <Plus className="h-4 w-4" /> Add Tax Class
         </button>
@@ -1188,12 +1216,12 @@ function TaxClassesTab() {
             <button
               onClick={() => createMutation.mutate({ ...addForm, rate: parseFloat(addForm.rate) || 0 })}
               disabled={!addForm.name || createMutation.isPending}
-              className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+              className="btn btn-primary btn-sm"
             >
               {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Create
             </button>
-            <button onClick={() => setShowAdd(false)} className="px-3 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+            <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-sm text-surface-500 hover:text-surface-700">Cancel</button>
           </div>
         </div>
       )}
@@ -1235,10 +1263,10 @@ function TaxClassesTab() {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="flex gap-1 justify-end">
-                          <button onClick={() => updateMutation.mutate({ id: tc.id, data: editForm })} className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded">
+                          <button onClick={() => updateMutation.mutate({ id: tc.id, data: editForm })} className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30">
                             <Check className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => setEditing(null)} className="p-1.5 text-surface-400 hover:text-surface-600 rounded">
+                          <button onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -1256,14 +1284,14 @@ function TaxClassesTab() {
                           <button
                             aria-label="Edit"
                             onClick={() => { setEditing(tc.id); setEditForm({ name: tc.name, rate: tc.rate, is_default: tc.is_default }); }}
-                            className="p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
+                            className="btn-icon btn-xs text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
                             aria-label="Delete"
                             onClick={async () => { if (await confirm(`Delete "${tc.name}"?`, { danger: true })) deleteMutation.mutate(tc.id); }}
-                            className="p-1.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
+                            className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -1381,7 +1409,7 @@ function PaymentMethodsTab() {
         <button
           onClick={() => { if (newName.trim()) createMutation.mutate(newName.trim()); }}
           disabled={!newName.trim() || createMutation.isPending}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+          className="btn btn-primary btn-sm"
         >
           {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Add
@@ -1407,8 +1435,34 @@ function PaymentMethodsTab() {
 
 // ─── Users Tab ────────────────────────────────────────────────────────────────
 
+interface PermissionModule {
+  label: string;
+  description: string;
+  prefixes: string[];
+}
+
+const PERMISSION_MODULES: PermissionModule[] = [
+  { label: 'Tickets', description: 'Ticket intake, edits, status changes, assignment, bulk updates.', prefixes: ['tickets.'] },
+  { label: 'Customers', description: 'Customer records, merge, archive, GDPR erase, bulk tagging.', prefixes: ['customers.'] },
+  { label: 'Invoices', description: 'Invoices, estimates, deposits, refunds, gift cards.', prefixes: ['invoices.', 'estimates.', 'deposits.', 'refunds.', 'gift_cards.'] },
+  { label: 'Inventory', description: 'Inventory records, stock adjustments, receiving, purchase orders.', prefixes: ['inventory.'] },
+  { label: 'POS', description: 'POS access and cash register operations.', prefixes: ['pos.'] },
+  { label: 'Reports', description: 'Reports and analytics views.', prefixes: ['reports.'] },
+  { label: 'Settings', description: 'Store settings, users, imports, exports.', prefixes: ['settings.', 'users.'] },
+  { label: 'Employees', description: 'Employee records and clock actions.', prefixes: ['employees.'] },
+  { label: 'Communications', description: 'SMS and email send/read permissions.', prefixes: ['sms.', 'email.'] },
+  { label: 'Leads', description: 'Lead view, creation, and editing.', prefixes: ['leads.'] },
+];
+
+function modulePermissionKeys(matrix: RolePermissionEntry[], module: PermissionModule): string[] {
+  return matrix
+    .map((entry) => entry.key)
+    .filter((key) => module.prefixes.some((prefix) => key.startsWith(prefix)));
+}
+
 function UsersTab() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState({ username: '', email: '', password: '', first_name: '', last_name: '', role: 'technician' });
   const [showPassword, setShowPassword] = useState(false);
@@ -1445,6 +1499,43 @@ function UsersTab() {
   });
 
   const currentUser = useAuthStore((s) => s.user);
+  const isAdminUser = currentUser?.role === 'admin';
+
+  const { data: rolePermissionData, isLoading: rolePermissionsLoading } = useQuery({
+    queryKey: ['roles', 'settings-permission-matrix'],
+    enabled: isAdminUser,
+    queryFn: async () => {
+      const rolesRes = await rolesApi.list();
+      const roleRows = rolesRes.data.data.filter((role) => role.is_active !== 0);
+      const matrices = await Promise.all(
+        roleRows.map(async (role) => {
+          const res = await rolesApi.permissions(role.id);
+          return [role.id, res.data.data.matrix] as const;
+        }),
+      );
+      return {
+        roles: roleRows,
+        matrices: Object.fromEntries(matrices) as Record<number, RolePermissionEntry[]>,
+      };
+    },
+  });
+
+  const updateModulePermissions = useMutation({
+    mutationFn: async ({ role, module, allowed }: { role: RoleRecord; module: PermissionModule; allowed: boolean }) => {
+      const matrix = rolePermissionData?.matrices[role.id] ?? [];
+      const keys = modulePermissionKeys(matrix, module);
+      if (keys.length === 0) throw new Error(`No permission keys found for ${module.label}`);
+      await rolesApi.updatePermissions(role.id, keys.map((key) => ({ key, allowed })));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roles', 'settings-permission-matrix'] });
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      toast.success('Role permissions updated');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update role permissions');
+    },
+  });
 
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message="Failed to load users" />;
@@ -1475,7 +1566,7 @@ function UsersTab() {
             <button
               type="button"
               onClick={() => setShowAdd(true)}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-primary-950 transition-colors hover:bg-primary-700"
+              className="btn btn-primary btn-sm shrink-0"
             >
               <Plus className="h-3.5 w-3.5" /> Add teammate
             </button>
@@ -1489,7 +1580,7 @@ function UsersTab() {
           <button
             data-tutorial-target="settings:add-user-cta"
             onClick={() => setShowAdd(!showAdd)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="btn btn-primary btn-md"
           >
             <Plus className="h-4 w-4" /> Add User
           </button>
@@ -1564,12 +1655,12 @@ function UsersTab() {
               <button
                 onClick={() => createMutation.mutate(addForm)}
                 disabled={!addForm.username || !addForm.first_name || !addForm.last_name || createMutation.isPending}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                className="btn btn-primary btn-sm"
               >
                 {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 Create User
               </button>
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+              <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-sm text-surface-500 hover:text-surface-700">Cancel</button>
             </div>
           </div>
         )}
@@ -1639,11 +1730,11 @@ function UsersTab() {
                             <button
                               onClick={() => updateMutation.mutate({ id: u.id, data: editForm })}
                               disabled={updateMutation.isPending}
-                              className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                              className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30"
                             >
                               {updateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                             </button>
-                            <button onClick={() => setEditingId(null)} className="p-1.5 text-surface-400 hover:text-surface-600 rounded">
+                            <button onClick={() => setEditingId(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                               <X className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -1690,7 +1781,7 @@ function UsersTab() {
                                 commission_rate: (u as any).commission_rate || 0,
                               });
                             }}
-                            className="p-1.5 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"
+                            className="btn-icon btn-xs text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
@@ -1742,336 +1833,92 @@ function UsersTab() {
 
       {/* Role Permissions */}
       <div className="card">
-        <div className="p-4 border-b border-surface-100 dark:border-surface-800">
-          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Role Permissions</h3>
-          <p className="text-xs text-surface-500 mt-1">Configure which modules each role can access</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-surface-100 dark:border-surface-800">
-                <th className="text-left px-4 py-3 font-medium text-surface-500">Module</th>
-                {roles.map((r) => (
-                  <th key={r} className="text-center px-4 py-3 font-medium text-surface-500">
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
-                    {r === 'admin' && <div className="text-xs font-normal text-green-600 dark:text-green-400">All permissions</div>}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {['Tickets', 'Customers', 'Invoices', 'Inventory', 'POS', 'Reports', 'Settings', 'Employees'].map((mod) => (
-                <tr key={mod} className="border-b border-surface-50 dark:border-surface-800/50">
-                  <td className="px-4 py-2 text-surface-700 dark:text-surface-300">{mod}</td>
-                  {roles.map((role) => {
-                    const isAdmin = role === 'admin';
-                    const allowed = isAdmin || (role === 'manager') || ['Tickets', 'Customers', 'POS'].includes(mod) || (role === 'technician' && mod === 'Inventory');
-                    return (
-                      <td key={role} className="px-4 py-2 text-center">
-                        {isAdmin ? (
-                          <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400" title="Admin always has full access">
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                          </span>
-                        ) : (
-                          <input
-                            type="checkbox"
-                            checked={allowed}
-                            className="rounded border-surface-300 text-primary-600"
-                            readOnly
-                            title={`${role} access to ${mod}`}
-                          />
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-4 py-3 flex items-center gap-2 text-xs text-surface-400">
-          Admin role always has full access to all modules. Granular per-action permissions
-          <ComingSoonBadge status="coming_soon" compact />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Customer Groups Tab ─────────────────────────────────────────────────────
-
-interface CustomerGroupRecord {
-  id: number;
-  name: string;
-  discount_pct: number;
-  discount_type: string;
-  auto_apply: number;
-  description: string | null;
-}
-
-function CustomerGroupsTab() {
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<Partial<CustomerGroupRecord>>({});
-  const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', discount_pct: 0, discount_type: 'percentage', auto_apply: 1, description: '' });
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['settings', 'customer-groups'],
-    queryFn: async () => {
-      const res = await settingsApi.getCustomerGroups();
-      return (res.data.data || []) as CustomerGroupRecord[];
-    },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (d: any) => settingsApi.createCustomerGroup(d),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', 'customer-groups'] });
-      setShowAdd(false);
-      setAddForm({ name: '', discount_pct: 0, discount_type: 'percentage', auto_apply: 1, description: '' });
-      toast.success('Customer group created');
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to create group'),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => settingsApi.updateCustomerGroup(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', 'customer-groups'] });
-      setEditing(null);
-      toast.success('Customer group updated');
-    },
-    onError: () => toast.error('Failed to update group'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => settingsApi.deleteCustomerGroup(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings', 'customer-groups'] });
-      toast.success('Customer group deleted');
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to delete group'),
-  });
-
-  function startEdit(group: CustomerGroupRecord) {
-    setEditing(group.id);
-    setEditForm({ name: group.name, discount_pct: group.discount_pct, discount_type: group.discount_type, auto_apply: group.auto_apply, description: group.description });
-  }
-
-  if (isLoading) return <LoadingState />;
-  if (isError) return <ErrorState message="Failed to load customer groups" />;
-
-  const groups = data || [];
-
-  return (
-    <div className="space-y-4">
-      <div className="card">
-        <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
+        <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-surface-900 dark:text-surface-100">Customer Groups</h3>
-            <p className="text-xs text-surface-400 mt-0.5">Define discount tiers that auto-apply when selecting a group member</p>
+            <h3 className="font-semibold text-surface-900 dark:text-surface-100">Role Permissions</h3>
+            <p className="text-xs text-surface-500 mt-1">Module toggles update the same permission matrix enforced by the server.</p>
           </div>
-          <button
-            onClick={() => setShowAdd(!showAdd)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" /> Add Group
-          </button>
+          {isAdminUser && (
+            <button
+              type="button"
+              onClick={() => navigate('/team/roles')}
+              className="btn btn-secondary btn-sm border border-surface-200 dark:border-surface-700"
+            >
+              Per-action editor
+            </button>
+          )}
         </div>
-
-        {/* Add Form */}
-        {showAdd && (
-          <div className="p-4 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/30">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Group Name</label>
-                <input
-                  type="text"
-                  value={addForm.name}
-                  onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-                  placeholder="e.g. VIP, Wholesale, Employee"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Discount</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={addForm.discount_pct || ''}
-                    onChange={(e) => setAddForm({ ...addForm, discount_pct: parseFloat(e.target.value) || 0 })}
-                    className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-24 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="0"
-                  />
-                  <select
-                    value={addForm.discount_type}
-                    onChange={(e) => setAddForm({ ...addForm, discount_type: e.target.value })}
-                    className="px-2 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="percentage">%</option>
-                    <option value="fixed">$ Fixed</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-surface-500 mb-1">Description</label>
-                <input
-                  type="text"
-                  value={addForm.description}
-                  onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
-                  className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-                  placeholder="Optional description"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-4 mt-3">
-              <label className="flex items-center gap-1.5 text-sm text-surface-600 dark:text-surface-400">
-                <input type="checkbox" checked={!!addForm.auto_apply} onChange={(e) => setAddForm({ ...addForm, auto_apply: e.target.checked ? 1 : 0 })} className="rounded" />
-                Auto-apply on checkout
-              </label>
-              <button
-                onClick={() => {
-                  if (!addForm.name.trim()) return toast.error('Group name is required');
-                  createMutation.mutate(addForm);
-                }}
-                disabled={createMutation.isPending}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-              >
-                {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                Create
-              </button>
-              <button onClick={() => setShowAdd(false)} className="text-sm text-surface-400 hover:text-surface-600">Cancel</button>
-            </div>
+        {!isAdminUser ? (
+          <div className="px-4 py-5 text-sm text-surface-500 dark:text-surface-400">
+            Only admins can edit permissions. Managers can manage users, but permission changes are restricted to prevent accidental lockout.
           </div>
-        )}
-
-        {/* Groups List */}
-        {groups.length === 0 ? (
-          <EmptyState message="No customer groups defined yet" />
+        ) : rolePermissionsLoading ? (
+          <div className="flex items-center gap-2 px-4 py-5 text-sm text-surface-500">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading permissions...
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-surface-100 dark:border-surface-800 text-left text-xs font-medium text-surface-500 uppercase tracking-wider">
-                  <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Discount</th>
-                  <th className="px-4 py-3">Auto-Apply</th>
-                  <th className="px-4 py-3">Description</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                <tr className="border-b border-surface-100 dark:border-surface-800">
+                  <th className="text-left px-4 py-3 font-medium text-surface-500">Module</th>
+                  {(rolePermissionData?.roles ?? []).map((role) => (
+                    <th key={role.id} className="text-center px-4 py-3 font-medium text-surface-500">
+                      {role.name.charAt(0).toUpperCase() + role.name.slice(1)}
+                      {role.name === 'admin' && <div className="text-xs font-normal text-green-600 dark:text-green-400">Locked on</div>}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
-                {groups.map((group) => (
-                  <tr key={group.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
-                    {editing === group.id ? (
-                      <>
-                        <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={editForm.name || ''}
-                            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                            className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-32 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={editForm.discount_pct || ''}
-                              onChange={(e) => setEditForm({ ...editForm, discount_pct: parseFloat(e.target.value) || 0 })}
-                              className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-20 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                            <select
-                              value={editForm.discount_type || 'percentage'}
-                              onChange={(e) => setEditForm({ ...editForm, discount_type: e.target.value })}
-                              className="px-1 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
-                            >
-                              <option value="percentage">%</option>
-                              <option value="fixed">$</option>
-                            </select>
-                          </div>
-                        </td>
-                        <td className="px-4 py-2">
+              <tbody>
+                {PERMISSION_MODULES.map((module) => (
+                  <tr key={module.label} className="border-b border-surface-50 dark:border-surface-800/50">
+                    <td className="px-4 py-2 text-surface-700 dark:text-surface-300">
+                      <div className="font-medium">{module.label}</div>
+                      <div className="text-xs text-surface-400">{module.description}</div>
+                    </td>
+                    {(rolePermissionData?.roles ?? []).map((role) => {
+                      const matrix = rolePermissionData?.matrices[role.id] ?? [];
+                      const keys = modulePermissionKeys(matrix, module);
+                      const allowedCount = keys.filter((key) => matrix.find((entry) => entry.key === key)?.allowed).length;
+                      const allAllowed = keys.length > 0 && allowedCount === keys.length;
+                      const someAllowed = allowedCount > 0 && !allAllowed;
+                      const disabled = role.name === 'admin' || updateModulePermissions.isPending || keys.length === 0;
+                      return (
+                        <td key={role.id} className="px-4 py-2 text-center">
                           <input
                             type="checkbox"
-                            checked={!!editForm.auto_apply}
-                            onChange={(e) => setEditForm({ ...editForm, auto_apply: e.target.checked ? 1 : 0 })}
-                            className="rounded"
+                            checked={role.name === 'admin' || allAllowed}
+                            disabled={disabled}
+                            ref={(el) => {
+                              if (el) el.indeterminate = role.name !== 'admin' && someAllowed;
+                            }}
+                            onChange={(e) => updateModulePermissions.mutate({ role, module, allowed: e.target.checked })}
+                            className="rounded border-surface-300 text-primary-600 disabled:opacity-50"
+                            title={
+                              someAllowed
+                                ? `${role.name} has partial ${module.label} access`
+                                : `${role.name} ${allAllowed ? 'has' : 'does not have'} ${module.label} access`
+                            }
                           />
-                        </td>
-                        <td className="px-4 py-2">
-                          <input
-                            type="text"
-                            value={editForm.description || ''}
-                            onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                            className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 w-full focus-visible:outline-none focus:ring-1 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => updateMutation.mutate({ id: group.id, data: editForm })}
-                              disabled={updateMutation.isPending}
-                              className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
-                            >
-                              <Check className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => setEditing(null)} className="p-1 text-surface-400 hover:text-surface-600 rounded transition-colors">
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-4 py-3">
-                          <span className="font-medium text-surface-900 dark:text-surface-100">{group.name}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {group.discount_pct > 0 ? (
-                            <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                              {group.discount_type === 'fixed' ? `$${group.discount_pct}` : `${group.discount_pct}%`} off
-                            </span>
-                          ) : (
-                            <span className="text-surface-400 text-xs">None</span>
+                          {someAllowed && (
+                            <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                              Partial
+                            </div>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className={cn(
-                            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                            group.auto_apply
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                              : 'bg-surface-100 text-surface-400 dark:bg-surface-800 dark:text-surface-500'
-                          )}>
-                            {group.auto_apply ? 'Yes' : 'No'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-surface-500 dark:text-surface-400 text-xs">
-                          {group.description || '-'}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button aria-label="Edit" onClick={() => startEdit(group)} className="p-1 text-surface-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors">
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button aria-label="Delete" onClick={async () => { if (await confirm(`Delete group "${group.name}"?`, { danger: true })) deleteMutation.mutate(group.id); }} className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </>
-                    )}
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        <div className="px-4 py-3 text-xs text-surface-400">
+          Module toggles change every permission key in that group. Use the per-action editor for surgical changes.
+        </div>
       </div>
     </div>
   );
@@ -2087,7 +1934,7 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'statuses': ['status', 'ticket', 'workflow', 'open', 'closed', 'cancelled', 'hold', 'color', 'notify'],
   'tax': ['tax', 'rate', 'class', 'colorado', 'exempt', 'sales tax'],
   'payment': ['payment', 'method', 'cash', 'credit', 'debit', 'card', 'zelle', 'venmo', 'paypal'],
-  'payment-terminal': ['blockchyp', 'terminal', 'payment', 'signature', 'card reader', 'tip'],
+  'payment-terminal': ['blockchyp', 'stripe', 'terminal', 'payment', 'signature', 'card reader', 'tip', 'webhook', 'checkout'],
   'customer-groups': ['customer', 'group', 'pricing', 'tier', 'discount'],
   'users': ['user', 'employee', 'admin', 'role', 'permission', 'password', 'pin'],
   'repair-pricing': ['repair', 'pricing', 'grade', 'aftermarket', 'oem', 'premium', 'labor'],
@@ -2268,7 +2115,7 @@ function SettingsPageInner() {
             <button
               aria-label="Scroll tabs left"
               onClick={() => scroll('left')}
-              className="pointer-events-auto shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
+              className="btn-icon btn-sm pointer-events-auto shrink-0 bg-white/90 dark:bg-surface-800/90 text-surface-700 dark:text-surface-200 shadow-md border border-surface-200 dark:border-surface-700"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -2296,7 +2143,7 @@ function SettingsPageInner() {
                   void setActiveTab(tab.key);
                 }}
                 className={cn(
-                  'flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0',
+                  'btn btn-xs rounded-md whitespace-nowrap shrink-0',
                   activeTab === tab.key
                     ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
                     : locked
@@ -2318,7 +2165,7 @@ function SettingsPageInner() {
             <button
               aria-label="Scroll tabs right"
               onClick={() => scroll('right')}
-              className="pointer-events-auto shrink-0 rounded-lg p-2 bg-white/90 dark:bg-surface-800/90 text-surface-700 hover:bg-surface-100 dark:text-surface-200 dark:hover:bg-surface-700 shadow-md border border-surface-200 dark:border-surface-700"
+              className="btn-icon btn-sm pointer-events-auto shrink-0 bg-white/90 dark:bg-surface-800/90 text-surface-700 dark:text-surface-200 shadow-md border border-surface-200 dark:border-surface-700"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -2327,36 +2174,43 @@ function SettingsPageInner() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'setup-progress' && (
-        <div className="space-y-4">
-          <SetupProgressTab onNavigateTab={(tab) => void setActiveTab(tab as Tab)} />
-          <SettingsTemplatePicker />
-          <BulkActionsBar />
-          <SettingsChangeHistory />
-        </div>
-      )}
-      {activeTab === 'billing' && <BillingTab />}
-      {activeTab === 'store' && <StoreInfoTab />}
-      {activeTab === 'statuses' && <StatusesTab />}
-      {activeTab === 'tax' && <TaxClassesTab />}
-      {activeTab === 'payment' && <PaymentMethodsTab />}
-      {activeTab === 'payment-terminal' && <BlockChypSettings />}
-      {activeTab === 'customer-groups' && <CustomerGroupsTab />}
-      {activeTab === 'users' && <UsersTab />}
-      {activeTab === 'repair-pricing' && <RepairPricingTab />}
-      {activeTab === 'device-templates' && <DeviceTemplatesPage />}
-      {activeTab === 'tickets-repairs' && <TicketsRepairsSettings />}
-      {activeTab === 'pos' && <PosSettings />}
-      {activeTab === 'invoices' && <InvoiceSettings />}
-      {activeTab === 'receipts' && <ReceiptSettings />}
-      {activeTab === 'conditions' && <ConditionsTab />}
-      {activeTab === 'notifications' && <NotificationTemplatesTab />}
-      {activeTab === 'sms-voice' && <Suspense fallback={<div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>}><SmsVoiceSettings /></Suspense>}
-      {activeTab === 'automations' && <AutomationsTab />}
-      {activeTab === 'membership' && <MembershipSettings />}
-      {activeTab === 'data' && <DataTab importContent={<DataImportTab />} />}
-      {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
-      {activeTab === 'danger-zone' && <DangerZoneTab />}
+      <Suspense fallback={<LoadingState />}>
+        {activeTab === 'setup-progress' && (
+          <div className="space-y-4">
+            <SetupProgressTab onNavigateTab={(tab) => void setActiveTab(tab as Tab)} />
+            <SettingsTemplatePicker />
+            <BulkActionsBar />
+            <SettingsChangeHistory />
+          </div>
+        )}
+        {activeTab === 'billing' && <BillingTab />}
+        {activeTab === 'store' && <StoreInfoTab />}
+        {activeTab === 'statuses' && <StatusesTab />}
+        {activeTab === 'tax' && <TaxClassesTab />}
+        {activeTab === 'payment' && <PaymentMethodsTab />}
+        {activeTab === 'payment-terminal' && (
+          <div className="space-y-8">
+            <TenantStripeSettings />
+            <BlockChypSettings />
+          </div>
+        )}
+        {activeTab === 'customer-groups' && <CustomerGroupsTab />}
+        {activeTab === 'users' && <UsersTab />}
+        {activeTab === 'repair-pricing' && <RepairPricingTab />}
+        {activeTab === 'device-templates' && <DeviceTemplatesPage />}
+        {activeTab === 'tickets-repairs' && <TicketsRepairsSettings />}
+        {activeTab === 'pos' && <PosSettings />}
+        {activeTab === 'invoices' && <InvoiceSettings />}
+        {activeTab === 'receipts' && <ReceiptSettings />}
+        {activeTab === 'conditions' && <ConditionsTab />}
+        {activeTab === 'notifications' && <NotificationTemplatesTab />}
+        {activeTab === 'sms-voice' && <SmsVoiceSettings />}
+        {activeTab === 'automations' && <AutomationsTab />}
+        {activeTab === 'membership' && <MembershipSettings />}
+        {activeTab === 'data' && <DataTab importContent={<DataImportTab />} />}
+        {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
+        {activeTab === 'danger-zone' && <DangerZoneTab />}
+      </Suspense>
     </div>
   );
 }
@@ -2417,7 +2271,7 @@ function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActi
       <button
         onClick={() => importMut.mutate()}
         disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
-        className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
+        className="btn btn-primary btn-md"
       >
         {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
         {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
@@ -2513,7 +2367,7 @@ function SupplierCatalogSyncSection() {
             <button
               onClick={() => loadMut.mutate()}
               disabled={loadMut.isPending || templateCount === 0}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
+              className="btn btn-primary btn-md"
             >
               {loadMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Load Latest Catalog
@@ -2701,7 +2555,7 @@ function DataImportTab() {
             <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Import Progress</h3>
             {anyActive && (
               <button onClick={handleCancel} disabled={cancelPending}
-                className="btn-secondary text-sm text-red-600">
+                className="btn btn-secondary btn-sm text-red-600">
                 Cancel Import
               </button>
             )}
@@ -2714,12 +2568,12 @@ function DataImportTab() {
                 <span>{activeImportStatus.overall.imported} imported, {activeImportStatus.overall.skipped} skipped, {activeImportStatus.overall.errors} errors</span>
               </div>
               <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-2">
-                <div
-                  className="bg-primary-600 h-2 rounded-full transition-all"
-                  style={{ width: `${activeImportStatus.overall.total_entities ? (activeImportStatus.overall.completed_entities / activeImportStatus.overall.total_entities) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
+	                <div
+	                  className="bg-primary-600 h-2 rounded-full transition-all"
+	                  style={{ width: `${finiteProgressPercent(activeImportStatus.overall.completed_entities, activeImportStatus.overall.total_entities)}%` }}
+	                />
+	              </div>
+	            </div>
           )}
 
           {/* Per-entity checkpoint progress (SA7-1) */}
@@ -2732,12 +2586,12 @@ function DataImportTab() {
                 status: string;
               } | null]>)
                 .filter(([, cp]) => cp !== null)
-                .map(([entity, cp]) => {
-                  if (!cp) return null;
-                  const pct = cp.total > 0 ? Math.min(100, Math.round((cp.step / cp.total) * 100)) : 0;
-                  const isRunning = cp.status === 'running' || cp.status === 'pending';
-                  const isDone = cp.status === 'completed';
-                  return (
+	                .map(([entity, cp]) => {
+	                  if (!cp) return null;
+	                  const pct = Math.round(finiteProgressPercent(cp.step, cp.total));
+	                  const isRunning = cp.status === 'running' || cp.status === 'pending';
+	                  const isDone = cp.status === 'completed';
+	                  return (
                     <div key={entity} className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-2">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-medium text-surface-700 dark:text-surface-300 capitalize">{entity}</span>
@@ -2902,7 +2756,7 @@ function DataImportTab() {
               if (ok) wipeMut.mutate();
             }}
             disabled={!anyWipeCategorySelected || wipeConfirmText !== 'FACTORY WIPE' || !wipePassword || wipeMut.isPending}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-danger btn-md"
           >
             {wipeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
             Wipe Selected Data
@@ -3012,7 +2866,7 @@ function DownloadAllDataSection() {
             if (ok) triggerDownload();
           }}
           disabled={downloading || !allowed}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-primary btn-md"
         >
           {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {downloading ? 'Preparing export&hellip;' : 'Download all my data'}
@@ -3083,7 +2937,7 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
             className="flex-1 input"
           />
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm whitespace-nowrap">
+            className="btn btn-secondary btn-sm whitespace-nowrap">
             {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Test
           </button>
@@ -3127,7 +2981,7 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
           <button
             onClick={() => nuclearMut.mutate()}
             disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-danger btn-md"
           >
             {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
             Wipe &amp; Reimport Everything
@@ -3214,7 +3068,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
             <span className="px-3 py-2 text-xs text-surface-400 bg-surface-50 dark:bg-surface-700 border-l border-surface-200 dark:border-surface-600 whitespace-nowrap">.repairshopr.com</span>
           </div>
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey || !subdomain}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm whitespace-nowrap">
+            className="btn btn-secondary btn-sm whitespace-nowrap">
             {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Test Connection
           </button>
@@ -3242,7 +3096,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
         <button
           onClick={() => importMut.mutate()}
           disabled={importMut.isPending || !apiKey || !subdomain || selectedEntities.length === 0 || isActive}
-          className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
+          className="btn btn-primary btn-md"
         >
           {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
@@ -3270,7 +3124,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
           <button
             onClick={() => nuclearMut.mutate()}
             disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey || !subdomain}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-danger btn-md"
           >
             {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
             Wipe &amp; Reimport Everything
@@ -3346,7 +3200,7 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
             className="flex-1 input"
           />
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm whitespace-nowrap">
+            className="btn btn-secondary btn-sm whitespace-nowrap">
             {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Test Connection
           </button>
@@ -3374,7 +3228,7 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
         <button
           onClick={() => importMut.mutate()}
           disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
-          className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
+          className="btn btn-primary btn-md"
         >
           {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
@@ -3402,7 +3256,7 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
           <button
             onClick={() => nuclearMut.mutate()}
             disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-danger btn-md"
           >
             {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
             Wipe &amp; Reimport Everything
@@ -3451,7 +3305,7 @@ function DataToolsTab() {
           <button
             onClick={runSyncCosts}
             disabled={syncRunning}
-            className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+            className="btn btn-primary btn-md shrink-0"
           >
             {syncRunning ? <><Loader2 className="h-4 w-4 animate-spin" /> Syncing...</> : 'Sync Cost Prices'}
           </button>
@@ -3676,7 +3530,7 @@ function SeedTestDataSection() {
     }
   }, [queryClient]);
 
-  const pct = progress ? Math.round((progress.step / progress.total) * 100) : 0;
+	  const pct = progress ? Math.round(finiteProgressPercent(progress.step, progress.total)) : 0;
 
   return (
     <div className="mt-8 rounded-lg border border-primary-300 dark:border-primary-700/50 bg-primary-50/50 dark:bg-primary-900/10 p-3 shadow-sm">
@@ -3695,7 +3549,7 @@ function SeedTestDataSection() {
         <button
           type="button"
           onClick={() => setConfirming(true)}
-          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700"
+          className="btn btn-primary btn-md"
         >
           <FlaskConical className="h-4 w-4" />
           Seed test data
@@ -3709,11 +3563,11 @@ function SeedTestDataSection() {
           </p>
           <div className="flex gap-2">
             <button type="button" onClick={runSeed}
-              className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-primary-950 hover:bg-primary-700">
+              className="btn btn-primary btn-sm">
               Yes, seed it
             </button>
             <button type="button" onClick={() => setConfirming(false)}
-              className="rounded-lg bg-surface-100 dark:bg-surface-800 px-3 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700">
+              className="btn btn-secondary btn-sm dark:bg-surface-800 dark:hover:bg-surface-700">
               Cancel
             </button>
           </div>
@@ -3751,7 +3605,7 @@ function SeedTestDataSection() {
             </span>
           </div>
           <button type="button" onClick={() => setProgress(null)}
-            className="mt-2 text-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
+            className="btn btn-ghost btn-xs mt-2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
             Dismiss
           </button>
         </div>

@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.auth
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -9,6 +10,10 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.text.contextmenu.builder.item
+import androidx.compose.foundation.text.contextmenu.data.TextContextMenuKeys
+import androidx.compose.foundation.text.contextmenu.modifier.appendTextContextMenuComponents
+import androidx.compose.foundation.text.contextmenu.modifier.filterTextContextMenuComponents
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -40,10 +45,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -75,6 +82,7 @@ import com.bizarreelectronics.crm.ui.theme.textFieldHover
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
+import com.bizarreelectronics.crm.data.repository.NotificationPreferencesRepository
 import android.app.Activity
 import android.provider.Settings
 import androidx.fragment.app.FragmentActivity
@@ -308,6 +316,7 @@ class LoginViewModel @Inject constructor(
     private val biometricCredentialStore: BiometricCredentialStore,
     private val biometricAuth: BiometricAuth,
     private val deepLinkBus: DeepLinkBus,
+    private val notificationPreferencesRepository: NotificationPreferencesRepository,
     // LOGIN-MOCK-256: Play Integrity attestation for cloud-hosted login events.
     // Nullable injection so tests can omit it; the field is populated by Hilt
     // in production via the @Singleton PlayIntegrityClient binding.
@@ -513,6 +522,12 @@ class LoginViewModel @Inject constructor(
         _probeClient?.dispatcher?.executorService?.shutdown()
         _probeClient?.connectionPool?.evictAll()
         _probeClient = null
+    }
+
+    private fun syncNotificationPreferencesAfterLogin() {
+        viewModelScope.launch {
+            notificationPreferencesRepository.refreshLocalFromServer()
+        }
     }
 
     fun updateServerUrl(value: String) { _state.value = _state.value.copy(serverUrl = value, error = null, serverConnected = false) }
@@ -882,6 +897,7 @@ class LoginViewModel @Inject constructor(
                     } catch (_: Exception) {
                         // /auth/me failure is non-blocking; tokens are already persisted above
                     }
+                    syncNotificationPreferencesAfterLogin()
                     _state.value = _state.value.copy(isLoading = false, registerSubStep = RegisterSubStep.Company)
                     onAutoLogin?.invoke()
                 } else {
@@ -1199,6 +1215,7 @@ class LoginViewModel @Inject constructor(
                     lastName = user.lastName,
                     role = user.role,
                 )
+                syncNotificationPreferencesAfterLogin()
 
                 val codes = data.backupCodes
                 // §2.17-L407 — if remember-me + biometric enabled, set pendingBiometricStash
@@ -1286,6 +1303,7 @@ class LoginViewModel @Inject constructor(
                     lastName = user.lastName,
                     role = user.role,
                 )
+                syncNotificationPreferencesAfterLogin()
 
                 val codes = data.backupCodes
                 val s2 = _state.value
@@ -1608,6 +1626,7 @@ class LoginViewModel @Inject constructor(
                     lastName = data.user.lastName,
                     role = data.user.role,
                 )
+                syncNotificationPreferencesAfterLogin()
                 _state.value = _state.value.copy(
                     ssoExchangeLoading = false,
                     pendingSsoProvider = null,
@@ -1728,6 +1747,7 @@ class LoginViewModel @Inject constructor(
                             lastName = user.lastName,
                             role = user.role,
                         )
+                        syncNotificationPreferencesAfterLogin()
                         _state.value = _state.value.copy(passkeyLoading = false, passkeyLoginSuccess = true)
                     }
                     is com.bizarreelectronics.crm.util.PasskeyManager.PasskeyOutcome.Cancelled -> {
@@ -1912,6 +1932,7 @@ class LoginViewModel @Inject constructor(
                         lastName = user.lastName,
                         role = user.role,
                     )
+                    syncNotificationPreferencesAfterLogin()
                     _state.value = _state.value.copy(
                         magicLinkExchangeLoading = false,
                         pendingMagicToken = null,
@@ -2969,6 +2990,71 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
 
 // ─── Step 2: Credentials ────────────────────────────────────────────
 
+private object LoginCutContextMenuKey
+
+@Composable
+private fun rememberLoginTextFieldValue(text: String): MutableState<TextFieldValue> {
+    val value = rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(text, TextRange(text.length)))
+    }
+    LaunchedEffect(text) {
+        if (value.value.text != text) {
+            value.value = TextFieldValue(text, TextRange(text.length))
+        }
+    }
+    return value
+}
+
+private fun Modifier.loginCutContextMenu(
+    value: TextFieldValue,
+    label: String,
+    sensitive: Boolean,
+    cutEnabled: Boolean,
+    context: Context,
+    onValueChange: (TextFieldValue) -> Unit,
+): Modifier = this
+    .appendTextContextMenuComponents {
+        if (cutEnabled && !value.selection.collapsed) {
+            item(key = LoginCutContextMenuKey, label = "Cut") {
+                performLoginTextFieldCut(
+                    context = context,
+                    value = value,
+                    label = label,
+                    sensitive = sensitive,
+                    onValueChange = onValueChange,
+                )
+                close()
+            }
+        }
+    }
+    .filterTextContextMenuComponents { component ->
+        component.key !== TextContextMenuKeys.CutKey
+    }
+
+private fun performLoginTextFieldCut(
+    context: Context,
+    value: TextFieldValue,
+    label: String,
+    sensitive: Boolean,
+    onValueChange: (TextFieldValue) -> Unit,
+): Boolean {
+    val text = value.text
+    val start = minOf(value.selection.start, value.selection.end).coerceIn(0, text.length)
+    val end = maxOf(value.selection.start, value.selection.end).coerceIn(0, text.length)
+    if (start >= end) return false
+
+    val selectedText = text.substring(start, end)
+    if (sensitive) {
+        ClipboardUtil.copySensitive(context, label, selectedText)
+    } else {
+        ClipboardUtil.copy(context, label, selectedText)
+    }
+
+    val updatedText = text.removeRange(start, end)
+    onValueChange(TextFieldValue(updatedText, TextRange(start)))
+    return true
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CredentialsStep(
@@ -3045,6 +3131,20 @@ private fun CredentialsStep(
     // LOGIN-MOCK-177: per-field validation (only shown after the field is touched)
     val usernameError = state.username.isNotBlank() && state.username.trim().length < 2
     val credPasswordError = state.password.isNotBlank() && state.password.length < 1
+    val usernameField = rememberLoginTextFieldValue(state.username)
+    val passwordField = rememberLoginTextFieldValue(state.password)
+    val updateUsernameField: (TextFieldValue) -> Unit = { next ->
+        usernameField.value = next
+        if (next.text != state.username) {
+            viewModel.updateUsername(next.text)
+        }
+    }
+    val updatePasswordField: (TextFieldValue) -> Unit = { next ->
+        passwordField.value = next
+        if (next.text != state.password) {
+            viewModel.updatePassword(next.text)
+        }
+    }
 
     // §2.1 — fire the setup-status probe once on first render of this step.
     // Non-blocking: login form renders immediately; probe result overlays or
@@ -3279,11 +3379,22 @@ private fun CredentialsStep(
     Spacer(Modifier.height(20.dp)) // LOGIN-MOCK-275: 16→20dp header-to-username gap
 
     OutlinedTextField(
-        value = state.username,
-        onValueChange = viewModel::updateUsername,
+        value = usernameField.value,
+        onValueChange = updateUsernameField,
         label = { Text("Username") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().focusRequester(usernameFocusRequester).textFieldHover(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(usernameFocusRequester)
+            .textFieldHover()
+            .loginCutContextMenu(
+                value = usernameField.value,
+                label = "Username",
+                sensitive = false,
+                cutEnabled = true,
+                context = ctx,
+                onValueChange = updateUsernameField,
+            ),
         isError = usernameError,
         leadingIcon = { Icon(Icons.Default.Person, null) },
         // LOGIN-MOCK-177: inline username validation
@@ -3351,11 +3462,21 @@ private fun CredentialsStep(
                 }
                 else -> {
                     OutlinedTextField(
-                        value = state.password,
-                        onValueChange = viewModel::updatePassword,
+                        value = passwordField.value,
+                        onValueChange = updatePasswordField,
                         label = { Text("Password") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth().textFieldHover(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .textFieldHover()
+                            .loginCutContextMenu(
+                                value = passwordField.value,
+                                label = "Password",
+                                sensitive = true,
+                                cutEnabled = showPassword,
+                                context = ctx,
+                                onValueChange = updatePasswordField,
+                            ),
                         isError = credPasswordError || showCredentialErrorBorder,
                         leadingIcon = { Icon(Icons.Default.Lock, null) },
                         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),

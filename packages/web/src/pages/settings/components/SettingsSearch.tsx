@@ -115,7 +115,7 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
               setQuery('');
               setOpen(false);
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600"
+            className="btn-icon btn-xs absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600"
             aria-label="Clear search"
           >
             <X className="h-3.5 w-3.5" />

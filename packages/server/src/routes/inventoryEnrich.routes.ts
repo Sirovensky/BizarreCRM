@@ -36,6 +36,7 @@ import {
   validateTextLength,
   validateEnum,
   validateArrayBounds,
+  validateId,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
@@ -43,6 +44,14 @@ import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadV
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import type { AsyncDb } from '../db/async-db.js';
+import {
+  IMAGE_UPLOAD_EXTENSIONS,
+  IMAGE_UPLOAD_FORMAT_ERROR,
+  IMAGE_UPLOAD_MIME_TYPES,
+  isSupportedImageMime,
+  sanitizedImageExtension,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+} from '../utils/imageUploadPolicy.js';
 
 const logger = createLogger('inventory-enrich');
 const router = Router();
@@ -57,6 +66,31 @@ function requireManagerOrAdmin(req: any): void {
   }
 }
 
+type SerialStatus = 'in_stock' | 'sold' | 'returned' | 'defective' | 'rma';
+
+const SERIAL_STOCK_STATUSES = new Set<SerialStatus>(['in_stock', 'returned']);
+
+function serialStatusCountsAsStock(status: SerialStatus): boolean {
+  return SERIAL_STOCK_STATUSES.has(status);
+}
+
+function validateOptionalReferenceId(value: unknown, fieldName: string): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  return validateId(value, fieldName);
+}
+
+function serialStatusMovementType(status: SerialStatus, stockDelta: number): string {
+  if (status === 'sold' && stockDelta < 0) return 'sale';
+  if (status === 'returned' && stockDelta > 0) return 'return';
+  return 'adjustment';
+}
+
+function serialReference(invoiceId: number | null, ticketId: number | null, serialId: number) {
+  if (invoiceId) return { type: 'invoice', id: invoiceId };
+  if (ticketId) return { type: 'ticket', id: ticketId };
+  return { type: 'serial_status', id: serialId };
+}
+
 // Shrinkage photo upload — tenant-scoped /uploads/<tenant>/shrinkage.
 //
 // SEC (post-enrichment §13, F1-F4): the multer config is the FAST path
@@ -65,8 +99,8 @@ function requireManagerOrAdmin(req: any): void {
 // count quota) is done by the fileUploadValidator middleware that this
 // route mounts below. Per-tenant BYTE quota is enforced in the handler
 // via reserveStorage after the middleware has passed.
-const SHRINKAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const;
-const SHRINKAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const SHRINKAGE_MIMES = IMAGE_UPLOAD_MIME_TYPES;
+const SHRINKAGE_EXTENSIONS = IMAGE_UPLOAD_EXTENSIONS;
 
 function shrinkageUploadDir(req: any): string {
   const tenantSlug = req.tenantSlug;
@@ -83,7 +117,7 @@ const shrinkagePhotoUpload = multer({
       cb(null, dest);
     },
     filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
+      const ext = sanitizedImageExtension(file.originalname);
       if (!ext || !SHRINKAGE_EXTENSIONS.has(ext)) {
         cb(new Error('Unsupported image extension'), '');
         return;
@@ -92,12 +126,12 @@ const shrinkagePhotoUpload = multer({
     },
   }),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5 MB
+    fileSize: SMALL_IMAGE_UPLOAD_MAX_BYTES,
     files: 1, // shrinkage: single photo only
   },
   fileFilter: (_req, file, cb) => {
-    if ((SHRINKAGE_MIMES as readonly string[]).includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPEG/PNG/WebP allowed for shrinkage photos'));
+    if (isSupportedImageMime(file.mimetype)) cb(null, true);
+    else cb(new Error(IMAGE_UPLOAD_FORMAT_ERROR));
   },
 });
 
@@ -571,7 +605,6 @@ router.post(
 router.put(
   '/serials/:serialId',
   asyncHandler(async (req, res) => {
-    const adb: AsyncDb = req.asyncDb;
     const serialId = parseInt(qs(req.params.serialId), 10);
     if (!serialId || isNaN(serialId)) throw new AppError('Invalid serial id', 400);
     const status = validateEnum(
@@ -579,29 +612,120 @@ router.put(
       ['in_stock', 'sold', 'returned', 'defective', 'rma'] as const,
       'status',
       true,
-    )!;
+    )! as SerialStatus;
     const notes = req.body?.notes
       ? validateTextLength(req.body.notes, 500, 'notes')
       : null;
-    await adb.run(
-      `UPDATE inventory_serial_numbers
-       SET status = ?, notes = COALESCE(?, notes),
-           sold_at = CASE WHEN ? = 'sold' AND sold_at IS NULL THEN datetime('now') ELSE sold_at END
-       WHERE id = ?`,
-      status,
-      notes,
-      status,
-      serialId,
-    );
-    const row = await adb.get(
-      'SELECT * FROM inventory_serial_numbers WHERE id = ?',
-      serialId,
-    );
+    const invoiceId = validateOptionalReferenceId(req.body?.invoice_id, 'invoice_id');
+    const ticketId = validateOptionalReferenceId(req.body?.ticket_id, 'ticket_id');
+    const db = req.db;
+
+    if (invoiceId) {
+      const invoice = db.prepare('SELECT id FROM invoices WHERE id = ?').get(invoiceId);
+      if (!invoice) throw new AppError('Invoice not found', 404);
+    }
+    if (ticketId) {
+      const ticket = db.prepare('SELECT id FROM tickets WHERE id = ?').get(ticketId);
+      if (!ticket) throw new AppError('Ticket not found', 404);
+    }
+
+    const serial = db
+      .prepare(
+        `SELECT s.*, i.in_stock AS item_in_stock
+         FROM inventory_serial_numbers s
+         JOIN inventory_items i ON i.id = s.inventory_item_id
+         WHERE s.id = ?`,
+      )
+      .get(serialId) as
+      | {
+          id: number;
+          inventory_item_id: number;
+          serial_number: string;
+          status: SerialStatus;
+          item_in_stock: number;
+        }
+      | undefined;
+    if (!serial) throw new AppError('Serial number not found', 404);
+
+    const previousStatus = serial.status;
+    const stockDelta =
+      Number(serialStatusCountsAsStock(status)) -
+      Number(serialStatusCountsAsStock(previousStatus));
+    const reference = serialReference(invoiceId, ticketId, serialId);
+    const movementType = serialStatusMovementType(status, stockDelta);
+    const statusNote = `Serial ${serial.serial_number}: ${previousStatus} -> ${status}`;
+    const movementNotes = notes ? `${statusNote}; ${notes}` : statusNote;
+
+    let stockMovementId: number | null = null;
+    const tx = db.transaction(() => {
+      if (stockDelta !== 0) {
+        const update = db
+          .prepare(
+            `UPDATE inventory_items
+             SET in_stock = in_stock + ?, updated_at = datetime('now')
+             WHERE id = ? AND in_stock + ? >= 0`,
+          )
+          .run(stockDelta, serial.inventory_item_id, stockDelta);
+        if (update.changes === 0) {
+          throw new AppError(
+            `Cannot move serial ${serial.serial_number} to ${status}: stock would go negative`,
+            400,
+          );
+        }
+
+        const movement = db
+          .prepare(
+            `INSERT INTO stock_movements
+               (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            serial.inventory_item_id,
+            movementType,
+            stockDelta,
+            reference.type,
+            reference.id,
+            movementNotes,
+            req.user!.id,
+          );
+        stockMovementId = Number(movement.lastInsertRowid);
+      }
+
+      db.prepare(
+        `UPDATE inventory_serial_numbers
+         SET status = ?,
+             notes = COALESCE(?, notes),
+             invoice_id = COALESCE(?, invoice_id),
+             ticket_id = COALESCE(?, ticket_id),
+             sold_at = CASE
+               WHEN ? = 'sold' AND sold_at IS NULL THEN datetime('now')
+               ELSE sold_at
+             END
+         WHERE id = ?`,
+      ).run(status, notes, invoiceId, ticketId, status, serialId);
+
+      return db.prepare('SELECT * FROM inventory_serial_numbers WHERE id = ?').get(serialId);
+    });
+
+    const row = tx() as Record<string, unknown>;
     audit(req.db, 'serial_status_changed', req.user!.id, req.ip || 'unknown', {
       serial_id: serialId,
+      inventory_item_id: serial.inventory_item_id,
+      previous_status: previousStatus,
       status,
+      invoice_id: invoiceId,
+      ticket_id: ticketId,
+      stock_delta: stockDelta,
+      stock_movement_id: stockMovementId,
     });
-    res.json({ success: true, data: row });
+    res.json({
+      success: true,
+      data: {
+        ...row,
+        stock_delta: stockDelta,
+        stock_movement_id: stockMovementId,
+      },
+    });
   }),
 );
 

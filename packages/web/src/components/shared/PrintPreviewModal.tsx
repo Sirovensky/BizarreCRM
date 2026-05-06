@@ -2,9 +2,10 @@ import { useRef, useCallback, useEffect } from 'react';
 import { X, FileText, Printer, Settings2 } from 'lucide-react';
 import { useSettings } from '@/hooks/useSettings';
 import { useNavigate } from 'react-router-dom';
+import { Button } from './Button';
 
 interface PrintModalProps {
-  ticketId: number;
+  ticketId?: number | null;
   invoiceId?: number | null;
   onClose: () => void;
 }
@@ -16,9 +17,15 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
   const defaultSize = getSetting('receipt_default_size', 'receipt80');
 
   const handlePrint = useCallback((type: 'workorder' | 'receipt') => {
+    if (type === 'workorder' && !ticketId) return;
+    if (type === 'receipt' && !invoiceId && !ticketId) return;
+
     const typeParam = type === 'receipt' ? '&type=receipt' : '';
     const size = type === 'workorder' ? 'letter' : defaultSize;
-    const url = `/print/ticket/${ticketId}?size=${size}${typeParam}&embed=1`;
+    const basePath = type === 'receipt' && invoiceId
+      ? `/print/invoice/${invoiceId}`
+      : `/print/ticket/${ticketId}`;
+    const url = `${basePath}?size=${size}${typeParam}&embed=1`;
 
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -55,7 +62,7 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
       };
       check();
     };
-  }, [ticketId, defaultSize]);
+  }, [ticketId, invoiceId, defaultSize]);
 
   const sizeLabel = defaultSize === 'receipt80' ? '80mm' : defaultSize === 'receipt58' ? '58mm' : 'Letter';
 
@@ -79,26 +86,28 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 dark:border-surface-700 px-5 py-4">
           <h2 id="print-preview-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Print</h2>
-          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <Button aria-label="Close" onClick={onClose} variant="ghost" size="xs" iconOnly>
             <X className="h-5 w-5" />
-          </button>
+          </Button>
         </div>
 
         <div className="p-5 space-y-3">
           {/* Work Order */}
-          <button
-            onClick={() => handlePrint('workorder')}
-            className="flex w-full items-center gap-4 rounded-xl border-2 border-surface-200 dark:border-surface-700 p-4 text-left transition-all hover:border-blue-400 hover:bg-blue-50 dark:hover:border-blue-500 dark:hover:bg-blue-900/10"
-          >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
-              <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Work Order</p>
-              <p className="text-xs text-surface-500 dark:text-surface-400">Full page — device details, notes, conditions</p>
-            </div>
-            <span className="text-[10px] font-medium text-surface-400 bg-surface-100 dark:bg-surface-800 rounded px-2 py-0.5">Letter</span>
-          </button>
+          {ticketId && (
+            <button
+              onClick={() => handlePrint('workorder')}
+              className="flex w-full items-center gap-4 rounded-xl border-2 border-surface-200 dark:border-surface-700 p-4 text-left transition-all hover:border-blue-400 hover:bg-blue-50 dark:hover:border-blue-500 dark:hover:bg-blue-900/10"
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Work Order</p>
+                <p className="text-xs text-surface-500 dark:text-surface-400">Full page — device details, notes, conditions</p>
+              </div>
+              <span className="text-[10px] font-medium text-surface-400 bg-surface-100 dark:bg-surface-800 rounded px-2 py-0.5">Letter</span>
+            </button>
+          )}
 
           {/* Receipt — always available (shows as check-in receipt when unpaid) */}
           <button
@@ -120,12 +129,15 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
           </button>
 
           {/* Settings link */}
-          <button
+          <Button
             onClick={() => { onClose(); navigate('/settings/receipts'); }}
-            className="flex w-full items-center justify-center gap-1.5 pt-2 text-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+            variant="ghost"
+            size="xs"
+            fullWidth
+            className="mt-1 text-surface-400 hover:bg-transparent hover:text-surface-600 dark:hover:bg-transparent dark:hover:text-surface-300"
           >
             <Settings2 className="h-3 w-3" /> Paper size & receipt settings
-          </button>
+          </Button>
         </div>
       </div>
 

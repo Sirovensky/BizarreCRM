@@ -194,11 +194,11 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    paid: 'bg-green-100 text-green-700',
-    partial: 'bg-amber-100 text-amber-700',
-    unpaid: 'bg-red-100 text-red-700',
-    draft: 'bg-surface-100 text-surface-600',
-    voided: 'bg-surface-100 text-surface-400',
+    paid: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    draft: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
+    voided: 'bg-surface-100 text-surface-400 dark:bg-surface-800 dark:text-surface-400',
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>
@@ -206,4 +206,3 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
-

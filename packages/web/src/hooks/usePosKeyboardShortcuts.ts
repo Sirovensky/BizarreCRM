@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 /**
  * F-key quick tabs for the unified POS page (audit §43.10).
@@ -59,10 +59,11 @@ function isTypingInField(target: EventTarget | null): boolean {
 export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled = true): void {
   // Keep the latest handlers in a ref so an inline `{ onRepairsTab: ... }`
   // literal from the caller doesn't tear down + re-add the window listener
-  // on every render. The listener itself is stable; it reads `handlersRef`
-  // at fire time, always getting the freshest callbacks.
+  // on every render. The listener itself is stable; it reads `handlersRef`.
+  // Use a layout effect, not a passive effect, so a keydown immediately after
+  // a committed render cannot fire a previous-render closure.
   const handlersRef = useRef(handlers);
-  useEffect(() => {
+  useLayoutEffect(() => {
     handlersRef.current = handlers;
   }, [handlers]);
 

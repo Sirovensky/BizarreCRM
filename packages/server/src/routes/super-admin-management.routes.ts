@@ -46,6 +46,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync, execSync } from 'node:child_process';
+import { isIP } from 'node:net';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { audit } from '../utils/audit.js';
@@ -109,6 +110,10 @@ const SchemaEnvSettingsUpdate = z
   .record(z.string(), z.string().max(8192))
   .refine((obj) => Object.keys(obj).every((k) => ENV_KEY_TO_FIELD.has(k)), { message: 'Unknown env key' })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'At least one key must be provided' });
+
+const SchemaEnvConnectionTest = z.object({
+  target: z.enum(['captcha', 'stripe', 'cloudflare']),
+}).strict();
 
 const REPO_ROOT = path.resolve(process.cwd().endsWith(path.join('packages', 'server'))
   ? path.resolve(process.cwd(), '..', '..')
@@ -176,6 +181,304 @@ function writeEnvAtomic(targetPath: string, content: string): void {
       try { fs.unlinkSync(full); } catch { /* ignore */ }
     }
   } catch { /* prune is best-effort */ }
+}
+
+type EnvConnectionTestTarget = z.infer<typeof SchemaEnvConnectionTest>['target'];
+type EnvConnectionTestStatus = 'pass' | 'warn' | 'fail';
+
+interface EnvConnectionTestDetail {
+  label: string;
+  value: string;
+  tone?: 'success' | 'warning' | 'danger' | 'muted';
+}
+
+interface EnvConnectionTestResult {
+  target: EnvConnectionTestTarget;
+  status: EnvConnectionTestStatus;
+  summary: string;
+  checkedAt: string;
+  details: EnvConnectionTestDetail[];
+}
+
+function envConnectionResult(
+  target: EnvConnectionTestTarget,
+  status: EnvConnectionTestStatus,
+  summary: string,
+  details: EnvConnectionTestDetail[],
+): EnvConnectionTestResult {
+  return { target, status, summary, checkedAt: new Date().toISOString(), details };
+}
+
+function savedEnvValue(content: string, key: string): string {
+  return (readEnvKey(content, key) ?? '').trim();
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+async function fetchJsonWithTimeout(
+  url: string,
+  init: NonNullable<Parameters<typeof fetch>[1]>,
+  timeoutMs = 10_000,
+): Promise<{ ok: boolean; status: number; body: unknown }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const body = await response.json().catch(() => null) as unknown;
+    return { ok: response.ok, status: response.status, body };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function nestedString(body: unknown, pathParts: string[]): string | null {
+  let current: unknown = body;
+  for (const part of pathParts) {
+    if (!isPlainRecord(current)) return null;
+    current = current[part];
+  }
+  return typeof current === 'string' ? current : null;
+}
+
+function cloudflareError(body: unknown, fallback: string): string {
+  if (isPlainRecord(body) && Array.isArray(body.errors)) {
+    const first = body.errors[0];
+    if (isPlainRecord(first)) {
+      const code = typeof first.code === 'number' ? ` (${first.code})` : '';
+      const message = typeof first.message === 'string' ? first.message : fallback;
+      return `${message}${code}`;
+    }
+  }
+  return fallback;
+}
+
+function publicIpv4Status(value: string): 'valid' | 'invalid' | 'private' {
+  if (isIP(value) !== 4) return 'invalid';
+  const [a, b, c] = value.split('.').map((part) => Number.parseInt(part, 10));
+  const reserved =
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0) ||
+    (a === 192 && b === 0 && c === 2) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113);
+  return reserved ? 'private' : 'valid';
+}
+
+async function testStripeEnvConnection(content: string): Promise<EnvConnectionTestResult> {
+  const secretKey = savedEnvValue(content, 'STRIPE_SECRET_KEY');
+  const webhookSecret = savedEnvValue(content, 'STRIPE_WEBHOOK_SECRET');
+  const priceId = savedEnvValue(content, 'STRIPE_PRO_PRICE_ID');
+  const missing = [
+    secretKey ? null : 'STRIPE_SECRET_KEY',
+    webhookSecret ? null : 'STRIPE_WEBHOOK_SECRET',
+    priceId ? null : 'STRIPE_PRO_PRICE_ID',
+  ].filter((value): value is string => Boolean(value));
+  if (missing.length > 0) {
+    return envConnectionResult('stripe', 'fail', `Missing ${missing.join(', ')}.`, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Missing', value: missing.join(', '), tone: 'danger' },
+    ]);
+  }
+  const secretMode = secretKey.includes('_live_') ? 'live' : secretKey.includes('_test_') ? 'test' : 'unknown';
+  if (!webhookSecret.startsWith('whsec_')) {
+    return envConnectionResult('stripe', 'fail', 'Stripe webhook secret must start with whsec_.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Webhook secret', value: 'present but not a whsec_ value', tone: 'danger' },
+    ]);
+  }
+
+  const account = await fetchJsonWithTimeout('https://api.stripe.com/v1/account', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${secretKey}` },
+  });
+  if (!account.ok) {
+    const message = nestedString(account.body, ['error', 'message']) ?? `Stripe account probe failed with HTTP ${account.status}`;
+    return envConnectionResult('stripe', 'fail', message, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'API authentication', value: `failed (${account.status})`, tone: 'danger' },
+    ]);
+  }
+
+  const price = await fetchJsonWithTimeout(`https://api.stripe.com/v1/prices/${encodeURIComponent(priceId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${secretKey}` },
+  });
+  if (!price.ok) {
+    const message = nestedString(price.body, ['error', 'message']) ?? `Stripe price probe failed with HTTP ${price.status}`;
+    return envConnectionResult('stripe', 'fail', message, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'API authentication', value: 'ok', tone: 'success' },
+      { label: 'Price ID', value: priceId, tone: 'danger' },
+    ]);
+  }
+
+  const accountId = isPlainRecord(account.body) && typeof account.body.id === 'string' ? account.body.id : 'verified';
+  const priceActive = isPlainRecord(price.body) ? price.body.active === true : false;
+  const priceLivemode = isPlainRecord(price.body) && typeof price.body.livemode === 'boolean' ? price.body.livemode : null;
+  const priceMode = priceLivemode === null ? 'unknown' : priceLivemode ? 'live' : 'test';
+  const warnings: string[] = [];
+  if (!priceActive) warnings.push('price is not active');
+  if (secretMode !== 'unknown' && priceMode !== 'unknown' && secretMode !== priceMode) {
+    warnings.push(`secret key is ${secretMode} mode but price is ${priceMode} mode`);
+  }
+
+  return envConnectionResult(
+    'stripe',
+    warnings.length > 0 ? 'warn' : 'pass',
+    warnings.length > 0
+      ? `Stripe API works, but ${warnings.join('; ')}.`
+      : 'Stripe API authentication works and the configured Pro price exists.',
+    [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Account', value: accountId, tone: 'success' },
+      { label: 'Secret key mode', value: secretMode, tone: secretMode === 'unknown' ? 'warning' : 'success' },
+      { label: 'Pro price', value: `${priceId}${priceActive ? '' : ' (inactive)'}`, tone: priceActive ? 'success' : 'warning' },
+      { label: 'Price mode', value: priceMode, tone: priceMode === 'unknown' || (secretMode !== 'unknown' && priceMode !== secretMode) ? 'warning' : 'success' },
+      { label: 'Webhook secret', value: 'present; Stripe never returns signing secrets, so this check can only validate presence/shape', tone: 'muted' },
+    ],
+  );
+}
+
+async function testCloudflareEnvConnection(content: string): Promise<EnvConnectionTestResult> {
+  const token = savedEnvValue(content, 'CLOUDFLARE_API_TOKEN');
+  const zoneId = savedEnvValue(content, 'CLOUDFLARE_ZONE_ID');
+  const serverPublicIp = savedEnvValue(content, 'SERVER_PUBLIC_IP');
+  const missing = [
+    token ? null : 'CLOUDFLARE_API_TOKEN',
+    zoneId ? null : 'CLOUDFLARE_ZONE_ID',
+    serverPublicIp ? null : 'SERVER_PUBLIC_IP',
+  ].filter((value): value is string => Boolean(value));
+  if (missing.length > 0) {
+    return envConnectionResult('cloudflare', 'fail', `Missing ${missing.join(', ')}.`, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Missing', value: missing.join(', '), tone: 'danger' },
+    ]);
+  }
+
+  const ipStatus = publicIpv4Status(serverPublicIp);
+  if (ipStatus !== 'valid') {
+    return envConnectionResult(
+      'cloudflare',
+      'fail',
+      ipStatus === 'invalid' ? 'SERVER_PUBLIC_IP must be a valid IPv4 address.' : 'SERVER_PUBLIC_IP must be a public IPv4 address, not private/reserved.',
+      [
+        { label: 'Source', value: 'saved .env', tone: 'muted' },
+        { label: 'Server public IP', value: serverPublicIp, tone: 'danger' },
+      ],
+    );
+  }
+
+  const tokenProbe = await fetchJsonWithTimeout('https://api.cloudflare.com/client/v4/user/tokens/verify', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!tokenProbe.ok) {
+    return envConnectionResult('cloudflare', 'fail', cloudflareError(tokenProbe.body, `Cloudflare token probe failed with HTTP ${tokenProbe.status}`), [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Token', value: `failed (${tokenProbe.status})`, tone: 'danger' },
+    ]);
+  }
+
+  const dnsProbe = await fetchJsonWithTimeout(
+    `https://api.cloudflare.com/client/v4/zones/${encodeURIComponent(zoneId)}/dns_records?type=A&per_page=1`,
+    { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!dnsProbe.ok) {
+    return envConnectionResult('cloudflare', 'fail', cloudflareError(dnsProbe.body, `Cloudflare DNS probe failed with HTTP ${dnsProbe.status}`), [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Token', value: 'valid', tone: 'success' },
+      { label: 'Zone DNS access', value: `failed (${dnsProbe.status})`, tone: 'danger' },
+    ]);
+  }
+
+  return envConnectionResult('cloudflare', 'pass', 'Cloudflare token is valid and can read DNS records for this zone.', [
+    { label: 'Source', value: 'saved .env', tone: 'muted' },
+    { label: 'Token', value: 'valid', tone: 'success' },
+    { label: 'Zone ID', value: zoneId, tone: 'success' },
+    { label: 'Server public IP', value: serverPublicIp, tone: 'success' },
+  ]);
+}
+
+async function testCaptchaEnvConnection(content: string): Promise<EnvConnectionTestResult> {
+  const required = (savedEnvValue(content, 'SIGNUP_CAPTCHA_REQUIRED') || 'true').toLowerCase() !== 'false';
+  const secret = savedEnvValue(content, 'HCAPTCHA_SECRET');
+  if (!required && !secret) {
+    return envConnectionResult('captcha', 'warn', 'hCaptcha is disabled in saved .env; upstream bot protection must be in place.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Require hCaptcha', value: 'false', tone: 'warning' },
+      { label: 'Secret', value: 'not configured', tone: 'warning' },
+    ]);
+  }
+  if (!secret) {
+    return envConnectionResult('captcha', 'fail', 'HCAPTCHA_SECRET is missing while hCaptcha is required.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Require hCaptcha', value: required ? 'true' : 'false', tone: required ? 'danger' : 'warning' },
+      { label: 'Secret', value: 'missing', tone: 'danger' },
+    ]);
+  }
+
+  const probe = await fetchJsonWithTimeout('https://api.hcaptcha.com/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ secret, response: 'management-dashboard-probe' }),
+  });
+  if (!probe.ok) {
+    return envConnectionResult('captcha', 'fail', `hCaptcha verification endpoint returned HTTP ${probe.status}.`, [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Endpoint', value: `failed (${probe.status})`, tone: 'danger' },
+    ]);
+  }
+
+  const errorCodes = isPlainRecord(probe.body) && Array.isArray(probe.body['error-codes'])
+    ? probe.body['error-codes'].filter((value): value is string => typeof value === 'string')
+    : [];
+  if (errorCodes.includes('invalid-input-secret') || errorCodes.includes('missing-input-secret')) {
+    return envConnectionResult('captcha', 'fail', 'hCaptcha rejected the configured secret.', [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Endpoint', value: 'reachable', tone: 'success' },
+      { label: 'Secret', value: errorCodes.join(', '), tone: 'danger' },
+    ]);
+  }
+
+  const acceptedDummyToken = isPlainRecord(probe.body) && probe.body.success === true;
+  const expectedProbeResult = acceptedDummyToken || errorCodes.includes('invalid-input-response') || errorCodes.includes('missing-input-response');
+  return envConnectionResult(
+    'captcha',
+    expectedProbeResult ? 'pass' : 'warn',
+    expectedProbeResult
+      ? 'hCaptcha endpoint is reachable and the configured secret was accepted.'
+      : `hCaptcha endpoint is reachable, but returned an unexpected response: ${errorCodes.join(', ') || 'no error code'}.`,
+    [
+      { label: 'Source', value: 'saved .env', tone: 'muted' },
+      { label: 'Require hCaptcha', value: required ? 'true' : 'false', tone: required ? 'success' : 'warning' },
+      { label: 'Endpoint', value: 'reachable', tone: 'success' },
+      { label: 'Probe response', value: acceptedDummyToken ? 'accepted dummy token' : (errorCodes.join(', ') || 'no error code'), tone: acceptedDummyToken ? 'warning' : 'muted' },
+    ],
+  );
+}
+
+function testEnvConnectionFromContent(
+  content: string,
+  target: EnvConnectionTestTarget,
+): Promise<EnvConnectionTestResult> {
+  switch (target) {
+    case 'stripe':
+      return testStripeEnvConnection(content);
+    case 'cloudflare':
+      return testCloudflareEnvConnection(content);
+    case 'captcha':
+      return testCaptchaEnvConnection(content);
+  }
 }
 
 // ─── Log viewer helpers ────────────────────────────────────────
@@ -313,6 +616,41 @@ router.put('/env', (req: Request, res: Response) => {
   } catch (err) {
     log.error('env write failed', { error: err instanceof Error ? err.message : String(err) });
     res.status(500).json({ success: false, message: 'Failed to write .env' });
+  }
+});
+
+router.post('/env/test-connection', async (req: Request, res: Response) => {
+  const parsed = SchemaEnvConnectionTest.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ success: false, message: parsed.error.errors[0]?.message ?? 'Invalid connection test target' });
+    return;
+  }
+
+  const env = readEnvFile();
+  if (!env.ok) {
+    res.status(500).json({ success: false, message: env.message });
+    return;
+  }
+
+  try {
+    const result = await testEnvConnectionFromContent(env.content, parsed.data.target);
+    auditOp(req, 'super_admin_env_connection_test', {
+      target: parsed.data.target,
+      status: result.status,
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    log.warn('env connection test failed unexpectedly', {
+      target: parsed.data.target,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.json({
+      success: true,
+      data: envConnectionResult(parsed.data.target, 'fail', err instanceof Error ? err.message : 'Connection test failed', [
+        { label: 'Source', value: 'saved .env', tone: 'muted' },
+        { label: 'Error', value: err instanceof Error ? err.message : 'Connection test failed', tone: 'danger' },
+      ]),
+    });
   }
 });
 

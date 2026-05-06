@@ -4,7 +4,6 @@ import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info, Clock } from 
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -78,7 +77,7 @@ function EditTemplateModal({
             </h3>
             <p className="text-sm text-surface-500 mt-0.5">{template.event_label}</p>
           </div>
-          <button aria-label="Close" onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
+          <button aria-label="Close" onClick={onClose} className="btn-icon btn-xs text-surface-400">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -164,14 +163,14 @@ function EditTemplateModal({
         <div className="flex items-center justify-end gap-3 p-5 border-t border-surface-200 dark:border-surface-700">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+            className="btn btn-secondary btn-sm"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-primary btn-sm"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save Template
@@ -215,6 +214,12 @@ export function NotificationTemplatesTab() {
   const queryClient = useQueryClient();
   const [subTab, setSubTab] = useState<'customer' | 'internal'>('customer');
   const [editTemplate, setEditTemplate] = useState<NotificationTemplate | null>(null);
+  const [automationCfg, setAutomationCfg] = useState({
+    estimate_followup_days: '3',
+    lead_auto_assign: 'off',
+    notification_digest_mode: 'immediate',
+    notification_digest_hour: '9',
+  });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['settings', 'notification-templates'],
@@ -234,6 +239,36 @@ export function NotificationTemplatesTab() {
     },
     onError: () => toast.error('Failed to update template'),
   });
+
+  const { data: configData } = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: () => settingsApi.getConfig(),
+  });
+
+  useEffect(() => {
+    const cfg = configData?.data?.data as Record<string, string> | undefined;
+    if (!cfg) return;
+    setAutomationCfg({
+      estimate_followup_days: cfg.estimate_followup_days || '3',
+      lead_auto_assign: cfg.lead_auto_assign || 'off',
+      notification_digest_mode: cfg.notification_digest_mode || 'immediate',
+      notification_digest_hour: cfg.notification_digest_hour || '9',
+    });
+  }, [configData]);
+
+  const saveConfigMut = useMutation({
+    mutationFn: (patch: Record<string, string>) => settingsApi.updateConfig(patch),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings', 'config'] });
+      toast.success('Automation setting saved');
+    },
+    onError: () => toast.error('Failed to save automation setting'),
+  });
+
+  const updateAutomation = (key: keyof typeof automationCfg, value: string, persist = true) => {
+    setAutomationCfg((prev) => ({ ...prev, [key]: value }));
+    if (persist) saveConfigMut.mutate({ [key]: value });
+  };
 
   if (isLoading) {
     return (
@@ -271,7 +306,7 @@ export function NotificationTemplatesTab() {
             key={tab.key}
             onClick={() => setSubTab(tab.key)}
             className={cn(
-              'px-4 py-2 text-sm font-medium rounded-md transition-colors',
+              'btn btn-sm rounded-md',
               subTab === tab.key
                 ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
                 : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
@@ -360,7 +395,7 @@ export function NotificationTemplatesTab() {
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => setEditTemplate(t)}
-                        className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                        className="btn btn-ghost btn-xs text-primary-600 hover:text-primary-700"
                       >
                         Edit
                       </button>
@@ -373,7 +408,7 @@ export function NotificationTemplatesTab() {
         )}
       </div>
 
-      {/* Estimate Follow-Up + Lead Auto-Assign — AUDIT-WEB-009: Coming Soon */}
+      {/* Estimate Follow-Up + Lead Auto-Assign */}
       <div className="mt-8 card p-5">
         <div className="flex items-center gap-2 mb-4">
           <h3 className="font-semibold text-sm text-surface-900 dark:text-surface-100">Automation Settings</h3>
@@ -384,16 +419,16 @@ export function NotificationTemplatesTab() {
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium text-surface-900 dark:text-surface-100">Estimate Follow-Up Days</p>
-                <ComingSoonBadge status="coming_soon" compact />
               </div>
-              <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Days after estimate creation before sending a follow-up reminder. No cron job reads this yet.</p>
+              <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Days after estimate send before the hourly follow-up job sends a reminder. Use 0 to disable.</p>
             </div>
             <input
               type="number"
-              disabled
-              min={1}
-              placeholder="3"
-              className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed"
+              min={0}
+              value={automationCfg.estimate_followup_days}
+              onChange={(e) => updateAutomation('estimate_followup_days', e.target.value, false)}
+              onBlur={(e) => updateAutomation('estimate_followup_days', e.target.value || '0')}
+              className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
             />
           </div>
           {/* lead_auto_assign */}
@@ -401,53 +436,54 @@ export function NotificationTemplatesTab() {
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium text-surface-900 dark:text-surface-100">Auto-Assign Leads</p>
-                <ComingSoonBadge status="coming_soon" compact />
               </div>
-              <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Round-robin auto-assignment of incoming leads to staff. Assignment logic is not yet wired.</p>
+              <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Assign new leads to active staff as they are created.</p>
             </div>
-            <button
-              disabled
-              className="relative inline-flex h-6 w-11 rounded-full bg-surface-300 dark:bg-surface-600 opacity-50 cursor-not-allowed flex-shrink-0"
-              aria-disabled="true"
+            <select
+              value={automationCfg.lead_auto_assign}
+              onChange={(e) => updateAutomation('lead_auto_assign', e.target.value)}
+              className="w-40 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100"
             >
-              <span className="inline-block h-5 w-5 transform rounded-full bg-white shadow mt-0.5 translate-x-0.5" />
-            </button>
+              <option value="off">Off</option>
+              <option value="round_robin">Round robin</option>
+              <option value="least_loaded">Least loaded</option>
+            </select>
           </div>
         </div>
       </div>
 
-      {/* Notification Digest — WEB-W1-031: Coming Soon */}
+      {/* Notification Digest */}
       <div className="mt-8 card p-5">
         <div className="flex items-center gap-2 mb-3">
           <Clock className="w-4 h-4 text-surface-500" />
           <h3 className="font-semibold text-sm text-surface-900 dark:text-surface-100">Notification Digest</h3>
-          <ComingSoonBadge status="coming_soon" />
         </div>
         <p className="text-xs text-surface-500 dark:text-surface-400 mb-4">
-          Instead of sending each notification immediately, batch them into a single daily or hourly digest email.
+          Batch queued email notifications into one digest; SMS notifications still send immediately.
         </p>
-        <div className="space-y-3 max-w-sm opacity-60 pointer-events-none select-none">
+        <div className="space-y-3 max-w-sm">
           <div>
             <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Digest mode</label>
             <select
-              disabled
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 px-3 py-2 text-sm text-surface-400 cursor-not-allowed"
-              defaultValue="off"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100"
+              value={automationCfg.notification_digest_mode}
+              onChange={(e) => updateAutomation('notification_digest_mode', e.target.value)}
             >
-              <option value="off">Off (send immediately)</option>
-              <option value="daily">Daily digest</option>
+              <option value="immediate">Off (send immediately)</option>
               <option value="hourly">Hourly digest</option>
+              <option value="daily">Daily digest</option>
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Daily digest send time</label>
             <input
               type="number"
-              disabled
               min={0}
               max={23}
-              placeholder="8"
-              className="w-24 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 px-3 py-2 text-sm text-surface-400 cursor-not-allowed"
+              value={automationCfg.notification_digest_hour}
+              onChange={(e) => updateAutomation('notification_digest_hour', e.target.value, false)}
+              onBlur={(e) => updateAutomation('notification_digest_hour', e.target.value || '9')}
+              className="w-24 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100"
             />
             <span className="ml-2 text-xs text-surface-400">hour (0–23, local time)</span>
           </div>

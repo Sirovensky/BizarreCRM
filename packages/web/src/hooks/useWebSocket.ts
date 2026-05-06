@@ -111,8 +111,7 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
         return `New SMS from ${d?.from || d?.customer?.first_name || 'unknown'}`;
       },
     },
-    // sms:status_updated — server emits when an outbound SMS delivery status changes
-    'sms:status_updated': {
+    [WS_EVENTS.SMS_STATUS_UPDATED]: {
       queryKeys: [['sms-conversations'], ['sms-messages']],
       toast: undefined,
     },
@@ -305,7 +304,10 @@ export function useWebSocket() {
 
   const { setConnected, setLastMessage } = useWsStore();
 
-  const getToken = useCallback(() => localStorage.getItem('accessToken'), []);
+  const hasAuthSessionHint = useCallback(
+    () => typeof document !== 'undefined' && /(?:^|;\s*)csrf_token=/.test(document.cookie),
+    [],
+  );
 
   const disconnect = useCallback(() => {
     if (reconnectTimerRef.current) {
@@ -323,21 +325,12 @@ export function useWebSocket() {
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return;
-    // WEB-FJ-003 (Fixer-A15 2026-04-25): hold the bootstrap token in a
-    // mutable local so we can null it out after onopen. Previously the
-    // `const token` was captured inside the onopen closure and the closure
-    // (kept alive by the WebSocket instance) retained the JWT for the full
-    // socket lifetime — so a refresh that rotated the access token still
-    // left the original (now-stale) JWT reachable from the closure heap
-    // until the socket finally closed.
-    let token: string | null = getToken();
-    if (!token) return; // Not authenticated
+    if (!hasAuthSessionHint()) return; // Not authenticated
 
-    // WEB-FD-003 (Fixer-A5 2026-04-25): refuse to ship the access-token as
-    // a plaintext frame over `ws:`. In production builds we hard-fail any
-    // non-https origin so the JWT is never put on an unencrypted socket
-    // (was: token in `JSON.stringify({type:'auth',token})` valid for the
-    // full refresh window if intercepted by a corporate-MITM/proxy).
+    // WEB-FD-003 (Fixer-A5 2026-04-25): refuse plaintext ws: in production.
+    // Auth now rides the httpOnly cookie on the WebSocket handshake rather
+    // than a JWT inside the first frame, but the cookie still must not travel
+    // over an unencrypted socket.
     // `localhost` and `127.0.0.1` stay permitted so dev/Vite still works.
     if (
       import.meta.env.PROD &&
@@ -368,18 +361,7 @@ export function useWebSocket() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // WEB-FI-011 (Fixer-SSS 2026-04-25): re-read the access token at
-      // onopen-time so a refresh that completed between the WebSocket
-      // constructor call and the open handshake is picked up. Previously
-      // the token captured in `connect()` (line ~243) was sent verbatim
-      // in onopen — during a 401 burst recovery the freshly-rotated
-      // refresh would land first, but this socket would still send the
-      // expired token, get rejected with 4001, and bounce through
-      // scheduleReconnect needlessly. If localStorage is now empty
-      // (logout fired between connect and onopen), close the socket
-      // cleanly so reconnect logic doesn't keep looping with no token.
-      const freshToken = getToken() ?? token;
-      if (!freshToken) {
+      if (!hasAuthSessionHint()) {
         try { ws.close(); } catch { /* ignore */ }
         return;
       }
@@ -391,12 +373,7 @@ export function useWebSocket() {
       // connect even though TCP itself succeeds. `isConnected` still
       // requires auth.success — only the backoff anchor moves earlier.
       backoffRef.current = INITIAL_BACKOFF;
-      ws.send(JSON.stringify({ type: 'auth', token: freshToken }));
-      // WEB-FJ-003 (Fixer-A15 2026-04-25): release the captured bootstrap
-      // token so it isn't pinned in this closure for the lifetime of the
-      // socket. Re-auth after a 401-bounce will re-read localStorage via
-      // getToken(), so we don't need the stale value here anymore.
-      token = null;
+      ws.send(JSON.stringify({ type: 'auth' }));
     };
 
     ws.onmessage = (event) => {
@@ -439,7 +416,7 @@ export function useWebSocket() {
               try { sock.send(JSON.stringify({ type: 'ping', t: Date.now() })); } catch { /* ignore */ }
             }, PING_INTERVAL_MS);
           } else {
-            // Auth explicitly rejected — stop reconnecting with this token
+            // Auth explicitly rejected — stop reconnecting until auth changes.
             authRejectedRef.current = true;
             ws.close();
           }
@@ -519,7 +496,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [getToken, setConnected, setLastMessage, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
+  }, [hasAuthSessionHint, setConnected, setLastMessage, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
   const { setWsOffline } = useWsStore();
 
@@ -560,16 +537,12 @@ export function useWebSocket() {
     // Reconnect when tab becomes visible again (if disconnected while hidden)
     // SCAN-1123: if a 4001 auth-reject left `authRejectedRef=true`, previously
     // we never reconnected on visibilitychange even after a re-login in
-    // another tab (that tab doesn't dispatch `auth-cleared` for this
-    // window). Check for a fresh access token when returning to visible —
-    // if one is present, clear the auth-reject latch and attempt to
-    // reconnect with the new token. Also unconditionally reset backoff so
-    // back-to-back hidden-drops don't keep escalating the retry delay.
+    // another tab. Check for the non-secret cookie-session hint when returning
+    // to visible, then clear the auth-reject latch and attempt to reconnect.
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible' || wsRef.current) return;
       if (authRejectedRef.current) {
-        const hasToken = !!localStorage.getItem('accessToken');
-        if (!hasToken) return;
+        if (!hasAuthSessionHint()) return;
         authRejectedRef.current = false;
       }
       // Cancel any pending reconnect timer before initiating a direct connect
@@ -599,9 +572,8 @@ export function useWebSocket() {
     // When auth becomes available (login, switchUser, or silent refresh),
     // (re)connect immediately instead of waiting for the next tab-visibility
     // change. The initial connect() at mount-time can legitimately fail if
-    // the token arrives a beat after the AppShell renders; this event closes
-    // that gap and also covers the cross-tab case where another tab refreshes
-    // the token while this tab is visible.
+    // the auth cookies arrive a beat after the AppShell renders; this event
+    // closes that gap and also covers cross-tab auth changes.
     const handleAuthReady = () => {
       authRejectedRef.current = false;
       backoffRef.current = INITIAL_BACKOFF;

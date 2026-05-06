@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { Router } from 'express';
+import crypto from 'crypto';
+import { Router, type Request } from 'express';
 import bcrypt from 'bcryptjs';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -26,12 +27,63 @@ import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { logActivity } from '../utils/activityLog.js';
+import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 
 type AnyRow = Record<string, any>;
+type NormalizedCustomerAddress = {
+  id: string;
+  customer_id: number;
+  type: 'primary' | 'billing' | 'shipping' | 'other';
+  label: string;
+  is_primary: boolean;
+  address1: string | null;
+  address2: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  country: string | null;
+  formatted: string;
+  source: string;
+  updated_at: string | null;
+};
 
 const log = createLogger('customers');
 
 const router = Router();
+const GDPR_REAUTH_RATE_CATEGORY = 'customer_gdpr_reauth';
+const GDPR_REAUTH_RATE_WINDOW_MS = 60 * 60 * 1000;
+const GDPR_REAUTH_RATE_MAX = 5;
+const BCRYPT_MAX_PASSWORD_BYTES = 72;
+const CUSTOMER_EXPORT_LINK_TTL_SECONDS = 15 * 60;
+const CUSTOMER_EXPORT_TOKEN_VERSION = 'v1';
+const CUSTOMER_EXPORT_TOKEN_AAD = Buffer.from('customer-export-download:v1');
+const CUSTOMER_EXPORT_TOKEN_MAX_LENGTH = 2048;
+
+interface CustomerDataExport {
+  exported_at: string;
+  customer: AnyRow;
+  phones: AnyRow[];
+  emails: AnyRow[];
+  assets: AnyRow[];
+  tickets: AnyRow[];
+  ticket_notes: AnyRow[];
+  ticket_devices: AnyRow[];
+  invoices: AnyRow[];
+  estimates: AnyRow[];
+  sms_messages: AnyRow[];
+  email_messages: AnyRow[];
+  loaner_history: AnyRow[];
+}
+
+interface CustomerExportTokenPayload {
+  v: 1;
+  cid: number;
+  uid: number;
+  tid: number;
+  exp: number;
+  fid: string;
+  nonce: string;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,6 +115,241 @@ function normaliseAndValidatePhone(
   // "test test") or to a too-short sequence, reject instead of silently
   // storing NULL.
   return validatePhoneDigits(digits, fieldName, true);
+}
+
+const blankToNull = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+function customerExportTokenKey(): Buffer {
+  return crypto
+    .createHash('sha256')
+    .update(`${config.uploadsSecret}:customer-export-download:v1`)
+    .digest();
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && Number(value) >= 0;
+}
+
+function isCustomerExportTokenPayload(value: unknown): value is CustomerExportTokenPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<CustomerExportTokenPayload>;
+  return payload.v === 1
+    && isPositiveInteger(payload.cid)
+    && isPositiveInteger(payload.uid)
+    && isNonNegativeInteger(payload.tid)
+    && isPositiveInteger(payload.exp)
+    && typeof payload.fid === 'string'
+    && /^[a-f0-9]{16}$/.test(payload.fid)
+    && typeof payload.nonce === 'string'
+    && /^[a-f0-9]{32}$/.test(payload.nonce);
+}
+
+function getRequestTenantId(req: Request): number {
+  const tenantId = req.tenantId;
+  return typeof tenantId === 'number' && Number.isInteger(tenantId) && tenantId > 0 ? tenantId : 0;
+}
+
+function sealCustomerExportToken(payload: CustomerExportTokenPayload): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', customerExportTokenKey(), iv);
+  cipher.setAAD(CUSTOMER_EXPORT_TOKEN_AAD);
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(payload), 'utf8'),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+
+  return [
+    CUSTOMER_EXPORT_TOKEN_VERSION,
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    ciphertext.toString('base64url'),
+  ].join('.');
+}
+
+function openCustomerExportToken(token: string): CustomerExportTokenPayload | null {
+  if (!token || token.length > CUSTOMER_EXPORT_TOKEN_MAX_LENGTH) return null;
+  const parts = token.split('.');
+  if (parts.length !== 4 || parts[0] !== CUSTOMER_EXPORT_TOKEN_VERSION) return null;
+
+  try {
+    const iv = Buffer.from(parts[1], 'base64url');
+    const tag = Buffer.from(parts[2], 'base64url');
+    const ciphertext = Buffer.from(parts[3], 'base64url');
+    if (iv.length !== 12 || tag.length !== 16 || ciphertext.length === 0) return null;
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', customerExportTokenKey(), iv);
+    decipher.setAAD(CUSTOMER_EXPORT_TOKEN_AAD);
+    decipher.setAuthTag(tag);
+    const plaintext = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString('utf8');
+    const payload = JSON.parse(plaintext) as unknown;
+    if (!isCustomerExportTokenPayload(payload)) return null;
+    if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export function issueCustomerExportDownloadToken(input: {
+  customerId: number;
+  requesterUserId: number;
+  tenantId?: number | null;
+  ttlSeconds?: number;
+}): { token: string; expiresAt: string; expiresInSeconds: number } {
+  const ttl = Math.max(
+    60,
+    Math.min(60 * 60, Math.floor(input.ttlSeconds ?? CUSTOMER_EXPORT_LINK_TTL_SECONDS)),
+  );
+  const exp = Math.floor(Date.now() / 1000) + ttl;
+  const payload: CustomerExportTokenPayload = {
+    v: 1,
+    cid: input.customerId,
+    uid: input.requesterUserId,
+    tid: Number.isInteger(input.tenantId) && Number(input.tenantId) > 0 ? Number(input.tenantId) : 0,
+    exp,
+    fid: crypto.randomBytes(8).toString('hex'),
+    nonce: crypto.randomBytes(16).toString('hex'),
+  };
+
+  return {
+    token: sealCustomerExportToken(payload),
+    expiresAt: new Date(exp * 1000).toISOString(),
+    expiresInSeconds: ttl,
+  };
+}
+
+function buildCustomerExportDownloadPath(token: string): string {
+  return `/api/v1/customers/export-download/${encodeURIComponent(token)}`;
+}
+
+function customerExportFilename(payload: CustomerExportTokenPayload): string {
+  const dateToken = new Date().toISOString().slice(0, 10);
+  return `bizarre-crm-customer-data-export-${dateToken}-${payload.fid}.json`;
+}
+
+function attachmentContentDisposition(filename: string): string {
+  const fallback = filename.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 96) || 'customer-data-export.json';
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+async function buildCustomerDataExport(adb: AsyncDb, id: number): Promise<CustomerDataExport> {
+  const customer = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
+  if (!customer) throw new AppError('Customer not found', 404);
+
+  const [phones, emails, assets, tickets, invoices, estimates, loanerHistory] = await Promise.all([
+    adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', id),
+    adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', id),
+    adb.all<AnyRow>('SELECT * FROM customer_assets WHERE customer_id = ?', id),
+    adb.all<AnyRow>('SELECT * FROM tickets WHERE customer_id = ? AND is_deleted = 0', id),
+    adb.all<AnyRow>('SELECT * FROM invoices WHERE customer_id = ?', id),
+    adb.all<AnyRow>('SELECT * FROM estimates WHERE customer_id = ?', id),
+    adb.all<AnyRow>('SELECT * FROM loaner_history WHERE customer_id = ?', id),
+  ]);
+
+  const ticketIds = tickets.map((t) => t.id);
+  let ticketNotes: AnyRow[] = [];
+  let ticketDevices: AnyRow[] = [];
+  if (ticketIds.length > 0) {
+    const ticketPlaceholders = ticketIds.map(() => '?').join(', ');
+    [ticketNotes, ticketDevices] = await Promise.all([
+      adb.all<AnyRow>(`SELECT * FROM ticket_notes WHERE ticket_id IN (${ticketPlaceholders})`, ...ticketIds),
+      adb.all<AnyRow>(`SELECT * FROM ticket_devices WHERE ticket_id IN (${ticketPlaceholders})`, ...ticketIds),
+    ]);
+  }
+
+  const VAR_CAP = 500;
+  const phoneSet = new Set<string>();
+  if (customer.phone) phoneSet.add(normalizePhone(customer.phone));
+  if (customer.mobile) phoneSet.add(normalizePhone(customer.mobile));
+  for (const p of phones) {
+    const norm = normalizePhone(p.phone);
+    if (norm) phoneSet.add(norm);
+  }
+  const phoneList = Array.from(phoneSet).slice(0, VAR_CAP);
+  let smsMessages: AnyRow[] = [];
+  if (phoneList.length > 0) {
+    const phonePlaceholders = phoneList.map(() => '?').join(', ');
+    smsMessages = await adb.all<AnyRow>(`SELECT * FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`, ...phoneList);
+  }
+
+  const emailSet = new Set<string>();
+  if (customer.email) emailSet.add(String(customer.email).toLowerCase());
+  for (const e of emails) {
+    if (e.email) emailSet.add(String(e.email).toLowerCase());
+  }
+  const emailList = Array.from(emailSet).slice(0, VAR_CAP);
+  let emailMessages: AnyRow[] = [];
+  if (emailList.length > 0) {
+    const emailPlaceholders = emailList.map(() => '?').join(', ');
+    emailMessages = await adb.all<AnyRow>(
+      `SELECT * FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`,
+      ...emailList,
+      ...emailList,
+    );
+  }
+
+  return {
+    exported_at: new Date().toISOString(),
+    customer,
+    phones,
+    emails,
+    assets,
+    tickets,
+    ticket_notes: ticketNotes,
+    ticket_devices: ticketDevices,
+    invoices,
+    estimates,
+    sms_messages: smsMessages,
+    email_messages: emailMessages,
+    loaner_history: loanerHistory,
+  };
+}
+
+function formatCustomerAddress(address: Pick<NormalizedCustomerAddress, 'address1' | 'address2' | 'city' | 'state' | 'postcode' | 'country'>): string {
+  const cityStatePostcode = [address.city, address.state, address.postcode]
+    .filter((part): part is string => !!part && part.trim().length > 0)
+    .join(', ');
+
+  return [address.address1, address.address2, cityStatePostcode, address.country]
+    .filter((part): part is string => !!part && part.trim().length > 0)
+    .join('\n');
+}
+
+function primaryAddressFromCustomer(customer: AnyRow): NormalizedCustomerAddress | null {
+  const address: Pick<NormalizedCustomerAddress, 'address1' | 'address2' | 'city' | 'state' | 'postcode' | 'country'> = {
+    address1: blankToNull(customer.address1),
+    address2: blankToNull(customer.address2),
+    city: blankToNull(customer.city),
+    state: blankToNull(customer.state),
+    postcode: blankToNull(customer.postcode),
+    country: blankToNull(customer.country),
+  };
+  const formatted = formatCustomerAddress(address);
+  if (!formatted) return null;
+
+  return {
+    id: `customer:${customer.id}:primary`,
+    customer_id: Number(customer.id),
+    type: 'primary',
+    label: 'Primary / billing',
+    is_primary: true,
+    ...address,
+    formatted,
+    source: 'customers',
+    updated_at: blankToNull(customer.updated_at),
+  };
 }
 
 const CUSTOMER_COLUMNS = [
@@ -1194,6 +1481,30 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// GET /:id/addresses – Normalized customer addresses
+// CROSS9c: expose today's single customers-row address as a list so clients can
+// render an Addresses card now and accept future billing/shipping rows later.
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id/addresses',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+
+    const customer = await adb.get<AnyRow>(
+      `SELECT id, address1, address2, city, state, postcode, country, updated_at
+       FROM customers
+       WHERE id = ? AND is_deleted = 0`,
+      id,
+    );
+    if (!customer) throw new AppError('Customer not found', 404);
+
+    const primaryAddress = primaryAddressFromCustomer(customer);
+    res.json({ success: true, data: primaryAddress ? [primaryAddress] : [] });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // GET /:id – Customer detail
 // ---------------------------------------------------------------------------
 router.get(
@@ -1903,10 +2214,50 @@ router.delete(
 );
 
 // ---------------------------------------------------------------------------
-// GET /:id/export – GDPR data portability export
-// ENR-C3: Returns all customer data as JSON
-// SEC-H56: Step-up TOTP required before any PII export.
+// POST /:id/export-link – GDPR data portability export link
+// ENR-C3: Creates an opaque, time-limited server download URL. The PII payload
+// is generated by the server only when the signed link is redeemed; the client
+// never materialises customer export JSON into a browser Blob.
+// SEC-H56: Step-up TOTP required before any PII export link is issued.
 // ---------------------------------------------------------------------------
+router.post(
+  '/:id/export-link',
+  requireStepUpTotp('POST /customers/:id/export-link'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+
+    const customer = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', id);
+    if (!customer) throw new AppError('Customer not found', 404);
+
+    const issued = issueCustomerExportDownloadToken({
+      customerId: id,
+      requesterUserId: req.user!.id,
+      tenantId: getRequestTenantId(req),
+    });
+    const downloadUrl = buildCustomerExportDownloadPath(issued.token);
+
+    audit(req.db, 'customer_data_export_link_issued', req.user!.id, req.ip || 'unknown', {
+      customer_id: id,
+      expires_at: issued.expiresAt,
+      expires_in_seconds: issued.expiresInSeconds,
+    });
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.json({
+      success: true,
+      data: {
+        download_url: downloadUrl,
+        expires_at: issued.expiresAt,
+        expires_in_seconds: issued.expiresInSeconds,
+      },
+    });
+  }),
+);
+
+// Legacy verb kept for older integrations, but it now returns only the same
+// controlled link metadata instead of the full PII payload.
 router.get(
   '/:id/export',
   requireStepUpTotp('GET /customers/:id/export'),
@@ -1914,84 +2265,66 @@ router.get(
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
 
-    const customer = await adb.get<AnyRow>('SELECT * FROM customers WHERE id = ? AND is_deleted = 0', id);
+    const customer = await adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', id);
     if (!customer) throw new AppError('Customer not found', 404);
 
-    // First batch: independent reads that don't depend on each other
-    const [phones, emails, assets, tickets, invoices, estimates, loanerHistory] = await Promise.all([
-      adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', id),
-      adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', id),
-      adb.all<AnyRow>('SELECT * FROM customer_assets WHERE customer_id = ?', id),
-      adb.all<AnyRow>('SELECT * FROM tickets WHERE customer_id = ? AND is_deleted = 0', id),
-      adb.all<AnyRow>('SELECT * FROM invoices WHERE customer_id = ?', id),
-      adb.all<AnyRow>('SELECT * FROM estimates WHERE customer_id = ?', id),
-      adb.all<AnyRow>('SELECT * FROM loaner_history WHERE customer_id = ?', id),
-    ]);
+    const issued = issueCustomerExportDownloadToken({
+      customerId: id,
+      requesterUserId: req.user!.id,
+      tenantId: getRequestTenantId(req),
+    });
 
-    // Ticket-related data (depends on tickets result)
-    const ticketIds = tickets.map((t) => t.id);
-    let ticketNotes: AnyRow[] = [];
-    let ticketDevices: AnyRow[] = [];
-    if (ticketIds.length > 0) {
-      const ticketPlaceholders = ticketIds.map(() => '?').join(', ');
-      [ticketNotes, ticketDevices] = await Promise.all([
-        adb.all<AnyRow>(`SELECT * FROM ticket_notes WHERE ticket_id IN (${ticketPlaceholders})`, ...ticketIds),
-        adb.all<AnyRow>(`SELECT * FROM ticket_devices WHERE ticket_id IN (${ticketPlaceholders})`, ...ticketIds),
-      ]);
-    }
+    audit(req.db, 'customer_data_export_link_issued', req.user!.id, req.ip || 'unknown', {
+      customer_id: id,
+      expires_at: issued.expiresAt,
+      expires_in_seconds: issued.expiresInSeconds,
+      legacy_route: true,
+    });
 
-    // SMS messages (by phone)
-    const phoneSet = new Set<string>();
-    if (customer.phone) phoneSet.add(normalizePhone(customer.phone));
-    if (customer.mobile) phoneSet.add(normalizePhone(customer.mobile));
-    for (const p of phones as AnyRow[]) {
-      const norm = normalizePhone(p.phone);
-      if (norm) phoneSet.add(norm);
-    }
-    // DA-5: cap IN-list size so a customer with thousands of phone/email
-    // rows cannot exceed SQLite's bound-parameter limit mid-query.
-    const VAR_CAP = 500;
-    const phoneList = Array.from(phoneSet).slice(0, VAR_CAP);
-    let smsMessages: AnyRow[] = [];
-    if (phoneList.length > 0) {
-      const phonePlaceholders = phoneList.map(() => '?').join(', ');
-      smsMessages = await adb.all<AnyRow>(`SELECT * FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`, ...phoneList);
-    }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.json({
+      success: true,
+      data: {
+        download_url: buildCustomerExportDownloadPath(issued.token),
+        expires_at: issued.expiresAt,
+        expires_in_seconds: issued.expiresInSeconds,
+      },
+    });
+  }),
+);
 
-    // Email messages
-    const emailSet = new Set<string>();
-    if (customer.email) emailSet.add(customer.email.toLowerCase());
-    for (const e of emails as AnyRow[]) {
-      if (e.email) emailSet.add(e.email.toLowerCase());
-    }
-    const emailList = Array.from(emailSet).slice(0, VAR_CAP);
-    let emailMessages: AnyRow[] = [];
-    if (emailList.length > 0) {
-      const emailPlaceholders = emailList.map(() => '?').join(', ');
-      emailMessages = await adb.all<AnyRow>(
-        `SELECT * FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`,
-        ...emailList, ...emailList);
-    }
+export const customerExportDownloadRouter = Router();
 
-    const exportData = {
-      exported_at: new Date().toISOString(),
-      customer,
-      phones,
-      emails,
-      assets,
-      tickets,
-      ticket_notes: ticketNotes,
-      ticket_devices: ticketDevices,
-      invoices,
-      estimates,
-      sms_messages: smsMessages,
-      email_messages: emailMessages,
-      loaner_history: loanerHistory,
-    };
+customerExportDownloadRouter.get(
+  '/export-download/:token',
+  asyncHandler(async (req, res) => {
+    const token = String(req.params.token ?? '');
+    const payload = openCustomerExportToken(token);
+    if (!payload) throw new AppError('Export link is invalid or expired', 410);
 
-    audit(req.db, 'customer_data_exported', req.user!.id, req.ip || 'unknown', { customer_id: id });
+    const tenantId = getRequestTenantId(req);
+    if (payload.tid !== tenantId) throw new AppError('Export link is invalid or expired', 410);
 
-    res.json({ success: true, data: exportData });
+    const exportData = await buildCustomerDataExport(req.asyncDb, payload.cid);
+    const body = JSON.stringify(exportData, null, 2);
+    const filename = customerExportFilename(payload);
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', attachmentContentDisposition(filename));
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    res.setHeader('Content-Length', String(Buffer.byteLength(body, 'utf8')));
+
+    audit(req.db, 'customer_data_export_downloaded', payload.uid, req.ip || 'unknown', {
+      customer_id: payload.cid,
+      expires_at: new Date(payload.exp * 1000).toISOString(),
+      file_id: payload.fid,
+    });
+
+    res.send(body);
   }),
 );
 
@@ -2010,9 +2343,22 @@ router.delete(
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
-    const { password } = req.body;
+    const password = req.body?.password;
+    const reauthRateKey = `${req.user!.id}:${req.ip || 'unknown'}`;
 
-    if (!password) throw new AppError('Password confirmation is required for GDPR erasure', 400);
+    if (!checkWindowRate(req.db, GDPR_REAUTH_RATE_CATEGORY, reauthRateKey, GDPR_REAUTH_RATE_MAX, GDPR_REAUTH_RATE_WINDOW_MS)) {
+      throw new AppError('Too many failed password confirmations. Try again later.', 429);
+    }
+
+    if (typeof password !== 'string' || password.length === 0) {
+      recordWindowFailure(req.db, GDPR_REAUTH_RATE_CATEGORY, reauthRateKey, GDPR_REAUTH_RATE_WINDOW_MS);
+      throw new AppError('Password confirmation is required for GDPR erasure', 400);
+    }
+
+    if (Buffer.byteLength(password, 'utf8') > BCRYPT_MAX_PASSWORD_BYTES) {
+      recordWindowFailure(req.db, GDPR_REAUTH_RATE_CATEGORY, reauthRateKey, GDPR_REAUTH_RATE_WINDOW_MS);
+      throw new AppError('Password confirmation is too long', 400);
+    }
 
     // Verify admin password
     const [adminUser, customer] = await Promise.all([
@@ -2022,7 +2368,10 @@ router.delete(
     if (!adminUser) throw new AppError('User not found', 404);
 
     const passwordValid = bcrypt.compareSync(password, adminUser.password_hash);
-    if (!passwordValid) throw new AppError('Invalid password', 401);
+    if (!passwordValid) {
+      recordWindowFailure(req.db, GDPR_REAUTH_RATE_CATEGORY, reauthRateKey, GDPR_REAUTH_RATE_WINDOW_MS);
+      throw new AppError('Invalid password', 401);
+    }
 
     if (!customer) throw new AppError('Customer not found', 404);
 

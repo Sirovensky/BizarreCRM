@@ -13,8 +13,10 @@ export type RepairPricingSeedPricing = Partial<
 >;
 
 export interface SeedRepairPricingDefaultsOptions {
-  /** Device/service category to seed. The setup wizard currently targets phone shops. */
+  /** Device/service category to seed. When omitted, shop_type controls coverage. */
   category?: string;
+  /** Shop archetype chosen in onboarding/setup. Drives seed_repair_prices lookup. */
+  shopType?: string;
   /** Optional owner-edited values. Missing cells fall back to server medians below. */
   pricing?: RepairPricingSeedPricing;
   overwriteCustom?: boolean;
@@ -22,7 +24,7 @@ export interface SeedRepairPricingDefaultsOptions {
 }
 
 export interface SeedRepairPricingServiceResult {
-  service_key: RepairPricingSeedServiceKey;
+  service_key: string;
   repair_service_id: number | null;
   repair_service_slug: string | null;
   missing: boolean;
@@ -70,9 +72,32 @@ const SERVICE_SLUGS: Record<RepairPricingSeedServiceKey, string[]> = {
   camera: ['camera-repair'],
 };
 
+const SERVICE_KEY_BY_SLUG = new Map<string, RepairPricingSeedServiceKey>(
+  Object.entries(SERVICE_SLUGS).flatMap(([key, slugs]) =>
+    slugs.map((slug) => [slug, key as RepairPricingSeedServiceKey] as const),
+  ),
+);
+
 function normalizeCategory(category: string | undefined): string {
   const trimmed = category?.trim();
   return trimmed || 'phone';
+}
+
+function normalizeOptionalCategory(category: string | undefined): string | null {
+  const trimmed = category?.trim();
+  if (!trimmed || trimmed === 'all' || trimmed === '*') return null;
+  return trimmed;
+}
+
+function normalizeShopType(db: Database.Database, shopType: string | undefined, category: string | null): string {
+  const raw = shopType?.trim()
+    || (db.prepare("SELECT value FROM store_config WHERE key = 'shop_type'").get() as { value?: string } | undefined)?.value
+    || category
+    || 'phone';
+  if (raw === 'console' || raw === 'console-pc') return 'console_pc';
+  if (raw === 'it' || raw === 'computer_repair') return 'it_service';
+  if (raw === 'multi-device' || raw === 'multi_device') return 'mixed';
+  return raw;
 }
 
 function normalizeLaborPrice(value: unknown, serviceKey: RepairPricingSeedServiceKey, tier: RepairPricingSeedTier): number {
@@ -118,12 +143,119 @@ function findSeedService(
   return rows[0];
 }
 
+interface SeedTableRow {
+  service_slug: string;
+  repair_service_id: number;
+  tier: RepairPricingSeedTier;
+  labor_price: number;
+}
+
+function seedRowsFromTable(
+  db: Database.Database,
+  shopType: string,
+  category: string | null,
+): SeedTableRow[] | null {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'seed_repair_prices'")
+    .get() as { name: string } | undefined;
+  if (!table) return null;
+
+  const params: unknown[] = [shopType];
+  let categoryClause = '';
+  if (category) {
+    categoryClause = 'AND rs.category = ?';
+    params.push(category);
+  }
+
+  const rows = db.prepare(`
+    SELECT srp.service_slug,
+           rs.id AS repair_service_id,
+           srp.tier,
+           srp.labor_price
+    FROM seed_repair_prices srp
+    JOIN repair_services rs ON rs.slug = srp.service_slug
+    WHERE srp.shop_type = ?
+      AND rs.is_active = 1
+      ${categoryClause}
+    ORDER BY rs.category ASC, rs.sort_order ASC, rs.name ASC, srp.tier ASC
+  `).all(...params) as SeedTableRow[];
+
+  return rows.length > 0 ? rows : null;
+}
+
+function seedFromTable(
+  db: Database.Database,
+  opts: SeedRepairPricingDefaultsOptions,
+  category: string | null,
+  pricing: Record<RepairPricingSeedServiceKey, Record<RepairPricingSeedTier, number>>,
+): SeedRepairPricingDefaultsResult | null {
+  const shopType = normalizeShopType(db, opts.shopType, category);
+  const rows = seedRowsFromTable(db, shopType, category);
+  if (!rows) return null;
+
+  const bySlug = new Map<string, SeedTableRow[]>();
+  for (const row of rows) {
+    const list = bySlug.get(row.service_slug) ?? [];
+    list.push(row);
+    bySlug.set(row.service_slug, list);
+  }
+
+  const services: SeedRepairPricingServiceResult[] = [];
+  for (const [serviceSlug, serviceRows] of bySlug) {
+    const first = serviceRows[0];
+    const serviceKey = SERVICE_KEY_BY_SLUG.get(serviceSlug);
+    const tiers = serviceRows.map((row) => {
+      let laborPrice = Math.round((row.labor_price / 100) * 100) / 100;
+      if (serviceKey) {
+        const ownerOverride = opts.pricing?.[serviceKey]?.[row.tier];
+        if (ownerOverride !== undefined && ownerOverride !== null) {
+          laborPrice = normalizeLaborPrice(ownerOverride, serviceKey, row.tier);
+        }
+      }
+      return bulkApplyTier(db, {
+        repairServiceId: row.repair_service_id,
+        tier: row.tier,
+        laborPrice,
+        category: category ?? undefined,
+        overwriteCustom: opts.overwriteCustom ?? false,
+        changedByUserId: opts.changedByUserId ?? null,
+      });
+    });
+
+    services.push({
+      service_key: serviceKey ?? serviceSlug,
+      repair_service_id: first.repair_service_id,
+      repair_service_slug: serviceSlug,
+      missing: false,
+      tiers,
+    });
+  }
+
+  const allTierResults = services.flatMap((service) => service.tiers);
+  return {
+    category: category ?? 'all',
+    defaults: pricing,
+    services,
+    summary: {
+      services_matched: services.length,
+      services_missing: 0,
+      matched_devices: allTierResults.reduce((sum, result) => sum + result.matched_devices, 0),
+      inserted: allTierResults.reduce((sum, result) => sum + result.inserted, 0),
+      updated: allTierResults.reduce((sum, result) => sum + result.updated, 0),
+      skipped_custom: allTierResults.reduce((sum, result) => sum + result.skipped_custom, 0),
+    },
+  };
+}
+
 export function seedRepairPricingDefaults(
   db: Database.Database,
   opts: SeedRepairPricingDefaultsOptions = {},
 ): SeedRepairPricingDefaultsResult {
-  const category = normalizeCategory(opts.category);
+  const tableCategory = normalizeOptionalCategory(opts.category);
   const pricing = mergedPricing(opts.pricing);
+  const tableResult = seedFromTable(db, opts, tableCategory, pricing);
+  if (tableResult) return tableResult;
+
+  const category = normalizeCategory(opts.category);
   const services: SeedRepairPricingServiceResult[] = [];
 
   for (const serviceKey of Object.keys(pricing) as RepairPricingSeedServiceKey[]) {

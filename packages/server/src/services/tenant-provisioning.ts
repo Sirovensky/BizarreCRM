@@ -10,6 +10,7 @@ import { getTenantDb, releaseTenantDb, closeTenantDb } from '../db/tenant-pool.j
 import { createTenantDnsRecord, deleteTenantDnsRecord } from './cloudflareDns.js';
 import { createLogger } from '../utils/logger.js';
 import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
+import { paginateKnownTotal } from '../utils/pagination.js';
 
 const logger = createLogger('tenant-provisioning');
 
@@ -867,20 +868,184 @@ export function quarantineStaleProvisioningRecords(maxAgeMs: number = 30 * 60 * 
   return staleRows.length;
 }
 
+export const TENANT_LIST_DEFAULT_PAGE_SIZE = 25;
+export const TENANT_LIST_MAX_PAGE_SIZE = 100;
+
+export type TenantListSort =
+  | 'created_at'
+  | 'updated_at'
+  | 'slug'
+  | 'name'
+  | 'admin_email'
+  | 'status'
+  | 'plan';
+export type TenantListOrder = 'asc' | 'desc';
+
+export interface ListTenantsFilters {
+  status?: string;
+  plan?: string;
+  search?: string;
+}
+
+export interface ListTenantsPageOptions extends ListTenantsFilters {
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+  order?: string;
+}
+
+export interface TenantsPagination {
+  requestedPage: number;
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  outOfBounds: boolean;
+  sort: TenantListSort;
+  order: TenantListOrder;
+  search: string;
+}
+
+const TENANT_LIST_SORT_COLUMNS: Record<TenantListSort, string> = {
+  created_at: 'created_at',
+  updated_at: 'updated_at',
+  slug: 'slug',
+  name: 'name',
+  admin_email: 'admin_email',
+  status: 'status',
+  plan: 'plan',
+};
+
+function normalizeTenantListPageSize(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value)
+    ? Math.floor(value)
+    : TENANT_LIST_DEFAULT_PAGE_SIZE;
+  return Math.min(TENANT_LIST_MAX_PAGE_SIZE, Math.max(1, n));
+}
+
+function normalizeTenantListSort(value: unknown): TenantListSort {
+  return typeof value === 'string' && value in TENANT_LIST_SORT_COLUMNS
+    ? value as TenantListSort
+    : 'created_at';
+}
+
+function normalizeTenantListOrder(value: unknown): TenantListOrder {
+  return typeof value === 'string' && value.toLowerCase() === 'asc' ? 'asc' : 'desc';
+}
+
+function escapeTenantSearchLike(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+function buildTenantWhere(filters?: ListTenantsFilters): { where: string; params: unknown[]; search: string } {
+  const params: unknown[] = [];
+  const clauses: string[] = [];
+
+  if (filters?.status) {
+    clauses.push('status = ?');
+    params.push(filters.status);
+  } else {
+    clauses.push("status NOT IN ('deleted', 'pending_deletion')");
+  }
+
+  if (filters?.plan) {
+    clauses.push('plan = ?');
+    params.push(filters.plan);
+  }
+
+  const search = filters?.search?.trim() ?? '';
+  if (search) {
+    const pattern = `%${escapeTenantSearchLike(search)}%`;
+    clauses.push("(slug LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR admin_email LIKE ? ESCAPE '\\')");
+    params.push(pattern, pattern, pattern);
+  }
+
+  return {
+    where: clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '',
+    params,
+    search,
+  };
+}
+
 /**
  * List all tenants with optional filtering.
  *
  * Hides 'deleted' AND 'pending_deletion' from the default listing so the
  * super-admin dashboard doesn't surface grace-period shops as active.
  */
-export function listTenants(filters?: { status?: string; plan?: string }): unknown[] {
+export function listTenants(filters?: ListTenantsFilters): unknown[] {
   const masterDb = getMasterDb();
   if (!masterDb) return [];
 
-  let where = "WHERE status NOT IN ('deleted', 'pending_deletion')";
-  const params: unknown[] = [];
-  if (filters?.status) { where = 'WHERE status = ?'; params.push(filters.status); }
-  if (filters?.plan) { where += ' AND plan = ?'; params.push(filters.plan); }
+  const { where, params } = buildTenantWhere(filters);
 
   return masterDb.prepare(`SELECT * FROM tenants ${where} ORDER BY created_at DESC`).all(...params) as unknown[];
+}
+
+/**
+ * Server-side tenant list pagination for super-admin SaaS-scale views.
+ *
+ * Keeps db-size enrichment out of this helper so callers can stat only the
+ * returned page instead of touching every tenant DB on every request.
+ */
+export function listTenantsPaginated(options?: ListTenantsPageOptions): {
+  tenants: unknown[];
+  pagination: TenantsPagination;
+} {
+  const { where, params, search } = buildTenantWhere(options);
+  const pageSize = normalizeTenantListPageSize(options?.pageSize);
+  const sort = normalizeTenantListSort(options?.sort);
+  const order = normalizeTenantListOrder(options?.order);
+  const masterDb = getMasterDb();
+  if (!masterDb) {
+    const pagination = paginateKnownTotal({
+      page: options?.page,
+      pageSize,
+      total: 0,
+      minimumTotalPages: 1,
+    });
+    return {
+      tenants: [],
+      pagination: {
+        requestedPage: pagination.requestedPage,
+        page: pagination.page,
+        pageSize,
+        total: 0,
+        totalPages: pagination.totalPages,
+        outOfBounds: pagination.outOfBounds,
+        sort,
+        order,
+        search,
+      },
+    };
+  }
+
+  const countRow = masterDb.prepare(`SELECT COUNT(*) as c FROM tenants ${where}`).get(...params) as { c?: number };
+  const total = Number(countRow?.c ?? 0);
+  const pagination = paginateKnownTotal({
+    page: options?.page,
+    pageSize,
+    total,
+    minimumTotalPages: 1,
+  });
+  const orderSql = order.toUpperCase();
+  const tieBreaker = order === 'asc' ? 'ASC' : 'DESC';
+  const tenants = masterDb.prepare(
+    `SELECT * FROM tenants ${where} ORDER BY ${TENANT_LIST_SORT_COLUMNS[sort]} ${orderSql}, id ${tieBreaker} LIMIT ? OFFSET ?`
+  ).all(...params, pageSize, pagination.offset) as unknown[];
+
+  return {
+    tenants,
+    pagination: {
+      requestedPage: pagination.requestedPage,
+      page: pagination.page,
+      pageSize,
+      total,
+      totalPages: pagination.totalPages,
+      outOfBounds: pagination.outOfBounds,
+      sort,
+      order,
+      search,
+    },
+  };
 }

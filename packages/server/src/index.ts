@@ -60,6 +60,9 @@ import { consumeWindowRate } from './utils/rateLimiter.js';
 import { redactPhone } from './utils/phone.js';
 import { trackInterval, backgroundIntervals } from './utils/trackInterval.js';
 import * as longTaskRegistry from './utils/longTaskRegistry.js';
+import { processNotificationDigests, shouldSendEmailImmediately } from './services/notificationDigest.js';
+import { processDueSmsFollowupReminders } from './services/smsFollowupReminders.js';
+import { runMembershipBillingOnce } from './services/membershipBilling.js';
 
 // Structured logger for this module — used by critical error handlers, cron error sinks,
 // and shutdown diagnostics. Do NOT replace console.log wholesale — legacy call sites
@@ -69,7 +72,7 @@ const log = createLogger('server');
 // Routes
 import authRoutes, { startChallengeReaper } from './routes/auth.routes.js';
 import ticketRoutes from './routes/tickets.routes.js';
-import customerRoutes from './routes/customers.routes.js';
+import customerRoutes, { customerExportDownloadRouter } from './routes/customers.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
 // Inventory enrichment (criticalaudit.md §48).
 import stocktakeRoutes from './routes/stocktake.routes.js';
@@ -105,6 +108,7 @@ import trackingRoutes from './routes/tracking.routes.js';
 import expenseRoutes from './routes/expenses.routes.js';
 import loanerRoutes from './routes/loaners.routes.js';
 import customFieldRoutes from './routes/customFields.routes.js';
+import geocodeRoutes from './routes/geocode.routes.js';
 import refundRoutes from './routes/refunds.routes.js';
 import rmaRoutes from './routes/rma.routes.js';
 import giftCardRoutes from './routes/giftCards.routes.js';
@@ -136,7 +140,7 @@ import { variantsRouter as inventoryVariantsRoutes, bundlesRouter as inventoryBu
 import recurringInvoicesRoutes from './routes/recurringInvoices.routes.js';
 import creditNotesRoutes from './routes/creditNotes.routes.js';
 import activityRoutes from './routes/activity.routes.js';
-import notificationPrefsRoutes from './routes/notificationPrefs.routes.js';
+import notificationPrefsRoutes, { userNotificationPrefsRouter } from './routes/notificationPrefs.routes.js';
 import heldCartsRoutes from './routes/heldCarts.routes.js';
 import { startRecurringInvoicesCron } from './services/recurringInvoicesCron.js';
 // Web-parity backend wave 2 (2026-04-23) — labels, shared-device, estimate e-sign,
@@ -168,6 +172,7 @@ import { startSmsProviderSweep } from './providers/sms/index.js';
 import { startStepUpTotpReaper } from './middleware/stepUpTotp.js';
 import adminRoutes, { startAdminTokenReaper } from './routes/admin.routes.js';
 import billingRoutes, { webhookHandler as stripeWebhookHandler } from './routes/billing.routes.js';
+import tenantStripeRoutes, { tenantStripeWebhookHandler } from './routes/tenantStripe.routes.js';
 import { scheduleBackup } from './services/backup.js';
 import { sendDailyReport } from './services/scheduledReports.js';
 // Multi-tenant imports
@@ -245,7 +250,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, slug: string | null): P
   });
 }
 
-async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => Promise<void>): Promise<void> {
+async function forEachDbAsync(
+  callback: (slug: string | null, tenantDb: any) => Promise<void>,
+  timeoutMs = PER_TENANT_CRON_TIMEOUT_MS,
+): Promise<void> {
   if (!config.multiTenant) {
     await callback(null, db);
     return;
@@ -260,12 +268,12 @@ async function forEachDbAsync(callback: (slug: string | null, tenantDb: any) => 
       pooled = await getTenantDb(t.slug);
       // SEC-M31: race the callback against a timeout so one hung tenant
       // can't stall the whole iteration.
-      const outcome = await withTimeout(callback(t.slug, pooled), PER_TENANT_CRON_TIMEOUT_MS, t.slug);
+      const outcome = await withTimeout(callback(t.slug, pooled), timeoutMs, t.slug);
       if (outcome === 'timeout') {
         // eslint-disable-next-line @typescript-eslint/no-use-before-define
         log.error('forEachDbAsync: tenant callback timed out', {
           tenantSlug: t.slug,
-          timeoutMs: PER_TENANT_CRON_TIMEOUT_MS,
+          timeoutMs,
         });
       }
     } catch (err) {
@@ -1210,6 +1218,7 @@ app.use('/api/v1', (req, res, next) => {
 // Stripe webhook — must be mounted BEFORE express.json() because signature verification needs raw body.
 // Kept here (after rate limiter, before json parser) so its own express.raw() limit applies.
 app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json', limit: '1mb' }), stripeWebhookHandler);
+app.post('/api/v1/webhooks/stripe/tenant/:slug', express.raw({ type: 'application/json', limit: '1mb' }), tenantStripeWebhookHandler);
 
 // SEC-H81: Per-route body-parser carve-outs for endpoints that legitimately receive
 // >1mb JSON bodies.  These MUST be registered BEFORE the global express.json() below
@@ -1616,6 +1625,7 @@ app.use('/portal/api/v2', portalEnrichRoutes);
 
 // Protected API routes
 app.use('/api/v1/tickets', authMiddleware, ticketRoutes);
+app.use('/api/v1/customers', customerExportDownloadRouter);
 app.use('/api/v1/customers', authMiddleware, customerRoutes);
 app.use('/api/v1/inventory', authMiddleware, inventoryRoutes);
 // Inventory enrichment (criticalaudit.md §48) — stocktake is its own namespace,
@@ -1663,11 +1673,13 @@ app.use('/api/v1/repair-pricing', authMiddleware, repairPricingRoutes);
 app.use('/api/v1/expenses', authMiddleware, expenseRoutes);
 app.use('/api/v1/loaners', authMiddleware, loanerRoutes);
 app.use('/api/v1/custom-fields', authMiddleware, requireFeature('customFields'), customFieldRoutes);
+app.use('/api/v1/geocode', authMiddleware, geocodeRoutes);
 app.use('/api/v1/refunds', authMiddleware, refundRoutes);
 app.use('/api/v1/rma', authMiddleware, rmaRoutes);
 app.use('/api/v1/gift-cards', authMiddleware, giftCardRoutes);
 app.use('/api/v1/trade-ins', authMiddleware, tradeInRoutes);
 app.use('/api/v1/blockchyp', authMiddleware, blockchypRoutes);
+app.use('/api/v1/stripe', authMiddleware, tenantStripeRoutes);
 app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 // Audit 44 — Technician bench workflow (device templates + bench timer + QC + defects)
 app.use('/api/v1/device-templates', authMiddleware, deviceTemplateRoutes);
@@ -1684,6 +1696,7 @@ app.use('/api/v1/recurring-invoices', authMiddleware, recurringInvoicesRoutes);
 app.use('/api/v1/credit-notes', authMiddleware, creditNotesRoutes);
 app.use('/api/v1/activity', authMiddleware, activityRoutes);
 app.use('/api/v1/notification-preferences', authMiddleware, notificationPrefsRoutes);
+app.use('/api/v1/users/me/notification-prefs', authMiddleware, userNotificationPrefsRouter);
 app.use('/api/v1/pos/held-carts', authMiddleware, heldCartsRoutes);
 // Web-parity backend wave 2 (2026-04-23).
 // Public estimate-sign endpoints sit OUTSIDE authMiddleware — token IS the credential
@@ -2112,25 +2125,6 @@ server.listen(config.port, config.host, async () => {
     });
   }
 
-  // Membership renewal cron — check daily for subscriptions due for renewal
-  // Runs every hour, processes subscriptions where current_period_end <= now
-  //
-  // SEC-BG4: Previously spawned unawaited IIFEs per due subscription, so a tenant with
-  // 100 due memberships fired 100 parallel BlockChyp charges at once — saturating the
-  // card network, crushing rate limits, and making failures impossible to order/debug.
-  // Fix: use a SERIAL async loop with `await` per subscription and wrap each iteration
-  // in its own try/catch so one failure doesn't abort the batch. Cap to MAX_PER_RUN;
-  // any remainder is naturally picked up on the next tick (1 hour later).
-  //
-  // SEC-L46: Previously capped at 10 per tenant per hour, which is too low for
-  // any shop with >10 active monthly memberships — they'd accumulate debt
-  // faster than the cron could drain it. Bumped to 100 and wrapped each
-  // tenant's work unit in a 10-minute timeout so a wedged BlockChyp call
-  // can't stall the whole cron indefinitely. The timeout uses Promise.race
-  // against a rejected timer — there's no AbortSignal plumbed into the
-  // BlockChyp SDK yet, but the timeout at least lets the cron progress to
-  // the next tenant; any orphaned in-flight charges continue in the
-  // background and log-record themselves the same as any other async call.
   // Recurring invoices cron (SCAN-478 / web-parity 2026-04-23).
   // Runs every 15 min; creates invoices from active `invoice_templates` whose
   // next_run_at <= now(). startRecurringInvoicesCron owns its internal setInterval
@@ -2200,130 +2194,36 @@ server.listen(config.port, config.host, async () => {
       error: err instanceof Error ? err.message : String(err),
     });
   }
+  // Membership renewal cron — hourly durable BlockChyp-token renewal scan.
+  // runMembershipBillingOnce owns duplicate-run protection, retry backoff,
+  // period extension, dunning queueing, and run history.
   const MEMBERSHIP_MAX_PER_RUN = 100;
   const MEMBERSHIP_PER_TENANT_TIMEOUT_MS = 10 * 60 * 1000; // 10 min
   trackInterval(async () => {
-    let chargeToken: typeof import('./services/blockchyp.js').chargeToken;
     try {
-      ({ chargeToken } = await import('./services/blockchyp.js'));
-    } catch (err) {
-      log.error('Membership: renewal cron failed to load blockchyp module', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return;
-    }
-
-    try {
-      // forEachDbAsync lets us await the charges within each tenant's work unit.
       await forEachDbAsync(async (slug: string | null, tenantDb: any) => {
-        // SEC-L46: per-tenant timeout wrapper so one hung tenant can't stall
-        // the whole membership cron. The Promise.race pattern resolves with
-        // whatever finishes first; if the timer wins we log and return, and
-        // the actual tenant work keeps running in the background (we can't
-        // abort it without AbortSignal plumbing that doesn't exist yet).
-        let timer: NodeJS.Timeout | null = null;
-        const timeout = new Promise<void>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error(`Membership cron timeout (${MEMBERSHIP_PER_TENANT_TIMEOUT_MS}ms)`)),
-            MEMBERSHIP_PER_TENANT_TIMEOUT_MS,
-          );
+        const result = await runMembershipBillingOnce(tenantDb, {
+          mode: 'cron',
+          source: 'cron',
+          startedBy: null,
+          ip: 'cron',
+          limit: MEMBERSHIP_MAX_PER_RUN,
+          tenantSlug: slug,
         });
-        try {
-          await Promise.race([membershipTenantWork(slug, tenantDb), timeout]);
-        } catch (err) {
-          log.error('Membership: tenant work timed out or failed', {
-            tenantSlug: slug,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
-      });
+        if (result.skipped || !result.run || result.run.total_due === 0) return;
+        log.info('Membership: renewal cron completed', {
+          tenantSlug: slug,
+          runId: result.run.id,
+          totalDue: result.run.total_due,
+          charged: result.run.charged_count,
+          failed: result.run.failed_count,
+          skipped: result.run.skipped_count,
+        });
+      }, MEMBERSHIP_PER_TENANT_TIMEOUT_MS);
     } catch (err) {
       log.error('Membership: renewal cron outer error', {
         error: err instanceof Error ? err.message : String(err),
       });
-    }
-
-    async function membershipTenantWork(slug: string | null, tenantDb: any): Promise<void> {
-      let dueSubscriptions: any[] = [];
-      try {
-        dueSubscriptions = tenantDb.prepare(`
-          SELECT cs.id, cs.customer_id, cs.blockchyp_token, cs.tier_id, cs.failed_charge_count,
-                 mt.monthly_price, mt.name AS tier_name,
-                 c.first_name, c.mobile, c.phone
-          FROM customer_subscriptions cs
-          JOIN membership_tiers mt ON mt.id = cs.tier_id
-          JOIN customers c ON c.id = cs.customer_id
-          WHERE cs.status = 'active'
-            AND cs.blockchyp_token IS NOT NULL
-            AND cs.current_period_end <= datetime('now')
-            AND cs.cancel_at_period_end = 0
-          LIMIT ?
-        `).all(MEMBERSHIP_MAX_PER_RUN) as any[];
-      } catch (err) {
-        log.error('Membership: failed to load due subscriptions', {
-          tenantSlug: slug,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return;
-      }
-
-      for (const sub of dueSubscriptions) {
-        // Per-iteration try/catch: one failure must not abort the remaining batch.
-        try {
-          const result = await chargeToken(
-            tenantDb,
-            sub.blockchyp_token,
-            sub.monthly_price.toFixed(2),
-            `${sub.tier_name} Membership Renewal`
-          );
-          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-
-          if (result.success) {
-            const newEnd = new Date();
-            newEnd.setMonth(newEnd.getMonth() + 1);
-            const newEndStr = newEnd.toISOString().replace('T', ' ').substring(0, 19);
-
-            tenantDb.prepare(`
-              UPDATE customer_subscriptions SET current_period_start = ?, current_period_end = ?,
-              last_charge_at = ?, last_charge_amount = ?, failed_charge_count = 0, updated_at = ?
-              WHERE id = ?
-            `).run(now, newEndStr, now, sub.monthly_price, now, sub.id);
-
-            tenantDb.prepare(
-              'INSERT INTO subscription_payments (subscription_id, amount, status, blockchyp_transaction_id) VALUES (?, ?, ?, ?)'
-            ).run(sub.id, sub.monthly_price, 'success', result.transactionId || null);
-
-            console.log(`[Membership${slug ? `:${slug}` : ''}] Renewed ${sub.first_name}'s ${sub.tier_name} membership`);
-          } else {
-            const fails = (sub.failed_charge_count || 0) + 1;
-            tenantDb.prepare(`
-              UPDATE customer_subscriptions SET failed_charge_count = ?, status = ?, updated_at = ?
-              WHERE id = ?
-            `).run(fails, fails >= 3 ? 'past_due' : 'active', now, sub.id);
-
-            tenantDb.prepare(
-              'INSERT INTO subscription_payments (subscription_id, amount, status, error_message) VALUES (?, ?, ?, ?)'
-            ).run(sub.id, sub.monthly_price, 'failed', result.error || 'Payment declined');
-
-            log.warn('Membership renewal declined', {
-              tenantSlug: slug,
-              subscriptionId: sub.id,
-              customer: sub.first_name,
-              tier: sub.tier_name,
-              error: result.error,
-            });
-          }
-        } catch (err) {
-          log.error('Membership: renewal error for subscription', {
-            tenantSlug: slug,
-            subscriptionId: sub.id,
-            error: err instanceof Error ? err.message : String(err),
-          });
-          // Continue with next subscription — do NOT rethrow.
-        }
-      }
     }
   }, 3600_000); // Every hour
 
@@ -3058,51 +2958,69 @@ server.listen(config.port, config.host, async () => {
         }
       }
 
-      // Phase 2: Copy to each tenant at THEIR OWN 3 AM, guarded with a per-tenant key.
+      // Phase 2: Copy to each tenant at THEIR OWN configured refresh hour
+      // (default 3 AM), guarded with a per-tenant key.
       // SEC-TZ2: Each tenant's store_timezone is honored, so a Berlin shop's sync runs at
-      // Berlin 3 AM, not Denver 3 AM. Since trackInterval fires hourly, each tenant will
-      // be evaluated 24 times/day and will only copy once its local hour hits 3.
+      // Berlin local time, not Denver local time. Since trackInterval fires hourly, each
+      // tenant will be evaluated 24 times/day and will only copy once its local hour hits
+      // store_config.catalog_refresh_hour.
       const { copyTemplateCatalogToTenant } = await import('./services/catalogSync.js');
       await forEachDbAsync(async (_slug, tenantDb) => {
         try {
           const tzRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as { value?: string } | undefined;
           const tenantTz = tzRow?.value || CATALOG_SCRAPE_TZ;
+          const refreshHourRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'catalog_refresh_hour'").get() as { value?: string } | undefined;
+          const parsedRefreshHour = Number(refreshHourRow?.value ?? 3);
+          const catalogRefreshHour = Number.isInteger(parsedRefreshHour)
+            ? Math.max(0, Math.min(23, parsedRefreshHour))
+            : 3;
           const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tenantTz }));
-          if (localHour !== 3) return;
+          if (localHour !== catalogRefreshHour) return;
           if (!shouldRunDaily(`catalog-copy:${_slug || 'default'}`, tenantTz)) return;
 
           const autoSync = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'catalog_auto_sync'").get() as any;
-          if (autoSync?.value === '1') {
-            const result = copyTemplateCatalogToTenant(tenantDb);
-            if (result.copied > 0) {
-              const { recomputeRepairPriceProfits } = await import('./services/repairPricing/profitRecompute.js');
-              const { runAutoMargin } = await import('./services/repairPricing/autoMargin.js');
-              const { runNightlyRebase } = await import('./services/repairPricing/nightlyRebase.js');
-              const { evaluateMarginAlerts } = await import('./services/repairPricing/marginAlerts.js');
-              // Order matters: profit recompute (sets last_supplier_cost) → tier rebase (may
-              // overwrite labor on tier crossing) → auto-margin (uses settled labor + supplier
-              // cost) → recompute again so margin alerts see auto-margin's new profit_estimate.
-              const recompute = recomputeRepairPriceProfits(tenantDb);
-              const rebase = runNightlyRebase(tenantDb);
-              const autoMargin = runAutoMargin(tenantDb);
-              if (autoMargin.adjusted > 0) {
-                recomputeRepairPriceProfits(tenantDb);
-              }
-              const alerts = evaluateMarginAlerts(tenantDb);
-              console.log(`[CatalogSync] Copied ${result.copied} items to tenant ${_slug || 'default'} (tz=${tenantTz})`);
-              if (recompute.updated > 0 || autoMargin.adjusted > 0) {
-                console.log(`[CatalogSync] Refreshed repair pricing for ${_slug || 'default'}: profit=${recompute.updated}, autoMargin=${autoMargin.adjusted}`);
-              }
-              if (rebase.rebased > 0) {
-                console.log(`[CatalogSync] Tier rebase for ${_slug || 'default'}: ${rebase.rebased} prices rebased, ${rebase.crossing_count} devices crossed tiers`);
-              }
-              if (recompute.spikes.length > 0) {
-                console.log(`[CatalogSync] Supplier spikes for ${_slug || 'default'}: ${recompute.spikes.length} prices paused (>50% cost jump)`);
-              }
-              if (alerts.new_alerts > 0 || alerts.resolved > 0) {
-                console.log(`[CatalogSync] Margin alerts for ${_slug || 'default'}: ${alerts.new_alerts} new, ${alerts.resolved} resolved`);
-              }
+          const autoSyncEnabled = autoSync?.value === '1';
+          const result = autoSyncEnabled ? copyTemplateCatalogToTenant(tenantDb) : { copied: 0 };
+          const { recomputeRepairPriceProfits } = await import('./services/repairPricing/profitRecompute.js');
+          const { runAutoMargin } = await import('./services/repairPricing/autoMargin.js');
+          const { runNightlyRebase } = await import('./services/repairPricing/nightlyRebase.js');
+          const { evaluateMarginAlerts, queueMarginAlertDigest } = await import('./services/repairPricing/marginAlerts.js');
+
+          // Order matters when supplier data is active: profit recompute (sets
+          // last_supplier_cost) → tier rebase → auto-margin → recompute again so
+          // margin alerts see auto-margin's new profit_estimate. Tier rebase and
+          // alert aging still run daily even if catalog auto-sync is off.
+          let recompute: ReturnType<typeof recomputeRepairPriceProfits> | null = null;
+          let autoMargin: ReturnType<typeof runAutoMargin> | null = null;
+          if (autoSyncEnabled) {
+            recompute = recomputeRepairPriceProfits(tenantDb);
+          }
+          const rebase = runNightlyRebase(tenantDb);
+          if (autoSyncEnabled) {
+            autoMargin = runAutoMargin(tenantDb);
+            if (autoMargin.adjusted > 0) {
+              recompute = recomputeRepairPriceProfits(tenantDb);
             }
+          }
+          const alerts = evaluateMarginAlerts(tenantDb);
+          const digest = queueMarginAlertDigest(tenantDb);
+          if (result.copied > 0) {
+              console.log(`[CatalogSync] Copied ${result.copied} items to tenant ${_slug || 'default'} (tz=${tenantTz})`);
+          }
+          if ((recompute?.updated ?? 0) > 0 || (autoMargin?.adjusted ?? 0) > 0) {
+            console.log(`[CatalogSync] Refreshed repair pricing for ${_slug || 'default'}: profit=${recompute?.updated ?? 0}, autoMargin=${autoMargin?.adjusted ?? 0}`);
+          }
+          if (rebase.rebased > 0) {
+            console.log(`[CatalogSync] Tier rebase for ${_slug || 'default'}: ${rebase.rebased} prices rebased, ${rebase.crossing_count} devices crossed tiers`);
+          }
+          if ((recompute?.spikes.length ?? 0) > 0) {
+            console.log(`[CatalogSync] Supplier spikes for ${_slug || 'default'}: ${recompute?.spikes.length ?? 0} prices paused (>50% cost jump)`);
+          }
+          if (alerts.new_alerts > 0 || alerts.resolved > 0) {
+            console.log(`[CatalogSync] Margin alerts for ${_slug || 'default'}: ${alerts.new_alerts} new, ${alerts.resolved} resolved`);
+          }
+          if (digest.queued > 0) {
+            console.log(`[CatalogSync] Queued ${digest.queued} margin alert digest email(s) for ${_slug || 'default'}`);
           }
         } catch (err) {
           log.error('CatalogSync: tenant copy failed', {
@@ -3374,13 +3292,16 @@ server.listen(config.port, config.host, async () => {
   trackInterval(async () => {
     try {
       await forEachDbAsync(async (slug, tenantDb) => {
+        await processNotificationDigests(tenantDb, slug);
+
         const candidates = tenantDb.prepare(`
           SELECT * FROM notification_queue
           WHERE status = 'pending'
             AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
+            AND (type != 'email' OR ? = 1)
           ORDER BY created_at ASC
           LIMIT 10
-        `).all() as any[];
+        `).all(shouldSendEmailImmediately(tenantDb) ? 1 : 0) as any[];
 
         if (candidates.length === 0) return;
 
@@ -3461,6 +3382,21 @@ server.listen(config.port, config.host, async () => {
       console.error('[JobQueue] Cron failed:', err);
     }
   }, 60 * 1000); // Every 60 seconds
+
+  // WEB-UNWIRED-014: SMS follow-up reminders (every 60 seconds).
+  // Promotes due reminders into the normal notifications bell so reminders
+  // work across browsers/devices and survive logout/reload.
+  trackInterval(async () => {
+    try {
+      await forEachDbAsync(async (slug, tenantDb) => {
+        await processDueSmsFollowupReminders(tenantDb, slug);
+      });
+    } catch (err) {
+      log.error('SmsFollowupReminders: cron failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, 60 * 1000);
 
   // ENR-A4: Notification retry queue processor (every 5 minutes)
   // SEC-BG7: Registered via trackInterval so shutdown() can clear it.

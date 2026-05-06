@@ -61,7 +61,7 @@ export function CopyButton({ text, className }: CopyButtonProps) {
       onClick={handleCopy}
       className={
         className ??
-        'inline-flex items-center justify-center rounded p-0.5 text-surface-400 transition-colors hover:text-surface-600 dark:hover:text-surface-300'
+        'btn-icon btn-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300'
       }
       aria-label={copied ? 'Copied to clipboard' : 'Copy to clipboard'}
       title="Copy to clipboard"

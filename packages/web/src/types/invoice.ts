@@ -13,6 +13,8 @@ export interface InvoiceLineItem {
   total: number;
   notes?: string | null;
   inventory_item_id?: number | null;
+  item_name?: string | null;
+  sku?: string | null;
 }
 
 export interface InvoicePayment {
@@ -42,6 +44,7 @@ export interface InvoiceDetail {
   order_id: string;
   customer_id: number;
   ticket_id?: number | null;
+  location_id?: number | null;
   status: string;
   subtotal: number;
   discount: number;
@@ -61,6 +64,18 @@ export interface InvoiceDetail {
   customer_email?: string | null;
   customer_phone?: string | null;
   created_by_name?: string | null;
+  location?: {
+    id?: number | null;
+    name?: string | null;
+    address_line?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postcode?: string | null;
+    country?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    timezone?: string | null;
+  } | null;
   // Related collections
   line_items: InvoiceLineItem[];
   payments: InvoicePayment[];

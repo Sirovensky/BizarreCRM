@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, AlertCircle, ExternalLink, Filter, Download, Repeat2 } from 'lucide-react';
-import { getAPI } from '@/api/bridge';
+import { RefreshCw, AlertCircle, ExternalLink, Filter, Download, Repeat2, FileJson } from 'lucide-react';
+import { getAPI, type WebhookFailureEntry } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import { downloadCsv, toCsv } from '@/utils/csv';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 
-interface Row {
-  id: number;
-  endpoint: string;
-  event: string;
-  attempts: number;
-  last_error: string | null;
-  last_status: number | null;
-  created_at: string;
-}
+type Row = WebhookFailureEntry;
+type DetailTab = 'error' | 'payload';
 
 interface Summary {
   total: number;
@@ -30,12 +23,23 @@ function statusColor(status: number | null): string {
   return 'text-emerald-400';
 }
 
+function defaultDetailTab(row: Row): DetailTab {
+  return row.last_error ? 'error' : 'payload';
+}
+
+function formatPayloadBytes(bytes: number | null): string {
+  if (bytes === null) return 'unknown size';
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
 export function WebhookFailuresPanel({ slug }: { slug: string }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [eventFilter, setEventFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [detailTabs, setDetailTabs] = useState<Record<number, DetailTab>>({});
   const [retryingId, setRetryingId] = useState<number | null>(null);
 
   async function handleRetry(id: number, e: React.MouseEvent) {
@@ -170,6 +174,7 @@ export function WebhookFailuresPanel({ slug }: { slug: string }) {
         <div className="space-y-1.5">
           {rows.map((r) => {
             const isOpen = expanded === r.id;
+            const activeTab = detailTabs[r.id] ?? defaultDetailTab(r);
             return (
               <div key={r.id} className="rounded border border-surface-800 bg-surface-900/50">
                 <div
@@ -191,6 +196,13 @@ export function WebhookFailuresPanel({ slug }: { slug: string }) {
                       <ExternalLink className="w-3 h-3 flex-shrink-0" />
                       <span className="font-mono truncate">{r.endpoint}</span>
                     </div>
+                    <div className="flex items-center gap-1 text-[11px] text-surface-500 mt-0.5">
+                      <FileJson className="w-3 h-3 flex-shrink-0" />
+                      <span className="font-mono">{formatPayloadBytes(r.payload_bytes)}</span>
+                      {r.payload_truncated && (
+                        <span className="text-amber-400/80">preview capped at 4 KB</span>
+                      )}
+                    </div>
                     {r.last_error && (
                       <div className="text-[11px] text-red-400/80 mt-1 line-clamp-1" title={r.last_error}>
                         {r.last_error}
@@ -210,9 +222,42 @@ export function WebhookFailuresPanel({ slug }: { slug: string }) {
                     </button>
                   </div>
                 </div>
-                {isOpen && r.last_error && (
-                  <div className="px-3 pb-3">
-                    <pre className="text-[11px] text-surface-400 bg-surface-950 border border-surface-800 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">{r.last_error}</pre>
+                {isOpen && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <div className="inline-flex items-center rounded border border-surface-800 bg-surface-950 p-0.5" role="tablist" aria-label="Webhook failure detail">
+                      {(['error', 'payload'] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          role="tab"
+                          aria-selected={activeTab === tab}
+                          onClick={() => setDetailTabs((prev) => ({ ...prev, [r.id]: tab }))}
+                          className={`px-2 py-1 text-[11px] rounded capitalize transition-colors ${
+                            activeTab === tab
+                              ? 'bg-surface-800 text-surface-100'
+                              : 'text-surface-500 hover:text-surface-200'
+                          }`}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+                    {activeTab === 'error' ? (
+                      <pre className="text-[11px] text-surface-400 bg-surface-950 border border-surface-800 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">
+                        {r.last_error || 'No error text captured for this failure.'}
+                      </pre>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-[10px] text-surface-500">
+                          <span>Sent payload</span>
+                          <span className="font-mono">{formatPayloadBytes(r.payload_bytes)}</span>
+                          {r.payload_truncated && <span className="text-amber-400/80">truncated</span>}
+                        </div>
+                        <pre className="text-[11px] text-surface-400 bg-surface-950 border border-surface-800 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all">
+                          {r.sent_payload || 'No payload preview stored for this failure.'}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

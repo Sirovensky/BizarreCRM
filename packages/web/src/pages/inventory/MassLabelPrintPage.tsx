@@ -126,12 +126,12 @@ export function MassLabelPrintPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search inventory..."
-          className="flex-1 rounded-md border border-surface-300 px-3 py-2 text-sm"
+          className="flex-1 rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
         />
         <select
           value={format}
           onChange={(e) => setFormat(e.target.value as 'zpl' | 'pdf')}
-          className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+          className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
         >
           <option value="zpl">ZPL (Zebra printers)</option>
           <option value="pdf">PDF (any printer)</option>
@@ -142,20 +142,20 @@ export function MassLabelPrintPage() {
           type="number"
           min="1"
           max="10"
-          className="w-20 rounded-md border border-surface-300 px-3 py-2 text-sm"
+          className="w-20 rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
           placeholder="Copies"
         />
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="text-sm text-surface-600">
+        <div className="text-sm text-surface-600 dark:text-surface-300">
           Selected: <span className="font-semibold">{selected.size}</span> ·
           {' '}Will print: <span className="font-semibold">{selected.size * copies}</span> labels
         </div>
         <div className="flex gap-2">
           <button
             onClick={toggleAll}
-            className="rounded-md border border-surface-300 px-3 py-1 text-sm"
+            className="rounded-md border border-surface-300 px-3 py-1 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
           >
             {selected.size === items.length ? 'Clear' : 'Select all on page'}
           </button>
@@ -174,9 +174,9 @@ export function MassLabelPrintPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto">
+      <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto dark:border-surface-700 dark:bg-surface-800">
         <table className="w-full text-sm">
-          <thead className="bg-surface-50 border-b border-surface-200">
+          <thead className="bg-surface-50 border-b border-surface-200 dark:border-surface-700 dark:bg-surface-900">
             <tr>
               <th className="w-10 px-3 py-2">
                 <input
@@ -196,8 +196,8 @@ export function MassLabelPrintPage() {
                 key={i.id}
                 onClick={() => toggle(i.id)}
                 className={cn(
-                  'border-b border-surface-100 last:border-0 cursor-pointer hover:bg-surface-50',
-                  selected.has(i.id) && 'bg-primary-50',
+                  'border-b border-surface-100 last:border-0 cursor-pointer hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-700/60',
+                  selected.has(i.id) && 'bg-primary-50 dark:bg-primary-900/30',
                 )}
               >
                 <td className="px-3 py-2">
@@ -218,7 +218,7 @@ export function MassLabelPrintPage() {
       </div>
 
       {preview && (
-        <div className="rounded-lg border border-surface-200 bg-white p-4">
+        <div className="rounded-lg border border-surface-200 bg-white p-4 dark:border-surface-700 dark:bg-surface-800">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold">
               {format === 'pdf' ? 'PDF Labels Ready' : `Preview (${format.toUpperCase()})`}
@@ -231,11 +231,11 @@ export function MassLabelPrintPage() {
             </button>
           </div>
           {format === 'pdf' && printData?.pdf_base64 ? (
-            <p className="text-sm text-surface-600 bg-surface-50 p-3 rounded">
+            <p className="text-sm text-surface-600 bg-surface-50 p-3 rounded dark:bg-surface-900 dark:text-surface-300">
               {preview} — click Download PDF to save.
             </p>
           ) : (
-            <pre className="text-xs bg-surface-50 p-3 rounded max-h-96 overflow-auto font-mono whitespace-pre-wrap">
+            <pre className="text-xs bg-surface-50 p-3 rounded max-h-96 overflow-auto font-mono whitespace-pre-wrap dark:bg-surface-900 dark:text-surface-200">
               {preview.slice(0, 2000)}
               {preview.length > 2000 && '\n... (truncated)'}
             </pre>

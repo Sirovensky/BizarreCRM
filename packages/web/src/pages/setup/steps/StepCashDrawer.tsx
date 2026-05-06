@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { Printer, Wifi, XCircle, PlayCircle, ArrowLeft, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { settingsApi } from '@/api/endpoints';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -16,9 +17,9 @@ import type { StepProps } from '../wizardTypes';
  *      field for the LAN IP (or `host:port`).
  *   3. `none` — manual cash handling, no drawer integration.
  *
- * The "Pop drawer (test)" button is a placeholder — actual hardware kick is
- * wired up later by the cash-drawer service. For now it just emits a toast
- * so the owner sees the button works.
+ * The "Pop drawer (test)" button calls the backend drawer test endpoint.
+ * For printer-kicked drawers it reuses the receipt-printer connection
+ * collected in the previous setup step.
  *
  * Persists `cash_drawer_driver` and (when applicable) `cash_drawer_address`
  * via `onUpdate`. The shell's bulk PUT /settings/config flushes them at the
@@ -67,6 +68,8 @@ export function StepCashDrawer({
   const initialDriver = (pending.cash_drawer_driver as CashDrawerDriver | undefined) ?? 'kicked_by_printer';
   const [driver, setDriver] = useState<CashDrawerDriver>(initialDriver);
   const [address, setAddress] = useState<string>(pending.cash_drawer_address ?? '');
+  const [testing, setTesting] = useState(false);
+  const canContinue = driver !== 'network' || address.trim().length > 0;
 
   // Push every change back to the wizard's pending bundle so the shell's
   // bulk PUT /settings/config picks it up at the end. We clear the address
@@ -81,10 +84,27 @@ export function StepCashDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driver, address]);
 
-  const handleTestPop = () => {
-    toast('Test pop will be wired with the cash-drawer service later.', {
-      icon: 'i',
-    });
+  const handleTestPop = async () => {
+    setTesting(true);
+    try {
+      await settingsApi.testCashDrawer({
+        driver,
+        address,
+        printer: {
+          connection: pending.receipt_printer_connection,
+          address: pending.receipt_printer_address,
+        },
+      });
+      toast.success('Cash drawer kick command sent');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Could not send the drawer kick command.';
+      toast.error(message);
+    } finally {
+      setTesting(false);
+    }
   };
 
   const handleSkip = () => {
@@ -187,13 +207,14 @@ export function StepCashDrawer({
             <button
               type="button"
               onClick={handleTestPop}
-              className="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+              disabled={testing}
+              className="btn btn-md inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
             >
-              <PlayCircle className="h-4 w-4" />
-              Pop drawer (test)
+              <PlayCircle className={`h-4 w-4 ${testing ? 'animate-pulse' : ''}`} />
+              {testing ? 'Sending...' : 'Pop drawer (test)'}
             </button>
             <p className="mt-1 text-[11px] text-surface-500 dark:text-surface-400">
-              Stub for now — wires up to the cash-drawer service in a later step.
+              Sends the ESC/POS drawer pulse through the selected route.
             </p>
           </div>
         ) : null}
@@ -202,7 +223,7 @@ export function StepCashDrawer({
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -211,14 +232,15 @@ export function StepCashDrawer({
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+              className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
             >
-              Skip
+              Skip this step
             </button>
             <button
-              type="button"
-              onClick={onNext}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            type="button"
+            onClick={onNext}
+              disabled={!canContinue}
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

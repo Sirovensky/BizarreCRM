@@ -30,8 +30,14 @@ jobs:
       - name: Type-check server
         run: cd packages/server && npx tsc --noEmit
 
+      - name: Lint management
+        run: npm run lint --workspace=packages/management
+
       - name: Type-check management
         run: cd packages/management && npx tsc --noEmit
+
+      - name: Test management
+        run: npm test --workspace=packages/management
 
   audit:
     name: Dependency Audit

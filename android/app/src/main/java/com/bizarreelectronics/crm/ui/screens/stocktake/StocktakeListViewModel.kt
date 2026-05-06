@@ -3,9 +3,9 @@ package com.bizarreelectronics.crm.ui.screens.stocktake
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.StocktakeApi
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeCreateRequest
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeListItem
+import com.bizarreelectronics.crm.data.repository.StocktakeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,7 +42,7 @@ data class StocktakeListUiState(
  */
 @HiltViewModel
 class StocktakeListViewModel @Inject constructor(
-    private val stocktakeApi: StocktakeApi,
+    private val stocktakeRepository: StocktakeRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(StocktakeListUiState())
@@ -58,9 +58,9 @@ class StocktakeListViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                val resp = stocktakeApi.listSessions()
+                val sessions = stocktakeRepository.listSessions()
                 _state.value = _state.value.copy(
-                    sessions = resp.data ?: emptyList(),
+                    sessions = sessions,
                     isLoading = false,
                     serverUnsupported = false,
                 )
@@ -112,27 +112,19 @@ class StocktakeListViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isCreating = true, error = null)
             try {
-                val resp = stocktakeApi.createSession(
+                val newItem = stocktakeRepository.createSession(
                     StocktakeCreateRequest(
                         name = trimmedName,
                         location = location?.trim()?.takeIf { it.isNotBlank() },
                         notes = notes?.trim()?.takeIf { it.isNotBlank() },
                     )
                 )
-                val newItem = resp.data
-                if (newItem != null) {
-                    _state.value = _state.value.copy(
-                        sessions = listOf(newItem) + _state.value.sessions,
-                        isCreating = false,
-                        showNewDialog = false,
-                        createdSessionId = newItem.id,
-                    )
-                } else {
-                    _state.value = _state.value.copy(
-                        isCreating = false,
-                        error = "Server returned no data",
-                    )
-                }
+                _state.value = _state.value.copy(
+                    sessions = listOf(newItem) + _state.value.sessions,
+                    isCreating = false,
+                    showNewDialog = false,
+                    createdSessionId = newItem.id,
+                )
             } catch (e: HttpException) {
                 val msg = when (e.code()) {
                     400 -> "Session name is required"
@@ -157,7 +149,7 @@ class StocktakeListViewModel @Inject constructor(
     fun cancelSession(id: Int) {
         viewModelScope.launch {
             try {
-                stocktakeApi.cancelById(id)
+                stocktakeRepository.cancelSession(id)
                 // Reload to reflect server status change
                 loadSessions()
             } catch (e: Exception) {

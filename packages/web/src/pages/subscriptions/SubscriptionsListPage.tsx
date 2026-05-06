@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, PlayCircle, RefreshCw } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, PlayCircle, RefreshCw, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
@@ -32,6 +32,39 @@ interface Subscription {
   phone: string | null;
   blockchyp_token?: string | null;
 }
+
+interface BillingRun {
+  id: number;
+  status: 'running' | 'completed' | 'failed';
+  started_at: string;
+  finished_at: string | null;
+  total_due: number;
+  charged_count: number;
+  failed_count: number;
+  skipped_count: number;
+  error_message?: string | null;
+}
+
+interface BillingRunResponse {
+  run: BillingRun;
+  results: Array<{
+    status: 'success' | 'failed' | 'skipped';
+    subscription_id: number;
+    customer_id: number;
+    amount: number;
+    message: string;
+  }>;
+}
+
+type StatusFilter = 'all' | Exclude<SubStatus, 'cancelled'>;
+
+const PAGE_SIZE = 10;
+const STATUS_FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'active', label: 'Active' },
+  { value: 'past_due', label: 'Past due' },
+  { value: 'paused', label: 'Paused' },
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,21 +109,28 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   return user?.role === 'admin' ? <>{children}</> : null;
 }
 
-// ─── Run Billing Button (admin-only, dev/admin convenience) ──────────────────
+// ─── Run Billing Button (admin-only) ─────────────────────────────────────────
 
-function RunBillingButton() {
+function RunBillingButton({
+  pending,
+  onRun,
+}: {
+  pending: boolean;
+  onRun: () => void;
+}) {
   const user = useAuthStore((s) => s.user);
   // Only show to admins — mirrors how other admin-only controls are gated
   if (user?.role !== 'admin') return null;
 
   return (
     <button
-      onClick={() => toast('Billing cron runs nightly automatically. Use server console to trigger manually.', { icon: 'ℹ️' })}
+      onClick={onRun}
+      disabled={pending}
       className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
-      title="Run billing cron (admin only)"
+      title="Run due membership billing now"
     >
-      <PlayCircle className="h-4 w-4" />
-      Run billing now
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+      {pending ? 'Running billing...' : 'Run billing now'}
     </button>
   );
 }
@@ -100,6 +140,10 @@ function RunBillingButton() {
 export function SubscriptionsListPage() {
   const queryClient = useQueryClient();
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [lastBillingRun, setLastBillingRun] = useState<BillingRunResponse | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [page, setPage] = useState(1);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['subscriptions'],
@@ -110,6 +154,23 @@ export function SubscriptionsListPage() {
     staleTime: 30_000,
   });
 
+  const globalBillingMut = useMutation({
+    mutationFn: async () => {
+      const res = await membershipApi.runBillingNow();
+      return (res.data as { data: BillingRunResponse }).data;
+    },
+    onSuccess: (result) => {
+      setLastBillingRun(result);
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      toast.success(
+        `Billing run complete: ${result.run.charged_count} charged, ${result.run.failed_count} failed`,
+      );
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Billing run failed');
+    },
+  });
+
   const cancelMutation = useMutation({
     mutationFn: (id: number) => membershipApi.cancel(id, { immediate: true }),
     onSuccess: () => {
@@ -117,8 +178,8 @@ export function SubscriptionsListPage() {
       toast.success('Subscription cancelled');
       setCancellingId(null);
     },
-    onError: () => {
-      toast.error('Failed to cancel subscription');
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err));
       setCancellingId(null);
     },
   });
@@ -126,7 +187,7 @@ export function SubscriptionsListPage() {
   // WEB-W3-020: per-row run-billing mutation
   const [billingId, setBillingId] = useState<number | null>(null);
   const runBillingMut = useMutation({
-    mutationFn: (id: number) => membershipApi.runBilling(id),
+    mutationFn: (id: number) => membershipApi.runBilling(id, { force: true }),
     onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       toast.success('Billing completed successfully');
@@ -141,12 +202,25 @@ export function SubscriptionsListPage() {
   async function handleRunBilling(sub: Subscription): Promise<void> {
     try {
       const ok = await confirm(
-        `Charge ${sub.first_name} ${sub.last_name}'s card for ${formatCurrency(sub.monthly_price ?? 0)}/mo now?`,
+        `Charge ${sub.first_name} ${sub.last_name}'s card for ${formatCurrency(sub.monthly_price ?? 0)} now? This will bill immediately even if the current period has not ended.`,
         { title: 'Run billing?', confirmLabel: 'Charge card' },
       );
       if (!ok) return;
       setBillingId(sub.id);
       runBillingMut.mutate(sub.id);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  }
+
+  async function handleGlobalRunBilling(): Promise<void> {
+    try {
+      const ok = await confirm(
+        'Run billing now for all due active and past-due memberships? Cards will be charged immediately, and a run result will be recorded.',
+        { title: 'Run membership billing?', confirmLabel: 'Run billing' },
+      );
+      if (!ok) return;
+      globalBillingMut.mutate();
     } catch (err) {
       toast.error(formatApiError(err));
     }
@@ -169,6 +243,49 @@ export function SubscriptionsListPage() {
 
   const subs = data ?? [];
   const activeCount = subs.filter((s) => s.status === 'active').length;
+  const filteredSubs = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return subs.filter((sub) => {
+      if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
+      if (!term) return true;
+
+      return [
+        sub.first_name,
+        sub.last_name,
+        sub.email,
+        sub.phone,
+        sub.tier_name,
+        statusLabel(sub.status),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(term);
+    });
+  }, [search, statusFilter, subs]);
+  const filtersActive = search.trim().length > 0 || statusFilter !== 'all';
+  const totalPages = Math.max(1, Math.ceil(filteredSubs.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedSubs = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredSubs.slice(start, start + PAGE_SIZE);
+  }, [currentPage, filteredSubs]);
+  const pageStart = filteredSubs.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const pageEnd = Math.min(filteredSubs.length, currentPage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  function clearFilters() {
+    setSearch('');
+    setStatusFilter('all');
+    setPage(1);
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -185,8 +302,60 @@ export function SubscriptionsListPage() {
             )}
           </div>
         </div>
-        <RunBillingButton />
+        <RunBillingButton pending={globalBillingMut.isPending} onRun={handleGlobalRunBilling} />
       </div>
+
+      {lastBillingRun ? (
+        <div className="mb-4 rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200">
+          <div className="font-medium">
+            Last billing run: {lastBillingRun.run.charged_count} charged, {lastBillingRun.run.failed_count} failed, {lastBillingRun.run.skipped_count} skipped.
+          </div>
+          {lastBillingRun.results.length > 0 ? (
+            <div className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+              {lastBillingRun.results.slice(0, 3).map((result) => result.message).join(' · ')}
+              {lastBillingRun.results.length > 3 ? ` · ${lastBillingRun.results.length - 3} more` : ''}
+            </div>
+          ) : (
+            <div className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+              No memberships were due.
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {!isLoading && !isError && (subs.length > 0 || filtersActive) ? (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search customer, email, phone, plan"
+              aria-label="Search memberships"
+              className="w-full rounded-lg border border-surface-200 bg-white py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label htmlFor="subscription-status-filter" className="sr-only">
+              Filter memberships by status
+            </label>
+            <select
+              id="subscription-status-filter"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              className="rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-700 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200"
+            >
+              {STATUS_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : null}
 
       {/* Content */}
       {isLoading ? (
@@ -196,13 +365,26 @@ export function SubscriptionsListPage() {
           <AlertCircle className="h-10 w-10 text-red-400 mb-3" />
           <p className="text-sm text-surface-500">Failed to load subscriptions</p>
         </div>
-      ) : subs.length === 0 ? (
+      ) : filteredSubs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Crown className="h-12 w-12 text-surface-300 dark:text-surface-600 mb-4" />
-          <p className="text-base font-medium text-surface-600 dark:text-surface-400">No active subscriptions</p>
-          <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
-            Enroll customers from the Memberships settings tab.
+          <p className="text-base font-medium text-surface-600 dark:text-surface-400">
+            {filtersActive ? 'No subscriptions match' : 'No active subscriptions'}
           </p>
+          <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
+            {filtersActive
+              ? 'Try a different search or status.'
+              : 'Enroll customers from the Memberships settings tab.'}
+          </p>
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-4 rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+            >
+              Clear filters
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden">
@@ -218,7 +400,7 @@ export function SubscriptionsListPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
-              {subs.map((sub) => (
+              {pagedSubs.map((sub) => (
                 <tr key={sub.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/40">
                   <td className="px-4 py-3">
                     <p className="font-medium text-surface-900 dark:text-surface-100">
@@ -257,7 +439,7 @@ export function SubscriptionsListPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       {/* WEB-W3-020: per-row Bill now button — admin only, active subs with token */}
-                      {sub.status === 'active' && sub.blockchyp_token && (
+                      {(sub.status === 'active' || sub.status === 'past_due') && sub.blockchyp_token && (
                         <AdminOnly>
                           <button
                             onClick={() => handleRunBilling(sub)}
@@ -288,6 +470,34 @@ export function SubscriptionsListPage() {
               ))}
             </tbody>
           </table>
+          <div className="flex flex-col gap-3 border-t border-surface-100 px-4 py-3 text-sm text-surface-500 dark:border-surface-800 dark:text-surface-400 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Showing {pageStart}-{pageEnd} of {filteredSubs.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={currentPage <= 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </button>
+              <span className="min-w-[6.5rem] text-center">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={currentPage >= totalPages}
+                className="inline-flex items-center gap-1 rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

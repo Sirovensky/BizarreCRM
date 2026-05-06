@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail, Receipt } from 'lucide-react';
@@ -6,11 +6,12 @@ import toast from 'react-hot-toast';
 import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { confirm } from '@/stores/confirmStore';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
-import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
+import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
 // FA-L4: mount the "pay over time" (financing) + "split into installments"
 // enrichment components near the record-payment actions so they are the
 // first thing the cashier sees on an unpaid invoice.
@@ -54,19 +55,23 @@ export function InvoiceDetailPage() {
   // normal "record payment" flow. Opens only on demand, once per invoice.
   const [showInstallmentPlan, setShowInstallmentPlan] = useState(false);
 
-  // Esc-to-close for the inline payment + credit-note modals (Fixer-TT a11y).
-  // The other modals on this page either use ConfirmDialog (which already wires
-  // its own Esc) or are tiny prompts; these two are the long-lived dialogs.
+  // Esc-to-close for the inline payment modal (Fixer-TT a11y). The credit-note
+  // dialog handles Escape on its own overlay so the behavior stays scoped there.
   useEffect(() => {
-    if (!showPayment && !showCreditNote) return;
+    if (!showPayment) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
-      if (showCreditNote) setShowCreditNote(false);
-      else if (showPayment) setShowPayment(false);
+      setShowPayment(false);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showPayment, showCreditNote]);
+  }, [showPayment]);
+
+  const handleCreditNoteDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
+    event.stopPropagation();
+    setShowCreditNote(false);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -90,6 +95,7 @@ export function InvoiceDetailPage() {
   // Server: res.json({ success: true, data: <flat invoice> }) — no extra .invoice nesting.
   const invoice: InvoiceDetail | undefined = data?.data?.data;
   const paymentMethods: any[] = pmData?.data?.data?.payment_methods || [];
+  const currencySymbol = formatCurrencySymbol();
 
   const payMutation = useMutation({
     mutationFn: (d: any) => invoiceApi.recordPayment(invoiceId, d),
@@ -222,7 +228,13 @@ export function InvoiceDetailPage() {
   if (!isValidId) return <div className="text-center py-20 text-surface-400">Invalid Invoice ID</div>;
   if (!invoice) return <div className="text-center py-20 text-surface-400">Invoice not found</div>;
 
-  const handlePay = () => {
+  const maxCreditNoteAmount = Math.max(
+    0,
+    Math.min(Number(invoice.amount_paid) || 0, Number(invoice.total) || 0),
+  );
+  const canCreateCreditNote = invoice.status !== 'void' && maxCreditNoteAmount > 0;
+
+  const handlePay = async () => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return toast.error('Enter a valid amount');
     // WEB-FH-021 (Fixer-B4 2026-04-25): warn the cashier before recording an
     // overpayment. The server happily accepts amounts that exceed amount_due
@@ -233,8 +245,13 @@ export function InvoiceDetailPage() {
     const balanceDue = Number(invoice.amount_due) || 0;
     if (enteredAmount > balanceDue + 0.005) {
       const overage = enteredAmount - balanceDue;
-      const proceed = window.confirm(
-        `Amount $${enteredAmount.toFixed(2)} exceeds the balance due of $${balanceDue.toFixed(2)} by $${overage.toFixed(2)}.\n\nRecord this overpayment anyway?`,
+      const proceed = await confirm(
+        `Amount ${formatCurrency(enteredAmount)} exceeds the balance due of ${formatCurrency(balanceDue)} by ${formatCurrency(overage)}. Record this overpayment anyway?`,
+        {
+          title: 'Record overpayment?',
+          confirmLabel: 'Record payment',
+          danger: true,
+        },
       );
       if (!proceed) return;
     }
@@ -288,18 +305,10 @@ export function InvoiceDetailPage() {
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
     if (!amount || amount <= 0) return toast.error('Enter a valid amount');
-    // WEB-FH-009 (Fixer-V 2026-04-25): cap the credit note at the cash that
-    // actually came in, not the invoice headline total. Prior code allowed
-    // $200 credit notes against a $200 invoice that had only collected a
-    // $50 deposit — the shop would refund $150 it never received. The
-    // server's refund route also enforces this, but the client used to
-    // promise the operator "max=$200" and submit invalid amounts that
-    // bounced on a race. Cap on `amount_paid` matches the server contract.
-    const maxRefundable = Number(invoice.amount_paid) || 0;
-    if (amount > maxRefundable) {
+    if (amount > maxCreditNoteAmount) {
       // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): tenant-aware currency.
       return toast.error(
-        `Amount cannot exceed amount paid (${formatCurrency(maxRefundable)})`,
+        `Amount cannot exceed credit-note max (${formatCurrency(maxCreditNoteAmount)})`,
       );
     }
     if (!creditNoteForm.reason) return toast.error('Select a reason');
@@ -342,9 +351,6 @@ export function InvoiceDetailPage() {
           <div className="flex items-center gap-2">
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
               <>
-                <button onClick={() => setShowPayment(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors">
-                  <DollarSign className="h-4 w-4" /> Record Payment
-                </button>
                 {/* FA-L4 — offer the "split into installments" wizard for
                     invoices with an outstanding balance. The wizard caps
                     at 2–24 payments and locks money math to integer cents. */}
@@ -364,16 +370,10 @@ export function InvoiceDetailPage() {
                 />
               </>
             )}
-            <button onClick={() => {
-              if (invoice.ticket_id) {
-                setShowPrintModal(true);
-              } else {
-                window.print();
-              }
-            }} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+            <button onClick={() => setShowPrintModal(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
               <Printer className="h-4 w-4" /> Print
             </button>
-            {invoice.status !== 'void' && Number(invoice.total) > 0 && (
+            {canCreateCreditNote && (
               <button onClick={() => setShowCreditNote(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
                 <CreditCard className="h-4 w-4" /> Credit Note
               </button>
@@ -602,7 +602,7 @@ export function InvoiceDetailPage() {
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
+                  <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">{currencySymbol}</span>
                   <input
                     id="payment-amount"
                     type="number" step="0.01" min="0.01"
@@ -611,7 +611,7 @@ export function InvoiceDetailPage() {
                     placeholder={Number(invoice.amount_due).toFixed(2)}
                     aria-invalid={paymentForm.amount !== '' && parseFloat(paymentForm.amount) <= 0 ? true : undefined}
                     aria-describedby="payment-amount-label"
-                    className="input w-full pl-6"
+                    className="input w-full pl-12"
                     autoFocus
                   />
                 </div>
@@ -684,18 +684,16 @@ export function InvoiceDetailPage() {
             </div>
             <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">Payment recorded successfully. How would you like to send the receipt?</p>
             <div className="flex flex-col gap-2">
-              {invoice?.ticket_id && (
-                <button
-                  onClick={() => {
-                    setShowReceiptPrompt(false);
-                    setShowPrintModal(true);
-                  }}
-                  className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
-                >
-                  <Printer className="h-4 w-4" />
-                  Print Receipt
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setShowReceiptPrompt(false);
+                  setShowPrintModal(true);
+                }}
+                className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+              >
+                <Printer className="h-4 w-4" />
+                Print Receipt
+              </button>
               {invoice?.customer_phone && (
                 <button
                   onClick={() => {
@@ -735,12 +733,13 @@ export function InvoiceDetailPage() {
       )}
 
       {/* Credit Note Modal */}
-      {showCreditNote && (
+      {showCreditNote && canCreateCreditNote && (
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="credit-note-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onKeyDown={handleCreditNoteDialogKeyDown}
           onClick={(e) => { if (e.target === e.currentTarget) setShowCreditNote(false); }}
         >
           <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -757,24 +756,21 @@ export function InvoiceDetailPage() {
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Credit Amount</label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
+                  <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">{currencySymbol}</span>
                   <input
                     id="credit-amount"
-                    type="number" step="0.01" min="0.01" max={Number(invoice.amount_paid) || 0}
+                    type="number" step="0.01" min="0.01" max={maxCreditNoteAmount}
                     value={creditNoteForm.amount}
                     onChange={(e) => setCreditNoteForm({ ...creditNoteForm, amount: e.target.value })}
-                    placeholder={(Number(invoice.amount_paid) || 0).toFixed(2)}
-                    aria-invalid={creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > (Number(invoice.amount_paid) || 0)) ? true : undefined}
+                    placeholder={maxCreditNoteAmount.toFixed(2)}
+                    aria-invalid={creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > maxCreditNoteAmount) ? true : undefined}
                     aria-describedby="credit-amount-label"
-                    className="input w-full pl-6"
+                    className="input w-full pl-12"
                     autoFocus
                   />
                 </div>
-                {/* WEB-FH-009 (Fixer-V): cap the visible max at amount actually
-                    paid, not the invoice total — a $200 invoice with only a
-                    $50 deposit can't yield more than $50 of credit. */}
                 <p className="text-xs text-surface-400 mt-1">
-                  Max: ${(Number(invoice.amount_paid) || 0).toFixed(2)} (amount paid)
+                  Max credit: {formatCurrency(maxCreditNoteAmount)}
                 </p>
               </div>
               {/* FA-L8 — structured reason picker replaces the free-text
@@ -836,7 +832,7 @@ export function InvoiceDetailPage() {
         </div>
       )}
 
-      {showPrintModal && invoice.ticket_id && (
+      {showPrintModal && (
         <PrintPreviewModal
           ticketId={invoice.ticket_id}
           invoiceId={invoiceId}

@@ -4,8 +4,10 @@ import crypto from 'crypto';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
+import dns from 'dns/promises';
 import { execFile as execFileCallback, spawnSync } from 'child_process';
 import { promisify } from 'util';
+import { ENCRYPTED_CONFIG_KEYS, decryptConfigValue } from '../utils/configEncryption.js';
 
 const execFile = promisify(execFileCallback);
 
@@ -381,16 +383,262 @@ type AnyRow = Record<string, any>;
 
 function getConfig(db: Database.Database, key: string, fallback = ''): string {
   const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as AnyRow | undefined;
-  return row?.value ?? fallback;
+  if (!row) return fallback;
+  return ENCRYPTED_CONFIG_KEYS.has(key) ? decryptConfigValue(row.value) : row.value;
 }
 
 function setConfig(db: Database.Database, key: string, value: string): void {
   db.prepare('INSERT INTO store_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?').run(key, value, value);
 }
 
+type BackupDestination =
+  | { type: 'local'; path: string }
+  | { type: 'tailscale'; path: string; configuredPath: string; host: string }
+  | {
+      type: 's3';
+      endpoint: string;
+      bucket: string;
+      accessKey: string;
+      secretKey: string;
+      stagingPath: string;
+    };
+
+function normalizeBackupDestinationType(raw: string): BackupDestination['type'] {
+  if (raw === 's3' || raw === 'tailscale') return raw;
+  return 'local';
+}
+
+function hasConfiguredBackupDestination(db: Database.Database): boolean {
+  const type = normalizeBackupDestinationType(getConfig(db, 'backup_destination_type', 'local').trim());
+  if (type === 's3') {
+    return Boolean(
+      getConfig(db, 'backup_s3_endpoint', '').trim() &&
+      getConfig(db, 'backup_s3_bucket', '').trim() &&
+      getConfig(db, 'backup_s3_access_key', '').trim() &&
+      getConfig(db, 'backup_s3_secret_key', '').trim()
+    );
+  }
+  if (type === 'tailscale') {
+    return Boolean(getConfig(db, 'backup_destination_path', '').trim());
+  }
+  return Boolean(getConfig(db, 'backup_destination_path', '').trim() || getConfig(db, 'backup_path', '').trim());
+}
+
+function getLocalBackupPathForRead(db: Database.Database): string {
+  const type = normalizeBackupDestinationType(getConfig(db, 'backup_destination_type', 'local').trim());
+  if (type === 'local') return getConfig(db, 'backup_destination_path', '').trim() || getConfig(db, 'backup_path', '').trim();
+  if (type === 'tailscale') {
+    const configuredPath = getConfig(db, 'backup_destination_path', '').trim();
+    const resolved = resolveTailscaleBackupPathSync(configuredPath);
+    return resolved?.path ?? '';
+  }
+  // S3 object listing/restore is deliberately not guessed by the local file
+  // admin helpers.
+  return '';
+}
+
+function parseTailscaleBackupUrl(configuredPath: string): { host: string; parts: string[] } {
+  let url: URL;
+  try {
+    url = new URL(configuredPath);
+  } catch {
+    throw new Error('Tailscale backup destination must be a tailscale:// URL');
+  }
+  if (url.protocol !== 'tailscale:') {
+    throw new Error('Tailscale backup destination must start with tailscale://');
+  }
+  if (!url.hostname) {
+    throw new Error('Tailscale backup destination requires a node name');
+  }
+  const parts = decodeURIComponent(url.pathname).split('/').filter(Boolean);
+  if (parts.length === 0) {
+    throw new Error('Tailscale backup destination requires a share/path');
+  }
+  return { host: url.hostname, parts };
+}
+
+function tailscaleMountPath(host: string, parts: string[]): { path: string; host: string; mountRoot?: string } {
+  if (process.platform === 'win32') {
+    return { host, path: `\\\\${host}\\${parts.join('\\')}` };
+  }
+  const mountRoot = process.platform === 'darwin'
+    ? path.join('/Volumes', parts[0])
+    : path.join('/mnt', parts[0]);
+  return { host, mountRoot, path: path.join(mountRoot, ...parts.slice(1)) };
+}
+
+function resolveTailscaleBackupPathSync(configuredPath: string): { path: string; host: string } | null {
+  try {
+    const parsed = parseTailscaleBackupUrl(configuredPath);
+    const resolved = tailscaleMountPath(parsed.host, parsed.parts);
+    if (resolved.mountRoot && !fs.existsSync(resolved.mountRoot)) return null;
+    return { path: resolved.path, host: resolved.host };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTailscaleBackupPath(configuredPath: string): Promise<{ path: string; host: string }> {
+  const parsed = parseTailscaleBackupUrl(configuredPath);
+
+  await dns.lookup(parsed.host);
+
+  const resolved = tailscaleMountPath(parsed.host, parsed.parts);
+  if (resolved.mountRoot && !fs.existsSync(resolved.mountRoot)) {
+    throw new Error(
+      `Tailscale node ${parsed.host} resolved, but ${resolved.mountRoot} is not mounted. ` +
+      'Mount the share first, or use a local backup destination pointed at the mount path.',
+    );
+  }
+  return { host: resolved.host, path: resolved.path };
+}
+
+async function resolveBackupDestination(db: Database.Database): Promise<BackupDestination> {
+  const type = normalizeBackupDestinationType(getConfig(db, 'backup_destination_type', 'local').trim());
+  if (type === 's3') {
+    const endpoint = getConfig(db, 'backup_s3_endpoint', '').trim();
+    const bucket = getConfig(db, 'backup_s3_bucket', '').trim();
+    const accessKey = getConfig(db, 'backup_s3_access_key', '').trim();
+    const secretKey = getConfig(db, 'backup_s3_secret_key', '').trim();
+    if (!endpoint || !bucket || !accessKey || !secretKey) {
+      throw new Error('S3 backup destination is incomplete');
+    }
+    // Validate early so operators get a config error before a backup is built.
+    new URL(endpoint);
+    const stagingPath = path.join(path.dirname(config.dbPath), 'backup-staging', crypto.randomBytes(8).toString('hex'));
+    return { type, endpoint, bucket, accessKey, secretKey, stagingPath };
+  }
+
+  if (type === 'tailscale') {
+    const configuredPath = getConfig(db, 'backup_destination_path', '').trim();
+    if (!configuredPath) throw new Error('Tailscale backup destination path is not configured');
+    const resolved = await resolveTailscaleBackupPath(configuredPath);
+    return { type, configuredPath, ...resolved };
+  }
+
+  const backupPath = (
+    getConfig(db, 'backup_destination_path', '').trim() ||
+    getConfig(db, 'backup_path', '').trim()
+  );
+  return { type: 'local', path: backupPath };
+}
+
+function sha256Hex(value: string | Buffer | Uint8Array): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function hmac(key: Buffer | string, value: string): Buffer {
+  return crypto.createHmac('sha256', key).update(value).digest();
+}
+
+function inferS3Region(endpoint: URL): string {
+  const host = endpoint.hostname;
+  const aws = host.match(/^s3[.-]([a-z0-9-]+)\.amazonaws\.com$/);
+  if (aws?.[1]) return aws[1];
+  const generic = host.match(/s3[.-]([a-z0-9-]+)/);
+  return generic?.[1] || 'us-east-1';
+}
+
+async function signedS3Put(input: {
+  destination: Extract<BackupDestination, { type: 's3' }>;
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<globalThis.Response> {
+  const endpoint = new URL(input.destination.endpoint);
+  const region = inferS3Region(endpoint);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = sha256Hex(input.body);
+  const canonicalUri = `${endpoint.pathname.replace(/\/$/, '')}/${encodeURIComponent(input.destination.bucket)}/${input.key.split('/').map(encodeURIComponent).join('/')}`.replace(/\/{2,}/g, '/');
+  const url = `${endpoint.origin}${canonicalUri}`;
+  const canonicalHeaders =
+    `host:${endpoint.host}\n` +
+    `x-amz-content-sha256:${payloadHash}\n` +
+    `x-amz-date:${amzDate}\n`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonicalRequest = [
+    'PUT',
+    canonicalUri,
+    '',
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n');
+  const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    sha256Hex(canonicalRequest),
+  ].join('\n');
+  const kDate = hmac(`AWS4${input.destination.secretKey}`, dateStamp);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, 's3');
+  const kSigning = hmac(kService, 'aws4_request');
+  const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+  const authorization =
+    `AWS4-HMAC-SHA256 Credential=${input.destination.accessKey}/${credentialScope}, ` +
+    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  return fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: authorization,
+      'content-type': input.contentType,
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': amzDate,
+    },
+    body: new Uint8Array(input.body),
+  });
+}
+
+async function walkFiles(root: string): Promise<string[]> {
+  const entries = await fsp.readdir(root, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...await walkFiles(full));
+    else if (entry.isFile()) files.push(full);
+  }
+  return files;
+}
+
+async function uploadBackupToS3(
+  destination: Extract<BackupDestination, { type: 's3' }>,
+  stagingPath: string,
+  finalDbPath: string,
+  uploadsDest: string,
+): Promise<string> {
+  const backupPrefix = path.basename(finalDbPath).replace(/\.db(?:\.enc)?$/, '');
+  const files = [finalDbPath, sidecarPathFor(finalDbPath)];
+  if (fs.existsSync(uploadsDest)) {
+    files.push(...await walkFiles(uploadsDest));
+  }
+
+  for (const file of files) {
+    const relative = path.relative(stagingPath, file).split(path.sep).join('/');
+    const key = `${backupPrefix}/${relative}`;
+    const body = await fsp.readFile(file);
+    const contentType = file.endsWith('.json') ? 'application/json' : 'application/octet-stream';
+    const response = await signedS3Put({ destination, key, body, contentType });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`S3 backup upload failed for ${key} (${response.status}): ${text.slice(0, 200)}`);
+    }
+  }
+
+  return `s3://${destination.bucket}/${backupPrefix}/${path.basename(finalDbPath)}`;
+}
+
 export function getBackupSettings(db: Database.Database) {
+  const destinationType = normalizeBackupDestinationType(getConfig(db, 'backup_destination_type', 'local').trim());
+  const destinationPath = getConfig(db, 'backup_destination_path', '');
   return {
-    path: getConfig(db, 'backup_path', ''),
+    path: destinationType === 'local' ? destinationPath || getConfig(db, 'backup_path', '') : getConfig(db, 'backup_path', ''),
+    destinationType,
+    destinationPath,
     schedule: getConfig(db, 'backup_schedule', '0 3 * * *'), // default 3 AM daily
     retention: parseInt(getConfig(db, 'backup_retention', '30'), 10),
     encrypt: getConfig(db, 'backup_encrypt', '') === 'true',
@@ -553,9 +801,12 @@ export async function runBackup(
   if (!acquireTenantBackupLock(lockKey)) {
     return { success: false, message: `Backup already running for ${lockKey}` };
   }
+  let stagingDirToCleanup: string | null = null;
 
   try {
-    const backupDir = getConfig(db, 'backup_path', '');
+    const destination = await resolveBackupDestination(db);
+    const backupDir = destination.type === 's3' ? destination.stagingPath : destination.path;
+    if (destination.type === 's3') stagingDirToCleanup = destination.stagingPath;
     if (!backupDir) return { success: false, message: 'No backup path configured' };
 
     if (!fs.existsSync(backupDir)) {
@@ -638,7 +889,7 @@ export async function runBackup(
     // test installs still honour the opt-in flag so engineers can
     // eyeball a dev DB without re-running the decrypt.
     const rawEncryptOpt = opts?.encrypt ?? getConfig(db, 'backup_encrypt', '') === 'true';
-    const shouldEncrypt = config.nodeEnv === 'production' ? true : rawEncryptOpt;
+    const shouldEncrypt = config.nodeEnv === 'production' || destination.type !== 'local' ? true : rawEncryptOpt;
     let finalDbPath = dbDest;
     if (shouldEncrypt) {
       finalDbPath = await encryptFile(dbDest);
@@ -670,21 +921,38 @@ export async function runBackup(
       });
     }
 
-    // Prune old backups
+    let reportedFile = finalDbPath;
+    if (destination.type === 's3') {
+      reportedFile = await uploadBackupToS3(destination, backupDir, finalDbPath, uploadsDest);
+      logger.info('Backup uploaded to S3 destination', {
+        module: 'backup',
+        bucket: destination.bucket,
+        file: reportedFile,
+      });
+    }
+
+    // Prune old local backups. Remote S3 pruning is intentionally not
+    // attempted with the minimal path-style signer; operators should enforce
+    // bucket lifecycle rules for retention.
     const retention = parseInt(getConfig(db, 'backup_retention', '30'), 10);
-    pruneBackups(backupDir, retention);
+    if (destination.type !== 's3') pruneBackups(backupDir, retention);
 
     setConfig(db, 'backup_last_run', new Date().toISOString());
     setConfig(db, 'backup_last_status', 'success');
 
-    logger.info('Backup completed', { module: 'backup', file: finalDbPath });
-    return { success: true, message: 'Backup completed', file: finalDbPath };
+    logger.info('Backup completed', { module: 'backup', destination: destination.type, file: reportedFile });
+    return { success: true, message: 'Backup completed', file: reportedFile };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     try { setConfig(db, 'backup_last_status', `failed: ${msg}`); } catch {}
     logger.error('Backup failed', { module: 'backup', error: msg });
     return { success: false, message: msg };
   } finally {
+    try {
+      if (stagingDirToCleanup && fs.existsSync(stagingDirToCleanup)) {
+        fs.rmSync(stagingDirToCleanup, { recursive: true, force: true });
+      }
+    } catch {}
     releaseTenantBackupLock(lockKey);
   }
 }
@@ -719,7 +987,7 @@ function pruneBackups(dir: string, keep: number) {
 }
 
 export function listBackups(db: Database.Database): { name: string; size: number; date: string }[] {
-  const backupDir = getConfig(db, 'backup_path', '');
+  const backupDir = getLocalBackupPathForRead(db);
   if (!backupDir || !fs.existsSync(backupDir)) return [];
 
   return fs.readdirSync(backupDir)
@@ -732,7 +1000,7 @@ export function listBackups(db: Database.Database): { name: string; size: number
 }
 
 export function deleteBackup(db: Database.Database, filename: string): boolean {
-  const backupDir = getConfig(db, 'backup_path', '');
+  const backupDir = getLocalBackupPathForRead(db);
   if (!backupDir || !isBackupFile(filename)) return false;
 
   const dbFile = path.join(backupDir, filename);
@@ -762,7 +1030,7 @@ export function deleteBackup(db: Database.Database, filename: string): boolean {
  * inside the configured backup directory. Returns null on any violation.
  */
 export function resolveBackupPath(db: Database.Database, filename: string): string | null {
-  const backupDir = getConfig(db, 'backup_path', '');
+  const backupDir = getLocalBackupPathForRead(db);
   if (!backupDir || !isBackupFile(filename)) return null;
   if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) return null;
 
@@ -985,8 +1253,7 @@ export function scheduleBackup(dbOrFactory: Database.Database | (() => Database.
   if (cronTask) { cronTask.stop(); cronTask = null; }
   const initialDb = getDb();
   const schedule = getConfig(initialDb, 'backup_schedule', '0 3 * * *');
-  const backupPath = getConfig(initialDb, 'backup_path', '');
-  if (!backupPath || !cron.validate(schedule)) return;
+  if (!hasConfiguredBackupDestination(initialDb) || !cron.validate(schedule)) return;
 
   // BG5 fix: wrap the async call so errors are caught and logged instead of swallowed.
   cronTask = cron.schedule(schedule, () => {
@@ -1010,7 +1277,11 @@ export function scheduleBackup(dbOrFactory: Database.Database | (() => Database.
       });
     });
   });
-  logger.info('Backup scheduled', { module: 'backup', schedule, backupPath });
+  logger.info('Backup scheduled', {
+    module: 'backup',
+    schedule,
+    destination: normalizeBackupDestinationType(getConfig(initialDb, 'backup_destination_type', 'local').trim()),
+  });
 }
 
 // ─── Multi-tenant per-tenant backup ────────────────────────────────────────

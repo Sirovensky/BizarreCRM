@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Plus, Search, Loader2, AlertCircle, X } from 'lucide-react';
+import { Gift, Plus, Search, Loader2, AlertCircle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatDate } from '@/utils/format';
@@ -42,6 +42,9 @@ interface IssueFormState {
   expires_at: string;
 }
 
+const PAGE_SIZE = 50;
+const SEARCH_DEBOUNCE_MS = 300;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // Server currently returns balances as float-dollars on this endpoint, but the
@@ -75,6 +78,15 @@ function statusBadge(status: GiftCard['status']): string {
   }
 }
 
+function localDateInputValue(date = new Date()): string {
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
+function isPastDateInputValue(value: string): boolean {
+  return Boolean(value) && value < localDateInputValue();
+}
+
 // ─── Issue Modal ─────────────────────────────────────────────────────────────
 
 interface IssueModalProps {
@@ -90,6 +102,8 @@ function IssueModal({ onClose }: IssueModalProps) {
     expires_at: '',
   });
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
+  const todayDateInputValue = localDateInputValue();
+  const expiresInPast = isPastDateInputValue(form.expires_at);
 
   function update(field: keyof IssueFormState, value: string): void {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -100,6 +114,9 @@ function IssueModal({ onClose }: IssueModalProps) {
       const amount = parseFloat(form.amount);
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error('Enter a valid amount');
+      }
+      if (isPastDateInputValue(form.expires_at)) {
+        throw new Error('Expiry date cannot be in the past');
       }
       return giftCardApi.issue({
         amount,
@@ -219,10 +236,18 @@ function IssueModal({ onClose }: IssueModalProps) {
             </label>
             <input
               type="date"
+              min={todayDateInputValue}
               value={form.expires_at}
               onChange={(e) => update('expires_at', e.target.value)}
+              aria-invalid={expiresInPast ? 'true' : undefined}
+              aria-describedby={expiresInPast ? 'gift-card-expiry-error' : undefined}
               className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
             />
+            {expiresInPast && (
+              <p id="gift-card-expiry-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                Expiry date cannot be in the past.
+              </p>
+            )}
           </div>
         </div>
 
@@ -235,7 +260,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           </button>
           <button
             onClick={() => issueMutation.mutate()}
-            disabled={issueMutation.isPending || !form.amount}
+            disabled={issueMutation.isPending || !form.amount || expiresInPast}
             className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
           >
             {issueMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -264,15 +289,28 @@ function TableSkeleton() {
 export function GiftCardsListPage() {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [showIssueModal, setShowIssueModal] = useState(false);
+  const searchKeyword = debouncedKeyword.trim();
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedKeyword(keyword);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [keyword]);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['gift-cards', { keyword, status: statusFilter }],
+    queryKey: ['gift-cards', { keyword: searchKeyword, status: statusFilter, page, per_page: PAGE_SIZE }],
     queryFn: async () => {
       const res = await giftCardApi.list({
-        keyword: keyword || undefined,
+        keyword: searchKeyword || undefined,
         status: statusFilter || undefined,
+        page,
+        per_page: PAGE_SIZE,
       });
       return (res.data as { data: GiftCardListData }).data;
     },
@@ -281,6 +319,24 @@ export function GiftCardsListPage() {
 
   const cards = data?.cards ?? [];
   const summary = data?.summary;
+  const pagination = data?.pagination;
+  const totalPages = Math.max(1, pagination?.total_pages ?? 1);
+  const hasActiveFilters = Boolean(keyword.trim() || statusFilter);
+  const firstResult = pagination && pagination.total > 0
+    ? (pagination.page - 1) * pagination.per_page + 1
+    : 0;
+  const lastResult = pagination && pagination.total > 0
+    ? Math.min(pagination.page * pagination.per_page, pagination.total)
+    : 0;
+
+  function updateKeyword(value: string): void {
+    setKeyword(value);
+  }
+
+  function updateStatusFilter(value: string): void {
+    setStatusFilter(value);
+    setPage(1);
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -313,14 +369,14 @@ export function GiftCardsListPage() {
           <input
             type="text"
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={(e) => updateKeyword(e.target.value)}
             placeholder="Search code or recipient..."
             className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
           />
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => updateStatusFilter(e.target.value)}
           className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
         >
           <option value="">All statuses</option>
@@ -341,14 +397,18 @@ export function GiftCardsListPage() {
       ) : cards.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <Gift className="h-12 w-12 text-surface-300 dark:text-surface-600 mb-4" />
-          <p className="text-base font-medium text-surface-600 dark:text-surface-400">No gift cards yet &mdash; issue one to get started</p>
-          <button
-            onClick={() => setShowIssueModal(true)}
-            className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
-          >
-            <Plus className="h-4 w-4" />
-            Issue gift card
-          </button>
+          <p className="text-base font-medium text-surface-600 dark:text-surface-400">
+            {hasActiveFilters ? 'No gift cards match these filters' : 'No gift cards yet - issue one to get started'}
+          </p>
+          {!hasActiveFilters && (
+            <button
+              onClick={() => setShowIssueModal(true)}
+              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Issue gift card
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden">
@@ -402,6 +462,42 @@ export function GiftCardsListPage() {
               ))}
             </tbody>
           </table>
+          {pagination && (
+            <div className="flex flex-col gap-3 border-t border-surface-200 px-4 py-3 dark:border-surface-800 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-surface-500 dark:text-surface-400">
+                {pagination.total === 0
+                  ? 'No results'
+                  : `Showing ${firstResult}-${lastResult} of ${pagination.total}`}
+              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-surface-500 dark:text-surface-400">
+                  Page {pagination.total === 0 ? 0 : pagination.page} of {pagination.total === 0 ? 0 : totalPages}
+                </p>
+                {pagination.total_pages > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      aria-label="Previous page"
+                      onClick={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+                      disabled={pagination.page <= 1}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </button>
+                    <button
+                      aria-label="Next page"
+                      onClick={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
+                      disabled={pagination.page >= totalPages}
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-700"
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

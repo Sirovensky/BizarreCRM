@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { Printer, Usb, Wifi, Bluetooth, XCircle, Play } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { settingsApi } from '@/api/endpoints';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -17,8 +18,8 @@ import type { StepProps } from '../wizardTypes';
  *   3. Address (text input, hidden when driver === 'none') — single field
  *      whose label and placeholder change based on connection type.
  *
- * "Print test receipt" button is visible only when driver !== 'none'. For
- * now it just emits a toast — actual ESC/POS service hookup lands later.
+ * "Print test receipt" button is visible only when driver !== 'none' and
+ * calls the backend printer test endpoint with the unsaved values on-screen.
  *
  * Persists `receipt_printer_driver`, `receipt_printer_connection`, and
  * `receipt_printer_address` via `onUpdate`. The shell flushes everything
@@ -129,6 +130,7 @@ export function StepReceiptPrinter({
   const [driver, setDriver] = useState<ReceiptPrinterDriver>(initialDriver);
   const [connection, setConnection] = useState<ReceiptPrinterConnection>(initialConnection);
   const [address, setAddress] = useState<string>(pending.receipt_printer_address ?? '');
+  const [testing, setTesting] = useState(false);
 
   // Push every change back into the wizard's pending bundle. When the driver
   // is 'none' we explicitly clear connection + address so we don't persist
@@ -151,10 +153,24 @@ export function StepReceiptPrinter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [driver, connection, address]);
 
-  const handleTestPrint = () => {
-    toast('Test print will be wired with ESC/POS service once driver lands.', {
-      icon: 'i',
-    });
+  const handleTestPrint = async () => {
+    if (!address.trim()) {
+      toast.error('Enter the printer address first.');
+      return;
+    }
+    setTesting(true);
+    try {
+      await settingsApi.testReceiptPrinter({ driver, connection, address });
+      toast.success('Test receipt sent');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Could not send the test receipt.';
+      toast.error(message);
+    } finally {
+      setTesting(false);
+    }
   };
 
   const handleSkip = () => {
@@ -167,6 +183,7 @@ export function StepReceiptPrinter({
 
   const showConnectionAndAddress = driver !== 'none';
   const addressCopy = ADDRESS_COPY[connection];
+  const canContinue = driver === 'none' || address.trim().length > 0;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -324,13 +341,14 @@ export function StepReceiptPrinter({
             <button
               type="button"
               onClick={handleTestPrint}
-              className="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+              disabled={testing}
+              className="btn btn-md inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
             >
-              <Play className="h-4 w-4" />
-              Print test receipt
+              <Play className={`h-4 w-4 ${testing ? 'animate-pulse' : ''}`} />
+              {testing ? 'Printing...' : 'Print test receipt'}
             </button>
             <p className="mt-1 text-[11px] text-surface-500 dark:text-surface-400">
-              Stub for now — wires up to the ESC/POS service in a later step.
+              Sends a real test payload through the selected connection.
             </p>
           </div>
         ) : null}
@@ -340,7 +358,7 @@ export function StepReceiptPrinter({
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             Back
           </button>
@@ -348,14 +366,15 @@ export function StepReceiptPrinter({
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+              className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
             >
-              Skip
+              Skip this step
             </button>
             <button
-              type="button"
-              onClick={onNext}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            type="button"
+            onClick={onNext}
+              disabled={!canContinue}
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue
             </button>

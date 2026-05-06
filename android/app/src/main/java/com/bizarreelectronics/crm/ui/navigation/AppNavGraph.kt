@@ -120,6 +120,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.TicketSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.PosSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SmsSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.BusinessInfoScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SuperuserScreen
 import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.ui.screens.setup.SetupWizardScreen
@@ -369,6 +370,7 @@ sealed class Screen(val route: String) {
     // Settings children
     data object SmsTemplates : Screen("settings/sms-templates")
     data object Profile : Screen("settings/profile")
+    data object Superuser : Screen("settings/superuser")
 
     // §2.6 — Security sub-screen (biometric unlock + Change PIN + Change Password + Lock now).
     data object Security : Screen("settings/security")
@@ -2426,6 +2428,7 @@ fun AppNavGraph(
                     onTeamSettings = { navController.navigate(Screen.TeamSettings.route) },
                     // §19.12 — Data settings (import/export/cache/reset).
                     onDataSettings = { navController.navigate(Screen.DataSettings.route) },
+                    onSuperuser = { navController.navigate(Screen.Superuser.route) },
                     // §19.13 — Full diagnostics.
                     onFullDiagnostics = { navController.navigate(Screen.FullDiagnostics.route) },
                     // §19.14 — App info.
@@ -3040,16 +3043,21 @@ fun AppNavGraph(
                 arguments = listOf(navArgument("sessionId") { type = NavType.IntType }),
             ) { backStackEntry ->
                 val scannedBarcode by backStackEntry.savedStateHandle
-                    .getStateFlow<String?>("stocktake_barcode", null)
+                    .getStateFlow<String?>("scanned_barcode", null)
                     .collectAsState()
 
                 com.bizarreelectronics.crm.ui.screens.stocktake.StocktakeSessionDetailScreen(
                     onBack = { navController.popBackStack() },
                     onScanClick = { navController.navigate(Screen.Scanner.route) },
-                    onCommitted = { navController.popBackStack() },
+                    onCommitted = {
+                        navController.navigate(Screen.StocktakeList.route) {
+                            popUpTo(Screen.StocktakeList.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
                     scannedBarcode = scannedBarcode,
                     onBarcodeConsumed = {
-                        backStackEntry.savedStateHandle.remove<String>("stocktake_barcode")
+                        backStackEntry.savedStateHandle.remove<String>("scanned_barcode")
                     },
                 )
             }
@@ -3058,7 +3066,7 @@ fun AppNavGraph(
             composable(Screen.Stocktake.route) { backStackEntry ->
                 // Barcode delivered from BarcodeScanScreen via savedStateHandle.
                 val scannedBarcode by backStackEntry.savedStateHandle
-                    .getStateFlow<String?>("stocktake_barcode", null)
+                    .getStateFlow<String?>("scanned_barcode", null)
                     .collectAsState()
 
                 com.bizarreelectronics.crm.ui.screens.stocktake.StocktakeScreen(
@@ -3070,7 +3078,7 @@ fun AppNavGraph(
                     },
                     scannedBarcode = scannedBarcode,
                     onBarcodeConsumed = {
-                        backStackEntry.savedStateHandle.remove<String>("stocktake_barcode")
+                        backStackEntry.savedStateHandle.remove<String>("scanned_barcode")
                     },
                 )
             }
@@ -3532,6 +3540,16 @@ fun AppNavGraph(
                 )
             }
 
+            // CROSS57 — Android parity audit hub: native advanced routes plus web-only admin links.
+            composable(Screen.Superuser.route) {
+                SuperuserScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigate = { route -> navController.navigate(route) },
+                    serverUrl = authPreferences?.serverUrl,
+                    userRole = authPreferences?.userRole,
+                )
+            }
+
             // ─── §19.13 Full diagnostics ───────────────────────────────────────
             composable(Screen.FullDiagnostics.route) {
                 FullDiagnosticsScreen(
@@ -3948,6 +3966,7 @@ fun MoreScreen(
                 MoreItem(Icons.Default.Inbox,         "Activity",      Screen.Notifications.route),
                 MoreItem(Icons.Default.Notifications, "Notifications", Screen.NotificationSettings.route),
                 MoreItem(Icons.Default.Settings,      "Settings",      Screen.Settings.route),
+                MoreItem(Icons.Default.ManageAccounts, "Superuser",    Screen.Superuser.route),
             ),
         ),
     )

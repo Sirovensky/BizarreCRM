@@ -135,6 +135,22 @@ object SettingsMetadata {
             route = "settings/data",
         ),
         SettingsEntry(
+            id = "superuser",
+            title = "Superuser",
+            description = "Advanced Android routes and web-only admin tools",
+            keywords = listOf(
+                "superuser",
+                "admin",
+                "advanced",
+                "audit",
+                "billing",
+                "automations",
+                "super admin",
+                "web",
+            ),
+            route = "settings/superuser",
+        ),
+        SettingsEntry(
             id = "full-diagnostics",
             title = "Diagnostics",
             description = "Server URL, app version, logs, force sync",

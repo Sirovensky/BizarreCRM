@@ -292,7 +292,7 @@ export function fileUploadValidator(options: FileUploadValidatorOptions = {}) {
     // clean up everything we already wrote to disk (multer has already saved
     // all files by the time this middleware runs).
     for (const f of files) {
-      const declaredMime = f.mimetype;
+      const declaredMime = (f.mimetype || '').trim().toLowerCase();
       const result = validateFileOnDisk(f.path, declaredMime);
       if (!result.valid) {
         logger.warn('Magic byte validation failed', {

@@ -197,7 +197,7 @@ export function SuccessScreen() {
           {orderId && (
             <button
               onClick={handleViewTicket}
-              className="text-xl font-bold text-teal-600 hover:text-teal-700 hover:underline dark:text-teal-400 dark:hover:text-teal-300"
+              className="btn btn-xs !h-auto !px-0 !text-xl !font-bold text-teal-600 hover:text-teal-700 hover:underline dark:text-teal-400 dark:hover:text-teal-300"
             >
               {orderId}
             </button>
@@ -265,28 +265,28 @@ export function SuccessScreen() {
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <button
             onClick={handlePrintLabel}
-            className="flex items-center gap-2 rounded-lg border border-surface-300 px-5 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <Tag className="h-4 w-4" />
             Print Label
           </button>
           <button
             onClick={handlePrintReceipt}
-            className="flex items-center gap-2 rounded-lg border border-surface-300 px-5 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <Printer className="h-4 w-4" />
             Print Receipt
           </button>
           <button
             onClick={handleViewTicket}
-            className="flex items-center gap-2 rounded-lg border border-teal-300 px-5 py-2.5 text-sm font-medium text-teal-700 hover:bg-teal-50 dark:border-teal-500/30 dark:text-teal-400 dark:hover:bg-teal-500/10"
+            className="btn btn-md border border-teal-300 !px-5 text-teal-700 hover:bg-teal-50 dark:border-teal-500/30 dark:text-teal-400 dark:hover:bg-teal-500/10"
           >
             <ExternalLink className="h-4 w-4" />
             View Ticket
           </button>
           <button
             onClick={handleNewAction}
-            className="flex items-center gap-2 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+            className="btn btn-md bg-teal-600 !px-5 !font-semibold text-white hover:bg-teal-700"
           >
             <PlusCircle className="h-4 w-4" />
             New Check-in
@@ -370,7 +370,7 @@ export function SuccessScreen() {
             <button
               onClick={handleSendSms}
               disabled={smsSending}
-              className="flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-green-500/30 dark:text-green-400 dark:hover:bg-green-500/10"
+              className="btn btn-sm border border-green-300 text-green-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-green-500/30 dark:text-green-400 dark:hover:bg-green-500/10"
             >
               <MessageSquare className="h-4 w-4" />
               {smsSending ? 'Sending...' : 'Send Receipt via SMS'}
@@ -380,7 +380,7 @@ export function SuccessScreen() {
             <button
               onClick={handleSendEmail}
               disabled={emailSending}
-              className="flex items-center gap-2 rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-blue-500/30 dark:text-blue-400 dark:hover:bg-blue-500/10"
+              className="btn btn-sm border border-blue-300 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-blue-500/30 dark:text-blue-400 dark:hover:bg-blue-500/10"
             >
               <Mail className="h-4 w-4" />
               {emailSending ? 'Sending...' : 'Email Receipt'}
@@ -412,7 +412,7 @@ export function SuccessScreen() {
         {!cardDeclined && (
           <button
             onClick={handlePrintReceipt}
-            className="flex items-center gap-2 rounded-lg border border-surface-300 px-5 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <Printer className="h-4 w-4" />
             Print Receipt
@@ -421,7 +421,7 @@ export function SuccessScreen() {
         {invoiceId && (
           <button
             onClick={handleViewInvoice}
-            className="flex items-center gap-2 rounded-lg border border-surface-300 px-5 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <FileText className="h-4 w-4" />
             View Invoice
@@ -430,7 +430,7 @@ export function SuccessScreen() {
         {ticketId && (
           <button
             onClick={handleViewTicket}
-            className="flex items-center gap-2 rounded-lg border border-surface-300 px-5 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <ExternalLink className="h-4 w-4" />
             View Ticket
@@ -438,7 +438,7 @@ export function SuccessScreen() {
         )}
         <button
           onClick={handleNewAction}
-          className="flex items-center gap-2 rounded-lg bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-700"
+          className="btn btn-md bg-teal-600 !px-5 !font-semibold text-white hover:bg-teal-700"
         >
           <PlusCircle className="h-4 w-4" />
           New Sale

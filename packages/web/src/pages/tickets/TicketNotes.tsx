@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import {
   FileText, Wrench, MessageSquare, Send, Flag, Loader2, Clock,
 } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import DOMPurify from 'dompurify';
 import { ticketApi, smsApi } from '@/api/endpoints';
@@ -15,6 +15,22 @@ import type { TicketNote, TicketHistory } from '@bizarre-crm/shared';
 // ─── Constants ──────────────────────────────────────────────────────
 
 const ACTIVITY_FILTERS = ['All', 'Notes', 'SMS', 'System'] as const;
+type ActivityFilter = typeof ACTIVITY_FILTERS[number];
+type ActivityApiFilter = 'all' | 'notes' | 'sms' | 'system';
+
+const FILTER_TO_API: Record<ActivityFilter, ActivityApiFilter> = {
+  All: 'all',
+  Notes: 'notes',
+  SMS: 'sms',
+  System: 'system',
+};
+
+interface TimelineEntry {
+  id: string;
+  type: 'note' | 'sms' | 'system';
+  timestamp: string;
+  data: any;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -53,9 +69,50 @@ export function TicketNotes({
   const [noteType, setNoteType] = useState('internal');
   const [noteContent, setNoteContent, clearNoteDraft] = useDraft(`draft_note_ticket_${ticketId}`);
   const [noteFlagged, setNoteFlagged] = useState(false);
-  const [noteTabFilter, setNoteTabFilter] = useState<typeof ACTIVITY_FILTERS[number]>('All');
+  const [noteTabFilter, setNoteTabFilter] = useState<ActivityFilter>('All');
   const [smsMode, setSmsMode] = useState(false);
   const [smsContent, setSmsContent] = useState('');
+
+  const fallbackTimelineEntries = useMemo<TimelineEntry[]>(() => {
+    const entries: TimelineEntry[] = [];
+
+    notes.forEach(n => entries.push({
+      id: `note-${n.id}`,
+      type: 'note',
+      timestamp: n.created_at,
+      data: n,
+    }));
+
+    history.filter(h => h.action !== 'note_added').forEach(h => entries.push({
+      id: `sys-${h.id}`,
+      type: 'system',
+      timestamp: h.created_at,
+      data: h,
+    }));
+
+    smsMessages.forEach(m => entries.push({
+      id: `sms-${m.id}`,
+      type: 'sms',
+      timestamp: m.created_at,
+      data: m,
+    }));
+
+    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return entries;
+  }, [notes, history, smsMessages]);
+
+  const activityQuery = useInfiniteQuery({
+    queryKey: ['ticket-activity', ticketId, FILTER_TO_API[noteTabFilter]],
+    queryFn: ({ pageParam }) =>
+      ticketApi.getActivity(ticketId, {
+        filter: FILTER_TO_API[noteTabFilter],
+        limit: 100,
+        cursor: pageParam || undefined,
+      }),
+    getNextPageParam: (lastPage) => lastPage?.data?.data?.next_cursor || undefined,
+    initialPageParam: undefined as string | undefined,
+    enabled: activeTab === 'notes' || activeTab === 'overview',
+  });
 
   // ─── Mutations ────────────────────────────────────────────────────
   // D4-1: Optimistic note append. We inject a temp note (negative id) into
@@ -115,6 +172,7 @@ export function TicketNotes({
     },
     onSettled: () => {
       invalidateTicket();
+      queryClient.invalidateQueries({ queryKey: ['ticket-activity', ticketId] });
     },
   });
 
@@ -124,42 +182,21 @@ export function TicketNotes({
       toast.success('SMS sent');
       setSmsContent('');
       queryClient.invalidateQueries({ queryKey: ['ticket-sms', customerPhone] });
+      queryClient.invalidateQueries({ queryKey: ['ticket-activity', ticketId] });
     },
     onError: () => toast.error('Failed to send SMS'),
   });
 
-  // ─── Unified timeline merge ─────────────────────────────────────
-  const timelineEntries = useMemo(() => {
-    const entries: { id: string; type: 'note' | 'sms' | 'system'; timestamp: string; data: any }[] = [];
-
-    notes.forEach(n => entries.push({
-      id: `note-${n.id}`,
-      type: 'note',
-      timestamp: n.created_at,
-      data: n,
-    }));
-
-    history.filter(h => h.action !== 'note_added').forEach(h => entries.push({
-      id: `sys-${h.id}`,
-      type: 'system',
-      timestamp: h.created_at,
-      data: h,
-    }));
-
-    smsMessages.forEach(m => entries.push({
-      id: `sms-${m.id}`,
-      type: 'sms',
-      timestamp: m.created_at,
-      data: m,
-    }));
-
-    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    if (noteTabFilter === 'Notes') return entries.filter(e => e.type === 'note');
-    if (noteTabFilter === 'SMS') return entries.filter(e => e.type === 'sms');
-    if (noteTabFilter === 'System') return entries.filter(e => e.type === 'system');
-    return entries;
-  }, [notes, history, smsMessages, noteTabFilter]);
+  const activityPages = activityQuery.data?.pages || [];
+  const serverTimelineEntries: TimelineEntry[] = activityPages.flatMap((page) => page?.data?.data?.entries || []);
+  const activityCounts = activityPages[0]?.data?.data?.counts;
+  const fallbackFilteredEntries = noteTabFilter === 'Notes' ? fallbackTimelineEntries.filter(e => e.type === 'note')
+    : noteTabFilter === 'SMS' ? fallbackTimelineEntries.filter(e => e.type === 'sms')
+    : noteTabFilter === 'System' ? fallbackTimelineEntries.filter(e => e.type === 'system')
+    : fallbackTimelineEntries;
+  const timelineEntries = activityQuery.isError && serverTimelineEntries.length === 0
+    ? fallbackFilteredEntries
+    : serverTimelineEntries;
 
   if (activeTab !== 'notes' && activeTab !== 'overview') return null;
 
@@ -168,10 +205,12 @@ export function TicketNotes({
       {/* Filter chips */}
       <div className="flex gap-1.5 mb-4 overflow-x-auto">
         {ACTIVITY_FILTERS.map((filter) => {
-          const count = filter === 'All' ? notes.length + history.length + smsMessages.length
-            : filter === 'Notes' ? notes.length
-            : filter === 'SMS' ? smsMessages.length
-            : history.length;
+          const count = activityCounts
+            ? activityCounts[FILTER_TO_API[filter]]
+            : filter === 'All' ? fallbackTimelineEntries.length
+            : filter === 'Notes' ? fallbackTimelineEntries.filter(e => e.type === 'note').length
+            : filter === 'SMS' ? fallbackTimelineEntries.filter(e => e.type === 'sms').length
+            : fallbackTimelineEntries.filter(e => e.type === 'system').length;
           return (
             <button key={filter} onClick={() => setNoteTabFilter(filter)}
               className={cn(
@@ -298,95 +337,120 @@ export function TicketNotes({
       </div>
 
       {/* Unified timeline */}
-      {timelineEntries.length === 0 ? (
+      {activityQuery.isLoading && timelineEntries.length === 0 ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-surface-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading activity...
+        </div>
+      ) : timelineEntries.length === 0 ? (
         <p className="py-8 text-center text-sm text-surface-400">No activity yet</p>
       ) : (
-        <div className="space-y-2 max-h-[600px] overflow-y-auto">
-          {timelineEntries.map((entry) => {
-            if (entry.type === 'note') {
-              const note = entry.data;
-              const bgColor = note.type === 'diagnostic'
-                ? 'bg-amber-50/50 dark:bg-amber-900/10 border-l-2 border-l-amber-400'
-                : note.type === 'email'
-                ? 'bg-blue-50/50 dark:bg-blue-900/10 border-l-2 border-l-blue-400'
-                : '';
-              return (
-                <div key={entry.id} className={cn('flex gap-3 rounded-lg p-3 group', bgColor)}>
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                    {initials(note.user?.first_name, note.user?.last_name)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                        {note.user ? `${note.user.first_name} ${note.user.last_name}` : 'System'}
-                      </span>
-                      <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded',
-                        note.type === 'diagnostic' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                        : note.type === 'email' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                        : 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
-                      )}>{note.type}</span>
-                      {note.is_flagged && <Flag className="h-3 w-3 text-amber-500" />}
-                      <span className="text-xs text-surface-400">{formatDateTime(note.created_at)}</span>
+        <div className="space-y-3">
+          {activityQuery.isError && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              Server activity feed unavailable; showing the current ticket payload only.
+            </p>
+          )}
+          <div className="space-y-2 max-h-[600px] overflow-y-auto">
+            {timelineEntries.map((entry) => {
+              if (entry.type === 'note') {
+                const note = entry.data;
+                const bgColor = note.type === 'diagnostic'
+                  ? 'bg-amber-50/50 dark:bg-amber-900/10 border-l-2 border-l-amber-400'
+                  : note.type === 'email'
+                  ? 'bg-blue-50/50 dark:bg-blue-900/10 border-l-2 border-l-blue-400'
+                  : '';
+                return (
+                  <div key={entry.id} className={cn('flex gap-3 rounded-lg p-3 group', bgColor)}>
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                      {initials(note.user?.first_name, note.user?.last_name)}
                     </div>
-                    <p className="mt-1 text-sm text-surface-700 dark:text-surface-300 whitespace-pre-wrap">{note.content}</p>
-                  </div>
-                </div>
-              );
-            }
-
-            if (entry.type === 'sms') {
-              const msg = entry.data;
-              const isOutbound = msg.direction === 'outbound';
-              return (
-                <div key={entry.id} className={cn('flex', isOutbound ? 'justify-end' : 'justify-start')}>
-                  <div className={cn('max-w-[75%] rounded-xl px-3 py-2',
-                    isOutbound
-                      ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
-                      : 'bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700'
-                  )}>
-                    <p className="text-sm text-surface-800 dark:text-surface-200">{msg.message}</p>
-                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-surface-400">
-                      {isOutbound && (
-                        <span className={cn(
-                          msg.status === 'delivered' ? 'text-green-500' : msg.status === 'failed' ? 'text-red-500' : 'text-surface-400'
-                        )}>
-                          {msg.status === 'delivered' ? '\u2713\u2713' : msg.status === 'sent' ? '\u2713' : msg.status === 'failed' ? '\u2717' : '\u23F3'}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                          {note.user ? `${note.user.first_name} ${note.user.last_name}` : 'System'}
                         </span>
-                      )}
-                      <span>{isOutbound ? (msg.sender_name || 'Sent') : (msg.from_number || 'Customer')}</span>
-                      <span>&middot;</span>
-                      <span>{formatDateTime(msg.created_at)}</span>
+                        <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded',
+                          note.type === 'diagnostic' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                          : note.type === 'email' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          : 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
+                        )}>{note.type}</span>
+                        {note.is_flagged && <Flag className="h-3 w-3 text-amber-500" />}
+                        <span className="text-xs text-surface-400">{formatDateTime(note.created_at)}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-surface-700 dark:text-surface-300 whitespace-pre-wrap">{note.content}</p>
                     </div>
+                  </div>
+                );
+              }
+
+              if (entry.type === 'sms') {
+                const msg = entry.data;
+                const isOutbound = msg.direction === 'outbound';
+                return (
+                  <div key={entry.id} className={cn('flex', isOutbound ? 'justify-end' : 'justify-start')}>
+                    <div className={cn('max-w-[75%] rounded-xl px-3 py-2',
+                      isOutbound
+                        ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                        : 'bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700'
+                    )}>
+                      <p className="text-sm text-surface-800 dark:text-surface-200">{msg.message}</p>
+                      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-surface-400">
+                        {isOutbound && (
+                          <span className={cn(
+                            msg.status === 'delivered' ? 'text-green-500' : msg.status === 'failed' ? 'text-red-500' : 'text-surface-400'
+                          )}>
+                            {msg.status === 'delivered' ? '\u2713\u2713' : msg.status === 'sent' ? '\u2713' : msg.status === 'failed' ? '\u2717' : '\u23F3'}
+                          </span>
+                        )}
+                        <span>{isOutbound ? (msg.sender_name || 'Sent') : (msg.from_number || 'Customer')}</span>
+                        <span>&middot;</span>
+                        <span>{formatDateTime(msg.created_at)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              // System event
+              const event = entry.data;
+              return (
+                <div key={entry.id} className="flex gap-3 py-1.5 px-2 rounded-md bg-surface-50/50 dark:bg-surface-800/30">
+                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 dark:bg-surface-800 text-surface-400">
+                    {event.user ? (
+                      <span className="text-[8px] font-semibold">{initials(event.user.first_name, event.user.last_name)}</span>
+                    ) : (
+                      <Clock className="h-3 w-3" />
+                    )}
+                  </div>
+                  <div className="flex-1 flex items-center gap-2 min-w-0">
+                    <p className="text-xs text-surface-500 dark:text-surface-400"
+                      dangerouslySetInnerHTML={{
+                        __html: DOMPurify.sanitize(event.description || '', {
+                          ALLOWED_TAGS: ['b', 'i', 'em', 'strong'],
+                          ALLOWED_ATTR: [],
+                        })
+                      }}
+                    />
+                    <span className="shrink-0 text-[10px] text-surface-300 dark:text-surface-500">{timeAgo(event.created_at)}</span>
                   </div>
                 </div>
               );
-            }
-
-            // System event
-            const event = entry.data;
-            return (
-              <div key={entry.id} className="flex gap-3 py-1.5 px-2 rounded-md bg-surface-50/50 dark:bg-surface-800/30">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-100 dark:bg-surface-800 text-surface-400">
-                  {event.user ? (
-                    <span className="text-[8px] font-semibold">{initials(event.user.first_name, event.user.last_name)}</span>
-                  ) : (
-                    <Clock className="h-3 w-3" />
-                  )}
-                </div>
-                <div className="flex-1 flex items-center gap-2 min-w-0">
-                  <p className="text-xs text-surface-500 dark:text-surface-400"
-                    dangerouslySetInnerHTML={{
-                      __html: DOMPurify.sanitize(event.description || '', {
-                        ALLOWED_TAGS: ['b', 'i', 'em', 'strong'],
-                        ALLOWED_ATTR: [],
-                      })
-                    }}
-                  />
-                  <span className="shrink-0 text-[10px] text-surface-300 dark:text-surface-500">{timeAgo(event.created_at)}</span>
-                </div>
-              </div>
-            );
-          })}
+            })}
+          </div>
+          {activityQuery.hasNextPage && !activityQuery.isError && (
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={() => activityQuery.fetchNextPage()}
+                disabled={activityQuery.isFetchingNextPage}
+                className="inline-flex items-center gap-2 rounded-md border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 transition-colors hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
+              >
+                {activityQuery.isFetchingNextPage && <Loader2 className="h-3 w-3 animate-spin" />}
+                Load older activity
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

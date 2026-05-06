@@ -7,9 +7,18 @@ import { MANUFACTURERS, DEVICE_MODELS } from './device-models-seed.js';
 export function seedDeviceModels(db: any): void {
   const mfrCount = (db.prepare('SELECT COUNT(*) as n FROM manufacturers').get() as { n: number }).n;
   const modelCount = (db.prepare('SELECT COUNT(*) as n FROM device_models').get() as { n: number }).n;
+  const seededSlugs = DEVICE_MODELS.map((d) => d.slug);
+  const missingReleaseYears = seededSlugs.length === 0
+    ? 0
+    : (db.prepare(`
+        SELECT COUNT(*) as n
+        FROM device_models
+        WHERE release_year IS NULL
+          AND slug IN (${seededSlugs.map(() => '?').join(',')})
+      `).get(...seededSlugs) as { n: number }).n;
 
   // Always run if there are new manufacturers or models to add (INSERT OR IGNORE is idempotent)
-  if (mfrCount >= MANUFACTURERS.length && modelCount >= DEVICE_MODELS.length) return;
+  if (mfrCount >= MANUFACTURERS.length && modelCount >= DEVICE_MODELS.length && missingReleaseYears === 0) return;
 
   console.log(`[seed] Seeding device models (have ${mfrCount} mfrs/${modelCount} models, want ${MANUFACTURERS.length}/${DEVICE_MODELS.length})...`);
 
@@ -20,6 +29,12 @@ export function seedDeviceModels(db: any): void {
     `INSERT OR IGNORE INTO device_models
        (manufacturer_id, name, slug, category, release_year, is_popular)
      VALUES (?, ?, ?, ?, ?, ?)`
+  );
+  const backfillReleaseYear = db.prepare(
+    `UPDATE device_models
+        SET release_year = ?
+      WHERE slug = ?
+        AND release_year IS NULL`
   );
 
   const seed = db.transaction(() => {
@@ -33,7 +48,8 @@ export function seedDeviceModels(db: any): void {
         console.warn(`[seed] Unknown manufacturer slug: ${d.manufacturer_slug}`);
         continue;
       }
-      insertModel.run(mfr.id, d.name, d.slug, d.category, d.release_year ?? null, d.is_popular ? 1 : 0);
+      insertModel.run(mfr.id, d.name, d.slug, d.category, d.release_year, d.is_popular ? 1 : 0);
+      backfillReleaseYear.run(d.release_year, d.slug);
     }
   });
 

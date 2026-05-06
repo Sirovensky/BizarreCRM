@@ -670,6 +670,7 @@ object RetrofitClient {
     @Provides @Singleton fun provideSmsApi(retrofit: Retrofit): SmsApi = retrofit.create(SmsApi::class.java)
     @Provides @Singleton fun provideSearchApi(retrofit: Retrofit): SearchApi = retrofit.create(SearchApi::class.java)
     @Provides @Singleton fun provideNotificationApi(retrofit: Retrofit): NotificationApi = retrofit.create(NotificationApi::class.java)
+    @Provides @Singleton fun provideNotificationPreferencesApi(retrofit: Retrofit): NotificationPreferencesApi = retrofit.create(NotificationPreferencesApi::class.java)
     @Provides @Singleton fun provideReportApi(retrofit: Retrofit): ReportApi = retrofit.create(ReportApi::class.java)
     @Provides @Singleton fun provideSettingsApi(retrofit: Retrofit): SettingsApi = retrofit.create(SettingsApi::class.java)
     @Provides @Singleton fun provideCatalogApi(retrofit: Retrofit): CatalogApi = retrofit.create(CatalogApi::class.java)

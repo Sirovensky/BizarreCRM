@@ -178,7 +178,7 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
                 type="button"
                 onClick={handleCopy}
                 disabled={!serverUrl}
-                className="inline-flex items-center gap-1 rounded-md border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
+                className="btn btn-xs inline-flex items-center gap-1 rounded-md border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
                 aria-label="Copy URL"
               >
                 <Copy className="h-3.5 w-3.5" />
@@ -204,7 +204,7 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
           <button
             type="button"
             onClick={onBack}
-            className="text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+            className="btn btn-lg text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
           >
             ← Back
           </button>
@@ -212,14 +212,14 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
             <button
               type="button"
               onClick={handleSkip}
-              className="text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
+              className="btn btn-lg text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
             >
-              Skip
+              Skip this step
             </button>
             <button
               type="button"
               onClick={onNext}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
             >
               Continue
             </button>

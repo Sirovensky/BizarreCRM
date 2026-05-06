@@ -39,6 +39,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.util.ExifStripper
+import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -370,17 +371,22 @@ class InventoryDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(isUploadingPhoto = true, uploadPhotoError = null)
             try {
                 val imageUrl = withContext(Dispatchers.IO) {
+                    ImageUploadPolicy.validate(context, uri, ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES)?.let {
+                        error(it)
+                    }
+                    val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+                    val ext = ImageUploadPolicy.extensionForMime(mimeType)
                     // 1. Copy URI → temp file
-                    val tmp = File(context.cacheDir, "inv_upload_${itemId}_${System.currentTimeMillis()}.jpg")
+                    val tmp = File(context.cacheDir, "inv_upload_${itemId}_${System.currentTimeMillis()}.$ext")
                     context.contentResolver.openInputStream(uri)?.use { input ->
                         FileOutputStream(tmp).use { output -> input.copyTo(output) }
                     } ?: error("Cannot open image URI")
 
-                    // 2. Strip EXIF (GPS, timestamps, make/model)
-                    ExifStripper.stripFromFile(tmp)
+                    // 2. Strip EXIF (GPS, timestamps, make/model) when the source is JPEG.
+                    if (mimeType == "image/jpeg") ExifStripper.stripFromFile(tmp)
 
                     // 3. Build multipart part
-                    val requestBody = tmp.asRequestBody("image/jpeg".toMediaTypeOrNull())
+                    val requestBody = tmp.asRequestBody(mimeType.toMediaTypeOrNull())
                     val part = MultipartBody.Part.createFormData("image", tmp.name, requestBody)
 
                     // 4. POST to server

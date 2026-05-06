@@ -13,6 +13,11 @@ import { getIFixitUrl } from '@/utils/ifixit';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
+import {
+  GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+  IMAGE_UPLOAD_ACCEPT,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 // FA-M9: DefectReporterButton lets techs report a bad part directly from the
 // ticket. Only rendered for parts that have an inventory_item_id (defect
 // tracking is per-inventory-item; ad-hoc custom parts can't be defect-logged).
@@ -37,6 +42,60 @@ const PART_STATUS_CONFIG: Record<string, { label: string; color: string; bg: str
 
 function initials(first?: string, last?: string) {
   return `${(first || '?').charAt(0)}${(last || '').charAt(0)}`.toUpperCase();
+}
+
+interface InlinePriceEditorProps {
+  value: number;
+  onCommit: (next: number) => void;
+  ariaLabel: string;
+  display: string;
+  className?: string;
+}
+
+function InlinePriceEditor({ value, onCommit, ariaLabel, display, className }: InlinePriceEditorProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+
+  const commit = () => {
+    const parsed = parseFloat(draft);
+    if (!Number.isNaN(parsed) && parsed >= 0 && parsed !== value) {
+      onCommit(parsed);
+    }
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setDraft(String(value)); setEditing(true); }}
+        aria-label={`${ariaLabel}: ${display}. Click to edit.`}
+        className={cn('hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors', className)}
+        title="Click to edit"
+      >
+        {display}
+      </button>
+    );
+  }
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      step="0.01"
+      min="0"
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+      }}
+      aria-label={ariaLabel}
+      className="w-24 shrink-0 rounded-md border border-primary-400 bg-white px-2 py-0.5 text-right text-sm text-surface-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 dark:bg-surface-900 dark:text-surface-200"
+    />
+  );
 }
 
 // ─── Device History Popover ─────────────────────────────────────────
@@ -245,16 +304,47 @@ function DeviceEditForm({
   onCancel: () => void;
   isPending: boolean;
 }) {
+  const formatDateInput = (value?: string | null) => value ? String(value).slice(0, 10) : '';
   const [form, setForm] = useState({
     device_name: device.device_name || '',
+    device_type: device.device_type || '',
     imei: device.imei || '',
     serial: device.serial || '',
     security_code: device.security_code || '',
+    color: device.color || '',
+    network: device.network || '',
     additional_notes: device.additional_notes || '',
+    device_location: device.device_location || '',
+    due_on: formatDateInput(device.due_on),
+    collected_date: formatDateInput(device.collected_date),
     price: device.price ?? 0,
+    line_discount: device.line_discount ?? 0,
+    warranty: !!device.warranty,
+    warranty_days: device.warranty_days ?? 0,
     pre_conditions: Array.isArray(device.pre_conditions) ? device.pre_conditions : [],
     post_conditions: Array.isArray(device.post_conditions) ? device.post_conditions : [],
   });
+
+  const handleSave = () => {
+    onSave({
+      ...form,
+      device_name: form.device_name.trim(),
+      device_type: form.device_type.trim() || null,
+      imei: form.imei.trim() || null,
+      serial: form.serial.trim() || null,
+      security_code: form.security_code.trim() || null,
+      color: form.color.trim() || null,
+      network: form.network.trim() || null,
+      additional_notes: form.additional_notes.trim() || null,
+      device_location: form.device_location.trim() || null,
+      due_on: form.due_on || null,
+      collected_date: form.collected_date || null,
+      price: Number(form.price) || 0,
+      line_discount: Number(form.line_discount) || 0,
+      warranty: form.warranty,
+      warranty_days: form.warranty ? Number(form.warranty_days) || 0 : 0,
+    });
+  };
 
   return (
     <div className="space-y-3 mt-3 pt-3 border-t border-surface-200 dark:border-surface-700">
@@ -268,11 +358,31 @@ function DeviceEditForm({
           />
         </div>
         <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Device Type</label>
+          <input
+            value={form.device_type}
+            onChange={(e) => setForm({ ...form, device_type: e.target.value })}
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
+            placeholder="Phone, tablet, laptop..."
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
           <label className="block text-xs font-medium text-surface-500 mb-1">Price</label>
           <input
             type="number" step="0.01"
             value={form.price}
             onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Line Discount</label>
+          <input
+            type="number" step="0.01" min="0" max={Number(form.price) || 0}
+            value={form.line_discount}
+            onChange={(e) => setForm({ ...form, line_discount: parseFloat(e.target.value) || 0 })}
             className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           />
         </div>
@@ -297,6 +407,67 @@ function DeviceEditForm({
             placeholder="Device passcode" />
         </div>
       </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Color</label>
+          <input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })}
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
+            placeholder="Black, blue..." />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Network</label>
+          <input value={form.network} onChange={(e) => setForm({ ...form, network: e.target.value })}
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
+            placeholder="Unlocked, Verizon..." />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Bench Location</label>
+          <input value={form.device_location} onChange={(e) => setForm({ ...form, device_location: e.target.value })}
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
+            placeholder="Shelf, bin, station..." />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Device Due Date</label>
+          <input type="date" value={form.due_on} onChange={(e) => setForm({ ...form, due_on: e.target.value })}
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Collected Date</label>
+          <input type="date" value={form.collected_date} onChange={(e) => setForm({ ...form, collected_date: e.target.value })}
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-surface-500 mb-1">Warranty Days</label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, warranty: !form.warranty })}
+              className={cn(
+                'h-8 w-12 rounded-full border transition-colors',
+                form.warranty
+                  ? 'border-primary-500 bg-primary-500'
+                  : 'border-surface-300 bg-surface-100 dark:border-surface-700 dark:bg-surface-800',
+              )}
+              aria-pressed={form.warranty}
+              aria-label="Toggle warranty"
+            >
+              <span className={cn(
+                'block h-5 w-5 rounded-full bg-white shadow transition-transform',
+                form.warranty ? 'translate-x-5' : 'translate-x-1',
+              )} />
+            </button>
+            <input
+              type="number" min="0"
+              value={form.warranty_days}
+              onChange={(e) => setForm({ ...form, warranty_days: parseInt(e.target.value, 10) || 0 })}
+              disabled={!form.warranty}
+              className="min-w-0 flex-1 rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
+            />
+          </div>
+        </div>
+      </div>
       <div>
         <label className="block text-xs font-medium text-surface-500 mb-1">Issue / Notes</label>
         <textarea value={form.additional_notes} onChange={(e) => setForm({ ...form, additional_notes: e.target.value })}
@@ -318,7 +489,7 @@ function DeviceEditForm({
         <button onClick={onCancel} className="px-3 py-1.5 text-sm rounded-lg border border-surface-200 text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800">
           Cancel
         </button>
-        <button onClick={() => onSave(form)} disabled={isPending}
+        <button onClick={handleSave} disabled={isPending}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Save
@@ -342,9 +513,6 @@ function PhotoUploadSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoType, setPhotoType] = useState<'pre' | 'post'>('pre');
 
-  // @audit-fixed: enforce 10 MB / image max + image-type guard before upload (was unbounded)
-  const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
-
   const uploadMut = useMutation({
     mutationFn: (files: FileList) => {
       const formData = new FormData();
@@ -361,20 +529,18 @@ function PhotoUploadSection({
     onError: () => toast.error('Failed to upload photos'),
   });
 
-  const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const valid = Array.from(files).filter((f) => {
-      if (!f.type.startsWith('image/')) {
-        toast.error(`"${f.name}" is not an image`);
-        return false;
-      }
-      if (f.size > MAX_PHOTO_BYTES) {
-        toast.error(`"${f.name}" exceeds 10 MB limit`);
-        return false;
-      }
-      return true;
-    });
+    const valid: File[] = [];
+    for (const f of Array.from(files)) {
+      const error = await validateImageFile(f, {
+        maxBytes: GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+        label: `"${f.name}"`,
+      });
+      if (error) toast.error(error);
+      else valid.push(f);
+    }
     if (valid.length === 0) {
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
@@ -391,7 +557,7 @@ function PhotoUploadSection({
         <option value="pre">Pre-repair</option>
         <option value="post">Post-repair</option>
       </select>
-      <input ref={fileInputRef} type="file" accept="image/*" multiple
+      <input ref={fileInputRef} type="file" accept={IMAGE_UPLOAD_ACCEPT} multiple
         onChange={handlePick}
         className="hidden" />
       <button onClick={() => fileInputRef.current?.click()} disabled={uploadMut.isPending}
@@ -815,18 +981,13 @@ export function TicketDevices({
                     <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
                       {device.device_name}
                     </h3>
-                    <button
-                      onClick={() => {
-                        const newPrice = prompt('Service / Labor Price:', String(device.price));
-                        if (newPrice !== null && !isNaN(parseFloat(newPrice))) {
-                          updateDeviceMut.mutate({ deviceId: device.id, data: { price: parseFloat(newPrice) } });
-                        }
-                      }}
+                    <InlinePriceEditor
+                      value={Number(device.price) || 0}
+                      display={formatCurrency(device.price)}
+                      ariaLabel={`Service / labor price for ${device.device_name}`}
+                      onCommit={(price) => updateDeviceMut.mutate({ deviceId: device.id, data: { price } })}
                       className="text-lg font-bold text-surface-900 dark:text-surface-100 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
-                      title="Click to edit price"
-                    >
-                      {formatCurrency(device.price)}
-                    </button>
+                    />
                     <a href={getIFixitUrl(device.device_name, device.ifixit_url)} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 hover:underline"
                       title="iFixit Repair Guide">
@@ -922,18 +1083,13 @@ export function TicketDevices({
                     </p>
                     <p className="text-xs text-surface-500">{device.device_name}</p>
                   </div>
-                  <button
-                    onClick={() => {
-                      const newPrice = prompt('Service / Labor Price:', String(device.price));
-                      if (newPrice !== null && !isNaN(parseFloat(newPrice))) {
-                        updateDeviceMut.mutate({ deviceId: device.id, data: { price: parseFloat(newPrice) } });
-                      }
-                    }}
+                  <InlinePriceEditor
+                    value={Number(device.price) || 0}
+                    display={formatCurrency(device.price)}
+                    ariaLabel={`Service / labor price for ${device.device_name}`}
+                    onCommit={(price) => updateDeviceMut.mutate({ deviceId: device.id, data: { price } })}
                     className="text-sm font-semibold text-surface-900 dark:text-surface-100 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
-                    title="Click to edit price"
-                  >
-                    {formatCurrency(device.price)}
-                  </button>
+                  />
                 </div>
                 {device.additional_notes && !isEditing && (
                   <p className="mt-2 text-xs text-surface-500 dark:text-surface-400 italic px-1">

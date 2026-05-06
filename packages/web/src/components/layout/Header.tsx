@@ -31,6 +31,7 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
+import { Button } from '@/components/shared/Button';
 // WEB-FAE-001 (partial): adopt the previously-orphan `PermissionBoundary`
 // component for the Settings dropdown entry so at least one ad-hoc role
 // literal is funneled through the shared gate. Other ad-hoc sites still
@@ -46,6 +47,7 @@ const notifEntityIcons: Record<string, React.ReactNode> = {
   invoice: <FileText className="h-4 w-4" />,
   inventory: <Package className="h-4 w-4" />,
   sms: <MessageSquare className="h-4 w-4" />,
+  sms_reminder: <Bell className="h-4 w-4" />,
 };
 
 // FD-016: lightweight role-label map. Server stores roles as English keys; the
@@ -79,6 +81,12 @@ interface Notification {
   created_at: string;
 }
 
+function isRequestCanceled(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const maybe = err as { code?: unknown; name?: unknown };
+  return maybe.code === 'ERR_CANCELED' || maybe.name === 'CanceledError' || maybe.name === 'AbortError';
+}
+
 export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode }) {
   const navigate = useNavigate();
   const { setCommandPaletteOpen } = useUiStore();
@@ -102,17 +110,29 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
-  // WEB-FO-009 (Fixer-B14 2026-04-25): track mount state so an in-flight
-  // fetch resolved AFTER unmount (logout race, route change) does not call
-  // setState on a torn-down component. The `api.get` wrappers don't expose
-  // an axios `signal` — until they do, the alive-ref is the surgical guard.
+  const notificationUnreadAbortRef = useRef<AbortController | null>(null);
+  const smsUnreadAbortRef = useRef<AbortController | null>(null);
+  const notificationListAbortRef = useRef<AbortController | null>(null);
+  // WEB-FO-009: keep a mount guard alongside AbortController. Axios will
+  // cancel most in-flight work, while the ref covers races where a promise
+  // resolves right as logout/route teardown happens.
   const isMountedRef = useRef(true);
+  const abortHeaderFetches = useCallback(() => {
+    notificationUnreadAbortRef.current?.abort();
+    notificationUnreadAbortRef.current = null;
+    smsUnreadAbortRef.current?.abort();
+    smsUnreadAbortRef.current = null;
+    notificationListAbortRef.current?.abort();
+    notificationListAbortRef.current = null;
+  }, []);
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      abortHeaderFetches();
     };
-  }, []);
+  }, [abortHeaderFetches]);
 
   // Fetch unread count on mount + on visibility-change resume.
   // @audit-fixed (WEB-FO-006 / Fixer-B12 2026-04-25): dropped the 60s
@@ -124,22 +144,46 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   // Previous fixes: WEB-FAD-002 (30s→60s + visibility gate), Fixer-PPP
   // WEB-FO-019 (park-on-hidden).
   const fetchUnreadCount = useCallback(async () => {
+    notificationUnreadAbortRef.current?.abort();
+    const controller = new AbortController();
+    notificationUnreadAbortRef.current = controller;
     try {
-      const res = await notificationApi.unreadCount();
-      if (!isMountedRef.current) return;
+      const res = await notificationApi.unreadCount(controller.signal);
+      if (
+        !isMountedRef.current ||
+        controller.signal.aborted ||
+        notificationUnreadAbortRef.current !== controller
+      ) return;
       setUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
+      if (isRequestCanceled(err)) return;
       // Silently handled — count stays at previous value
+    } finally {
+      if (notificationUnreadAbortRef.current === controller) {
+        notificationUnreadAbortRef.current = null;
+      }
     }
   }, []);
 
   const fetchSmsUnreadCount = useCallback(async () => {
+    smsUnreadAbortRef.current?.abort();
+    const controller = new AbortController();
+    smsUnreadAbortRef.current = controller;
     try {
-      const res = await smsApi.unreadCount();
-      if (!isMountedRef.current) return;
+      const res = await smsApi.unreadCount(controller.signal);
+      if (
+        !isMountedRef.current ||
+        controller.signal.aborted ||
+        smsUnreadAbortRef.current !== controller
+      ) return;
       setSmsUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
+      if (isRequestCanceled(err)) return;
       // Silently handled — count stays at previous value
+    } finally {
+      if (smsUnreadAbortRef.current === controller) {
+        smsUnreadAbortRef.current = null;
+      }
     }
   }, []);
 
@@ -173,6 +217,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     };
     const handleAuthCleared = () => {
       cancelled = true;
+      abortHeaderFetches();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
@@ -182,35 +227,54 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
     };
-  }, [fetchUnreadCount, fetchSmsUnreadCount]);
+  }, [abortHeaderFetches, fetchUnreadCount, fetchSmsUnreadCount]);
 
   // Fetch notifications when dropdown opens
   const fetchNotifications = useCallback(async () => {
+    notificationListAbortRef.current?.abort();
+    const controller = new AbortController();
+    notificationListAbortRef.current = controller;
     setNotifLoading(true);
     try {
-      const res = await notificationApi.list({ pagesize: 10 });
-      if (!isMountedRef.current) return;
+      const res = await notificationApi.list({ pagesize: 10 }, controller.signal);
+      if (
+        !isMountedRef.current ||
+        controller.signal.aborted ||
+        notificationListAbortRef.current !== controller
+      ) return;
       setNotifications(res.data?.data?.notifications ?? []);
     } catch (err: unknown) {
+      if (isRequestCanceled(err)) return;
       // Silently handled — notifications stay at previous state
     } finally {
       // Guard the loading flag too — same unmount race.
-      if (isMountedRef.current) setNotifLoading(false);
+      if (notificationListAbortRef.current === controller) {
+        notificationListAbortRef.current = null;
+        if (isMountedRef.current) setNotifLoading(false);
+      }
     }
   }, []);
 
   const handleBellClick = useCallback(() => {
     const opening = !notifOpen;
     setNotifOpen(opening);
-    if (opening) fetchNotifications();
+    if (opening) {
+      fetchNotifications();
+    } else {
+      notificationListAbortRef.current?.abort();
+      notificationListAbortRef.current = null;
+      setNotifLoading(false);
+    }
   }, [notifOpen, fetchNotifications]);
 
   const handleMarkAllRead = useCallback(async () => {
     try {
       await notificationApi.markAllRead();
+      if (!isMountedRef.current) return;
       setUnreadCount(0);
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: 1 })));
     } catch (err: unknown) {
+      if (!isMountedRef.current) return;
       // Server refused the mark-all. Surface the failure so the user knows
       // the badge count they see is still the stale one.
       console.error('[notifications] markAllRead failed', err);
@@ -229,6 +293,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       try {
         await notificationApi.markRead(notif.id);
       } catch (err: unknown) {
+        if (!isMountedRef.current) return;
         console.error('[notifications] markRead failed', err);
         setUnreadCount((c) => c + 1);
         setNotifications((prev) =>
@@ -316,16 +381,19 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       </div>
 
       {/* Center: Search */}
-      <button
+      <Button
         onClick={() => setCommandPaletteOpen(true)}
-        className="flex h-9 w-full max-w-md items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3 text-sm text-surface-400 transition-colors hover:border-surface-300 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500 dark:hover:border-surface-600 dark:hover:bg-surface-750"
+        variant="secondary"
+        size="sm"
+        fullWidth
+        className="max-w-md !justify-start gap-2 border-surface-200 bg-surface-50 text-surface-400 hover:border-surface-300 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500 dark:hover:border-surface-600 dark:hover:bg-surface-750"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left">Search or press {shortcutLabel}...</span>
         <kbd className="hidden rounded border border-surface-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-surface-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-400 sm:inline-block">
           {shortcutLabel}
         </kbd>
-      </button>
+      </Button>
 
       {/* Right: Actions */}
       {/* Theme toggle was previously here but has been moved to Settings > Store.
@@ -334,39 +402,48 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           (search, notifications, messages, user menu) reduces noise. */}
       <div className="flex flex-1 items-center justify-end gap-1">
         {/* Keyboard shortcut reference (audit section 42, idea 14) */}
-        <button
+        <Button
           onClick={() => setShortcutsOpen(true)}
-          className="relative hidden min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-0 md:min-w-0 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200 sm:flex"
+          variant="ghost"
+          size="sm"
+          iconOnly
+          className="relative hidden min-h-[44px] min-w-[44px] text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200 sm:flex md:min-h-0 md:min-w-0"
           title="Keyboard shortcuts (press ?)"
           aria-label="Keyboard shortcuts"
         >
           <HelpCircle className="h-4.5 w-4.5" />
-        </button>
+        </Button>
 
         {/* SMS quick-access */}
-        <button
+        <Button
           onClick={() => navigate('/communications')}
-          className="relative flex min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-0 md:min-w-0 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+          variant="ghost"
+          size="sm"
+          iconOnly
+          className="relative min-h-[44px] min-w-[44px] text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200 md:min-h-0 md:min-w-0"
           title="Messages"
           aria-label="Messages"
         >
           <MessageSquare className="h-4.5 w-4.5" />
           {smsUnreadCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-green-500 px-1 text-[10px] font-bold leading-none text-white shadow-sm">
+            <span className="absolute -right-0.5 -top-0.5 flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-success-500 px-1 text-[10px] font-bold leading-none text-white shadow-sm">
               {smsUnreadCount > 99 ? '99+' : smsUnreadCount}
             </span>
           )}
-        </button>
+        </Button>
 
         {/* Notifications */}
         <div ref={notifRef} className="relative">
           <span className="sr-only" aria-live="polite">
             {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : ''}
           </span>
-          <button
+          <Button
             onClick={handleBellClick}
+            variant="ghost"
+            size="sm"
+            iconOnly
             className={cn(
-              'relative flex min-h-[44px] min-w-[44px] md:h-9 md:w-9 md:min-h-0 md:min-w-0 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200',
+              'relative min-h-[44px] min-w-[44px] text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200 md:min-h-0 md:min-w-0',
               notifOpen && 'bg-surface-100 dark:bg-surface-800'
             )}
             title="Notifications"
@@ -376,11 +453,11 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           >
             <Bell className="h-4.5 w-4.5" />
             {unreadCount > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white shadow-sm">
+              <span className="absolute -right-0.5 -top-0.5 flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-error-500 px-1 text-[10px] font-bold leading-none text-white shadow-sm">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
-          </button>
+          </Button>
 
           {notifOpen && (
             <div className="absolute right-0 top-full z-50 mt-1.5 w-80 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
@@ -390,13 +467,15 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   Notifications
                 </p>
                 {unreadCount > 0 && (
-                  <button
+                  <Button
                     onClick={handleMarkAllRead}
-                    className="flex items-center gap-1 text-xs font-medium text-brand-600 transition-colors hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
+                    variant="ghost"
+                    size="xs"
+                    className="gap-1 text-brand-600 hover:bg-transparent hover:text-brand-700 dark:text-brand-400 dark:hover:bg-transparent dark:hover:text-brand-300"
                   >
                     <CheckCheck className="h-3.5 w-3.5" />
                     Mark all read
-                  </button>
+                  </Button>
                 )}
               </div>
 
@@ -418,7 +497,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                     <NotificationItem
                       key={notif.id}
                       notification={notif}
-                      onClick={() => handleNotifClick(notif)}
+                      onSelect={handleNotifClick}
                     />
                   ))
                 )}
@@ -432,10 +511,12 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
         {/* User Menu */}
         <div ref={userMenuRef} className="relative">
-          <button
+          <Button
             onClick={() => setUserMenuOpen((o) => !o)}
+            variant="ghost"
+            size="sm"
             className={cn(
-              'flex items-center gap-2 rounded-lg px-2 min-h-[44px] md:min-h-0 md:py-1.5 transition-colors hover:bg-surface-100 dark:hover:bg-surface-800',
+              'gap-2 px-2 min-h-[44px] md:min-h-0',
               userMenuOpen && 'bg-surface-100 dark:bg-surface-800'
             )}
             aria-label="User menu"
@@ -459,7 +540,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                 userMenuOpen && 'rotate-180'
               )}
             />
-          </button>
+          </Button>
 
           {userMenuOpen && (
             <div role="menu" aria-label="User menu" className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
@@ -572,11 +653,14 @@ function DropdownItem({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
       role="menuitem"
       onClick={onClick}
+      variant="ghost"
+      size="sm"
+      fullWidth
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
+        '!justify-start gap-2.5',
         variant === 'danger'
           ? 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10'
           : 'text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700/50'
@@ -584,7 +668,7 @@ function DropdownItem({
     >
       {icon}
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -595,17 +679,17 @@ function DropdownItem({
 
 const NotificationItem = memo(function NotificationItem({
   notification,
-  onClick,
+  onSelect,
 }: {
   notification: Notification;
-  onClick: () => void;
+  onSelect: (notification: Notification) => void;
 }) {
   const icon = notifEntityIcons[notification.entity_type ?? ''] ?? <Info className="h-4 w-4" />;
   const isUnread = !notification.is_read;
 
   return (
     <button
-      onClick={onClick}
+      onClick={() => onSelect(notification)}
       className={cn(
         'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-50 dark:hover:bg-surface-700/50',
         isUnread && 'bg-brand-50/40 dark:bg-brand-500/5'
@@ -693,9 +777,9 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
             <ArrowLeftRight className="h-4 w-4 text-surface-500" />
             <h2 id="switch-user-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
           </div>
-          <button aria-label="Close" onClick={onCancel} className="inline-flex items-center justify-center rounded-lg text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:p-1">
+          <Button aria-label="Close" onClick={onCancel} variant="ghost" size="sm" iconOnly className="min-h-[44px] min-w-[44px] text-surface-400 md:min-h-0 md:min-w-0">
             <X className="h-5 w-5" />
-          </button>
+          </Button>
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <p className="text-sm text-surface-500 dark:text-surface-400">Enter the PIN of the user to switch to.</p>
@@ -708,18 +792,23 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
             value={pin}
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
             placeholder="PIN"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus-visible:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-primary-600 focus-visible:outline-none focus:ring-1 focus:ring-primary-600 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
           {error && <p className="text-center text-sm text-red-500">{error}</p>}
           <div className="flex gap-3">
-            <button type="button" onClick={onCancel}
-              className="flex-1 rounded-lg border border-surface-300 px-4 py-2.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800">
+            <Button type="button" onClick={onCancel} variant="secondary" size="sm" fullWidth>
               Cancel
-            </button>
-            <button type="submit" disabled={!pin.trim() || loading}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Switch'}
-            </button>
+            </Button>
+            <Button
+              type="submit"
+              disabled={!pin.trim() || loading}
+              variant="primary"
+              size="sm"
+              fullWidth
+              leadingIcon={loading ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
+            >
+              Switch
+            </Button>
           </div>
         </form>
       </div>

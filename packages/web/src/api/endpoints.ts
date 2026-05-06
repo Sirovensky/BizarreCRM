@@ -20,12 +20,19 @@ import type {
   UpdateNotificationTemplateInput, CreateChecklistTemplateInput, UpdateChecklistTemplateInput,
   ReportParams, CreateSmsTemplateInput, UpdateSmsTemplateInput, SmsTemplateListResponse,
   PosTransactionInput, GetTransactionsParams, CheckoutWithTicketInput, BulkImportItem,
+  PosReturnInput, PosReturnResponse, PosReturnableInvoice,
   CreateLeadInput, UpdateLeadInput, CreateAppointmentInput, UpdateAppointmentInput,
   CreateEstimateInput, UpdateEstimateInput, PreferenceValue,
   CreateServiceInput, UpdateServiceInput, CreateRepairPriceInput, UpdateRepairPriceInput,
   AddGradeInput, UpdateGradeInput, RepairPricingMatrixQuery, RepairPricingTierApplyInput,
   RepairPricingProfitRecomputeInput, RepairPricingSeedDefaultsInput, RepairPricingSeedDefaultsResponse,
   RepairPricingAutoMarginPreviewInput, RepairPricingAutoMarginPreview, RepairPricingAutoMarginSettings,
+  RepairPricingTiersResponse, RepairPricingMatrixResponse, RepairPricingAuditRow,
+  RepairPricingTierApplyResult, RepairPricingProfitRecomputeResult, RepairPricingRebaseSummary,
+  RepairPricingMarginAlert, RepairPricingMarginAlertSummary, RepairPricingRevertResult,
+  RepairPricingTierThresholdImpact, RepairPricingSetTiersResponse,
+  RepairPricingMatrixUpdateInput, RepairPricingMatrixUpdateResponse,
+  RepairPricingMatrixImportResponse, RepairPricingMatrixImportCommitResponse,
 } from './types';
 
 // ==================== Server Info ====================
@@ -103,6 +110,11 @@ export const authApi = {
     ),
   resetPassword: (token: string, password: string) =>
     api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/reset-password', { token, password }),
+  recoverWithBackupCode: (data: { email: string; backupCode: string; newPassword: string }) =>
+    api.post<{ success: boolean; data: { message: string }; message?: string }>(
+      '/auth/recover-with-backup-code',
+      data,
+    ),
 };
 
 // ==================== Customers ====================
@@ -151,7 +163,12 @@ export const customerApi = {
   analytics: (id: number) => api.get(`/customers/${id}/analytics`),
   bulkTag: (customerIds: number[], tag: string) =>
     api.post('/customers/bulk-tag', { customer_ids: customerIds, tag }),
-  exportData: (id: number) => api.get(`/customers/${id}/export`),
+  exportData: (id: number, totpCode: string) =>
+    api.post<{
+      success: boolean;
+      data: { download_url: string; expires_at: string; expires_in_seconds: number };
+      message?: string;
+    }>(`/customers/${id}/export-link`, {}, { headers: { 'X-TOTP-Code': totpCode } }),
   merge: (keep_id: number, merge_id: number) =>
     api.post('/customers/merge', { keep_id, merge_id }),
 };
@@ -167,10 +184,11 @@ export const ticketApi = {
   }) => api.get('/tickets', { params }),
   get: (id: number) => api.get(`/tickets/${id}`),
   create: (data: CreateTicketInput) => api.post('/tickets', data),
-  update: (id: number, data: Partial<Ticket>) => api.put(`/tickets/${id}`, data),
+  update: (id: number, data: Partial<Ticket>, signal?: AbortSignal) =>
+    api.put(`/tickets/${id}`, data, { signal }),
   delete: (id: number) => api.delete(`/tickets/${id}`),
-  changeStatus: (id: number, status_id: number) =>
-    api.patch(`/tickets/${id}/status`, { status_id }),
+  changeStatus: (id: number, status_id: number, signal?: AbortSignal) =>
+    api.patch(`/tickets/${id}/status`, { status_id }, { signal }),
   addNote: (id: number, data: { type: string; content: string; is_flagged?: boolean; ticket_device_id?: number }) =>
     api.post(`/tickets/${id}/notes`, data),
   editNote: (noteId: number, data: { content: string }) =>
@@ -183,6 +201,8 @@ export const ticketApi = {
     api.delete(`/tickets/photos/${photoId}`),
   convertToInvoice: (id: number) =>
     api.post(`/tickets/${id}/convert-to-invoice`),
+  getActivity: (id: number, params?: { filter?: 'all' | 'notes' | 'sms' | 'system'; limit?: number; cursor?: string | null }) =>
+    api.get(`/tickets/${id}/activity`, { params }),
   getHistory: (id: number) =>
     api.get(`/tickets/${id}/history`),
   addDevice: (id: number, data: AddDeviceInput) =>
@@ -226,21 +246,24 @@ export const ticketApi = {
     delete: (id: number) => api.delete(`/tickets/saved-filters/${id}`),
   },
   // Appointments linked to ticket
-  createAppointment: (id: number, data: { start_time: string; end_time?: string; note?: string }) =>
-    api.post(`/tickets/${id}/appointment`, data),
+  createAppointment: (id: number, data: { start_time: string; end_time?: string; note?: string }, signal?: AbortSignal) =>
+    api.post(`/tickets/${id}/appointment`, data, { signal }),
   getAppointments: (id: number) => api.get(`/tickets/${id}/appointments`),
   // Merge tickets (admin only)
-  merge: (keep_id: number, merge_id: number) =>
-    api.post('/tickets/merge', { keep_id, merge_id }),
+  merge: (keep_id: number, merge_id: number, signal?: AbortSignal) =>
+    api.post('/tickets/merge', { keep_id, merge_id }, { signal }),
   // Linked/related tickets
-  link: (id: number, data: { linked_ticket_id: number; link_type?: string }) =>
-    api.post(`/tickets/${id}/link`, data),
+  link: (id: number, data: { linked_ticket_id: number; link_type?: string }, signal?: AbortSignal) =>
+    api.post(`/tickets/${id}/link`, data, { signal }),
   getLinks: (id: number) => api.get(`/tickets/${id}/links`),
-  deleteLink: (linkId: number) => api.delete(`/tickets/links/${linkId}`),
+  deleteLink: (linkId: number, signal?: AbortSignal) =>
+    api.delete(`/tickets/links/${linkId}`, { signal }),
   // Clone as warranty case
-  cloneWarranty: (id: number) => api.post(`/tickets/${id}/clone-warranty`),
+  cloneWarranty: (id: number, signal?: AbortSignal) =>
+    api.post(`/tickets/${id}/clone-warranty`, undefined, { signal }),
   // Duplicate ticket (header + devices + parts) — server: POST /tickets/:id/duplicate
-  duplicate: (id: number) => api.post(`/tickets/${id}/duplicate`),
+  duplicate: (id: number, signal?: AbortSignal) =>
+    api.post(`/tickets/${id}/duplicate`, undefined, { signal }),
   // Update photo caption — server: PUT /tickets/photos/:photoId
   updatePhoto: (photoId: number, data: { caption: string | null }) =>
     api.put(`/tickets/photos/${photoId}`, data),
@@ -433,11 +456,34 @@ export const settingsApi = {
   createReferralSource: (data: CreateReferralSourceInput) => api.post('/settings/referral-sources', data),
   getUsers: () => api.get('/settings/users'),
   createUser: (data: CreateUserInput) => api.post('/settings/users', data),
+  setupInvite: (data: {
+    name: string;
+    email: string;
+    role: 'admin' | 'tech' | 'technician' | 'cashier';
+    send_invite?: boolean;
+    pin?: string;
+  }) =>
+    api.post<{
+      success: boolean;
+      data: {
+        user: User;
+        delivery: { status: 'sent' | 'not_configured' | 'failed' | 'skipped' };
+      };
+      message?: string;
+    }>('/settings/setup-invites', data),
   updateUser: (id: number, data: UpdateUserInput) => api.put(`/settings/users/${id}`, data),
   // Generic config (key-value store)
-  getConfig: () => api.get('/settings/config'),
+  getConfig: (params?: { location_id?: number }) => api.get('/settings/config', { params }),
   updateConfig: (data: Record<string, string>) => api.put('/settings/config', data),
-  getSetupStatus: () => api.get('/settings/setup-status'),
+  getSetupStatus: () => api.get<{
+    success: boolean;
+    data: {
+      setup_completed: boolean;
+      store_name: string | null;
+      wizard_completed: 'true' | 'skipped' | 'grandfathered' | null;
+      setup_imported_legacy_data: 'will_import' | 'later' | 'fresh' | null;
+    };
+  }>('/settings/setup-status'),
   completeSetup: (data: { store_name: string; address?: string; phone?: string; email?: string; timezone?: string; currency?: string }) =>
     api.post('/settings/complete-setup', data),
   // Condition Templates & Checks
@@ -460,6 +506,48 @@ export const settingsApi = {
   // Notification Templates
   getNotificationTemplates: () => api.get('/settings/notification-templates'),
   updateNotificationTemplate: (id: number, data: UpdateNotificationTemplateInput) => api.put(`/settings/notification-templates/${id}`, data),
+  testNotificationTemplate: (data: {
+    template_key: string;
+    subject: string;
+    body: string;
+    recipient_email?: string;
+    recipient_phone?: string;
+  }) => api.post('/settings/notification-templates/test', data),
+  testBlockChypHardware: (data: {
+    api_key: string;
+    bearer_token: string;
+    signing_key: string;
+    terminal_name?: string;
+    terminal_ip?: string;
+    test_mode?: boolean;
+  }) => api.post('/settings/hardware/blockchyp/test', data),
+  testStripeConnection: (data: {
+    secret_key: string;
+    publishable_key?: string;
+    webhook_secret?: string;
+  }) => api.post<{
+    success: boolean;
+    data: { success: boolean; accountId?: string; displayName?: string | null; livemode?: boolean; error?: string };
+    message?: string;
+  }>('/settings/payments/stripe/test', data),
+  testReceiptPrinter: (data: {
+    driver: string;
+    connection: string;
+    address: string;
+  }) => api.post('/settings/hardware/receipt-printer/test', data),
+  testCashDrawer: (data: {
+    driver: string;
+    address?: string;
+    printer?: { connection?: string; address?: string };
+  }) => api.post('/settings/hardware/cash-drawer/test', data),
+  testBackupDestination: (data: {
+    kind: string;
+    path?: string;
+    endpoint?: string;
+    bucket?: string;
+    access_key?: string;
+    secret_key?: string;
+  }) => api.post('/settings/hardware/backup/test', data),
   // Logo upload
   uploadLogo: (formData: FormData) => api.post('/settings/logo', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   // Checklist templates
@@ -610,9 +698,35 @@ export const reportApi = {
 };
 
 // ==================== SMS ====================
+export interface SmsFollowupReminder {
+  id: number;
+  conv_phone: string;
+  phone: string;
+  customer_id: number | null;
+  label: string;
+  note: string | null;
+  due_at: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  notified_at: string | null;
+  created_by: number;
+  completed_by: number | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  customer_name?: string | null;
+  created_by_name?: string | null;
+}
+
+export interface SmsReminderListResponse {
+  success: boolean;
+  data: { reminders: SmsFollowupReminder[] };
+}
+
 export const smsApi = {
-  unreadCount: () => api.get<{ success: boolean; data: { count: number } }>('/sms/unread-count'),
-  conversations: (params?: { keyword?: string; include_archived?: string }) => api.get('/sms/conversations', { params }),
+  unreadCount: (signal?: AbortSignal) =>
+    api.get<{ success: boolean; data: { count: number } }>('/sms/unread-count', { signal }),
+  conversations: (params?: { keyword?: string; q?: string; include_archived?: string; assigned_to?: 'all' | 'me' | 'unassigned' }) =>
+    api.get('/sms/conversations', { params }),
   messages: (phone: string) => api.get(`/sms/conversations/${phone}`),
   markRead: (phone: string) => api.patch(`/sms/conversations/${phone}/read`),
   toggleFlag: (phone: string) => api.patch(`/sms/conversations/${phone}/flag`),
@@ -620,6 +734,21 @@ export const smsApi = {
   toggleArchive: (phone: string) => api.patch(`/sms/conversations/${phone}/archive`),
   send: (data: { to: string; message?: string; entity_type?: string; entity_id?: number; template_id?: number; template_vars?: Record<string, string>; send_at?: string }) =>
     api.post('/sms/send', data),
+  reminders: (params?: { status?: 'pending' | 'completed' | 'cancelled' | 'all'; due?: boolean; phone?: string; id?: number }) =>
+    api.get<SmsReminderListResponse>('/sms/reminders', {
+      params: {
+        ...params,
+        due: params?.due ? '1' : undefined,
+      },
+    }),
+  createReminder: (data: { phone: string; label: string; due_at: string; note?: string }) =>
+    api.post<{ success: boolean; data: SmsFollowupReminder }>('/sms/reminders', data),
+  completeReminder: (id: number) =>
+    api.post<{ success: boolean; data: SmsFollowupReminder }>(`/sms/reminders/${id}/complete`),
+  snoozeReminder: (id: number, data: { due_at: string }) =>
+    api.post<{ success: boolean; data: SmsFollowupReminder }>(`/sms/reminders/${id}/snooze`, data),
+  cancelReminder: (id: number) =>
+    api.delete<{ success: boolean; data: { id: number; status: 'cancelled' } }>(`/sms/reminders/${id}`),
   templates: () => api.get<SmsTemplateListResponse>('/sms/templates'),
   createTemplate: (data: CreateSmsTemplateInput) => api.post('/sms/templates', data),
   updateTemplate: (id: number, data: UpdateSmsTemplateInput) => api.put(`/sms/templates/${id}`, data),
@@ -686,6 +815,60 @@ export const voiceApi = {
 };
 
 // ==================== POS ====================
+export interface PosSaleLineInput {
+  /** Inventory item id. When omitted/null, the server treats this as a misc/custom line. */
+  item_id?: number | null;
+  name?: string;
+  qty: number;
+  /** Required for misc/custom lines; ignored for inventory lines because the server prices those authoritatively. */
+  unit_price_cents?: number;
+  discount_cents?: number;
+  /** Server expects a 0..1 fraction on misc lines without a tax class. */
+  tax_rate?: number;
+  tax_class_id?: number | null;
+  notes?: string;
+}
+
+export interface PosSalePaymentInput {
+  method: string;
+  amount_cents: number;
+  processor?: string;
+  reference?: string;
+  transaction_id?: string;
+}
+
+export interface PosSaleInput {
+  customer_id?: number | null;
+  lines: PosSaleLineInput[];
+  cart_discount_cents?: number;
+  tip_cents?: number;
+  payment_method?: string;
+  payment_amount_cents?: number;
+  payments?: PosSalePaymentInput[];
+  notes?: string;
+  linked_ticket_id?: number | null;
+}
+
+export interface PosSaleResponse {
+  success: boolean;
+  data: {
+    invoice_id: number | null;
+    order_id: string;
+    change_cents: number;
+    approval_code: string | null;
+    last_four: string | null;
+  };
+}
+
+export interface PosWorkstation {
+  id: number;
+  name: string;
+  is_default: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export const posApi = {
   // WEB-FN-006 (Fixer-B18 2026-04-25): dropped `item_type` from the typed
   // wrapper. Server (`pos.routes.ts:102`) hard-codes `item_type IN
@@ -693,7 +876,7 @@ export const posApi = {
   // the field misled callers into thinking they could query the service
   // catalog from POS. If/when the server supports a `service` filter, add
   // it back as a real param.
-  products: (params?: { keyword?: string; category?: string }, signal?: AbortSignal) =>
+  products: (params?: { keyword?: string; category?: string; show_out_of_stock?: string }, signal?: AbortSignal) =>
     api.get('/pos/products', { params, signal }),
   register: () => api.get('/pos/register'),
   // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer
@@ -732,13 +915,18 @@ export const posApi = {
   // accidentally hit `/api/v1/...` directly and bypass the bearer interceptor
   // (cf. WEB-FB-006 / WEB-FD-021 cookie-vs-bearer footgun).
   /**
-   * Non-checkout-with-ticket sale path (legacy walk-in cash sale).
-   * `/pos/sales` is a separate server route from `checkoutWithTicket`.
+   * Android/mobile cents-based POS sale endpoint.
+   *
+   * @deprecated for web checkout UI. The unified web POS should keep using
+   * `checkoutWithTicket` because that path carries repair-ticket metadata,
+   * existing-ticket checkout, signatures, and web POS state. Keep this wrapper
+   * for explicit mobile-parity/admin tooling only.
+   *
    * Pass an idempotency key from the caller-side cart session — server
    * idempotent middleware will short-circuit double-submits.
    */
-  sales: (data: unknown, idempotencyKey?: string) =>
-    api.post('/pos/sales', data, {
+  sales: (data: PosSaleInput, idempotencyKey?: string) =>
+    api.post<PosSaleResponse>('/pos/sales', data, {
       headers: {
         'X-Idempotency-Key':
           idempotencyKey ??
@@ -750,8 +938,10 @@ export const posApi = {
    * Cash refund on an existing sale. Idempotency key required to avoid
    * double-refunds on a flaky-network double-click.
    */
-  return: (data: unknown, idempotencyKey?: string) =>
-    api.post('/pos/return', data, {
+  returnableInvoice: (invoiceId: number) =>
+    api.get<{ success: boolean; data: PosReturnableInvoice }>(`/pos/returnable-invoice/${invoiceId}`),
+  return: (data: PosReturnInput, idempotencyKey?: string) =>
+    api.post<{ success: boolean; data: PosReturnResponse }>('/pos/return', data, {
       headers: {
         'X-Idempotency-Key':
           idempotencyKey ??
@@ -760,17 +950,20 @@ export const posApi = {
       },
     }),
   /** Multi-station kiosk workstations CRUD (`/pos/workstations*`). */
-  listWorkstations: () => api.get('/pos/workstations'),
-  createWorkstation: (data: { name: string; description?: string }) =>
-    api.post('/pos/workstations', data),
-  updateWorkstation: (id: number, data: { name?: string; description?: string; active?: boolean }) =>
-    api.put(`/pos/workstations/${id}`, data),
+  listWorkstations: () => api.get<{ success: boolean; data: PosWorkstation[] }>('/pos/workstations'),
+  createWorkstation: (data: { name: string }) =>
+    api.post<{ success: boolean; data: PosWorkstation }>('/pos/workstations', data),
+  updateWorkstation: (id: number, data: { name?: string; is_active?: boolean }) =>
+    api.put<{ success: boolean; data: PosWorkstation }>(`/pos/workstations/${id}`, data),
+  setDefaultWorkstation: (id: number) =>
+    api.post<{ success: boolean; data: { id: number; is_default: true } }>(`/pos/workstations/${id}/set-default`),
 };
 
 // ==================== Notifications ====================
 export const notificationApi = {
-  list: (params?: { page?: number; pagesize?: number }) => api.get('/notifications', { params }),
-  unreadCount: () => api.get('/notifications/unread-count'),
+  list: (params?: { page?: number; pagesize?: number }, signal?: AbortSignal) =>
+    api.get('/notifications', { params, signal }),
+  unreadCount: (signal?: AbortSignal) => api.get('/notifications/unread-count', { signal }),
   markRead: (id: number) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/mark-all-read'),
   sendReceipt: (data: { invoice_id: number; email?: string }) => api.post('/notifications/send-receipt', data),
@@ -883,17 +1076,57 @@ export const leadApi = {
 };
 
 // ==================== Estimates ====================
-// WEB-FN-011: the server also exposes
-//   POST /estimates/:id/sign        (auth-gated, staff-side e-sign)
-//   /public/api/v1/estimate-sign/*  (customer-side magic-link sign flow)
-// from `packages/server/src/routes/estimateSign.routes.ts`. Both are
-// **mobile-only** today — the iOS + Android clients drive the customer
-// e-sign UX directly off the device camera + signature pad. No web caller
-// is wired (and no desktop EstimateSignDialog exists). This comment is the
-// canonical record so a future audit can `grep estimate-sign` and see why
-// no `estimateApi.sign` wrapper exists; if the desktop estimate-detail
-// view ever needs in-shop staff signing, add the wrapper here and a
-// matching `<EstimateSignDialog>` component.
+export interface EstimateSignUrlResponse {
+  url: string;
+  expires_at: string;
+  estimate_id: number;
+}
+
+export interface EstimateSignature {
+  id: number;
+  estimate_id: number;
+  signer_name: string;
+  signer_email: string | null;
+  signer_ip: string | null;
+  signed_at: string;
+  user_agent: string | null;
+}
+
+export interface EstimateSignLineItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  tax_amount: number;
+  total: number;
+}
+
+export interface EstimateSignPublicSummary {
+  estimate_id: number;
+  order_id: string;
+  status: string;
+  notes: string | null;
+  discount: number | null;
+  subtotal: number | null;
+  total_tax: number | null;
+  total: number | null;
+  valid_until: string | null;
+  customer_name: string | null;
+  line_items: EstimateSignLineItem[];
+  expires_at: string;
+}
+
+export interface EstimateSignSubmitInput {
+  signer_name: string;
+  signer_email?: string;
+  signature_data_url: string;
+}
+
+const estimateSignPublicApi = axios.create({
+  baseURL: '/public/api/v1/estimate-sign',
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 15_000,
+});
+
 export const estimateApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string }) =>
     api.get('/estimates', { params }),
@@ -910,6 +1143,23 @@ export const estimateApi = {
   // WEB-W2-020: estimates.routes.ts:1022 exposes POST /:id/reject (sets status='rejected').
   reject: (id: number) =>
     api.post<{ success: boolean; data: { id: number; status: string } }>(`/estimates/${id}/reject`),
+  createSignUrl: (id: number, data?: { ttl_minutes?: number }) =>
+    api.post<{ success: boolean; data: EstimateSignUrlResponse }>(
+      `/estimates/${id}/sign-url`,
+      data ?? {},
+    ),
+  signatures: (id: number) =>
+    api.get<{ success: boolean; data: EstimateSignature[] }>(`/estimates/${id}/signatures`),
+  getSigningEstimate: (token: string, signal?: AbortSignal) =>
+    estimateSignPublicApi.get<{ success: boolean; data: EstimateSignPublicSummary }>(
+      `/${encodeURIComponent(token)}`,
+      { signal },
+    ),
+  submitSigningEstimate: (token: string, data: EstimateSignSubmitInput) =>
+    estimateSignPublicApi.post<{
+      success: boolean;
+      data: { signed: boolean; estimate_id: number; signed_at: string };
+    }>(`/${encodeURIComponent(token)}`, data),
 };
 
 // ==================== Employees ====================
@@ -954,6 +1204,7 @@ export interface OnboardingState {
   first_invoice_at: string | null;
   first_payment_at: string | null;
   first_review_at: string | null;
+  sandbox_completed_at: string | null;
   nudge_day3_seen: boolean;
   nudge_day5_seen: boolean;
   nudge_day7_seen: boolean;
@@ -987,6 +1238,33 @@ export const onboardingApi = {
     api.post('/onboarding/set-shop-type', { shop_type }),
 };
 
+// ==================== Roles / Permissions ====================
+export interface RoleRecord {
+  id: number;
+  name: string;
+  description: string | null;
+  is_active: number;
+  created_at?: string;
+}
+
+export interface RolePermissionEntry {
+  key: string;
+  allowed: boolean;
+}
+
+export const rolesApi = {
+  list: () => api.get<{ success: boolean; data: RoleRecord[] }>('/roles'),
+  permissions: (roleId: number) =>
+    api.get<{ success: boolean; data: { role: RoleRecord; matrix: RolePermissionEntry[] } }>(
+      `/roles/${roleId}/permissions`,
+    ),
+  updatePermissions: (roleId: number, updates: Array<{ key: string; allowed: boolean }>) =>
+    api.put<{ success: boolean; data: { role_id: number; applied: number } }>(
+      `/roles/${roleId}/permissions`,
+      { updates },
+    ),
+};
+
 // ==================== User Preferences ====================
 export const preferencesApi = {
   getAll: () => api.get('/preferences'),
@@ -1003,15 +1281,25 @@ export const missingPartsApi = {
 // ==================== Repair Pricing ====================
 export const repairPricingApi = {
   // Dynamic pricing matrix (server-owned pricing model)
-  getTiers: () => api.get('/repair-pricing/tiers'),
-  setTiers: (data: { tier_a_years: number; tier_b_years: number }) =>
-    api.put('/repair-pricing/tiers', data),
+  getTiers: () => api.get<{ success: boolean; data: RepairPricingTiersResponse }>('/repair-pricing/tiers'),
+  previewTierImpact: (data: { tier_a_years: number; tier_b_years: number }) =>
+    api.post<{ success: boolean; data: RepairPricingTierThresholdImpact }>('/repair-pricing/tiers/impact', data),
+  setTiers: (data: { tier_a_years: number; tier_b_years: number; confirmation?: string }) =>
+    api.put<{ success: boolean; data: RepairPricingSetTiersResponse }>('/repair-pricing/tiers', data),
   getMatrix: (params?: RepairPricingMatrixQuery) =>
-    api.get('/repair-pricing/matrix', { params }),
+    api.get<{ success: boolean; data: RepairPricingMatrixResponse }>('/repair-pricing/matrix', { params }),
+  updateMatrix: (data: RepairPricingMatrixUpdateInput) =>
+    api.patch<{ success: boolean; data: RepairPricingMatrixUpdateResponse }>('/repair-pricing/matrix', data),
+  exportMatrixCsv: (params?: { category?: string }) =>
+    api.get('/repair-pricing/matrix/export.csv', { params, responseType: 'blob' }),
+  previewMatrixImport: (data: { csv?: string; rows?: Array<Record<string, unknown>> }) =>
+    api.post<{ success: boolean; data: RepairPricingMatrixImportResponse }>('/repair-pricing/matrix/import', data),
+  commitMatrixImport: (data: { csv?: string; rows?: Array<Record<string, unknown>>; filename?: string }) =>
+    api.post<{ success: boolean; data: RepairPricingMatrixImportCommitResponse }>('/repair-pricing/matrix/import/commit', data),
   seedDefaults: (data: RepairPricingSeedDefaultsInput = {}) =>
     api.post<{ success: boolean; data: RepairPricingSeedDefaultsResponse }>('/repair-pricing/seed-defaults', data),
   applyTier: (data: RepairPricingTierApplyInput) =>
-    api.post('/repair-pricing/tier-apply', data),
+    api.post<{ success: boolean; data: RepairPricingTierApplyResult }>('/repair-pricing/tier-apply', data),
   getAudit: (params?: {
     repair_price_id?: number;
     device_model_id?: number;
@@ -1019,8 +1307,9 @@ export const repairPricingApi = {
     from?: string;
     to?: string;
     limit?: number;
-  }) => api.get('/repair-pricing/audit', { params }),
-  revertToTier: (priceId: number) => api.post(`/repair-pricing/revert/${priceId}`, {}),
+  }) => api.get<{ success: boolean; data: RepairPricingAuditRow[] }>('/repair-pricing/audit', { params }),
+  revertToTier: (priceId: number) =>
+    api.post<{ success: boolean; data: RepairPricingRevertResult }>(`/repair-pricing/revert/${priceId}`, {}),
   getAutoMarginSettings: () =>
     api.get<{ success: boolean; data: RepairPricingAutoMarginSettings }>('/repair-pricing/auto-margin-settings'),
   setAutoMarginSettings: (data: Partial<RepairPricingAutoMarginSettings>) =>
@@ -1028,7 +1317,19 @@ export const repairPricingApi = {
   previewAutoMargin: (data: RepairPricingAutoMarginPreviewInput) =>
     api.post<{ success: boolean; data: RepairPricingAutoMarginPreview }>('/repair-pricing/auto-margin-preview', data),
   recomputeProfits: (data: RepairPricingProfitRecomputeInput = {}) =>
-    api.post('/repair-pricing/recompute-profits', data),
+    api.post<{ success: boolean; data: RepairPricingProfitRecomputeResult }>('/repair-pricing/recompute-profits', data),
+  getRebaseSummary: () =>
+    api.get<{ success: boolean; data: RepairPricingRebaseSummary | null }>('/repair-pricing/rebase-summary'),
+  ackRebaseSummary: () =>
+    api.post<{ success: boolean }>('/repair-pricing/rebase-ack', {}),
+  getMarginAlerts: (params?: { limit?: number; min_days?: number }) =>
+    api.get<{ success: boolean; data: RepairPricingMarginAlert[] }>('/repair-pricing/margin-alerts', { params }),
+  getMarginAlertSummary: () =>
+    api.get<{ success: boolean; data: RepairPricingMarginAlertSummary }>('/repair-pricing/margin-alerts/summary'),
+  ackMarginAlert: (id: number) =>
+    api.post<{ success: boolean }>(`/repair-pricing/margin-alerts/${id}/ack`, {}),
+  unpauseAutoMargin: (priceId: number) =>
+    api.post<{ success: boolean }>(`/repair-pricing/unpause-auto-margin/${priceId}`, {}),
   // Services
   getServices: (params?: { category?: string }) => api.get('/repair-pricing/services', { params }),
   createService: (data: CreateServiceInput) => api.post('/repair-pricing/services', data),
@@ -1214,6 +1515,16 @@ export const blockchypApi = {
     ),
 };
 
+// ==================== Tenant Stripe Customer Payments ====================
+export const tenantStripeApi = {
+  status: () => api.get<{ success: boolean; data: { enabled: boolean } }>('/stripe/status'),
+  createPaymentIntent: (data: { amount: number; invoice_id?: number; customer_id?: number; idempotency_key?: string }) =>
+    api.post<{
+      success: boolean;
+      data: { paymentIntentId: string; clientSecret: string | null; publishableKey: string };
+    }>('/stripe/payment-intents', data),
+};
+
 // ==================== Loaners ====================
 export const loanerApi = {
   list: (params?: { page?: number; per_page?: number }) =>
@@ -1226,9 +1537,29 @@ export const loanerApi = {
   // Server: POST /loaners (loaners.routes.ts:75) — create a new loaner device.
   create: (data: { name: string; serial?: string; imei?: string; condition?: string; notes?: string }) =>
     api.post<{ success: boolean; data: { id: number } }>('/loaners', data),
-  returnDevice: (id: number, body: { condition_in?: string; notes?: string }) =>
-    api.post<{ success: boolean; data: { returned: boolean } }>(`/loaners/${id}/return`, body),
+  returnDevice: (id: number, body: {
+    condition_in?: string;
+    notes?: string;
+    return_charge_amount?: number;
+    return_charge_paid?: boolean;
+    return_charge_payment_method?: string;
+    return_charge_payment_reference?: string;
+  }) =>
+    api.post<{ success: boolean; data: { returned: boolean; return_charge: LoanerReturnCharge | null } }>(`/loaners/${id}/return`, body),
 };
+
+export interface LoanerReturnCharge {
+  id: number;
+  invoice_id: number;
+  invoice_order_id: string;
+  payment_id: number | null;
+  amount: number;
+  amount_paid: number;
+  amount_due: number;
+  status: 'unpaid' | 'paid';
+  payment_method: string | null;
+  payment_reference: string | null;
+}
 
 export interface LoanerDevice {
   id: number;
@@ -1286,6 +1617,15 @@ export const giftCardApi = {
 // literal union.
 type MembershipDiscountAppliesTo = 'labor' | 'all' | 'parts';
 
+export interface MembershipEnrollCardResponse {
+  success: boolean;
+  data: {
+    token: string;
+    maskedPan?: string;
+    cardType?: string;
+  };
+}
+
 export const membershipApi = {
   // Tiers
   getTiers: () => api.get('/membership/tiers'),
@@ -1311,8 +1651,8 @@ export const membershipApi = {
   // @audit-fixed: orphan server route. `POST /membership/enroll` exists at
   // membership.routes.ts:275 (used by the customer-portal self-enroll flow)
   // but the client had no wrapper. Pages were hand-rolling axios calls.
-  enroll: (data: { tier_id: number; payment_method_token?: string }) =>
-    api.post('/membership/enroll', data),
+  enroll: () =>
+    api.post<MembershipEnrollCardResponse>('/membership/enroll', {}),
   // @audit-fixed: orphan server route. `POST /membership/payment-link` exists
   // at membership.routes.ts:298 (returns a hosted-payment URL for tier
   // checkout). Adding a typed wrapper so the membership-marketing pages can
@@ -1334,8 +1674,14 @@ export const membershipApi = {
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
   // WEB-W3-020: admin-triggered immediate charge for a subscription
-  runBilling: (id: number) =>
-    api.post(`/membership/${id}/run-billing`),
+  runBilling: (id: number, options?: { force?: boolean }) =>
+    api.post(`/membership/${id}/run-billing`, { force: options?.force === true }, {
+      params: options?.force ? { force: '1' } : undefined,
+    }),
+  runBillingNow: (data?: { limit?: number }) =>
+    api.post('/membership/run-billing', data || {}),
+  latestBillingRun: () =>
+    api.get('/membership/billing-runs/latest'),
 };
 
 // ==================== Device Templates (audit 44.1, cross-cutting) ====================
@@ -1452,6 +1798,7 @@ export const campaignsApi = {
   triggerReviewRequest: (ticketId: number) =>
     api.post('/campaigns/review-request/trigger', { ticket_id: ticketId }),
   dispatchBirthday: () => api.post('/campaigns/birthday/dispatch'),
+  dispatchWinback: () => api.post('/campaigns/winback/dispatch'),
   dispatchChurnWarning: () => api.post('/campaigns/churn-warning/dispatch'),
 };
 
@@ -1485,7 +1832,17 @@ export const signupApi = {
   // as optional fields keeps the existing slug-only signup flow working
   // while letting future signup forms collect and forward names.
   createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; admin_first_name?: string; admin_last_name?: string; captcha_token?: string }) =>
-    publicApi.post<{ success: boolean; data: { tenant_id?: number; slug?: string; url?: string; message: string }; message?: string }>('/signup', data),
+    publicApi.post<{ success: boolean; data: { tenant_id?: number; slug?: string; url?: string; message: string; accessToken?: string; user?: User }; message?: string }>('/signup', data),
+  verifyEmailCode: (data: { slug: string; adminEmail: string; code: string }) =>
+    publicApi.post<{ success: boolean; data: { tenant_id: number; slug: string; url: string; message: string; accessToken?: string; user?: User }; message?: string }>(
+      '/signup/verify-code',
+      data,
+    ),
+  resendVerification: (data: { slug: string; adminEmail: string }) =>
+    publicApi.post<{ success: boolean; data: { message: string }; message?: string }>(
+      '/signup/resend-verification',
+      data,
+    ),
 };
 
 // ==================== Privacy / GDPR ====================
@@ -1518,6 +1875,30 @@ export interface SuperAdminTenant {
   db_size_mb: number;
 }
 
+export interface SuperAdminTenantsPagination {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+  sort?: 'created_at' | 'updated_at' | 'slug' | 'name' | 'admin_email' | 'status' | 'plan';
+  order?: 'asc' | 'desc';
+  search?: string;
+}
+
+export interface SuperAdminTenantsListParams {
+  status?: string;
+  plan?: string;
+  search?: string;
+  q?: string;
+  page?: number;
+  per_page?: number;
+  pagesize?: number;
+  pageSize?: number;
+  limit?: number;
+  sort?: SuperAdminTenantsPagination['sort'];
+  order?: SuperAdminTenantsPagination['order'];
+}
+
 export const superAdminApi = {
   /** Login step 1 — returns challengeToken */
   loginPassword: (username: string, password: string) =>
@@ -1531,8 +1912,8 @@ export const superAdminApi = {
       '/login/2fa-verify',
       { challengeToken, code },
     ),
-  listTenants: (params?: { status?: string; plan?: string }) =>
-    superAdminClient.get<{ success: boolean; data: { tenants: SuperAdminTenant[] } }>(
+  listTenants: (params?: SuperAdminTenantsListParams) =>
+    superAdminClient.get<{ success: boolean; data: { tenants: SuperAdminTenant[]; pagination?: SuperAdminTenantsPagination } }>(
       '/tenants',
       { params },
     ),
@@ -1571,7 +1952,7 @@ export const superAdminApi = {
 export const geocodeApi = {
   lookup: (address: string) =>
     api.get<{ success: boolean; data: { lat: number; lng: number } | null }>(
-      `/geocode/lookup?address=${encodeURIComponent(address)}`,
+      `/geocode?address=${encodeURIComponent(address)}`,
     ),
 };
 
@@ -1590,9 +1971,16 @@ export const customFieldApi = {
     entityId: number,
     values: Record<string, unknown> | Array<{ definition_id: number; value: unknown }>,
   ) =>
-    api.post<{ success: boolean }>(
-      `/custom-fields/values`,
-      { entity_type: entityType, entity_id: entityId, values },
+    api.put<{ success: boolean }>(
+      `/custom-fields/values/${encodeURIComponent(entityType)}/${encodeURIComponent(String(entityId))}`,
+      {
+        fields: Array.isArray(values)
+          ? values
+          : Object.entries(values).map(([definitionId, value]) => ({
+              definition_id: Number(definitionId),
+              value,
+            })),
+      },
     ),
 };
 

@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { Fragment, useEffect, useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus, Trash2, Pencil, X, Check, Loader2, AlertCircle,
   ChevronDown, ChevronRight, Search, DollarSign, Percent, Save,
@@ -11,6 +12,13 @@ import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency } from '@/utils/format';
+import {
+  RepairPricingAuditSubTab,
+  RepairPricingAutomationSubTab,
+  RepairPricingMatrixSubTab,
+  RepairPricingStatusStrip,
+  RepairPricingTierSubTab,
+} from './components/RepairPricingDynamicPanel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,9 +60,14 @@ interface RepairGrade {
   sort_order: number;
 }
 
-type SubTab = 'services' | 'prices' | 'adjustments';
+type SubTab = 'matrix' | 'tiers' | 'automation' | 'audit' | 'services' | 'prices' | 'adjustments';
 
-const CATEGORIES = ['phone', 'tablet', 'laptop', 'console', 'other'];
+const CATEGORIES = ['phone', 'tablet', 'laptop', 'console', 'tv', 'it_service', 'other'];
+
+function formatCategoryLabel(category: string): string {
+  if (category === 'it_service') return 'IT service';
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
 
 // ─── Shared Components ────────────────────────────────────────────────────────
 
@@ -153,13 +166,13 @@ function ServicesSubTab() {
           >
             <option value="">All Categories</option>
             {CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+              <option key={c} value={c}>{formatCategoryLabel(c)}</option>
             ))}
           </select>
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
+          className="btn btn-primary btn-md"
         >
           <Plus className="h-4 w-4" />
           Add Service
@@ -189,7 +202,7 @@ function ServicesSubTab() {
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
             >
               {CATEGORIES.map((c) => (
-                <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                <option key={c} value={c}>{formatCategoryLabel(c)}</option>
               ))}
             </select>
             <input
@@ -200,11 +213,11 @@ function ServicesSubTab() {
             />
           </div>
           <div className="flex justify-end gap-2 mt-3">
-            <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100">Cancel</button>
+            <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-sm text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100">Cancel</button>
             <button
               onClick={() => createMutation.mutate(addForm)}
               disabled={!addForm.name || !addForm.slug || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+              className="btn btn-primary btn-sm"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create
@@ -247,7 +260,7 @@ function ServicesSubTab() {
                         <select value={editForm.category || 'phone'} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                           aria-label="Service category"
                           className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
-                          {CATEGORIES.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                          {CATEGORIES.map((c) => <option key={c} value={c}>{formatCategoryLabel(c)}</option>)}
                         </select>
                       </td>
                       <td className="px-4 py-2">
@@ -265,10 +278,10 @@ function ServicesSubTab() {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button aria-label="Save" onClick={() => updateMutation.mutate({ id: svc.id, data: editForm })} className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
+                          <button aria-label="Save" onClick={() => updateMutation.mutate({ id: svc.id, data: editForm })} className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20">
                             <Check className="h-3.5 w-3.5" />
                           </button>
-                          <button aria-label="Cancel" onClick={() => setEditingId(null)} className="p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 rounded">
+                          <button aria-label="Cancel" onClick={() => setEditingId(null)} className="btn-icon btn-xs text-surface-400">
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -291,14 +304,14 @@ function ServicesSubTab() {
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button aria-label="Edit" onClick={() => { setEditingId(svc.id); setEditForm(svc); }}
-                            className="p-1 text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors">
+                            className="btn-icon btn-xs text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button aria-label="Delete" onClick={async () => {
                             try { if (await confirm(`Delete "${svc.name}"?`, { danger: true })) deleteMutation.mutate(svc.id); }
                             catch (err) { toast.error(formatApiError(err)); }
                           }}
-                            className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
+                            className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -354,7 +367,7 @@ function DeviceModelPicker({ value, onChange }: { value: number | null; onChange
             <button
               key={d.id}
               onClick={() => { onChange(d.id, `${d.manufacturer_name || ''} ${d.name}`.trim()); setQuery(`${d.manufacturer_name || ''} ${d.name}`.trim()); setOpen(false); }}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-900 dark:text-surface-100"
+              className="btn btn-ghost btn-sm w-full justify-start text-left text-surface-900 dark:text-surface-100"
             >
               <span className="font-medium">{d.manufacturer_name}</span> {d.name}
             </button>
@@ -397,7 +410,7 @@ function InventoryPartPicker({ value, onChange }: { value: number | null; onChan
             <button
               key={item.id}
               onClick={() => { onChange(item.id, item.name); setQuery(item.name); setOpen(false); }}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-900 dark:text-surface-100"
+              className="btn btn-ghost btn-sm w-full justify-start text-left text-surface-900 dark:text-surface-100"
             >
               {item.name} <span className="text-xs text-surface-400">(Stock: {item.in_stock ?? '?'})</span>
             </button>
@@ -405,7 +418,7 @@ function InventoryPartPicker({ value, onChange }: { value: number | null; onChan
         </div>
       )}
       {value && (
-        <button aria-label="Clear selection" onClick={() => { onChange(null, ''); setQuery(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-red-500">
+        <button aria-label="Clear selection" onClick={() => { onChange(null, ''); setQuery(''); }} className="btn-icon btn-xs absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-red-500">
           <X className="h-3 w-3" />
         </button>
       )}
@@ -514,7 +527,7 @@ function GradesSection({ priceId }: { priceId: number }) {
     <div className="bg-surface-50 dark:bg-surface-800/30 px-6 py-3">
       <div className="flex items-center justify-between mb-2">
         <h5 className="text-xs font-semibold text-surface-500 uppercase tracking-wider">Grades / Part Options</h5>
-        <button onClick={() => setShowAdd(!showAdd)} className="text-xs text-primary-600 hover:text-primary-700 font-medium">
+        <button onClick={() => setShowAdd(!showAdd)} className="btn btn-ghost btn-xs text-primary-600 hover:text-primary-700">
           <Plus className="h-3 w-3 inline mr-1" />Add Grade
         </button>
       </div>
@@ -544,10 +557,10 @@ function GradesSection({ priceId }: { priceId: number }) {
             <div className="flex gap-2">
               <button onClick={() => addGradeMutation.mutate({ ...addForm, labor_price_override: addForm.labor_price_override === '' ? null : parseFloat(String(addForm.labor_price_override)) })}
                 disabled={!addForm.grade || !addForm.grade_label}
-                className="px-3 py-1.5 text-sm bg-primary-600 text-primary-950 rounded hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                className="btn btn-primary btn-sm rounded">
                 Add
               </button>
-              <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+              <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-sm text-surface-500 hover:text-surface-700">Cancel</button>
             </div>
           </div>
         </div>
@@ -584,7 +597,7 @@ function GradesSection({ priceId }: { priceId: number }) {
                     try { if (await confirm('Delete this grade?', { danger: true })) deleteGradeMutation.mutate(g.id); }
                     catch (err) { toast.error(formatApiError(err)); }
                   }}
-                    className="p-1 text-surface-400 hover:text-red-500">
+                    className="btn-icon btn-xs text-surface-400 hover:text-red-500">
                     <Trash2 className="h-3 w-3" />
                   </button>
                 </td>
@@ -683,7 +696,7 @@ function PricesSubTab() {
         <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
           className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
           <option value="">All Categories</option>
-          {CATEGORIES.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+          {CATEGORIES.map((c) => <option key={c} value={c}>{formatCategoryLabel(c)}</option>)}
         </select>
         <select value={filterServiceId} onChange={(e) => setFilterServiceId(e.target.value ? Number(e.target.value) : '')}
           className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
@@ -691,7 +704,7 @@ function PricesSubTab() {
           {services?.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
         </select>
         <button onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors">
+          className="btn btn-primary btn-md">
           <Plus className="h-4 w-4" />
           Add Price
         </button>
@@ -727,7 +740,7 @@ function PricesSubTab() {
             </select>
           </div>
           <div className="flex justify-end gap-2 mt-3">
-            <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-surface-600 hover:text-surface-900 dark:text-surface-400">Cancel</button>
+            <button onClick={() => setShowAdd(false)} className="btn btn-ghost btn-sm text-surface-600 hover:text-surface-900 dark:text-surface-400">Cancel</button>
             <button
               onClick={() => createMutation.mutate({
                 device_model_id: addForm.device_model_id,
@@ -736,7 +749,7 @@ function PricesSubTab() {
                 default_grade: addForm.default_grade,
               })}
               disabled={!addForm.device_model_id || !addForm.repair_service_id || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+              className="btn btn-primary btn-sm"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create
@@ -749,60 +762,86 @@ function PricesSubTab() {
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
+            <caption className="sr-only">Repair prices by device model and service</caption>
             <thead>
               <tr className="bg-surface-50 dark:bg-surface-800/50">
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-surface-500 uppercase tracking-wider w-8"></th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-surface-500 uppercase tracking-wider">Device Model</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-surface-500 uppercase tracking-wider">Service</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-surface-500 uppercase tracking-wider">Labor Price</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-surface-500 uppercase tracking-wider">Default Grade</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-surface-500 uppercase tracking-wider">Grades</th>
-                <th className="px-4 py-2.5 text-center text-xs font-medium text-surface-500 uppercase tracking-wider">Active</th>
-                <th className="px-4 py-2.5 text-right text-xs font-medium text-surface-500 uppercase tracking-wider">Actions</th>
+                <th scope="col" className="px-4 py-2.5 text-left text-xs font-medium text-surface-500 uppercase tracking-wider w-8">
+                  <span className="sr-only">Expand grades</span>
+                </th>
+                <th scope="col" className="px-4 py-2.5 text-left text-xs font-medium text-surface-500 uppercase tracking-wider">Device Model</th>
+                <th scope="col" className="px-4 py-2.5 text-left text-xs font-medium text-surface-500 uppercase tracking-wider">Service</th>
+                <th scope="col" className="px-4 py-2.5 text-right text-xs font-medium text-surface-500 uppercase tracking-wider">Labor Price</th>
+                <th scope="col" className="px-4 py-2.5 text-center text-xs font-medium text-surface-500 uppercase tracking-wider">Default Grade</th>
+                <th scope="col" className="px-4 py-2.5 text-center text-xs font-medium text-surface-500 uppercase tracking-wider">Grades</th>
+                <th scope="col" className="px-4 py-2.5 text-center text-xs font-medium text-surface-500 uppercase tracking-wider">Active</th>
+                <th scope="col" className="px-4 py-2.5 text-right text-xs font-medium text-surface-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
-              {filtered.map((price) => (
-                <tr key={price.id}>
-                  <td colSpan={8} className="p-0">
-                    <div>
-                      <div
-                        className="flex items-center hover:bg-surface-50 dark:hover:bg-surface-800/30 cursor-pointer"
-                        onClick={() => setExpandedId(expandedId === price.id ? null : price.id)}
-                      >
-                        <td className="px-4 py-2.5 w-8">
-                          {expandedId === price.id ? <ChevronDown className="h-3.5 w-3.5 text-surface-400" /> : <ChevronRight className="h-3.5 w-3.5 text-surface-400" />}
-                        </td>
-                        <td className="px-4 py-2.5 text-sm">
-                          <span className="font-medium text-surface-900 dark:text-surface-100">{price.manufacturer_name}</span>
-                          <span className="text-surface-600 dark:text-surface-300 ml-1">{price.device_model_name}</span>
-                        </td>
-                        <td className="px-4 py-2.5 text-sm text-surface-700 dark:text-surface-300">{price.repair_service_name}</td>
-                        <td className="px-4 py-2.5 text-sm text-right font-medium text-surface-900 dark:text-surface-100">${price.labor_price.toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-center">
-                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300">
-                            {price.default_grade}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-center text-sm text-surface-500">{price.grade_count}</td>
-                        <td className="px-4 py-2.5 text-center">
-                          <span className={cn('inline-block w-2 h-2 rounded-full', price.is_active ? 'bg-green-500' : 'bg-surface-300')} />
-                        </td>
-                        <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={async () => {
+              {filtered.map((price) => {
+                const isExpanded = expandedId === price.id;
+                const rowLabel = `${price.manufacturer_name} ${price.device_model_name} ${price.repair_service_name}`;
+
+                return (
+                  <Fragment key={price.id}>
+                    <tr
+                      className="hover:bg-surface-50 dark:hover:bg-surface-800/30 cursor-pointer"
+                      onClick={() => setExpandedId(isExpanded ? null : price.id)}
+                    >
+                      <td className="px-4 py-2.5 w-8">
+                        <button
+                          type="button"
+                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} grades for ${rowLabel}`}
+                          aria-expanded={isExpanded}
+                          aria-controls={isExpanded ? `repair-price-grades-${price.id}` : undefined}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedId(isExpanded ? null : price.id);
+                          }}
+                          className="btn-icon btn-xs text-surface-400"
+                        >
+                          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm">
+                        <span className="font-medium text-surface-900 dark:text-surface-100">{price.manufacturer_name}</span>
+                        <span className="text-surface-600 dark:text-surface-300 ml-1">{price.device_model_name}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-surface-700 dark:text-surface-300">{price.repair_service_name}</td>
+                      <td className="px-4 py-2.5 text-sm text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(price.labor_price)}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300">
+                          {price.default_grade}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center text-sm text-surface-500">{price.grade_count}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={cn('inline-block w-2 h-2 rounded-full', price.is_active ? 'bg-green-500' : 'bg-surface-300')} />
+                      </td>
+                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          aria-label={`Delete price for ${rowLabel}`}
+                          onClick={async () => {
                             try { if (await confirm('Delete this price and all its grades?', { danger: true })) deleteMutation.mutate(price.id); }
                             catch (err) { toast.error(formatApiError(err)); }
                           }}
-                            className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr id={`repair-price-grades-${price.id}`}>
+                        <td colSpan={8} className="p-0">
+                          <GradesSection priceId={price.id} />
                         </td>
-                      </div>
-                      {expandedId === price.id && <GradesSection priceId={price.id} />}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-sm text-surface-400">
@@ -886,7 +925,7 @@ function AdjustmentsSubTab() {
             </label>
             <div className="flex items-center gap-2">
               <button onClick={() => { setFlat((f) => Math.round((f - 5) * 100) / 100); setDirty(true); }}
-                className="px-3 py-2 text-sm bg-surface-100 dark:bg-surface-700 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-600 font-medium">
+                className="btn btn-secondary btn-sm dark:bg-surface-700 dark:hover:bg-surface-600">
                 -$5
               </button>
               <div className="relative flex-1">
@@ -900,7 +939,7 @@ function AdjustmentsSubTab() {
                 />
               </div>
               <button onClick={() => { setFlat((f) => Math.round((f + 5) * 100) / 100); setDirty(true); }}
-                className="px-3 py-2 text-sm bg-surface-100 dark:bg-surface-700 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-600 font-medium">
+                className="btn btn-secondary btn-sm dark:bg-surface-700 dark:hover:bg-surface-600">
                 +$5
               </button>
             </div>
@@ -913,7 +952,7 @@ function AdjustmentsSubTab() {
             </label>
             <div className="flex items-center gap-2">
               <button onClick={() => { setPct((p) => Math.round((p - 5) * 100) / 100); setDirty(true); }}
-                className="px-3 py-2 text-sm bg-surface-100 dark:bg-surface-700 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-600 font-medium">
+                className="btn btn-secondary btn-sm dark:bg-surface-700 dark:hover:bg-surface-600">
                 -5%
               </button>
               <div className="relative flex-1">
@@ -927,7 +966,7 @@ function AdjustmentsSubTab() {
                 />
               </div>
               <button onClick={() => { setPct((p) => Math.round((p + 5) * 100) / 100); setDirty(true); }}
-                className="px-3 py-2 text-sm bg-surface-100 dark:bg-surface-700 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-600 font-medium">
+                className="btn btn-secondary btn-sm dark:bg-surface-700 dark:hover:bg-surface-600">
                 +5%
               </button>
             </div>
@@ -938,13 +977,13 @@ function AdjustmentsSubTab() {
         <div className="bg-surface-50 dark:bg-surface-800 rounded-lg p-4 mb-6">
           <h4 className="text-sm font-medium text-surface-700 dark:text-surface-300 mb-2">Preview</h4>
           <div className="flex items-center gap-3 text-sm">
-            <span className="text-surface-500">Base labor: <strong className="text-surface-900 dark:text-surface-100">${sampleBase.toFixed(2)}</strong></span>
+            <span className="text-surface-500">Base labor: <strong className="text-surface-900 dark:text-surface-100">{formatCurrency(sampleBase)}</strong></span>
             <span className="text-surface-400">&rarr;</span>
             {pct !== 0 && <span className="text-surface-500">{pct > 0 ? '+' : ''}{pct}%</span>}
-            {flat !== 0 && <span className="text-surface-500">{flat > 0 ? '+' : ''}${flat.toFixed(2)}</span>}
+            {flat !== 0 && <span className="text-surface-500">{flat > 0 ? '+' : ''}{formatCurrency(flat)}</span>}
             <span className="text-surface-400">&rarr;</span>
             <span className={cn('font-bold text-lg', adjusted !== sampleBase ? 'text-primary-600' : 'text-surface-900 dark:text-surface-100')}>
-              ${adjusted.toFixed(2)}
+              {formatCurrency(adjusted)}
             </span>
           </div>
         </div>
@@ -955,9 +994,9 @@ function AdjustmentsSubTab() {
             onClick={() => saveMutation.mutate({ flat, pct })}
             disabled={!dirty || saveMutation.isPending}
             className={cn(
-              'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+              'btn btn-lg',
               dirty
-                ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                ? 'btn-primary'
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
             )}
           >
@@ -973,24 +1012,54 @@ function AdjustmentsSubTab() {
 // ─── Main Repair Pricing Tab ──────────────────────────────────────────────────
 
 const SUB_TABS: { key: SubTab; label: string }[] = [
+  { key: 'matrix', label: 'Matrix' },
+  { key: 'tiers', label: 'Tiers' },
+  { key: 'automation', label: 'Auto-margin' },
+  { key: 'audit', label: 'Audit' },
   { key: 'services', label: 'Services' },
   { key: 'prices', label: 'Prices' },
   { key: 'adjustments', label: 'Adjustments' },
 ];
 
+const SUB_TAB_KEYS = new Set<SubTab>(SUB_TABS.map((tab) => tab.key));
+
+function isSubTab(value: string | null): value is SubTab {
+  return !!value && SUB_TAB_KEYS.has(value as SubTab);
+}
+
 export function RepairPricingTab() {
-  const [subTab, setSubTab] = useState<SubTab>('services');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [subTab, setSubTab] = useState<SubTab>(() => {
+    const requested = searchParams.get('view');
+    return isSubTab(requested) ? requested : 'matrix';
+  });
+
+  useEffect(() => {
+    const requested = searchParams.get('view');
+    if (isSubTab(requested) && requested !== subTab) {
+      setSubTab(requested);
+    }
+  }, [searchParams, subTab]);
+
+  const changeSubTab = (next: SubTab) => {
+    setSubTab(next);
+    const params = new URLSearchParams(searchParams);
+    params.set('view', next);
+    setSearchParams(params, { replace: true });
+  };
 
   return (
     <div>
+      <RepairPricingStatusStrip />
+
       {/* Sub-tab navigation */}
-      <div className="flex gap-1 mb-4">
+      <div className="mb-4 flex flex-wrap gap-1">
         {SUB_TABS.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setSubTab(tab.key)}
+            onClick={() => changeSubTab(tab.key)}
             className={cn(
-              'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+              'btn btn-md',
               subTab === tab.key
                 ? 'bg-primary-600 text-primary-950'
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100'
@@ -1001,6 +1070,10 @@ export function RepairPricingTab() {
         ))}
       </div>
 
+      {subTab === 'matrix' && <RepairPricingMatrixSubTab />}
+      {subTab === 'tiers' && <RepairPricingTierSubTab />}
+      {subTab === 'automation' && <RepairPricingAutomationSubTab />}
+      {subTab === 'audit' && <RepairPricingAuditSubTab />}
       {subTab === 'services' && <ServicesSubTab />}
       {subTab === 'prices' && <PricesSubTab />}
       {subTab === 'adjustments' && <AdjustmentsSubTab />}

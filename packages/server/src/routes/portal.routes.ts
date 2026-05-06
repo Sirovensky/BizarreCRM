@@ -15,6 +15,13 @@ import {
 } from '../utils/csrf.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { config } from '../config.js';
+import {
+  getPortalCaptchaPublicConfig,
+  hasFreshPortalCaptchaIp,
+  rememberPortalCaptchaIp,
+  verifyPortalCaptchaToken,
+} from '../utils/captcha.js';
 
 const router = Router();
 const logger = createLogger('portal');
@@ -82,6 +89,30 @@ function consumeRate(
   windowMs: number,
 ): boolean {
   return consumeWindowRate(req.db, category, key, maxAttempts, windowMs).allowed;
+}
+
+async function requireCaptchaForNewPortalIp(req: PortalRequest, res: Response, ip: string): Promise<boolean> {
+  if (!config.portalCaptchaEnabled) {
+    return true;
+  }
+
+  if (await hasFreshPortalCaptchaIp(req.asyncDb, ip)) {
+    return true;
+  }
+
+  const token = (req.body as { captcha_token?: unknown })?.captcha_token;
+  const captcha = await verifyPortalCaptchaToken(token, ip);
+  if (!captcha.ok) {
+    res.status(403).json({
+      success: false,
+      message: captcha.reason || 'Verification check failed',
+      data: { captcha_required: true },
+    });
+    return false;
+  }
+
+  await rememberPortalCaptchaIp(req.asyncDb, ip);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -686,6 +717,10 @@ router.post('/login', asyncHandler(async (req: PortalRequest, res: Response) => 
 // ---------------------------------------------------------------------------
 // POST /register/send-code — Send SMS verification code
 // ---------------------------------------------------------------------------
+router.get('/register/captcha-config', asyncHandler(async (_req: PortalRequest, res: Response) => {
+  res.json({ success: true, data: getPortalCaptchaPublicConfig() });
+}));
+
 router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: Response) => {
   const adb = req.asyncDb;
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -708,6 +743,10 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
     return;
   }
 
+  if (!(await requireCaptchaForNewPortalIp(req, res, ip))) {
+    return;
+  }
+
   // R2: Phone rate 3 / hour — persistent
   if (!consumeRate(req, RL.SEND_CODE_PHONE, normalized, 3, 60 * 60 * 1000)) {
     res.status(429).json({ success: false, message: 'Too many verification attempts. Please try again later.' });
@@ -717,10 +756,8 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
   // SEC-M21: 24-hour hard cap at 10 per phone on top of the hourly rolling
   // limit above. Prevents a slow-drip spammer from sending 72 codes/day by
   // pacing one every 20 minutes under the hourly gate. Separate rate_limits
-  // category so the window counts are independent. CAPTCHA-on-first-new-IP
-  // (the original spec's second half) is tracked as SEC-M21-captcha — requires
-  // a CAPTCHA provider integration (hCaptcha / reCAPTCHA / Turnstile) which
-  // is out of scope for a self-contained fix.
+  // category so the window counts are independent. CAPTCHA-on-first-new-IP is
+  // enforced above before any phone/customer buckets are consumed.
   if (!consumeRate(req, 'portal_send_code_day', normalized, 10, 24 * 60 * 60 * 1000)) {
     res.status(429).json({
       success: false,

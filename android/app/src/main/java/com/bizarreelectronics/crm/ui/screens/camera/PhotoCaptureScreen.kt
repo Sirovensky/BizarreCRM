@@ -3,8 +3,6 @@ package com.bizarreelectronics.crm.ui.screens.camera
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,6 +36,7 @@ import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.util.HapticEvent
+import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import com.bizarreelectronics.crm.util.LocalAppHapticController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +45,6 @@ import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 // U3 / N10 fix: The previous PhotoCaptureScreen was a lie. It incremented a
@@ -81,9 +79,12 @@ class PhotoCaptureViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isUploading = true, lastError = null)
             try {
+                ImageUploadPolicy.validate(context, uri, ImageUploadPolicy.GENERAL_IMAGE_MAX_BYTES)?.let {
+                    throw IllegalStateException(it)
+                }
                 val bytes = readBytesFromUri(context, uri)
                     ?: throw IllegalStateException(
-                        "Image is too large to upload (max 20 MB even after downsampling). " +
+                        "Image is too large to upload (max ${ImageUploadPolicy.formatSize(ImageUploadPolicy.GENERAL_IMAGE_MAX_BYTES)}). " +
                         "Please select a smaller photo."
                     )
                 if (bytes.isEmpty()) {
@@ -91,11 +92,7 @@ class PhotoCaptureViewModel @Inject constructor(
                 }
 
                 val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
-                val extension = when {
-                    mime.contains("png") -> "png"
-                    mime.contains("webp") -> "webp"
-                    else -> "jpg"
-                }
+                val extension = ImageUploadPolicy.extensionForMime(mime)
                 val fileName = "ticket-${ticketId}-${System.currentTimeMillis()}.$extension"
 
                 val requestBody = bytes.toRequestBody(mime.toMediaTypeOrNull())
@@ -132,51 +129,15 @@ class PhotoCaptureViewModel @Inject constructor(
 
     /**
      * AUDIT-AND-006: reads image bytes from [uri] with an OOM guard.
-     *
-     * The previous implementation streamed the full file into a single
-     * ByteArrayOutputStream with no size limit, allowing a 50 MB RAW or
-     * panorama shot to exhaust heap on low-end devices. The fix:
-     *
-     *  1. Stat the file descriptor first (no stream → no heap allocation yet).
-     *  2. If the raw file exceeds 20 MB, decode with BitmapFactory.inSampleSize
-     *     (4× sub-sample for >40 MB, 2× for 20–40 MB) and re-encode as JPEG
-     *     before handing bytes to the upload path. This caps the in-memory
-     *     bitmap at ≈3–6 MB for a typical 12 MP sensor.
-     *  3. If the re-encoded result is still somehow over 20 MB (extreme edge
-     *     case) we reject it with a clear error rather than OOM-crashing.
-     *  4. Files ≤ 20 MB use the original direct-stream path.
+     * The shared policy rejects unsupported formats and files over the server's
+     * 10 MB cap before this method is called; this final byte-count check covers
+     * providers that cannot report a size up front.
      */
     private fun readBytesFromUri(context: Context, uri: Uri): ByteArray? {
-        val MAX_BYTES = 20L * 1024L * 1024L   // 20 MB cap
-
-        // Step 1: stat without opening a full stream.
-        val fileSize: Long = context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-            pfd.statSize
-        } ?: 0L
-
-        return if (fileSize > MAX_BYTES) {
-            // Step 2: downsample before decoding to keep heap usage bounded.
-            val inSampleSize = if (fileSize > 40L * 1024L * 1024L) 4 else 2
-            val opts = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
-            val bitmap: Bitmap = context.contentResolver.openInputStream(uri)?.use { input ->
-                BitmapFactory.decodeStream(input, null, opts)
-            } ?: return null
-
-            val output = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)
-            bitmap.recycle()
-            val bytes = output.toByteArray()
-
-            // Step 3: reject if still over the cap (shouldn't happen in practice).
-            if (bytes.size > MAX_BYTES) null else bytes
-        } else {
-            // Step 4: original path — file is already within the size limit.
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                val output = ByteArrayOutputStream()
-                input.copyTo(output)
-                output.toByteArray()
-            }
+        val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+            input.readBytes()
         }
+        return if (bytes != null && bytes.size <= ImageUploadPolicy.GENERAL_IMAGE_MAX_BYTES) bytes else null
     }
 }
 

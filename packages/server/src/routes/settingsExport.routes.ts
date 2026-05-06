@@ -59,7 +59,7 @@ const ALLOWED_CONFIG_KEYS = new Set<string>([
   'ticket_auto_close_on_invoice', 'ticket_all_employees_view_all', 'ticket_require_stopwatch',
   'ticket_auto_status_on_reply', 'ticket_auto_remove_passcode', 'ticket_copy_warranty_notes',
   'ticket_default_assignment', 'ticket_default_view', 'ticket_default_filter',
-  'ticket_default_date_sort', 'ticket_default_pagination', 'ticket_default_sort_order',
+  'ticket_default_date_sort', 'ticket_default_sort', 'ticket_default_pagination', 'ticket_default_sort_order',
   'ticket_status_after_estimate', 'ticket_label_template',
   'ticket_timer_auto_start_status', 'ticket_timer_auto_stop_status',
   // Repair settings
@@ -68,6 +68,9 @@ const ALLOWED_CONFIG_KEYS = new Set<string>([
   'repair_itemize_line_items', 'repair_price_includes_parts',
   'repair_default_warranty_value', 'repair_default_warranty_unit',
   'repair_default_input_criteria', 'repair_default_due_value', 'repair_default_due_unit',
+  'warranty_default_months_screen', 'warranty_default_months_battery',
+  'warranty_default_months_charge_port', 'warranty_default_months_back_glass',
+  'warranty_default_months_camera', 'warranty_disclaimer',
   // POS settings
   'pos_show_products', 'pos_show_repairs', 'pos_show_miscellaneous', 'pos_show_bundles',
   'pos_show_out_of_stock', 'pos_show_invoice_notes', 'pos_show_outstanding_alert',

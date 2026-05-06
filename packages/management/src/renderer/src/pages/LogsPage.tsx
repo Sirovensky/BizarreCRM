@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ScrollText, RefreshCw, Pause, Play, Filter, Trash2, Copy, ArrowDownToLine } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -16,6 +16,8 @@ interface LogFileMeta {
 
 const REFRESH_INTERVAL_MS = 2000;
 const TAIL_LINES_OPTIONS = [100, 200, 500, 1000, 2000];
+const LOG_LINE_ESTIMATED_HEIGHT = 18;
+const LOG_LINE_OVERSCAN = 12;
 
 const SEVERITY_HIGHLIGHT: Array<{ pattern: RegExp; cls: string }> = [
   { pattern: /\b(FATAL|ERROR|❌|✖)\b/i, cls: 'text-red-300' },
@@ -31,16 +33,6 @@ function colorize(line: string): string {
   return 'text-surface-300';
 }
 
-// Native browser virtualization. With 500-2000 long lines + break-all wrapping,
-// laying out every off-screen row dominates the frame. content-visibility: auto
-// lets Chromium skip layout/paint for off-screen rows; contain-intrinsic-size
-// gives the scrollbar a stable estimate so the page doesn't jump as rows enter
-// the viewport. Single biggest win for scroll/update perf in this view.
-const LINE_STYLE: React.CSSProperties = {
-  contentVisibility: 'auto',
-  containIntrinsicSize: 'auto 18px',
-};
-
 const LogLine = memo(function LogLine({
   line,
   filter,
@@ -51,7 +43,7 @@ const LogLine = memo(function LogLine({
   regex: RegExp | null;
 }) {
   return (
-    <div className={`whitespace-pre-wrap break-all ${colorize(line)}`} style={LINE_STYLE}>
+    <div className={`log-line-virtualized whitespace-pre-wrap break-all ${colorize(line)}`}>
       {renderWithHighlight(line, filter, regex)}
     </div>
   );
@@ -62,11 +54,11 @@ const LogLine = memo(function LogLine({
  * substring matches (case-insensitive). Returns the original line as a
  * single text node when the filter is empty so there's no DOM cost.
  */
-function renderWithHighlight(line: string, filter: string, regex: RegExp | null): React.ReactNode {
+function renderWithHighlight(line: string, filter: string, regex: RegExp | null): ReactNode {
   // DASH-ELEC-216: regex mode segments via RegExp.exec instead of substring
   // indexOf so highlight spans align with actual match windows.
   if (regex) {
-    const nodes: React.ReactNode[] = [];
+    const nodes: ReactNode[] = [];
     const re = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`);
     let pos = 0;
     let m: RegExpExecArray | null;
@@ -88,7 +80,7 @@ function renderWithHighlight(line: string, filter: string, regex: RegExp | null)
   if (!q) return line || '\u00A0';
   const needle = q.toLowerCase();
   const hay = line.toLowerCase();
-  const nodes: React.ReactNode[] = [];
+  const nodes: ReactNode[] = [];
   let cursor = 0;
   while (cursor < line.length) {
     const hit = hay.indexOf(needle, cursor);
@@ -106,6 +98,185 @@ function renderWithHighlight(line: string, filter: string, regex: RegExp | null)
   }
   return nodes.length === 0 ? (line || '\u00A0') : nodes;
 }
+
+interface KeyedLogLine {
+  line: string;
+  key: string;
+}
+
+interface VirtualLogRow extends KeyedLogLine {
+  index: number;
+  start: number;
+}
+
+function useVirtualLogRows(rows: KeyedLogLine[], scrollRef: RefObject<HTMLDivElement | null>) {
+  const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
+  const [measurementVersion, setMeasurementVersion] = useState(0);
+  const measuredHeightsRef = useRef(new Map<string, number>());
+  const frameRef = useRef<number | null>(null);
+
+  const readViewport = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const next = { scrollTop: el.scrollTop, height: el.clientHeight };
+    setViewport((prev) => (
+      prev.scrollTop === next.scrollTop && prev.height === next.height ? prev : next
+    ));
+  }, [scrollRef]);
+
+  const syncViewport = useCallback(() => {
+    if (frameRef.current !== null) return;
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null;
+      readViewport();
+    });
+  }, [readViewport]);
+
+  useEffect(() => () => {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    readViewport();
+  }, [readViewport, rows.length]);
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(syncViewport);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [scrollRef, syncViewport]);
+
+  useEffect(() => {
+    const activeKeys = new Set(rows.map((row) => row.key));
+    let pruned = false;
+    for (const key of measuredHeightsRef.current.keys()) {
+      if (!activeKeys.has(key)) {
+        measuredHeightsRef.current.delete(key);
+        pruned = true;
+      }
+    }
+    if (pruned) setMeasurementVersion((version) => version + 1);
+  }, [rows]);
+
+  const measureRow = useCallback((key: string, height: number) => {
+    const measuredHeight = height > 0
+      ? Math.ceil(height * 100) / 100
+      : LOG_LINE_ESTIMATED_HEIGHT;
+    const previousHeight = measuredHeightsRef.current.get(key);
+    if (previousHeight === measuredHeight) return;
+    measuredHeightsRef.current.set(key, measuredHeight);
+    setMeasurementVersion((version) => version + 1);
+  }, []);
+
+  const layout = useMemo(() => {
+    const starts: number[] = [];
+    const sizes: number[] = [];
+    let totalSize = 0;
+
+    for (const row of rows) {
+      starts.push(totalSize);
+      const size = measuredHeightsRef.current.get(row.key) ?? LOG_LINE_ESTIMATED_HEIGHT;
+      sizes.push(size);
+      totalSize += size;
+    }
+
+    return { starts, sizes, totalSize };
+  }, [rows, measurementVersion]);
+
+  const virtualRows = useMemo<VirtualLogRow[]>(() => {
+    if (rows.length === 0 || viewport.height <= 0) return [];
+
+    const visibleStart = Math.max(0, viewport.scrollTop);
+    const visibleEnd = visibleStart + viewport.height;
+
+    let low = 0;
+    let high = rows.length - 1;
+    let first = rows.length;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const rowEnd = layout.starts[mid] + layout.sizes[mid];
+      if (rowEnd >= visibleStart) {
+        first = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+
+    if (first === rows.length) first = rows.length - 1;
+
+    low = first;
+    high = rows.length - 1;
+    let last = first;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      if (layout.starts[mid] <= visibleEnd) {
+        last = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    const startIndex = Math.max(0, first - LOG_LINE_OVERSCAN);
+    const endIndex = Math.min(rows.length - 1, last + LOG_LINE_OVERSCAN);
+    const nextRows: VirtualLogRow[] = [];
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      nextRows.push({ ...rows[index], index, start: layout.starts[index] });
+    }
+    return nextRows;
+  }, [rows, layout, viewport]);
+
+  return {
+    measureRow,
+    syncViewport,
+    totalSize: layout.totalSize,
+    virtualRows,
+  };
+}
+
+const VirtualLogLine = memo(function VirtualLogLine({
+  row,
+  filter,
+  regex,
+  onMeasure,
+}: {
+  row: VirtualLogRow;
+  filter: string;
+  regex: RegExp | null;
+  onMeasure: (key: string, height: number) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const node = rowRef.current;
+    if (!node) return;
+
+    const measure = () => onMeasure(row.key, node.getBoundingClientRect().height);
+    measure();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filter, onMeasure, regex, row.key, row.line]);
+
+  return (
+    <div
+      ref={rowRef}
+      className="absolute left-0 right-0 top-0"
+      data-log-row-index={row.index}
+      style={{ transform: `translateY(${row.start}px)` }}
+    >
+      <LogLine line={row.line} filter={filter} regex={regex} />
+    </div>
+  );
+});
 
 export function LogsPage() {
   const [files, setFiles] = useState<LogFileMeta[]>([]);
@@ -174,22 +345,6 @@ export function LogsPage() {
     return () => clearInterval(id);
   }, [autoRefresh, loadTail]);
 
-  // DASH-ELEC-127: auto-scroll only when the operator is already pinned to the
-  // bottom. If they've scrolled up to investigate an earlier line, the 2-second
-  // poll must NOT yank them back. The 50px slack absorbs sub-pixel rounding +
-  // a row-height of fresh paint.
-  const userScrolledRef = useRef(false);
-  const onScrollContainer = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    userScrolledRef.current = el.scrollTop < el.scrollHeight - el.clientHeight - 50;
-  }, []);
-  useEffect(() => {
-    if (autoRefresh && scrollRef.current && !userScrolledRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [content, autoRefresh]);
-
   // DASH-ELEC-038: derive the raw line array once so filteredLines and
   // errorCodeCounts both consume the same memoised split instead of each
   // calling content.split('\n') independently on every 2-second poll tick.
@@ -235,6 +390,32 @@ export function LogsPage() {
       return { line, key: `${line.slice(0, 80)}#${n}` };
     });
   }, [filteredLines]);
+
+  const userScrolledRef = useRef(false);
+  const {
+    measureRow,
+    syncViewport,
+    totalSize: virtualTotalSize,
+    virtualRows,
+  } = useVirtualLogRows(keyedLines, scrollRef);
+
+  // DASH-ELEC-127: auto-scroll only when the operator is already pinned to the
+  // bottom. If they've scrolled up to investigate an earlier line, the 2-second
+  // poll must NOT yank them back. The 50px slack absorbs sub-pixel rounding +
+  // a row-height of fresh paint.
+  const onScrollContainer = useCallback(() => {
+    syncViewport();
+    const el = scrollRef.current;
+    if (!el) return;
+    userScrolledRef.current = el.scrollTop < el.scrollHeight - el.clientHeight - 50;
+  }, [syncViewport]);
+
+  useEffect(() => {
+    if (autoRefresh && scrollRef.current && !userScrolledRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      syncViewport();
+    }
+  }, [content, autoRefresh, virtualTotalSize, syncViewport]);
 
   // Extract ERR_* codes that appear in the current tail so operators can
   // spot patterns at a glance ("everything is ERR_ORIGIN_MISSING right now")
@@ -309,6 +490,7 @@ export function LogsPage() {
                 // DASH-ELEC-127: explicit "scroll to bottom" re-pins, so
                 // subsequent auto-scroll ticks resume.
                 userScrolledRef.current = false;
+                syncViewport();
               }
             }}
             className="p-2 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-800"
@@ -438,14 +620,17 @@ export function LogsPage() {
             {filter ? 'No lines match the filter.' : 'Log is empty.'}
           </div>
         ) : (
-          keyedLines.map(({ line, key }) => (
-            <LogLine
-              key={key}
-              line={line}
-              filter={debouncedFilter}
-              regex={compiledRegex}
-            />
-          ))
+          <div className="relative w-full" style={{ height: virtualTotalSize }}>
+            {virtualRows.map((row) => (
+              <VirtualLogLine
+                key={row.key}
+                row={row}
+                filter={debouncedFilter}
+                regex={compiledRegex}
+                onMeasure={measureRow}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>

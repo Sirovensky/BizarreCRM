@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { settingsApi } from '@/api/endpoints';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
 /**
@@ -31,8 +32,9 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
  * fields that don't belong to the active mode so the bulk PUT at the end of
  * the wizard doesn't carry stale state.
  *
- * "Run test backup" is a stub for now — wired up when the backup service
- * actually exists. Toast confirms the click works.
+ * "Run test backup" calls the backend destination test. Local destinations
+ * run a real encrypted backup; S3 performs a write/delete probe; Tailscale
+ * verifies the node resolves before scheduled backup writes use it.
  */
 
 type BackupKind = NonNullable<PendingWrites['backup_destination_type']>;
@@ -94,6 +96,7 @@ export function StepBackupDestination({
   const [s3SecretKey, setS3SecretKey] = useState<string>(pending.backup_s3_secret_key ?? '');
   const [showAccessKey, setShowAccessKey] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   // Sync the active mode's fields up to the wizard's pending bundle. We clear
   // fields that don't belong to the active mode so stale state doesn't carry
@@ -117,8 +120,33 @@ export function StepBackupDestination({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, localPath, tailscalePath, s3Endpoint, s3Bucket, s3AccessKey, s3SecretKey]);
 
-  const handleTestBackup = () => {
-    toast('Test run will land when the backup service is wired.', { icon: 'i' });
+  const handleTestBackup = async () => {
+    setTesting(true);
+    try {
+      if (kind === 'local') {
+        await settingsApi.testBackupDestination({ kind, path: localPath || DEFAULT_LOCAL_PATH });
+      } else if (kind === 's3') {
+        await settingsApi.testBackupDestination({
+          kind,
+          endpoint: s3Endpoint,
+          bucket: s3Bucket,
+          access_key: s3AccessKey,
+          secret_key: s3SecretKey,
+        });
+      } else {
+        await settingsApi.testBackupDestination({ kind, path: tailscalePath });
+      }
+      toast.success(kind === 'local' ? 'Test backup completed' : 'Backup destination verified');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string; data?: { message?: string } } }; message?: string })?.response?.data?.data?.message ||
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Backup destination test failed.';
+      toast.error(message);
+    } finally {
+      setTesting(false);
+    }
   };
 
   const handleSkip = () => {
@@ -366,13 +394,14 @@ export function StepBackupDestination({
           <button
             type="button"
             onClick={handleTestBackup}
-            className="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            disabled={testing}
+            className="btn btn-md inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-4 py-2.5 text-sm font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
-            <Play className="h-4 w-4" />
-            Run test backup
+            <Play className={`h-4 w-4 ${testing ? 'animate-pulse' : ''}`} />
+            {testing ? 'Testing...' : 'Run test backup'}
           </button>
           <p className="mt-1 text-[11px] text-surface-500 dark:text-surface-400">
-            Stub for now — fires a real run once the backup service is wired.
+            Local runs create a real encrypted backup; cloud destinations use a provider probe.
           </p>
         </div>
 
@@ -380,7 +409,7 @@ export function StepBackupDestination({
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -389,14 +418,14 @@ export function StepBackupDestination({
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+              className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
             >
-              Skip
+              Skip this step
             </button>
             <button
               type="button"
               onClick={onNext}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

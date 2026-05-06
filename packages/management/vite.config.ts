@@ -13,10 +13,22 @@ import path from 'path';
 // artifact).
 const SOURCEMAPS_ENABLED = false as const;
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: path.resolve(__dirname, 'src/renderer'),
   base: './',
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'management-csp-dev-style-injection',
+      transformIndexHtml(html) {
+        if (command !== 'serve') return html;
+        return html.replace(
+          "style-src 'self'; style-src-attr 'none';",
+          "style-src 'self' 'unsafe-inline';",
+        );
+      },
+    },
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src/renderer/src'),
@@ -31,4 +43,4 @@ export default defineConfig({
   server: {
     port: 5174,
   },
-});
+}));

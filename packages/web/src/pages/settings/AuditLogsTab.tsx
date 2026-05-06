@@ -34,6 +34,9 @@ function formatDetails(details: string | null): string {
   return out.length > MAX_DETAIL_LEN ? out.slice(0, MAX_DETAIL_LEN) + '…' : out;
 }
 
+const filterControlClassName =
+  'rounded border border-surface-200 bg-white px-2 py-1.5 text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200';
+
 const AuditLogRow = memo(function AuditLogRow({ log }: { log: AuditLog }) {
   const formattedDetails = useMemo(() => formatDetails(log.details), [log.details]);
   const formattedTime = useMemo(
@@ -43,17 +46,17 @@ const AuditLogRow = memo(function AuditLogRow({ log }: { log: AuditLog }) {
   const userDisplay = log.user_name || log.username || (log.user_id ? `User #${log.user_id}` : '-');
 
   return (
-    <tr className="border-b border-surface-800 hover:bg-surface-800/50">
-      <td className="py-2 px-3 whitespace-nowrap text-surface-300">{formattedTime}</td>
+    <tr className="border-b border-surface-100 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50">
+      <td className="py-2 px-3 whitespace-nowrap text-surface-700 dark:text-surface-300">{formattedTime}</td>
       <td className="py-2 px-3">
-        <span className="inline-block bg-surface-700 text-surface-200 rounded px-2 py-0.5 text-xs font-mono">
+        <span className="inline-block rounded bg-surface-100 px-2 py-0.5 text-xs font-mono text-surface-700 dark:bg-surface-700 dark:text-surface-200">
           {log.event}
         </span>
       </td>
-      <td className="py-2 px-3 text-surface-300">{userDisplay}</td>
-      <td className="py-2 px-3 text-surface-400 font-mono text-xs">{log.ip_address || '-'}</td>
+      <td className="py-2 px-3 text-surface-700 dark:text-surface-300">{userDisplay}</td>
+      <td className="py-2 px-3 text-surface-500 dark:text-surface-400 font-mono text-xs">{log.ip_address || '-'}</td>
       <td
-        className="py-2 px-3 text-surface-400 text-xs max-w-xs truncate"
+        className="py-2 px-3 text-surface-500 dark:text-surface-400 text-xs max-w-xs truncate"
         title={formattedDetails}
       >
         {formattedDetails}
@@ -155,16 +158,16 @@ export function AuditLogsTab() {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-surface-100">Audit Logs</h3>
+      <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Audit Logs</h3>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-surface-400 mb-1">Event Type</label>
+          <label className="block text-xs text-surface-600 dark:text-surface-400 mb-1">Event Type</label>
           <select
             value={eventFilter}
             onChange={(e) => { setEventFilter(e.target.value); setPage(1); }}
-            className="bg-surface-800 border border-surface-600 rounded px-2 py-1.5 text-sm text-surface-200"
+            className={filterControlClassName}
           >
             <option value="">All Events</option>
             {eventTypes.map((e) => (
@@ -173,27 +176,27 @@ export function AuditLogsTab() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-surface-400 mb-1">From Date</label>
+          <label className="block text-xs text-surface-600 dark:text-surface-400 mb-1">From Date</label>
           <input
             type="date"
             value={fromDate}
             onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
-            className="bg-surface-800 border border-surface-600 rounded px-2 py-1.5 text-sm text-surface-200"
+            className={filterControlClassName}
           />
         </div>
         <div>
-          <label className="block text-xs text-surface-400 mb-1">To Date</label>
+          <label className="block text-xs text-surface-600 dark:text-surface-400 mb-1">To Date</label>
           <input
             type="date"
             value={toDate}
             onChange={(e) => { setToDate(e.target.value); setPage(1); }}
-            className="bg-surface-800 border border-surface-600 rounded px-2 py-1.5 text-sm text-surface-200"
+            className={filterControlClassName}
           />
         </div>
         {(eventFilter || fromDate || toDate) && (
           <button
             onClick={() => { setEventFilter(''); setFromDate(''); setToDate(''); setDebouncedFrom(''); setDebouncedTo(''); setPage(1); }}
-            className="text-xs text-orange-400 hover:text-orange-300 pb-1.5"
+            className="btn btn-ghost btn-xs !text-orange-600 hover:!text-orange-700 dark:!text-orange-400 dark:hover:!text-orange-300"
           >
             Clear filters
           </button>
@@ -203,13 +206,13 @@ export function AuditLogsTab() {
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="inline-flex items-center gap-1 text-xs text-surface-300 hover:text-surface-100 disabled:opacity-50"
+            className="btn btn-ghost btn-xs !text-surface-600 hover:!text-surface-900 dark:!text-surface-300 dark:hover:!text-surface-100"
             aria-label="Refresh logs"
           >
             <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
             Refresh
           </button>
-          <label className="inline-flex items-center gap-1.5 text-xs text-surface-300 cursor-pointer select-none">
+          <label className="inline-flex items-center gap-1.5 text-xs text-surface-600 dark:text-surface-300 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={liveTail}
@@ -241,7 +244,7 @@ export function AuditLogsTab() {
             <table className="w-full text-sm">
               <caption className="sr-only">Audit log entries — system events with timestamp, actor, IP address, and detail payload.</caption>
               <thead>
-                <tr className="border-b border-surface-700 text-left text-surface-400">
+                <tr className="border-b border-surface-200 text-left text-surface-500 dark:border-surface-700 dark:text-surface-400">
                   <th scope="col" className="py-2 px-3 font-medium">Time</th>
                   <th scope="col" className="py-2 px-3 font-medium">Event</th>
                   <th scope="col" className="py-2 px-3 font-medium">User</th>
@@ -260,7 +263,7 @@ export function AuditLogsTab() {
           {/* Pagination */}
           {pagination && pagination.total_pages > 1 && (
             <div className="flex items-center justify-between pt-2">
-              <span className="text-xs text-surface-400">
+              <span className="text-xs text-surface-500 dark:text-surface-400">
                 Showing {(pagination.page - 1) * pagination.per_page + 1}-{Math.min(pagination.page * pagination.per_page, pagination.total)} of {pagination.total}
               </span>
               <div className="flex gap-1">
@@ -268,20 +271,20 @@ export function AuditLogsTab() {
                   aria-label="Previous page"
                   onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={page <= 1}
-                  className="inline-flex items-center justify-center rounded hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] md:p-1"
+                  className="btn-icon btn-xs min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px]"
                 >
-                  <ChevronLeft className="h-4 w-4 text-surface-300" />
+                  <ChevronLeft className="h-4 w-4 text-surface-500 dark:text-surface-300" />
                 </button>
-                <span className="px-2 py-1 text-xs text-surface-300">
+                <span className="px-2 py-1 text-xs text-surface-600 dark:text-surface-300">
                   Page {pagination.page} / {pagination.total_pages}
                 </span>
                 <button
                   aria-label="Next page"
                   onClick={() => setPage(Math.min(pagination.total_pages, page + 1))}
                   disabled={page >= pagination.total_pages}
-                  className="inline-flex items-center justify-center rounded hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px] md:p-1"
+                  className="btn-icon btn-xs min-h-[44px] min-w-[44px] md:min-h-[28px] md:min-w-[28px]"
                 >
-                  <ChevronRight className="h-4 w-4 text-surface-300" />
+                  <ChevronRight className="h-4 w-4 text-surface-500 dark:text-surface-300" />
                 </button>
               </div>
             </div>

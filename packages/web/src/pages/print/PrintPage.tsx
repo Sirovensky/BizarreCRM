@@ -12,12 +12,13 @@
  * All receipt content is driven by the 26 receipt_cfg_* toggles in store_config.
  */
 import { useEffect, useRef } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
-import { ticketApi, settingsApi } from '@/api/endpoints';
+import { invoiceApi, ticketApi, settingsApi } from '@/api/endpoints';
 import JsBarcode from 'jsbarcode'; // eslint-disable-line
 import { formatCurrency, formatDate, formatDateTime, formatPhone } from '@/utils/format';
+import type { InvoiceDetail, InvoiceLineItem, InvoicePayment } from '@/types/invoice';
 
 type PaperSize = 'receipt80' | 'receipt58' | 'label' | 'letter';
 
@@ -77,9 +78,24 @@ interface PrintCustomer extends Record<string, any> {
   email?: string | null;
 }
 
+interface PrintLocation extends Record<string, any> {
+  id?: number | null;
+  name?: string | null;
+  address_line?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postcode?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  timezone?: string | null;
+}
+
 interface PrintTicket extends Record<string, any> {
   id?: number;
   order_id?: string | null;
+  location_id?: number | null;
+  location?: PrintLocation | null;
   customer?: PrintCustomer | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -90,6 +106,14 @@ interface PrintTicket extends Record<string, any> {
 }
 
 type PrintConfig = Record<string, string>;
+
+type PrintDocument = PrintTicket | InvoiceDetail;
+
+function getPrintLocationId(document: PrintDocument | undefined): number | undefined {
+  const raw = document?.location_id ?? document?.location?.id;
+  const id = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
 
 /**
  * Only allow logo URLs that are relative paths or https://.
@@ -137,6 +161,18 @@ function sanitizeTerms(value: string | null | undefined): string {
   if (!value) return '';
   const stripped = DOMPurify.sanitize(value, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
   return stripped.replace(BIDI_CONTROL_RE, '').slice(0, TERMS_MAX_LENGTH);
+}
+
+function warrantyDisclaimer(config: PrintConfig): string {
+  return sanitizeTerms(config.warranty_disclaimer);
+}
+
+function warrantyLabel(device: PrintDevice): string {
+  if (device.warranty_timeframe) return String(device.warranty_timeframe);
+  const days = Number(device.warranty_days);
+  if (device.warranty && Number.isFinite(days) && days > 0) return `${days} days`;
+  if (typeof device.warranty === 'string') return device.warranty;
+  return '';
 }
 
 /**
@@ -200,6 +236,7 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
   const storeAddress = cfgText('store_address', '');
   const storeWebsite = cfgText('store_website', '');
   const logoUrl = cfgText('receipt_logo');
+  const disclaimer = warrantyDisclaimer(config);
 
   const s: React.CSSProperties = { fontFamily: "'Courier New', monospace", fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
   const dash: React.CSSProperties = { borderTop: '1px dashed #000', margin: '4px 0' };
@@ -311,8 +348,8 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
           )}
 
           {/* Service description / warranty */}
-          {cfg('receipt_cfg_service_desc_thermal') && (d.warranty || d.warranty_timeframe) && (
-            <div style={{ fontSize: '0.85em' }}>    Warranty: {d.warranty_timeframe || d.warranty}</div>
+          {cfg('receipt_cfg_service_desc_thermal') && warrantyLabel(d) && (
+            <div style={{ fontSize: '0.85em' }}>    Warranty: {warrantyLabel(d)}</div>
           )}
 
           {/* Pre-conditions */}
@@ -403,6 +440,14 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
         </>
       )}
 
+      {disclaimer && (
+        <>
+          <div style={dash} />
+          <div style={{ ...center, fontWeight: 'bold', fontSize: '0.85em', marginBottom: 2 }}>Warranty</div>
+          <div style={{ fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>{disclaimer}</div>
+        </>
+      )}
+
       {/* Signature */}
       {cfg('receipt_cfg_signature_thermal') && isSafeSignature(ticket.signature) && (
         <>
@@ -465,6 +510,7 @@ function PageReceipt({ ticket, config, isReceiptType }: {
   const invoiceFooter = cfgText('invoice_footer');
   const invoiceTerms = cfgText('invoice_terms');
   const invoicePaymentTerms = cfgText('invoice_payment_terms');
+  const disclaimer = warrantyDisclaimer(config);
 
   // Shared table styles
   const cellBorder = '1px solid #999';
@@ -588,6 +634,12 @@ function PageReceipt({ ticket, config, isReceiptType }: {
                 <tr>
                   <td style={labelCell}>Issue</td>
                   <td colSpan={3} style={{ ...valueCell, borderRight: 'none' }}>{d.additional_notes}</td>
+                </tr>
+              )}
+              {warrantyLabel(d) && (
+                <tr>
+                  <td style={labelCell}>Warranty</td>
+                  <td colSpan={3} style={{ ...valueCell, borderRight: 'none' }}>{warrantyLabel(d)}</td>
                 </tr>
               )}
             </tbody>
@@ -715,6 +767,15 @@ function PageReceipt({ ticket, config, isReceiptType }: {
         </>
       )}
 
+      {disclaimer && (
+        <>
+          <div style={sectionHeader}>Warranty Disclaimer</div>
+          <div style={{ border: cellBorder, borderTop: 'none', padding: '6px 8px', fontSize: 8, color: '#444', marginBottom: 10, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+            {disclaimer}
+          </div>
+        </>
+      )}
+
       {/* ═══ SIGNATURES ═══ */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, marginBottom: 10 }}>
         <div style={{ width: '45%' }}>
@@ -776,6 +837,7 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
   const invoiceFooter = cfgText('invoice_footer');
   const invoiceTerms = cfgText('invoice_terms');
   const invoicePaymentTerms = cfgText('invoice_payment_terms');
+  const disclaimer = warrantyDisclaimer(config);
 
   const thStyle: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', borderBottom: '2px solid #333', fontSize: 12, fontWeight: 'bold' };
   const tdStyle: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid #ddd', fontSize: 11, verticalAlign: 'top' };
@@ -848,8 +910,8 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
                 {cfg('receipt_cfg_post_conditions_page') && d.post_conditions?.length > 0 && (
                   <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Post-conditions: {d.post_conditions}</div>
                 )}
-                {cfg('receipt_cfg_service_desc_page') && (d.warranty || d.warranty_timeframe) && (
-                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Warranty: {d.warranty || d.warranty_timeframe}</div>
+                {cfg('receipt_cfg_service_desc_page') && warrantyLabel(d) && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Warranty: {warrantyLabel(d)}</div>
                 )}
                 {cfg('receipt_cfg_parts_page') && (d.parts?.length ?? 0) > 0 && (
                   <div style={{ marginTop: 4, paddingLeft: 8, fontSize: 10, color: '#444' }}>
@@ -894,11 +956,243 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
 
       {/* Terms */}
       {invoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{sanitizeTerms(invoiceTerms)}</div></div>}
+      {disclaimer && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Warranty Disclaimer</div><div style={{ whiteSpace: 'pre-wrap' }}>{disclaimer}</div></div>}
 
       {cfg('receipt_cfg_signature_page') && isSafeSignature(ticket.signature) && (
         <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, marginBottom: 2 }}>Customer Signature:</div><img src={ticket.signature} alt="Signature" style={{ maxWidth: 200, height: 'auto', border: '1px solid #ccc' }} /></div>
       )}
       {cfg('receipt_cfg_barcode') && ticket.order_id && <BarcodeBlock value={ticket.order_id} width={2} />}
+      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{sanitizePrintText(invoiceFooter || cfgText('receipt_footer')) || `Thank you for choosing ${storeName}!`}</div>
+    </div>
+  );
+}
+
+/* -- Standalone invoice layouts ----------------------------------------- */
+
+function invoiceCustomerName(invoice: InvoiceDetail): string {
+  const name = `${invoice.first_name || ''} ${invoice.last_name || ''}`.trim();
+  return name || invoice.organization || 'Customer';
+}
+
+function ThermalInvoiceReceipt({ invoice, config, size }: {
+  invoice: InvoiceDetail; config: PrintConfig; size: 'receipt80' | 'receipt58';
+}) {
+  const cfg = (key: string, fallback = '1') => (config?.[key] ?? fallback) === '1';
+  const cfgText = (key: string, fallback = '') => config?.[key] ?? fallback;
+
+  const lineItems: InvoiceLineItem[] = invoice.line_items || [];
+  const payments: InvoicePayment[] = invoice.payments || [];
+  const storeName = cfgText('store_name', 'Repair Shop');
+  const storePhone = cfgText('store_phone', '');
+  const storeAddress = cfgText('store_address', '');
+  const storeWebsite = cfgText('store_website', '');
+  const logoUrl = cfgText('receipt_logo');
+  const disclaimer = warrantyDisclaimer(config);
+
+  const s: React.CSSProperties = { fontFamily: "'Courier New', monospace", fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
+  const dash: React.CSSProperties = { borderTop: '1px dashed #000', margin: '4px 0' };
+  const thick: React.CSSProperties = { borderTop: '2px solid #000', margin: '4px 0' };
+  const row: React.CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 8 };
+  const center: React.CSSProperties = { textAlign: 'center' };
+
+  return (
+    <div style={s}>
+      {isSafeLogoUrl(logoUrl) && (
+        <div style={center}>
+          <img src={logoUrl} alt="" style={{ maxWidth: '60%', height: 'auto', margin: '0 auto 4px' }} />
+        </div>
+      )}
+      <div style={{ ...center, fontWeight: 'bold', fontSize: '1.4em' }}>{storeName}</div>
+      {storeAddress && <div style={{ ...center, fontSize: '0.85em' }}>{storeAddress}</div>}
+      {(storePhone || storeWebsite) && (
+        <div style={{ ...center, fontSize: '0.85em' }}>
+          {storePhone ? `Tel: ${storePhone}` : ''}{storeWebsite ? `${storePhone ? ' | ' : ''}${storeWebsite}` : ''}
+        </div>
+      )}
+      <div style={thick} />
+      <div style={{ ...center, fontWeight: 'bold' }}>INVOICE - {invoice.order_id}</div>
+      <div>Date: {formatDateTime(invoice.created_at)}</div>
+      {invoice.due_on && <div>Due: {formatDate(invoice.due_on)}</div>}
+      <div>Status: {invoice.status}</div>
+      {invoice.ticket_id && <div>Ticket: #{invoice.ticket_id}</div>}
+      <div style={dash} />
+      <div style={{ fontWeight: 'bold' }}>{invoiceCustomerName(invoice)}</div>
+      {invoice.customer_phone && <div>Phone: {formatPhone(invoice.customer_phone)}</div>}
+      {invoice.customer_email && <div>Email: {invoice.customer_email}</div>}
+      <div style={dash} />
+      <div style={{ ...row, fontWeight: 'bold', fontSize: '0.9em' }}>
+        <span>Item</span>
+        <span style={{ minWidth: 64, textAlign: 'right' }}>Total</span>
+      </div>
+      <div style={dash} />
+      {lineItems.map((item) => (
+        <div key={item.id} style={{ marginBottom: 5 }}>
+          <div style={row}>
+            <span style={{ flex: 1 }}>{item.description}</span>
+            <span style={{ minWidth: 64, textAlign: 'right' }}>{money(item.total)}</span>
+          </div>
+          <div style={{ fontSize: '0.85em' }}>
+            {item.quantity} x {money(item.unit_price)}
+            {item.notes ? ` - ${sanitizePrintText(item.notes)}` : ''}
+          </div>
+        </div>
+      ))}
+      <div style={dash} />
+      <div style={row}><span>Sub Total</span><span>{money(invoice.subtotal)}</span></div>
+      {Number(invoice.discount) > 0 && <div style={row}><span>Discount</span><span>-{money(invoice.discount)}</span></div>}
+      {cfg('receipt_cfg_tax') && <div style={row}><span>Tax</span><span>{money(invoice.total_tax)}</span></div>}
+      <div style={{ borderTop: '1px dashed #000', margin: '2px 0' }} />
+      <div style={{ ...row, fontWeight: 'bold', fontSize: '1.2em' }}><span>TOTAL</span><span>{money(invoice.total)}</span></div>
+      {payments.length > 0 && (
+        <>
+          <div style={dash} />
+          {payments.map((payment) => (
+            <div key={payment.id} style={{ ...row, fontSize: '0.85em' }}>
+              <span>{payment.method || 'Payment'}{payment.created_at ? ` ${formatDate(payment.created_at)}` : ''}</span>
+              <span>{money(payment.amount)}</span>
+            </div>
+          ))}
+          <div style={{ ...row, fontWeight: 'bold' }}><span>Balance Due</span><span>{money(invoice.amount_due)}</span></div>
+        </>
+      )}
+      {disclaimer && (
+        <>
+          <div style={dash} />
+          <div style={{ ...center, fontWeight: 'bold', fontSize: '0.85em', marginBottom: 2 }}>Warranty</div>
+          <div style={{ fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>{disclaimer}</div>
+        </>
+      )}
+      {config.receipt_thermal_footer ? (
+        <>
+          <div style={dash} />
+          <div style={{ ...center, fontSize: '0.85em' }}>{sanitizePrintText(config.receipt_thermal_footer)}</div>
+        </>
+      ) : (
+        <>
+          <div style={dash} />
+          <div style={{ ...center, fontSize: '0.85em' }}>Thank you!</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PageInvoicePrint({ invoice, config }: { invoice: InvoiceDetail; config: PrintConfig }) {
+  const cfg = (key: string, fallback = '1') => (config?.[key] ?? fallback) === '1';
+  const cfgText = (key: string, fallback = '') => config?.[key] ?? fallback;
+  const lineItems: InvoiceLineItem[] = invoice.line_items || [];
+  const payments: InvoicePayment[] = invoice.payments || [];
+  const storeName = cfgText('store_name', 'Repair Shop');
+  const storePhone = cfgText('store_phone', '');
+  const storeAddress = cfgText('store_address', '');
+  const storeWebsite = cfgText('store_website', '');
+  const storeEmail = cfgText('store_email', '');
+  const logoUrl = cfgText('invoice_logo') || cfgText('receipt_logo');
+  const invoiceTitle = cfgText('invoice_title', 'Invoice');
+  const invoiceSlogan = cfgText('invoice_slogan');
+  const invoiceFooter = cfgText('invoice_footer');
+  const invoiceTerms = cfgText('invoice_terms');
+  const invoicePaymentTerms = cfgText('invoice_payment_terms');
+  const disclaimer = warrantyDisclaimer(config);
+
+  const thStyle: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', borderBottom: '2px solid #333', fontSize: 12, fontWeight: 'bold' };
+  const tdStyle: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #ddd', fontSize: 11, verticalAlign: 'top' };
+  const tdRight: React.CSSProperties = { ...tdStyle, textAlign: 'right' };
+
+  return (
+    <div style={{ fontFamily: 'Arial, sans-serif', color: '#000', fontSize: 11, maxWidth: 700 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {isSafeLogoUrl(logoUrl) && <img src={logoUrl} alt="" style={{ maxHeight: 60, width: 'auto' }} />}
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 'bold' }}>{storeName}</div>
+            {invoiceSlogan && <div style={{ fontSize: 10, color: '#666', fontStyle: 'italic' }}>{invoiceSlogan}</div>}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 10, lineHeight: 1.5 }}>
+          {storeAddress && <div>{storeAddress}</div>}
+          {storePhone && <div>Tel: {storePhone}</div>}
+          {storeEmail && <div>{storeEmail}</div>}
+          {storeWebsite && <div>{storeWebsite}</div>}
+        </div>
+      </div>
+
+      <div style={{ background: '#333', color: '#fff', padding: '6px 12px', fontSize: 14, fontWeight: 'bold', marginBottom: 12 }}>
+        {invoiceTitle} - {invoice.order_id}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontWeight: 'bold', marginBottom: 2 }}>Bill To</div>
+          <div>{invoiceCustomerName(invoice)}</div>
+          {invoice.organization && <div>{invoice.organization}</div>}
+          {invoice.customer_phone && <div>Phone: {formatPhone(invoice.customer_phone)}</div>}
+          {invoice.customer_email && <div>Email: {invoice.customer_email}</div>}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div>Date: {formatDateTime(invoice.created_at)}</div>
+          {invoice.due_on && <div>Due: {formatDate(invoice.due_on)}</div>}
+          <div>Status: <strong>{invoice.status}</strong></div>
+          {invoice.ticket_id && <div>Ticket: #{invoice.ticket_id}</div>}
+          {invoicePaymentTerms && <div>Terms: {invoicePaymentTerms.replace(/_/g, ' ')}</div>}
+        </div>
+      </div>
+
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <thead>
+          <tr>
+            <th style={thStyle}>#</th>
+            <th style={thStyle}>Description</th>
+            <th style={{ ...thStyle, textAlign: 'right' }}>Qty</th>
+            <th style={{ ...thStyle, textAlign: 'right' }}>Unit</th>
+            {cfg('receipt_cfg_tax') && <th style={{ ...thStyle, textAlign: 'right' }}>Tax</th>}
+            <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lineItems.map((item, index) => (
+            <tr key={item.id}>
+              <td style={tdStyle}>{index + 1}</td>
+              <td style={tdStyle}>
+                <div style={{ fontWeight: 'bold' }}>{item.description}</div>
+                {item.item_name && <div style={{ fontSize: 10, color: '#555' }}>Item: {item.item_name}{item.sku ? ` (${item.sku})` : ''}</div>}
+                {item.notes && <div style={{ fontSize: 10, color: '#555', whiteSpace: 'pre-wrap' }}>{sanitizePrintText(item.notes)}</div>}
+              </td>
+              <td style={tdRight}>{item.quantity}</td>
+              <td style={tdRight}>{money(item.unit_price)}</td>
+              {cfg('receipt_cfg_tax') && <td style={tdRight}>{money(item.tax_amount)}</td>}
+              <td style={tdRight}>{money(item.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div style={{ width: 240 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Subtotal:</span><span>{money(invoice.subtotal)}</span></div>
+          {Number(invoice.discount) > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Discount:</span><span>-{money(invoice.discount)}</span></div>}
+          {cfg('receipt_cfg_tax') && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Tax:</span><span>{money(invoice.total_tax)}</span></div>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 3px', borderTop: '2px solid #333', fontWeight: 'bold', fontSize: 14 }}><span>Total:</span><span>{money(invoice.total)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span>Paid:</span><span>{money(invoice.amount_paid)}</span></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontWeight: 'bold' }}><span>Balance Due:</span><span>{money(invoice.amount_due)}</span></div>
+        </div>
+      </div>
+
+      {payments.length > 0 && (
+        <div style={{ marginBottom: 12, padding: 8, background: '#f9f9f9', border: '1px solid #ddd' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Payments</div>
+          {payments.map((payment) => (
+            <div key={payment.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0' }}>
+              <span>{payment.method || 'Payment'}{payment.created_at ? ` - ${formatDate(payment.created_at)}` : ''}</span>
+              <span>{money(payment.amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {invoice.notes && <div style={{ marginBottom: 12, fontSize: 10, whiteSpace: 'pre-wrap' }}>{sanitizePrintText(invoice.notes)}</div>}
+      {invoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{sanitizeTerms(invoiceTerms)}</div></div>}
+      {disclaimer && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Warranty Disclaimer</div><div style={{ whiteSpace: 'pre-wrap' }}>{disclaimer}</div></div>}
       <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{sanitizePrintText(invoiceFooter || cfgText('receipt_footer')) || `Thank you for choosing ${storeName}!`}</div>
     </div>
   );
@@ -949,8 +1243,11 @@ function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintCon
 
 export function PrintPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const [params] = useSearchParams();
-  const size = (params.get('size') || 'receipt80') as PaperSize;
+  const requestedSize = (params.get('size') || 'receipt80') as PaperSize;
+  const isInvoicePrint = location.pathname.startsWith('/print/invoice/');
+  const size = (isInvoicePrint && requestedSize === 'label' ? 'letter' : requestedSize) as PaperSize;
   const isReceiptType = params.get('type') === 'receipt';
 
   // WEB-FF-008 — opt this route out of the global app-shell print CSS so
@@ -967,18 +1264,26 @@ export function PrintPage() {
   const numericId = id ? Number(id) : NaN;
   const idIsValid = Number.isFinite(numericId);
   const { data, isLoading, error } = useQuery({
-    queryKey: ['ticket-print', id],
-    queryFn: () => ticketApi.get(numericId),
+    queryKey: [isInvoicePrint ? 'invoice-print' : 'ticket-print', id],
+    queryFn: () => isInvoicePrint ? invoiceApi.get(numericId) : ticketApi.get(numericId),
     enabled: idIsValid,
   });
   // WEB-S4-032: cast to PrintTicket (defined above) instead of `any`.
-  const ticket = data?.data?.data as PrintTicket | undefined;
+  const printDocument = data?.data?.data as PrintDocument | undefined;
+  const ticket = !isInvoicePrint ? printDocument as PrintTicket | undefined : undefined;
+  const invoice = isInvoicePrint ? printDocument as InvoiceDetail | undefined : undefined;
+  const printLocationId = getPrintLocationId(printDocument);
 
-  const { data: configData } = useQuery({
-    queryKey: ['settings', 'config'],
-    queryFn: async () => { const r = await settingsApi.getConfig(); return r.data.data as Record<string, string>; },
+  const { data: configData, isLoading: configIsLoading, error: configError } = useQuery({
+    queryKey: ['settings', 'config', 'print-location', printLocationId ?? 'global'],
+    queryFn: async () => {
+      const r = await settingsApi.getConfig(printLocationId ? { location_id: printLocationId } : undefined);
+      return r.data.data as Record<string, string>;
+    },
+    enabled: Boolean(printDocument),
   });
   const config = configData || {};
+  const printReady = Boolean(printDocument && configData && !isLoading && !configIsLoading);
 
   const isThermal = size === 'receipt80' || size === 'receipt58';
   const isLabel = size === 'label';
@@ -991,18 +1296,26 @@ export function PrintPage() {
   // Auto-print only if ?autoprint=1 is in URL (explicit opt-in)
   const autoprint = params.get('autoprint') === '1';
   useEffect(() => {
-    if (autoprint && ticket && !isLoading) {
+    if (autoprint && printReady) {
       const timer = setTimeout(() => window.print(), 400);
       return () => clearTimeout(timer);
     }
-  }, [autoprint, ticket, isLoading]);
+  }, [autoprint, printReady]);
 
   if (isLoading) {
-    return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'monospace' }}>Loading ticket...</div>;
+    return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'monospace' }}>Loading {isInvoicePrint ? 'invoice' : 'ticket'}...</div>;
   }
 
-  if (error || !ticket) {
-    return <div style={{ padding: '2rem', fontFamily: 'monospace' }}>Ticket not found.</div>;
+  if (error || !printDocument || (!isInvoicePrint && !ticket) || (isInvoicePrint && !invoice)) {
+    return <div style={{ padding: '2rem', fontFamily: 'monospace' }}>{isInvoicePrint ? 'Invoice' : 'Ticket'} not found.</div>;
+  }
+
+  if (configIsLoading) {
+    return <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'monospace' }}>Loading print settings...</div>;
+  }
+
+  if (configError || !configData) {
+    return <div style={{ padding: '2rem', fontFamily: 'monospace' }}>Print settings unavailable.</div>;
   }
 
   // Paper-size CSS. W12 fix: labelW/labelH are re-clamped to safe integers
@@ -1048,11 +1361,12 @@ ${pageCss[size] || pageCss.receipt80}
       {/* Screen-only controls (hidden when embedded in modal) */}
       {!isEmbedded && <div className="print-buttons" style={{ padding: '0.75rem 1rem', background: '#f5f5f5', marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         <strong style={{ marginRight: '0.5rem' }}>Size:</strong>
-        {(['receipt80', 'receipt58', 'label', 'letter'] as PaperSize[]).map((s) => {
+        {(isInvoicePrint ? ['receipt80', 'receipt58', 'letter'] : ['receipt80', 'receipt58', 'label', 'letter'] as PaperSize[]).map((s) => {
           const label = s === 'receipt80' ? '80mm Receipt' : s === 'receipt58' ? '58mm Receipt' : s === 'label' ? '4"x2" Label' : 'Letter';
           const typeParam = isReceiptType ? '&type=receipt' : '';
+          const printPath = isInvoicePrint ? 'invoice' : 'ticket';
           return (
-            <a key={s} href={`/print/ticket/${id}?size=${s}${typeParam}`}
+            <a key={s} href={`/print/${printPath}/${id}?size=${s}${typeParam}`}
               style={{ padding: '0.25rem 0.75rem', border: '1px solid #333', borderRadius: 4, textDecoration: 'none', fontWeight: s === size ? 'bold' : 'normal', background: s === size ? '#333' : 'transparent', color: s === size ? '#fff' : '#333' }}>
               {label}
             </a>
@@ -1065,9 +1379,11 @@ ${pageCss[size] || pageCss.receipt80}
 
       {/* Content */}
       <div data-print-ready="true" className="receipt-content">
-        {isLabel && <LabelLayout ticket={ticket} config={config} />}
-        {isThermal && <ThermalReceipt ticket={ticket} config={config} size={size} isReceiptType={isReceiptType} />}
-        {size === 'letter' && <PageReceipt ticket={ticket} config={config} isReceiptType={isReceiptType} />}
+        {!isInvoicePrint && ticket && isLabel && <LabelLayout ticket={ticket} config={config} />}
+        {!isInvoicePrint && ticket && isThermal && <ThermalReceipt ticket={ticket} config={config} size={size} isReceiptType={isReceiptType} />}
+        {!isInvoicePrint && ticket && size === 'letter' && <PageReceipt ticket={ticket} config={config} isReceiptType={isReceiptType} />}
+        {isInvoicePrint && invoice && isThermal && <ThermalInvoiceReceipt invoice={invoice} config={config} size={size} />}
+        {isInvoicePrint && invoice && size === 'letter' && <PageInvoicePrint invoice={invoice} config={config} />}
       </div>
     </>
   );

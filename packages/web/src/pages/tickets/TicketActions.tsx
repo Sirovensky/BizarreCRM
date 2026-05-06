@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, ChevronDown, Check, MoreHorizontal, Trash2,
+  ChevronDown, Check, MoreHorizontal, Trash2,
   Printer, ShoppingCart, Loader2, GitMerge, Shield, ArrowRightLeft, Copy,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -254,14 +254,6 @@ export function TicketActions({
 
         {/* Main header row */}
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => navigate('/tickets')}
-            aria-label="Back to tickets"
-            className="inline-flex items-center justify-center rounded-lg text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-300 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:p-2"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100 flex items-center gap-1.5">
             Ticket {formatTicketId(ticket.order_id || ticket.id)}
             <CopyButton text={formatTicketId(ticket.order_id || ticket.id)} />

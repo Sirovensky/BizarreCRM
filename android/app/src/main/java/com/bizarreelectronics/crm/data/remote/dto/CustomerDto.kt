@@ -84,6 +84,26 @@ data class CustomerEmail(
     val label: String?
 )
 
+data class CustomerAddress(
+    val id: String? = null,
+    @SerializedName("customer_id")
+    val customerId: Long? = null,
+    val type: String? = null,
+    val label: String? = null,
+    @SerializedName("is_primary")
+    val isPrimary: Boolean? = null,
+    val address1: String? = null,
+    val address2: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val postcode: String? = null,
+    val country: String? = null,
+    val formatted: String? = null,
+    val source: String? = null,
+    @SerializedName("updated_at")
+    val updatedAt: String? = null,
+)
+
 data class CustomerAsset(
     val id: Long,
     val name: String?,

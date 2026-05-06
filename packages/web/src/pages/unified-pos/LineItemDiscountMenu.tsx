@@ -95,7 +95,7 @@ export function LineItemDiscountMenu({
         <button
           onClick={onClose}
           aria-label="Close"
-          className="rounded p-0.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800"
+          className="btn-icon btn-xs"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -106,7 +106,7 @@ export function LineItemDiscountMenu({
           <button
             key={r.value}
             onClick={() => setReason(r.value)}
-            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.color} ${
+            className={`btn btn-xs !rounded-full ${r.color} ${
               reason === r.value ? 'ring-2 ring-offset-1 ring-teal-500 dark:ring-offset-surface-900' : ''
             }`}
           >
@@ -147,13 +147,13 @@ export function LineItemDiscountMenu({
           onClick={() => {
             onClear();
           }}
-          className="flex-1 rounded-md border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+          className="btn btn-xs flex-1 border border-surface-300 text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
         >
           Clear
         </button>
         <button
           onClick={handleApply}
-          className="flex-1 rounded-md bg-teal-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+          className="btn btn-xs flex-1 bg-teal-600 !font-semibold text-white hover:bg-teal-700"
         >
           Apply
         </button>

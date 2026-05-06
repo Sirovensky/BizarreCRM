@@ -261,7 +261,7 @@ function UnifiedSearchBar() {
               )}
             </div>
           </div>
-          <button onClick={() => setCustomer(null)} className="p-1.5 rounded-md text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+          <button onClick={() => setCustomer(null)} className="btn-icon btn-sm text-surface-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" aria-label="Remove customer">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -305,7 +305,7 @@ function UnifiedSearchBar() {
                 // WEB-FH-003: same fireOnce guard so a click during the
                 // Enter-keydown window doesn't double-fire.
                 onMouseDown={(e) => { e.preventDefault(); fireOnce(() => r.action()); }}
-                className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+                className="btn btn-md !h-auto w-full !justify-start !gap-3 !px-3 !py-2 text-left !whitespace-normal hover:bg-surface-50 dark:hover:bg-surface-700"
               >
                 <Icon className="h-4 w-4 shrink-0 text-surface-400" />
                 <div className="min-w-0 flex-1">
@@ -574,7 +574,6 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
   return (
     <div className="border-b border-surface-100 dark:border-surface-700/50 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
       <div className="flex items-start gap-2">
-        <span className="shrink-0 mt-0.5 text-xs text-surface-400 w-8 text-center">1</span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-surface-900 dark:text-surface-100 leading-tight">
             {item.device.device_name}
@@ -611,7 +610,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
           aria-label={item.taxable ? 'Labor taxable — click to remove tax' : 'Labor non-taxable — click to add tax'}
           aria-pressed={item.taxable}
           className={cn(
-            'shrink-0 text-xs w-14 text-right rounded px-1 py-0.5 transition-colors cursor-pointer',
+            'btn btn-xs shrink-0 w-14 !justify-end !px-1',
             item.taxable
               ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
               : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
@@ -626,14 +625,14 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
         <button
           onClick={() => removeCartItem(item.id)}
           aria-label={`Remove ${item.device.device_name || item.serviceName} from cart`}
-          className="shrink-0 p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
+          className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
           title="Remove"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
       {item.parts.length > 0 && (
-        <div className="ml-10 mt-1 space-y-0.5">
+        <div className="mt-1 space-y-0.5">
           {item.parts.map((p) => (
             <div key={p._key} className="flex items-center text-[11px] text-surface-500 dark:text-surface-400">
               <span className="flex-1 truncate">
@@ -645,7 +644,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
                 aria-label={p.taxable ? `${p.name} taxable — click to remove tax` : `${p.name} non-taxable — click to add tax`}
                 aria-pressed={p.taxable}
                 className={cn(
-                  'w-14 text-right rounded px-0.5 transition-colors cursor-pointer',
+                  'btn btn-xs w-14 !justify-end !px-0.5',
                   p.taxable
                     ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
                     : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
@@ -662,13 +661,13 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
       )}
 
       {/* Add part inline */}
-      <div className="ml-10 mt-1">
+      <div className="mt-1">
         {!showPartSearch ? (
           <button
             type="button"
             data-tutorial-target="checkout:add-part-button"
             onClick={() => setShowPartSearch(true)}
-            className="flex items-center gap-1 text-[11px] font-medium text-primary-600 dark:text-primary-400 hover:underline"
+            className="btn btn-xs !px-0 text-primary-600 dark:text-primary-400 hover:underline"
           >
             <Plus className="h-3 w-3" /> Add part
           </button>
@@ -687,7 +686,8 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
               <button
                 type="button"
                 onClick={() => { setShowPartSearch(false); setPartQuery(''); }}
-                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                className="btn-icon btn-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                aria-label="Close part search"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -702,7 +702,7 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
                       <button
                         type="button"
                         onClick={() => addPartToItem(part)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-surface-50 dark:hover:bg-surface-700/50"
+                        className="btn btn-xs !h-auto w-full !justify-start !gap-2 !px-2 !py-1.5 text-left !whitespace-normal hover:bg-surface-50 dark:hover:bg-surface-700/50"
                       >
                         <span className="flex-1 text-xs text-surface-900 dark:text-surface-100 truncate">{part.name}</span>
                         {part.retail_price != null && (
@@ -726,12 +726,12 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
 
   return (
     <div className="flex items-center gap-2 border-b border-surface-100 dark:border-surface-700/50 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
-      <div className="shrink-0 flex items-center gap-1 w-8">
-        <button aria-label="Decrease quantity" onClick={() => updateProductQty(item.id, -1)} className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
+      <div className="shrink-0 flex items-center gap-1 w-20">
+        <button aria-label="Decrease quantity" onClick={() => updateProductQty(item.id, -1)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
           <Minus className="h-3 w-3" />
         </button>
         <span className="text-xs text-surface-700 dark:text-surface-300 min-w-[16px] text-center">{item.quantity}</span>
-        <button aria-label="Increase quantity" onClick={() => updateProductQty(item.id, 1)} className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors">
+        <button aria-label="Increase quantity" onClick={() => updateProductQty(item.id, 1)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
           <Plus className="h-3 w-3" />
         </button>
       </div>
@@ -758,7 +758,7 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
         aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
         aria-pressed={item.taxable}
         className={cn(
-          'shrink-0 text-xs w-14 text-right rounded px-1 py-0.5 transition-colors cursor-pointer',
+          'btn btn-xs shrink-0 w-14 !justify-end !px-1',
           item.taxable && !item.taxInclusive
             ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
             : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
@@ -775,7 +775,7 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
       <button
         onClick={() => removeCartItem(item.id)}
         aria-label={`Remove ${item.name} from cart`}
-        className="shrink-0 p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
+        className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
         title="Remove"
       >
         <Trash2 className="h-3.5 w-3.5" />
@@ -799,7 +799,7 @@ function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
         aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
         aria-pressed={item.taxable}
         className={cn(
-          'shrink-0 text-xs w-14 text-right rounded px-1 py-0.5 transition-colors cursor-pointer',
+          'btn btn-xs shrink-0 w-14 !justify-end !px-1',
           item.taxable
             ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
             : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
@@ -814,7 +814,7 @@ function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
       <button
         onClick={() => removeCartItem(item.id)}
         aria-label={`Remove ${item.name} from cart`}
-        className="shrink-0 p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300 transition-colors"
+        className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
         title="Remove"
       >
         <Trash2 className="h-3.5 w-3.5" />
@@ -898,7 +898,7 @@ function DiscountEditor() {
         <button
           type="button"
           onClick={handleOpen}
-          className="flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 hover:underline"
+          className="btn btn-xs !px-0 text-teal-600 dark:text-teal-400 hover:underline"
           aria-label="Add order discount"
         >
           <Percent className="h-3 w-3" />
@@ -908,7 +908,7 @@ function DiscountEditor() {
           <button
             type="button"
             onClick={handleClear}
-            className="text-surface-400 hover:text-red-500 p-0.5"
+            className="btn-icon btn-xs text-surface-400 hover:text-red-500"
             aria-label="Remove discount"
           >
             <X className="h-3 w-3" />
@@ -927,7 +927,7 @@ function DiscountEditor() {
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="rounded p-0.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
+          className="btn-icon btn-xs text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
           aria-label="Close discount editor"
         >
           <X className="h-3 w-3" />
@@ -964,14 +964,14 @@ function DiscountEditor() {
         <button
           type="button"
           onClick={handleClear}
-          className="flex-1 rounded border border-surface-300 dark:border-surface-600 py-1 text-xs font-medium text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700"
+          className="btn btn-xs flex-1 border border-surface-300 text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-700"
         >
           Clear
         </button>
         <button
           type="button"
           onClick={handleApply}
-          className="flex-1 rounded bg-teal-600 py-1 text-xs font-semibold text-white hover:bg-teal-700"
+          className="btn btn-xs flex-1 bg-teal-600 !font-semibold text-white hover:bg-teal-700"
         >
           Apply
         </button>
@@ -993,7 +993,7 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
       <div className="flex flex-col h-full items-center py-3 px-1 gap-2">
         <button
           onClick={onToggle}
-          className="flex flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+          className="btn btn-md !h-auto flex-col !gap-1.5 !p-2 hover:bg-surface-100 dark:hover:bg-surface-800"
           title="Expand cart"
         >
           <ShoppingCart className="h-5 w-5 text-surface-500" />
@@ -1021,7 +1021,7 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
       {/* Cart header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50">
         {onToggle && (
-          <button onClick={onToggle} className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors" title="Collapse cart">
+          <button onClick={onToggle} className="btn-icon btn-xs hover:bg-surface-200 dark:hover:bg-surface-700" title="Collapse cart" aria-label="Collapse cart">
             <ChevronLeft className="h-3.5 w-3.5 text-surface-400" />
           </button>
         )}

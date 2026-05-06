@@ -1023,8 +1023,16 @@ const INBOX_CONFIG_KEYS = new Set([
   'inbox_auto_assignment',
   'inbox_off_hours_autoreply_enabled',
   'inbox_off_hours_autoreply_message',
+  'auto_reply_enabled',
+  'auto_reply_message',
   'inbox_compliance_archive_years',
 ]);
+
+function canonicalInboxConfigKey(key: string): string {
+  if (key === 'inbox_off_hours_autoreply_enabled') return 'auto_reply_enabled';
+  if (key === 'inbox_off_hours_autoreply_message') return 'auto_reply_message';
+  return key;
+}
 
 router.get(
   '/config',
@@ -1036,11 +1044,21 @@ router.get(
           'inbox_auto_assignment',
           'inbox_off_hours_autoreply_enabled',
           'inbox_off_hours_autoreply_message',
+          'auto_reply_enabled',
+          'auto_reply_message',
           'inbox_compliance_archive_years'
         )`,
     );
     const data: Record<string, string> = {};
     for (const r of rows) data[r.key] = r.value;
+    if (data.auto_reply_enabled === undefined && data.inbox_off_hours_autoreply_enabled !== undefined) {
+      data.auto_reply_enabled = data.inbox_off_hours_autoreply_enabled;
+    }
+    if (data.auto_reply_message === undefined && data.inbox_off_hours_autoreply_message !== undefined) {
+      data.auto_reply_message = data.inbox_off_hours_autoreply_message;
+    }
+    data.inbox_off_hours_autoreply_enabled = data.auto_reply_enabled ?? '0';
+    data.inbox_off_hours_autoreply_message = data.auto_reply_message ?? '';
     res.json({ success: true, data });
   }),
 );
@@ -1057,11 +1075,12 @@ router.patch(
     for (const [key, value] of Object.entries(body)) {
       if (!INBOX_CONFIG_KEYS.has(key)) continue;
       if (value === null || value === undefined) continue;
+      const canonicalKey = canonicalInboxConfigKey(key);
       // Reject overly long config values instead of silent truncation — a
       // silent slice makes debugging the "my message got cut off" bug
       // impossible.
       const str = validateTextLength(String(value), 1000, `config.${key}`);
-      toWrite.push([key, str]);
+      toWrite.push([canonicalKey, str]);
     }
     if (toWrite.length === 0) {
       throw new AppError('No inbox config keys in payload', 400);

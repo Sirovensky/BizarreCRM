@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  Loader2, User, Phone, Clock, ArrowRightLeft,
+  Loader2, User, Phone, Clock, ArrowRightLeft, List,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
+import { Breadcrumb } from '@/components/shared/Breadcrumb';
 // @audit-fixed: use shared timeAgo helper instead of local duplicate
 import { timeAgo } from '@/utils/format';
 
@@ -298,16 +299,25 @@ export function LeadPipelinePage() {
 
   return (
     <div>
+      <Breadcrumb items={[
+        { label: 'Leads', href: '/leads' },
+        { label: 'Pipeline' },
+      ]} />
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Pipeline</h1>
-        <p className="text-surface-500 dark:text-surface-400">
-          Drag-free kanban view of leads by stage.
-          {' '}
-          <span className="text-surface-400 dark:text-surface-500">
-            Use the arrow icon on each card to move between stages.
-          </span>
-        </p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Pipeline</h1>
+          <p className="text-surface-500 dark:text-surface-400">
+            Leads grouped by stage for qualification and follow-up.
+          </p>
+        </div>
+        <Link
+          to="/leads"
+          className="inline-flex items-center gap-2 self-start rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+        >
+          <List className="h-4 w-4" />
+          Lead list
+        </Link>
       </div>
 
       {isLoading ? (

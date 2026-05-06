@@ -2,11 +2,11 @@ package com.bizarreelectronics.crm.ui.screens.customers
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.ContactsContract
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -49,6 +49,7 @@ import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.AddCustomerAssetRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
+import com.bizarreelectronics.crm.data.remote.dto.CustomerAddress
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAsset
 import com.bizarreelectronics.crm.data.remote.dto.CustomerMergeRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
@@ -63,7 +64,6 @@ import com.bizarreelectronics.crm.ui.components.hashTagToColor
 import retrofit2.HttpException
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
-import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.CustomerAvatar
@@ -141,6 +141,12 @@ data class CustomerDetailUiState(
      * empty state + composer. Posting a new note prepends to this list.
      */
     val notes: List<CustomerNote>? = null,
+    /**
+     * CROSS9c: normalized address rows from `GET /customers/:id/addresses`.
+     * Null = not loaded or endpoint unavailable; UI derives a primary row from
+     * CustomerEntity so older servers and offline cache still show addresses.
+     */
+    val addresses: List<CustomerAddress>? = null,
     /** CROSS9b: single-line composer input. */
     val noteDraft: String = "",
     /** CROSS9b: true while a note POST is in flight. */
@@ -230,6 +236,7 @@ class CustomerDetailViewModel @Inject constructor(
     private var analyticsJob: Job? = null
     private var ticketsJob: Job? = null
     private var notesJob: Job? = null
+    private var addressesJob: Job? = null
 
     // -----------------------------------------------------------------------
     // Undo / redo (§1 L232 — customer field edit, tags edit, note add)
@@ -311,6 +318,7 @@ class CustomerDetailViewModel @Inject constructor(
         loadAnalytics()
         loadRecentTickets()
         loadNotes()
+        loadAddresses()
         loadHealthScore()
         loadLtvTier()
         loadInvoices()
@@ -371,6 +379,22 @@ class CustomerDetailViewModel @Inject constructor(
                 _state.value = _state.value.copy(notes = notes)
             } catch (_: Exception) {
                 // Silent degrade — Notes card simply doesn't render.
+            }
+        }
+    }
+
+    /**
+     * CROSS9c: fetch normalized address rows. Silent-degrade: when the endpoint
+     * is unavailable or empty, the UI falls back to the CustomerEntity fields.
+     */
+    private fun loadAddresses() {
+        addressesJob?.cancel()
+        addressesJob = viewModelScope.launch {
+            try {
+                val response = customerApi.getAddresses(customerId)
+                _state.value = _state.value.copy(addresses = response.data ?: emptyList())
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(addresses = emptyList())
             }
         }
     }
@@ -898,6 +922,33 @@ class CustomerDetailViewModel @Inject constructor(
         }
 }
 
+private sealed class CustomerContactActionTarget {
+    abstract val label: String
+    abstract val value: String
+    abstract val displayValue: String
+
+    data class Phone(
+        override val label: String,
+        override val value: String,
+    ) : CustomerContactActionTarget() {
+        override val displayValue: String = formatPhoneDisplay(value)
+    }
+
+    data class Email(
+        override val value: String,
+    ) : CustomerContactActionTarget() {
+        override val label: String = "Email"
+        override val displayValue: String = value
+    }
+
+    data class Address(
+        override val value: String,
+    ) : CustomerContactActionTarget() {
+        override val label: String = "Address"
+        override val displayValue: String = value
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
 fun CustomerDetailScreen(
@@ -922,6 +973,56 @@ fun CustomerDetailScreen(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var contactActionTarget by remember { mutableStateOf<CustomerContactActionTarget?>(null) }
+
+    fun normalizeSmsPhone(phone: String): String =
+        phone.replace(Regex("[^0-9]"), "").let {
+            if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
+        }
+
+    fun startActivityOrReport(intent: Intent, failureMessage: String) {
+        runCatching { context.startActivity(intent) }
+            .onFailure {
+                scope.launch { snackbarHostState.showSnackbar(failureMessage) }
+            }
+    }
+
+    fun dialPhone(phone: String) {
+        startActivityOrReport(
+            Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)),
+            "No dialer app available",
+        )
+    }
+
+    fun sendSms(phone: String) {
+        if (onNavigateToSms != null) {
+            onNavigateToSms(normalizeSmsPhone(phone))
+        } else {
+            startActivityOrReport(
+                Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone, null)),
+                "No SMS app available",
+            )
+        }
+    }
+
+    fun sendEmail(email: String) {
+        startActivityOrReport(
+            Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", email, null)),
+            "No email app available",
+        )
+    }
+
+    fun openMaps(address: String) {
+        startActivityOrReport(
+            Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=${Uri.encode(address)}")),
+            "No maps app available",
+        )
+    }
+
+    fun copyContactValue(label: String, value: String) {
+        ClipboardUtil.copySensitive(context, label, value)
+        scope.launch { snackbarHostState.showSnackbar("$label copied") }
+    }
 
     LaunchedEffect(state.saveMessage) {
         val msg = state.saveMessage
@@ -1077,6 +1178,18 @@ fun CustomerDetailScreen(
             )
         },
     ) { padding ->
+        contactActionTarget?.let { target ->
+            CustomerContactActionSheet(
+                target = target,
+                onDismiss = { contactActionTarget = null },
+                onCall = ::dialPhone,
+                onSms = ::sendSms,
+                onEmail = ::sendEmail,
+                onOpenMaps = ::openMaps,
+                onCopy = ::copyContactValue,
+            )
+        }
+
         when {
             state.isLoading -> {
                 Box(
@@ -1203,6 +1316,7 @@ fun CustomerDetailScreen(
                             recentTickets = state.recentTickets,
                             invoices = state.invoices,
                             notes = state.notes,
+                            addresses = state.addresses,
                             assets = state.assets,
                             noteDraft = state.noteDraft,
                             isPostingNote = state.isPostingNote,
@@ -1211,17 +1325,16 @@ fun CustomerDetailScreen(
                             onNavigateToTicket = onNavigateToTicket,
                             onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
                             onCall = { phone ->
-                                context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone")))
+                                contactActionTarget = CustomerContactActionTarget.Phone("Phone", phone)
                             },
                             onSms = { phone ->
-                                if (onNavigateToSms != null) {
-                                    val normalized = phone.replace(Regex("[^0-9]"), "").let {
-                                        if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
-                                    }
-                                    onNavigateToSms(normalized)
-                                } else {
-                                    context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone")))
-                                }
+                                contactActionTarget = CustomerContactActionTarget.Phone("Phone", phone)
+                            },
+                            onEmail = { email ->
+                                contactActionTarget = CustomerContactActionTarget.Email(email)
+                            },
+                            onAddress = { address ->
+                                contactActionTarget = CustomerContactActionTarget.Address(address)
                             },
                             onShare = {
                                 // plan:L903 — share vCard
@@ -1259,6 +1372,7 @@ fun CustomerDetailScreen(
                         analytics = state.analytics,
                         recentTickets = state.recentTickets,
                         notes = state.notes,
+                        addresses = state.addresses,
                         noteDraft = state.noteDraft,
                         isPostingNote = state.isPostingNote,
                         onNoteDraftChange = viewModel::updateNoteDraft,
@@ -1266,20 +1380,14 @@ fun CustomerDetailScreen(
                         padding = padding,
                         onNavigateToTicket = onNavigateToTicket,
                         onCreateTicket = onCreateTicket?.let { cb -> { cb(customerId) } },
-                        onCallPhone = { phone ->
-                            val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
-                            context.startActivity(intent)
+                        onPhoneSelected = { label, phone ->
+                            contactActionTarget = CustomerContactActionTarget.Phone(label, phone)
                         },
-                        onSmsPhone = { phone ->
-                            if (onNavigateToSms != null) {
-                                val normalized = phone.replace(Regex("[^0-9]"), "").let {
-                                    if (it.length == 11 && it.startsWith("1")) it.substring(1) else it
-                                }
-                                onNavigateToSms(normalized)
-                            } else {
-                                val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:$phone"))
-                                context.startActivity(intent)
-                            }
+                        onEmailSelected = { email ->
+                            contactActionTarget = CustomerContactActionTarget.Email(email)
+                        },
+                        onAddressSelected = { address ->
+                            contactActionTarget = CustomerContactActionTarget.Address(address)
                         },
                         tagPalette = state.tagPalette,
                     )
@@ -1593,6 +1701,7 @@ private fun CustomerDetailContent(
     analytics: CustomerAnalytics?,
     recentTickets: List<TicketListItem>?,
     notes: List<CustomerNote>?,
+    addresses: List<CustomerAddress>?,
     noteDraft: String,
     isPostingNote: Boolean,
     onNoteDraftChange: (String) -> Unit,
@@ -1600,10 +1709,15 @@ private fun CustomerDetailContent(
     padding: PaddingValues,
     onNavigateToTicket: (Long) -> Unit,
     onCreateTicket: (() -> Unit)?,
-    onCallPhone: (String) -> Unit,
-    onSmsPhone: (String) -> Unit,
+    onPhoneSelected: (label: String, phone: String) -> Unit,
+    onEmailSelected: (String) -> Unit,
+    onAddressSelected: (String) -> Unit,
     tagPalette: Map<String, Color> = emptyMap(),
 ) {
+    val addressRows = remember(addresses, customer) {
+        customerAddressesOrFallback(addresses, customer)
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -1703,40 +1817,6 @@ private fun CustomerDetailContent(
             }
         }
 
-        // Quick action buttons
-        item {
-            val primaryPhone = customer.mobile ?: customer.phone
-            if (primaryPhone != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    // CROSS48: Call (primary) + SMS (secondary) routed through
-                    // the BrandPrimaryButton / BrandSecondaryButton wrappers so
-                    // filled-vs-outlined hierarchy is consistent with every
-                    // other primary/secondary pair in the app.
-                    BrandPrimaryButton(
-                        onClick = { onCallPhone(primaryPhone) },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        // decorative — Button's "Call" Text supplies the accessible name
-                        Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Call")
-                    }
-                    BrandSecondaryButton(
-                        onClick = { onSmsPhone(primaryPhone) },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        // decorative — Button's "SMS" Text supplies the accessible name
-                        Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("SMS")
-                    }
-                }
-            }
-        }
-
         // Contact info card — BrandCard
         item {
             BrandCard(modifier = Modifier.fillMaxWidth()) {
@@ -1757,81 +1837,22 @@ private fun CustomerDetailContent(
                     }.distinctBy { it.first }
 
                     allPhones.forEach { (phone, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onCallPhone(phone) }
-                                // D5-1: collapse phone icon + formatted number
-                                // + Mobile/Phone label Text into one focus item
-                                // so TalkBack announces "+1 (xxx) xxx-xxxx
-                                // Mobile, button" instead of unlabeled rows.
-                                .semantics(mergeDescendants = true) { role = Role.Button },
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.Phone,
-                                // decorative — parent Row's mergeDescendants + formatted phone Text supplies the accessible name
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Column {
-                                Text(
-                                    formatPhoneDisplay(phone),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                Text(
-                                    label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
+                        CustomerContactInfoRow(
+                            icon = Icons.Default.Phone,
+                            label = label,
+                            value = formatPhoneDisplay(phone),
+                            onClick = { onPhoneSelected(label, phone) },
+                        )
                     }
 
                     // Email
                     if (!customer.email.isNullOrBlank()) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.Email,
-                                // decorative — non-clickable info row; sibling email Text carries the announcement
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(customer.email, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-
-                    // Address
-                    val address = buildList {
-                        customer.address1?.let { add(it) }
-                        customer.address2?.let { add(it) }
-                        val cityStateZip = listOfNotNull(customer.city, customer.state, customer.postcode)
-                            .filter { it.isNotBlank() }
-                            .joinToString(", ")
-                        if (cityStateZip.isNotBlank()) add(cityStateZip)
-                    }.joinToString("\n")
-
-                    if (address.isNotBlank()) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            Icon(
-                                Icons.Default.LocationOn,
-                                // decorative — non-clickable info row; sibling address Text carries the announcement
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(address, style = MaterialTheme.typography.bodyMedium)
-                        }
+                        CustomerContactInfoRow(
+                            icon = Icons.Default.Email,
+                            label = "Email",
+                            value = customer.email,
+                            onClick = { onEmailSelected(customer.email) },
+                        )
                     }
 
                     if (!customer.organization.isNullOrBlank()) {
@@ -1850,6 +1871,15 @@ private fun CustomerDetailContent(
                         }
                     }
                 }
+            }
+        }
+
+        if (addressRows.isNotEmpty()) {
+            item {
+                CustomerAddressesCard(
+                    addresses = addressRows,
+                    onAddressSelected = onAddressSelected,
+                )
             }
         }
 
@@ -1881,41 +1911,11 @@ private fun CustomerDetailContent(
 
         // Tags — chip row (CROSS9d: replaces raw comma-separated Text).
         // Always render the card so the empty-state ("No tags") is visible.
-        // tagLabels is recomputed only when customer.tags changes (immutable memo).
         item {
-            val tagLabels = remember(customer.tags) {
-                customer.tags.orEmpty()
-                    .split(',')
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-            }
-            BrandCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "Tags",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    if (tagLabels.isEmpty()) {
-                        Text(
-                            "No tags",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            tagLabels.forEach { tag ->
-                                TagChip(label = tag, tagPalette = tagPalette)
-                            }
-                        }
-                    }
-                }
-            }
+            CustomerTagsCard(
+                tags = customer.tags,
+                tagPalette = tagPalette,
+            )
         }
 
         // Comments sticky-note — BrandCard. Renamed from "Notes" to "Summary"
@@ -1960,6 +1960,338 @@ private fun CustomerDetailContent(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomerContactActionSheet(
+    target: CustomerContactActionTarget,
+    onDismiss: () -> Unit,
+    onCall: (String) -> Unit,
+    onSms: (String) -> Unit,
+    onEmail: (String) -> Unit,
+    onOpenMaps: (String) -> Unit,
+    onCopy: (label: String, value: String) -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    fun runAction(action: () -> Unit) {
+        onDismiss()
+        action()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            Text(
+                target.label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                target.displayValue,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            when (target) {
+                is CustomerContactActionTarget.Phone -> {
+                    CustomerContactActionRow(
+                        icon = Icons.Default.Phone,
+                        label = "Call",
+                        supportingText = target.displayValue,
+                        onClick = { runAction { onCall(target.value) } },
+                    )
+                    CustomerContactActionRow(
+                        icon = Icons.Default.Sms,
+                        label = "Send SMS",
+                        supportingText = target.displayValue,
+                        onClick = { runAction { onSms(target.value) } },
+                    )
+                    CustomerContactActionRow(
+                        icon = Icons.Default.ContentCopy,
+                        label = "Copy phone",
+                        supportingText = target.displayValue,
+                        onClick = { runAction { onCopy(target.label, target.value) } },
+                    )
+                }
+                is CustomerContactActionTarget.Email -> {
+                    CustomerContactActionRow(
+                        icon = Icons.Default.Email,
+                        label = "Email",
+                        supportingText = target.value,
+                        onClick = { runAction { onEmail(target.value) } },
+                    )
+                    CustomerContactActionRow(
+                        icon = Icons.Default.ContentCopy,
+                        label = "Copy email",
+                        supportingText = target.value,
+                        onClick = { runAction { onCopy(target.label, target.value) } },
+                    )
+                }
+                is CustomerContactActionTarget.Address -> {
+                    CustomerContactActionRow(
+                        icon = Icons.Default.LocationOn,
+                        label = "Open in Maps",
+                        supportingText = target.value,
+                        onClick = { runAction { onOpenMaps(target.value) } },
+                    )
+                    CustomerContactActionRow(
+                        icon = Icons.Default.ContentCopy,
+                        label = "Copy address",
+                        supportingText = target.value,
+                        onClick = { runAction { onCopy(target.label, target.value) } },
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun CustomerContactActionRow(
+    icon: ImageVector,
+    label: String,
+    supportingText: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(label) },
+        supportingContent = { Text(supportingText) },
+        leadingContent = {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(),
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) { role = Role.Button },
+    )
+}
+
+@Composable
+private fun CustomerContactInfoRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(),
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) { role = Role.Button }
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            Icons.Default.MoreVert,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun CustomerAddressesCard(
+    addresses: List<CustomerAddress>,
+    onAddressSelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BrandCard(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Addresses",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            addresses.forEachIndexed { index, address ->
+                if (index > 0) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        thickness = 1.dp,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = ripple(),
+                        ) { onAddressSelected(address.displayText()) }
+                        .semantics(mergeDescendants = true) { role = Role.Button }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        Icons.Default.LocationOn,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            address.displayLabel(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            address.displayText(),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun customerAddressesOrFallback(
+    addresses: List<CustomerAddress>?,
+    customer: CustomerEntity,
+): List<CustomerAddress> {
+    val serverRows = addresses.orEmpty().filter { it.displayText().isNotBlank() }
+    if (serverRows.isNotEmpty()) return serverRows
+
+    val fallback = CustomerAddress(
+        id = "customer:${customer.id}:primary",
+        customerId = customer.id,
+        type = "primary",
+        label = "Primary / billing",
+        isPrimary = true,
+        address1 = customer.address1.trimmedOrNull(),
+        address2 = customer.address2.trimmedOrNull(),
+        city = customer.city.trimmedOrNull(),
+        state = customer.state.trimmedOrNull(),
+        postcode = customer.postcode.trimmedOrNull(),
+        country = customer.country.trimmedOrNull(),
+    )
+    return listOf(fallback).filter { it.displayText().isNotBlank() }
+}
+
+private fun CustomerAddress.displayLabel(): String =
+    label.trimmedOrNull()
+        ?: when (type.trimmedOrNull()?.lowercase()) {
+            "billing" -> "Billing"
+            "shipping" -> "Shipping"
+            "primary" -> "Primary / billing"
+            else -> "Address"
+        }
+
+private fun CustomerAddress.displayText(): String {
+    formatted.trimmedOrNull()?.let { return it }
+    val cityStatePostcode = listOfNotNull(
+        city.trimmedOrNull(),
+        state.trimmedOrNull(),
+        postcode.trimmedOrNull(),
+    ).joinToString(", ")
+    return listOfNotNull(
+        address1.trimmedOrNull(),
+        address2.trimmedOrNull(),
+        cityStatePostcode.takeIf { it.isNotBlank() },
+        country.trimmedOrNull(),
+    ).joinToString("\n")
+}
+
+private fun String?.trimmedOrNull(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CustomerTagsCard(
+    tags: String?,
+    tagPalette: Map<String, Color>,
+    modifier: Modifier = Modifier,
+) {
+    val tagLabels = remember(tags) { parseCustomerTagLabels(tags) }
+
+    BrandCard(modifier = modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Tags",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            if (tagLabels.isEmpty()) {
+                Text(
+                    "No tags",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    tagLabels.forEach { tag ->
+                        TagChip(label = tag, tagPalette = tagPalette)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun parseCustomerTagLabels(tags: String?): List<String> =
+    tags.orEmpty()
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
 
 /**
  * CROSS9b: Notes card — timeline of dated, per-author notes with a

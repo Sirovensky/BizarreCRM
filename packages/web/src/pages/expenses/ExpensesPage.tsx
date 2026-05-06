@@ -5,7 +5,13 @@ import toast from 'react-hot-toast';
 import { expenseApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate } from '@/utils/format';
+import {
+  GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+  IMAGE_UPLOAD_ACCEPT,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 // FF-012: previously the form pre-filled `new Date().toISOString().slice(0,10)`
 // which returns the *UTC* day. After ~4-5pm local in any timezone west of UTC
@@ -128,13 +134,13 @@ export function ExpensesPage() {
       setReceiptFile(null);
       if (receiptInputRef.current) receiptInputRef.current.value = '';
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => expenseApi.delete(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); toast.success('Expense deleted'); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to delete expense'),
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   // WEB-FK-014: receipt upload mutation — runs after save when a file is selected.
@@ -144,8 +150,27 @@ export function ExpensesPage() {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       toast.success('Receipt uploaded');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Receipt upload failed'),
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
+
+  const handleReceiptFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) {
+      setReceiptFile(null);
+      return;
+    }
+    const error = await validateImageFile(file, {
+      maxBytes: GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+      label: `"${file.name}"`,
+    });
+    if (error) {
+      toast.error(error);
+      setReceiptFile(null);
+      e.target.value = '';
+      return;
+    }
+    setReceiptFile(file);
+  };
 
   const handleSubmit = () => {
     const errs: { amount?: string; category?: string; date?: string } = {};
@@ -215,6 +240,7 @@ export function ExpensesPage() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
             <input
+              aria-label="Search expenses"
               value={searchInput}
               onChange={(e) => {
                 setSearchInput(e.target.value);
@@ -303,13 +329,13 @@ export function ExpensesPage() {
             {/* WEB-FK-014: receipt upload — attaches after save, uses expenseReceipts route */}
             <div className="sm:col-span-2">
               <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
-                Receipt (image or PDF)
+                Receipt image
               </label>
               <input
                 ref={receiptInputRef}
                 type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                accept={IMAGE_UPLOAD_ACCEPT}
+                onChange={handleReceiptFile}
                 className="w-full text-sm text-surface-700 dark:text-surface-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-surface-100 file:text-surface-700 dark:file:bg-surface-700 dark:file:text-surface-300 hover:file:bg-surface-200 dark:hover:file:bg-surface-600"
               />
               {receiptFile && (

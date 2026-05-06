@@ -37,7 +37,6 @@ import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
-import { getImpersonationSession } from '@/components/ImpersonationBanner';
 // WEB-FAE-003: write recent_views under a per-user key so signing in as a
 // different user on the same browser can't read another user's recent
 // customer labels (PII). Reader is `Sidebar.RecentViews`.
@@ -45,6 +44,7 @@ import { recentViewsKey } from '@/components/layout/Sidebar';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatShortDateTime } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
@@ -266,6 +266,8 @@ export function CustomerDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showEraseConfirm, setShowEraseConfirm] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [exportTotpCode, setExportTotpCode] = useState('');
   const [exporting, setExporting] = useState(false);
   // FA-M26: loading flag for the wallet-pass fetch button.
   const [walletPassLoading, setWalletPassLoading] = useState(false);
@@ -275,26 +277,35 @@ export function CustomerDetailPage() {
     setShowDeleteConfirm(true);
   };
 
-  const handleExportData = async () => {
+  const handleExportData = async (totpCode: string) => {
+    const code = totpCode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      toast.error('Enter the 6-digit 2FA code');
+      return;
+    }
+
     setExporting(true);
     try {
-      const res = await customerApi.exportData(customerId);
-      const exportPayload = res.data.data;
-      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+      const res = await customerApi.exportData(customerId, code);
+      const downloadUrl = res.data?.data?.download_url;
+      if (!downloadUrl) throw new Error('Download URL was not returned');
+
       const a = document.createElement('a');
-      a.href = url;
-      // WEB-FJ-011: include tenant_slug (when impersonating) in the filename so
-      // super-admins exporting from multiple tenants on the same day don't get
-      // colliding filenames in their Downloads folder.
-      const impersonation = getImpersonationSession();
-      const tenantPart = impersonation?.tenant_slug ? `${impersonation.tenant_slug}-` : '';
-      a.download = `${tenantPart}customer-${customerId}-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.href = downloadUrl;
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Customer data exported successfully');
-    } catch {
-      toast.error('Failed to export customer data');
+      a.remove();
+
+      setShowExportConfirm(false);
+      setExportTotpCode('');
+      toast.success('Secure export download started');
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      toast.error(message || 'Failed to create secure export link');
     } finally {
       setExporting(false);
     }
@@ -411,7 +422,10 @@ export function CustomerDetailPage() {
             Merge
           </button>
           <button
-            onClick={handleExportData}
+            onClick={() => {
+              setExportTotpCode('');
+              setShowExportConfirm(true);
+            }}
             disabled={exporting}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
@@ -504,6 +518,74 @@ export function CustomerDetailPage() {
         }}
         onCancel={() => setShowEraseConfirm(false)}
       />
+
+      {showExportConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-surface-950/50 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="customer-export-title"
+        >
+          <form
+            className="w-full max-w-md rounded-lg border border-surface-200 bg-white p-5 shadow-xl dark:border-surface-700 dark:bg-surface-900"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleExportData(exportTotpCode);
+            }}
+          >
+            <div className="mb-4 flex items-start gap-3">
+              <div className="rounded-lg bg-primary-50 p-2 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                <Shield className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <h2 id="customer-export-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">
+                  Secure Customer Export
+                </h2>
+                <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+                  Enter your current 2FA code to create a short-lived server download.
+                </p>
+              </div>
+            </div>
+
+            <label htmlFor="customer-export-totp" className="block text-sm font-medium text-surface-700 dark:text-surface-200">
+              2FA code
+            </label>
+            <input
+              id="customer-export-totp"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              value={exportTotpCode}
+              onChange={(event) => setExportTotpCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="mt-2 w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-700 dark:bg-surface-950 dark:text-surface-50"
+              autoFocus
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowExportConfirm(false);
+                  setExportTotpCode('');
+                }}
+                className="inline-flex items-center justify-center rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 transition hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={exporting || exportTotpCode.length !== 6}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exporting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                Download
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showMergeModal && customer && (
         <CustomerMergeModal
@@ -887,19 +969,58 @@ function MembershipCard({ customerId }: { customerId: number }) {
 
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [selectedTier, setSelectedTier] = useState<number | null>(null);
+  const [membershipPaymentToken, setMembershipPaymentToken] = useState<string | null>(null);
+  const [membershipCardLabel, setMembershipCardLabel] = useState<string | null>(null);
+  const selectedTierData = tiers.find((tier) => tier.id === selectedTier) || null;
+  const selectedTierRequiresCard = Number(selectedTierData?.monthly_price ?? 0) > 0;
+
+  const resetEnrollment = () => {
+    setEnrollOpen(false);
+    setSelectedTier(null);
+    setMembershipPaymentToken(null);
+    setMembershipCardLabel(null);
+  };
+
+  const enrollCardMut = useMutation({
+    mutationFn: async () => {
+      const res = await membershipApi.enroll();
+      const data = res.data.data;
+      if (!data?.token) {
+        throw new Error('BlockChyp did not return a reusable payment token');
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      setMembershipPaymentToken(data.token);
+      setMembershipCardLabel([data.cardType, data.maskedPan].filter(Boolean).join(' ') || 'Card saved');
+      toast.success('Card saved for membership billing');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.message || 'Failed to save card'),
+  });
 
   const subscribeMut = useMutation({
-    mutationFn: (tierId: number) =>
-      membershipApi.subscribe({ customer_id: customerId, tier_id: tierId }),
+    mutationFn: ({ tierId, blockchypToken }: { tierId: number; blockchypToken?: string }) =>
+      membershipApi.subscribe({ customer_id: customerId, tier_id: tierId, blockchyp_token: blockchypToken }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
       queryClient.invalidateQueries({ queryKey: ['membership', 'subscriptions'] });
-      setEnrollOpen(false);
-      setSelectedTier(null);
+      resetEnrollment();
       toast.success('Membership activated!');
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to subscribe'),
   });
+
+  const activateSelectedTier = () => {
+    if (!selectedTier) return;
+    if (selectedTierRequiresCard && !membershipPaymentToken) {
+      toast.error('Save a card before activating this paid membership');
+      return;
+    }
+    subscribeMut.mutate({
+      tierId: selectedTier,
+      blockchypToken: selectedTierRequiresCard ? membershipPaymentToken ?? undefined : undefined,
+    });
+  };
 
   const cancelMut = useMutation({
     mutationFn: () => membershipApi.cancel(memberData!.id, { immediate: true }),
@@ -907,7 +1028,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
       toast.success('Membership cancelled');
     },
-    onError: () => toast.error('Failed to cancel'),
+    onError: (err: unknown) => toast.error(formatApiError(err)),
   });
 
   const pauseMut = useMutation({
@@ -963,13 +1084,12 @@ function MembershipCard({ customerId }: { customerId: number }) {
                 {memberData.tier_name}
               </span>
               {/* @audit-cents WEB-FF-019 (Fixer-C11 2026-04-25): server still
-                  returns memberData.monthly_price as dollars-as-float. When
-                  the membership-price column migrates to integer cents (to
-                  match POS), every value rendered here will silently be 100×
-                  wrong. Replace with `formatCents(memberData.monthly_price_cents)`
-                  on the migration PR — same risk class as WEB-FB-001. */}
+                  returns memberData.monthly_price as dollars-as-float. The
+                  shared formatter keeps tenant currency/locale correct today,
+                  but a future integer-cents migration must switch this to the
+                  cents field in the same PR. */}
               <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
-                ${memberData.monthly_price.toFixed(2)}/mo
+                {formatCurrency(memberData.monthly_price)}/mo
               </span>
             </div>
             <p className="text-xs text-surface-500">
@@ -1065,22 +1185,47 @@ function MembershipCard({ customerId }: { customerId: number }) {
                   <div className="h-3 w-3 rounded-full" style={{ backgroundColor: tier.color }} />
                   <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">{tier.name}</span>
                 </div>
-                <p className="text-lg font-bold text-surface-900 dark:text-surface-100">${tier.monthly_price.toFixed(2)}<span className="text-xs font-normal text-surface-400">/mo</span></p>
+                <p className="text-lg font-bold text-surface-900 dark:text-surface-100">{formatCurrency(tier.monthly_price)}<span className="text-xs font-normal text-surface-400">/mo</span></p>
                 <p className="text-xs text-surface-500 mt-0.5">{tier.discount_pct}% off {tier.discount_applies_to}</p>
               </button>
             ))}
           </div>
+          {selectedTierData && selectedTierRequiresCard && (
+            <div className="flex flex-col gap-3 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2.5">
+                <Wallet className="h-4 w-4 text-surface-500" />
+                <div>
+                  <p className="text-sm font-medium text-surface-800 dark:text-surface-100">Card on file</p>
+                  <p className={cn(
+                    'text-xs',
+                    membershipPaymentToken ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400',
+                  )}>
+                    {membershipCardLabel || 'Required for paid memberships'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => enrollCardMut.mutate()}
+                disabled={enrollCardMut.isPending || subscribeMut.isPending}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-700 transition-colors hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200 dark:hover:bg-surface-800"
+              >
+                {enrollCardMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+                {membershipPaymentToken ? 'Replace card' : 'Save card'}
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-2 pt-1">
             <button
-              onClick={() => selectedTier && subscribeMut.mutate(selectedTier)}
-              disabled={!selectedTier || subscribeMut.isPending}
+              onClick={activateSelectedTier}
+              disabled={!selectedTier || (selectedTierRequiresCard && !membershipPaymentToken) || subscribeMut.isPending || enrollCardMut.isPending}
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {subscribeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
               Activate Membership
             </button>
             <button
-              onClick={() => { setEnrollOpen(false); setSelectedTier(null); }}
+              onClick={resetEnrollment}
               className="px-3 py-2 text-sm text-surface-500 hover:text-surface-700 dark:hover:text-surface-300 transition-colors"
             >
               Cancel

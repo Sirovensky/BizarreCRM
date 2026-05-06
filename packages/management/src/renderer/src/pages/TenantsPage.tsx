@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight, Pencil, Check, X } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { Tenant } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -12,7 +12,56 @@ import { PLAN_DEFINITIONS, type TenantPlan } from '@bizarre-crm/shared';
 import { formatApiError } from '@/utils/apiError';
 
 const PLAN_OPTIONS = Object.values(PLAN_DEFINITIONS);
+const PLAN_NAME_SET = new Set<string>(PLAN_OPTIONS.map((plan) => plan.name));
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STAT_CARD_CLASS = 'relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700';
+const TENANT_ACTION_REASON_MAX = 1000;
+const TENANT_NAME_MAX = 200;
+const DISALLOWED_TENANT_NAME_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u202A-\u202E\u2066-\u2069]/;
+type BulkAction = 'suspend' | 'activate' | 'delete';
+
+function isTenantPlan(value: string): value is TenantPlan {
+  return PLAN_NAME_SET.has(value);
+}
+
+function planLabel(value: string): string {
+  return isTenantPlan(value) ? PLAN_DEFINITIONS[value].displayName : value;
+}
+
+function describePlanLimits(plan: TenantPlan): string {
+  const limits = PLAN_DEFINITIONS[plan].limits;
+  const tickets = limits.maxTicketsMonth === null ? 'unlimited tickets/month' : `${limits.maxTicketsMonth.toLocaleString()} tickets/month`;
+  const users = limits.maxUsers === null ? 'unlimited users' : `${limits.maxUsers.toLocaleString()} user${limits.maxUsers === 1 ? '' : 's'}`;
+  const storage = limits.storageLimitMb === null
+    ? 'unlimited storage'
+    : limits.storageLimitMb >= 1024
+      ? `${(limits.storageLimitMb / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB storage`
+      : `${limits.storageLimitMb.toLocaleString()} MB storage`;
+  return `${tickets}, ${users}, ${storage}`;
+}
+
+function formatTenantTimestamp(value?: string | null): string {
+  return value ? formatDateTime(value) : '—';
+}
+
+function tenantActionReasonError(action: 'suspend' | 'activate', reason: string): string | null {
+  const trimmed = reason.trim();
+  if (action === 'suspend' && trimmed.length === 0) {
+    return 'Enter a reason before suspending tenants.';
+  }
+  if (reason.length > TENANT_ACTION_REASON_MAX) {
+    return `Reason must be ${TENANT_ACTION_REASON_MAX} characters or fewer.`;
+  }
+  return null;
+}
+
+function tenantNameError(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return 'Shop name is required.';
+  if (trimmed.length > TENANT_NAME_MAX) return `Shop name must be ${TENANT_NAME_MAX} characters or fewer.`;
+  if (DISALLOWED_TENANT_NAME_CHARS.test(trimmed)) return 'Shop name contains unsupported control characters.';
+  return null;
+}
 
 interface LastCreatedTenant {
   slug: string;
@@ -43,9 +92,14 @@ export function TenantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<Tenant | null>(null);
   const [activateTarget, setActivateTarget] = useState<Tenant | null>(null);
+  const [tenantActionReason, setTenantActionReason] = useState('');
+  const [tenantActionReasonErrorText, setTenantActionReasonErrorText] = useState<string | null>(null);
   // DASH-ELEC-133: gate Repair behind a ConfirmDialog so a stray click can't
   // recreate setup tokens / DB tables silently.
   const [repairTarget, setRepairTarget] = useState<Tenant | null>(null);
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
+  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
   const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, TenantDetail | 'loading' | 'error'>>({});
@@ -56,6 +110,12 @@ export function TenantsPage() {
   const detailInFlight = useRef<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [planFilter, setPlanFilter] = useState<string>('');
+  const [planChangeTarget, setPlanChangeTarget] = useState<{ tenant: Tenant; nextPlan: TenantPlan } | null>(null);
+  const [updatingPlanSlug, setUpdatingPlanSlug] = useState<string | null>(null);
+  const [renamingSlug, setRenamingSlug] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [savingRenameSlug, setSavingRenameSlug] = useState<string | null>(null);
 
   // Create form state
   const [newSlug, setNewSlug] = useState('');
@@ -150,6 +210,79 @@ export function TenantsPage() {
     [tenants]
   );
 
+  const visibleSlugs = useMemo(() => filteredTenants.map((t) => t.slug), [filteredTenants]);
+  const selectedTenants = useMemo(
+    () => tenants.filter((t) => selectedSlugs.has(t.slug)),
+    [tenants, selectedSlugs]
+  );
+  const selectedVisibleCount = useMemo(
+    () => visibleSlugs.reduce((count, slug) => count + (selectedSlugs.has(slug) ? 1 : 0), 0),
+    [selectedSlugs, visibleSlugs]
+  );
+  const allVisibleSelected = visibleSlugs.length > 0 && selectedVisibleCount === visibleSlugs.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
+  const activeSelectedCount = selectedTenants.filter((t) => t.status === 'active').length;
+  const suspendedSelectedCount = selectedTenants.filter((t) => t.status === 'suspended').length;
+
+  const toggleSelectSlug = (slug: string) => {
+    setSelectedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  };
+
+  const toggleSelectVisible = () => {
+    setSelectedSlugs((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleSlugs.forEach((slug) => next.delete(slug));
+      } else {
+        visibleSlugs.forEach((slug) => next.add(slug));
+      }
+      return next;
+    });
+  };
+
+  const clearSelected = () => setSelectedSlugs(new Set());
+
+  const resetTenantActionReason = () => {
+    setTenantActionReason('');
+    setTenantActionReasonErrorText(null);
+  };
+
+  const openSuspendConfirm = (tenant: Tenant) => {
+    resetTenantActionReason();
+    setSuspendTarget(tenant);
+  };
+
+  const openActivateConfirm = (tenant: Tenant) => {
+    resetTenantActionReason();
+    setActivateTarget(tenant);
+  };
+
+  const openBulkAction = (action: BulkAction) => {
+    resetTenantActionReason();
+    setBulkAction(action);
+  };
+
+  const closeSuspendConfirm = () => {
+    setSuspendTarget(null);
+    resetTenantActionReason();
+  };
+
+  const closeActivateConfirm = () => {
+    setActivateTarget(null);
+    resetTenantActionReason();
+  };
+
+  const closeBulkAction = () => {
+    if (bulkProcessing) return;
+    setBulkAction(null);
+    resetTenantActionReason();
+  };
+
   const handleCreate = async () => {
     const slug = newSlug.trim().toLowerCase();
     const email = newEmail.trim();
@@ -199,11 +332,17 @@ export function TenantsPage() {
 
   const handleSuspend = async () => {
     if (!suspendTarget) return;
+    const reason = tenantActionReason.trim();
+    const error = tenantActionReasonError('suspend', tenantActionReason);
+    if (error) {
+      setTenantActionReasonErrorText(error);
+      return;
+    }
     const slug = suspendTarget.slug;
-    const res = await getAPI().superAdmin.suspendTenant(slug);
+    const res = await getAPI().superAdmin.suspendTenant({ slug, reason });
     if (res.success) {
       toast.success('Tenant suspended');
-      setSuspendTarget(null);
+      closeSuspendConfirm();
       // DASH-ELEC-235: evict cached detail so the next expand-row re-fetches
       // updated counts rather than showing stale pre-suspend data.
       setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
@@ -213,11 +352,17 @@ export function TenantsPage() {
 
   const handleActivate = async () => {
     if (!activateTarget) return;
+    const reason = tenantActionReason.trim();
+    const error = tenantActionReasonError('activate', tenantActionReason);
+    if (error) {
+      setTenantActionReasonErrorText(error);
+      return;
+    }
     const slug = activateTarget.slug;
-    const res = await getAPI().superAdmin.activateTenant(slug);
+    const res = await getAPI().superAdmin.activateTenant({ slug, reason: reason || undefined });
     if (res.success) {
       toast.success('Tenant activated');
-      setActivateTarget(null);
+      closeActivateConfirm();
       // DASH-ELEC-235: same eviction for activate.
       setDetailCache((c) => { const n = { ...c }; delete n[slug]; return n; });
       refresh();
@@ -243,6 +388,92 @@ export function TenantsPage() {
     }
   };
 
+  const openPlanChange = (tenant: Tenant, nextPlan: TenantPlan) => {
+    if (tenant.plan === nextPlan || updatingPlanSlug) return;
+    setPlanChangeTarget({ tenant, nextPlan });
+  };
+
+  const handlePlanChange = async () => {
+    if (!planChangeTarget || updatingPlanSlug) return;
+    const { tenant, nextPlan } = planChangeTarget;
+    setUpdatingPlanSlug(tenant.slug);
+    try {
+      const res = await getAPI().superAdmin.updateTenant({ slug: tenant.slug, plan: nextPlan });
+      if (handleApiResponse(res)) return;
+      if (res.success) {
+        const updated = res.data;
+        toast.success(`${tenant.slug} moved to ${PLAN_DEFINITIONS[nextPlan].displayName}`);
+        setPlanChangeTarget(null);
+        setTenants((list) => list.map((row) => (
+          row.slug === tenant.slug ? { ...row, ...(updated ?? {}), plan: nextPlan } : row
+        )));
+        setDetailCache((c) => { const n = { ...c }; delete n[tenant.slug]; return n; });
+        await refresh();
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update tenant plan');
+    } finally {
+      setUpdatingPlanSlug(null);
+    }
+  };
+
+  const startRename = (tenant: Tenant) => {
+    if (savingRenameSlug !== null) return;
+    setRenamingSlug(tenant.slug);
+    setRenameValue(tenant.name);
+    setRenameError(null);
+  };
+
+  const cancelRename = () => {
+    if (savingRenameSlug !== null) return;
+    setRenamingSlug(null);
+    setRenameValue('');
+    setRenameError(null);
+  };
+
+  const handleRename = async (tenant: Tenant) => {
+    if (savingRenameSlug !== null) return;
+    const error = tenantNameError(renameValue);
+    if (error) {
+      setRenameError(error);
+      return;
+    }
+    const nextName = renameValue.trim();
+    if (nextName === tenant.name) {
+      cancelRename();
+      return;
+    }
+
+    setSavingRenameSlug(tenant.slug);
+    try {
+      const res = await getAPI().superAdmin.updateTenant({ slug: tenant.slug, name: nextName });
+      if (handleApiResponse(res)) return;
+      if (res.success) {
+        const updated = res.data;
+        setTenants((list) => list.map((row) => (
+          row.slug === tenant.slug ? { ...row, ...(updated ?? {}), name: updated?.name ?? nextName } : row
+        )));
+        setRenamingSlug(null);
+        setRenameValue('');
+        setRenameError(null);
+        toast.success('Tenant shop name updated');
+        await refresh();
+      } else {
+        const message = formatApiError(res);
+        setRenameError(message);
+        toast.error(message);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update tenant shop name';
+      setRenameError(message);
+      toast.error(message);
+    } finally {
+      setSavingRenameSlug(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     const slug = deleteTarget.slug;
@@ -257,6 +488,94 @@ export function TenantsPage() {
       refresh();
     } else {
       toast.error(formatApiError(res));
+    }
+  };
+
+  const getBulkTargets = (action: BulkAction) => {
+    if (action === 'suspend') return selectedTenants.filter((t) => t.status === 'active');
+    if (action === 'activate') return selectedTenants.filter((t) => t.status === 'suspended');
+    return selectedTenants;
+  };
+
+  const getBulkLabel = (action: BulkAction) => {
+    if (action === 'suspend') return 'Suspend Tenants';
+    if (action === 'activate') return 'Activate Tenants';
+    return 'Delete Tenants';
+  };
+
+  const getBulkMessage = (action: BulkAction) => {
+    const targets = getBulkTargets(action);
+    const skipped = selectedTenants.length - targets.length;
+    const skippedText = skipped > 0 ? `\n\n${skipped} selected tenant${skipped === 1 ? '' : 's'} will be skipped because their current status does not apply.` : '';
+    const countText = `${targets.length} tenant${targets.length === 1 ? '' : 's'}`;
+    if (action === 'delete') {
+      return `Permanently delete ${countText}? This will delete all selected tenant data and cannot be undone.`;
+    }
+    if (action === 'suspend') {
+      return `Suspend ${countText}? Users for these tenants will be blocked from signing in until re-activated.${skippedText}`;
+    }
+    return `Activate ${countText}? Users for these tenants will be able to sign in immediately.${skippedText}`;
+  };
+
+  const handleBulkConfirm = async () => {
+    if (!bulkAction || bulkProcessing) return;
+    const action = bulkAction;
+    const targets = getBulkTargets(action);
+    if (targets.length === 0) {
+      toast.error('No selected tenants match this action');
+      setBulkAction(null);
+      resetTenantActionReason();
+      return;
+    }
+    if (action === 'suspend' || action === 'activate') {
+      const error = tenantActionReasonError(action, tenantActionReason);
+      if (error) {
+        setTenantActionReasonErrorText(error);
+        return;
+      }
+    }
+
+    setBulkProcessing(true);
+    const succeeded: string[] = [];
+    const failed: string[] = [];
+    const reason = tenantActionReason.trim();
+    try {
+      for (const tenant of targets) {
+        const res = action === 'suspend'
+          ? await getAPI().superAdmin.suspendTenant({ slug: tenant.slug, reason })
+          : action === 'activate'
+            ? await getAPI().superAdmin.activateTenant({ slug: tenant.slug, reason: reason || undefined })
+            : await getAPI().superAdmin.deleteTenant(tenant.slug);
+        if (res.success) {
+          succeeded.push(tenant.slug);
+        } else {
+          failed.push(`${tenant.slug}: ${formatApiError(res)}`);
+        }
+      }
+
+      if (succeeded.length > 0) {
+        const verb = action === 'suspend' ? 'suspended' : action === 'activate' ? 'activated' : 'deleted';
+        toast.success(`${succeeded.length} tenant${succeeded.length === 1 ? '' : 's'} ${verb}`);
+        setDetailCache((c) => {
+          const next = { ...c };
+          succeeded.forEach((slug) => delete next[slug]);
+          return next;
+        });
+        if (action === 'delete') {
+          setExpandedSlug((slug) => (slug && succeeded.includes(slug) ? null : slug));
+        }
+        await refresh();
+        clearSelected();
+      }
+
+      if (failed.length > 0) {
+        toast.error(`Bulk ${action} failed for ${failed.length} tenant${failed.length === 1 ? '' : 's'}`);
+        console.error(`Bulk ${action} failures`, failed);
+      }
+    } finally {
+      setBulkProcessing(false);
+      setBulkAction(null);
+      resetTenantActionReason();
     }
   };
 
@@ -310,21 +629,21 @@ export function TenantsPage() {
         }, {});
         return (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
-            <div className="stat-card">
+            <div className={STAT_CARD_CLASS}>
               <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Tenants</div>
               <div className="text-lg lg:text-2xl font-bold text-surface-100">{tenants.length}</div>
             </div>
-            <div className="stat-card">
+            <div className={STAT_CARD_CLASS}>
               <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Active</div>
               <div className="text-lg lg:text-2xl font-bold text-emerald-300">
                 {active}<span className="text-xs text-surface-500"> / {tenants.length}</span>
               </div>
             </div>
-            <div className="stat-card">
+            <div className={STAT_CARD_CLASS}>
               <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Suspended</div>
               <div className={cn('text-lg lg:text-2xl font-bold', suspended > 0 ? 'text-amber-300' : 'text-surface-300')}>{suspended}</div>
             </div>
-            <div className="stat-card">
+            <div className={STAT_CARD_CLASS}>
               <div className="text-[10px] lg:text-[11px] text-surface-500 uppercase tracking-wider mb-1 lg:mb-2">Total DB</div>
               <div className="text-lg lg:text-2xl font-bold text-surface-100">
                 {totalBytes > 0
@@ -394,6 +713,52 @@ export function TenantsPage() {
         </div>
       ) : null}
 
+      {selectedSlugs.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent-700/50 bg-accent-950/30 px-3 py-2">
+          <div className="text-xs text-accent-100">
+            <span className="font-semibold">{selectedSlugs.size}</span> selected
+            {selectedVisibleCount !== selectedSlugs.size && (
+              <span className="text-accent-300"> ({selectedVisibleCount} visible)</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openBulkAction('suspend')}
+              disabled={activeSelectedCount === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-700/60 px-2.5 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Pause className="h-3.5 w-3.5" />
+              Suspend {activeSelectedCount > 0 ? activeSelectedCount : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => openBulkAction('activate')}
+              disabled={suspendedSelectedCount === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-green-700/60 px-2.5 py-1.5 text-xs font-medium text-green-200 hover:bg-green-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Play className="h-3.5 w-3.5" />
+              Activate {suspendedSelectedCount > 0 ? suspendedSelectedCount : ''}
+            </button>
+            <button
+              type="button"
+              onClick={() => openBulkAction('delete')}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-700/60 px-2.5 py-1.5 text-xs font-medium text-red-200 hover:bg-red-950/40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete {selectedSlugs.size}
+            </button>
+            <button
+              type="button"
+              onClick={clearSelected}
+              className="rounded-lg border border-surface-700 px-2.5 py-1.5 text-xs font-medium text-surface-300 hover:bg-surface-800"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tenant list — empty-state CTA when the install has never created
           a tenant (fresh super-admin + multi-tenant mode). Falls back to a
           bare message when the search box filtered every tenant away. */}
@@ -427,11 +792,24 @@ export function TenantsPage() {
               {/* DASH-ELEC-239: scope="col" so AT pairs each cell with its
                   header when the row is announced. */}
               <tr className="border-b border-surface-800">
+                <th scope="col" className="w-10 py-2 px-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someVisibleSelected;
+                    }}
+                    onChange={toggleSelectVisible}
+                    aria-label={allVisibleSelected ? 'Deselect all visible tenants' : 'Select all visible tenants'}
+                    className="h-4 w-4 rounded border-surface-700 bg-surface-950 text-accent-600 focus:ring-accent-500"
+                  />
+                </th>
                 <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Slug</th>
                 <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Name</th>
                 <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Status</th>
                 <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Plan</th>
                 <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">DB size</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Activity</th>
                 <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Created</th>
                 <th scope="col" className="text-right py-2 px-3 text-xs text-surface-500 font-medium">Actions</th>
               </tr>
@@ -440,19 +818,104 @@ export function TenantsPage() {
               {filteredTenants.map((t) => {
                 const isOpen = expandedSlug === t.slug;
                 const detail = detailCache[t.slug];
+                const isSelected = selectedSlugs.has(t.slug);
                 return (
                 <Fragment key={t.id}>
                 <tr
-                  className="border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer"
+                  className={cn(
+                    'border-b border-surface-800/50 hover:bg-surface-800/30 cursor-pointer',
+                    isSelected && 'bg-accent-950/20'
+                  )}
                   onClick={() => toggleExpand(t.slug)}
                 >
+                  <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectSlug(t.slug)}
+                      aria-label={`Select ${t.name}`}
+                      className="h-4 w-4 rounded border-surface-700 bg-surface-950 text-accent-600 focus:ring-accent-500"
+                    />
+                  </td>
                   <td className="py-2.5 px-3 font-mono text-accent-400 text-xs">
                     <span className="inline-flex items-center gap-1">
                       {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                       <CopyText value={t.slug} toastLabel={`Copied ${t.slug}`}>{t.slug}</CopyText>
                     </span>
                   </td>
-                  <td className="py-2.5 px-3 text-surface-200">{t.name}</td>
+	                  <td className="py-2.5 px-3 text-surface-200" onClick={(e) => e.stopPropagation()}>
+	                    {renamingSlug === t.slug ? (
+	                      <form
+	                        className="min-w-[220px] space-y-1"
+	                        onSubmit={(e) => {
+	                          e.preventDefault();
+	                          void handleRename(t);
+	                        }}
+	                      >
+	                        <div className="flex items-center gap-1.5">
+	                          <input
+	                            type="text"
+	                            value={renameValue}
+	                            maxLength={TENANT_NAME_MAX + 1}
+	                            autoFocus
+	                            onChange={(e) => {
+	                              setRenameValue(e.target.value);
+	                              setRenameError(null);
+	                            }}
+	                            onKeyDown={(e) => {
+	                              if (e.key === 'Escape') {
+	                                e.preventDefault();
+	                                cancelRename();
+	                              }
+	                            }}
+	                            aria-label={`New shop name for ${t.slug}`}
+	                            aria-invalid={renameError ? 'true' : 'false'}
+	                            aria-describedby={renameError ? `tenant-rename-error-${t.slug}` : undefined}
+	                            className={cn(
+	                              'h-8 w-56 rounded border bg-surface-950 px-2 text-xs text-surface-100 placeholder:text-surface-600 focus:outline-none',
+	                              renameError ? 'border-red-600 focus:border-red-500' : 'border-surface-700 focus:border-accent-500'
+	                            )}
+	                          />
+	                          <button
+	                            type="submit"
+	                            disabled={savingRenameSlug === t.slug || tenantNameError(renameValue) !== null || renameValue.trim() === t.name}
+	                            className="p-1.5 rounded text-emerald-400 hover:text-emerald-200 hover:bg-surface-700 disabled:cursor-not-allowed disabled:opacity-40"
+	                            title="Save shop name"
+	                            aria-label={`Save shop name for ${t.slug}`}
+	                          >
+	                            <Check className="w-3.5 h-3.5" aria-hidden="true" />
+	                          </button>
+	                          <button
+	                            type="button"
+	                            disabled={savingRenameSlug === t.slug}
+	                            onClick={cancelRename}
+	                            className="p-1.5 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-700 disabled:cursor-not-allowed disabled:opacity-40"
+	                            title="Cancel rename"
+	                            aria-label={`Cancel rename for ${t.slug}`}
+	                          >
+	                            <X className="w-3.5 h-3.5" aria-hidden="true" />
+	                          </button>
+	                        </div>
+	                        {renameError ? (
+	                          <p id={`tenant-rename-error-${t.slug}`} className="text-[11px] text-red-300">{renameError}</p>
+	                        ) : null}
+	                      </form>
+	                    ) : (
+	                      <div className="flex min-w-0 items-center gap-1.5">
+	                        <span className="truncate" title={t.name}>{t.name}</span>
+	                        <button
+	                          type="button"
+	                          onClick={() => startRename(t)}
+	                          disabled={savingRenameSlug !== null || updatingPlanSlug === t.slug}
+	                          className="shrink-0 p-1 rounded text-surface-500 hover:text-surface-200 hover:bg-surface-700 disabled:cursor-not-allowed disabled:opacity-40"
+	                          title="Rename shop"
+	                          aria-label={`Rename shop for ${t.name}`}
+	                        >
+	                          <Pencil className="w-3 h-3" aria-hidden="true" />
+	                        </button>
+	                      </div>
+	                    )}
+	                  </td>
                   <td className="py-2.5 px-3">
                     {/* DASH-ELEC-239: aria-label spells the badge value out so
                         AT users hear "active" / "suspended" instead of just
@@ -468,11 +931,37 @@ export function TenantsPage() {
                       {t.status}
                     </span>
                   </td>
-                  <td className="py-2.5 px-3 text-surface-400 text-xs">{t.plan}</td>
+                  <td className="py-2.5 px-3 text-xs" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={isTenantPlan(t.plan) ? t.plan : ''}
+                      disabled={updatingPlanSlug === t.slug}
+                      onChange={(e) => openPlanChange(t, e.target.value as TenantPlan)}
+                      className="w-28 rounded border border-surface-700 bg-surface-950 px-2 py-1 text-xs text-surface-200 focus:border-accent-500 focus:outline-none disabled:cursor-wait disabled:opacity-60"
+                      aria-label={`Change plan for ${t.name}`}
+                      title={`Current plan: ${planLabel(t.plan)}`}
+                    >
+                      {!isTenantPlan(t.plan) && <option value="" disabled>Unknown: {t.plan}</option>}
+                      {PLAN_OPTIONS.map((plan) => (
+                        <option key={plan.name} value={plan.name}>{plan.displayName}</option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="py-2.5 px-3 text-surface-400 text-xs whitespace-nowrap">
                     {t.db_size_bytes
                       ? `${(t.db_size_bytes / 1024 / 1024).toFixed(1)} MB`
                       : '—'}
+                  </td>
+                  <td className="py-2.5 px-3 text-xs whitespace-nowrap">
+                    <div className="space-y-0.5">
+                      <div className="text-surface-400" title={t.last_active ? `Last active: ${formatDateTime(t.last_active)}` : 'Last active unknown'}>
+                        <span className="text-surface-600">Last</span> {formatTenantTimestamp(t.last_active)}
+                      </div>
+                      {t.status === 'suspended' && (
+                        <div className="text-amber-300" title={t.suspended_at ? `Suspended: ${formatDateTime(t.suspended_at)}` : 'Suspension timestamp unavailable'}>
+                          <span className="text-surface-600">Susp.</span> {formatTenantTimestamp(t.suspended_at)}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2.5 px-3 text-surface-500 text-xs">{formatDateTime(t.created_at)}</td>
                   <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
@@ -511,7 +1000,7 @@ export function TenantsPage() {
                       {/* DASH-ELEC-128: aria-label per tenant so SR gets unique accessible names */}
                       {t.status === 'active' ? (
                         <button
-                          onClick={() => setSuspendTarget(t)}
+                          onClick={() => openSuspendConfirm(t)}
                           className="p-1.5 rounded text-amber-500 hover:text-amber-300 hover:bg-surface-700"
                           title="Suspend"
                           aria-label={`Suspend ${t.name}`}
@@ -520,7 +1009,7 @@ export function TenantsPage() {
                         </button>
                       ) : (
                         <button
-                          onClick={() => setActivateTarget(t)}
+                          onClick={() => openActivateConfirm(t)}
                           className="p-1.5 rounded text-green-500 hover:text-green-300 hover:bg-surface-700"
                           title="Activate"
                           aria-label={`Activate ${t.name}`}
@@ -554,7 +1043,7 @@ export function TenantsPage() {
                 </tr>
                 {isOpen && (
                   <tr className="border-b border-surface-800 bg-surface-900/30">
-                    <td colSpan={7} className="px-3 py-3">
+                    <td colSpan={9} className="px-3 py-3">
                       {detail === 'loading' || detail === undefined ? (
                         <p className="text-xs text-surface-500">Loading tenant metrics…</p>
                       ) : detail === 'error' ? (
@@ -634,24 +1123,39 @@ export function TenantsPage() {
       />
 
       {/* Suspend confirm */}
-      <ConfirmDialog
+      <TenantStatusReasonDialog
         open={suspendTarget !== null}
         title="Suspend Tenant"
         message={`Suspending "${suspendTarget?.name}" will immediately block all users from signing in. You can re-activate at any time.`}
         danger
+        reason={tenantActionReason}
+        reasonError={tenantActionReasonErrorText}
+        reasonRequired
+        reasonLabel="Suspension reason"
         confirmLabel="Suspend Tenant"
         onConfirm={handleSuspend}
-        onCancel={() => setSuspendTarget(null)}
+        onCancel={closeSuspendConfirm}
+        onReasonChange={(value) => {
+          setTenantActionReason(value);
+          setTenantActionReasonErrorText(null);
+        }}
       />
 
       {/* Activate confirm */}
-      <ConfirmDialog
+      <TenantStatusReasonDialog
         open={activateTarget !== null}
         title="Activate Tenant"
         message={`Re-activate "${activateTarget?.name}"? Users will be able to sign in again immediately.`}
+        reason={tenantActionReason}
+        reasonError={tenantActionReasonErrorText}
+        reasonLabel="Activation reason"
         confirmLabel="Activate Tenant"
         onConfirm={handleActivate}
-        onCancel={() => setActivateTarget(null)}
+        onCancel={closeActivateConfirm}
+        onReasonChange={(value) => {
+          setTenantActionReason(value);
+          setTenantActionReasonErrorText(null);
+        }}
       />
 
       {/* DASH-ELEC-133: Repair confirm — additive (creates missing DB tables
@@ -676,6 +1180,53 @@ export function TenantsPage() {
         }}
         onCancel={() => setRepairTarget(null)}
       />
+
+      <ConfirmDialog
+        open={planChangeTarget !== null}
+        title="Change Tenant Plan"
+        message={
+          planChangeTarget
+            ? `Change "${planChangeTarget.tenant.name}" (${planChangeTarget.tenant.slug}) from ${planLabel(planChangeTarget.tenant.plan)} to ${PLAN_DEFINITIONS[planChangeTarget.nextPlan].displayName}? Limits will reset to ${describePlanLimits(planChangeTarget.nextPlan)}. This is audited and may update platform Stripe billing when the tenant has a Stripe customer.`
+            : ''
+        }
+        confirmLabel="Change Plan"
+        disabled={updatingPlanSlug !== null}
+        onConfirm={handlePlanChange}
+        onCancel={() => {
+          if (updatingPlanSlug === null) setPlanChangeTarget(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkAction === 'delete'}
+        title={bulkAction ? getBulkLabel(bulkAction) : 'Bulk Action'}
+        message={bulkAction ? getBulkMessage(bulkAction) : ''}
+        danger
+        requireTyping={`delete ${selectedTenants.length}`}
+        confirmLabel={bulkAction ? getBulkLabel(bulkAction) : 'Confirm'}
+        disabled={bulkProcessing || (bulkAction !== null && getBulkTargets(bulkAction).length === 0)}
+        onConfirm={handleBulkConfirm}
+        onCancel={closeBulkAction}
+      />
+
+      <TenantStatusReasonDialog
+        open={bulkAction === 'suspend' || bulkAction === 'activate'}
+        title={bulkAction ? getBulkLabel(bulkAction) : 'Bulk Action'}
+        message={bulkAction ? getBulkMessage(bulkAction) : ''}
+        danger={bulkAction === 'suspend'}
+        reason={tenantActionReason}
+        reasonError={tenantActionReasonErrorText}
+        reasonRequired={bulkAction === 'suspend'}
+        reasonLabel={bulkAction === 'activate' ? 'Activation reason' : 'Suspension reason'}
+        confirmLabel={bulkAction ? getBulkLabel(bulkAction) : 'Confirm'}
+        disabled={bulkProcessing || (bulkAction !== null && getBulkTargets(bulkAction).length === 0)}
+        onConfirm={handleBulkConfirm}
+        onCancel={closeBulkAction}
+        onReasonChange={(value) => {
+          setTenantActionReason(value);
+          setTenantActionReasonErrorText(null);
+        }}
+      />
     </div>
   );
 }
@@ -685,6 +1236,119 @@ function DetailMetric({ label, value }: { label: string; value: string | number 
     <div className="rounded border border-surface-800 bg-surface-950/60 px-2.5 py-1.5">
       <div className="text-[10px] text-surface-500 uppercase tracking-wider">{label}</div>
       <div className="text-sm font-bold text-surface-100 mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+interface TenantStatusReasonDialogProps {
+  open: boolean;
+  title: string;
+  message: string;
+  reason: string;
+  reasonLabel: string;
+  reasonError?: string | null;
+  reasonRequired?: boolean;
+  confirmLabel: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onReasonChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function TenantStatusReasonDialog({
+  open,
+  title,
+  message,
+  reason,
+  reasonLabel,
+  reasonError,
+  reasonRequired = false,
+  confirmLabel,
+  danger = false,
+  disabled = false,
+  onReasonChange,
+  onConfirm,
+  onCancel,
+}: TenantStatusReasonDialogProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const confirmDisabled = disabled || (reasonRequired && reason.trim().length === 0) || reason.length > TENANT_ACTION_REASON_MAX;
+
+  useEffect(() => {
+    if (!open) return;
+    textareaRef.current?.focus();
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tenant-status-dialog-title"
+        aria-describedby="tenant-status-dialog-message tenant-status-reason-help"
+        className="w-[460px] max-w-[calc(100vw-2rem)] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6 outline-none"
+      >
+        <div className="mb-4">
+          <h3 id="tenant-status-dialog-title" className="text-sm font-semibold text-surface-100">{title}</h3>
+          <p id="tenant-status-dialog-message" className="mt-3 whitespace-pre-line text-sm text-surface-400">{message}</p>
+        </div>
+
+        <div className="mb-5">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <label htmlFor="tenant-status-reason" className="text-xs font-medium text-surface-300">
+              {reasonLabel}
+              {reasonRequired ? <span className="text-red-300"> required</span> : <span className="text-surface-500"> optional</span>}
+            </label>
+            <span className={cn('text-[11px]', reason.length > TENANT_ACTION_REASON_MAX ? 'text-red-300' : 'text-surface-500')}>
+              {reason.length}/{TENANT_ACTION_REASON_MAX}
+            </span>
+          </div>
+          <textarea
+            ref={textareaRef}
+            id="tenant-status-reason"
+            value={reason}
+            maxLength={TENANT_ACTION_REASON_MAX + 1}
+            rows={4}
+            onChange={(event) => onReasonChange(event.target.value)}
+            placeholder={reasonRequired ? 'Example: Non-payment after support escalation' : 'Example: Payment verified and account cleared'}
+            aria-invalid={reasonError ? 'true' : 'false'}
+            aria-describedby="tenant-status-reason-help"
+            className={cn(
+              'w-full resize-none rounded-lg border bg-surface-950 px-3 py-2 text-sm text-surface-100 placeholder:text-surface-600 focus:outline-none',
+              reasonError ? 'border-red-600 focus:border-red-500' : 'border-surface-700 focus:border-accent-500'
+            )}
+          />
+          <p id="tenant-status-reason-help" className={cn('mt-2 text-xs', reasonError ? 'text-red-300' : 'text-surface-500')}>
+            {reasonError ?? 'Saved into the super-admin audit log for this tenant action.'}
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={disabled}
+            className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+            className={cn(
+              'px-4 py-2 text-sm font-semibold rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+              danger
+                ? 'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-800 disabled:text-red-200'
+                : 'bg-accent-600 text-white hover:bg-accent-700'
+            )}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -4,8 +4,11 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import { isEmailConfigured, sendEmail } from '../services/email.js';
 import {
   bulkApplyTier,
+  getTierPresentation,
+  getTierDefaultLabor,
   getTierThresholds,
   parsePricingTier,
   pricingTierDescriptors,
@@ -14,6 +17,7 @@ import {
   tierForReleaseYear,
   tierLabel,
   type PricingTier,
+  type TierThresholds,
 } from '../services/repairPricing/tierResolver.js';
 import { recomputeRepairPriceProfits } from '../services/repairPricing/profitRecompute.js';
 import {
@@ -90,6 +94,286 @@ function clampLimit(value: unknown, fallback = 250, max = 1000): number {
   return Math.min(n, max);
 }
 
+interface TierThresholdImpact {
+  previous: TierThresholds;
+  next: TierThresholds;
+  devices_crossing: number;
+  price_rows_repriceable: number;
+  custom_rows_preserved: number;
+  missing_tier_defaults: number;
+  estimated_labor_delta: number;
+  crossings: Array<{
+    device_model_id: number;
+    device_model_name: string;
+    release_year: number | null;
+    old_tier: PricingTier;
+    new_tier: PricingTier;
+    repriceable_rows: number;
+    custom_rows: number;
+    missing_defaults: number;
+    estimated_labor_delta: number;
+  }>;
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toCsvLine(values: unknown[]): string {
+  return values.map(csvEscape).join(',');
+}
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        cell += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(cell);
+      cell = '';
+    } else if (ch === '\n') {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+    } else if (ch !== '\r') {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some((value) => value.trim() !== '') || rows.length === 0) rows.push(row);
+  return rows;
+}
+
+interface MatrixImportRow {
+  device_id: number;
+  service_id: number;
+  labor_price: number;
+}
+
+interface MatrixImportDiffRow {
+  device_id: number;
+  device_name: string;
+  release_year: number | null;
+  service_id: number;
+  service_name: string;
+  labor_price: number;
+  existing_price_id: number | null;
+  old_labor_price: number | null;
+  old_is_custom: number | null;
+  change: 'insert' | 'update' | 'unchanged';
+}
+
+function normalizeMatrixImportRows(input: unknown): MatrixImportRow[] {
+  if (Array.isArray(input)) {
+    return input.map((row: any) => ({
+      device_id: Number(row.device_id ?? row.device_model_id),
+      service_id: Number(row.service_id ?? row.repair_service_id),
+      labor_price: Number(row.labor_price),
+    }));
+  }
+  if (typeof input !== 'string') throw new AppError('csv or rows is required', 400);
+  const rows = parseCsv(input.trim());
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((header) => header.trim().toLowerCase());
+  const deviceIndex = headers.indexOf('device_id');
+  const serviceIndex = headers.indexOf('service_id');
+  const laborIndex = headers.indexOf('labor_price');
+  if (deviceIndex < 0 || serviceIndex < 0 || laborIndex < 0) {
+    throw new AppError('CSV must include device_id, service_id, and labor_price columns', 400);
+  }
+  return rows.slice(1).filter((row) => row.some((cell) => cell.trim() !== '')).map((row) => ({
+    device_id: Number(row[deviceIndex]),
+    service_id: Number(row[serviceIndex]),
+    labor_price: Number(row[laborIndex]),
+  }));
+}
+
+function validateMatrixImportRows(rows: MatrixImportRow[]): MatrixImportRow[] {
+  if (rows.length > 5000) throw new AppError('At most 5000 CSV rows can be imported at once', 400);
+  const seen = new Set<string>();
+  return rows.map((row, index) => {
+    if (!Number.isInteger(row.device_id) || row.device_id <= 0) {
+      throw new AppError(`Row ${index + 2}: device_id must be a positive integer`, 400);
+    }
+    if (!Number.isInteger(row.service_id) || row.service_id <= 0) {
+      throw new AppError(`Row ${index + 2}: service_id must be a positive integer`, 400);
+    }
+    const labor = validatePriceField(`Row ${index + 2} labor_price`, row.labor_price);
+    if (labor == null) throw new AppError(`Row ${index + 2}: labor_price is required`, 400);
+    const key = `${row.device_id}:${row.service_id}`;
+    if (seen.has(key)) throw new AppError(`Duplicate CSV row for device_id=${row.device_id}, service_id=${row.service_id}`, 400);
+    seen.add(key);
+    return { device_id: row.device_id, service_id: row.service_id, labor_price: labor };
+  });
+}
+
+function buildMatrixImportDiff(db: any, rows: MatrixImportRow[]): MatrixImportDiffRow[] {
+  const deviceStmt = db.prepare('SELECT id, name, release_year FROM device_models WHERE id = ?');
+  const serviceStmt = db.prepare('SELECT id, name FROM repair_services WHERE id = ?');
+  const priceStmt = db.prepare(`
+    SELECT id, labor_price, is_custom
+    FROM repair_prices
+    WHERE device_model_id = ? AND repair_service_id = ?
+  `);
+  return rows.map((row, index) => {
+    const device = deviceStmt.get(row.device_id) as { id: number; name: string; release_year: number | null } | undefined;
+    if (!device) throw new AppError(`Row ${index + 2}: device_id ${row.device_id} does not exist`, 400);
+    const service = serviceStmt.get(row.service_id) as { id: number; name: string } | undefined;
+    if (!service) throw new AppError(`Row ${index + 2}: service_id ${row.service_id} does not exist`, 400);
+    const existing = priceStmt.get(row.device_id, row.service_id) as { id: number; labor_price: number; is_custom: number } | undefined;
+    const unchanged = existing && Math.abs(Number(existing.labor_price) - row.labor_price) < 0.005;
+    return {
+      device_id: row.device_id,
+      device_name: device.name,
+      release_year: device.release_year,
+      service_id: row.service_id,
+      service_name: service.name,
+      labor_price: row.labor_price,
+      existing_price_id: existing?.id ?? null,
+      old_labor_price: existing?.labor_price ?? null,
+      old_is_custom: existing?.is_custom ?? null,
+      change: unchanged ? 'unchanged' : existing ? 'update' : 'insert',
+    };
+  });
+}
+
+function computeTierThresholdImpact(db: any, next: TierThresholds): TierThresholdImpact {
+  const previous = getTierThresholds(db);
+  const devices = db.prepare('SELECT id, name, release_year FROM device_models').all() as Array<{
+    id: number;
+    name: string;
+    release_year: number | null;
+  }>;
+  const pricesForDevice = db.prepare(`
+    SELECT id, repair_service_id, labor_price, is_custom
+    FROM repair_prices
+    WHERE device_model_id = ? AND is_active = 1
+  `);
+
+  let priceRowsRepriceable = 0;
+  let customRowsPreserved = 0;
+  let missingTierDefaults = 0;
+  let estimatedLaborDelta = 0;
+  const crossings: TierThresholdImpact['crossings'] = [];
+
+  for (const device of devices) {
+    const oldTier = tierForReleaseYear(device.release_year, previous);
+    const newTier = tierForReleaseYear(device.release_year, next);
+    if (oldTier === newTier) continue;
+
+    let repriceableRows = 0;
+    let customRows = 0;
+    let missingDefaults = 0;
+    let deviceDelta = 0;
+    const priceRows = pricesForDevice.all(device.id) as Array<{
+      repair_service_id: number;
+      labor_price: number;
+      is_custom: number;
+    }>;
+
+    for (const price of priceRows) {
+      if (price.is_custom === 1) {
+        customRows += 1;
+        continue;
+      }
+      const defaultLabor = newTier === 'unknown'
+        ? null
+        : getTierDefaultLabor(db, price.repair_service_id, newTier);
+      if (defaultLabor == null) {
+        missingDefaults += 1;
+        continue;
+      }
+      repriceableRows += 1;
+      deviceDelta += Number(defaultLabor) - Number(price.labor_price);
+    }
+
+    priceRowsRepriceable += repriceableRows;
+    customRowsPreserved += customRows;
+    missingTierDefaults += missingDefaults;
+    estimatedLaborDelta += deviceDelta;
+    crossings.push({
+      device_model_id: device.id,
+      device_model_name: device.name,
+      release_year: device.release_year,
+      old_tier: oldTier,
+      new_tier: newTier,
+      repriceable_rows: repriceableRows,
+      custom_rows: customRows,
+      missing_defaults: missingDefaults,
+      estimated_labor_delta: roundMoney(deviceDelta),
+    });
+  }
+
+  return {
+    previous,
+    next,
+    devices_crossing: crossings.length,
+    price_rows_repriceable: priceRowsRepriceable,
+    custom_rows_preserved: customRowsPreserved,
+    missing_tier_defaults: missingTierDefaults,
+    estimated_labor_delta: roundMoney(estimatedLaborDelta),
+    crossings: crossings.slice(0, 100),
+  };
+}
+
+async function notifyAdminsTierThresholdChanged(
+  db: any,
+  actor: string,
+  impact: TierThresholdImpact,
+): Promise<void> {
+  if (!isEmailConfigured(db)) return;
+  const admins = db.prepare(`
+    SELECT email, username FROM users
+    WHERE role = 'admin' AND is_active = 1 AND email IS NOT NULL AND email != ''
+  `).all() as Array<{ email: string; username: string }>;
+  if (admins.length === 0) return;
+
+  const subject = 'Repair pricing tier thresholds changed';
+  const text = [
+    `${actor} changed repair pricing tier thresholds.`,
+    `Previous: Tier A ${impact.previous.tierAYears} years, Tier B ${impact.previous.tierBYears} years.`,
+    `New: Tier A ${impact.next.tierAYears} years, Tier B ${impact.next.tierBYears} years.`,
+    `${impact.devices_crossing} device models crossed tiers; ${impact.price_rows_repriceable} price rows are repriceable.`,
+    `Estimated labor delta: $${impact.estimated_labor_delta.toFixed(2)}.`,
+  ].join('\n');
+  const html = `
+    <p>${actor} changed repair pricing tier thresholds.</p>
+    <ul>
+      <li>Previous: Tier A ${impact.previous.tierAYears} years, Tier B ${impact.previous.tierBYears} years</li>
+      <li>New: Tier A ${impact.next.tierAYears} years, Tier B ${impact.next.tierBYears} years</li>
+      <li>${impact.devices_crossing} device models crossed tiers</li>
+      <li>${impact.price_rows_repriceable} price rows are repriceable</li>
+      <li>Estimated labor delta: $${impact.estimated_labor_delta.toFixed(2)}</li>
+    </ul>
+  `;
+
+  await Promise.allSettled(admins.map((admin) =>
+    sendEmail(db, { to: admin.email, subject, html, text }),
+  ));
+}
+
 // ==================== Helper: apply global adjustments ====================
 
 async function getAdjustments(adb: AsyncDb): Promise<{ flat: number; pct: number }> {
@@ -124,6 +408,7 @@ function applyAdjustment(basePrice: number, adj: { flat: number; pct: number }):
 
 router.get('/tiers', asyncHandler(async (req, res) => {
   const thresholds = getTierThresholds(req.db);
+  const presentation = getTierPresentation(req.db);
   const devices = await req.asyncDb.all<{ release_year: number | null }>('SELECT release_year FROM device_models');
   const counts: Record<PricingTier, number> = { tier_a: 0, tier_b: 0, tier_c: 0, unknown: 0 };
   for (const device of devices) {
@@ -134,7 +419,7 @@ router.get('/tiers', asyncHandler(async (req, res) => {
     success: true,
     data: {
       thresholds,
-      tiers: pricingTierDescriptors(thresholds).map((tier) => ({
+      tiers: pricingTierDescriptors(thresholds, presentation).map((tier) => ({
         ...tier,
         device_count: counts[tier.key],
       })),
@@ -142,7 +427,7 @@ router.get('/tiers', asyncHandler(async (req, res) => {
   });
 }));
 
-router.put('/tiers', adminOrManager, asyncHandler(async (req, res) => {
+router.post('/tiers/impact', adminOnly, asyncHandler(async (req, res) => {
   const tierAYears = Number(req.body?.tier_a_years ?? req.body?.tierAYears);
   const tierBYears = Number(req.body?.tier_b_years ?? req.body?.tierBYears);
   if (!Number.isFinite(tierAYears) || !Number.isFinite(tierBYears)) {
@@ -152,20 +437,68 @@ router.put('/tiers', adminOrManager, asyncHandler(async (req, res) => {
     throw new AppError('Tier windows must be 0-50 years and tier_b_years must be >= tier_a_years', 400);
   }
 
-  const thresholds = setTierThresholds(req.db, {
+  const next = {
     tierAYears: Math.trunc(tierAYears),
     tierBYears: Math.trunc(tierBYears),
+  };
+  res.json({ success: true, data: computeTierThresholdImpact(req.db, next) });
+}));
+
+router.put('/tiers', adminOnly, asyncHandler(async (req, res) => {
+  const tierAYears = Number(req.body?.tier_a_years ?? req.body?.tierAYears);
+  const tierBYears = Number(req.body?.tier_b_years ?? req.body?.tierBYears);
+  if (!Number.isFinite(tierAYears) || !Number.isFinite(tierBYears)) {
+    throw new AppError('tier_a_years and tier_b_years are required numbers', 400);
+  }
+  if (tierAYears < 0 || tierBYears < 0 || tierAYears > 50 || tierBYears > 50 || tierBYears < tierAYears) {
+    throw new AppError('Tier windows must be 0-50 years and tier_b_years must be >= tier_a_years', 400);
+  }
+
+  const nextThresholds = {
+    tierAYears: Math.trunc(tierAYears),
+    tierBYears: Math.trunc(tierBYears),
+  };
+  const impact = computeTierThresholdImpact(req.db, nextThresholds);
+  const confirmation = String(req.body?.confirmation ?? req.body?.confirm ?? '');
+  if (confirmation !== 'CONFIRM') {
+    throw new AppError(
+      'Type CONFIRM to apply tier threshold changes',
+      409,
+      'ERR_REPAIR_PRICING_CONFIRM_REQUIRED',
+      { impact },
+    );
+  }
+
+  const thresholds = setTierThresholds(req.db, nextThresholds);
+  const rebase = runNightlyRebase(req.db);
+  audit(req.db, 'repair_pricing_tiers_updated', req.user!.id, req.ip || 'unknown', {
+    previous: impact.previous,
+    next: thresholds,
+    impact,
+    rebase: {
+      evaluated: rebase.evaluated,
+      rebased: rebase.rebased,
+      skipped_custom: rebase.skipped_custom,
+      crossing_count: rebase.crossing_count,
+    },
+    confirmed: true,
   });
-  audit(req.db, 'repair_pricing_tiers_updated', req.user!.id, req.ip || 'unknown', { ...thresholds });
-  res.json({ success: true, data: { thresholds, tiers: pricingTierDescriptors(thresholds) } });
+  await notifyAdminsTierThresholdChanged(
+    req.db,
+    req.user?.email || req.user?.username || `user #${req.user!.id}`,
+    impact,
+  );
+  res.json({ success: true, data: { thresholds, tiers: pricingTierDescriptors(thresholds, getTierPresentation(req.db)), impact, rebase } });
 }));
 
 router.get('/matrix', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const thresholds = getTierThresholds(req.db);
+  const presentation = getTierPresentation(req.db);
   const { category, q } = req.query as { category?: string; q?: string };
   const manufacturerId = parsePositiveInt(req.query.manufacturer_id, 'manufacturer_id');
   const repairServiceId = parsePositiveInt(req.query.repair_service_id, 'repair_service_id');
+  const hotOnly = parseBoolish(req.query.hot);
   // SQLite default SQLITE_MAX_VARIABLE_NUMBER = 999. The price IN(...) query
   // binds deviceIds + serviceIds, so cap devices low enough to leave headroom
   // for ~50 services.
@@ -198,16 +531,27 @@ router.get('/matrix', asyncHandler(async (req, res) => {
     const like = `%${escapeLike(q.trim().toLowerCase())}%`;
     deviceParams.push(like, like);
   }
+  if (hotOnly) {
+    deviceWhere.push('COALESCE(hot.ticket_count_30d, 0) > 0');
+  }
 
   const [services, devices] = await Promise.all([
     adb.all<any>(serviceSql, ...serviceParams),
     adb.all<any>(`
       SELECT dm.id, dm.name, dm.slug, dm.category, dm.release_year, dm.is_popular,
-             m.id AS manufacturer_id, m.name AS manufacturer_name
+             m.id AS manufacturer_id, m.name AS manufacturer_name,
+             COALESCE(hot.ticket_count_30d, 0) AS ticket_count_30d
       FROM device_models dm
       JOIN manufacturers m ON m.id = dm.manufacturer_id
+      LEFT JOIN (
+        SELECT device_model_id, COUNT(*) AS ticket_count_30d
+        FROM ticket_devices
+        WHERE device_model_id IS NOT NULL
+          AND created_at >= datetime('now', '-30 days')
+        GROUP BY device_model_id
+      ) hot ON hot.device_model_id = dm.id
       ${deviceWhere.length ? `WHERE ${deviceWhere.join(' AND ')}` : ''}
-      ORDER BY m.name ASC, dm.release_year DESC, dm.name ASC
+      ORDER BY ${hotOnly ? 'COALESCE(hot.ticket_count_30d, 0) DESC,' : ''} m.name ASC, dm.release_year DESC, dm.name ASC
       LIMIT ?
     `, ...deviceParams, limit),
   ]);
@@ -242,8 +586,9 @@ router.get('/matrix', asyncHandler(async (req, res) => {
       category: device.category,
       release_year: device.release_year,
       tier,
-      tier_label: tierLabel(tier),
+      tier_label: presentation[tier]?.label ?? tierLabel(tier),
       is_popular: device.is_popular,
+      ticket_count_30d: device.ticket_count_30d,
       prices: services.map((service: any) => {
         const price = priceByPair.get(`${device.id}:${service.id}`);
         return {
@@ -279,14 +624,326 @@ router.get('/matrix', asyncHandler(async (req, res) => {
   });
 }));
 
+router.patch('/matrix', adminOrManager, asyncHandler(async (req, res) => {
+  const rows = Array.isArray(req.body?.updates) ? req.body.updates : [];
+  if (rows.length === 0) throw new AppError('updates array is required', 400);
+  if (rows.length > 500) throw new AppError('At most 500 matrix cells can be updated at once', 400);
+
+  const normalized = rows.map((row: any, index: number) => {
+    const deviceModelId = Number(row.device_model_id ?? row.device_id);
+    const repairServiceId = Number(row.repair_service_id ?? row.service_id);
+    if (!Number.isInteger(deviceModelId) || deviceModelId <= 0) throw new AppError(`updates[${index}].device_model_id must be a positive integer`, 400);
+    if (!Number.isInteger(repairServiceId) || repairServiceId <= 0) throw new AppError(`updates[${index}].repair_service_id must be a positive integer`, 400);
+    const laborPrice = validatePriceField(`updates[${index}].labor_price`, row.labor_price);
+    if (laborPrice == null) throw new AppError(`updates[${index}].labor_price is required`, 400);
+    return {
+      deviceModelId,
+      repairServiceId,
+      laborPrice,
+      expectedUpdatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
+      supplierCostSnapshot: row.supplier_cost === undefined || row.supplier_cost === null ? null : Number(row.supplier_cost),
+    };
+  });
+
+  const seen = new Set<string>();
+  for (const row of normalized) {
+    const key = `${row.deviceModelId}:${row.repairServiceId}`;
+    if (seen.has(key)) throw new AppError(`Duplicate matrix update for device_model_id=${row.deviceModelId}, repair_service_id=${row.repairServiceId}`, 400);
+    seen.add(key);
+  }
+
+  const thresholds = getTierThresholds(req.db);
+  const deviceStmt = req.db.prepare('SELECT id, release_year FROM device_models WHERE id = ?');
+  const serviceStmt = req.db.prepare('SELECT id FROM repair_services WHERE id = ?');
+  const priceStmt = req.db.prepare(`
+    SELECT id, labor_price, is_custom, tier_label, updated_at, last_supplier_cost
+    FROM repair_prices
+    WHERE device_model_id = ? AND repair_service_id = ?
+  `);
+  const insertStmt = req.db.prepare(`
+    INSERT INTO repair_prices (
+      device_model_id, repair_service_id, labor_price, default_grade,
+      is_active, is_custom, tier_label, updated_at
+    )
+    VALUES (?, ?, ?, 'aftermarket', 1, 1, ?, datetime('now'))
+  `);
+  const updateStmt = req.db.prepare(`
+    UPDATE repair_prices
+    SET labor_price = ?,
+        is_custom = 1,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  const auditStmt = req.db.prepare(`
+    INSERT INTO repair_prices_audit (
+      repair_price_id, device_model_id, repair_service_id,
+      old_labor_price, new_labor_price, old_is_custom, new_is_custom,
+      old_tier_label, new_tier_label, source, changed_by_user_id, note
+    )
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'manual', ?, ?)
+  `);
+
+  let inserted = 0;
+  let updated = 0;
+  const changedPriceIds: number[] = [];
+
+  const tx = req.db.transaction(() => {
+    for (const row of normalized) {
+      const device = deviceStmt.get(row.deviceModelId) as { id: number; release_year: number | null } | undefined;
+      if (!device) throw new AppError(`Device model ${row.deviceModelId} not found`, 404);
+      const service = serviceStmt.get(row.repairServiceId) as { id: number } | undefined;
+      if (!service) throw new AppError(`Repair service ${row.repairServiceId} not found`, 404);
+      const tier = tierForReleaseYear(device.release_year, thresholds);
+      const existing = priceStmt.get(row.deviceModelId, row.repairServiceId) as {
+        id: number;
+        labor_price: number;
+        is_custom: number;
+        tier_label: string | null;
+        updated_at: string | null;
+        last_supplier_cost: number | null;
+      } | undefined;
+
+      if (existing?.updated_at && row.expectedUpdatedAt && existing.updated_at !== row.expectedUpdatedAt) {
+        throw new AppError('Another admin edited one or more matrix cells. Reload before saving.', 409, 'ERR_REPAIR_PRICING_CONFLICT', {
+          device_model_id: row.deviceModelId,
+          repair_service_id: row.repairServiceId,
+          current_updated_at: existing.updated_at,
+        });
+      }
+      if (existing?.last_supplier_cost != null && row.supplierCostSnapshot != null && Number.isFinite(row.supplierCostSnapshot)) {
+        const driftPct = existing.last_supplier_cost === 0
+          ? 100
+          : Math.abs((existing.last_supplier_cost - row.supplierCostSnapshot) / existing.last_supplier_cost) * 100;
+        if (driftPct > 25) {
+          throw new AppError('Supplier cost changed materially while editing. Reload before saving.', 409, 'ERR_REPAIR_PRICING_SUPPLIER_DRIFT', {
+            device_model_id: row.deviceModelId,
+            repair_service_id: row.repairServiceId,
+            supplier_cost: existing.last_supplier_cost,
+          });
+        }
+      }
+
+      if (existing) {
+        if (Math.abs(Number(existing.labor_price) - row.laborPrice) < 0.005 && existing.is_custom === 1) continue;
+        updateStmt.run(row.laborPrice, existing.id);
+        auditStmt.run(
+          existing.id,
+          row.deviceModelId,
+          row.repairServiceId,
+          existing.labor_price,
+          row.laborPrice,
+          existing.is_custom ?? 0,
+          existing.tier_label ?? null,
+          existing.tier_label ?? tier,
+          req.user!.id,
+          'Matrix batch edit',
+        );
+        updated += 1;
+        changedPriceIds.push(existing.id);
+      } else {
+        const result = insertStmt.run(row.deviceModelId, row.repairServiceId, row.laborPrice, tier);
+        const priceId = Number(result.lastInsertRowid);
+        auditStmt.run(
+          priceId,
+          row.deviceModelId,
+          row.repairServiceId,
+          null,
+          row.laborPrice,
+          null,
+          null,
+          tier,
+          req.user!.id,
+          'Matrix batch insert',
+        );
+        inserted += 1;
+        changedPriceIds.push(priceId);
+      }
+    }
+  });
+
+  tx();
+  audit(req.db, 'repair_pricing_matrix_updated', req.user!.id, req.ip || 'unknown', {
+    inserted,
+    updated,
+    count: changedPriceIds.length,
+  });
+  res.json({ success: true, data: { inserted, updated, price_ids: changedPriceIds } });
+}));
+
+router.get('/matrix/export.csv', asyncHandler(async (req, res) => {
+  const thresholds = getTierThresholds(req.db);
+  const category = typeof req.query.category === 'string' && req.query.category.trim()
+    ? req.query.category.trim()
+    : null;
+  const params: unknown[] = [];
+  let where = '1=1';
+  if (category) {
+    where += ' AND dm.category = ?';
+    params.push(category);
+  }
+
+  const rows = req.db.prepare(`
+    SELECT dm.id AS device_id,
+           dm.name AS device_name,
+           dm.release_year,
+           rs.id AS service_id,
+           rs.name AS service_name,
+           rp.labor_price,
+           rp.is_custom,
+           rp.tier_label,
+           rp.profit_estimate,
+           rp.last_supplier_cost AS supplier_cost,
+           rp.last_supplier_seen_at
+    FROM repair_prices rp
+    JOIN device_models dm ON dm.id = rp.device_model_id
+    JOIN repair_services rs ON rs.id = rp.repair_service_id
+    WHERE ${where}
+    ORDER BY dm.category ASC, dm.name ASC, rs.sort_order ASC, rs.name ASC
+  `).all(...params) as any[];
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="repair-prices-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.write(toCsvLine([
+    'device_id',
+    'device_name',
+    'tier',
+    'service_id',
+    'service_name',
+    'labor_price',
+    'is_custom',
+    'profit_estimate',
+    'supplier_cost',
+    'last_supplier_seen_at',
+  ]) + '\n');
+  for (const row of rows) {
+    const tier = row.tier_label || tierForReleaseYear(row.release_year, thresholds);
+    res.write(toCsvLine([
+      row.device_id,
+      row.device_name,
+      tier,
+      row.service_id,
+      row.service_name,
+      row.labor_price,
+      row.is_custom,
+      row.profit_estimate,
+      row.supplier_cost,
+      row.last_supplier_seen_at,
+    ]) + '\n');
+  }
+  res.end();
+}));
+
+router.post('/matrix/import', adminOrManager, asyncHandler(async (req, res) => {
+  const rows = validateMatrixImportRows(normalizeMatrixImportRows(req.body?.rows ?? req.body?.csv));
+  const diff = buildMatrixImportDiff(req.db, rows);
+  const summary = {
+    total: diff.length,
+    insert: diff.filter((row) => row.change === 'insert').length,
+    update: diff.filter((row) => row.change === 'update').length,
+    unchanged: diff.filter((row) => row.change === 'unchanged').length,
+  };
+  res.json({ success: true, data: { summary, rows: diff } });
+}));
+
+router.post('/matrix/import/commit', adminOrManager, asyncHandler(async (req, res) => {
+  const filename = typeof req.body?.filename === 'string' ? req.body.filename.slice(0, 255) : null;
+  const rows = validateMatrixImportRows(normalizeMatrixImportRows(req.body?.rows ?? req.body?.csv));
+  const diff = buildMatrixImportDiff(req.db, rows);
+  const changed = diff.filter((row) => row.change !== 'unchanged');
+  if (changed.length === 0) {
+    res.json({ success: true, data: { inserted: 0, updated: 0, unchanged: diff.length } });
+    return;
+  }
+
+  const thresholds = getTierThresholds(req.db);
+  const deviceStmt = req.db.prepare('SELECT release_year FROM device_models WHERE id = ?');
+  const insertStmt = req.db.prepare(`
+    INSERT INTO repair_prices (
+      device_model_id, repair_service_id, labor_price, default_grade,
+      is_active, is_custom, tier_label, updated_at
+    )
+    VALUES (?, ?, ?, 'aftermarket', 1, 1, ?, datetime('now'))
+  `);
+  const updateStmt = req.db.prepare(`
+    UPDATE repair_prices
+    SET labor_price = ?,
+        is_custom = 1,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  const auditStmt = req.db.prepare(`
+    INSERT INTO repair_prices_audit (
+      repair_price_id, device_model_id, repair_service_id,
+      old_labor_price, new_labor_price, old_is_custom, new_is_custom,
+      old_tier_label, new_tier_label, source, changed_by_user_id, imported_filename, note
+    )
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'csv-import', ?, ?, ?)
+  `);
+
+  let inserted = 0;
+  let updated = 0;
+  const tx = req.db.transaction(() => {
+    for (const row of changed) {
+      const device = deviceStmt.get(row.device_id) as { release_year: number | null } | undefined;
+      const tier = tierForReleaseYear(device?.release_year ?? null, thresholds);
+      if (row.existing_price_id) {
+        updateStmt.run(row.labor_price, row.existing_price_id);
+        auditStmt.run(
+          row.existing_price_id,
+          row.device_id,
+          row.service_id,
+          row.old_labor_price,
+          row.labor_price,
+          row.old_is_custom ?? 0,
+          null,
+          tier,
+          req.user!.id,
+          filename,
+          'CSV matrix import update',
+        );
+        updated += 1;
+      } else {
+        const result = insertStmt.run(row.device_id, row.service_id, row.labor_price, tier);
+        const priceId = Number(result.lastInsertRowid);
+        auditStmt.run(
+          priceId,
+          row.device_id,
+          row.service_id,
+          null,
+          row.labor_price,
+          null,
+          null,
+          tier,
+          req.user!.id,
+          filename,
+          'CSV matrix import insert',
+        );
+        inserted += 1;
+      }
+    }
+  });
+  tx();
+  audit(req.db, 'repair_pricing_matrix_csv_imported', req.user!.id, req.ip || 'unknown', {
+    filename,
+    inserted,
+    updated,
+    unchanged: diff.length - changed.length,
+  });
+  res.json({ success: true, data: { inserted, updated, unchanged: diff.length - changed.length } });
+}));
+
 router.post('/seed-defaults', adminOrManager, asyncHandler(async (req, res) => {
+  const shopType = typeof req.body?.shop_type === 'string' && req.body.shop_type.trim()
+    ? req.body.shop_type.trim()
+    : undefined;
   const category = typeof req.body?.category === 'string' && req.body.category.trim()
     ? req.body.category.trim()
-    : 'phone';
+    : shopType ? 'all' : 'phone';
 
   try {
     const result = seedRepairPricingDefaults(req.db, {
       category,
+      shopType,
       pricing: req.body?.pricing,
       overwriteCustom: parseBoolish(req.body?.overwrite_custom),
       changedByUserId: req.user!.id,

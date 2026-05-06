@@ -589,6 +589,7 @@ router.post(
     if (!Number.isFinite(totalCentsRaw)) {
       throw new AppError('total_cents must be a finite number', 400);
     }
+    const kind = req.body?.kind === 'create_ticket' ? 'create_ticket' : 'checkout';
     const previous = parseTrainingTxList(session.fake_transactions_json);
     let cartParsed: unknown;
     try {
@@ -599,6 +600,7 @@ router.post(
     }
     const nextEntry = {
       at: new Date().toISOString(),
+      kind,
       cart: cartParsed,
       total_cents: Math.round(totalCentsRaw),
     };
@@ -612,6 +614,12 @@ router.post(
       JSON.stringify(updated),
       session.id,
     );
+    await adb.run(`
+      UPDATE onboarding_state
+      SET sandbox_completed_at = COALESCE(sandbox_completed_at, datetime('now')),
+          updated_at = datetime('now')
+      WHERE id = 1
+    `);
     res.json({ success: true, data: { session_id: session.id, mock: true, count: updated.length } });
   }),
 );

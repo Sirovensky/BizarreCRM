@@ -38,6 +38,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,6 +93,9 @@ class CameraCaptureViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isCapturing = true, lastError = null)
             try {
+                ImageUploadPolicy.validate(file, mimeType, ImageUploadPolicy.GENERAL_IMAGE_MAX_BYTES)?.let {
+                    throw IllegalStateException(it)
+                }
                 val bytes = file.readBytes()
                 val ext = if (mimeType.contains("video")) "mp4" else "jpg"
                 val fileName = "ticket-${ticketId}-cam-${System.currentTimeMillis()}.$ext"

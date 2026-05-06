@@ -72,6 +72,7 @@ import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.data.remote.dto.TicketPhoto
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.util.ExifStripper
+import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import com.bizarreelectronics.crm.util.MultipartUpload
 import com.bizarreelectronics.crm.util.draggableItem
 import com.bizarreelectronics.crm.util.uriClipData
@@ -148,6 +149,15 @@ fun TicketPhotoGallery(
                 }.getOrNull() ?: continue
 
                 val stripped = ExifStripper.strip(bitmap, cacheFile) ?: continue
+                val validationError = ImageUploadPolicy.validate(
+                    stripped,
+                    "image/jpeg",
+                    ImageUploadPolicy.GENERAL_IMAGE_MAX_BYTES,
+                )
+                if (validationError != null) {
+                    Timber.tag("PhotoGallery").w("Skipping oversized upload: %s", validationError)
+                    continue
+                }
 
                 // Update progress state on Main
                 withContext(Dispatchers.Main) {

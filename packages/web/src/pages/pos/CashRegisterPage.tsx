@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DollarSign, ArrowUpCircle, ArrowDownCircle, Loader2, Clock } from 'lucide-react';
+import { DollarSign, ArrowUpCircle, ArrowDownCircle, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi } from '@/api/endpoints';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
 
@@ -11,12 +12,35 @@ import { formatCurrency } from '@/utils/format';
 // still renders if the server dropped the join.
 interface CashRegisterHistoryEntry {
   id: number;
-  type: 'cash_in' | 'cash_out';
+  type: 'cash_in' | 'cash_out' | 'drawer_open';
   amount: number;
   reason?: string | null;
   first_name?: string | null;
   last_name?: string | null;
+  user_name?: string | null;
   [key: string]: unknown;
+}
+
+const historySkeletonRows = Array.from({ length: 4 }, (_, index) => index);
+
+function CashHistorySkeleton() {
+  return (
+    <div className="divide-y divide-surface-100 dark:divide-surface-800" aria-label="Loading cash register history">
+      {historySkeletonRows.map((row) => (
+        <div key={row} className="flex items-center gap-3 px-4 py-3">
+          <div className="h-8 w-8 shrink-0 rounded-full bg-surface-100 dark:bg-surface-800 animate-pulse" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 w-28 rounded bg-surface-100 dark:bg-surface-800 animate-pulse" />
+            <div className="h-2.5 w-44 max-w-full rounded bg-surface-100 dark:bg-surface-800 animate-pulse" />
+          </div>
+          <div className="flex shrink-0 flex-col items-end space-y-2">
+            <div className="h-3.5 w-16 rounded bg-surface-100 dark:bg-surface-800 animate-pulse" />
+            <div className="h-2.5 w-20 rounded bg-surface-100 dark:bg-surface-800 animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function CashRegisterPage() {
@@ -96,19 +120,19 @@ export function CashRegisterPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="card p-4">
           <p className="text-xs text-surface-500 mb-1">Cash In</p>
-          <p className="text-xl font-bold text-green-600">{formatCurrency(register.cash_in || 0)}</p>
+          <p className="text-xl font-bold text-success-600 dark:text-success-400">{formatCurrency(register.cash_in || 0)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-surface-500 mb-1">Cash Out</p>
-          <p className="text-xl font-bold text-red-600">{formatCurrency(register.cash_out || 0)}</p>
+          <p className="text-xl font-bold text-error-600 dark:text-error-400">{formatCurrency(register.cash_out || 0)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-surface-500 mb-1">Cash Payments</p>
-          <p className="text-xl font-bold text-blue-600">{formatCurrency(register.cash_sales || 0)}</p>
+          <p className="text-xl font-bold text-info-600 dark:text-info-400">{formatCurrency(register.cash_sales || 0)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-surface-500 mb-1">Balance</p>
-          <p className={cn('text-xl font-bold', (register.net || 0) >= 0 ? 'text-surface-900 dark:text-surface-100' : 'text-red-600')}>
+          <p className={cn('text-xl font-bold', (register.net || 0) >= 0 ? 'text-surface-900 dark:text-surface-100' : 'text-error-600 dark:text-error-400')}>
             {formatCurrency(register.net || 0)}
           </p>
         </div>
@@ -117,12 +141,12 @@ export function CashRegisterPage() {
       {/* Action buttons */}
       <div className="flex gap-3 mb-6">
         <button onClick={() => setCashAction(cashAction === 'in' ? null : 'in')}
-          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors',
+          className={cn('btn btn-md',
             cashAction === 'in' ? 'bg-green-600 text-white' : 'border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20')}>
           <ArrowUpCircle className="h-4 w-4" /> Cash In
         </button>
         <button onClick={() => setCashAction(cashAction === 'out' ? null : 'out')}
-          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors',
+          className={cn('btn btn-md',
             cashAction === 'out' ? 'bg-red-600 text-white' : 'border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20')}>
           <ArrowDownCircle className="h-4 w-4" /> Cash Out
         </button>
@@ -151,7 +175,7 @@ export function CashRegisterPage() {
                 placeholder="e.g. till float, vendor refund" className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
             </label>
             <button onClick={handleSubmit} disabled={cashInMut.isPending || cashOutMut.isPending}
-              className={cn('px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
+              className={cn('btn btn-md text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
                 cashAction === 'in' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700')}>
               {(cashInMut.isPending || cashOutMut.isPending) ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Record'}
             </button>
@@ -165,30 +189,46 @@ export function CashRegisterPage() {
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Today's History</h3>
         </div>
         {isLoading ? (
-          <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400" /></div>
+          <CashHistorySkeleton />
         ) : history.length === 0 ? (
-          <div className="text-center py-12 text-surface-400">
-            <DollarSign className="h-10 w-10 mx-auto mb-2 text-surface-300" />
-            <p>No cash register activity today</p>
-          </div>
+          <EmptyState
+            icon={DollarSign}
+            title="No cash register activity today"
+            description="Cash in, cash out, and drawer-open events will appear here."
+          />
         ) : (
           <div className="divide-y divide-surface-100 dark:divide-surface-800">
             {history.map((entry) => (
               <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
                 <div className={cn('flex h-8 w-8 items-center justify-center rounded-full',
-                  entry.type === 'cash_in' ? 'bg-green-100 text-green-600 dark:bg-green-900/30' : 'bg-red-100 text-red-600 dark:bg-red-900/30')}>
-                  {entry.type === 'cash_in' ? <ArrowUpCircle className="h-4 w-4" /> : <ArrowDownCircle className="h-4 w-4" />}
+                  entry.type === 'cash_in'
+                    ? 'bg-green-100 text-green-600 dark:bg-green-900/30'
+                    : entry.type === 'drawer_open'
+                      ? 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300'
+                      : 'bg-red-100 text-red-600 dark:bg-red-900/30')}>
+                  {entry.type === 'cash_in' || entry.type === 'drawer_open'
+                    ? <ArrowUpCircle className="h-4 w-4" />
+                    : <ArrowDownCircle className="h-4 w-4" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-surface-900 dark:text-surface-100 font-medium capitalize">{entry.type.replace('_', ' ')}</p>
                   {entry.reason && <p className="text-xs text-surface-500 truncate">{entry.reason}</p>}
                 </div>
                 <div className="text-right shrink-0">
-                  <p className={cn('text-sm font-medium', entry.type === 'cash_in' ? 'text-green-600' : 'text-red-600')}>
-                    {entry.type === 'cash_in' ? '+' : '-'}{formatCurrency(entry.amount)}
+                  <p className={cn(
+                    'text-sm font-medium',
+                    entry.type === 'cash_in'
+                      ? 'text-green-600'
+                      : entry.type === 'drawer_open'
+                        ? 'text-surface-500'
+                        : 'text-red-600',
+                  )}>
+                    {entry.type === 'drawer_open'
+                      ? formatCurrency(0)
+                      : `${entry.type === 'cash_in' ? '+' : '-'}${formatCurrency(entry.amount)}`}
                   </p>
                   <p className="text-[10px] text-surface-400">
-                    {entry.first_name} {entry.last_name}
+                    {entry.user_name || [entry.first_name, entry.last_name].filter(Boolean).join(' ') || 'Unknown operator'}
                   </p>
                 </div>
               </div>

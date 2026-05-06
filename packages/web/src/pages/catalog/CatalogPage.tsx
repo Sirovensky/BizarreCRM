@@ -24,6 +24,12 @@ const SOURCES = [
   { key: 'phonelcdparts',  label: 'PhoneLcdParts',   url: 'https://www.phonelcdparts.com', color: 'purple' },
 ] as const;
 
+type CatalogSource = typeof SOURCES[number]['key'];
+
+function sourceLabel(source: CatalogSource): string {
+  return SOURCES.find((src) => src.key === source)?.label ?? source;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { cls: string; icon: typeof Clock }> = {
     done:    { cls: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400',  icon: CheckCircle2 },
@@ -163,6 +169,7 @@ export function CatalogPage() {
   // Device model search for filter
   const [modelSearch, setModelSearch] = useState('');
   const [modelResults, setModelResults] = useState<CatalogDeviceModel[]>([]);
+  const modelFilterRef = useRef<HTMLDivElement>(null);
   const handleModelSearch = async (q: string) => {
     setModelSearch(q);
     if (q.length < 2) { setModelResults([]); return; }
@@ -178,11 +185,33 @@ export function CatalogPage() {
     }
   };
 
+  useEffect(() => {
+    if (deviceModelId || modelResults.length === 0) return;
+
+    const dismissIfOutside = (event: PointerEvent | FocusEvent) => {
+      const target = event.target;
+      if (target instanceof Node && modelFilterRef.current?.contains(target)) return;
+      setModelResults([]);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setModelResults([]);
+    };
+
+    document.addEventListener('pointerdown', dismissIfOutside);
+    document.addEventListener('focusin', dismissIfOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', dismissIfOutside);
+      document.removeEventListener('focusin', dismissIfOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [deviceModelId, modelResults.length]);
+
   // Sync mutation
   const syncMutation = useMutation({
-    mutationFn: (source: 'mobilesentrix' | 'phonelcdparts') => catalogApi.startSync(source),
+    mutationFn: (source: CatalogSource) => catalogApi.startSync(source),
     onSuccess: (_res, source) => {
-      toast.success(`Sync started for ${source}`);
+      toast.success(`Sync started for ${sourceLabel(source)}`);
       qc.invalidateQueries({ queryKey: ['catalog-stats'] });
       qc.invalidateQueries({ queryKey: ['catalog-jobs'] });
     },
@@ -430,6 +459,7 @@ export function CatalogPage() {
           const count = stats[`${src.key}_count`] ?? 0;
           const lastSync = stats[`${src.key}_last_sync`];
           const running = runningJobs.some((j) => j.source === src.key);
+          const starting = syncMutation.isPending && syncMutation.variables === src.key;
           return (
             <div key={src.key} className="card p-4 flex items-center gap-4">
               <div className={cn('h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0',
@@ -451,11 +481,21 @@ export function CatalogPage() {
                   className="p-1.5 text-surface-400 hover:text-surface-600 transition-colors" title="Visit supplier website">
                   <ExternalLink className="h-4 w-4" />
                 </a>
-                {running && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/20">
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Syncing...
-                  </span>
-                )}
+                <button
+                  type="button"
+                  onClick={() => syncMutation.mutate(src.key)}
+                  disabled={running || starting}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                    running || starting
+                      ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-300 cursor-not-allowed'
+                      : 'border border-surface-200 text-surface-600 hover:border-primary-300 hover:text-primary-600 dark:border-surface-700 dark:text-surface-300 dark:hover:border-primary-600 dark:hover:text-primary-300',
+                  )}
+                  aria-label={running || starting ? `${src.label} sync in progress` : `Sync ${src.label} catalog now`}
+                >
+                  <RefreshCw className={cn('h-3.5 w-3.5', (running || starting) && 'animate-spin')} />
+                  {running || starting ? 'Syncing...' : 'Sync Now'}
+                </button>
               </div>
             </div>
           );
@@ -511,7 +551,7 @@ export function CatalogPage() {
           </div>
 
           {/* Device model filter */}
-          <div className="relative min-w-[220px]">
+          <div ref={modelFilterRef} className="relative min-w-[220px]">
             {deviceModelId ? (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-700 text-sm">
                 <Filter className="h-3.5 w-3.5 text-primary-500" />

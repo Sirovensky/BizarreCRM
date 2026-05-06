@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { extractApiError } from '../../utils/apiError';
+import { Button } from './Button';
 
 /**
  * WEB-FE-021 (Fixer-C12 2026-04-25): the four boot/route-fallback screens
@@ -39,7 +40,7 @@ export function NotFoundPage() {
       <p className="text-lg text-surface-600 dark:text-surface-400 mb-6">Page not found</p>
       <Link
         to="/"
-        className="px-4 py-2 bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
+        className="btn btn-md btn-primary"
       >
         Back to Dashboard
       </Link>
@@ -85,18 +86,19 @@ export function SetupFailedScreen({ error, onRetry }: { error: unknown; onRetry:
           )}
         </dl>
         <div className="flex items-center gap-2 mt-2">
-          <button
+          <Button
             onClick={onRetry}
-            className="px-3 py-1.5 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded"
+            size="sm"
           >
             Retry
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => { window.location.href = '/login'; }}
-            className="px-3 py-1.5 text-sm text-surface-700 dark:text-surface-300 border border-surface-300 dark:border-surface-700 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
+            variant="secondary"
+            size="sm"
           >
             Sign out
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff, FileText, RefreshCw } from 'lucide-react';
+import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff, FileText, RefreshCw, LifeBuoy } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 import { PASSWORD_MIN_LENGTH } from '@/utils/constants';
@@ -35,6 +35,7 @@ export function LoginPage() {
   const [selectedLog, setSelectedLog] = useState<string>(LOG_FILE_ORDER[0]);
   const [logContent, setLogContent] = useState('');
   const [logError, setLogError] = useState('');
+  const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
   // DASH-ELEC-164: SettingsPage already has show-password toggles; mirror the
   // pattern on the first-run set-password step so operators typing a 10+ char
   // password against an OS-level password manager can verify before submit.
@@ -335,6 +336,8 @@ export function LoginPage() {
     return () => window.clearInterval(id);
   }, [showLogs, selectedLog]);
 
+  const canShowRecoveryHelp = step === 'login' || step === '2fa-verify';
+
   if (step === 'loading') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface-950">
@@ -352,7 +355,7 @@ export function LoginPage() {
             <Server className="w-5 h-5 text-accent-400" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-surface-100">Server Dashboard</h1>
+            <h1 className="font-heading text-2xl font-normal text-surface-100">Server Dashboard</h1>
             <p className="text-xs text-surface-500">
               {step === 'setup' && 'Create your admin account to get started'}
               {step === 'login' && 'Super admin login (2FA required)'}
@@ -672,6 +675,51 @@ export function LoginPage() {
               {loading ? 'Verifying...' : 'Verify'}
             </button>
           </form>
+        )}
+
+        {canShowRecoveryHelp && (
+          <div className="mt-4 rounded-lg border border-surface-800 bg-surface-950/70">
+            <button
+              type="button"
+              onClick={() => setShowRecoveryHelp((v) => !v)}
+              aria-expanded={showRecoveryHelp}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs text-surface-300 hover:bg-surface-900/70 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <LifeBuoy className="w-3.5 h-3.5 text-amber-300" aria-hidden="true" />
+                Forgot password or lost authenticator?
+              </span>
+              <span className="text-surface-500">{showRecoveryHelp ? 'Hide' : 'Show'}</span>
+            </button>
+            {showRecoveryHelp && (
+              <div className="space-y-3 border-t border-surface-800 px-3 py-3 text-[11px] leading-relaxed text-surface-400">
+                <p>
+                  There is no self-service email/password reset for the management super-admin login.
+                  Recovery requires local server or database administrator access.
+                </p>
+                <div>
+                  <p className="mb-1 font-semibold text-surface-200">Lost 2FA, password known</p>
+                  <p>
+                    Stop BizarreCRM, back up <code className="text-surface-200">packages/server/data/master.db</code>,
+                    then clear the super-admin TOTP columns with SQLite. Restart and log in with the existing password
+                    to enroll a new authenticator.
+                  </p>
+                </div>
+                <div>
+                  <p className="mb-1 font-semibold text-surface-200">Forgot password</p>
+                  <p>
+                    From the repo root, generate a bcrypt hash for a strong replacement password using
+                    <code className="text-surface-200"> bcryptjs </code>, update <code className="text-surface-200">super_admins.password_hash</code>,
+                    clear TOTP columns, and delete <code className="text-surface-200">super_admin_sessions</code>.
+                    The operator guide has the exact command template.
+                  </p>
+                </div>
+                <p className="text-amber-200/90">
+                  These steps are intentionally offline/admin-assisted so the dashboard does not create a weaker remote reset path.
+                </p>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Exit button — closes dashboard only, server keeps running */}

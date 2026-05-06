@@ -17,7 +17,7 @@ import { bulkApplyTier, getTierThresholds, setTierThresholds, tierForReleaseYear
 import { runNightlyRebase, getLastRebaseSummary, ackRebaseSummary } from '../services/repairPricing/nightlyRebase.js';
 import { recomputeRepairPriceProfits } from '../services/repairPricing/profitRecompute.js';
 import { runAutoMargin, setAutoMarginSettings, getAutoMarginSettings } from '../services/repairPricing/autoMargin.js';
-import { evaluateMarginAlerts, getActiveMarginAlerts, getMarginAlertSummary, ackMarginAlert } from '../services/repairPricing/marginAlerts.js';
+import { evaluateMarginAlerts, getActiveMarginAlerts, getMarginAlertSummary, ackMarginAlert, queueMarginAlertDigest } from '../services/repairPricing/marginAlerts.js';
 import { seedRepairPricingDefaults } from '../services/repairPricing/seedDefaults.js';
 
 function buildSchema(db: Database.Database): void {
@@ -25,6 +25,14 @@ function buildSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS store_config (
       key   TEXT PRIMARY KEY,
       value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      username  TEXT NOT NULL,
+      email     TEXT NOT NULL,
+      role      TEXT NOT NULL DEFAULT 'technician',
+      is_active INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS manufacturers (
@@ -142,6 +150,21 @@ function buildSchema(db: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_margin_alerts_active_price
       ON margin_alerts(repair_price_id) WHERE resolved_at IS NULL;
 
+    CREATE TABLE IF NOT EXISTS notification_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      recipient TEXT NOT NULL,
+      subject TEXT,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      max_retries INTEGER NOT NULL DEFAULT 3,
+      scheduled_at TEXT,
+      sent_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- Default tier thresholds
     INSERT INTO store_config (key, value) VALUES ('repair_pricing_tier_a_years', '2');
     INSERT INTO store_config (key, value) VALUES ('repair_pricing_tier_b_years', '5');
@@ -154,6 +177,8 @@ function buildSchema(db: Database.Database): void {
     INSERT INTO store_config (key, value) VALUES ('repair_pricing_rounding_mode', 'ending_99');
     INSERT INTO store_config (key, value) VALUES ('repair_pricing_auto_margin_rules', '[]');
     INSERT INTO store_config (key, value) VALUES ('repair_pricing_auto_margin_cap_pct', '25');
+    INSERT INTO store_config (key, value) VALUES ('repair_pricing_tier_profit_thresholds', '{"tier_a":{"green":100,"amber":60,"red":30},"tier_b":{"green":80,"amber":40,"red":20},"tier_c":{"green":60,"amber":30,"red":10},"unknown":{"green":80,"amber":40,"red":20}}');
+    INSERT INTO users (id, username, email, role, is_active) VALUES (1, 'admin', 'admin@example.com', 'admin', 1);
   `);
 }
 
@@ -346,10 +371,10 @@ describe('DPI Pipeline', () => {
   it('margin alerts fire when profit below amber threshold', () => {
     bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_c', laborPrice: 50 });
 
-    // Set profit_estimate to $30, which is below the $40 amber threshold
+    // Set profit_estimate below the Tier C amber threshold.
     db.prepare(`
       UPDATE repair_prices
-      SET profit_estimate = 30, last_supplier_cost = 20
+      SET profit_estimate = 20, last_supplier_cost = 30
       WHERE device_model_id = 3
     `).run();
 
@@ -358,8 +383,8 @@ describe('DPI Pipeline', () => {
 
     const alerts = getActiveMarginAlerts(db);
     expect(alerts).toHaveLength(1);
-    expect(alerts[0].profit_estimate).toBe(30);
-    expect(alerts[0].amber_threshold).toBe(40);
+    expect(alerts[0].profit_estimate).toBe(20);
+    expect(alerts[0].amber_threshold).toBe(30);
 
     const summary = getMarginAlertSummary(db);
     expect(summary.total_active).toBe(1);
@@ -373,7 +398,7 @@ describe('DPI Pipeline', () => {
 
   it('margin alerts auto-resolve when profit recovers', () => {
     bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_c', laborPrice: 50 });
-    db.prepare('UPDATE repair_prices SET profit_estimate = 30, last_supplier_cost = 20 WHERE device_model_id = 3').run();
+    db.prepare('UPDATE repair_prices SET profit_estimate = 20, last_supplier_cost = 30 WHERE device_model_id = 3').run();
 
     evaluateMarginAlerts(db);
     expect(getMarginAlertSummary(db).total_active).toBe(1);
@@ -423,7 +448,7 @@ describe('DPI Pipeline', () => {
 
   it('resolved alert reopens when profit dips again', () => {
     bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_c', laborPrice: 50 });
-    db.prepare('UPDATE repair_prices SET profit_estimate = 30, last_supplier_cost = 20 WHERE device_model_id = 3').run();
+    db.prepare('UPDATE repair_prices SET profit_estimate = 20, last_supplier_cost = 30 WHERE device_model_id = 3').run();
     evaluateMarginAlerts(db);
 
     db.prepare('UPDATE repair_prices SET profit_estimate = 60 WHERE device_model_id = 3').run();
@@ -434,6 +459,26 @@ describe('DPI Pipeline', () => {
     const result = evaluateMarginAlerts(db);
     expect(result.new_alerts).toBe(1);
     expect(getMarginAlertSummary(db).total_active).toBe(1);
+  });
+
+  it('queues a weekly admin digest only after a margin alert is active for 7 days', () => {
+    bulkApplyTier(db, { repairServiceId: 1, tier: 'tier_c', laborPrice: 50 });
+    db.prepare('UPDATE repair_prices SET profit_estimate = 20, last_supplier_cost = 30 WHERE device_model_id = 3').run();
+    evaluateMarginAlerts(db);
+
+    const early = queueMarginAlertDigest(db, { now: new Date('2026-05-06T12:00:00Z') });
+    expect(early).toMatchObject({ queued: 0, skipped_reason: 'no_critical_alerts' });
+
+    db.prepare("UPDATE margin_alerts SET first_seen_at = datetime('now', '-8 days')").run();
+    const queued = queueMarginAlertDigest(db, { now: new Date('2026-05-06T12:00:00Z') });
+    expect(queued).toMatchObject({ queued: 1, recipients: 1, alerts: 1, skipped_reason: null });
+    expect(db.prepare('SELECT recipient, subject, status FROM notification_queue').get()).toMatchObject({
+      recipient: 'admin@example.com',
+      status: 'pending',
+    });
+
+    const duplicate = queueMarginAlertDigest(db, { now: new Date('2026-05-07T12:00:00Z') });
+    expect(duplicate).toMatchObject({ queued: 0, skipped_reason: 'already_sent_this_week' });
   });
 
   it('spike at exactly 50% boundary does NOT fire (> not >=)', () => {

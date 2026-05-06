@@ -3,6 +3,11 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { Camera, Upload, CheckCircle2, X, Loader2, ImageIcon, AlertCircle } from 'lucide-react';
 import { api } from '@/api/client';
 import toast from 'react-hot-toast';
+import {
+  GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+  IMAGE_UPLOAD_ACCEPT,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 export function PhotoCapturePage() {
   const { ticketId, deviceId } = useParams<{ ticketId: string; deviceId: string }>();
@@ -42,10 +47,9 @@ export function PhotoCapturePage() {
     };
   }, []); // mount-only
 
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
   const MAX_PHOTOS = 20; // WEB-S4-029: cap at 20 to bound upload + storage cost.
 
-  const handleCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
@@ -58,12 +62,12 @@ export function PhotoCapturePage() {
 
     const valid: File[] = [];
     for (const file of files) {
-      if (!file.type.startsWith('image/')) {
-        toast.error(`"${file.name}" is not an image file`);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        toast.error(`"${file.name}" exceeds the 10 MB size limit`);
+      const error = await validateImageFile(file, {
+        maxBytes: GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+        label: `"${file.name}"`,
+      });
+      if (error) {
+        toast.error(error);
         continue;
       }
       valid.push(file);
@@ -218,7 +222,7 @@ export function PhotoCapturePage() {
               <span className="text-gray-500 text-xs">Add more</span>
               <input
                 type="file"
-                accept="image/*"
+                accept={IMAGE_UPLOAD_ACCEPT}
                 capture="environment"
                 multiple
                 className="sr-only"
@@ -255,7 +259,7 @@ export function PhotoCapturePage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept={IMAGE_UPLOAD_ACCEPT}
             capture="environment"
             multiple
             className="sr-only"

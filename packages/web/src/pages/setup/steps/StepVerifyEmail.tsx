@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { Mail, AlertTriangle, Loader2 } from 'lucide-react';
+import { Mail, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { JSX } from 'react';
+import { signupApi } from '@/api/endpoints';
+import { useAuthStore } from '@/stores/authStore';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -12,100 +14,85 @@ import type { StepProps } from '../wizardTypes';
  * Behaviour:
  *  - Echoes back the email captured in Step 1 (`pending.signup_email`).
  *  - Collects a 6-digit code (single field, monospace, numeric inputMode).
- *  - The real verification endpoint isn't wired yet, so "Verify" just
- *    calls onNext() once the user has typed exactly 6 digits, and a
- *    toast nudges them that SMTP is pending.
- *  - "Resend code" is a placeholder toast for the same reason.
- *  - In dev (`import.meta.env.DEV === true`), an extra yellow button
- *    hits `POST /api/v1/signup/verify/dev-skip` to bypass verification.
- *    The route is only mounted when the server is running with
- *    `NODE_ENV != production` AND `WIZARD_DEV_SKIP_EMAIL=1`, so 404 is
- *    surfaced as a helpful toast pointing at the env-var requirement.
+ *  - Verifies the pending signup through POST /api/v1/signup/verify-code,
+ *    which provisions the tenant and returns an authenticated session.
+ *  - Resend sends a fresh single-use link and code, invalidating the old link.
  */
 export function StepVerifyEmail({
   pending,
-  onUpdate: _onUpdate,
+  onUpdate,
   onNext,
   onBack,
   onSkip: _onSkip,
 }: StepProps): JSX.Element {
+  const completeLogin = useAuthStore((s) => s.completeLogin);
   const email = pending.signup_email || '';
+  let storedSlug = '';
+  try {
+    storedSlug = sessionStorage.getItem('pending_signup_slug') || '';
+  } catch {
+    storedSlug = '';
+  }
+  const slug = pending.signup_slug || storedSlug;
 
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [devSkipping, setDevSkipping] = useState(false);
-  const [devSkipError, setDevSkipError] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const isSixDigits = /^\d{6}$/.test(code);
-  const isDev = import.meta.env.DEV === true;
 
-  const handleVerify = () => {
-    if (!isSixDigits) return;
-    setSubmitting(true);
-    // Real endpoint not ready — keep behaviour consistent with the
-    // "wired-up" UX (button shows a brief loading state) before
-    // advancing.
-    toast('Verification will work once SMTP is wired.', { icon: '✉️' });
-    onNext();
-    setSubmitting(false);
-  };
-
-  const handleResend = () => {
-    toast('Resend will work once SMTP is wired.', { icon: '✉️' });
-  };
-
-  const handleDevSkip = async () => {
-    setDevSkipping(true);
-    setDevSkipError(null);
-
-    // Slug isn't part of PendingWrites yet — Agent 3 may stash it in
-    // sessionStorage. Read defensively so this file works regardless.
-    let slug: string | null = null;
-    try {
-      slug = sessionStorage.getItem('pending_signup_slug');
-    } catch {
-      slug = null;
+  const finishVerifiedSignup = (data: { accessToken?: string; user?: Parameters<typeof completeLogin>[2] }) => {
+    if (!data.accessToken || !data.user) {
+      throw new Error('Verification succeeded, but sign-in could not be completed. Please sign in from your shop URL.');
     }
+    completeLogin(data.accessToken, '', data.user);
+    onUpdate({ signup_verified: true });
+    onNext();
+  };
 
+  const handleVerify = async () => {
+    if (!isSixDigits || submitting) return;
+    if (!slug || !email) {
+      setVerifyError('Signup details are missing. Go back and submit the signup step again.');
+      return;
+    }
+    setSubmitting(true);
+    setVerifyError(null);
     try {
-      const res = await fetch('/api/v1/signup/verify/dev-skip', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ slug, adminEmail: email }),
-      });
-
-      if (res.status === 404) {
-        toast.error(
-          'Dev-skip not enabled. Set NODE_ENV != production AND WIZARD_DEV_SKIP_EMAIL=1 server-side.',
-        );
-        setDevSkipping(false);
-        return;
-      }
-
-      if (!res.ok) {
-        let message = `Dev-skip failed (HTTP ${res.status})`;
-        try {
-          const body = (await res.json()) as { error?: string; message?: string };
-          message = body.error || body.message || message;
-        } catch {
-          /* swallow — non-JSON body */
-        }
-        setDevSkipError(message);
-        setDevSkipping(false);
-        return;
-      }
-
-      // Success — advance to twoFactorSetup.
-      onNext();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Network error';
-      setDevSkipError(message);
+      const res = await signupApi.verifyEmailCode({ slug, adminEmail: email, code });
+      finishVerifiedSignup(res.data.data);
+      toast.success('Email verified');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Verification failed. Check the code and try again.';
+      setVerifyError(message);
     } finally {
-      setDevSkipping(false);
+      setSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!slug || !email || resending) {
+      setVerifyError('Signup details are missing. Go back and submit the signup step again.');
+      return;
+    }
+    setResending(true);
+    setVerifyError(null);
+    try {
+      await signupApi.resendVerification({ slug, adminEmail: email });
+      setCode('');
+      toast.success('Verification code sent');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Could not resend the verification code.';
+      setVerifyError(message);
+    } finally {
+      setResending(false);
     }
   };
 
@@ -144,6 +131,7 @@ export function StepVerifyEmail({
             onChange={(e) => {
               const next = e.target.value.replace(/\D/g, '').slice(0, 6);
               setCode(next);
+              setVerifyError(null);
             }}
             inputMode="numeric"
             maxLength={6}
@@ -151,13 +139,18 @@ export function StepVerifyEmail({
             placeholder="000000"
             className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center font-mono text-xl tracking-[0.4em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
           />
+          {verifyError ? (
+            <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
+              {verifyError}
+            </p>
+          ) : null}
         </div>
 
         <button
           type="button"
           onClick={handleVerify}
           disabled={!isSixDigits || submitting}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+          className="btn btn-lg mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
         >
           {submitting ? (
             <>
@@ -172,39 +165,18 @@ export function StepVerifyEmail({
         <button
           type="button"
           onClick={handleResend}
-          className="mt-3 text-sm font-medium text-primary-600 hover:underline dark:text-primary-400"
+          disabled={resending}
+          className="btn btn-sm mt-3 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-primary-400"
         >
-          Resend code
+          {resending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          {resending ? 'Sending...' : 'Resend code'}
         </button>
-
-        {isDev ? (
-          <div className="mt-6 border-t border-surface-200 pt-4 dark:border-surface-700">
-            <button
-              type="button"
-              onClick={handleDevSkip}
-              disabled={devSkipping}
-              className="inline-flex items-center gap-2 rounded-lg border border-yellow-400 bg-yellow-100 px-4 py-2 text-sm font-medium text-yellow-900 hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-yellow-900/30 dark:text-yellow-200"
-            >
-              {devSkipping ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <AlertTriangle className="h-4 w-4" />
-              )}
-              Skip email check (dev only)
-            </button>
-            {devSkipError ? (
-              <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-                {devSkipError}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
 
         <div className="mt-6 flex justify-start">
           <button
             type="button"
             onClick={onBack}
-            className="text-xs font-medium text-surface-500 hover:text-surface-700 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
+            className="btn btn-xs text-xs font-medium text-surface-500 hover:text-surface-700 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
           >
             ← Back
           </button>

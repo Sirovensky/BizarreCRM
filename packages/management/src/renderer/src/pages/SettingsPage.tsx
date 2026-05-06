@@ -7,12 +7,53 @@ import { getAPI } from '@/api/bridge';
 import { useUiStore } from '@/stores/uiStore';
 import type {
   SystemInfo, DiskDrive, EnvSettingField, EnvFieldCategory, PlatformConfigField,
+  EnvConnectionTestResult, EnvConnectionTestStatus, EnvConnectionTestTarget,
 } from '@/api/bridge';
 import { formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+
+type RuntimePlatformConfigField = Omit<PlatformConfigField, 'kind'> & {
+  kind: PlatformConfigField['kind'] | 'secret' | 'text';
+  hasValue?: boolean;
+  length?: number;
+  placeholder?: string;
+};
+
+type PlatformConfigStatus = NonNullable<PlatformConfigField['status']>;
+type InactivePlatformConfigStatus = Exclude<PlatformConfigStatus, 'active'>;
+
+const PLATFORM_CONFIG_STATUS_META: Record<
+  InactivePlatformConfigStatus,
+  { label: string; className: string; fallbackReason: string }
+> = {
+  coming_soon: {
+    label: 'Coming soon',
+    className: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
+    fallbackReason: 'This setting is planned but not active yet.',
+  },
+  dead: {
+    label: 'No effect',
+    className: 'bg-red-500/10 text-red-300 border-red-500/30',
+    fallbackReason: 'This setting is visible for audit only and currently has no runtime effect.',
+  },
+};
+
+function platformConfigStatus(f: RuntimePlatformConfigField): PlatformConfigStatus {
+  return f.status ?? 'active';
+}
+
+function inactivePlatformConfigMeta(f: RuntimePlatformConfigField) {
+  const status = platformConfigStatus(f);
+  if (status === 'active') return null;
+  const meta = PLATFORM_CONFIG_STATUS_META[status];
+  return {
+    ...meta,
+    reason: f.statusReason ?? meta.fallbackReason,
+  };
+}
 
 // @audit-fixed: removed unused `theme` / `setTheme` zustand selectors and the
 // `Sun` icon import — the dashboard is dark-mode only and the toggle was never
@@ -61,6 +102,36 @@ const CATEGORY_ORDER: readonly EnvFieldCategory[] = [
   'killswitch', 'captcha', 'stripe', 'cloudflare', 'cors',
 ];
 
+const TESTABLE_ENV_CATEGORIES = new Set<EnvConnectionTestTarget>([
+  'captcha', 'stripe', 'cloudflare',
+]);
+
+const CONNECTION_STATUS_META: Record<EnvConnectionTestStatus, {
+  label: string;
+  className: string;
+  detailClassName: string;
+}> = {
+  pass: {
+    label: 'Passed',
+    className: 'border-emerald-900/60 bg-emerald-950/30 text-emerald-100',
+    detailClassName: 'text-emerald-300',
+  },
+  warn: {
+    label: 'Warning',
+    className: 'border-amber-900/60 bg-amber-950/30 text-amber-100',
+    detailClassName: 'text-amber-300',
+  },
+  fail: {
+    label: 'Failed',
+    className: 'border-red-900/60 bg-red-950/30 text-red-100',
+    detailClassName: 'text-red-300',
+  },
+};
+
+function isTestableEnvCategory(category: EnvFieldCategory): category is EnvConnectionTestTarget {
+  return TESTABLE_ENV_CATEGORIES.has(category as EnvConnectionTestTarget);
+}
+
 export function SettingsPage() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [disks, setDisks] = useState<DiskDrive[] | null>(null);
@@ -75,14 +146,20 @@ export function SettingsPage() {
   const [restarting, setRestarting] = useState(false);
 
   // Platform config (DB-backed runtime toggles, applied without restart)
-  const [pcSchema, setPcSchema] = useState<PlatformConfigField[] | null>(null);
+  const [pcSchema, setPcSchema] = useState<RuntimePlatformConfigField[] | null>(null);
   const [pcValues, setPcValues] = useState<Record<string, string>>({});
+  const [pcPending, setPcPending] = useState<Record<string, string>>({});
+  const [pcRevealed, setPcRevealed] = useState<Record<string, boolean>>({});
   const [pcSaving, setPcSaving] = useState<string | null>(null);
 
   // Free-text filter across env + platform config — narrows the displayed
   // fields by key / label / description / category. Pending edits still
   // commit regardless of the filter view (the dirty-state survives).
   const [filter, setFilter] = useState('');
+  const [connectionTests, setConnectionTests] = useState<Partial<Record<
+    EnvConnectionTestTarget,
+    { loading: boolean; result?: EnvConnectionTestResult }
+  >>>({});
 
   // DASH-ELEC-180 + DASH-ELEC-194: ConfirmDialog state for destructive actions
   // that previously used window.confirm (blocked in sandboxed renderer).
@@ -139,16 +216,65 @@ export function SettingsPage() {
 
   useEffect(() => { refreshPlatformConfig(); }, [refreshPlatformConfig]);
 
-  function pcDisplayValue(f: PlatformConfigField): string {
+  function pcDisplayValue(f: RuntimePlatformConfigField): string {
     return pcValues[f.key] ?? f.default;
   }
 
-  async function handlePlatformConfigToggle(f: PlatformConfigField, next: string) {
+  function pcInputValue(f: RuntimePlatformConfigField): string {
+    const pendingValue = pcPending[f.key];
+    return pendingValue ?? pcDisplayValue(f);
+  }
+
+  function setPlatformConfigPendingValue(f: RuntimePlatformConfigField, value: string) {
+    if (platformConfigStatus(f) !== 'active') return;
+    setPcPending((prev) => {
+      const next = { ...prev };
+      if (value === pcDisplayValue(f)) {
+        delete next[f.key];
+      } else {
+        next[f.key] = value;
+      }
+      return next;
+    });
+  }
+
+  function discardPlatformConfigPending(key: string) {
+    setPcPending((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  async function handlePlatformConfigToggle(f: RuntimePlatformConfigField, next: string) {
+    if (platformConfigStatus(f) !== 'active') return;
     setPcSaving(f.key);
     try {
       const res = await getAPI().superAdmin.updateConfig({ [f.key]: next });
       if (res.success) {
         setPcValues((prev) => ({ ...prev, [f.key]: next }));
+        toast.success(`${f.label} updated`);
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Update failed');
+    } finally {
+      setPcSaving(null);
+    }
+  }
+
+  async function handlePlatformConfigValueSave(f: RuntimePlatformConfigField) {
+    if (platformConfigStatus(f) !== 'active') return;
+    if (!Object.prototype.hasOwnProperty.call(pcPending, f.key)) return;
+    const nextValue = pcPending[f.key];
+    if (nextValue === undefined) return;
+    setPcSaving(f.key);
+    try {
+      const res = await getAPI().superAdmin.updateConfig({ [f.key]: nextValue });
+      if (res.success) {
+        setPcValues((prev) => ({ ...prev, [f.key]: nextValue }));
+        discardPlatformConfigPending(f.key);
         toast.success(`${f.label} updated`);
       } else {
         toast.error(formatApiError(res));
@@ -178,6 +304,49 @@ export function SettingsPage() {
       delete next[key];
       return next;
     });
+  }
+
+  const hasPendingChangesForCategory = useCallback((category: EnvConnectionTestTarget) => (
+    envFields?.some((f) => f.category === category && Object.prototype.hasOwnProperty.call(pending, f.key)) ?? false
+  ), [envFields, pending]);
+
+  async function handleTestConnection(category: EnvConnectionTestTarget) {
+    if (hasPendingChangesForCategory(category)) {
+      toast.error('Save or discard this section before testing saved configuration.');
+      return;
+    }
+    setConnectionTests((prev) => ({
+      ...prev,
+      [category]: { loading: true, result: prev[category]?.result },
+    }));
+    try {
+      const res = await getAPI().admin.testEnvConnection(category);
+      if (res.success && res.data) {
+        setConnectionTests((prev) => ({
+          ...prev,
+          [category]: { loading: false, result: res.data },
+        }));
+        if (res.data.status === 'pass') {
+          toast.success(res.data.summary);
+        } else if (res.data.status === 'warn') {
+          toast(res.data.summary, { icon: '!' });
+        } else {
+          toast.error(res.data.summary);
+        }
+      } else {
+        toast.error(formatApiError(res));
+        setConnectionTests((prev) => ({
+          ...prev,
+          [category]: { loading: false, result: prev[category]?.result },
+        }));
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Connection test failed');
+      setConnectionTests((prev) => ({
+        ...prev,
+        [category]: { loading: false, result: prev[category]?.result },
+      }));
+    }
   }
 
   async function handleSave() {
@@ -397,6 +566,40 @@ export function SettingsPage() {
     return haystack.toLowerCase().includes(filter.toLowerCase());
   }
 
+  function renderConnectionTestResult(result: EnvConnectionTestResult) {
+    const meta = CONNECTION_STATUS_META[result.status];
+    const checkedAt = new Date(result.checkedAt).toLocaleString();
+    const toneClass: Record<NonNullable<EnvConnectionTestResult['details'][number]['tone']>, string> = {
+      success: 'text-emerald-300',
+      warning: 'text-amber-300',
+      danger: 'text-red-300',
+      muted: 'text-surface-400',
+    };
+    return (
+      <div
+        role={result.status === 'fail' ? 'alert' : 'status'}
+        className={`mb-4 ml-6 rounded-lg border px-3 py-2.5 text-xs ${meta.className}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-medium">{meta.label}: {result.summary}</p>
+            <p className="mt-1 text-[11px] text-surface-400">Checked {checkedAt}</p>
+          </div>
+        </div>
+        <dl className="mt-2 grid grid-cols-1 gap-1">
+          {result.details.map((detail) => (
+            <div key={`${detail.label}-${detail.value}`} className="flex items-start justify-between gap-3">
+              <dt className="text-surface-500">{detail.label}</dt>
+              <dd className={`text-right break-words ${detail.tone ? toneClass[detail.tone] : meta.detailClassName}`}>
+                {detail.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    );
+  }
+
   function renderSection(category: EnvFieldCategory) {
     if (!envFields) return null;
     const meta = CATEGORY_META[category];
@@ -408,15 +611,29 @@ export function SettingsPage() {
     if (fields.length === 0) return null;
     const Icon = meta.icon;
     const headingId = `settings-section-${category}`;
+    const testable = isTestableEnvCategory(category);
+    const testState = testable ? connectionTests[category] : undefined;
     return (
       // DASH-ELEC-204: aria-labelledby so the <section> landmark has a
       // computed accessible name for screen reader navigation.
       <section key={category} aria-labelledby={headingId}>
         <h2 id={headingId} className="text-sm font-semibold text-surface-300 mb-1 flex items-center gap-2">
-          <Icon className={`w-4 h-4 ${meta.iconColor}`} />
-          {meta.label}
+          <Icon className={`w-4 h-4 ${meta.iconColor}`} aria-hidden="true" />
+          <span>{meta.label}</span>
+          {testable && (
+            <button
+              type="button"
+              onClick={() => void handleTestConnection(category)}
+              disabled={Boolean(testState?.loading) || envLoading || saving}
+              className="ml-auto inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-surface-300 bg-surface-900 border border-surface-700 rounded hover:bg-surface-800 hover:text-surface-100 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${testState?.loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+              {testState?.loading ? 'Testing…' : 'Test Connection'}
+            </button>
+          )}
         </h2>
         <p className="text-xs text-surface-500 mb-3 leading-relaxed">{meta.description}</p>
+        {testState?.result && renderConnectionTestResult(testState.result)}
         <div className="space-y-4 pl-6">
           {fields.map(renderField)}
         </div>
@@ -580,74 +797,144 @@ export function SettingsPage() {
             Runtime Platform Config
           </h2>
           <p className="text-xs text-surface-500 mb-3 leading-relaxed">
-            Database-backed toggles applied immediately, no server restart required.
-          </p>
-          {/* DASH-ELEC-171 — explicit warning that text/number fields commit on blur (Tab/click-away)
-              with no undo button. Env-settings section above uses pending/discard, but platform-config
-              is direct-write; surface that asymmetry to operators so a stray Tab doesn't permanent-write. */}
-          <p className="text-[11px] text-amber-400/80 mb-3 leading-relaxed pl-1" role="note">
-            Heads-up: text and number fields save on blur (Tab or click away). Press Esc before leaving the field to revert.
+            Database-backed configuration applied without a server restart.
           </p>
           <div className="space-y-4 pl-6">
             {pcSchema
-              .filter((f) => matchesFilter(`${f.key} ${f.label} ${f.description}`))
+              .filter((f) => matchesFilter(`${f.key} ${f.label} ${f.description} ${f.status ?? 'active'} ${f.statusReason ?? ''}`))
               .map((f) => {
               const current = pcDisplayValue(f);
               const busy = pcSaving === f.key;
+              const inactiveMeta = inactivePlatformConfigMeta(f);
+              const inactive = inactiveMeta !== null;
               if (f.kind === 'flag') {
                 const checked = current === 'true';
                 return (
                   // DASH-ELEC-200: aria-busy signals save in-progress to AT
                   // so screen readers don't announce an intermediate "off"
                   // checked-state while the server is still processing.
-                  <label key={f.key} aria-busy={busy} className="flex items-start gap-3 cursor-pointer select-none">
+                  <label
+                    key={f.key}
+                    aria-busy={busy}
+                    title={inactiveMeta?.reason}
+                    className={`flex items-start gap-3 select-none ${inactive ? 'cursor-not-allowed opacity-75' : 'cursor-pointer'}`}
+                  >
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={busy}
+                      disabled={busy || inactive}
                       onChange={(e) => handlePlatformConfigToggle(f, e.target.checked ? 'true' : 'false')}
-                      className="mt-0.5 w-4 h-4 rounded border-surface-700 bg-surface-900 cursor-pointer disabled:opacity-50"
+                      className="mt-0.5 w-4 h-4 rounded border-surface-700 bg-surface-900 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     />
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm text-surface-200">{f.label}</span>
                         <code className="text-[10px] font-mono text-surface-600">{f.key}</code>
+                        {inactiveMeta && (
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${inactiveMeta.className}`}>
+                            {inactiveMeta.label}
+                          </span>
+                        )}
                         {busy && <span className="text-[10px] text-amber-400">saving…</span>}
                       </div>
                       <p className="text-xs text-surface-500 mt-1 leading-relaxed">{f.description}</p>
+                      {inactiveMeta && (
+                        <p className="mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300/90">
+                          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                          {inactiveMeta.reason}
+                        </p>
+                      )}
                     </div>
                   </label>
                 );
               }
-              // value-kind — single text input that saves on blur.
+              const inputValue = pcInputValue(f);
+              const dirty = !inactive && Object.prototype.hasOwnProperty.call(pcPending, f.key);
+              const isSecret = f.kind === 'secret';
+              const isRevealed = pcRevealed[f.key];
               return (
-                <div key={f.key} className="space-y-1.5">
+                <div key={f.key} aria-busy={busy} className="space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <label htmlFor={`pc-${f.key}`} className="text-sm text-surface-300">
+                    <label htmlFor={`pc-${f.key}`} className={`text-sm text-surface-300 ${inactive ? 'opacity-75' : ''}`}>
                       {f.label}
                       <code className="ml-2 text-[10px] font-mono text-surface-600">{f.key}</code>
+                      {inactiveMeta && (
+                        <span className={`ml-2 text-[10px] font-medium px-1.5 py-0.5 rounded border ${inactiveMeta.className}`}>
+                          {inactiveMeta.label}
+                        </span>
+                      )}
+                      {dirty && <span className="ml-2 text-[10px] text-amber-400">(modified)</span>}
                       {busy && <span className="ml-2 text-[10px] text-amber-400">saving…</span>}
                     </label>
+                    {isSecret && f.hasValue && !dirty && (
+                      <span className="text-[11px] text-emerald-500/80">
+                        {f.length ? `${f.length}-char secret set` : 'secret set'}
+                      </span>
+                    )}
                   </div>
-                  <input
-                    id={`pc-${f.key}`}
-                    type="text"
-                    defaultValue={current}
-                    disabled={busy}
-                    onBlur={(e) => {
-                      const next = e.target.value;
-                      if (next !== current) handlePlatformConfigToggle(f, next);
-                    }}
-                    onKeyDown={(e) => {
-                      // DASH-ELEC-171 — Esc reverts in-flight edit before the onBlur save fires.
-                      if (e.key === 'Escape') {
-                        e.currentTarget.value = current;
-                        e.currentTarget.blur();
-                      }
-                    }}
-                    className="w-full px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 focus:border-accent-600 focus:outline-none font-mono disabled:opacity-50"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      id={`pc-${f.key}`}
+                      type={isSecret && !isRevealed ? 'password' : 'text'}
+                      value={inputValue}
+                      disabled={busy || inactive}
+                      maxLength={isSecret ? 512 : 2048}
+                      placeholder={f.placeholder ?? (isSecret && f.hasValue ? '(leave blank to keep current)' : '')}
+                      title={inactiveMeta?.reason}
+                      onChange={(e) => setPlatformConfigPendingValue(f, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          discardPlatformConfigPending(f.key);
+                          return;
+                        }
+                        if (e.key === 'Enter' && dirty && !busy) {
+                          void handlePlatformConfigValueSave(f);
+                        }
+                      }}
+                      className="min-w-0 flex-1 px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 focus:border-accent-600 focus:outline-none font-mono disabled:opacity-50"
+                    />
+                    {isSecret && (
+                      <button
+                        type="button"
+                        onClick={() => setPcRevealed((r) => ({ ...r, [f.key]: !r[f.key] }))}
+                        disabled={busy || inactive}
+                        className="p-1.5 text-surface-500 hover:text-surface-300 disabled:opacity-50"
+                        title={isRevealed ? 'Hide password' : 'Show password'}
+                        aria-label={isRevealed ? 'Hide password' : 'Show password'}
+                        aria-pressed={isRevealed}
+                      >
+                        {isRevealed ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+                      </button>
+                    )}
+                    {dirty && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => discardPlatformConfigPending(f.key)}
+                          disabled={busy}
+                          className="px-2 py-1.5 text-[11px] font-medium text-surface-400 bg-surface-900 border border-surface-700 rounded hover:bg-surface-800 hover:text-surface-200 disabled:opacity-50"
+                        >
+                          Discard
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handlePlatformConfigValueSave(f)}
+                          disabled={busy}
+                          className="flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-medium text-emerald-100 bg-emerald-900/60 border border-emerald-700 rounded hover:bg-emerald-900/80 disabled:opacity-50"
+                        >
+                          <Save className={`w-3.5 h-3.5 ${busy ? 'animate-pulse' : ''}`} aria-hidden="true" />
+                          {busy ? 'Saving…' : 'Save'}
+                        </button>
+                      </>
+                    )}
+                  </div>
                   <p className="text-xs text-surface-500 leading-relaxed">{f.description}</p>
+                  {inactiveMeta && (
+                    <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300/90">
+                      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                      {inactiveMeta.reason}
+                    </p>
+                  )}
                 </div>
               );
             })}

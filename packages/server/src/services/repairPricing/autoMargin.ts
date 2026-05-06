@@ -24,7 +24,18 @@ export interface AutoMarginResult {
   cap_pct: number;
 }
 
-export type AutoMarginRoundingMode = 'none' | 'ending_99' | 'whole_dollar' | 'ending_98';
+export type AutoMarginRoundingMode =
+  | 'off'
+  | 'nearest_dollar'
+  | 'nearest_5'
+  | 'nearest_10'
+  | 'psychological_99'
+  | 'psychological_95'
+  // Legacy names accepted so older web/mobile builds do not break.
+  | 'none'
+  | 'ending_99'
+  | 'whole_dollar'
+  | 'ending_98';
 export type AutoMarginCalculationBasis = 'gross_margin' | 'markup';
 export type AutoMarginTargetType = 'percent' | 'fixed_amount';
 export type AutoMarginPreset = 'high_traffic' | 'mid_traffic' | 'low_traffic' | 'custom' | 'value' | 'balanced' | 'premium';
@@ -81,6 +92,12 @@ export interface AutoMarginPreview {
 }
 
 const ROUNDING_MODES = new Set<AutoMarginRoundingMode>([
+  'off',
+  'nearest_dollar',
+  'nearest_5',
+  'nearest_10',
+  'psychological_99',
+  'psychological_95',
   'none',
   'ending_99',
   'whole_dollar',
@@ -138,7 +155,7 @@ function normalizePreset(value: unknown, fallback: AutoMarginPreset = 'custom'):
     : fallback;
 }
 
-function normalizeRoundingMode(value: unknown, fallback: AutoMarginRoundingMode = 'ending_99'): AutoMarginRoundingMode {
+function normalizeRoundingMode(value: unknown, fallback: AutoMarginRoundingMode = 'off'): AutoMarginRoundingMode {
   return typeof value === 'string' && ROUNDING_MODES.has(value as AutoMarginRoundingMode)
     ? value as AutoMarginRoundingMode
     : fallback;
@@ -234,7 +251,7 @@ export function presetAutoMarginRules(
     target_margin_pct: percentValues[slug] ?? 100,
     target_profit_amount: targetType === 'fixed_amount' ? value : fixedValues[slug] ?? 80,
     calculation_basis: 'markup',
-    rounding_mode: 'ending_99',
+    rounding_mode: 'psychological_99',
     cap_pct: 25,
     enabled: true,
   }));
@@ -293,7 +310,7 @@ export function getAutoMarginSettings(db: Database.Database): AutoMarginSettings
     ),
     calculation_basis: calculationBasis,
     rounding_mode: normalizeRoundingMode(
-      configString(db, 'repair_pricing_rounding_mode', 'ending_99'),
+      configString(db, 'repair_pricing_rounding_mode', 'off'),
     ),
     cap_pct: normalizePct(
       configNumber(db, 'repair_pricing_auto_margin_cap_pct', 25),
@@ -361,7 +378,12 @@ export function setAutoMarginSettings(
 
 export function roundAutoMarginLabor(value: number, mode: AutoMarginRoundingMode): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
-  if (mode === 'none') return roundMoney(value);
+  if (mode === 'off' || mode === 'none') return roundMoney(value);
+  if (mode === 'nearest_dollar') return roundMoney(Math.round(value));
+  if (mode === 'nearest_5') return Math.ceil(value / 5) * 5;
+  if (mode === 'nearest_10') return Math.ceil(value / 10) * 10;
+  if (mode === 'psychological_99') return roundMoney(Math.ceil(value / 5) * 5 - 0.01);
+  if (mode === 'psychological_95') return roundMoney(Math.ceil(value / 5) * 5 - 0.05);
   if (mode === 'whole_dollar') return Math.ceil(value);
 
   const ending = mode === 'ending_98' ? 0.98 : 0.99;
@@ -405,7 +427,7 @@ export function cappedAutoMarginLabor(
   supplierCost: number,
   targetMarginPct: number,
   capPct: number,
-  roundingMode: AutoMarginRoundingMode = 'ending_99',
+  roundingMode: AutoMarginRoundingMode = 'off',
   calculationBasis: AutoMarginCalculationBasis = 'gross_margin',
   targetType: AutoMarginTargetType = 'percent',
   targetProfitAmount = 0,

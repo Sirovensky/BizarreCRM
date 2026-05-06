@@ -57,7 +57,7 @@ export function TrialBanner() {
         <span>Your Pro trial has ended. You're now on the Free plan with limited features.</span>
         <button
           onClick={() => openUpgradeModal('advancedReports')}
-          className="ml-2 rounded bg-white/20 px-3 py-1 text-xs font-semibold transition-colors hover:bg-white/30"
+          className="btn btn-xs ml-2 bg-white/20 font-semibold text-white hover:bg-white/30"
         >
           Upgrade to Pro
         </button>
@@ -65,7 +65,7 @@ export function TrialBanner() {
           type="button"
           onClick={dismissExpired}
           aria-label="Dismiss trial expired notice"
-          className="ml-1 rounded p-1 transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          className="btn-icon btn-xs ml-1 !text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         >
           <X className="h-4 w-4" />
         </button>
@@ -88,7 +88,7 @@ export function TrialBanner() {
         <span>Your Pro trial ends in {days} days. Upgrade now to keep all features.</span>
         <button
           onClick={() => openUpgradeModal('advancedReports')}
-          className="ml-2 rounded bg-white/25 px-3 py-1 text-xs font-bold transition-colors hover:bg-white/35"
+          className="btn btn-xs ml-2 bg-white/25 font-bold text-white hover:bg-white/35"
         >
           Upgrade
         </button>
@@ -96,7 +96,7 @@ export function TrialBanner() {
           type="button"
           onClick={dismissWarn3}
           aria-label="Dismiss trial 3-day warning"
-          className="ml-1 rounded p-1 transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          className="btn-icon btn-xs ml-1 !text-white hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
         >
           <X className="h-4 w-4" />
         </button>
@@ -112,7 +112,7 @@ export function TrialBanner() {
       <span>Your Pro trial ends {days === 1 ? 'tomorrow' : 'today'}! Upgrade now to avoid losing Pro features.</span>
       <button
         onClick={() => openUpgradeModal('advancedReports')}
-        className="ml-2 rounded bg-white/25 px-3 py-1 text-xs font-bold transition-colors hover:bg-white/35"
+        className="btn btn-xs ml-2 bg-white/25 font-bold text-white hover:bg-white/35"
       >
         Upgrade Now
       </button>
@@ -120,7 +120,7 @@ export function TrialBanner() {
         type="button"
         onClick={dismissWarnUrgent}
         aria-label="Dismiss trial urgent warning"
-        className="ml-1 rounded p-1 transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+        className="btn-icon btn-xs ml-1 !text-white hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
       >
         <X className="h-4 w-4" />
       </button>

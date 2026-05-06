@@ -315,8 +315,6 @@ Verified working. Not TODOs.
 ### Finder-C web polish findings (2026-04-24) — pages/{tickets,loaners,leads,automations,marketing,communications,reports,reviews,photo-capture,portal,print,tracking,tv,voice,expenses}
 - [~] WEB-FC-012. **[MED] `ReferralsDashboard` computes stats from only the first page of rows.** Server returns rows with no pagination metadata, and the page computes `total`, `converted`, `conversion_rate`, and the leaderboard from that array — totals understate reality as soon as there are >N referrals. No "showing X of Y" footer. — **Fixer-B23 2026-04-25 [PARTIAL-truth-in-UI]**: query now reads `meta.total` or `X-Total-Count` header when the server provides one; if `serverTotal > rows.length` the "Total referrals" stat renders as `N+`, an amber `role="note"` banner says "Showing N of Y. Totals/conversion rate/leaderboard computed from the loaded page only." Fully-correct stats still need either a `/reports/referrals/stats` endpoint or pagination iteration server-side; tracked open for that.
   <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/ReferralsDashboard.tsx:52-75,98; fix=add-/reports/referrals/stats-endpoint-or-iterate-pagination-before-computing -->
-- [~] WEB-FC-014. **[MED] `TaxReportPage` and `PartnerReportPage` open server-rendered HTML via `window.open(..., '_blank', 'noopener')` with no loading/auth-fail fallback.** Date range has no validation — `from > to` still opens a blank report. A logged-out session opens the server's 401 HTML in a new tab, which looks like the feature is broken rather than "please log in". — Fixer-B10 2026-04-25: TaxReportPage now blocks `from > to` / empty dates with inline error before window.open; auth-fail blob preflight + PartnerReportPage still TODO.
-  <!-- meta: scope=web/pages/reports; files=packages/web/src/pages/reports/TaxReportPage.tsx:20-28 packages/web/src/pages/reports/PartnerReportPage.tsx:15-18; fix=validate-from<=to+HEAD-preflight-or-fetch+blob+open-with-revocation-or-inline-iframe-preview -->
 
 ### Finder-B web polish findings 2026-04-24 — web/pages pos+unified-pos+catalog+inventory+customers+invoices+estimates+gift-cards
 
@@ -373,16 +371,6 @@ Verified working. Not TODOs.
 - [~] WEB-FF-019. **[LOW] CustomerDetailPage `${memberData.monthly_price.toFixed(2)}/mo` — float multiplication lurking.** Lines 920, 1016 (tier list), 1526 (ticket totals), 1615/1618 (invoice totals). All `.toFixed(2)` on numbers that are *probably* dollars-as-float from the server. If membership price is migrated to cents (matching POS migration), every value is 100× wrong silently — same risk as WEB-FB-001 gift card. (Fixer-C11 2026-04-25: dropped an `@audit-cents` flag-comment above the L960 active member badge call site so the next cents-migration sweep finds the call site without grep — full migration to `formatCents(monthly_price_cents)` still pending server schema change.)
   <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:920,1016,1526,1615,1618; fix=accept-cents-from-server+single-formatCurrency(cents)-helper -->
 
-
-
-- [~] WEB-FF-022. **[LOW] MembershipSettings + RepairPricingTab + DeviceTemplatesPage display prices via raw `${price.toFixed(2)}` template — locale + currency symbol assumed USD.** Same root cause as WEB-FF-003; specifically MembershipSettings.tsx:120,569 + RepairPricingTab.tsx:568,569,767,924,927,930. Tenant-onboarding wizard already collects locale but it never reaches these surfaces. — Fixer-C7 2026-04-25: PARTIAL. `MembershipSettings.tsx:120,569` swapped to `formatCurrency(...)` from `@/utils/format`. RepairPricingTab + DeviceTemplatesPage callsites still owed.
-  <!-- meta: scope=web/settings; files=packages/web/src/pages/settings/MembershipSettings.tsx:120,569,packages/web/src/pages/settings/RepairPricingTab.tsx:568-930; fix=replace-template-strings-with-formatCurrency(amount,tenant.currency) -->
-
-
-- [~] WEB-FF-024. **[LOW] Dashboard / DeviceTemplatesPage / GoalsPage use `(numerator / denominator) * 100` for progress bars without guarding NaN — division by zero when `total_entities=0` or `target_value=0` produces `NaN%` in the inline style.** `SettingsPage.tsx:2694` + `team/GoalsPage.tsx:142` already guard with `Math.min(100, ...)` but not `isNaN`. Renders as `width: NaN%` (browsers ignore, bar shows 0). Cosmetic but flags broken telemetry. PARTIAL-by-Fixer-GGG 2026-04-25 — `team/GoalsPage.tsx` now coerces `target_value`/`progress` via `Number()`, computes `ratio`, and clamps via `Number.isFinite(ratio) ? Math.max(0, Math.min(100, ratio)) : 0` so string targets / `null` denominators render `width: 0%` instead of `NaN%`. SettingsPage.tsx:2694 (already partially guarded) and DeviceTemplatesPage / TicketListPage progress bars still need the same `Number.isFinite` audit — leaving open under `[~]`.
-  <!-- meta: scope=web/multiple; files=packages/web/src/pages/settings/SettingsPage.tsx:2694,packages/web/src/pages/team/GoalsPage.tsx:142,packages/web/src/pages/tickets/TicketListPage.tsx:1232-1238; fix=guard-Number.isFinite(pct)-or-fall-to-0 -->
-
-
 ### Wave-Loop Finder-D run 2026-04-24 — components/hooks/stores/api/utils
 
 
@@ -404,7 +392,6 @@ Verified working. Not TODOs.
 
 
 
-- [~] WEB-FD-018. **[LOW] `formatPhone` returns input unchanged for any string of length ≠ 10/11 starting digits — UK +44, AU +61, MX +52 callers see whatever they typed, no normalisation.** `utils/format.ts:118-131`: comment claims "preserve user formatting"; in practice a half-formatted "(303) 261-19" returns `"(303) 261-19"` raw with no `+1` prefix or fix. CROSS13 canonical format only kicks in at exactly 10 or 11 digits.
   PARTIAL FIXED-by-Fixer-C12 2026-04-25 — partial US-shape inputs of 4-9 digits with no leading `+` now promote to a progressive canonical form (`+1 (303)-261-19`, `+1 (303)-26`, etc.) so display surfaces stop showing a mix of canonical and raw side-by-side. International (UK/AU/MX with `+` prefix) still echoes through unchanged — full E.164 normalisation needs a `libphonenumber-js` wrapper which is out of scope for this loop.
   <!-- meta: scope=web/utils; files=packages/web/src/utils/format.ts:118-131; fix=use-libphonenumber-js-or-document-non-US-skip-explicitly -->
 
@@ -589,7 +576,6 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] DASH-ELEC-084. **[MED][WIRE] `management:restart-server` and `service:restart` are two uncoordinated paths** — management-api.ts:1676-1680 (REST) + service-control.ts:663-681 (sc.exe/PM2/kill). Both exposed: `getAPI().management.restartServer()` (UpdatesPage) and `getAPI().service.restart()` (ServerControlPage). Fix: pick canonical path; remove or feature-flag the other; ensure mutual exclusion.
 
 
 
@@ -597,25 +583,19 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] DASH-ELEC-098. **[HIGH][BUILD] Zero test infrastructure — no framework, no test files, no CI test step** — packages/management/package.json (no vitest/jest), src/ (0 *.test.*), .github/workflows/ci.yml (no test job). CI only type-checks. Fix: add vitest + @vitest/ui + @testing-library/react + user-event; scripts `"test": "vitest run"` + `"test:watch"`; CI `test` job.
-
-- [ ] DASH-ELEC-099. **[MED][BUILD] No ESLint config — package fully un-linted** — packages/management/ (no .eslintrc*/eslint.config*); no eslint deps; no `lint` script; no CI lint step. Fix: eslint.config.js with @typescript-eslint, eslint-plugin-react, react-hooks, jsx-a11y; `"lint": "eslint src"`; CI lint step.
-
-
-- [ ] DASH-ELEC-101. **[MED][DEPS] electron pinned to non-LTS 39.8.7** — packages/management/package.json:37 — even-numbered Electron releases are LTS (32, 34, 36); 39 is odd dev/latest with no LTS security backports. As of 2026-04, Electron 36.x is current LTS. Fix: downgrade to `"electron": "^36.0.0"`.
 
 
 
 
 
-- [ ] DASH-ELEC-112. **[LOW][TELEM] No structured logging library in main process — plain console.log only** — packages/management/src/main/index.ts:102-104 + management-api.ts + service-control.ts — no levels, no JSON, no correlation IDs; no electron-log/winston/pino. Fix: introduce electron-log (zero-dep) for structured JSON lines `{ level, time, msg }`; serialize objects properly.
+
+
 
 
 
 
 - [ ] DASH-ELEC-116. **[LOW][I18N] All 400+ user-facing strings hardcoded English — no i18n framework** — packages/management/src/renderer/src/ entire tree — no i18next/react-intl. Fix: adopt i18next with `en.json` namespace as foundation; literals become `t('key')` calls.
 
-- [ ] DASH-ELEC-117. **[LOW][TELEM] No telemetry opt-out mechanism** — packages/management/ has no telemetry now but no opt-out infrastructure either; any future SDK would be on-by-default. Self-hosted GDPR concern. Fix: add `telemetry_opt_in: false` to platform_config; Settings toggle "Crash reporting & diagnostics"; gate future analytics behind it.
 
 
 
@@ -649,19 +629,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 - [!] DASH-ELEC-158-upstream. **`prebuild-install@7.1.3` is still pulled by current native addons.** BLOCKED 2026-05-06 — current `better-sqlite3@12.9.0` and `canvas@3.2.3` still depend on `prebuild-install`; replacing it would require changing native-addon package internals or swapping database/canvas libraries. Track upstream native-addon releases.
 
-- [ ] DASH-ELEC-159. **[LOW][DEPS] `boolean@3.2.0` "no longer supported"** — package-lock.json:4570-4577. Fix: monitor electron-builder for removal.
-
-
-
-
-
-
-
-
-
-
-
-- [ ] DASH-ELEC-171. **[LOW][UI] SettingsPage platform-config inputs save silently on blur — no undo** — packages/management/src/renderer/src/pages/SettingsPage.tsx:508-511 — onBlur fires handlePlatformConfigToggle immediately; Tab to next field permanent-writes. Env-settings on same page uses pending/discard pattern. Fix: dirty indicator + explicit Save button per field, OR "Tab to save / Esc to undo" hint. — Fixer-C27 2026-04-25 (PARTIAL — hint + Esc revert): added an amber `role="note"` paragraph under the section heading explaining "saves on blur (Tab or click away). Press Esc before leaving the field to revert." Wired `onKeyDown` on the platform-config text input to handle `Escape` by resetting `e.currentTarget.value = current` and calling `.blur()` (the `next !== current` guard in onBlur then short-circuits, no IPC fires). Dirty indicator + per-field Save button still TODO — would require pending-state ref map mirroring the env-settings UX.
+- [!] DASH-ELEC-159-upstream-builder. **`boolean@3.2.0` is still pulled by current electron-builder, not Electron runtime.** BLOCKED 2026-05-06 — the Electron runtime was moved to the current supported line and no longer pulls `boolean`; `npm ls electron boolean --workspace=packages/management --all` shows the remaining copy only through `electron-builder@26.8.1 -> app-builder-lib -> @electron/get@3.1.0 -> global-agent@3.0.0`. Track electron-builder/@electron/get/global-agent upstream removal.
 
 
 
@@ -675,39 +643,27 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] DASH-ELEC-184. **[MED][DEBT] `wrapHandler` typed `(...args: any[]) => Promise<any>` — IPC boundary untyped across ~60 handlers** — packages/management/src/main/ipc/management-api.ts:867-870 — silenced by 2 eslint-disables. Fix: typed generic `<T extends unknown[], R>(fn: (event: IpcMainInvokeEvent, ...args: T) => Promise<R>)`.
 
 
 
 
 
 
-- [ ] DASH-ELEC-190. **[LOW][WIRE] `handleProtocolUrl` is permanent no-op stub but `bizarrecrm-dashboard:` scheme registered OS-wide** — packages/management/src/main/index.ts:246-269 — macOS `open-url` + Windows `second-instance` invoke dead handler. Fix: complete renderer routing OR remove OS registration until ready. — SKIPPED 2026-04-26: design decision (remove vs implement full routing) needed; not a small fix.
 
 
 
-- [ ] DASH-ELEC-193. **[MED][WIRE] No Test Connection for Stripe/Cloudflare/hCaptcha** — packages/management/src/renderer/src/pages/SettingsPage.tsx:40-55. Fix: IPC probes; per-section Test button.
-- [ ] DASH-ELEC-201. **[LOW][WIRE] No settingsDeadToggles equivalent — dead platform-config keys live** — SettingsPage.tsx. Fix: server expose `status?: 'coming_soon'`; render badge.
-- [ ] DASH-ELEC-220. **[LOW][UI] AuditLogPage filter-by-user is client-side free-text only — server-truncates >200** — AuditLogPage.tsx:29-31, 58-65. Fix: add `username` server-side query param. — Fixer-C26 2026-04-25 (PARTIAL — UX hint only): added `title` tooltip on the text-filter input explaining that it searches the most recent 200 entries client-side, plus an inline amber hint row that appears below the toolbar whenever a textFilter is set AND the loaded batch is at the 200-row limit ("Showing matches in the most recent 200 entries only…"). Server-side `username` query param still TODO — needs server route change.
-- [ ] DASH-ELEC-223. **[LOW][UI] CrashMonitorPage drill-in lacks OS/Node/Electron/build context** — CrashMonitorPage.tsx:331-336 + bridge.ts:58-66. Fix: extend CrashEntry; capture `process.versions` + `app.getVersion()` at crash time.
-- [ ] DASH-ELEC-224. **[LOW][UI] WebhookFailuresPanel expand shows `last_error` only — no sent payload** — WebhookFailuresPanel.tsx:213-217 + Row L10-18. Fix: `sent_payload: string | null` truncated 4KB server-side; Payload/Error tab switcher.
 
-- [ ] DASH-ELEC-230. **[MED][WIRE] No idempotency keys on POST mutations** — management-api.ts:1036,1134,1154,1160,1170,1246,1328,1334,1695,1699,1743,1745,1768,1774. Fix: UUID per non-GET as `X-Idempotency-Key`.
-- [ ] DASH-ELEC-237. **[MED][WIRE] No tenant plan-change UI — plan locked after creation** — TenantsPage + management-api.ts:1028-1074. Fix: inline plan select + super-admin:update-tenant IPC + server endpoint.
-- [ ] DASH-ELEC-238. **[MED][WIRE] No tenant shop-name rename UI — name frozen post-create** — TenantsPage.tsx:385.
-- [ ] DASH-ELEC-243. **[LOW][WIRE] Suspend/activate IPC has no `reason` field** — management-api.ts:1047-1058. Fix: schema + reason textarea in ConfirmDialog.
-- [ ] DASH-ELEC-245. **[LOW][WIRE] No last_active / suspended_at timestamps in Tenant** — bridge.ts:92-100 + TenantsPage.tsx:23-28.
-- [ ] DASH-ELEC-249. **[MED][UI] SetupChecklist invisible in single-tenant mode + can return null entirely** — packages/management/src/renderer/src/components/SetupChecklist.tsx:76,99,212,225. Fix: always render backup + kill-switch items; only skip multi-tenant-specific items.
-- [ ] DASH-ELEC-251. **[MED][UI] No Required vs Recommended distinction in SetupChecklist** — packages/management/src/renderer/src/components/SetupChecklist.tsx:11-20. Fix: `tier: 'required' | 'recommended'` field; inline badge.
-- [ ] DASH-ELEC-252. **[MED][WIRE] No cert expiry countdown — BannerCertWarning checks presence not validity** — packages/management/src/main/services/api-client.ts:312-322 + BannerCertWarning.tsx:17-37. Fix: parse via `crypto.X509Certificate(pem).validTo`; include `daysUntilExpiry`; banner amber ≤30d, red ≤7d.
 
-- [ ] DASH-ELEC-258. **[LOW][WIRE] EXPECTED_FINGERPRINT pinned once at module load — cert rotation needs app restart** — api-client.ts:121-140. Fix: reloadCertFingerprint() + warning banner on detected mismatch.
-- [ ] DASH-ELEC-263. **[LOW][WIRE] No powerMonitor integration — useServerHealth backoff doesn't reset after sleep/wake** — main/index.ts + useServerHealth.ts:37,70,91. Fix: emit IPC on `powerMonitor.on('resume')` → renderer poll() + reset to BASE_INTERVAL.
-- [ ] DASH-ELEC-266. **[MED][DEBT] getAuditLog + getSessions return unparameterised `Promise<ApiResponse>`** — bridge.ts:263-264 + AuditLogPage.tsx:36-37 + SessionsPage.tsx:77-78.
-- [~] DASH-ELEC-268. **[LOW][DEBT] createTenant + updateBackupSettings bridge params typed `unknown`** — bridge.ts:257,362. _(Fixer-C24 2026-04-25 — partial: `createTenant` now takes `TenantCreatePayload` (new exported interface) and `TenantsPage.tsx:159` no longer needs the `res.data as TenantCreateResult | undefined` cast; unused `TenantCreateResult` import removed. `updateBackupSettings` left — no renderer consumer to pivot.)_
+
+
+
+
+
+
+
+
+
 - [ ] DASH-ELEC-269. **[LOW][DEBT] EnvFieldCategory union duplicated** — management-api.ts:145 + bridge.ts:203. — Fixer-C26 2026-04-25 (PARTIAL — drift-defense only): cross-reference comment added on both type declarations explaining that Electron main and renderer compile to separate bundles with no `packages/management/src/shared/` folder yet, so the union is intentionally duplicated; instructs future contributors to edit BOTH files in the same commit and points at the eventual cleanup path. Real dedup still requires creating a shared types file referenced by both tsconfigs.
-- [ ] DASH-ELEC-273. **[MED][DEBT] safeInvoke returns `Promise<unknown>` — entire ElectronAPI surface erases return types** — preload/index.ts:117. Fix: typed IPC channel map or `safeInvoke<T>` overload.
-
 
 
 
@@ -759,8 +715,6 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] WEB-S8-045. **`settings.routes.ts` `GET /settings/users` is gated with `adminOnly` but the returned row shape includes `role` and `is_active` for all users — acceptable. However `PUT /settings/users/:id` (line 962) validates the new `role` against `VALID_ROLES` allowlist but also accepts `permissions` as a raw JSON blob from `req.body`, allowing any admin to write arbitrary permission overrides without schema validation or audit logging.** `packages/server/src/routes/settings.routes.ts` line 962+. Fix: parse and validate `permissions` against `VALID_PERMISSIONS` allowlist keys before storing; write an audit row for every permission change identical to the role-change audit.
-
 ---
 
 ### Severity summary (Wave S8, 45 findings)
@@ -783,7 +737,6 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FI-012. **[MED] `usePosKeyboardShortcuts` swallows F-keys with `event.preventDefault()` — handlers are read via `handlersRef.current` but if a parent's handler closure captured stale state and is updated only on commit, the F-key fires the previous-render value.** `usePosKeyboardShortcuts.ts:46-74`. Documenting handlers as "must read fresh state via refs/store" is a footgun. Either pass fresh args via a callback registry or document this prominently in the hook header.
   <!-- meta: scope=web/hooks; files=packages/web/src/hooks/usePosKeyboardShortcuts.ts:46-74; fix=document-stale-closure-risk+example-using-store -->
 
 
@@ -821,21 +774,6 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [~] WEB-FG-016 (partial — LoginPage firstTimeSetup form done; ResetPasswordPage pending). **[MED] `LoginPage` first-time-setup form has `noValidate` + min-8 password but no `aria-invalid` / `aria-describedby` linking error messages to inputs.** `LoginPage.tsx:380-467,549-575`. When `setError('Password must be at least 8 characters')` fires the message is rendered in a sibling `<p>` with no programmatic association. Same a11y gap as FE-014 but specifically on the first surface every shop owner sees. Screen-reader users get the title but not the field-level cause. — Fixer-B17 2026-04-25: error block in firstTimeSetup form now carries `id="setup-form-error"` + `role="alert"` + `aria-live="polite"`; username/email/password inputs all set `aria-invalid={!!error}` + `aria-describedby="setup-form-error"` when an error is present. SR users now hear the error on submit and the field's invalid state is programmatically associated. ResetPasswordPage still TODO.
-  <!-- meta: scope=web/auth/a11y; files=packages/web/src/pages/auth/LoginPage.tsx:380-467,549-575,packages/web/src/pages/auth/ResetPasswordPage.tsx:117-156; fix=wire-aria-invalid+aria-describedby=field-error-id+role=alert-on-error-block -->
-
-
-
-- [ ] WEB-FG-019. **[LOW] `SettingsPage` 3464-line file is loaded as a single chunk on `/settings/*` route entry — the user landing on `/settings/general` pulls the entire 3.4 k-line file (and its sub-tabs DangerZone, BlockChyp, RepairPricing, NotificationTemplates, Audit) before paint.** Each tab is a logical lazy-load boundary (DangerZoneTab + BlockChypSettings + RepairPricingTab are 484/380/992 lines each — huge). React.lazy each tab and Suspense the panel.
-  <!-- meta: scope=web/settings/perf; files=packages/web/src/pages/settings/SettingsPage.tsx:1-3464; fix=React.lazy-each-tab-and-Suspense-fallback-skeleton -->
-
-- [~] WEB-FG-020 (partial — 4 of 5 pages). **[LOW] `team/*` pages use `text-gray-*` exclusively (no `dark:` partner) — `MyQueuePage.tsx:64-92,98-156`, `GoalsPage.tsx:113-180`, `ShiftSchedulePage.tsx:174-378`, `PerformanceReviewsPage.tsx:88-119`, `TeamLeaderboardPage.tsx`.** Fixer-C13 2026-04-25 added `dark:` variants on headers / cards / table chrome / hover-row partner for `MyQueuePage`, `GoalsPage`, `TeamLeaderboardPage`, and `PerformanceReviewsPage` (sidebar + role list). `ShiftSchedulePage.tsx` still has no `dark:` variants (schedule grid + per-shift cells need a denser pass — deferred).
-  <!-- meta: scope=web/team/dark-mode; files=packages/web/src/pages/team/MyQueuePage.tsx,packages/web/src/pages/team/GoalsPage.tsx,packages/web/src/pages/team/ShiftSchedulePage.tsx,packages/web/src/pages/team/PerformanceReviewsPage.tsx; fix=codemod-text-gray-N+bg-white+border-to-surface-tokens-with-dark:variants -->
-
-
-
-
-
 ### Wave-Loop Finder-H run 2026-04-24 — pos/catalog/inventory deeper-pass
 
 
@@ -857,16 +795,6 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
   <!-- meta: scope=web/pages/catalog; files=packages/web/src/pages/catalog/CatalogPage.tsx:290-298,694-697; fix=add-X-Idempotency-Key-header+disable-button-on-mouse-down-not-mutation-pending -->
 
 
-- [ ] WEB-FH-018. **[MED] Estimate->Ticket convert drops attachments + photos — files attached to the estimate never reach the ticket.** `EstimateDetailPage.convertMut` line 74-83 calls `estimateApi.convert(id)`, server route at `estimates.routes.ts:704-867` does NOT touch any `attachments`/`photos` table — a grep for `attachment|photo|file` in `estimates.routes.ts` returns empty. If the customer uploaded device-condition photos against the estimate (via `/portal/estimates/:id` or back-office), those rows have estimate_id FK and stay there; new ticket row has no `attachments` link. Tech opens the new ticket, sees no photos, asks customer to re-upload.
-  <!-- meta: scope=server/estimates+web/pages/estimates; files=packages/server/src/routes/estimates.routes.ts:704-867,packages/web/src/pages/estimates/EstimateDetailPage.tsx:74-83; fix=on-convert-also-INSERT-into-attachments(ticket_id,...)-SELECT-FROM-attachments-WHERE-estimate_id+repoint-photos -->
-
-
-
-
-
-
-
-
 ### Wave-Loop Finder-K run 2026-04-24 — tickets/leads/marketing/comms deeper-pass
 
 
@@ -876,18 +804,6 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-
-
-
-
-- [~] WEB-FK-010. **[MED] ReportsPage activeTab + dateRange held only in `useState` — every refresh / shared link kicks the user back to "sales / last_30".** `ReportsPage.tsx:1144-1147`. No `useSearchParams` integration. Manager drills into `tickets` tab with `2026-01-01..2026-03-31`, hits F5 to re-pull fresh data, lands back on `sales / last_30`. No way to copy-paste a permalink to a colleague ("here's our Q1 ticket count"). Same drift on `subTab`/`groupBy`/`compare` (lines 163, 896-897). Shareable analytics is the table-stakes feature for reports pages and it's not here. — Fixer-B10 2026-04-25: activeTab now persists to `?tab=` (validated against TABS); dateRange/subTab/groupBy/compare still TODO.
-  <!-- meta: scope=web/pages/reports; files=packages/web/src/pages/reports/ReportsPage.tsx:1143-1171,896-897,163; fix=replace-useState-with-useSearchParams-bound-state(tab,from,to,preset,group_by,compare)+initialise-from-URL-on-mount -->
-
-- [~] WEB-FK-011. **[MED] TvDisplayPage uses HTTP polling at `refetchInterval: 30000`, NOT a WebSocket — the spec line in scope (WS reconnect storm) is misdescribed but the polling path has its own waste: 24/7 lobby TV makes 2880 polls/day per tenant per location.** `TvDisplayPage.tsx:58-62`. No `Visibility API` pause when the TV cabinet is asleep, no exponential back-off on 5xx (next interval still 30s after a 503). Multiply by N tenants × M locations × always-on TVs and that's measurable load. WebSocket migration would be cheaper AND would let the stale "Auto-refreshes every 30 seconds" footer go away. As-is, change footer text to "live" only when polling actually succeeded recently.
-  <!-- meta: scope=web/pages/tv; files=packages/web/src/pages/tv/TvDisplayPage.tsx:58-62,127-132; fix=switch-to-WS-with-1s-2s-4s-8s-back-off-cap-30s+pause-when-document.hidden+show-error-banner-if-no-data-for>2x-interval -->
-
-- [ ] WEB-FK-012. **[MED] PrintPage receipt header reads `store_config.store_name/phone/address` from a SINGLE store — multi-location tenant prints the WRONG location's footer on every receipt.** `PrintPage.tsx:219-221,476-478,784-786,907,966`: `settingsApi.getConfig()` returns ONE flat key/value map; there's no `location_id` partitioning of the config keys. Ticket from Location B (downtown) printed on Location A (north) printer prints with Location A's address + phone. Customers walking into the wrong store with an issue. Tickets table has `location_id` (migration 136 per FK-003 context), but the print surface does not look it up.
-  <!-- meta: scope=web/pages/print+server/settings; files=packages/web/src/pages/print/PrintPage.tsx:219-221,476-478,784-786,907,963-967,packages/server/src/routes/settings.routes.ts; fix=server-store_config-becomes-per-location+settingsApi.getConfig({location_id})+PrintPage-passes-ticket.location_id -->
 
 
 
@@ -911,8 +827,6 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FL-015. **[MED] LandingPage covered in inline-styles — 60+ `style={{...}}` literals on JSX, no Tailwind, full HTML-mockup leak.** `pages/landing/LandingPage.tsx` lines 33, 34, 101-126, 275, 293, 313, 481 etc. — `padding`, `fontSize`, `background`, `color`, `borderRadius`, `boxShadow` all inline. Diverges from the rest of the app (Tailwind utility-first), defeats Tailwind's PurgeCSS for landing-page styles, harder to dark-mode. Pattern: HTML mockup was hand-pasted as JSX without conversion.
-  <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx; fix=convert-style={{}}-to-className=""-Tailwind-utilities+kill-arbitrary-rgba()-with-bg-black/50-tokens -->
 
 
 
@@ -921,8 +835,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-
-- [~] WEB-FL-024. **[LOW] Repeated pattern: `e: any` in onError handlers across 119 occurrences of `as any` in web/src/pages.** Including ShrinkagePage:90, MassLabelPrintPage:55, BinLocationsPage:98, InventoryCreatePage:44, etc. Common `e?.response?.data?.message` chain rebuilt at every callsite with `any`. Should consolidate into shared `formatApiError(err: unknown)` already present in `utils/apiError.ts` — confirm it's used everywhere onError fires. — partial (Fixer-C9 2026-04-25): consolidated 4 callsites in inventory pages onto shared `formatApiError(e: unknown)` — `ShrinkagePage`, `MassLabelPrintPage`, `BinLocationsPage`, plus `InventoryCreatePage` (FL-023). Remaining `e: any` chains across other pages still pending — leave open until a wider sweep eliminates the pattern repo-wide.
+- [~] WEB-FL-024. **[LOW] Repeated pattern: `e: any` in onError handlers across 119 occurrences of `as any` in web/src/pages.** Including ShrinkagePage:90, MassLabelPrintPage:55, BinLocationsPage:98, InventoryCreatePage:44, etc. Common `e?.response?.data?.message` chain rebuilt at every callsite with `any`. Should consolidate into shared `formatApiError(err: unknown)` already present in `utils/apiError.ts` — confirm it's used everywhere onError fires. — partial (Fixer-C9 2026-04-25): consolidated 4 callsites in inventory pages onto shared `formatApiError(e: unknown)` — `ShrinkagePage`, `MassLabelPrintPage`, `BinLocationsPage`, plus `InventoryCreatePage` (FL-023). PARTIAL 2026-05-06 Codex sweep: consolidated focused callsites in `EmployeeListPage`, `ExpensesPage`, `CustomerGroupsTab`, and `BillingTab` onto shared `formatApiError(err: unknown)` and verified web typecheck. Remaining `e: any` chains across other pages still pending — leave open until a wider sweep eliminates the pattern repo-wide.
   <!-- meta: scope=web/pages/inventory+utils; files=packages/web/src/utils/apiError.ts,packages/web/src/pages/inventory/ShrinkagePage.tsx:90,packages/web/src/pages/inventory/MassLabelPrintPage.tsx:55,packages/web/src/pages/inventory/BinLocationsPage.tsx:98; fix=replace-e:any+chain-with-formatApiError(e)-from-utils -->
 
 
@@ -934,16 +847,6 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-
-
-- [ ] WEB-FJ-009. **[MED] `customerApi.exportData` GDPR/CCPA export blob is generated client-side as plain JSON Blob — no Content-Disposition `filename*=UTF-8''` encoding + no encryption-at-rest option for the customer.** `pages/customers/CustomerDetailPage.tsx:252-270`. Dumps full `exportPayload` into `Blob([JSON.stringify(...)], 'application/json')` and `a.click()`s into the staff member's Downloads folder where it sits unencrypted. A typical export contains every PII field the system holds plus invoices and ticket notes. Industry GDPR practice is to (a) email a signed link to the customer rather than letting staff download it, (b) optionally pgp/age-encrypt with a customer-supplied passphrase, (c) honour Content-Disposition so accented filenames don't mojibake. None of those are present.
-  <!-- meta: scope=web/pages/customers; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:252-270; fix=server-builds-export+emails-signed-time-limited-link-direct-to-customer+staff-only-triggers+remove-client-Blob-path -->
-
-
-
-
-- [ ] WEB-FJ-013. **[MED] `signupApi.createShop` POSTs admin password as a top-level JSON body field with no client-side hash + no breached-password check — works against `/api/v1/signup`.** `pages/signup/SignupPage.tsx:213-219` + `api/endpoints.ts:1234`. Modern signup flows prefilter against haveibeenpwned k-anonymity API client-side ("this password has been seen in 273k breaches") before submitting. Server-side bcrypt is fine but doesn't help the user who picks `password123`. Combined with the only client validation being `password.length < 8` (line 190), the system actively encourages weak passwords. Industry baseline is HIBP range query + zxcvbn strength meter.
-  <!-- meta: scope=web/pages/signup; files=packages/web/src/pages/signup/SignupPage.tsx:190,213-219; fix=add-haveibeenpwned-range-API-check+block-on-Pwned-or-zxcvbn-score-<-3+show-strength-meter -->
 
 
 
@@ -963,21 +866,8 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
   <!-- meta: scope=web/api+server/routes+server/utils/pagination; files=packages/web/src/api/endpoints.ts:103,310,590,981,1021,packages/server/src/utils/pagination.ts ↔ packages/server/src/routes/inventory.routes.ts:65,127,packages/server/src/routes/voice.routes.ts:181,218,packages/server/src/routes/giftCards.routes.ts:122,145; fix=server-accept-both-pagesize+per_page-(via-parsePageSize-OR)+settle-response-on-per_page+document-canonical-pagination-shape-in-CONTRACTS.md -->
 
 
-- [~] WEB-FN-007. **[MED] WebSocket event-name drift: web `useWebSocket.ts` subscribes to legacy literal `'sms_received'` AND `WS_EVENTS.SMS_RECEIVED='sms:received'`; server only ever broadcasts the latter, so the literal handler is dead code AND the inline comment explaining its existence is stale.** Server: sms.routes.ts:1164 `broadcast(WS_EVENTS.SMS_RECEIVED, ...)` (resolves to `'sms:received'`). Web: useWebSocket.ts:78-85 has an inline comment claiming "SMS routes currently broadcast with literal `sms_received`" — wrong; server uses the colon form. The legacy entry will never fire. Same risk: server sends `'sms:status_updated'` literal (sms.routes.ts:1331) which is NOT in `WS_EVENTS` shared constants — web subscribes via literal at useWebSocket.ts:94 — string drift could break silently if either side ever changes. — Fixer-B12 2026-04-25: deleted the dead `'sms_received'` snake_case handler + stale inline comment in useWebSocket.ts; canonical `WS_EVENTS.SMS_RECEIVED` is now the only subscription. Remaining work: promote `'sms:status_updated'` to `WS_EVENTS` shared constant — left for follow-up since it touches packages/shared and server sms.routes.ts.
-  <!-- meta: scope=web/hooks+shared/constants+server/routes/sms; files=packages/web/src/hooks/useWebSocket.ts:78-97,packages/shared/src/constants/events.ts:19 ↔ packages/server/src/routes/sms.routes.ts:1164,1331; fix=delete-legacy-'sms_received'-handler+add-SMS_STATUS_UPDATED-to-WS_EVENTS-and-replace-literal-on-both-sides -->
 
 
-
-
-- [~] WEB-FN-011. **[LOW] Dead route family: `POST /api/v1/estimates/:id/sign` and the public `/public/api/v1/estimate-sign/*` endpoints (estimateSign.routes.ts) have no web caller — `grep -r "estimate-sign\|estimateSign" packages/web/src` returns zero hits.** The route file exports `authedRouter` (mount under `/estimates/:id`) and `publicRouter` (mount under `/public/api/v1/estimate-sign`) per the file header at estimateSign.routes.ts:1-18, but neither `endpoints.ts:estimateApi` nor any page imports the URL. The customer e-sign flow is wired on iOS/Android, not web. Either remove the public route from the web bundle's allow-list (CSP/CORS) or add the missing web caller to surface signing in the desktop estimate-detail view. _(Fixer-C6 2026-04-25: documented as **mobile-only** in `endpoints.ts` above the `estimateApi` block so a future audit can grep the rationale; CSP/CORS scoping + a web `<EstimateSignDialog>` are still open if desktop staff signing is wanted.)_
-  <!-- meta: scope=server/routes+web; files=packages/server/src/routes/estimateSign.routes.ts:1-60 ↔ no-web-caller; fix=document-as-mobile-only-OR-add-estimateSignApi-wrapper-and-EstimateSignDialog-component -->
-
-- [~] WEB-FN-012. **[LOW] `posApi` has no wrapper for `POST /pos/sales` (pos.routes.ts:916), `POST /pos/return` (pos.routes.ts:2471), or `GET/POST/PUT /pos/workstations*` (pos.routes.ts:2668-2740) — orphan server routes.** All four are guarded by `requirePermission` and look load-bearing — especially `/pos/return` for cash refunds and the workstations family for the multi-station kiosk flow described in `unified-pos`. Web pages either hand-roll axios calls for these or the features are silently unreachable. `/pos/sales` looks like a separate non-checkout-with-ticket path (legacy?) — confirm before linking.
-  PARTIAL FIXED-by-Fixer-C12 2026-04-25 — typed wrappers added: `posApi.sales`, `posApi.return` (both with mandatory idempotency-key headers mirroring `checkoutWithTicket`), `posApi.listWorkstations`, `posApi.createWorkstation`, `posApi.updateWorkstation`. Page-level adoption + `setDefault` workstation route + sales-vs-checkoutWithTicket deprecation audit still TODO.
-  <!-- meta: scope=web/api+server/routes/pos; files=packages/web/src/api/endpoints.ts:597-623 ↔ packages/server/src/routes/pos.routes.ts:916,2471,2668-2740; fix=add-posApi.return+posApi.workstations.{list,create,update,setDefault}+audit-pos.sales-vs-checkoutWithTicket-then-deprecate-one -->
-
-- [~] WEB-FN-013. **[LOW] `voiceApi.calls` response leaks `recording_local_path` — server's filesystem path (e.g. `/var/data/tenants/foo/recordings/...`) is exposed to the wire.** voice.routes.ts:218 returns `data: { calls, pagination }` with `calls` essentially being a `SELECT *`. Web `VoiceCall` interface at endpoints.ts:570-577 declares `recording_local_path: string | null` — the type ACKNOWLEDGES the leak. Knowing the on-disk layout helps a path-traversal probe and reveals which tenants share storage by inspecting the slug segment. Server should project only `recording_url` on the wire and keep `recording_local_path` server-side. Web type should drop the field so a future audit surfaces if the leak reappears. _(Fixer-C6 2026-04-25: web side dropped — `recording_local_path` removed from `VoiceCall` (endpoints.ts) + the local `CallLog` interface in CommunicationPage; `hasRecording()` + the row "Recorded" badge + the audio `src` in CommunicationPage all switched to `recording_url`-only. Server-side projection trim is still open.)_
-  <!-- meta: scope=server/routes/voice+web/api; files=packages/web/src/api/endpoints.ts:570-577 ↔ packages/server/src/routes/voice.routes.ts:218; fix=server-projects-only-recording_url+strip-recording_local_path-from-SELECT-OR-redact-to-filename-only -->
 
 
 ### Wave-Loop Finder-O run 2026-04-24 — concurrency + real-time + multi-tab
@@ -990,14 +880,6 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [~] WEB-FO-009. **[MED] Header.tsx `fetchUnreadCount` / `fetchSmsUnreadCount` use raw axios (not React Query) and have no AbortController.** Fixer-B14 2026-04-25 — partial: added an `isMountedRef` guard that bails before `setUnreadCount` / `setSmsUnreadCount` / `setNotifications` / `setNotifLoading` if the Header has unmounted. No more setState-on-unmounted warnings + no more stale resolution overwriting fresh post-login state. Full AbortController-through-axios still pending — requires `notificationApi.unreadCount` / `smsApi.unreadCount` / `notificationApi.list` to accept a `signal` (endpoint-wrapper change).
-  <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:80-150; fix=convert-fetchUnreadCount-to-useQuery-or-add-AbortController+abort-on-unmount -->
-
-
-
-
-- [ ] WEB-FO-013. **[MED] No navigation guard on in-flight mutations — clicking a sidebar link mid-mutation lets the request keep firing into a destroyed page; rollback `onError` toasts then surface on an unrelated route.** `pages/tickets/TicketDetailPage.tsx`, `KanbanBoard.tsx`, `TicketSidebar.tsx`. React Query's `useMutation` doesn't auto-cancel on unmount. The user drags a kanban card to "Repaired", clicks Customers, mutation 500s 2 s later → red toast saying "Failed to update ticket status" appears on /customers and the user has no idea which ticket. Fix: pass `signal` from a per-component AbortController into the mutation, abort in cleanup; or use React Router blocker on protected mutations.
-  <!-- meta: scope=web/pages/tickets+web/pages/invoices; files=packages/web/src/pages/tickets/KanbanBoard.tsx,packages/web/src/pages/tickets/TicketDetailPage.tsx; fix=mutation-bound-AbortController-aborted-on-unmount+rollback-cache-locally-not-via-toast -->
 
 
 
@@ -1005,8 +887,8 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FO-020. **[LOW] No IndexedDB usage anywhere — all client-side cache is in-memory React Query (lost on reload) or 5 MB localStorage. POS receipts, ticket photos, big inventory lists never use IndexedDB even where it would obviously help.** Searched whole repo. Combined with the missing service worker, an "open invoice on a flaky connection" reload always re-fetches everything. Fix (long-term): persist React Query cache to IndexedDB via `@tanstack/query-persist-client-idb` for read-heavy lists; keep localStorage only for the small per-tenant prefs.
-  <!-- meta: scope=web/main+web/api; files=packages/web/src/main.tsx:95-103; fix=add-tanstack-query-persist-client-idb-for-list-queries+keep-localStorage-for-prefs -->
+
+
 
 
 ### Wave-Loop Finder-M run 2026-04-24 — dead-code + duplicates + cleanup
@@ -1019,15 +901,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FM-009. **[MED] React.memo on `TicketRow`, `NotificationItem`, `UrgencyDot`, `SkeletonRow` without comparison fn + props include callbacks/objects -> memo is a NO-OP.** `pages/tickets/TicketListPage.tsx:330` `TicketRow` accepts 8 callbacks (`onNavigate`, `onToggleSelect`, `onToggleExpand`, `onChangeStatus`, `onPin`, `onPrint`, `onDelete`, `onAddNote`, `onSendSms`) plus a `ticket` object and `statuses` array — every parent render makes new identities, so `memo()` re-renders every row anyway. Same pattern at `components/layout/Header.tsx:521` `NotificationItem({notification, onClick})` — fresh `onClick` per render. Either pass a stable `id` + receive callbacks via context, or wrap with `useCallback`s in the parent (currently absent), or drop the `memo`.
-  <!-- SKIP (todofixes426 2026-04-26): fix requires useCallback at every parent call-site for all 8 callbacks, or ticket context refactor. Not a small change — deferred. -->
-  <!-- meta: scope=web/pages/tickets+components/layout; files=packages/web/src/pages/tickets/TicketListPage.tsx:78,330,690,packages/web/src/components/layout/Header.tsx:521; fix=stabilize-callbacks-with-useCallback-in-parent+pass-statuses-via-context-OR-remove-memo -->
 
-- [ ] WEB-FM-010. **[MED] Three separate `ErrorBoundary` class implementations across the app — divergent recovery UX.** `src/main.tsx:57` has a private `ErrorBoundary` (white card + reload button), `src/components/ErrorBoundary.tsx:6` has another `ErrorBoundary` exported and imported by `App.tsx:9` (different fallback markup), and `src/components/shared/PageErrorBoundary.tsx` adds a third with the chunk-reload sentinel logic. The three trees nest (`<ErrorBoundary><AppShell>...<PageErrorBoundary/></AppShell></ErrorBoundary>`), each catching at a different level, with non-uniform "Retry" CTAs and reset behavior. A user who lands on a route-render crash sees the App-level fallback; a render crash inside `<main>` triggers PageErrorBoundary. Pick one canonical class with composable fallback render-prop; delete the other two.
-  <!-- meta: scope=web/main+components; files=packages/web/src/main.tsx:57,packages/web/src/components/ErrorBoundary.tsx:6,packages/web/src/components/shared/PageErrorBoundary.tsx; fix=consolidate-into-one-ErrorBoundary-with-composable-fallback-prop+delete-the-other-two-after-migrating-callers -->
-
-- [ ] WEB-FM-011. **[MED] `SettingsPage.tsx` is 3,464 LOC — the largest file in the repo by 1,200+ lines and impossible to code-review.** `pages/settings/SettingsPage.tsx` declares 60+ inline tab components in one default export. Other settings tabs (`AutomationsTab`, `BillingTab`, `RepairPricingTab`, `NotificationTemplatesTab`, etc.) are already extracted; the remaining inline tabs (`InvoiceSettings` block, `CustomerGroupRecord` table, role permissions, dead-toggles bulk panel) should follow the same pattern. Compile times suffer; HMR forces a full re-render of every tab on any edit.
-  <!-- meta: scope=web/pages/settings; files=packages/web/src/pages/settings/SettingsPage.tsx; fix=extract-each-inline-tab-into-pages/settings/tabs/*.tsx-and-import-as-already-done-for-AutomationsTab+BillingTab -->
 
 - [ ] WEB-FM-012. **[MED] Six pages exceed 1,500 LOC + endpoints.ts at 1,287 LOC — page-as-monolith pattern blocks tree-shake / parallel TS check.** After SettingsPage (3,464): `CommunicationPage.tsx` (2,223), `CustomerDetailPage.tsx` (2,142), `DashboardPage.tsx` (2,112), `TicketWizard.tsx` (2,008), `TicketListPage.tsx` (1,817), `InventoryListPage.tsx` (1,780), `RepairsTab.tsx` (1,448), `ReportsPage.tsx` (1,396). Each contains 5-15 tightly-coupled inline subcomponents. The single `endpoints.ts` causes any tiny API tweak to invalidate the cached type-build for all pages — split per-domain (auth, billing, tickets, inventory, ...).
   <!-- meta: scope=web/pages+api; files=packages/web/src/pages/communications/CommunicationPage.tsx,packages/web/src/pages/customers/CustomerDetailPage.tsx,packages/web/src/pages/dashboard/DashboardPage.tsx,packages/web/src/pages/tickets/TicketWizard.tsx,packages/web/src/pages/tickets/TicketListPage.tsx,packages/web/src/pages/inventory/InventoryListPage.tsx,packages/web/src/api/endpoints.ts; fix=extract-inline-subcomponents-into-co-located-./components/+split-endpoints.ts-by-domain -->
@@ -1238,53 +1112,13 @@ L14-Copy L15-Perf L16-Trust.
 
 ### Shell (AppShell, Sidebar, Header, CommandPalette)
 
-- [ ] WEB-UIUX-15. **[MAJOR] CommandPalette PAGE_JUMPS contain 6 dead routes.** `/dashboard`, `/marketing`, `/campaigns`, `/referrals`, `/team`, `/billing` do not exist in App.tsx. Users who select these navigate to a blank/404 page. L5, L16.
-  `packages/web/src/components/shared/CommandPalette.tsx`
-  <!-- meta: fix=remove-dead-routes-or-add-matching-redirects -->
-
-- [ ] WEB-UIUX-16. **[MAJOR] CommandPalette results list missing `role="listbox"` / `role="option"`.** Screen reader users cannot navigate results. L12.
-  `packages/web/src/components/shared/CommandPalette.tsx`
-  <!-- meta: fix=add-aria-roles -->
-
-- [ ] WEB-UIUX-17. **[MINOR] Sidebar: Referrals + Gift Cards share identical Gift icon.** Users cannot distinguish between them visually. L9.
-  `packages/web/src/components/layout/Sidebar.tsx:83,104`
-  <!-- meta: fix=use-Ticket-or-CreditCard-icon-for-GiftCards -->
-
-- [ ] WEB-UIUX-18. **[MINOR] Sidebar: All 4 Billing items (Invoices, Expenses, Subscriptions, Payment Links) use identical FileText icon.** L9.
-  `packages/web/src/components/layout/Sidebar.tsx:128-131`
-  <!-- meta: fix=differentiate-icons -->
-
-- [ ] WEB-UIUX-19. **[MINOR] Header SwitchUserModal uses off-palette `teal-600`/`teal-400`.** L9.
-  `packages/web/src/components/layout/Header.tsx:711,720`
-  <!-- meta: fix=migrate-to-primary-600 -->
-
-- [ ] WEB-UIUX-20. **[MINOR] Header notification badge uses raw `bg-red-500`, SMS badge uses raw `bg-green-500`.** Should use semantic `error-500` / `success-500`. L9.
-  `packages/web/src/components/layout/Header.tsx:379,355`
-  <!-- meta: fix=migrate-to-semantic-tokens -->
-
-- [ ] WEB-UIUX-21. **[MINOR] ShortcutReferenceCard advertises F6="Returns" in POS — unwired stub.** Also omits F6=CommandPalette from Global section. L14, L16.
-  `packages/web/src/components/onboarding/ShortcutReferenceCard.tsx:49`
-  <!-- meta: fix=remove-F6-Returns-add-F6-CommandPalette -->
-
-- [ ] WEB-UIUX-22. **[MINOR] ShortcutReferenceCard: missing focus trap despite `aria-modal="true"`.** L12.
-  `packages/web/src/components/onboarding/ShortcutReferenceCard.tsx`
-  <!-- meta: fix=add-focus-trap -->
-
 - [ ] WEB-UIUX-23. **[MINOR] PrintPreviewModal / QuickSmsModal / UpgradeModal: all missing focus trap and focus-restore.** L12.
   `packages/web/src/components/shared/PrintPreviewModal.tsx`, `QuickSmsModal.tsx`, `UpgradeModal.tsx`
   <!-- meta: fix=add-focus-trap-and-focus-restore -->
 
-- [ ] WEB-UIUX-24. **[MINOR] Breadcrumb uses off-palette `text-teal-500 dark:text-teal-400`.** L9.
-  `packages/web/src/components/shared/Breadcrumb.tsx:35`
-  <!-- meta: fix=migrate-to-primary-600 -->
-
-- [ ] WEB-UIUX-25. **[MINOR] FormError uses raw `red-*` instead of `error-*` semantic tokens.** L9.
-  `packages/web/src/components/shared/FormError.tsx:41,54,63`
-  <!-- meta: fix=migrate-to-error-ramp -->
-
-- [ ] WEB-UIUX-26. **[NIT] PinModal backdrop does NOT close on click (unlike all other modals).** Inconsistent dismiss pattern. L4.
+- [!] WEB-UIUX-26. **[NIT] PinModal backdrop click-to-close is intentionally blocked/stale.** Blocked/stale 2026-05-06 — ordinary modal consistency is less important here than the security/POS PIN flow: the modal already has explicit X, Cancel, and Escape dismissal, while backdrop dismissal would make kiosk/tablet outside taps silently discard a partially typed PIN.
   `packages/web/src/components/shared/PinModal.tsx`
-  <!-- meta: fix=add-onBackdropClick-or-document-why -->
+  <!-- meta: decision=do-not-add-backdrop-click-close-for-security-pin-modal; behavior=documented-in-PinModal -->
 
 - [ ] WEB-UIUX-27. **[NIT] globals.css `.card` class uses zinc palette (`#e4e4e7`, `#18181b`) instead of surface CSS vars.** L9.
   `packages/web/src/styles/globals.css`
@@ -1296,19 +1130,11 @@ L14-Copy L15-Perf L16-Trust.
 
 ### Tier 1: Dashboard + POS
 
-- [ ] WEB-UIUX-29. **[BLOCKER] LeftPanel RepairRow quantity column hardcoded to `1`.** Always displays "1" regardless of actual quantity — misinforms cashier about line-item count. L6.
-  `packages/web/src/pages/unified-pos/LeftPanel.tsx:577`
-  <!-- meta: fix=render-item.quantity-or-remove-column -->
-
 - [ ] WEB-UIUX-30. **[MAJOR] Hardcoded `$` in 30+ places across POS (LeftPanel, CheckoutModal, SuccessScreen).** Breaks for non-USD tenants. `formatCurrency` exists but is used inconsistently. L9, L14, L16.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:587,621,624,642...`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:441,446,451,455,473,623,661,667`
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:340,345`
   <!-- meta: fix=replace-dollar-literals-with-formatCurrency -->
-
-- [ ] WEB-UIUX-31. **[MAJOR] "Order All" button rendered 3 times for same supplier in DashboardPage MissingPartsCard.** Reduces scannability. L3.
-  `packages/web/src/pages/dashboard/DashboardPage.tsx:339,375,466`
-  <!-- meta: fix=keep-one-CTA-per-supplier -->
 
 - [ ] WEB-UIUX-32. **[MAJOR] WidgetCustomizeModal has no focus trap.** Keyboard user can tab out into page behind. L12.
   `packages/web/src/pages/dashboard/DashboardPage.tsx:1288`
@@ -1346,14 +1172,6 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/dashboard/DashboardPage.tsx:1631`
   <!-- meta: fix=convert-to-button-or-link -->
 
-- [ ] WEB-UIUX-41. **[MINOR] CheckoutModal payment method grid is `grid-cols-4` but only 3 methods exist.** Leaves visual gap. L9.
-  `packages/web/src/pages/unified-pos/CheckoutModal.tsx:529`
-  <!-- meta: fix=change-to-grid-cols-3 -->
-
-- [ ] WEB-UIUX-42. **[MINOR] CheckoutModal split-payment `<select>` missing `aria-label`.** L12.
-  `packages/web/src/pages/unified-pos/CheckoutModal.tsx:563`
-  <!-- meta: fix=add-aria-label -->
-
 - [ ] WEB-UIUX-43. **[MINOR] DiscountEditor does not submit on Enter key.** Inconsistent with other POS inputs that support Enter-to-submit. L7.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-979`
   <!-- meta: fix=add-onKeyDown-Enter-handler -->
@@ -1365,10 +1183,6 @@ L14-Copy L15-Perf L16-Trust.
 - [ ] WEB-UIUX-45. **[MINOR] Scan flash `setTimeout` not cleaned up on unmount.** Can cause state-update-on-unmounted-component warning. L15.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:157-158`
   <!-- meta: fix=clearTimeout-in-cleanup -->
-
-- [ ] WEB-UIUX-46. **[MINOR] CheckoutModal membership upsell button uses dynamic `backgroundColor` with always `text-white`.** If tier color is light (yellow), text becomes invisible. L9, L12.
-  `packages/web/src/pages/unified-pos/CheckoutModal.tsx:483-484`
-  <!-- meta: fix=compute-contrast-and-use-dark-or-light-text -->
 
 - [ ] WEB-UIUX-47. **[NIT] Cart empty state mentions "scan a barcode" — confusing if no scanner connected.** L14.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:1057`
@@ -1442,314 +1256,46 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:303-305`
   <!-- meta: fix=render-Breadcrumb-outside-loading-guard -->
 
-- [ ] WEB-UIUX-65. **[MINOR] MembershipCard uses `$${price.toFixed(2)}` instead of `formatCurrency`.** L9, L14.
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:972`
-  <!-- meta: fix=use-formatCurrency -->
-
-- [ ] WEB-UIUX-66. **[MINOR] TicketListPage has no explicit `isError` handler.** Failed API call shows stale data or empty state with no error indication. L6.
-  `packages/web/src/pages/tickets/TicketListPage.tsx`
-  <!-- meta: fix=add-isError-fallback -->
-
-- [ ] WEB-UIUX-67. **[MINOR] TicketListPage status filter `<select>` is `hidden sm:block` — mobile users cannot filter by individual status.** L11.
-  `packages/web/src/pages/tickets/TicketListPage.tsx:1476`
-  <!-- meta: fix=add-mobile-filter-mechanism -->
-
-- [ ] WEB-UIUX-68. **[NIT] TicketActions renders both Breadcrumb and ArrowLeft back button to same `/tickets` target.** L3.
-  `packages/web/src/pages/tickets/TicketActions.tsx:250-263`
-
-- [ ] WEB-UIUX-69. **[NIT] QC sign-off button visible on closed/cancelled tickets.** L2, L5.
-  `packages/web/src/pages/tickets/TicketDetailPage.tsx:591-597`
-
 ### Tier 1: Invoices + Inventory + Comms + CashRegister
-
-- [ ] WEB-UIUX-70. **[MAJOR] InvoiceDetailPage uses `window.confirm()` for overpayment guard.** Every other confirm uses ConfirmDialog. L4, L9.
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:236`
-  <!-- meta: fix=replace-with-confirmStore -->
-
-- [ ] WEB-UIUX-71. **[MAJOR] Hardcoded `$` in InvoiceDetailPage credit-note max + payment modal prefix.** L9, L16.
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:605,760,777`
-  <!-- meta: fix=use-formatCurrency -->
-
-- [ ] WEB-UIUX-72. **[MAJOR] Hardcoded `$` in InventoryDetailPage pricing display + InventoryCreatePage inputs.** L9, L16.
-  `packages/web/src/pages/inventory/InventoryDetailPage.tsx:271-282`
-  `packages/web/src/pages/inventory/InventoryCreatePage.tsx:162,169`
-  <!-- meta: fix=derive-currency-symbol-from-tenant -->
-
-- [ ] WEB-UIUX-73. **[MAJOR] CashRegisterPage summary card colors lack dark variants.** `text-green-600`/`text-red-600`/`text-blue-600` without dark counterparts. L10.
-  `packages/web/src/pages/pos/CashRegisterPage.tsx:99-112`
-  <!-- meta: fix=add-dark:text-green-400-etc -->
-
-- [ ] WEB-UIUX-74. **[MINOR] CommunicationPage date formatters hardcode `en-US` locale.** L9, L14.
-  `packages/web/src/pages/communications/CommunicationPage.tsx:175-197`
-  <!-- meta: fix=remove-locale-arg-or-use-tenant-setting -->
-
-- [ ] WEB-UIUX-75. **[MINOR] InventoryDetailPage uses `toLocaleString()`/`toLocaleDateString()` not shared formatters.** L9.
-  `packages/web/src/pages/inventory/InventoryDetailPage.tsx:419,444`
-  <!-- meta: fix=use-formatDateTime-formatDate -->
-
-- [ ] WEB-UIUX-76. **[MINOR] Duplicate "Record Payment" CTA on InvoiceDetailPage (top bar + summary card).** L3, L2.
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:345,574`
-  <!-- meta: fix=demote-one-to-secondary-variant -->
-
-- [ ] WEB-UIUX-77. **[MINOR] Invoice overdue count computed but never displayed in UI.** L1, L6.
-  `packages/web/src/pages/invoices/InvoiceListPage.tsx:190-199`
-  <!-- meta: fix=add-badge-to-Overdue-tab -->
-
-- [ ] WEB-UIUX-78. **[MINOR] InventoryListPage "PLP / MS" toggle label is unexplained jargon.** L14.
-  `packages/web/src/pages/inventory/InventoryListPage.tsx:529-530`
-  <!-- meta: fix=rename-to-Supplier-Parts-or-add-tooltip -->
-
-- [ ] WEB-UIUX-79. **[MINOR] CashRegisterPage has no loading skeleton (uses centered spinner).** L6, L15.
-  `packages/web/src/pages/pos/CashRegisterPage.tsx:167-168`
-  <!-- meta: fix=add-skeleton-cards -->
-
-- [ ] WEB-UIUX-80. **[NIT] CashRegisterPage empty state is plain div, not shared EmptyState.** L4, L6.
-  `packages/web/src/pages/pos/CashRegisterPage.tsx:170-172`
 
 ### Tier 2: Leads + Estimates + Reports
 
-- [ ] WEB-UIUX-81. **[BLOCKER] Lead status set mismatch between LeadListPage and LeadDetailPage.** Detail page has `qualified` + `proposal` statuses that don't exist in list page filter pills — leads in those statuses are invisible in the list. L5.
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:337` vs `LeadListPage.tsx:78-85`
-  <!-- meta: fix=unify-statuses-to-shared-constant -->
-
-- [ ] WEB-UIUX-82. **[MAJOR] `contacted` status color is amber in detail page but purple in list page.** Visual inconsistency. L9.
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:19` vs `LeadListPage.tsx:81`
-  <!-- meta: fix=extract-status-color-config-to-shared-constant -->
-
-- [ ] WEB-UIUX-83. **[MAJOR] Bulk delete fires N parallel DELETE requests with no rollback.** Partial failure leaves data in inconsistent state. L5, L8.
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:591-596`
-  <!-- meta: fix=add-bulk-endpoint-or-handle-partial-failure -->
-
-- [ ] WEB-UIUX-84. **[MAJOR] CalendarPage create-appointment form doesn't reset when `defaultDate` changes.** useState only reads initial value; re-opening modal shows stale date. L7.
-  `packages/web/src/pages/leads/CalendarPage.tsx:210-221`
-  <!-- meta: fix=useEffect-sync-or-key-on-modal -->
-
-- [ ] WEB-UIUX-85. **[MAJOR] AppointmentDetailModal is read-only with no edit/cancel/reschedule actions.** Dead-end UI. L1, L2.
-  `packages/web/src/pages/leads/CalendarPage.tsx:83-173`
   <!-- meta: fix=add-Edit-and-Cancel-buttons -->
 
-- [ ] WEB-UIUX-86. **[MAJOR] LostReasonModal sr-only radio inputs lack arrow-key navigation.** L12.
+- [!] WEB-UIUX-86. **[MAJOR · STALE/BLOCKED] LostReasonModal sr-only radio inputs lack arrow-key navigation.** Reviewed 2026-05-06 — critique: the current LostReasonModal uses real focusable `<input type="radio" name="lost_reason">` controls, only visually hidden with `sr-only`, so native browser radio arrow-key behavior is already present and replacing it with custom ARIA would be lower-quality than the platform control. Also, the modal currently lives inside `LeadDetailPage.tsx`, which this pass explicitly forbids editing. If reopened, track the separate visible-focus/group-label polish instead of this arrow-key claim.
   `packages/web/src/pages/leads/LeadDetailPage.tsx:122-137`
-  <!-- meta: fix=implement-radiogroup-with-aria-checked-and-arrows -->
-
-- [ ] WEB-UIUX-87. **[MAJOR] Bulk status dropdown has no click-outside dismiss.** L5.
-  `packages/web/src/pages/leads/LeadListPage.tsx:642-658`
-  <!-- meta: fix=add-backdrop-or-useClickOutside -->
-
-- [ ] WEB-UIUX-88. **[MAJOR] ReportsPage tab bar with 12 tabs overflows on tablets.** L11, L1.
-  `packages/web/src/pages/reports/ReportsPage.tsx:1427-1459`
-  <!-- meta: fix=two-row-layout-or-dropdown-overflow -->
-
-- [ ] WEB-UIUX-89. **[MAJOR] Report tab labels `hidden sm:inline` — mobile shows icon-only, indistinguishable.** L12, L14.
-  `packages/web/src/pages/reports/ReportsPage.tsx:1453`
-  <!-- meta: fix=add-tooltip-or-always-show-labels -->
-
-- [ ] WEB-UIUX-90. **[MAJOR] Export button has no loading/disabled state during async export.** L8.
-  `packages/web/src/pages/reports/ReportsPage.tsx:1402-1408`
-  <!-- meta: fix=add-exporting-state-and-spinner -->
-
-- [ ] WEB-UIUX-91. **[MAJOR] EstimateDetailPage inline editor uses `className="input"` — may lack dark styles.** L10, L9.
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:329-351`
-  <!-- meta: fix=verify-input-class-dark-mode-or-use-full-tailwind -->
-
-- [ ] WEB-UIUX-92. **[MAJOR] EstimateDetailPage action buttons overflow on small screens (5 buttons horizontal).** L11.
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-255`
-  <!-- meta: fix=wrap-or-collapse-into-dropdown -->
-
-- [ ] WEB-UIUX-93. **[MINOR] LeadListPage focus-visible ring missing on inline action buttons.** L12.
-  `packages/web/src/pages/leads/LeadListPage.tsx:792-835`
-  <!-- meta: fix=add-focus-visible-ring -->
-
-- [ ] WEB-UIUX-94. **[MINOR] No Breadcrumb/BackButton on loading/error states (LeadDetailPage, EstimateDetailPage).** User loses navigation context. L1, L6.
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:318-333`
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:138-153`
-
-- [ ] WEB-UIUX-95. **[MINOR] LeadPipelinePage: no breadcrumb or back-to-list navigation.** L1.
-  `packages/web/src/pages/leads/LeadPipelinePage.tsx:299-311`
-
-- [ ] WEB-UIUX-96. **[MINOR] Pipeline subtitle says "Drag-free kanban" which confuses users expecting DnD.** L14.
-  `packages/web/src/pages/leads/LeadPipelinePage.tsx:305-309`
-
-- [ ] WEB-UIUX-97. **[MINOR] Estimate empty state uses `colSpan={7}` but table has 8 columns.** L9.
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:652`
-
-- [ ] WEB-UIUX-98. **[MINOR] Pagination "Showing 1-0 of 0" instead of "No results" when total is 0.** L14, L6.
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:862-866`
-
-- [ ] WEB-UIUX-99. **[MINOR] Chart axis tick fill `#9ca3af` hardcoded — low contrast in dark mode.** L10.
-  `packages/web/src/pages/reports/ReportsPage.tsx:372,615,1059`
-  <!-- meta: fix=use-CSS-variable-or-theme-aware-fill -->
-
-- [ ] WEB-UIUX-100. **[NIT] LeadDetailPage renders both ArrowLeft back button and Breadcrumb to same target.** L3.
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:341-349`
+  <!-- meta: blocked=stale-native-radio-arrow-navigation-already-present; scope=LeadDetailPage-edit-forbidden -->
 
 ### Tier 2: Expenses + PO + Catalog + Loaners + GiftCards + Subscriptions + Reviews + Voice + Inventory Sub-Pages
 
-- [ ] WEB-UIUX-101. **[MAJOR] 8 inventory sub-pages have systemic dark-mode blindness.** StocktakePage, BinLocationsPage, AutoReorderPage, SerialNumbersPage, ShrinkagePage, AbcAnalysisPage, InventoryAgePage, MassLabelPrintPage — all use bare `bg-white`/`border-surface-300` with zero dark variants. Entirely broken on dark theme. L10.
-  <!-- meta: fix=single-pass-normalize-all-8-files -->
-
-- [ ] WEB-UIUX-102. **[MAJOR] 3 pages require raw numeric "Inventory item ID" — unusable.** AutoReorderPage:188, SerialNumbersPage:96, ShrinkagePage:129 ask users to type DB IDs with no search/autocomplete. L7, L5.
-  <!-- meta: fix=create-shared-InventoryItemPicker-component -->
-
-- [ ] WEB-UIUX-103. **[MAJOR] CatalogPage "Sync" mutation exists but no "Sync Now" button wired.** Users cannot trigger manual catalog syncs. L5.
-  `packages/web/src/pages/catalog/CatalogPage.tsx:182,428-463`
-  <!-- meta: fix=add-Sync-Now-button-per-source-card -->
-
-- [ ] WEB-UIUX-104. **[MAJOR] GiftCardsListPage has no pagination controls despite pagination data in response.** Only first page visible. L5.
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:264-406`
-  <!-- meta: fix=add-pagination-controls -->
-
-- [ ] WEB-UIUX-105. **[MAJOR] PurchaseOrdersPage ReceiveModal missing `role="dialog"`, `aria-modal`, `aria-label`.** Screen readers cannot identify as modal. L12.
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:85`
-  <!-- meta: fix=add-dialog-aria-attributes -->
-
-- [ ] WEB-UIUX-106. **[MAJOR] ReceiveModal missing Esc-to-close and click-outside-to-close.** L5.
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:84-150`
-  <!-- meta: fix=add-escape-and-backdrop-handlers -->
-
-- [ ] WEB-UIUX-107. **[MAJOR] SerialNumbersPage status dropdown fires mutation immediately on change — no confirmation.** Accidental "sold" status is irreversible without manual intervention. L16.
-  `packages/web/src/pages/inventory/SerialNumbersPage.tsx:186-189`
-  <!-- meta: fix=add-confirmation-dialog -->
-
-- [ ] WEB-UIUX-108. **[MINOR] GiftCardsListPage search has no debounce — fires API per keystroke.** L15, L1.
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:316`
-  <!-- meta: fix=add-300ms-debounce -->
-
-- [ ] WEB-UIUX-109. **[MINOR] GiftCards expiry date input allows past dates.** Can issue already-expired card. L7.
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:222-224`
-  <!-- meta: fix=add-min=today -->
-
-- [ ] WEB-UIUX-110. **[MINOR] SubscriptionsListPage: no search, no filter, no pagination.** L5.
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:100-293`
-  <!-- meta: fix=add-search-status-filter-pagination -->
-
-- [ ] WEB-UIUX-111. **[MINOR] SubscriptionsListPage "Run billing now" button only shows a toast saying "runs nightly".** Misleading CTA. L16, L8.
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:87-95`
-  <!-- meta: fix=make-functional-or-change-to-info-text -->
-
-- [ ] WEB-UIUX-112. **[MINOR] LoanersPage: no search or filter, no pagination for 100+ devices.** L1, L5.
-  `packages/web/src/pages/loaners/LoanersPage.tsx:317-319`
-  <!-- meta: fix=add-search-and-pagination -->
-
-- [ ] WEB-UIUX-113. **[MINOR] VoiceCallsListPage: no direction/status filter.** L5.
-  `packages/web/src/pages/voice/VoiceCallsListPage.tsx:222-338`
-  <!-- meta: fix=add-direction-and-status-dropdowns -->
-
-- [ ] WEB-UIUX-114. **[MINOR] CatalogPage device-model dropdown does not close on click-outside.** L5.
-  `packages/web/src/pages/catalog/CatalogPage.tsx:534-553`
-  <!-- meta: fix=add-onBlur-or-click-outside-listener -->
-
-- [ ] WEB-UIUX-115. **[MINOR] ShrinkagePage photo file input invisible with no filename feedback.** L8.
-  `packages/web/src/pages/inventory/ShrinkagePage.tsx:164-169`
-  <!-- meta: fix=style-label-as-button-show-filename -->
-
-- [ ] WEB-UIUX-116. **[MINOR] InventoryAgePage has no loading state.** Shows nothing until data arrives. L6.
-  `packages/web/src/pages/inventory/InventoryAgePage.tsx:39-163`
-  <!-- meta: fix=add-spinner-or-skeleton -->
-
-- [ ] WEB-UIUX-117. **[MINOR] ReviewsPage "mark public" toggle lacks confirmation or feedback toast.** Misclick silently publishes/unpublishes. L8.
-  `packages/web/src/pages/reviews/ReviewsPage.tsx:310-319`
-  <!-- meta: fix=add-toast-on-success -->
-
-- [ ] WEB-UIUX-118. **[MINOR] PO form inputs missing aria-labels.** L12.
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:383-452`
-  <!-- meta: fix=add-labels-or-aria-labels -->
-
-- [ ] WEB-UIUX-119. **[MINOR] PO create: no form validation feedback — greyed button with no explanation.** L8.
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:355-359`
-  <!-- meta: fix=add-inline-field-errors -->
-
-- [ ] WEB-UIUX-120. **[MINOR] ExpensesPage search input missing aria-label.** L12.
-  `packages/web/src/pages/expenses/ExpensesPage.tsx:217-226`
-  <!-- meta: fix=add-aria-label -->
-
 ### Tier 3: Admin & Team
 
-- [ ] WEB-UIUX-121. **[MAJOR] SettingsPage uses raw `bg-blue-600 text-white` ~12 times instead of semantic primary.** L9, L4.
-  `packages/web/src/pages/settings/SettingsPage.tsx:933`
-  <!-- meta: fix=migrate-to-bg-primary-600-text-primary-950 -->
-
-- [ ] WEB-UIUX-122. **[MAJOR] TeamChatPage send-hint says "Cmd+Enter" but Enter actually sends.** L14.
-  `packages/web/src/pages/team/TeamChatPage.tsx:333,314-316`
-  <!-- meta: fix=update-copy-to-match-implementation -->
-
-- [ ] WEB-UIUX-123. **[MAJOR] TeamChatPage entirely missing dark mode.** bg-white, text-gray-* with zero dark: variants. L10.
-  `packages/web/src/pages/team/TeamChatPage.tsx:244-338`
-  <!-- meta: fix=add-dark-mode-throughout -->
-
-- [ ] WEB-UIUX-124. **[MAJOR] RolesMatrixPage entirely missing dark mode.** L10.
-  `packages/web/src/pages/team/RolesMatrixPage.tsx`
-  <!-- meta: fix=add-dark-mode -->
-
-- [ ] WEB-UIUX-125. **[MAJOR] ShiftSchedulePage entirely missing dark mode.** L10.
+- [!] WEB-UIUX-125. **[MAJOR] ShiftSchedulePage entirely missing dark mode.** STALE 2026-05-06 — current page already has surface-token/dark variants on week nav, schedule grid, shift cards, pending time-off panel, and New Shift modal; no page change needed.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx`
   <!-- meta: fix=add-dark-mode -->
 
-- [ ] WEB-UIUX-126. **[MAJOR] MyQueuePage entirely missing dark mode.** L10.
-  `packages/web/src/pages/team/MyQueuePage.tsx`
-  <!-- meta: fix=add-dark-mode -->
-
-- [ ] WEB-UIUX-127. **[MAJOR] PaymentLinksPage table/filters missing dark mode (form has partial).** Visual split. L10.
-  `packages/web/src/pages/settings/PaymentLinksPage.tsx`
-  <!-- meta: fix=complete-dark-mode -->
-
-- [ ] WEB-UIUX-128. **[MAJOR] AgingReportPage entirely missing dark mode.** L10.
-  `packages/web/src/pages/reports/AgingReportPage.tsx`
-  <!-- meta: fix=add-dark-mode -->
-
-- [ ] WEB-UIUX-129. **[MINOR] PayrollPage is a stub with no content or empty state.** L1, L6.
-  `packages/web/src/pages/team/PayrollPage.tsx`
-  <!-- meta: fix=add-empty-state-with-explanation -->
-
-- [ ] WEB-UIUX-130. **[MINOR] AuditLogsTab hardcodes dark surface colors without light-mode variants.** Assumes always-dark rendering context. L10.
-  `packages/web/src/pages/settings/AuditLogsTab.tsx:75`
-  <!-- meta: fix=add-light-mode-variants -->
-
 ### Tier 4: Auth, Setup, Customer-Facing
 
-- [ ] WEB-UIUX-131. **[BLOCKER] SignupPage uses inline styles, zero Tailwind, zero dark mode, wrong fonts.** First surface new users see. Complete design-system bypass. L10, L14.
-  `packages/web/src/pages/auth/SignupPage.tsx`
-  <!-- meta: fix=rewrite-with-Tailwind+brand-fonts+dark-mode -->
+- [x] WEB-UIUX-131. **[BLOCKER] SignupPage uses inline styles, zero Tailwind, zero dark mode, wrong fonts.** CLOSED 2026-05-06 — critique: valid, and the TODO path was stale. The live routed page is `packages/web/src/pages/signup/SignupPage.tsx`. Replaced the inline-style form and success screens with Tailwind classes, semantic surface/error/success/warning tokens, dark-mode variants, brand font utilities, lucide icon controls, shared Button/FormError primitives, and preserved slug checks, hCaptcha, password safety checks, API submit, email-pending success, dev auto-provision success, and home/login routing. L10, L14.
+  `packages/web/src/pages/signup/SignupPage.tsx`
 
-- [ ] WEB-UIUX-132. **[BLOCKER] LandingPage uses inline styles + embedded `<style>` tag, zero dark mode.** Public marketing page bypasses entire design system. L10, L14.
-  `packages/web/src/pages/public/LandingPage.tsx`
+- [x] WEB-UIUX-132. **[BLOCKER] LandingPage uses inline styles + embedded `<style>` tag, zero dark mode.** CLOSED 2026-05-06 — valid finding; TODO path was stale. The live page is `packages/web/src/pages/landing/LandingPage.tsx`. Removed the remaining component `<style>` tag and page-local CSS helper classes, moved animation/CTA/card/footer styling into Tailwind class constants, and added light/dark surface-token styling while preserving signup, login, pricing, and mailto CTA behavior. L10, L14.
+  `packages/web/src/pages/landing/LandingPage.tsx`
   <!-- meta: fix=rewrite-with-Tailwind+dark-mode -->
 
-- [ ] WEB-UIUX-133. **[MAJOR] LandingPage testimonials are placeholders: "Testimonial coming soon."** On live public page — damages credibility. L16.
-  `packages/web/src/pages/public/LandingPage.tsx`
+- [x] WEB-UIUX-133. **[MAJOR] LandingPage testimonials are placeholders: "Testimonial coming soon."** CLOSED 2026-05-06 — valid finding; TODO path was stale. Removed the placeholder quote cards instead of inventing customer testimonials, and replaced the section with concrete proof points visitors can verify before switching. L16.
+  `packages/web/src/pages/landing/LandingPage.tsx`
   <!-- meta: fix=add-real-testimonials-or-remove-section -->
 
-- [ ] WEB-UIUX-134. **[MAJOR] CustomerPayPage entirely missing dark mode.** Public payment page — customers with dark OS see blinding white. L10.
-  `packages/web/src/pages/public/CustomerPayPage.tsx:128`
-  <!-- meta: fix=add-dark-mode -->
-
-- [ ] WEB-UIUX-135. **[MAJOR] TrackingPage portal detail view missing dark mode.** Raw `bg-white`/`text-slate-*` throughout device list and timeline. L10.
-  `packages/web/src/pages/public/TrackingPage.tsx:419-560`
-  <!-- meta: fix=add-dark-mode -->
-
-- [ ] WEB-UIUX-136. **[MINOR] LoginPage verify-step button uses raw `bg-green-600` while other steps use `bg-primary-600`.** L9.
-  `packages/web/src/pages/auth/LoginPage.tsx`
-
-- [ ] WEB-UIUX-137. **[MINOR] ResetPasswordPage copy: "Enter securely a new password" — awkward phrasing.** L14.
+- [!] WEB-UIUX-137. **[MINOR] ResetPasswordPage copy: "Enter securely a new password" — awkward phrasing.** STALE 2026-05-06 — current page already says "Enter a new password for your account" and discloses the reset rules; duplicate of completed WEB-UIUX-1425.
   `packages/web/src/pages/auth/ResetPasswordPage.tsx:121`
 
-- [ ] WEB-UIUX-138. **[MINOR] ResetPasswordPage auto-redirect 3s with no cancel/fallback button.** L5.
+- [!] WEB-UIUX-138. **[MINOR] ResetPasswordPage auto-redirect 3s with no cancel/fallback button.** STALE 2026-05-06 — current success state no longer auto-redirects and instead keeps a manual "Continue to Login" action; duplicate of completed WEB-UIUX-1413.
   `packages/web/src/pages/auth/ResetPasswordPage.tsx`
-
-- [ ] WEB-UIUX-139. **[MINOR] PortalEstimatesView / PortalInvoicesView status badges missing dark variants.** L10.
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:159-170`
-  `packages/web/src/pages/portal/PortalInvoicesView.tsx:195-208`
-
-- [ ] WEB-UIUX-140. **[MINOR] ReviewPromptModal uses raw `gray-*` instead of semantic `surface-*` tokens.** L10.
-  `packages/web/src/pages/portal/ReviewPromptModal.tsx:74`
-
-- [ ] WEB-UIUX-141. **[NIT] CustomerPayPage "Pay now" button uses `bg-gray-900 text-white` — neutral, not brand.** L9.
-  `packages/web/src/pages/public/CustomerPayPage.tsx:194`
 
 ### Recommended Sequencing
 
 **Phase 1 — Blockers (ship-stoppers):**
-WEB-UIUX-29 (RepairRow qty), WEB-UIUX-81 (lead status mismatch),
 WEB-UIUX-131 (SignupPage), WEB-UIUX-132 (LandingPage)
 
 **Phase 2 — High-impact systemic:**
@@ -1766,12 +1312,12 @@ WEB-UIUX-4 (icon labels), WEB-UIUX-16 (CommandPalette ARIA),
 WEB-UIUX-50-054 (hover-only elements), WEB-UIUX-105-106 (modal ARIA)
 
 **Phase 5 — Dark-mode completion:**
-WEB-UIUX-121-128 (admin/team pages), WEB-UIUX-134-135 (public pages)
+WEB-UIUX-121-128 (admin/team pages), WEB-UIUX-135 (public pages)
 
 **Phase 6 — Workflow + forms:**
 WEB-UIUX-15 (dead routes), WEB-UIUX-49 (window.prompt),
 WEB-UIUX-51 (mobile kanban), WEB-UIUX-56 (dirty guard),
-WEB-UIUX-83-084 (bulk delete, calendar form)
+WEB-UIUX-84 (calendar form)
 
 
 ### Web UI/UX Audit — Pass 2 (2026-05-04, post-research)
@@ -1781,14 +1327,6 @@ and WCAG 2.2 / online research findings. Sources cited: w3.org/TR/WCAG22, snabbl
 creativenavy POS guides, Tailwind dark-mode docs.
 
 #### Settings Tabs
-
-- [ ] WEB-UIUX-142. **[BLOCKER] RepairPricingTab renders `<td>` inside `<div>` (invalid HTML).** `<td colSpan={8}>` with nested `<td>` elements outside any `<tr>`. Will fail axe, screen readers see no cells. L4, L12.
-  `packages/web/src/pages/settings/RepairPricingTab.tsx:765-803`
-  <!-- meta: fix=restructure-as-tr-with-colspan-td -->
-
-- [ ] WEB-UIUX-143. **[BLOCKER] ReceiptSettings saves entire config object — clobbers other tabs.** WEB-FG-006 already fixed PosSettings via owned-keys allowlist; receipts regressed. If POS/SMS tabs have staged changes elsewhere, this overwrites them. L5, L16.
-  `packages/web/src/pages/settings/ReceiptSettings.tsx:347-359`
-  <!-- meta: fix=add-RECEIPT_OWNED_KEYS-allowlist-pattern -->
 
 - [ ] WEB-UIUX-144. **[BLOCKER] TicketsRepairsSettings same clobber bug.** L5, L16.
   `packages/web/src/pages/settings/TicketsRepairsSettings.tsx:238-251`
@@ -1890,9 +1428,6 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [ ] WEB-UIUX-172. **[MAJOR] CustomerPayPage shows amount + invoice ref but NEVER displays merchant name/logo/address.** Public payment link via SMS — customer has zero phishing-protection signals. Trust gap. L16.
   `packages/web/src/pages/billing/CustomerPayPage.tsx:131-187`
   <!-- meta: fix=server-expose-tenant_name-tenant_logo-render-prominent -->
-
-- [ ] WEB-UIUX-173. **[MAJOR] CustomerPayPage "Pay now" button uses `bg-gray-900 text-white`.** Public customer paying real money sees neutral-gray button, looks like different product. L9, L16.
-  `packages/web/src/pages/billing/CustomerPayPage.tsx:191-201`
 
 - [ ] WEB-UIUX-174. **[MAJOR] Aging-report bulk-action button buried inside total-outstanding banner.** Discoverability poor — operator scans for primary CTAs above the table, not in tip strip. L1, L2, L5.
   `packages/web/src/pages/billing/AgingReportPage.tsx:130-148`
@@ -2017,8 +1552,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 #### Recommended Sequencing — Pass 2 Additions
 
 **Phase 1 — Pass-2 blockers:**
-WEB-UIUX-142 (invalid HTML), WEB-UIUX-143 + 144 (settings clobber bugs),
-WEB-UIUX-145 (voice settings no save UI)
+WEB-UIUX-143 + 144 (settings clobber bugs), WEB-UIUX-145 (voice settings no save UI)
 
 **Phase 2 — Trust + safety:**
 WEB-UIUX-172-173 (CustomerPayPage merchant identity + button color),
@@ -2251,9 +1785,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-264. **[MINOR] SampleDataCard "Click again to confirm" same color/position — fat-finger destroys data.** L8.
   `packages/web/src/components/onboarding/SampleDataCard.tsx:103-115`
 
-- [ ] WEB-UIUX-265. **[MINOR] ShortcutReferenceCard z-[60] but toasts may render above — modal hidden behind backdrop.** L11.
-  `packages/web/src/components/onboarding/ShortcutReferenceCard.tsx:90`
-
 #### Print / TV / Photo Capture
 
 - [ ] WEB-UIUX-266. **[MAJOR] PhotoCapturePage hardcodes `bg-gray-900 text-white` — no light variant.** Daylight street use blinds user. L10.
@@ -2384,10 +1915,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-299. **[MAJOR] No documented z-index scale — values 60, 80, 100, 101, 9998, 9999 + 105 Tailwind class usages.** Modal-on-modal (e.g. ConfirmDialog over QuickSmsModal) shows wrong layer. Toast over modal works only by accident. L9, L11.
   Pattern across web/src
   <!-- meta: fix=define-z-index-scale-in-design-tokens-modal:50-toast:60-banner:40 -->
-
-- [ ] WEB-UIUX-300. **[MINOR] ShortcutReferenceCard `z-[60]` may render below toasts (`z-9999`).** L11.
-  `packages/web/src/components/onboarding/ShortcutReferenceCard.tsx:90`
-
 
 #### Cross-Cutting Pass 5
 
@@ -2699,9 +2226,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-383. **[BLOCKER] AgingReportPage no dark-mode classes anywhere — pure light-mode page.** L10.
   `packages/web/src/pages/billing/AgingReportPage.tsx:100-209`
 
-- [ ] WEB-UIUX-384. **[BLOCKER] PaymentLinksPage table hardcodes `text-gray-*`/`bg-gray-50` not dark-aware.** L10, L9.
-  `packages/web/src/pages/billing/PaymentLinksPage.tsx:276-323`
-
 - [ ] WEB-UIUX-385. **[BLOCKER] FinancingButton stub modal `bg-white p-6 shadow-xl` no dark variant.** L10.
   `packages/web/src/components/billing/FinancingButton.tsx:81-107`
 
@@ -2948,12 +2472,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-455. **[MINOR] Skeleton uses `Math.random()` for column widths — every render shifts skeleton sizes.** Visible jiggle on parent re-render. L13.
   `packages/web/src/components/shared/Skeleton.tsx:41`
   <!-- meta: fix=seed-random-by-row-index -->
-
-- [ ] WEB-UIUX-456. **[MINOR] Breadcrumb hardcodes `text-teal-500` not brand token.** L9, L10.
-  `packages/web/src/components/shared/Breadcrumb.tsx:35`
-
-- [ ] WEB-UIUX-457. **[MINOR] Breadcrumb `text-surface-500` for "Home" link wrapper but link itself uses teal — visual inconsistency.** L9.
-  `packages/web/src/components/shared/Breadcrumb.tsx:17,35`
 
 - [ ] WEB-UIUX-458. **[MINOR] Button primary variant `text-primary-950` only legible if primary is light/cream.** Same issue as WEB-UIUX-418 but in shared component. L9.
   `packages/web/src/components/shared/Button.tsx:55-56`
@@ -4444,12 +3962,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [ ] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12.
 
-- [ ] WEB-UIUX-919. **[MINOR] Per-field `role="alert"` spam — every FormError variant including `field`/`hint` uses `role="alert"`.** 10-field form fail = 10 simultaneous SR announcements. L12.
-  `packages/web/src/components/shared/FormError.tsx:53,65`
-
-- [ ] WEB-UIUX-920. **[MINOR] `<aside>` Sidebar lacks `aria-label`.** SR users hear unlabeled aside region. L12.
-  `packages/web/src/components/layout/Sidebar.tsx:176`
-
 - [ ] WEB-UIUX-921. **[MINOR] CustomerListPage CustomerActionsMenu lacks `role="menu"`/`menuitem`, no arrow-key nav, no Esc handler.** Header.tsx:465 + LeadPipelinePage.tsx:144 use proper pattern — propagate. L12.
 
 - [ ] WEB-UIUX-922. **[MINOR] Star-rating radiogroup no arrow keys.** 5 radios = 5 Tab stops instead of 1 group with arrows. L12.
@@ -4995,11 +4507,6 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/server/src/routes/membership.routes.ts:222-239`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:155-168`
   <!-- meta: fix=add-cancellation_reason+cancellation_note-cols-via-migration+modal-radio[too-expensive|moved|switched|not-using|other]+include-in-audit -->
-
-- [ ] WEB-UIUX-1068. **[MAJOR] Hard `$` currency prefix in two paths; bypasses tenant-currency formatter.** (1) Server payment-link description: `'$' + tier.monthly_price` via `description = "${tier.name} Membership - $${tier.monthly_price}/mo"` (`membership.routes.ts:422`). (2) Customer-profile MembershipCard price: `${memberData.monthly_price.toFixed(2)}/mo` (`CustomerDetailPage.tsx:972`) — adjacent `@audit-cents WEB-FF-019` comment already flags the cents-migration risk but the currency-symbol bug is a separate, current bug. Brazilian/EU tenant sees BRL/EUR everywhere except hosted-payment link and own profile card → "is this $50 USD or BRL50?" L2, L7.
-  `packages/server/src/routes/membership.routes.ts:422`
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:971-973`
-  <!-- meta: fix=server-pass-tenant-currency-into-description-template+web-call-formatCurrency()-from-utils/format -->
 
 - [ ] WEB-UIUX-1069. **[MAJOR] Past-due subs share Cancel button affordance with active subs; no "Retry payment" CTA.** Past-due is the highest-leverage retention state — Stripe surfaces "Retry now" and "Send invoice" as the *primary* actions. Our list shows Bill now (admin only, behind token) + Cancel — Cancel is destructive yet visually equivalent to billing. No alert badge on the row, no "X days overdue", no email-customer button. L1, L5, L9.
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:240-286`
@@ -6607,83 +6114,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=replace-HTML-max-with-onChange-clamp+show-inline-red-text-when-value>cap+disable-Create-button -->
 
-- [ ] WEB-UIUX-1408. **[NIT] Credit-note cap label "Max: $X (amount paid)" (`InvoiceDetailPage.tsx:776-778`) becomes nonsensical when `amount_paid=0` (unpaid invoice) — shows "Max: $0.00 (amount paid)". Operator on unpaid invoice cannot create credit note even though the server accepts up to invoice.total (per WEB-UIUX-1386). Either suppress the modal entry on `amount_paid=0` or align cap policy.** L7 feedback, L9 empty/edge state.
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380,776-778`
-  <!-- meta: fix=when-amount_paid==0-disable-Credit-Note-button-with-tooltip-"No-payment-to-credit"+OR-after-WEB-UIUX-1386-relax-cap-and-update-label -->
-
-- [ ] WEB-UIUX-1409. **[NIT] No keyboard shortcut to focus credit-note amount input on modal open. AutoFocus is set (`:770`) — covered. But Esc dismisses only via outside-click handler (`:744`); no Escape key listener.** L11 a11y/keyboard.
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-805`
-  <!-- meta: fix=add-useEffect-keydown-Escape→setShowCreditNote(false)+document-pattern-as-Modal-helper -->
-
 ### Web UI/UX Audit — Pass 29 (2026-05-05, flow walk: Forgot Password → Reset — login forgot panel, email link, set new password, recovery)
-
-- [ ] WEB-UIUX-1410. **[BLOCKER] Forgot-password panel swallows server errors silently. `else` branch (`:758-765`) increments `forgotFailCount` and resets captcha but never sets `error`/`forgotSent`/any visible state. User clicks Send on a typo'd email — server returns 400 "Valid email is required" — UI does NOTHING visible. User clicks Send again — same silent failure. After 3 attempts they hit 429 and still see no message. Critical recovery flow gives zero feedback on failure.** L7 feedback meaningfulness.
-  `packages/web/src/pages/auth/LoginPage.tsx:751-765`
-  <!-- meta: fix=add-forgotError-state+set-it-from-err.response.data.message+render-as-LoginError-inside-forgot-panel+distinguish-400/429/network-kinds -->
-
-- [ ] WEB-UIUX-1411. **[BLOCKER] Reset-success redirect lands on marketing page on bare-domain tenants. App.tsx:424-433 `showLanding` branch renders only `/signup`, `/reset-password/:token`, and a `*` LandingPage catch-all — no `/login` route. ResetPasswordPage (`:69`) navigates to `/login` after 3 seconds. Public-domain user resets password → gets dropped onto landing page → has no idea where login is. Reset flow visibly succeeds but user cannot complete the loop.** L3 route correctness, L4 flow completion.
-  `packages/web/src/App.tsx:424-433` + `packages/web/src/pages/auth/ResetPasswordPage.tsx:68-70`
-  <!-- meta: fix=either-add-/login-route-to-showLanding-routes-block-OR-redirect-to-tenant-subdomain-/login-when-tenantSlug-known+pass-tenant-context-via-localStorage-or-from-reset-link-query -->
-
-- [ ] WEB-UIUX-1412. **[MAJOR] No way to retry forgot-password with a different email after `forgotSent=true`. Once panel shows "If an account exists, link sent" (`:716-722`), there is no "Try a different email" or "Resend" button. State is locked. User who typo'd `jhon@x.com` instead of `john@x.com` waits 30 minutes, never gets email, then must close+reopen panel via "Forgot password?" toggle — non-obvious recovery path.** L8 recovery, L4 flow completion.
-  `packages/web/src/pages/auth/LoginPage.tsx:716-722`
-  <!-- meta: fix=add-secondary-"Send-to-different-email"-button-below-success-message+resets-forgotSent+forgotEmail+forgotFailCount-on-click -->
-
-- [ ] WEB-UIUX-1413. **[MAJOR] Reset-success page auto-redirects in 3s, drags user away mid-read. ResetPasswordPage (`:68-70`) `setTimeout(() => navigate('/login'), 3000)`. Body text is 2 sentences plus a "Return to Login" Link — user reading "Your password has been successfully updated. You will be redirected..." gets yanked away before they can finish. The Link below is redundant once auto-redirect fires. Best practice: NO auto-redirect on success-of-irreversible-action; user clicks Continue when ready.** L7 feedback, L8 recovery.
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:67-70`
-  <!-- meta: fix=remove-setTimeout+make-"Return-to-Login"-Link-a-prominent-primary-button+optional-countdown-text-only-if-auto-redirect-kept -->
-
-- [ ] WEB-UIUX-1414. **[MAJOR] Reset-token-failure error is a dead-end. ResetPasswordPage (`:79-83`) shows "Failed to reset password. Please request a new reset link." with NO link/button to do so. User must manually retype URL → /login → click "Forgot password?" → re-enter email. Recovery copy tells user what to do but doesn't enable it inline.** L8 recovery, L4 flow completion.
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:79-83,158-162`
-  <!-- meta: fix=when-error-non-400-or-token-invalid-render-secondary-button-"Request-new-reset-link"-that-routes-to-/login?forgot=1+LoginPage-auto-opens-forgot-panel-on-?forgot=1 -->
-
-- [ ] WEB-UIUX-1415. **[MAJOR] Password-history rule (P2FA8) hidden until rejection. Server rejects with "Password must be different from your last 5 passwords" (auth.routes.ts:1810) but UI advertises only "Min 8 characters" (`:807`). User picks favorite reused password → submit → rejected with rule they never saw. Surface upfront so the cognitive load is on entry, not on retry.** L6 discoverability, L7 feedback.
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:118-123`
-  <!-- meta: fix=info-banner-text="Min-8-chars+must-differ-from-last-5-passwords"+optionally-render-list-of-rules-as-checkmarks-progressively-validated-as-user-types -->
-
-- [ ] WEB-UIUX-1416. **[MAJOR] No live "passwords match" indicator on confirm field. ResetPasswordPage validates `password !== confirmPassword` only at submit (`:53`). User typos confirm field, hits Reset, sees "Passwords do not match", retypes both. A live green-check / red-x adjacent to the confirm field would catch the typo before submit and save a round-trip — standard pattern from any password-reset flow.** L7 feedback, L9 loading/empty states.
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:142-156`
-  <!-- meta: fix=derive-confirmMatches=confirmPassword.length>=8&&password===confirmPassword+show-CheckCircle2-green-or-XCircle-red-icon-inside-input-trailing-edge -->
-
-- [ ] WEB-UIUX-1417. **[MAJOR] "Reset Password" button hides destructive side-effect. Server (auth.routes.ts:1830-1854) atomically updates password AND deletes ALL sessions (P2FA2). User logged in on iPad/phone gets silently kicked. Label "Reset Password" implies password-only change. Should warn "Resets password and signs out other devices" — especially relevant if user is resetting because of suspected compromise vs because they forgot it on this browser only.** L2 label truthfulness, L7 feedback.
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:164-170`
-  <!-- meta: fix=button-label="Reset-password-&-sign-out-other-devices"-OR-add-info-line-above-button-"This-will-sign-out-all-other-sessions" -->
-
-- [ ] WEB-UIUX-1418. **[MAJOR] Non-400 errors on reset collapse to "request a new reset link" — wrong instruction for network failures. ResetPasswordPage (`:75-83`) only surfaces server `message` for status===400; everything else (network down, 500, 429) becomes "Failed to reset password. Please request a new reset link." User offline retypes new URL → still offline → same message → keeps requesting new tokens, burning rate limit. Distinguish network/server/rate-limit from token-invalid.** L7 feedback meaningfulness, L8 recovery.
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:71-86`
-  <!-- meta: fix=branch-on-status:-no-response→"Cannot-reach-server.-Check-connection.";-429→"Too-many-attempts,-try-again-later";-400→server-message;-other→"Server-error,-try-again" -->
-
-- [ ] WEB-UIUX-1419. **[MAJOR] Forgot panel Send button has same primary-600 hue as main Sign In button — hierarchy collision. LoginPage.tsx:770 (Send) and :782 (Sign In) both `bg-primary-600`. User who opened forgot panel by mistake then habitually presses Enter — focus might be on Send button — could trigger reset email instead of login. Also visually competes for primary-action attention. Forgot Send should be secondary (outlined / surface tone).** L5 hierarchy.
-  `packages/web/src/pages/auth/LoginPage.tsx:742-774`
-  <!-- meta: fix=Send-button-bg-surface-200-text-surface-700-OR-bg-primary-100-text-primary-700+border-primary-300+keep-Sign-In-as-only-primary-600-on-screen -->
-
-- [ ] WEB-UIUX-1420. **[MAJOR] "Forgot password?" link is text-xs (12px), right-aligned, no underline, no icon. Lowest visual weight on the page. Users in actual recovery mode (who came to login BECAUSE they forgot) will stare at the form for several seconds before scanning to find the link. Industry pattern: link sized at least text-sm with KeyRound or HelpCircle icon, left-or-center positioned near password field.** L1 primary action findability, L5 hierarchy.
-  `packages/web/src/pages/auth/LoginPage.tsx:709-713`
-  <!-- meta: fix=text-xs→text-sm+add-KeyRound-h-3.5-w-3.5-icon-prefix+optional-underline-on-hover+keep-right-align-or-move-below-password-field -->
-
-- [ ] WEB-UIUX-1421. **[MAJOR] Captcha widget appears mid-panel after first failure with no label or explanation. LoginPage.tsx:728-731 conditionally renders `<div ref={forgotCaptchaContainerRef} />` once `forgotFailCount >= 1` — but combined with WEB-UIUX-1410 (silent error on failure), user sees: clicked Send → nothing happened → suddenly an unfamiliar captcha widget appears below the email field → no caption telling them why. Add "Verify you're human, then resend" header above widget.** L7 feedback meaningfulness, L6 discoverability.
-  `packages/web/src/pages/auth/LoginPage.tsx:728-731`
-  <!-- meta: fix=above-widget-render-<p-class="text-xs">"Confirm-you're-human-and-press-Send-again"</p>+wrap-widget-in-labeled-fieldset-for-screen-readers -->
-
-- [ ] WEB-UIUX-1422. **[MAJOR] No recovery path for "lost 2FA + lost trusted-device". Login flow assumes user has TOTP code or trusted-device cookie. If user wipes browser AND loses authenticator (phone destroyed/lost), they cannot log in — no "I lost my 2FA device" link on /login. Settings sessions revoke is gated behind logging in. Result: locked out, must contact admin. Should expose admin-recovery email request from login screen.** L8 recovery, L4 flow completion.
-  `packages/web/src/pages/auth/LoginPage.tsx:862-928`
-  <!-- meta: fix=add-tertiary-link-"Lost-your-2FA-device?"-near-trust-checkbox-or-below-Verify-button+routes-to-/account/recover-which-emails-admin-or-owner-of-account-with-recovery-instructions -->
-
-- [ ] WEB-UIUX-1423. **[MINOR] Forgot Send button label "Send" is vague — doesn't describe action. Email subject is "Password Reset"; button could say "Email reset link" or "Send reset email". Single-word "Send" doesn't tell user what gets sent or where. Especially after captcha widget renders, unfamiliar users hesitate.** L2 label truthfulness.
-  `packages/web/src/pages/auth/LoginPage.tsx:771-774`
-  <!-- meta: fix=button-text="Email-reset-link"+aria-label-same -->
-
-- [ ] WEB-UIUX-1424. **[MINOR] Forgot success copy "Check your inbox" misses the spam-folder advice. Reset emails commonly land in spam on first delivery to address. Add "(check spam if not there in a minute)" — saves 30%+ of "I never got the email" support tickets in standard SaaS deployments.** L7 feedback, L9 helpful empty/loading messages.
-  `packages/web/src/pages/auth/LoginPage.tsx:719-721`
-  <!-- meta: fix=copy="If-an-account-with-that-email-exists,-a-reset-link-has-been-sent.-Check-your-inbox-(and-spam-folder)." -->
-
-- [ ] WEB-UIUX-1425. **[MINOR] ResetPasswordPage info-banner copy "Enter securely a new password for your account." reads as misordered translation. Native phrasing: "Enter a new password for your account." Adverb "securely" is a verb modifier on "Enter" but action of typing is not the security control — TLS + bcrypt are. Copy adds noise without clarifying anything.** L2 label truthfulness.
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:118-123`
-  <!-- meta: fix=copy="Enter-a-new-password-for-your-account." -->
-
-- [ ] WEB-UIUX-1426. **[MINOR] Forgot panel loading indicator is `Loader2 h-3 w-3` — same dimensions as Mail icon (`:772`). When `forgotLoading=true`, button visually "swaps" icon imperceptibly. No label change ("Send" stays). User clicks twice thinking nothing happened — but disabled prop prevents second submit. Still: poor perceptual feedback. Add "Sending..." text while loading.** L7 feedback meaningfulness, L9 loading state.
-  `packages/web/src/pages/auth/LoginPage.tsx:771-774`
-  <!-- meta: fix=button-text-conditional:-loading?"Sending...":"Email-reset-link"+keep-spinner -->
 
 ### Web UI/UX Audit — Pass 30 (2026-05-05, flow walk: issue gift card → deliver code → redeem at POS → reload)
 
@@ -7018,11 +6449,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/membership.routes.ts:251-258`
   <!-- meta: fix=if-status==='cancelled'-throw-AppError('Cancelled-subs-cannot-be-resumed-create-new-subscription')+OR-also-restore-active_subscription_id-on-resume -->
 
-- [ ] WEB-UIUX-1492. **[MAJOR] Cancel mutation onError swallows server detail (`SubscriptionsListPage.tsx:120-122` and `CustomerDetailPage.tsx:910`): `toast.error('Failed to cancel subscription')`. Sibling subscribe/runBilling mutations correctly surface `err?.response?.data?.message` (`:135-138, 901`). Cancel failures (403 admin-required, 404 not-found, 503 feature-disabled) all collapse to the same opaque toast. Admin can't distinguish "bug" from "permission".** L7 feedback meaningfulness.
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:120-122`
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:910`
-  <!-- meta: fix=onError:(err)=>toast.error(err?.response?.data?.message||formatApiError(err)||'Failed-to-cancel-subscription') -->
-
 - [ ] WEB-UIUX-1493. **[MAJOR] After immediate cancel, customer-detail Membership card disappears entirely. `getCustomerMembership` returns null when `active_subscription_id` is NULL (set on cancel `membership.routes.ts:232`); UI then renders the enroll prompt (`CustomerDetailPage.tsx:1024+`). Lost context: admin opening cancelled customer can't see prior tier, tenure, last charge, or churn date. No way to view past memberships at all (only payment-history endpoint, no UI).** L9 empty/loading/error, L8 recovery.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:935,1024+`
   `packages/server/src/routes/membership.routes.ts:129-150`
@@ -7303,11 +6729,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   <!-- meta: fix=server-POST-/:id/disable-{reason}-flips-status='disabled'+audit;-detail-page-renders-Disable-button-(red-secondary)-with-reason-prompt;-list-page-row-action -->
 
 #### Major — discoverability / hierarchy / recovery
-
-- [ ] WEB-UIUX-1547. **[MAJOR] Gift Cards page is orphaned from primary navigation. `App.tsx:98,536-538` registers the routes with comment "§ gift-cards orphan UI". `Sidebar.tsx` has zero "gift" matches. Only entry points: Cmd-K palette (`CommandPalette.tsx:73`) and direct URL. Cashier asked to issue a gift card cannot find the page without prior knowledge. Add to Sidebar under Sales/Billing group with `gift_cards.issue` perm gate so non-issuers don't see a button they can't use.** L6 discoverability.
-  `packages/web/src/components/layout/Sidebar.tsx`
-  `packages/web/src/App.tsx:536-538`
-  <!-- meta: fix=add-NavItem{label:'Gift Cards',icon:Gift,path:'/gift-cards',permission:'gift_cards.issue'}-under-Sales-section -->
 
 - [ ] WEB-UIUX-1548. **[MAJOR] Past expiry dates accepted on issue; immediately-expired card is silent. `<input type="date">` at `GiftCardsListPage.tsx:220-225` has no `min={today}` attribute. Server `validateIsoDate` (`validate.ts:169-195`) checks ISO format only — does NOT reject past dates. Cashier mis-types "2025" instead of "2026" → card issued with `expires_at=2025-05-05` → next redemption attempt errors "Gift card expired". No client warning, no server reject, no `expires_at < created_at` constraint at INSERT. Add `min` on the input + a server-side `if (expires_at && new Date(expires_at) <= new Date()) throw 400`.** L2 truthfulness, L4 flow integrity.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:220-225`
@@ -22583,4 +22004,3 @@ Apply the same URL allowlist check from `catalogScraper.ts:292-305` to the `/bul
   <!-- meta: scope=dashboard+price-list; depends=server/repairPricing.routes.ts (exists); fix=add-route+grid+search+edit-mode+csv-export+a11y+pagination -->
 
 ---
-

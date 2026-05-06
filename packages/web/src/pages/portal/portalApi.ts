@@ -182,6 +182,14 @@ export interface EmbedConfig {
   hours: string;
 }
 
+export type PortalCaptchaProvider = 'hcaptcha' | 'turnstile' | 'recaptcha';
+
+export interface RegisterCaptchaConfig {
+  enabled: boolean;
+  provider?: PortalCaptchaProvider;
+  site_key?: string;
+}
+
 // ---- API Functions ----
 
 export async function quickTrack(order_id: string, phone_last4: string): Promise<QuickTrackResponse> {
@@ -198,8 +206,16 @@ export async function portalLogin(phone: string, pin: string): Promise<LoginResp
   return data;
 }
 
-export async function sendVerificationCode(phone: string): Promise<void> {
-  await portalClient.post('/register/send-code', { phone });
+export async function getRegisterCaptchaConfig(): Promise<RegisterCaptchaConfig> {
+  const res = await portalClient.get('/register/captcha-config');
+  return res.data.data as RegisterCaptchaConfig;
+}
+
+export async function sendVerificationCode(phone: string, captchaToken?: string): Promise<void> {
+  await portalClient.post('/register/send-code', {
+    phone,
+    ...(captchaToken ? { captcha_token: captchaToken } : {}),
+  });
 }
 
 export async function verifyRegistrationCode(phone: string, code: string): Promise<void> {

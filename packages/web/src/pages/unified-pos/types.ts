@@ -93,6 +93,7 @@ export interface TicketMeta {
   internalNotes: string;
   labels: string;
   discountReason: string;
+  referralSource: string;
 }
 
 // Default fallback — the real tax rate is fetched from the API (tax classes).

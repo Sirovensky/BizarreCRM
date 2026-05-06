@@ -16,8 +16,11 @@
     "dev": "npm run dev --workspace=packages/server & npm run dev --workspace=packages/web",
     "dev:server": "npm run dev --workspace=packages/server",
     "dev:web": "npm run dev --workspace=packages/web",
-    "build": "npm run build --workspace=packages/shared && npm run build --workspace=packages/web && npm run build --workspace=packages/server && npm run build:renderer:web --workspace=packages/management",
+    "build": "npm run build --workspace=packages/shared && npm run build --workspace=packages/web && npm run build --workspace=packages/server && npm run build --workspace=packages/management",
     "health": "node scripts/health-check.cjs",
     "start": "npm run start --workspace=packages/server"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "^0.9.0"
   }
 }

@@ -13,6 +13,7 @@ export interface TierDescriptor {
   key: PricingTier;
   label: string;
   maxAgeYears: number | null;
+  color?: string;
 }
 
 export const DEFAULT_TIER_THRESHOLDS: TierThresholds = {
@@ -27,10 +28,39 @@ const TIER_LABELS: Record<PricingTier, string> = {
   unknown: 'Unknown',
 };
 
+const TIER_COLORS: Record<PricingTier, string> = {
+  tier_a: '#22c55e',
+  tier_b: '#0ea5e9',
+  tier_c: '#64748b',
+  unknown: '#94a3b8',
+};
+
 function configNumber(db: Database.Database, key: string, fallback: number): number {
   const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as { value?: string } | undefined;
   const parsed = Number(row?.value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function configString(db: Database.Database, key: string, fallback: string): string {
+  const row = db.prepare('SELECT value FROM store_config WHERE key = ?').get(key) as { value?: string } | undefined;
+  const value = row?.value?.trim();
+  return value || fallback;
+}
+
+function tierConfigSuffix(tier: PricingTier): string {
+  return tier.replace('tier_', '');
+}
+
+export function getTierPresentation(db: Database.Database): Record<PricingTier, { label: string; color: string }> {
+  const result = {} as Record<PricingTier, { label: string; color: string }>;
+  for (const tier of Object.keys(TIER_LABELS) as PricingTier[]) {
+    const suffix = tierConfigSuffix(tier);
+    result[tier] = {
+      label: configString(db, `repair_pricing_${suffix}_label`, TIER_LABELS[tier]),
+      color: configString(db, `repair_pricing_${suffix}_color`, TIER_COLORS[tier]),
+    };
+  }
+  return result;
 }
 
 export function normalizeTierThresholds(input: Partial<TierThresholds>): TierThresholds {
@@ -60,12 +90,17 @@ export function setTierThresholds(db: Database.Database, thresholds: TierThresho
   return normalized;
 }
 
-export function pricingTierDescriptors(thresholds: TierThresholds): TierDescriptor[] {
+export function pricingTierDescriptors(
+  thresholds: TierThresholds,
+  presentation?: Record<PricingTier, { label: string; color: string }>,
+): TierDescriptor[] {
+  const label = (tier: PricingTier) => presentation?.[tier]?.label ?? TIER_LABELS[tier];
+  const color = (tier: PricingTier) => presentation?.[tier]?.color ?? TIER_COLORS[tier];
   return [
-    { key: 'tier_a', label: TIER_LABELS.tier_a, maxAgeYears: thresholds.tierAYears },
-    { key: 'tier_b', label: TIER_LABELS.tier_b, maxAgeYears: thresholds.tierBYears },
-    { key: 'tier_c', label: TIER_LABELS.tier_c, maxAgeYears: null },
-    { key: 'unknown', label: TIER_LABELS.unknown, maxAgeYears: null },
+    { key: 'tier_a', label: label('tier_a'), color: color('tier_a'), maxAgeYears: thresholds.tierAYears },
+    { key: 'tier_b', label: label('tier_b'), color: color('tier_b'), maxAgeYears: thresholds.tierBYears },
+    { key: 'tier_c', label: label('tier_c'), color: color('tier_c'), maxAgeYears: null },
+    { key: 'unknown', label: label('unknown'), color: color('unknown'), maxAgeYears: null },
   ];
 }
 

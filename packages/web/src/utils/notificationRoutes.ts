@@ -31,6 +31,7 @@ export const NOTIFICATION_ENTITY_ROUTES: Readonly<Record<string, string>> = Obje
   payment: '/invoices',
   'lead-appointment': '/leads',
   lead_appointment: '/leads',
+  sms_reminder: '/communications',
 });
 
 /**
@@ -43,6 +44,7 @@ export function notificationDeepLink(
   entityId: number | string | null | undefined,
 ): string | null {
   if (!entityType || entityId == null) return null;
+  if (entityType === 'sms_reminder') return `/communications?reminder_id=${encodeURIComponent(String(entityId))}`;
   const base = NOTIFICATION_ENTITY_ROUTES[entityType];
   return base ? `${base}/${entityId}` : null;
 }

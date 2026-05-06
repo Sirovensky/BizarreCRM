@@ -45,7 +45,7 @@ export function RightPanel() {
               key={key}
               onClick={() => setActiveTab(key)}
               className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors',
+                'btn btn-md flex-1 !rounded-none',
                 isActive
                   ? 'border-b-2 border-teal-500 text-teal-600 dark:border-teal-400 dark:text-teal-400'
                   : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',

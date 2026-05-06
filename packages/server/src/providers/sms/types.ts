@@ -148,7 +148,15 @@ export interface VonageConfig {
   signatureMethod?: string; // 'md5hash' | 'md5hmac' | 'sha1hmac' | 'sha256hmac' | 'sha512hmac' (default: sha256hmac)
 }
 
-export type ProviderType = 'console' | 'twilio' | 'telnyx' | 'bandwidth' | 'plivo' | 'vonage';
+export interface BizarreSmsConfig {
+  relayUrl: string;
+  relayToken: string;
+  webhookSecret?: string;
+  tenantSlug?: string | null;
+  fromNumber?: string;
+}
+
+export type ProviderType = 'console' | 'bizarresms' | 'twilio' | 'telnyx' | 'bandwidth' | 'plivo' | 'vonage';
 
 export interface ProviderInfo {
   type: ProviderType;
@@ -168,6 +176,13 @@ export const PROVIDER_REGISTRY: ProviderInfo[] = [
     type: 'console',
     label: 'Console (Testing)',
     description: 'Logs messages to server console. No real SMS sent. For development only.',
+    fields: [],
+    supportsSms: true, supportsMms: false, supportsVoice: false, supportsRecording: false, supportsTranscription: false,
+  },
+  {
+    type: 'bizarresms',
+    label: 'BizarreSMS',
+    description: 'Hosted BizarreCRM relay for paid hosted shops. No tenant SMS vendor account required.',
     fields: [],
     supportsSms: true, supportsMms: false, supportsVoice: false, supportsRecording: false, supportsTranscription: false,
   },

@@ -9,6 +9,8 @@ import { CheckoutModal } from './CheckoutModal';
 import { SuccessScreen } from './SuccessScreen';
 import { UpsellPrompt } from './UpsellPrompt';
 import { InactivityTimer } from './InactivityTimer';
+import { ReturnModal } from './ReturnModal';
+import { readTrainingSessionId, startTrainingSession, TrainingModeBanner } from './TrainingModeBanner';
 import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
 import { ticketApi, customerApi, posApi, deviceTemplateApi } from '@/api/endpoints';
@@ -52,14 +54,14 @@ function DeviceTemplateNudge() {
       <button
         type="button"
         onClick={() => navigate('/settings/device-templates')}
-        className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700"
+        className="btn btn-xs bg-amber-600 !font-semibold text-white hover:bg-amber-700"
       >
         Go to templates
       </button>
       <button
         type="button"
         onClick={handleDismiss}
-        className="rounded-md p-1 text-amber-600 transition-colors hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-800/40"
+        className="btn-icon btn-xs text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-800/40"
         aria-label="Skip for now"
         title="Skip for now"
       >
@@ -93,19 +95,38 @@ type ApiTicketDevicePart = {
 // ─── UnifiedPosPage ─────────────────────────────────────────────────
 
 export function UnifiedPosPage() {
-  const { showSuccess, setShowSuccess, showCheckout, setShowCheckout, setCustomer, addRepair, resetAll, setSourceTicketId, cartItems, sourceTicketId, setActiveTab } = useUnifiedPosStore();
+  const {
+    showSuccess,
+    setShowSuccess,
+    showCheckout,
+    setShowCheckout,
+    setCustomer,
+    addRepair,
+    clearDraft,
+    resetAll,
+    setSourceTicketId,
+    cartItems,
+    sourceTicketId,
+    setActiveTab,
+    customer,
+    discount,
+    discountReason,
+    meta,
+  } = useUnifiedPosStore();
   const [cartCollapsed, setCartCollapsed] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
   const toggleCart = useCallback(() => setCartCollapsed((v) => !v), []);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // F-key quick tabs (audit §43.10). Handlers are memoized so the hook's
   // keydown listener isn't re-bound on every render (which would conflict
   // with the barcode detection listener below).
   // WEB-FL-004 (Fixer-RRR 2026-04-25): wire F4 (customer search) so it
   // focuses the unified search box instead of falling through to the
-  // global AppShell handler. F6 ("Returns hotkey") has no destination
-  // route yet — surface a toast so the cashier knows the key is
-  // recognized but the flow is pending, rather than letting it open the
-  // command palette via AppShell.
+  // global AppShell handler. F6 now opens the real return workflow backed
+  // by /pos/return instead of a placeholder toast.
   const posShortcuts = useMemo(() => ({
     onRepairsTab: () => setActiveTab('repairs'),
     onProductsTab: () => setActiveTab('products'),
@@ -118,9 +139,39 @@ export function UnifiedPosPage() {
       }
     },
     onCompleteSale: () => setShowCheckout(true),
-    onReturnsHotkey: () => toast('Returns flow coming soon — scan the original invoice from the ticket page for now'),
+    onReturnsHotkey: () => setShowReturnModal(true),
   }), [setActiveTab, setShowCheckout]);
-  usePosKeyboardShortcuts(posShortcuts);
+  usePosKeyboardShortcuts(posShortcuts, !showReturnModal);
+
+  const hasRecoverableDraft = !showSuccess && (
+    cartItems.length > 0
+    || customer !== null
+    || discount > 0
+    || discountReason.trim().length > 0
+    || sourceTicketId !== null
+    || meta.assignedTo !== null
+    || meta.dueDate.trim().length > 0
+    || meta.internalNotes.trim().length > 0
+    || meta.labels.trim().length > 0
+    || meta.referralSource.trim().length > 0
+    || meta.source !== 'Walk-in'
+  );
+
+  useEffect(() => {
+    if (!hasRecoverableDraft) return undefined;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasRecoverableDraft]);
+
+  useEffect(() => {
+    if (showSuccess) {
+      clearDraft();
+    }
+  }, [showSuccess, clearDraft]);
 
   // Barcode scanner detection: rapid chars ending with Enter
   const [scanFlash, setScanFlash] = useState(false);
@@ -200,12 +251,37 @@ export function UnifiedPosPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [addProduct]);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
-  const navigate = useNavigate();
   const ticketParam = searchParams.get('ticket');
   const customerParam = searchParams.get('customer') || searchParams.get('customer_id');
+  const sandboxParam = searchParams.get('sandbox');
   const hydratedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (sandboxParam !== '1') return;
+    let cancelled = false;
+    const launchSandbox = async () => {
+      try {
+        if (!readTrainingSessionId()) {
+          await startTrainingSession();
+          if (!cancelled) toast.success('Sandbox mode ON — this run will not affect inventory or sales');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+            || (err instanceof Error ? err.message : 'Failed to start sandbox mode');
+          toast.error(msg);
+        }
+      } finally {
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete('sandbox');
+          setSearchParams(next, { replace: true });
+        }
+      }
+    };
+    void launchSandbox();
+    return () => { cancelled = true; };
+  }, [sandboxParam, searchParams, setSearchParams]);
 
   // Inactivity timer: reset POS to default view after 10 min when an existing ticket is loaded or checkout completed
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -376,6 +452,9 @@ export function UnifiedPosPage() {
     <div className="relative flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* Phase D2: device template nudge — dismissed per-session via localStorage */}
       <DeviceTemplateNudge />
+      <div className="border-b border-surface-200 bg-white px-4 py-2 dark:border-surface-700 dark:bg-surface-900">
+        <TrainingModeBanner />
+      </div>
       {/* Barcode scan flash indicator */}
       {scanFlash && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white shadow-lg animate-pulse">
@@ -418,6 +497,10 @@ export function UnifiedPosPage() {
       {showCheckout && (
         <CheckoutModal onClose={() => setShowCheckout(false)} />
       )}
+      <ReturnModal
+        open={showReturnModal}
+        onClose={() => setShowReturnModal(false)}
+      />
     </div>
   );
 }

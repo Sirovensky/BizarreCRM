@@ -70,7 +70,7 @@ import com.bizarreelectronics.crm.ui.components.shared.SearchBar
  *   - Running count list: each row shows item name, expected qty, counted qty, variance dot.
  *   - Search bar to add items manually.
  *   - Scan FAB → [onScanClick] (callers wire CameraX scanner result back via
- *     saved-state "stocktake_barcode").
+ *     saved-state "scanned_barcode").
  *   - "Commit" button → confirm dialog → [POST /stocktake/:id/commit].
  *   - On commit success, calls [onCommitted] so the nav graph can navigate to
  *     the committed result or back to the sessions list.
@@ -251,7 +251,7 @@ fun StocktakeSessionDetailScreen(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(bottom = if (isOpen) 96.dp else 16.dp),
                     ) {
-                        items(state.counts, key = { it.id }) { count ->
+                        items(state.counts, key = { it.id ?: it.inventoryItemId }) { count ->
                             SessionCountRow(
                                 count = count,
                                 isEditable = isOpen,

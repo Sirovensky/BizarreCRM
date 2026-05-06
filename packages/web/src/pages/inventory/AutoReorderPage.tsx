@@ -12,6 +12,7 @@ import { ChevronLeft, RefreshCw, Zap, Loader2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
+import { InventoryItemPicker } from '@/components/inventory/InventoryItemPicker';
 // WEB-FB-007 (Fixer-KKK 2026-04-25): themed async confirm — matches the
 // pattern used on Estimates / POS / Customers / Tickets / Invoices.
 import { confirm } from '@/stores/confirmStore';
@@ -33,7 +34,7 @@ export function AutoReorderPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAdd, setShowAdd] = useState(false);
-  const [itemId, setItemId] = useState('');
+  const [itemId, setItemId] = useState<number | null>(null);
   const [minQty, setMinQty] = useState('');
   const [reorderQty, setReorderQty] = useState('');
   const [supplierId, setSupplierId] = useState('');
@@ -57,7 +58,11 @@ export function AutoReorderPage() {
     },
     onSuccess: (data: any) => {
       if (data.orders_created === 0) {
-        toast.success('Nothing to reorder — all stock levels OK');
+        if (data.skipped_no_supplier > 0) {
+          toast.error(`${data.skipped_no_supplier} low-stock rule${data.skipped_no_supplier > 1 ? 's need' : ' needs'} a supplier before a PO can be created`);
+        } else {
+          toast.success('Nothing to reorder — all saved rules are above minimum stock');
+        }
       } else {
         toast.success(
           `Created ${data.orders_created} PO${data.orders_created > 1 ? 's' : ''} with ${data.items_ordered} items`,
@@ -73,10 +78,9 @@ export function AutoReorderPage() {
       // with a generic 400 and the UI surfaces as "Save failed". Validate
       // each required numeric up front so the user gets a clear toast
       // naming the bad field. Optional ids/leads still allow empty → null.
-      const itemIdN = parseInt(itemId, 10);
       const minQtyN = parseInt(minQty, 10);
       const reorderQtyN = parseInt(reorderQty, 10);
-      if (!Number.isFinite(itemIdN) || itemIdN <= 0) {
+      if (!itemId) {
         throw new Error('Item is required');
       }
       if (!Number.isFinite(minQtyN) || minQtyN < 0) {
@@ -94,7 +98,7 @@ export function AutoReorderPage() {
         throw new Error('Lead time days is invalid');
       }
       const res = await api.post('/inventory-enrich/auto-reorder-rules', {
-        inventory_item_id: itemIdN,
+        inventory_item_id: itemId,
         min_qty: minQtyN,
         reorder_qty: reorderQtyN,
         preferred_supplier_id: supplierIdN,
@@ -106,7 +110,7 @@ export function AutoReorderPage() {
       toast.success('Rule saved');
       queryClient.invalidateQueries({ queryKey: ['auto-reorder-rules'] });
       setShowAdd(false);
-      setItemId('');
+      setItemId(null);
       setMinQty('');
       setReorderQty('');
       setSupplierId('');
@@ -171,11 +175,11 @@ export function AutoReorderPage() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search rules..."
-          className="rounded-md border border-surface-300 px-3 py-2 text-sm w-64"
+          className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm w-64 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
         />
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+          className="rounded-md border border-surface-300 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
         >
           {showAdd ? 'Close' : 'Add Rule'}
         </button>
@@ -185,40 +189,40 @@ export function AutoReorderPage() {
         <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
           <h3 className="font-semibold mb-3">Add / update rule</h3>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <input
+            <InventoryItemPicker
               value={itemId}
-              onChange={(e) => setItemId(e.target.value)}
-              placeholder="Item ID"
-              type="number"
-              className="rounded border border-surface-300 px-2 py-1 text-sm"
+              onChange={(item) => setItemId(item?.id ?? null)}
+              label="Inventory item"
+              placeholder="Search item..."
+              required
             />
             <input
               value={minQty}
               onChange={(e) => setMinQty(e.target.value)}
               placeholder="Min qty"
               type="number"
-              className="rounded border border-surface-300 px-2 py-1 text-sm"
+              className="rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             <input
               value={reorderQty}
               onChange={(e) => setReorderQty(e.target.value)}
               placeholder="Reorder qty"
               type="number"
-              className="rounded border border-surface-300 px-2 py-1 text-sm"
+              className="rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             <input
               value={supplierId}
               onChange={(e) => setSupplierId(e.target.value)}
               placeholder="Supplier ID"
               type="number"
-              className="rounded border border-surface-300 px-2 py-1 text-sm"
+              className="rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             <input
               value={leadTime}
               onChange={(e) => setLeadTime(e.target.value)}
               placeholder="Lead time (days)"
               type="number"
-              className="rounded border border-surface-300 px-2 py-1 text-sm"
+              className="rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
           </div>
           <button
@@ -261,7 +265,7 @@ export function AutoReorderPage() {
               </tr>
             )}
             {filteredRules.map((r) => (
-              <tr key={r.inventory_item_id} className="border-b border-surface-100 last:border-0">
+              <tr key={r.inventory_item_id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
                 <td className="px-3 py-2">
                   <div className="font-medium">{r.name}</div>
                   <div className="text-xs text-surface-500">{r.sku}</div>
@@ -269,7 +273,7 @@ export function AutoReorderPage() {
                 <td
                   className={cn(
                     'text-right px-3 py-2 font-semibold',
-                    r.in_stock <= r.min_qty && 'text-red-600',
+                    r.in_stock <= r.min_qty && 'text-red-600 dark:text-red-400',
                   )}
                 >
                   {r.in_stock}
@@ -280,11 +284,11 @@ export function AutoReorderPage() {
                 <td className="text-right px-3 py-2">{r.lead_time_days ? `${r.lead_time_days}d` : '—'}</td>
                 <td className="text-center px-3 py-2">
                   {r.is_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs">
+                    <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs dark:bg-green-900/30 dark:text-green-300">
                       Enabled
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-surface-100 text-surface-500 text-xs">
+                    <span className="px-2 py-0.5 rounded-full bg-surface-100 text-surface-500 text-xs dark:bg-surface-700 dark:text-surface-300">
                       Off
                     </span>
                   )}
@@ -299,7 +303,7 @@ export function AutoReorderPage() {
                       });
                       if (ok) deleteMut.mutate(r.inventory_item_id);
                     }}
-                    className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:text-red-400 dark:hover:text-red-300"
                     disabled={deleteMut.isPending && deleteMut.variables === r.inventory_item_id}
                     aria-label={`Remove auto-reorder rule for ${r.name}`}
                   >

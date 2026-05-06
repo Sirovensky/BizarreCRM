@@ -3,19 +3,24 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import net from 'net';
+import dns from 'dns/promises';
 import crypto from 'crypto';
 import { verifySync } from 'otplib';
 import { AppError } from '../middleware/errorHandler.js';
 import { config } from '../config.js';
 import { requireFeature } from '../middleware/tierGate.js';
-import { reloadSmsProvider, createTestProvider, getProviderRegistry } from '../services/smsProvider.js';
+import { reloadSmsProvider, createTestProvider, getProviderRegistry, sendSmsTenant, isSmsConfigured } from '../services/smsProvider.js';
 import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import nodemailer from 'nodemailer';
-import { clearEmailCache } from '../services/email.js';
-import { refreshClient as refreshBlockChypClient } from '../services/blockchyp.js';
+import { clearEmailCache, sendEmail, isEmailConfigured } from '../services/email.js';
+import { refreshClient as refreshBlockChypClient, testConnectionWithCredentials } from '../services/blockchyp.js';
+import { testTenantStripeConnection } from '../services/tenantStripe.js';
+import { runBackup } from '../services/backup.js';
+import { formatWebhookFailurePayloadPreview } from '../services/webhooks.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -34,8 +39,15 @@ import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage, MAX_PAGE_SIZE } from '../utils/pagination.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
+import {
+  IMAGE_UPLOAD_FORMAT_ERROR,
+  IMAGE_UPLOAD_MIME_TYPES,
+  isSupportedImageMime,
+  sanitizedImageExtension,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+} from '../utils/imageUploadPolicy.js';
 
-const LOGO_ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const LOGO_ALLOWED_MIMES = IMAGE_UPLOAD_MIME_TYPES;
 
 // SEC: Allowlist of valid user roles derived from the shared ROLE_PERMISSIONS
 // map. Any role string from req.body not in this set is rejected immediately
@@ -93,15 +105,18 @@ const logoUpload = multer({
       cb(null, dest);
     },
     filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-      const safe = ext && ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
-      cb(null, `logo-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${safe}`);
+      const ext = sanitizedImageExtension(file.originalname);
+      if (!ext) {
+        cb(new Error('Unsupported image file extension'), '');
+        return;
+      }
+      cb(null, `logo-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: SMALL_IMAGE_UPLOAD_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
-    if (['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, WebP, GIF images allowed'));
+    if (isSupportedImageMime(file.mimetype)) cb(null, true);
+    else cb(new Error(IMAGE_UPLOAD_FORMAT_ERROR));
   },
 });
 
@@ -119,6 +134,53 @@ function adminOnly(req: Request, _res: Response, next: NextFunction) {
   next();
 }
 
+interface ConfigLocationRow {
+  id: number;
+  name: string | null;
+  address_line: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  timezone: string | null;
+}
+
+function parseConfigLocationId(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new AppError('location_id must be a positive integer', 400);
+  }
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new AppError('location_id must be a positive integer', 400);
+  }
+  return id;
+}
+
+function formatLocationAddress(location: ConfigLocationRow): string {
+  const region = [location.state?.trim(), location.postcode?.trim()].filter(Boolean).join(' ');
+  const locality = [location.city?.trim(), region].filter(Boolean).join(', ');
+  const parts = [
+    location.address_line?.trim(),
+    locality,
+    location.country?.trim() && location.country.trim().toUpperCase() !== 'US'
+      ? location.country.trim()
+      : '',
+  ].filter(Boolean);
+  return parts.join(', ');
+}
+
+function applyLocationContactOverrides(cfg: Record<string, string>, location: ConfigLocationRow): void {
+  if (location.name?.trim()) cfg.store_name = location.name.trim();
+  const address = formatLocationAddress(location);
+  if (address) cfg.store_address = address;
+  if (location.phone?.trim()) cfg.store_phone = location.phone.trim();
+  if (location.email?.trim()) cfg.store_email = location.email.trim();
+  if (location.timezone?.trim()) cfg.store_timezone = location.timezone.trim();
+}
+
 // Allowed config keys (T1.2: prevent arbitrary key injection)
 const ALLOWED_CONFIG_KEYS = new Set([
   // Store info
@@ -130,7 +192,7 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'ticket_auto_close_on_invoice', 'ticket_all_employees_view_all', 'ticket_require_stopwatch',
   'ticket_auto_status_on_reply', 'ticket_auto_remove_passcode', 'ticket_copy_warranty_notes',
   'ticket_default_assignment', 'ticket_default_view', 'ticket_default_filter',
-  'ticket_default_date_sort', 'ticket_default_pagination', 'ticket_default_sort_order',
+  'ticket_default_date_sort', 'ticket_default_sort', 'ticket_default_pagination', 'ticket_default_sort_order',
   'ticket_status_after_estimate', 'ticket_label_template',
   'ticket_timer_auto_start_status', 'ticket_timer_auto_stop_status',
   // Repair settings
@@ -157,6 +219,21 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'backup_path', 'backup_schedule', 'backup_retention', 'backup_last_run', 'backup_last_status',
   // Repair pricing
   'repair_price_flat_adjustment', 'repair_price_pct_adjustment',
+  'repair_pricing_tier_a_years', 'repair_pricing_tier_b_years',
+  'repair_pricing_a_label', 'repair_pricing_b_label', 'repair_pricing_c_label', 'repair_pricing_unknown_label',
+  'repair_pricing_a_color', 'repair_pricing_b_color', 'repair_pricing_c_color', 'repair_pricing_unknown_color',
+  'repair_pricing_auto_margin_preset',
+  'repair_pricing_auto_margin_target_type',
+  'repair_pricing_auto_margin_target_pct',
+  'repair_pricing_auto_margin_target_profit_amount',
+  'repair_pricing_auto_margin_calculation_basis',
+  'repair_pricing_rounding_mode',
+  'repair_pricing_auto_margin_rules',
+  'repair_pricing_target_profit_green',
+  'repair_pricing_target_profit_amber',
+  'repair_pricing_tier_profit_thresholds',
+  'repair_pricing_auto_margin_cap_pct',
+  'catalog_refresh_hour',
   // SMS
   'sms_provider', 'stall_alert_days', 'review_request_delay_hours',
   // Customer feedback
@@ -188,6 +265,8 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'blockchyp_tc_enabled', 'blockchyp_tc_content', 'blockchyp_tc_name',
   'blockchyp_prompt_for_tip', 'blockchyp_sig_required_payment',
   'blockchyp_sig_format', 'blockchyp_sig_width', 'blockchyp_auto_close_ticket',
+  // Tenant-owned Stripe customer payments (not platform subscription billing)
+  'billing_pay_link_enabled', 'stripe_secret_key', 'stripe_publishable_key', 'stripe_webhook_secret',
   // SMS/MMS provider
   'sms_provider_type',
   'sms_twilio_account_sid', 'sms_twilio_auth_token', 'sms_twilio_from_number',
@@ -213,8 +292,8 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // smtp_from → smtp_user at send-time when empty.  Validated as an email address.
   'from_email',
   // 3CX (per-tenant telephony)
-  // SW-D15: Reserved for future 3CX integration — stored in UI but not enforced server-side.
-  // These settings will be used when server-side 3CX call routing/logging is implemented.
+  // WEB-UNWIRED-012: when host + extension + password are present, /voice/call
+  // uses 3CX Call Control for click-to-call instead of the SMS provider voice leg.
   'tcx_host', 'tcx_username', 'tcx_password', 'tcx_extension', 'tcx_store_number',
   // Role-based module visibility (ENR-S7)
   'role_module_visibility',
@@ -261,6 +340,10 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'profit_threshold_amber',
   'profit_threshold_green',
   'retention_sweep_enabled',
+  'retention_sms_months',
+  'retention_calls_months',
+  'retention_email_months',
+  'retention_ticket_notes_months',
   'scheduled_report_email',
   'stall_followup_days',
   'tv_display_enabled',
@@ -296,8 +379,10 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // Step 20 — Cash drawer (Agent 22)
   'cash_drawer_driver', 'cash_drawer_address',
   // Step 21 — Booking policy (Agent 23)
-  'booking_online_enabled', 'booking_lead_hours',
-  'booking_max_days_ahead', 'booking_walkins_enabled',
+  'booking_online_enabled', 'booking_enabled',
+  'booking_lead_hours', 'booking_min_notice_hours',
+  'booking_max_days_ahead', 'booking_max_lead_days',
+  'booking_walkins_enabled',
   // Step 22 — Warranty defaults (Agent 24)
   'warranty_default_months_screen', 'warranty_default_months_battery',
   'warranty_default_months_charge_port', 'warranty_default_months_back_glass',
@@ -317,6 +402,7 @@ const SENSITIVE_CONFIG_KEYS = new Set([
   'tcx_password',
   'smtp_pass',
   'blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key',
+  'stripe_secret_key', 'stripe_publishable_key', 'stripe_webhook_secret',
   'sms_twilio_auth_token', 'sms_telnyx_api_key', 'sms_bandwidth_password',
   'sms_plivo_auth_token', 'sms_vonage_api_secret',
   // H2: backup destination secrets
@@ -328,12 +414,14 @@ const SENSITIVE_CONFIG_KEYS = new Set([
 //   setup_completed: boolean — admin account exists and basic setup is done
 //   wizard_completed: 'true' | 'skipped' | 'grandfathered' | null — wizard gate state.
 //     null means "brand new tenant, show the wizard" (only possible post-feature deploy)
+//   setup_imported_legacy_data: 'will_import' | 'later' | 'fresh' | null — setup import intent.
 router.get('/setup-status', async (req, res) => {
   const adb = req.asyncDb;
-  const [row, nameRow, wizardRow] = await Promise.all([
+  const [row, nameRow, wizardRow, importChoiceRow] = await Promise.all([
     adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_completed'"),
     adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
     adb.get<any>("SELECT value FROM store_config WHERE key = 'wizard_completed'"),
+    adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_imported_legacy_data'"),
   ]);
   const completed = row?.value === 'true';
   res.json({
@@ -342,6 +430,7 @@ router.get('/setup-status', async (req, res) => {
       setup_completed: completed,
       store_name: nameRow?.value || null,
       wizard_completed: wizardRow?.value || null,
+      setup_imported_legacy_data: importChoiceRow?.value || null,
     },
   });
 });
@@ -388,26 +477,314 @@ router.post('/complete-setup', adminOnly, async (req, res) => {
   res.json({ success: true, data: { message: 'Store setup completed' } });
 });
 
-router.get('/config', async (req, res) => {
-  const adb = req.asyncDb;
-  const rows = await adb.all<any>('SELECT key, value FROM store_config');
-  const isAdmin = req.user?.role != null && SETTINGS_ADMIN_ROLES.has(req.user.role.toLowerCase());
-  const cfg: Record<string, string> = {};
-  for (const row of rows) {
-    if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
-    // Decrypt sensitive values for admin display
-    cfg[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
-      ? decryptConfigValue(row.value)
-      : row.value;
+router.get('/config', async (req, res, next) => {
+  try {
+    const adb = req.asyncDb;
+    const locationId = parseConfigLocationId(req.query.location_id);
+    const [rows, location] = await Promise.all([
+      adb.all<any>('SELECT key, value FROM store_config'),
+      locationId
+        ? adb.get<ConfigLocationRow>(
+          `SELECT id, name, address_line, city, state, postcode, country, phone, email, timezone
+           FROM locations
+           WHERE id = ?`,
+          locationId,
+        )
+        : Promise.resolve(undefined),
+    ]);
+    if (locationId && !location) {
+      throw new AppError('location_id references an unknown location', 404);
+    }
+    const isAdmin = req.user?.role != null && SETTINGS_ADMIN_ROLES.has(req.user.role.toLowerCase());
+    const cfg: Record<string, string> = {};
+    for (const row of rows) {
+      if (!isAdmin && SENSITIVE_CONFIG_KEYS.has(row.key)) continue;
+      // Decrypt sensitive values for admin display
+      cfg[row.key] = (isAdmin && ENCRYPTED_CONFIG_KEYS.has(row.key))
+        ? decryptConfigValue(row.value)
+        : row.value;
+    }
+    if (location) {
+      applyLocationContactOverrides(cfg, location);
+    }
+    // Include server environment mode so frontend can show dev warning banner
+    cfg._node_env = process.env.NODE_ENV || 'development';
+    res.json({ success: true, data: cfg });
+  } catch (err) {
+    next(err);
   }
-  // Include server environment mode so frontend can show dev warning banner
-  cfg._node_env = process.env.NODE_ENV || 'development';
-  res.json({ success: true, data: cfg });
 });
 
 // ─── Settings validation rules (ENR-S3) ─────────────────────────────────────
 const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+const STRIPE_SECRET_RE = /^sk_(test|live)_[A-Za-z0-9_]+$/;
+const STRIPE_PUBLISHABLE_RE = /^pk_(test|live)_[A-Za-z0-9_]+$/;
+const STRIPE_WEBHOOK_SECRET_RE = /^whsec_[A-Za-z0-9_]+$/;
+
+const SETUP_NOTIFICATION_TEMPLATES = {
+  received: {
+    eventKey: 'ticket_created',
+    eventLabel: 'A new ticket is created',
+    category: 'customer',
+    enabledKey: 'notif_tpl_received_enabled',
+    subjectKey: 'notif_tpl_received_subj',
+    bodyKey: 'notif_tpl_received_body',
+  },
+  ready: {
+    eventKey: 'device_repaired',
+    eventLabel: 'Repaired/need pickup',
+    category: 'customer',
+    enabledKey: 'notif_tpl_ready_enabled',
+    subjectKey: 'notif_tpl_ready_subj',
+    bodyKey: 'notif_tpl_ready_body',
+  },
+  invoice_paid: {
+    eventKey: 'receipt_sent',
+    eventLabel: 'Receipt against ticket sent to customer',
+    category: 'customer',
+    enabledKey: 'notif_tpl_invoice_paid_enabled',
+    subjectKey: 'notif_tpl_invoice_paid_subj',
+    bodyKey: 'notif_tpl_invoice_paid_body',
+  },
+  appt_reminder: {
+    eventKey: 'appointment_reminder',
+    eventLabel: 'Appointment reminder',
+    category: 'customer',
+    enabledKey: 'notif_tpl_appt_reminder_enabled',
+    subjectKey: 'notif_tpl_appt_reminder_subj',
+    bodyKey: 'notif_tpl_appt_reminder_body',
+  },
+} as const;
+
+type SetupNotificationTemplateKey = keyof typeof SETUP_NOTIFICATION_TEMPLATES;
+
+function escapeTemplateHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderTemplateString(raw: string, vars: Record<string, string>): string {
+  return String(raw || '').replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key: string) => vars[key] ?? `{${key}}`);
+}
+
+function parseHostPort(address: string, defaultPort: number): { host: string; port: number } {
+  const raw = address.trim();
+  if (!raw) throw new AppError('Address is required', 400);
+  const [hostPart, portPart] = raw.split(':');
+  const host = hostPart.trim();
+  const port = portPart ? parseInt(portPart, 10) : defaultPort;
+  if (!host) throw new AppError('Host is required', 400);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    throw new AppError('Port must be between 1 and 65535', 400);
+  }
+  return { host, port };
+}
+
+function connectTcp(host: string, port: number, timeoutMs = 5_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const done = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      if (err) reject(err);
+      else resolve();
+    };
+    socket.setTimeout(timeoutMs, () => done(new Error(`Connection timed out after ${timeoutMs}ms`)));
+    socket.once('connect', () => done());
+    socket.once('error', done);
+  });
+}
+
+function writeTcp(host: string, port: number, payload: Buffer, timeoutMs = 5_000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const done = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      if (err) reject(err);
+      else resolve();
+    };
+    socket.setTimeout(timeoutMs, () => done(new Error(`Write timed out after ${timeoutMs}ms`)));
+    socket.once('error', done);
+    socket.once('connect', () => {
+      socket.write(payload, err => {
+        if (err) return done(err);
+        socket.end(() => done());
+      });
+    });
+  });
+}
+
+async function writeDevicePath(devicePath: string, payload: Buffer): Promise<void> {
+  const trimmed = devicePath.trim();
+  if (!trimmed) throw new AppError('Device path is required', 400);
+  const stat = await fs.promises.stat(trimmed).catch(() => null);
+  if (!stat) throw new AppError(`Device path does not exist: ${trimmed}`, 400);
+  await fs.promises.writeFile(trimmed, payload, { flag: 'a' });
+}
+
+function escposTestReceiptPayload(): Buffer {
+  return Buffer.from(
+    '\x1b@' +
+    'BizarreCRM test receipt\n' +
+    'Printer connection OK\n' +
+    new Date().toISOString() + '\n\n\n' +
+    '\x1dV\x00',
+    'binary',
+  );
+}
+
+function cashDrawerKickPayload(): Buffer {
+  return Buffer.from([0x1b, 0x70, 0x00, 0x19, 0xfa]);
+}
+
+function sha256Hex(value: string | Buffer): string {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function hmac(key: Buffer | string, value: string): Buffer {
+  return crypto.createHmac('sha256', key).update(value).digest();
+}
+
+function inferS3Region(endpoint: URL): string {
+  const host = endpoint.hostname;
+  const aws = host.match(/^s3[.-]([a-z0-9-]+)\.amazonaws\.com$/);
+  if (aws?.[1]) return aws[1];
+  const generic = host.match(/s3[.-]([a-z0-9-]+)/);
+  return generic?.[1] || 'us-east-1';
+}
+
+async function signedS3Request(input: {
+  method: 'PUT' | 'DELETE';
+  endpoint: string;
+  bucket: string;
+  key: string;
+  accessKey: string;
+  secretKey: string;
+  body?: string;
+}): Promise<globalThis.Response> {
+  const endpoint = new URL(input.endpoint);
+  const region = inferS3Region(endpoint);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const body = input.body ?? '';
+  const payloadHash = sha256Hex(body);
+  const canonicalUri = `${endpoint.pathname.replace(/\/$/, '')}/${encodeURIComponent(input.bucket)}/${encodeURIComponent(input.key)}`.replace(/\/{2,}/g, '/');
+  const url = `${endpoint.origin}${canonicalUri}`;
+  const canonicalHeaders =
+    `host:${endpoint.host}\n` +
+    `x-amz-content-sha256:${payloadHash}\n` +
+    `x-amz-date:${amzDate}\n`;
+  const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
+  const canonicalRequest = [
+    input.method,
+    canonicalUri,
+    '',
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n');
+  const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    sha256Hex(canonicalRequest),
+  ].join('\n');
+  const kDate = hmac(`AWS4${input.secretKey}`, dateStamp);
+  const kRegion = hmac(kDate, region);
+  const kService = hmac(kRegion, 's3');
+  const kSigning = hmac(kService, 'aws4_request');
+  const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+  const authorization =
+    `AWS4-HMAC-SHA256 Credential=${input.accessKey}/${credentialScope}, ` +
+    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return fetch(url, {
+    method: input.method,
+    headers: {
+      Authorization: authorization,
+      'x-amz-content-sha256': payloadHash,
+      'x-amz-date': amzDate,
+      ...(input.method === 'PUT' ? { 'content-type': 'text/plain' } : {}),
+    },
+    body: input.method === 'PUT' ? body : undefined,
+  });
+}
+
+async function restoreConfigValue(db: any, key: string, oldValue: string | undefined): Promise<void> {
+  if (oldValue === undefined) {
+    db.prepare('DELETE FROM store_config WHERE key = ?').run(key);
+  } else {
+    db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run(key, oldValue);
+  }
+}
+
+async function upsertSetupNotificationTemplatesFromConfig(adb: AsyncDb, updates: Record<string, string>): Promise<void> {
+  for (const tpl of Object.values(SETUP_NOTIFICATION_TEMPLATES)) {
+    const touched =
+      tpl.enabledKey in updates ||
+      tpl.subjectKey in updates ||
+      tpl.bodyKey in updates;
+    if (!touched) continue;
+
+    const existing = await adb.get<any>('SELECT id FROM notification_templates WHERE event_key = ?', tpl.eventKey);
+    const enabled =
+      tpl.enabledKey in updates
+        ? (updates[tpl.enabledKey] === '1' ? 1 : 0)
+        : undefined;
+    const subject = tpl.subjectKey in updates ? updates[tpl.subjectKey] : undefined;
+    const body = tpl.bodyKey in updates ? updates[tpl.bodyKey] : undefined;
+
+    if (existing) {
+      await adb.run(`
+        UPDATE notification_templates SET
+          subject = COALESCE(?, subject),
+          email_body = COALESCE(?, email_body),
+          sms_body = COALESCE(?, sms_body),
+          send_email_auto = COALESCE(?, send_email_auto),
+          send_sms_auto = COALESCE(?, send_sms_auto),
+          updated_at = datetime('now')
+        WHERE event_key = ?
+      `,
+        subject ?? null,
+        body ?? null,
+        body ?? null,
+        enabled ?? null,
+        enabled ?? null,
+        tpl.eventKey,
+      );
+      continue;
+    }
+
+    await adb.run(`
+      INSERT INTO notification_templates (
+        event_key, event_label, category, subject, email_body, sms_body,
+        send_email_auto, send_sms_auto, is_active, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+    `,
+      tpl.eventKey,
+      tpl.eventLabel,
+      tpl.category,
+      subject ?? '',
+      body ?? '',
+      body ?? '',
+      enabled ?? 0,
+      enabled ?? 0,
+    );
+  }
+}
 
 // PROD105: SMS sender ID validation.
 // Alphanumeric sender IDs: 1-11 chars, letters and digits only (GSMA spec).
@@ -432,14 +809,57 @@ const NUMERIC_SETTINGS = new Set([
   'repair_default_warranty_value', 'repair_default_due_value',
   'label_width_mm', 'label_height_mm',
   'repair_price_flat_adjustment', 'repair_price_pct_adjustment',
+  'repair_pricing_tier_a_years', 'repair_pricing_tier_b_years',
+  'repair_pricing_auto_margin_target_pct',
+  'repair_pricing_auto_margin_target_profit_amount',
+  'repair_pricing_target_profit_green',
+  'repair_pricing_target_profit_amber',
+  'repair_pricing_auto_margin_cap_pct',
+  'catalog_refresh_hour',
   'backup_retention', 'smtp_port',
   'estimate_followup_days', 'notification_digest_hour',
+  'retention_sms_months', 'retention_calls_months',
+  'retention_email_months', 'retention_ticket_notes_months',
+  'booking_lead_hours', 'booking_min_notice_hours',
+  'booking_max_days_ahead', 'booking_max_lead_days',
 ]);
+
+const BOOKING_CONFIG_ALIASES: Record<string, string> = {
+  booking_online_enabled: 'booking_enabled',
+  booking_lead_hours: 'booking_min_notice_hours',
+  booking_max_days_ahead: 'booking_max_lead_days',
+};
 
 const EMAIL_SETTINGS = new Set([
   'store_email', 'smtp_from', 'smtp_user',
   // PROD105: per-tenant outbound From identity — same format rules as smtp_from.
   'from_email',
+]);
+
+const REPAIR_PRICING_ROUNDING_MODES = new Set([
+  'off',
+  'nearest_dollar',
+  'nearest_5',
+  'nearest_10',
+  'psychological_99',
+  'psychological_95',
+  // Legacy values kept for older clients.
+  'none',
+  'ending_99',
+  'whole_dollar',
+  'ending_98',
+]);
+
+const REPAIR_PRICING_TARGET_TYPES = new Set(['percent', 'fixed_amount']);
+const REPAIR_PRICING_CALCULATION_BASES = new Set(['gross_margin', 'markup']);
+const REPAIR_PRICING_PRESETS = new Set([
+  'high_traffic',
+  'mid_traffic',
+  'low_traffic',
+  'custom',
+  'value',
+  'balanced',
+  'premium',
 ]);
 
 /** Validate a config key/value pair. Returns an error string or null if valid. */
@@ -454,6 +874,15 @@ function validateConfigValue(key: string, value: string): string | null {
       return `Invalid currency code: "${value}" (must be 3-letter ISO code like USD, CAD, EUR)`;
     }
   }
+  if (key === 'stripe_secret_key' && value && !STRIPE_SECRET_RE.test(value)) {
+    return 'stripe_secret_key must start with sk_test_ or sk_live_';
+  }
+  if (key === 'stripe_publishable_key' && value && !STRIPE_PUBLISHABLE_RE.test(value)) {
+    return 'stripe_publishable_key must start with pk_test_ or pk_live_';
+  }
+  if (key === 'stripe_webhook_secret' && value && !STRIPE_WEBHOOK_SECRET_RE.test(value)) {
+    return 'stripe_webhook_secret must start with whsec_';
+  }
   if (EMAIL_SETTINGS.has(key) && value) {
     if (!EMAIL_RE.test(value)) {
       return `Invalid email format for ${key}: "${value}"`;
@@ -463,6 +892,53 @@ function validateConfigValue(key: string, value: string): string | null {
     const num = Number(value);
     if (!Number.isFinite(num) || num < 0 || num !== Math.floor(num)) {
       return `${key} must be a non-negative integer, got: "${value}"`;
+    }
+    if (key === 'catalog_refresh_hour' && num > 23) {
+      return 'catalog_refresh_hour must be between 0 and 23';
+    }
+    if ((key === 'repair_pricing_tier_a_years' || key === 'repair_pricing_tier_b_years') && num > 50) {
+      return `${key} must be 50 years or less`;
+    }
+    if (key === 'repair_pricing_auto_margin_cap_pct' && num > 100) {
+      return 'repair_pricing_auto_margin_cap_pct must be 100 or less';
+    }
+  }
+  if (key === 'repair_pricing_rounding_mode' && value && !REPAIR_PRICING_ROUNDING_MODES.has(value)) {
+    return `Invalid repair_pricing_rounding_mode: "${value}"`;
+  }
+  if (key === 'repair_pricing_auto_margin_target_type' && value && !REPAIR_PRICING_TARGET_TYPES.has(value)) {
+    return `Invalid repair_pricing_auto_margin_target_type: "${value}"`;
+  }
+  if (key === 'repair_pricing_auto_margin_calculation_basis' && value && !REPAIR_PRICING_CALCULATION_BASES.has(value)) {
+    return `Invalid repair_pricing_auto_margin_calculation_basis: "${value}"`;
+  }
+  if (key === 'repair_pricing_auto_margin_preset' && value && !REPAIR_PRICING_PRESETS.has(value)) {
+    return `Invalid repair_pricing_auto_margin_preset: "${value}"`;
+  }
+  if (/^repair_pricing_(a|b|c|unknown)_label$/.test(key) && value.trim().length > 32) {
+    return `${key} must be 32 characters or less`;
+  }
+  if (/^repair_pricing_(a|b|c|unknown)_color$/.test(key) && value && !HEX_COLOR_RE.test(value)) {
+    return `${key} must be a hex color like #22c55e`;
+  }
+  if (key === 'repair_pricing_tier_profit_thresholds' && value) {
+    try {
+      const parsed = JSON.parse(value) as Record<string, Record<string, unknown>>;
+      for (const tier of ['tier_a', 'tier_b', 'tier_c', 'unknown']) {
+        const row = parsed[tier];
+        if (!row || typeof row !== 'object') return `Missing ${tier} profit thresholds`;
+        const green = Number(row.green);
+        const amber = Number(row.amber);
+        const red = Number(row.red);
+        if (![green, amber, red].every((num) => Number.isFinite(num) && num >= 0 && num <= 100_000)) {
+          return `${tier} profit thresholds must be numbers between 0 and 100000`;
+        }
+        if (!(green >= amber && amber >= red)) {
+          return `${tier} profit thresholds must be ordered green >= amber >= red`;
+        }
+      }
+    } catch {
+      return 'repair_pricing_tier_profit_thresholds must be valid JSON';
     }
   }
   // PROD105: SMS sender ID — must be alphanumeric (≤11 chars) OR E.164 phone.
@@ -525,7 +1001,23 @@ router.put('/config', adminOnly, async (req, res) => {
       const safeNew = SENSITIVE_CONFIG_KEYS.has(key) ? '***' : strVal;
       audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', { key, old_value: safeOld, new_value: safeNew });
     }
+
+    const aliasKey = BOOKING_CONFIG_ALIASES[key];
+    if (aliasKey && !(aliasKey in req.body)) {
+      await adb.run('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)', aliasKey, strVal);
+      const oldAliasValue = oldConfig[aliasKey] ?? null;
+      if (oldAliasValue !== strVal) {
+        audit(db, 'setting_changed', req.user!.id, req.ip || 'unknown', {
+          key: aliasKey,
+          old_value: oldAliasValue ?? '(unset)',
+          new_value: strVal,
+          mirrored_from: key,
+        });
+      }
+    }
   }
+
+  await upsertSetupNotificationTemplatesFromConfig(adb, req.body);
 
   // MW5: Clear cached email transporter when SMTP settings change.
   // PROD105: also clear on from_email change (per-tenant sender identity).
@@ -925,6 +1417,180 @@ router.delete('/customer-groups/:id', adminOnly, async (req, res) => {
 
 // ==================== Users ====================
 
+type SetupInviteDeliveryStatus = 'sent' | 'not_configured' | 'failed' | 'skipped';
+
+function normalizeSetupInviteRole(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : 'technician';
+  const normalized = raw === 'tech' ? 'technician' : raw || 'technician';
+  if (!VALID_ROLES.has(normalized)) {
+    throw new AppError(`Invalid role "${String(value)}". Must be one of: ${[...VALID_ROLES].join(', ')}`, 400);
+  }
+  return normalized;
+}
+
+function splitSetupInviteName(value: unknown): { firstName: string; lastName: string } {
+  if (typeof value !== 'string') throw new AppError('Name is required', 400);
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (trimmed.length < 2) throw new AppError('Name must be at least 2 characters', 400);
+  if (trimmed.length > 160) throw new AppError('Name must be 160 characters or fewer', 400);
+  const firstSpace = trimmed.indexOf(' ');
+  if (firstSpace === -1) return { firstName: trimmed, lastName: '' };
+  return {
+    firstName: trimmed.slice(0, firstSpace),
+    lastName: trimmed.slice(firstSpace + 1),
+  };
+}
+
+function usernameBaseFromEmail(email: string): string {
+  const local = email.split('@')[0] || 'staff';
+  const sanitized = local.toLowerCase().replace(/[^a-z0-9._-]+/g, '').replace(/^[._-]+|[._-]+$/g, '');
+  return (sanitized || 'staff').slice(0, 48);
+}
+
+async function makeUniqueSetupInviteUsername(adb: AsyncDb, email: string): Promise<string> {
+  const base = usernameBaseFromEmail(email);
+  for (let i = 0; i < 50; i += 1) {
+    const suffix = i === 0 ? '' : String(i + 1);
+    const username = `${base}${suffix}`.slice(0, 60);
+    const existing = await adb.get<{ id: number }>('SELECT id FROM users WHERE username = ?', username);
+    if (!existing) return username;
+  }
+  return `${base.slice(0, 40)}-${crypto.randomBytes(4).toString('hex')}`;
+}
+
+function buildSetupInviteUrl(req: Request, token: string): string {
+  const tenantSlug = (req as any).tenantSlug || null;
+  const host = tenantSlug ? `${tenantSlug}.${config.baseDomain}` : config.baseDomain;
+  return `https://${host}/reset-password/${token}`;
+}
+
+function escapeEmailHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function createSetupInviteToken(adb: AsyncDb, userId: number): Promise<string> {
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+  await adb.run(
+    'UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?',
+    tokenHash,
+    expiresAt,
+    userId,
+  );
+  return token;
+}
+
+async function sendSetupInviteEmail(
+  db: import('better-sqlite3').Database,
+  to: string,
+  name: string,
+  inviteUrl: string,
+  inviterName: string,
+): Promise<SetupInviteDeliveryStatus> {
+  if (!isEmailConfigured(db)) return 'not_configured';
+  const safeName = escapeEmailHtml(name);
+  const safeInviter = escapeEmailHtml(inviterName || 'your shop admin');
+  const sent = await sendEmail(db, {
+    to,
+    subject: 'You have been invited to Bizarre CRM',
+    html: `
+      <p>Hi ${safeName},</p>
+      <p>${safeInviter} invited you to join their Bizarre CRM team.</p>
+      <p><a href="${inviteUrl}">Set your password and accept the invite</a></p>
+      <p>This link expires in 72 hours.</p>
+      <p>If you were not expecting this invite, you can ignore this email.</p>
+    `,
+    text: `Hi ${name},\n\n${inviterName || 'Your shop admin'} invited you to join their Bizarre CRM team.\n\nSet your password and accept the invite: ${inviteUrl}\n\nThis link expires in 72 hours.`,
+  });
+  return sent ? 'sent' : 'failed';
+}
+
+router.post('/setup-invites', adminOnly, async (req, res) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const { name, email: rawEmail, role: rawRole, send_invite, pin } = req.body;
+
+  const email = validateEmail(rawEmail, 'email', true)!;
+  const { firstName, lastName } = splitSetupInviteName(name);
+  const role = normalizeSetupInviteRole(rawRole);
+  const shouldSendInvite = send_invite !== false;
+
+  if (pin !== undefined && pin !== null && pin !== '') {
+    if (typeof pin !== 'string' || !/^\d{4}$/.test(pin)) {
+      throw new AppError('PIN must be a 4-digit number', 400);
+    }
+  }
+
+  if (config.multiTenant && req.tenantLimits?.maxUsers != null) {
+    const userCount = await adb.get<{ c: number }>(
+      'SELECT COUNT(*) as c FROM users WHERE is_active = 1',
+    );
+    const current = userCount?.c ?? 0;
+    if (current >= req.tenantLimits.maxUsers) {
+      res.status(403).json({
+        success: false,
+        upgrade_required: true,
+        feature: 'user_limit',
+        message: `User limit reached (${current}/${req.tenantLimits.maxUsers}). Upgrade to Pro for unlimited users.`,
+        current,
+        limit: req.tenantLimits.maxUsers,
+      });
+      return;
+    }
+  }
+
+  const existingEmail = await adb.get<{ id: number }>(
+    'SELECT id FROM users WHERE lower(email) = lower(?)',
+    email,
+  );
+  if (existingEmail) throw new AppError('A user with this email already exists', 409);
+
+  const username = await makeUniqueSetupInviteUsername(adb, email);
+  const placeholderPasswordHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 12);
+  const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
+
+  const result = await adb.run(`
+    INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, datetime('now'), datetime('now'))
+  `, username, email, placeholderPasswordHash, firstName, lastName, role, pinHash);
+
+  const userId = Number(result.lastInsertRowid);
+  let deliveryStatus: SetupInviteDeliveryStatus = shouldSendInvite ? 'failed' : 'skipped';
+  if (shouldSendInvite) {
+    const token = await createSetupInviteToken(adb, userId);
+    const inviteUrl = buildSetupInviteUrl(req, token);
+    const inviterName = [req.user?.first_name, req.user?.last_name].filter(Boolean).join(' ') || req.user?.username || '';
+    deliveryStatus = await sendSetupInviteEmail(db, email, `${firstName} ${lastName}`.trim(), inviteUrl, inviterName);
+  }
+
+  const user = await adb.get<any>(
+    'SELECT id, username, email, first_name, last_name, role, is_active, password_set FROM users WHERE id = ?',
+    userId,
+  );
+
+  audit(db, 'setup_user_invited', req.user!.id, req.ip || 'unknown', {
+    created_user_id: userId,
+    username,
+    role,
+    delivery_status: deliveryStatus,
+    has_pin: !!pin,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      user,
+      delivery: { status: deliveryStatus },
+    },
+  });
+});
+
 // SCAN-1098 [HIGH]: staff email dump was ungated. Any authenticated user
 // (including revoked/low-privilege roles) could enumerate all staff emails
 // + usernames + role assignments — a ready-made phishing + social-engineering
@@ -1002,6 +1668,16 @@ router.put('/users/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db;
   const targetUserId = Number(req.params.id);
+  if (
+    req.body &&
+    typeof req.body === 'object' &&
+    Object.prototype.hasOwnProperty.call(req.body, 'permissions')
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: 'permissions are managed through /api/v1/roles/users/:id/permissions',
+    });
+  }
   // bcrypt imported at top level
   const { email, first_name, last_name, role, pin, password, is_active, home_location_id, admin_confirm_password, admin_totp_code } = req.body;
   if (password && password.length < 8) throw new AppError('Password must be at least 8 characters', 400);
@@ -1583,6 +2259,119 @@ router.get('/notification-templates', async (req, res) => {
   res.json({ success: true, data: templates });
 });
 
+router.post('/notification-templates/test', adminOnly, async (req, res, next) => {
+  try {
+    const db = req.db;
+    const templateKey = String(req.body?.template_key || req.body?.key || '').trim() as SetupNotificationTemplateKey;
+    if (!(templateKey in SETUP_NOTIFICATION_TEMPLATES)) {
+      throw new AppError('Unknown notification template', 400);
+    }
+
+    const subjectRaw = String(req.body?.subject || '').slice(0, 500);
+    const bodyRaw = String(req.body?.body || req.body?.email_body || req.body?.sms_body || '').slice(0, 10_000);
+    if (!subjectRaw.trim() || !bodyRaw.trim()) {
+      throw new AppError('Subject and body are required for a test send', 400);
+    }
+
+    const configRows = await req.asyncDb.all<{ key: string; value: string }>(
+      "SELECT key, value FROM store_config WHERE key IN ('store_name', 'store_phone', 'store_email', 'store_address')",
+    );
+    const cfg: Record<string, string> = {};
+    for (const row of configRows) cfg[row.key] = row.value;
+
+    const vars = {
+      customer_name: 'Test Customer',
+      ticket_id: 'T-1001',
+      device: 'iPhone 15 Pro',
+      device_name: 'iPhone 15 Pro',
+      total: '$129.00',
+      shop_name: cfg.store_name || 'Your shop',
+      shop_phone: cfg.store_phone || '',
+      store_phone: cfg.store_phone || '',
+      shop_address: cfg.store_address || '',
+      store_address: cfg.store_address || '',
+      invoice_id: 'INV-1001',
+      receipt_link: 'https://example.com/receipt/test',
+      service: 'screen repair',
+      time: '10:00 AM',
+    };
+    const renderedSubject = renderTemplateString(subjectRaw, vars);
+    const renderedBody = renderTemplateString(bodyRaw, vars);
+    const renderedHtml = escapeTemplateHtml(renderedBody).replace(/\r?\n/g, '<br>');
+
+    const requestedEmail = String(req.body?.recipient_email || cfg.store_email || req.user?.email || '').trim();
+    const requestedPhone = String(req.body?.recipient_phone || cfg.store_phone || '').trim();
+    const emailRecipient = requestedEmail && EMAIL_RE.test(requestedEmail) ? requestedEmail : '';
+    const phoneDigits = requestedPhone ? validatePhoneDigits(normalizePhone(requestedPhone), 'recipient_phone', false) : null;
+
+    const result: {
+      email: { configured: boolean; attempted: boolean; success: boolean; recipient?: string; error?: string };
+      sms: { configured: boolean; attempted: boolean; success: boolean; recipient?: string; provider?: string; simulated?: boolean; error?: string };
+    } = {
+      email: { configured: isEmailConfigured(db), attempted: false, success: false },
+      sms: { configured: isSmsConfigured(db), attempted: false, success: false },
+    };
+
+    if (result.email.configured) {
+      if (!emailRecipient) {
+        result.email.error = 'No valid recipient email is available';
+      } else {
+        result.email.attempted = true;
+        result.email.recipient = emailRecipient;
+        result.email.success = await sendEmail(db, {
+          to: emailRecipient,
+          subject: `[Test] ${renderedSubject}`,
+          html: renderedHtml,
+          text: renderedBody,
+        });
+        if (!result.email.success) result.email.error = 'SMTP send failed';
+      }
+    }
+
+    if (result.sms.configured) {
+      if (!phoneDigits) {
+        result.sms.error = 'No valid recipient phone is available';
+      } else {
+        result.sms.attempted = true;
+        result.sms.recipient = phoneDigits;
+        const sms = await sendSmsTenant(db, req.tenantSlug ?? null, phoneDigits, `[Test] ${renderedBody}`);
+        result.sms.success = sms.success === true;
+        result.sms.provider = sms.providerName;
+        result.sms.simulated = sms.simulated === true;
+        if (!sms.success) result.sms.error = sms.error || 'SMS send failed';
+      }
+    }
+
+    const attempted = [result.email, result.sms].filter(channel => channel.attempted);
+    if (attempted.length === 0) {
+      throw new AppError('No configured email/SMS provider has a valid recipient for this test.', 400);
+    }
+
+    audit(db, 'notification_template_test', req.user!.id, req.ip || 'unknown', {
+      template_key: templateKey,
+      email_attempted: result.email.attempted,
+      email_success: result.email.success,
+      sms_attempted: result.sms.attempted,
+      sms_success: result.sms.success,
+      sms_provider: result.sms.provider,
+    });
+
+    const failed = attempted.filter(channel => !channel.success);
+    const status = failed.length > 0 ? 502 : 200;
+    res.status(status).json({
+      success: failed.length === 0,
+      data: {
+        message: failed.length === 0 ? 'Test notification sent.' : 'One or more test sends failed.',
+        channels: result,
+        rendered: { subject: renderedSubject, body: renderedBody },
+      },
+      ...(failed.length > 0 ? { message: 'One or more test sends failed.' } : {}),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.put('/notification-templates/:id', adminOnly, async (req, res) => {
   const adb = req.asyncDb;
   const { subject, email_body, sms_body, send_email_auto, send_sms_auto, is_active, show_in_canned } = req.body;
@@ -1688,11 +2477,225 @@ router.post('/logo', adminOnly, enforceUploadQuota, logoUpload.single('logo'), f
   res.json({ success: true, data: { store_logo: logoPath } });
 });
 
+// ==================== Setup Hardware Tests ====================
+
+router.post('/hardware/blockchyp/test', adminOnly, async (req, res) => {
+  const { api_key, bearer_token, signing_key, terminal_name, terminal_ip, test_mode } = req.body as Record<string, string | boolean | undefined>;
+  const terminalIp = String(terminal_ip || '').trim();
+  const gateway = await testConnectionWithCredentials({
+    apiKey: String(api_key || ''),
+    bearerToken: String(bearer_token || ''),
+    signingKey: String(signing_key || ''),
+    terminalName: String(terminal_name || 'Front Counter'),
+    testMode: test_mode === true || test_mode === 'true',
+  });
+
+  const lan: { attempted: boolean; success: boolean; host?: string; port?: number; error?: string } = {
+    attempted: false,
+    success: false,
+  };
+  if (terminalIp) {
+    const { host, port } = parseHostPort(terminalIp, 8443);
+    lan.attempted = true;
+    lan.host = host;
+    lan.port = port;
+    try {
+      await connectTcp(host, port, 3_000);
+      lan.success = true;
+    } catch (err) {
+      lan.error = err instanceof Error ? err.message : 'LAN reachability failed';
+    }
+  }
+
+  const success = gateway.success && (!lan.attempted || lan.success);
+  audit(req.db, 'setup_hardware_blockchyp_test', req.user!.id, req.ip || 'unknown', {
+    gateway_success: gateway.success,
+    lan_success: lan.attempted ? lan.success : null,
+    terminal_name: gateway.terminalName,
+  });
+  res.status(success ? 200 : 502).json({
+    success,
+    data: {
+      message: success ? 'BlockChyp connection verified.' : 'BlockChyp connection test failed.',
+      gateway,
+      lan,
+    },
+    ...(success ? {} : { message: gateway.error || lan.error || 'BlockChyp connection test failed.' }),
+  });
+});
+
+router.post('/payments/stripe/test', adminOnly, async (req, res) => {
+  const body = req.body as Record<string, string | undefined>;
+  const result = await testTenantStripeConnection({
+    secretKey: body.secret_key ?? body.stripe_secret_key,
+    publishableKey: body.publishable_key ?? body.stripe_publishable_key,
+    webhookSecret: body.webhook_secret ?? body.stripe_webhook_secret,
+  });
+  audit(req.db, 'stripe_settings_test', req.user!.id, req.ip || 'unknown', {
+    success: result.success,
+    account_id: result.accountId ?? null,
+    livemode: result.livemode ?? null,
+  });
+  res.status(result.success ? 200 : 400).json({
+    success: result.success,
+    data: result,
+    ...(result.success ? {} : { message: result.error || 'Stripe connection test failed.' }),
+  });
+});
+
+router.post('/hardware/receipt-printer/test', adminOnly, async (req, res) => {
+  const driver = String(req.body?.driver || '').trim();
+  const connection = String(req.body?.connection || '').trim();
+  const address = String(req.body?.address || '').trim();
+  if (!driver || driver === 'none') throw new AppError('Select a receipt printer driver first', 400);
+  if (!connection || !address) throw new AppError('Printer connection and address are required', 400);
+  if (connection === 'bluetooth') {
+    throw new AppError('Bluetooth test printing requires an OS print bridge; use USB/network for direct server tests.', 501);
+  }
+
+  const payload = escposTestReceiptPayload();
+  if (connection === 'network') {
+    const { host, port } = parseHostPort(address, 9100);
+    await writeTcp(host, port, payload);
+  } else if (connection === 'usb') {
+    await writeDevicePath(address, payload);
+  } else {
+    throw new AppError('Unsupported printer connection', 400);
+  }
+
+  audit(req.db, 'setup_hardware_receipt_printer_test', req.user!.id, req.ip || 'unknown', { driver, connection });
+  res.json({ success: true, data: { message: 'Test receipt sent to printer.', driver, connection } });
+});
+
+router.post('/hardware/cash-drawer/test', adminOnly, async (req, res) => {
+  const driver = String(req.body?.driver || '').trim();
+  const address = String(req.body?.address || '').trim();
+  const printer = req.body?.printer as { connection?: string; address?: string } | undefined;
+  const payload = cashDrawerKickPayload();
+
+  if (driver === 'network') {
+    const { host, port } = parseHostPort(address, 9100);
+    await writeTcp(host, port, payload);
+  } else if (driver === 'kicked_by_printer') {
+    const connection = String(printer?.connection || '').trim();
+    const printerAddress = String(printer?.address || '').trim();
+    if (!connection || !printerAddress) {
+      throw new AppError('Receipt printer connection is required to kick the drawer through the printer', 400);
+    }
+    if (connection === 'network') {
+      const { host, port } = parseHostPort(printerAddress, 9100);
+      await writeTcp(host, port, payload);
+    } else if (connection === 'usb') {
+      await writeDevicePath(printerAddress, payload);
+    } else {
+      throw new AppError('Drawer kick through Bluetooth printers requires an OS print bridge', 501);
+    }
+  } else {
+    throw new AppError('Select a cash drawer driver first', 400);
+  }
+
+  audit(req.db, 'setup_hardware_cash_drawer_test', req.user!.id, req.ip || 'unknown', { driver });
+  res.json({ success: true, data: { message: 'Cash drawer kick command sent.', driver } });
+});
+
+router.post('/hardware/backup/test', adminOnly, async (req, res) => {
+  const kind = String(req.body?.kind || req.body?.backup_destination_type || '').trim();
+  if (kind === 'local') {
+    const backupPath = String(req.body?.path || req.body?.backup_destination_path || '').trim();
+    if (!backupPath) throw new AppError('Backup path is required', 400);
+    const oldPath = (req.db.prepare("SELECT value FROM store_config WHERE key = 'backup_path'").get() as { value: string } | undefined)?.value;
+    const oldEncrypt = (req.db.prepare("SELECT value FROM store_config WHERE key = 'backup_encrypt'").get() as { value: string } | undefined)?.value;
+    try {
+      req.db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run('backup_path', backupPath);
+      req.db.prepare('INSERT OR REPLACE INTO store_config (key, value) VALUES (?, ?)').run('backup_encrypt', 'true');
+      const result = await runBackup(req.db, {
+        tenantSlug: req.tenantSlug,
+        tenantId: req.tenantId,
+        encrypt: true,
+      });
+      audit(req.db, 'setup_hardware_backup_test', req.user!.id, req.ip || 'unknown', {
+        kind,
+        success: result.success,
+      });
+      res.status(result.success ? 200 : 502).json({ success: result.success, data: result, ...(result.success ? {} : { message: result.message }) });
+      return;
+    } finally {
+      await restoreConfigValue(req.db, 'backup_path', oldPath);
+      await restoreConfigValue(req.db, 'backup_encrypt', oldEncrypt);
+    }
+  }
+
+  if (kind === 's3') {
+    const endpoint = String(req.body?.endpoint || '').trim();
+    const bucket = String(req.body?.bucket || '').trim();
+    const accessKey = String(req.body?.access_key || '').trim();
+    const secretKey = String(req.body?.secret_key || '').trim();
+    if (!endpoint || !bucket || !accessKey || !secretKey) {
+      throw new AppError('S3 endpoint, bucket, access key, and secret key are required', 400);
+    }
+    const key = `bizarrecrm-setup-test-${Date.now()}.txt`;
+    const put = await signedS3Request({
+      method: 'PUT',
+      endpoint,
+      bucket,
+      key,
+      accessKey,
+      secretKey,
+      body: `BizarreCRM backup destination test ${new Date().toISOString()}\n`,
+    });
+    if (!put.ok) {
+      const text = await put.text().catch(() => '');
+      throw new AppError(`S3 test upload failed (${put.status}): ${text.slice(0, 200)}`, 502);
+    }
+    const del = await signedS3Request({ method: 'DELETE', endpoint, bucket, key, accessKey, secretKey });
+    audit(req.db, 'setup_hardware_backup_test', req.user!.id, req.ip || 'unknown', {
+      kind,
+      success: del.ok,
+      endpoint: new URL(endpoint).host,
+      bucket,
+    });
+    if (!del.ok) {
+      const text = await del.text().catch(() => '');
+      throw new AppError(`S3 test cleanup failed (${del.status}): ${text.slice(0, 200)}`, 502);
+    }
+    res.json({ success: true, data: { message: 'S3 backup destination write/delete test succeeded.', bucket } });
+    return;
+  }
+
+  if (kind === 'tailscale') {
+    const sharePath = String(req.body?.path || '').trim();
+    if (!sharePath) throw new AppError('Tailscale share path is required', 400);
+    const url = new URL(sharePath);
+    if (url.protocol !== 'tailscale:') throw new AppError('Tailscale path must start with tailscale://', 400);
+    const lookup = await dns.lookup(url.hostname);
+    audit(req.db, 'setup_hardware_backup_test', req.user!.id, req.ip || 'unknown', {
+      kind,
+      success: true,
+      host: url.hostname,
+    });
+    res.json({
+      success: true,
+      data: {
+        message: 'Tailscale node resolved. The active backup service will perform the write during scheduled backups.',
+        host: url.hostname,
+        address: lookup.address,
+        write_verified: false,
+      },
+    });
+    return;
+  }
+
+  throw new AppError('Unknown backup destination type', 400);
+});
+
 // ==================== SMS/Voice Provider Settings ====================
 
 // GET /settings/sms/providers — Provider registry (for UI dropdown)
 router.get('/sms/providers', (_req, res) => {
-  res.json({ success: true, data: getProviderRegistry() });
+  const providers = config.multiTenant
+    ? getProviderRegistry()
+    : getProviderRegistry().filter((p) => p.type !== 'bizarresms');
+  res.json({ success: true, data: providers });
 });
 
 // POST /settings/sms/test-connection — Test provider credentials without saving
@@ -1816,6 +2819,22 @@ router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
 
     if (provider_type === 'console') {
       res.json({ success: true, data: { message: 'Console provider ready (debug only)', provider: 'console' } });
+      return;
+    }
+
+    if (provider_type === 'bizarresms') {
+      if (!config.multiTenant) {
+        throw new AppError('BizarreSMS is only available on hosted multi-tenant deployments.', 400);
+      }
+      if (!config.bizarreSmsRelayUrl || !config.bizarreSmsRelayToken) {
+        throw new AppError('BizarreSMS relay is not configured for this hosted deployment.', 503);
+      }
+      const resp = await fetch(`${config.bizarreSmsRelayUrl.replace(/\/+$/, '')}/v1/health`, {
+        headers: { Authorization: `Bearer ${config.bizarreSmsRelayToken}` },
+        signal: timeoutSignal(),
+      });
+      if (!resp.ok) throw new AppError(`BizarreSMS relay health check failed (HTTP ${resp.status})`, 502);
+      res.json({ success: true, data: { message: 'BizarreSMS relay verified', provider: 'bizarresms' } });
       return;
     }
 
@@ -2278,16 +3297,20 @@ router.get('/webhook-failures', adminOnly, async (req: Request, res: Response) =
   const limit = Math.min(parseInt(req.query.limit as string || '50', 10), 200);
   const rows = db
     .prepare(
-      'SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ORDER BY created_at DESC LIMIT ?'
+      'SELECT id, endpoint, event, attempts, last_error, last_status, created_at, payload FROM webhook_delivery_failures ORDER BY created_at DESC LIMIT ?'
     )
     .all(limit) as Array<{
       id: number; endpoint: string; event: string;
-      attempts: number; last_error: string | null; last_status: number | null; created_at: string;
+      attempts: number; last_error: string | null; last_status: number | null; created_at: string; payload: string | null;
     }>;
+  const failures = rows.map(({ payload, ...row }) => ({
+    ...row,
+    ...formatWebhookFailurePayloadPreview(payload),
+  }));
   const totalRow = db
     .prepare('SELECT COUNT(*) as c FROM webhook_delivery_failures')
     .get() as { c: number };
-  res.json({ success: true, data: { failures: rows, total: totalRow.c } });
+  res.json({ success: true, data: { failures, total: totalRow.c } });
 });
 
 // POST /webhook-failures/:id/retry — operator retry of a single dead-lettered delivery

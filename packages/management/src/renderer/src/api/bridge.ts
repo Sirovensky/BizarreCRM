@@ -2,6 +2,7 @@
  * Type-safe wrapper around window.electronAPI exposed by the preload script.
  * All renderer-side API calls go through this module.
  */
+import type { TenantPlan } from '@bizarre-crm/shared';
 
 // ── Response types ────────────────────────────────────────────────
 
@@ -55,6 +56,26 @@ export interface ServerStats {
 
 // ── Crash types ───────────────────────────────────────────────────
 
+export interface CrashRuntimeContext {
+  os?: {
+    type?: string;
+    platform?: string;
+    release?: string;
+    arch?: string;
+  };
+  versions?: {
+    node?: string;
+    electron?: string;
+    chrome?: string;
+    v8?: string;
+  };
+  app?: {
+    name?: string;
+    version?: string;
+    isPackaged?: boolean;
+  };
+}
+
 export interface CrashEntry {
   id: string;
   timestamp: string;
@@ -63,12 +84,60 @@ export interface CrashEntry {
   errorStack: string;
   type: 'uncaughtException' | 'unhandledRejection';
   recovered: boolean;
+  source?: 'server' | 'dashboard';
+  context?: CrashRuntimeContext | null;
 }
 
 export interface CrashStats {
   totalCrashes: number;
   disabledCount: number;
   recentCrashes: CrashEntry[];
+}
+
+export interface CertPinningStatus {
+  enabled: boolean;
+  reason?: string;
+  validTo?: string;
+  daysUntilExpiry?: number;
+}
+
+export interface AuditEntry {
+  id: number;
+  admin_username: string;
+  action: string;
+  details: string;
+  ip_address: string;
+  created_at: string;
+}
+
+export interface AuditLogResponse {
+  logs?: AuditEntry[];
+}
+
+export interface SessionEntry {
+  id: string;
+  username: string;
+  ip_address: string;
+  user_agent: string;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface SessionsResponse {
+  sessions?: SessionEntry[];
+}
+
+export interface WebhookFailureEntry {
+  id: number;
+  endpoint: string;
+  event: string;
+  attempts: number;
+  last_error: string | null;
+  last_status: number | null;
+  created_at: string;
+  sent_payload: string | null;
+  payload_bytes: number | null;
+  payload_truncated: boolean;
 }
 
 export interface DisabledRoute {
@@ -97,6 +166,8 @@ export interface Tenant {
   plan: string;
   db_size_bytes?: number;
   created_at: string;
+  last_active?: string | null;
+  suspended_at?: string | null;
 }
 
 export interface TenantCreateResult {
@@ -104,6 +175,17 @@ export interface TenantCreateResult {
   slug: string;
   url: string;
   setup_url: string;
+}
+
+export interface TenantStatusActionPayload {
+  slug: string;
+  reason?: string;
+}
+
+export interface TenantUpdatePayload {
+  slug: string;
+  plan?: TenantPlan;
+  name?: string;
 }
 
 /**
@@ -116,6 +198,18 @@ export interface TenantCreatePayload {
   shop_name: string;
   admin_email: string;
   plan: string;
+}
+
+export interface BackupSettingsPayload {
+  backup_path: string;
+  schedule: string;
+  retention_days: number;
+  encryption_enabled: boolean;
+}
+
+export interface BackupSettings extends BackupSettingsPayload {
+  last_backup: string;
+  last_status: string;
 }
 
 // ── Metrics types ─────────────────────────────────────────────────
@@ -160,6 +254,7 @@ export interface AuditLogParams {
   limit?: number;
   offset?: number;
   action?: string;
+  username?: string;
   startDate?: string;
   endDate?: string;
 }
@@ -200,6 +295,7 @@ export interface SecurityAlertListResult {
 // ── Platform config (DB-backed runtime toggles) ──────────────────
 
 export type PlatformConfigKind = 'flag' | 'value';
+export type PlatformConfigStatus = 'active' | 'coming_soon' | 'dead';
 
 export interface PlatformConfigField {
   key: string;
@@ -207,6 +303,8 @@ export interface PlatformConfigField {
   label: string;
   description: string;
   default: string;
+  status?: PlatformConfigStatus;
+  statusReason?: string;
 }
 
 // ── Env settings editor ──────────────────────────────────────────
@@ -231,6 +329,23 @@ export interface EnvSettingField {
   value?: string;
   /** Secrets only: character length so the UI can say "16-char secret set". */
   length?: number;
+}
+
+export type EnvConnectionTestTarget = 'captcha' | 'stripe' | 'cloudflare';
+export type EnvConnectionTestStatus = 'pass' | 'warn' | 'fail';
+
+export interface EnvConnectionTestDetail {
+  label: string;
+  value: string;
+  tone?: 'success' | 'warning' | 'danger' | 'muted';
+}
+
+export interface EnvConnectionTestResult {
+  target: EnvConnectionTestTarget;
+  status: EnvConnectionTestStatus;
+  summary: string;
+  checkedAt: string;
+  details: EnvConnectionTestDetail[];
 }
 
 // ── Bridge accessor ───────────────────────────────────────────────
@@ -281,6 +396,7 @@ interface ElectronAPI {
     clearRollback(): Promise<ApiResponse>;
     /** MGT-028: Record the final update outcome once the dashboard reopens. */
     auditUpdateResult(payload: { success: boolean; afterSha?: string; errorMessage?: string }): Promise<ApiResponse>;
+    /** Legacy alias; Electron main delegates to the canonical local service.restart path. */
     restartServer(): Promise<ApiResponse>;
     stopServer(): Promise<ApiResponse>;
     /** Watchdog: poll for events emitted by packages/server/scripts/watchdog.cjs. */
@@ -327,13 +443,15 @@ interface ElectronAPI {
       customer_count?: number;
       db_size_mb?: number;
     }>>;
-    suspendTenant(slug: string): Promise<ApiResponse>;
-    activateTenant(slug: string): Promise<ApiResponse>;
+    updateTenant(payload: TenantUpdatePayload): Promise<ApiResponse<Tenant>>;
+    suspendTenant(payload: TenantStatusActionPayload): Promise<ApiResponse>;
+    activateTenant(payload: TenantStatusActionPayload): Promise<ApiResponse>;
     deleteTenant(slug: string): Promise<ApiResponse>;
     repairTenant(slug: string): Promise<ApiResponse<{ message: string; steps: Array<{ step: string; message: string }>; setup_url?: string }>>;
-    getAuditLog(params?: AuditLogParams): Promise<ApiResponse>;
-    getSessions(): Promise<ApiResponse>;
+    getAuditLog(params?: AuditLogParams): Promise<ApiResponse<AuditEntry[] | AuditLogResponse>>;
+    getSessions(): Promise<ApiResponse<SessionEntry[] | SessionsResponse>>;
     revokeSession(id: string): Promise<ApiResponse>;
+    revokeAllSessions(): Promise<ApiResponse<{ revoked: true; count: number }>>;
     getConfig(): Promise<ApiResponse<Record<string, string>>>;
     getConfigSchema(): Promise<ApiResponse<{ fields: PlatformConfigField[] }>>;
     updateConfig(updates: Record<string, string>): Promise<ApiResponse>;
@@ -344,13 +462,13 @@ interface ElectronAPI {
     /** Acknowledge every currently-unacknowledged alert. Returns the count cleared. */
     acknowledgeAllAlerts(): Promise<ApiResponse<{ count: number }>>;
     /** Clear `rate_limits` rows that lock out auth/2FA/PIN flows. Optional tenant filter. */
-    resetRateLimits(payload: { tenantSlug?: string; all?: boolean }): Promise<ApiResponse<{
+    resetRateLimits(payload: { tenantSlug?: string; all?: boolean; totpCode: string }): Promise<ApiResponse<{
       totalDeleted: number;
       scope: 'all' | 'single-tenant';
       results: Array<{ dbLabel: string; deleted: number; skipped: boolean; error?: string }>;
     }>>;
     /** Idempotent: re-create Cloudflare DNS records for any tenant missing one. */
-    backfillCloudflareDns(): Promise<ApiResponse<{
+    backfillCloudflareDns(totpCode: string): Promise<ApiResponse<{
       summary: { total: number; created: number; skipped: number; errors: number };
       rows: Array<{ slug: string; status: 'created' | 'reused' | 'skipped' | 'error'; recordId?: string; message?: string }>;
     }>>;
@@ -361,7 +479,7 @@ interface ElectronAPI {
       now: number;
     }>>;
     /** Generate a new JWT signing secret. Value is returned once; operator must paste into .env. */
-    rotateJwtSecret(purpose: 'access' | 'refresh' | 'both'): Promise<ApiResponse<{
+    rotateJwtSecret(purpose: 'access' | 'refresh' | 'both', totpCode: string): Promise<ApiResponse<{
       purpose: 'access' | 'refresh' | 'both';
       nextJwtSecret?: string;
       nextJwtRefreshSecret?: string;
@@ -389,15 +507,7 @@ interface ElectronAPI {
     }>>;
     /** Per-tenant webhook delivery failures (dead-letter queue). */
     listTenantWebhookFailures(params: { slug: string; event?: string; limit?: number }): Promise<ApiResponse<{
-      rows: Array<{
-        id: number;
-        endpoint: string;
-        event: string;
-        attempts: number;
-        last_error: string | null;
-        last_status: number | null;
-        created_at: string;
-      }>;
+      rows: WebhookFailureEntry[];
       summary: { total: number; byEvent: Array<{ event: string; count: number }> };
     }>>;
     /** Operator-triggered retry of a single dead-lettered webhook delivery. */
@@ -436,27 +546,8 @@ interface ElectronAPI {
       safetyBackup?: string;
       unsigned?: boolean;
     }>>;
-    tenantBackupSettingsGet(slug: string): Promise<ApiResponse<{
-      backup_path: string;
-      schedule: string;
-      retention_days: number;
-      encryption_enabled: boolean;
-      last_backup: string;
-      last_status: string;
-    }>>;
-    tenantBackupSettingsUpdate(slug: string, settings: {
-      backup_path: string;
-      schedule: string;
-      retention_days: number;
-      encryption_enabled: boolean;
-    }): Promise<ApiResponse<{
-      backup_path: string;
-      schedule: string;
-      retention_days: number;
-      encryption_enabled: boolean;
-      last_backup: string;
-      last_status: string;
-    }>>;
+    tenantBackupSettingsGet(slug: string): Promise<ApiResponse<BackupSettings>>;
+    tenantBackupSettingsUpdate(slug: string, settings: BackupSettingsPayload): Promise<ApiResponse<BackupSettings>>;
     backupDrives(): Promise<ApiResponse<DiskDrive[]>>;
   };
   admin: {
@@ -465,8 +556,11 @@ interface ElectronAPI {
     browseDrive(path: string): Promise<ApiResponse>;
     createFolder(parentPath: string, name: string): Promise<ApiResponse>;
     listBackups(): Promise<ApiResponse>;
+    getPathForFile(file: File): string;
+    downloadBackup(filename: string): Promise<ApiResponse<{ path: string; metadataPath: string | null }>>;
+    uploadBackup(sourcePath: string): Promise<ApiResponse<{ filename: string; metadataCopied: boolean }>>;
     runBackup(): Promise<ApiResponse>;
-    updateBackupSettings(settings: unknown): Promise<ApiResponse>;
+    updateBackupSettings(settings: BackupSettingsPayload): Promise<ApiResponse<BackupSettings>>;
     deleteBackup(filename: string): Promise<ApiResponse>;
     /** Restore a backup — server safety-copies the current DB first, then swaps in. */
     restoreBackup(filename: string): Promise<ApiResponse<{ message?: string; safetyBackup?: string }>>;
@@ -474,6 +568,8 @@ interface ElectronAPI {
     getEnvSettings(): Promise<ApiResponse<{ fields: EnvSettingField[] }>>;
     /** Bulk-write env keys to .env. Caller must restart the server to apply. */
     setEnvSettings(updates: Record<string, string>): Promise<ApiResponse<{ keysUpdated: string[]; requiresRestart: boolean }>>;
+    /** Read saved .env credentials and perform a non-mutating provider probe. */
+    testEnvConnection(target: EnvConnectionTestTarget): Promise<ApiResponse<EnvConnectionTestResult>>;
     /** Enumerate whitelisted log files with size + mtime. */
     listLogs(): Promise<ApiResponse<{ files: Array<{ name: string; path: string | null; size: number; mtime: string | null; exists: boolean; error?: string }> }>>;
     /** Tail the last N lines of a whitelisted log file. */
@@ -508,9 +604,11 @@ interface ElectronAPI {
     minimize(): Promise<ApiResponse>;
     maximize(): Promise<ApiResponse>;
     // AUDIT-MGT-006: exposes whether TLS cert pinning is active
-    getCertPinningStatus(): Promise<ApiResponse<{ enabled: boolean; reason?: string }>>;
+    getCertPinningStatus(): Promise<ApiResponse<CertPinningStatus>>;
     // AUDIT-MGT-018: exposes whether UPDATE_SKIP_TAG_VERIFY bypass is active
     getTagVerifyStatus(): Promise<ApiResponse<{ bypass: boolean }>>;
+    /** Subscribe to Electron powerMonitor resume events. Returns an unsubscribe function. */
+    onPowerResume(listener: () => void): () => void;
   };
 }
 
@@ -520,12 +618,69 @@ declare global {
   }
 }
 
+const SUPER_ADMIN_TOKEN_KEY = 'bizarrecrm.superAdminToken';
+
+async function postBrowserTenantStatusAction(
+  action: 'suspend' | 'activate',
+  payload: TenantStatusActionPayload,
+): Promise<ApiResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = sessionStorage.getItem(SUPER_ADMIN_TOKEN_KEY);
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  } catch {
+    // Browser storage may be blocked; cookie auth still rides with credentials.
+  }
+
+  const reason = payload.reason?.trim();
+  try {
+    const response = await fetch(
+      `/super-admin/api/tenants/${encodeURIComponent(payload.slug)}/${action}`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(reason ? { reason } : {}),
+      },
+    );
+    let body: ApiResponse;
+    try {
+      body = await response.json() as ApiResponse;
+    } catch {
+      body = {
+        success: response.ok,
+        message: response.ok ? undefined : response.statusText,
+      };
+    }
+    if (response.status === 401) {
+      try { sessionStorage.removeItem(SUPER_ADMIN_TOKEN_KEY); } catch { /* ignore */ }
+    }
+    return { ...body, status: response.status };
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : 'Request failed',
+      offline: true,
+    };
+  }
+}
+
 /**
  * Get the electron API bridge. Throws in non-Electron environments.
  */
 export function getAPI(): ElectronAPI {
   if (!window.electronAPI) {
     throw new Error('electronAPI not available — not running in Electron');
+  }
+  if ((window as { isElectron?: boolean }).isElectron === false) {
+    return {
+      ...window.electronAPI,
+      superAdmin: {
+        ...window.electronAPI.superAdmin,
+        suspendTenant: (payload) => postBrowserTenantStatusAction('suspend', payload),
+        activateTenant: (payload) => postBrowserTenantStatusAction('activate', payload),
+      },
+    };
   }
   return window.electronAPI;
 }

@@ -10,10 +10,11 @@
  * SERVER_BASE misconfiguration or DNS hijack turning into silent MITM.
  *
  * SECURITY (SEC-H98): TLS certificate fingerprint is pinned against the
- * known server.cert at startup. A process that port-squats on 443 before
- * the real server can bind will be detected immediately — its TLS cert
- * won't match the pinned SHA-256 fingerprint, and the connection is
- * aborted with an explicit error before any credentials are sent.
+ * known server.cert. A process that port-squats on 443 before the real server
+ * can bind will be detected immediately — its TLS cert won't match the pinned
+ * SHA-256 fingerprint, and the connection is aborted with an explicit error
+ * before any credentials are sent. The pin is read at request time so cert
+ * rotation by setup.bat is picked up without restarting the dashboard.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -145,31 +146,87 @@ function resolveCertPath(): string | null {
   return fs.existsSync(candidate) ? candidate : null;
 }
 
-/**
- * Expected SHA-256 fingerprint of packages/server/certs/server.cert,
- * computed once at module load.  null = cert file not found at startup
- * (pinning is skipped with a warning).
- */
-const EXPECTED_FINGERPRINT: string | null = (() => {
+let lastFingerprint: string | null | undefined;
+let lastFingerprintLogKey: string | null = null;
+let lastCertExpiryLogKey: string | null = null;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+export interface CertPinningStatus {
+  enabled: boolean;
+  reason?: string;
+  validTo?: string;
+  daysUntilExpiry?: number;
+}
+
+interface CertExpiryInfo {
+  validTo: string;
+  daysUntilExpiry: number;
+}
+
+function parseCertExpiry(pemContent: string): CertExpiryInfo | undefined {
+  try {
+    const certificate = new crypto.X509Certificate(pemContent);
+    const validToMs = Date.parse(certificate.validTo);
+    if (!Number.isFinite(validToMs)) {
+      const logKey = `invalid:${certificate.validTo}`;
+      if (lastCertExpiryLogKey !== logKey) {
+        console.warn(`[api-client] DASH-ELEC-252: failed to parse cert validTo: ${certificate.validTo}`);
+        lastCertExpiryLogKey = logKey;
+      }
+      return undefined;
+    }
+
+    const diffMs = validToMs - Date.now();
+    return {
+      validTo: new Date(validToMs).toISOString(),
+      daysUntilExpiry: diffMs >= 0
+        ? Math.ceil(diffMs / MS_PER_DAY)
+        : Math.floor(diffMs / MS_PER_DAY),
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const logKey = `error:${msg}`;
+    if (lastCertExpiryLogKey !== logKey) {
+      console.warn(`[api-client] DASH-ELEC-252: failed to read cert expiry (${msg})`);
+      lastCertExpiryLogKey = logKey;
+    }
+    return undefined;
+  }
+}
+
+function readExpectedFingerprint(): string | null {
   const certPath = resolveCertPath();
   if (certPath === null) {
-    console.warn(
-      '[api-client] SEC-H98: server.cert not found — TLS fingerprint pinning DISABLED. ' +
-      'Start the CRM server at least once to generate certs.'
-    );
+    if (lastFingerprintLogKey !== 'missing') {
+      console.warn(
+        '[api-client] SEC-H98: server.cert not found — TLS fingerprint pinning DISABLED. ' +
+        'Start the CRM server at least once to generate certs.'
+      );
+      lastFingerprintLogKey = 'missing';
+    }
     return null;
   }
   try {
     const pem = fs.readFileSync(certPath, 'utf8');
     const fp = computePemFingerprint(pem);
-    console.info(`[api-client] SEC-H98: TLS cert pinned — expected fingerprint: ${fp}`);
+    if (lastFingerprint !== fp) {
+      keepAliveAgent.destroy();
+      console.info(`[api-client] SEC-H98: TLS cert pinned — expected fingerprint: ${fp}`);
+    }
+    lastFingerprint = fp;
+    lastFingerprintLogKey = fp;
     return fp;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[api-client] SEC-H98: failed to compute cert fingerprint (${msg}) — pinning DISABLED`);
+    const logKey = `error:${msg}`;
+    if (lastFingerprintLogKey !== logKey) {
+      console.warn(`[api-client] SEC-H98: failed to compute cert fingerprint (${msg}) — pinning DISABLED`);
+      lastFingerprintLogKey = logKey;
+    }
     return null;
   }
-})();
+}
 
 /**
  * Constant-time string comparison to prevent timing-oracle attacks on the
@@ -198,7 +255,8 @@ function checkCertFingerprint(
   _hostname: string,
   cert: tls.PeerCertificate,
 ): Error | undefined {
-  if (EXPECTED_FINGERPRINT === null) {
+  const expectedFingerprint = readExpectedFingerprint();
+  if (expectedFingerprint === null) {
     // Pinning is disabled — let the connection proceed (rejectUnauthorized
     // already provides self-signed acceptance for loopback only).
     return undefined;
@@ -211,10 +269,10 @@ function checkCertFingerprint(
     );
   }
 
-  if (!timingSafeStringEqual(presented.toUpperCase(), EXPECTED_FINGERPRINT)) {
+  if (!timingSafeStringEqual(presented.toUpperCase(), expectedFingerprint)) {
     return new Error(
       `Cert fingerprint mismatch — possible port-squat / MITM\n` +
-      `  expected : ${EXPECTED_FINGERPRINT}\n` +
+      `  expected : ${expectedFingerprint}\n` +
       `  presented: ${presented.toUpperCase()}`
     );
   }
@@ -273,6 +331,20 @@ export function getSuperAdminToken(): string | null {
   return superAdminToken;
 }
 
+function isMutationMethod(method: string): boolean {
+  const normalized = method.trim().toUpperCase();
+  return normalized !== 'GET' && normalized !== 'HEAD' && normalized !== 'OPTIONS';
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const normalized = name.toLowerCase();
+  return Object.keys(headers).some((header) => header.toLowerCase() === normalized);
+}
+
+function createIdempotencyKey(): string {
+  return crypto.randomUUID();
+}
+
 // DASH-ELEC-255: long-running operations (backup, restore) need a much larger
 // timeout than the default 30 s. Callers supply timeoutMs to override.
 export function apiRequest<T = unknown>(
@@ -281,6 +353,7 @@ export function apiRequest<T = unknown>(
   body: unknown = null,
   authType: 'authenticated' | 'none' = 'authenticated',
   timeoutMs: number = REQUEST_TIMEOUT,
+  extraHeaders: Record<string, string> = {},
 ): Promise<ApiResult<T>> {
   return new Promise((resolve, reject) => {
     const base = getServerBase();
@@ -291,7 +364,15 @@ export function apiRequest<T = unknown>(
       // an Origin header on sensitive routes. The dashboard is a trusted local
       // client, so we identify ourselves as the server's own origin.
       'Origin': base,
+      ...extraHeaders,
     };
+
+    // DASH-ELEC-230: management-dashboard writes are user-triggered operations
+    // that may be retried by the UI/server path. Attach one opaque UUID per
+    // mutating request while keeping GET/HEAD/OPTIONS completely unchanged.
+    if (isMutationMethod(method) && !hasHeader(headers, 'X-Idempotency-Key')) {
+      headers['X-Idempotency-Key'] = createIdempotencyKey();
+    }
 
     // All authenticated requests use the super admin JWT.
     // FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-001): route through the getter
@@ -396,7 +477,16 @@ export function apiRequest<T = unknown>(
  * the CRM server has generated certs). Exported so the IPC layer can expose
  * this status to the renderer without duplicating the cert-path logic.
  */
-export function getCertPinningStatus(): { enabled: boolean; reason?: string } {
+export function getCertPinningStatus(): CertPinningStatus {
+  const expectedFingerprint = readExpectedFingerprint();
+  if (expectedFingerprint === null) {
+    return {
+      enabled: false,
+      reason:
+        'server.cert not found — start the CRM server at least once to generate certs',
+    };
+  }
+
   const certPath = resolveCertPath();
   if (certPath === null) {
     return {
@@ -405,7 +495,14 @@ export function getCertPinningStatus(): { enabled: boolean; reason?: string } {
         'server.cert not found — start the CRM server at least once to generate certs',
     };
   }
-  return { enabled: true };
+
+  try {
+    const pem = fs.readFileSync(certPath, 'utf8');
+    const expiry = parseCertExpiry(pem);
+    return { enabled: true, ...expiry };
+  } catch {
+    return { enabled: true };
+  }
 }
 
 /**

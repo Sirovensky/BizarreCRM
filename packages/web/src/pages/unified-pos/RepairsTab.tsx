@@ -52,6 +52,21 @@ interface ApiRepairGrade {
   inventory_in_stock?: number;
 }
 
+function warrantyDefaultKeyForService(serviceName: string): string | null {
+  const normalized = serviceName.toLowerCase();
+  if (/\b(back|rear)\s+(glass|cover|housing)\b/.test(normalized)) return 'warranty_default_months_back_glass';
+  if (/\b(charge|charging|charger|dock)\s*(port|connector)?\b/.test(normalized)) return 'warranty_default_months_charge_port';
+  if (/\bbattery\b/.test(normalized)) return 'warranty_default_months_battery';
+  if (/\b(camera|lens)\b/.test(normalized)) return 'warranty_default_months_camera';
+  if (/\b(screen|display|lcd|digitizer)\b/.test(normalized)) return 'warranty_default_months_screen';
+  return null;
+}
+
+function warrantyDaysFromMonths(value: string): number {
+  const months = Number.parseInt(value, 10);
+  return Number.isFinite(months) && months > 0 ? months * 30 : 0;
+}
+
 interface ApiRepairPricingLookup {
   labor_price?: number | null;
   grades?: ApiRepairGrade[];
@@ -175,7 +190,7 @@ function CategoryStep({ onSelect }: { onSelect: (category: string) => void }) {
             key={value}
             onClick={() => onSelect(value)}
             className={cn(
-              'flex flex-col items-center justify-center gap-3 rounded-xl border bg-white py-6 px-4 text-center transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 dark:bg-surface-800',
+              'btn btn-md !h-auto flex-col !gap-3 rounded-xl border bg-white !px-4 !py-6 text-center !whitespace-normal hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 dark:bg-surface-800',
               isEmpty
                 ? 'border-surface-100 opacity-50 dark:border-surface-800'
                 : 'border-surface-200 hover:border-primary-400 dark:border-surface-700 dark:hover:border-primary-500',
@@ -301,7 +316,7 @@ function DeviceStep({ category, onSelect }: {
                 }
               }}
               className={cn(
-                'rounded-lg border px-3 py-2 text-sm font-medium transition-all',
+                'btn btn-sm border',
                 mfgFilter === s.names[0]
                   ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-300'
                   : 'border-surface-200 text-surface-600 hover:border-primary-300 hover:text-primary-600 dark:border-surface-600 dark:text-surface-300 dark:hover:border-primary-500',
@@ -342,7 +357,7 @@ function DeviceStep({ category, onSelect }: {
                   key={d.id}
                   data-tutorial-target="ticket:device-picker-option"
                   onClick={() => onSelect(d.id, `${d.manufacturer_name ?? ''} ${d.name}`.trim())}
-                  className="flex w-full items-center gap-3 border-b border-surface-100 px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
+                  className="btn btn-md !h-auto w-full !justify-start !gap-3 !rounded-none border-b border-surface-100 !px-3 !py-2.5 text-left !whitespace-normal last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
                 >
                   <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
                     {d.manufacturer_name && !mfgFilter && (
@@ -371,7 +386,7 @@ function DeviceStep({ category, onSelect }: {
                 <button
                   key={d.id}
                   onClick={() => onSelect(d.id, `${d.manufacturer_name ?? ''} ${d.name}`.trim())}
-                  className="rounded-full border border-surface-200 bg-white px-2.5 py-1 text-xs font-medium text-surface-700 transition-all hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                  className="btn btn-xs !rounded-full border border-surface-200 bg-white text-surface-700 hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:border-primary-500 dark:hover:text-primary-400"
                 >
                   {d.manufacturer_name && !mfgFilter && <span className="text-surface-400">{d.manufacturer_name} </span>}
                   {displayName}
@@ -405,7 +420,7 @@ function DeviceStep({ category, onSelect }: {
               setOtherName('');
             }}
             disabled={!otherName.trim()}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-md bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Add
           </button>
@@ -548,8 +563,8 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
                   setManualPrice('');
                 }}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg border font-medium transition-all',
-                  hasPriceForDevice ? 'px-3.5 py-2.5 text-sm shadow-sm' : 'px-3 py-2 text-xs opacity-80',
+                  'btn border',
+                  hasPriceForDevice ? 'btn-md shadow-sm' : 'btn-sm opacity-80',
                   isSelected
                     ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-sm dark:border-primary-600 dark:bg-primary-900/30 dark:text-primary-300'
                     : hasPriceForDevice
@@ -591,7 +606,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
                   key={grade.id}
                   onClick={() => setSelectedGradeId(grade.id)}
                   className={cn(
-                    'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all',
+                    'btn btn-md !h-auto w-full !justify-start !gap-3 border !px-3 !py-2.5 text-left !whitespace-normal',
                     isGradeSelected
                       ? 'border-primary-500 bg-primary-50 dark:border-primary-600 dark:bg-primary-900/20'
                       : 'border-surface-200 hover:border-surface-300 dark:border-surface-700 dark:hover:border-surface-600',
@@ -681,7 +696,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
         <button
           onClick={handleAdd}
           disabled={!hasPricing && !manualPrice && deviceModelId > 0}
-          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-md w-full bg-primary-600 !font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           Continue to Details
         </button>
@@ -709,8 +724,26 @@ function DetailsStep({ drillState, onDone }: {
   const [preConditions, setPreConditions] = useState<string[]>([]);
   const [deviceLocation, setDeviceLocation] = useState('');
   const [notes, setNotes] = useState('');
-  const [warranty, setWarranty] = useState(false);
-  const [warrantyDays, setWarrantyDays] = useState(90);
+  const defaultWarrantyDays = useMemo(() => {
+    const key = warrantyDefaultKeyForService(drillState.serviceName);
+    if (key) {
+      return warrantyDaysFromMonths(getSetting(key, ''));
+    }
+
+    const rawValue = Number.parseInt(getSetting('repair_default_warranty_value', '90'), 10) || 0;
+    const unit = getSetting('repair_default_warranty_unit', 'days');
+    if (unit === 'years') return rawValue * 365;
+    if (unit === 'months') return rawValue * 30;
+    if (unit === 'weeks') return rawValue * 7;
+    return rawValue;
+  }, [drillState.serviceName, getSetting]);
+  const [warranty, setWarranty] = useState(defaultWarrantyDays > 0);
+  const [warrantyDays, setWarrantyDays] = useState(defaultWarrantyDays);
+
+  useEffect(() => {
+    setWarranty(defaultWarrantyDays > 0);
+    setWarrantyDays(defaultWarrantyDays);
+  }, [defaultWarrantyDays]);
 
   // Calculate default due date from settings
   const [dueDate, setDueDate] = useState(() => {
@@ -880,7 +913,7 @@ function DetailsStep({ drillState, onDone }: {
                 key={label}
                 onClick={() => toggleCondition(label)}
                 className={cn(
-                  'rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                  'btn btn-xs !rounded-full border',
                   isChecked
                     ? 'border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-300'
                     : 'border-surface-200 text-surface-500 hover:border-surface-300 dark:border-surface-600 dark:text-surface-400 dark:hover:border-surface-500',
@@ -911,7 +944,7 @@ function DetailsStep({ drillState, onDone }: {
                 key={macro}
                 onClick={() => setNotes((prev) => prev ? `${prev}, ${macro}` : macro)}
                 className={cn(
-                  'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                  'btn btn-xs !rounded-full border',
                   alreadyInNotes
                     ? 'border-primary-400 bg-primary-100 text-primary-800 dark:border-primary-600 dark:bg-primary-900/40 dark:text-primary-200'
                     : 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/40',
@@ -960,7 +993,7 @@ function DetailsStep({ drillState, onDone }: {
             onChange={(e) => setWarranty(e.target.checked)}
             className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
           />
-          Warranty repair
+          Warranty coverage
         </label>
         {warranty && (
           <div className="flex items-center gap-1.5">
@@ -987,9 +1020,9 @@ function DetailsStep({ drillState, onDone }: {
       {/* Add to Cart */}
       <button
         onClick={handleAddToCart}
-        className="w-full rounded-lg bg-green-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-green-700"
+        className="btn btn-lg w-full bg-green-600 !font-bold text-white hover:bg-green-700"
       >
-        <Plus className="mr-2 inline h-4 w-4" />
+        <Plus className="h-4 w-4" />
         Add to Cart
       </button>
     </div>
@@ -1034,7 +1067,7 @@ function CustomerContextBar({ customerId, customerName, onSameDevice }: {
           {lastDevice.device_model_id && onSameDevice && (
             <button
               onClick={() => onSameDevice(lastDevice.device_model_id as number, lastDevice.device_name || 'Unknown', lastDevice.device_type?.toLowerCase() || 'phone')}
-              className="ml-auto shrink-0 rounded bg-primary-100 dark:bg-primary-900/30 px-2 py-0.5 text-[10px] font-medium text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors"
+              className="btn btn-xs ml-auto shrink-0 bg-primary-100 text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50"
             >
               Same device?
             </button>
@@ -1209,7 +1242,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
             <button
               key={c.id}
               onClick={() => selectCustomer(c)}
-              className="flex w-full items-center gap-3 border-b border-surface-100 px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
+              className="btn btn-md !h-auto w-full !justify-start !gap-3 !rounded-none border-b border-surface-100 !px-4 !py-3 text-left !whitespace-normal last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30">
                 <User className="h-4 w-4 text-primary-600 dark:text-primary-400" />
@@ -1251,7 +1284,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         <>
           <button
             onClick={() => setShowNew(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 active:bg-primary-800"
+            className="btn btn-md w-full bg-primary-600 !font-semibold text-primary-950 hover:bg-primary-700 active:bg-primary-800"
           >
             <Plus className="h-4 w-4" />
             New Customer
@@ -1261,7 +1294,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
               but still proceeds through device + service + details. */}
           <button
             onClick={() => { setCustomer(null); onDone(); }}
-            className="w-full py-2 text-xs font-medium text-surface-500 transition-colors hover:text-surface-700 dark:text-surface-500 dark:hover:text-surface-300"
+            className="btn btn-xs w-full text-surface-500 hover:text-surface-700 dark:text-surface-500 dark:hover:text-surface-300"
           >
             Walk-in (no customer info)
           </button>
@@ -1305,11 +1338,11 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
             <button
               onClick={handleCreateCustomer}
               disabled={creating}
-              className="flex-1 rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="btn btn-md flex-1 bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {creating ? 'Creating...' : 'Create & Continue'}
             </button>
-            <button onClick={() => setShowNew(false)} className="rounded-lg border border-surface-200 px-4 py-2.5 text-sm text-surface-500 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800">
+            <button onClick={() => setShowNew(false)} className="btn btn-md border border-surface-200 text-surface-500 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800">
               Cancel
             </button>
           </div>
@@ -1323,7 +1356,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
             <h4 className="text-xs font-semibold text-surface-400 uppercase tracking-wider">Open Tickets</h4>
             <button
               onClick={() => navigate('/tickets')}
-              className="text-xs text-primary-500 hover:text-primary-600 font-medium"
+              className="btn btn-xs !px-0 text-primary-500 hover:text-primary-600"
             >
               View all
             </button>
@@ -1363,13 +1396,13 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
                     </span>
                     <button
                       onClick={() => navigate(`/pos?ticket=${t.id}`)}
-                      className="flex-shrink-0 rounded-md bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-primary-950 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-700"
+                      className="btn btn-xs flex-shrink-0 bg-primary-600 text-primary-950 opacity-0 transition-opacity hover:bg-primary-700 group-hover:opacity-100"
                     >
                       Checkout
                     </button>
                     <button
                       onClick={() => navigate(`/tickets/${t.id}`)}
-                      className="flex-shrink-0 rounded-md border border-surface-200 dark:border-surface-700 px-2.5 py-1 text-[11px] font-medium text-surface-600 dark:text-surface-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface-100 dark:hover:bg-surface-800"
+                      className="btn btn-xs flex-shrink-0 border border-surface-200 text-surface-600 opacity-0 transition-opacity hover:bg-surface-100 group-hover:opacity-100 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
                     >
                       View
                     </button>
@@ -1472,7 +1505,7 @@ export function RepairsTab() {
                     setDrillState({ step: 'CATEGORY' });
                   }
                 }}
-                className="mr-1 flex items-center gap-1 rounded-lg border border-surface-300 dark:border-surface-600 px-2 py-1 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+                className="btn btn-xs mr-1 border border-surface-300 text-surface-600 hover:bg-surface-100 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
               >
                 <ArrowLeft className="h-3 w-3" />
               </button>

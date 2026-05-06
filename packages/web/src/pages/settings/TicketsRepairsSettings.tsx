@@ -140,6 +140,50 @@ function InputRow({ label, description, value, onChange }: {
   );
 }
 
+const TICKETS_REPAIRS_OWNED_KEYS = [
+  'ticket_show_inventory',
+  'ticket_show_closed',
+  'ticket_show_empty',
+  'ticket_show_parts_column',
+  'ticket_allow_edit_closed',
+  'ticket_allow_delete_after_invoice',
+  'ticket_allow_edit_after_invoice',
+  'ticket_auto_close_on_invoice',
+  'ticket_all_employees_view_all',
+  'ticket_require_stopwatch',
+  'ticket_timer_auto_start_status',
+  'ticket_timer_auto_stop_status',
+  'ticket_auto_status_on_reply',
+  'ticket_auto_remove_passcode',
+  'ticket_copy_warranty_notes',
+  'ticket_default_assignment',
+  'ticket_default_view',
+  'ticket_default_filter',
+  'ticket_default_status_filter',
+  'ticket_default_sort',
+  'ticket_default_pagination',
+  'ticket_default_sort_order',
+  'ticket_status_after_estimate',
+  'ticket_label_template',
+  'feedback_enabled',
+  'feedback_auto_sms',
+  'feedback_sms_template',
+  'feedback_delay_hours',
+  'repair_require_pre_condition',
+  'repair_require_post_condition',
+  'repair_require_parts',
+  'repair_require_customer',
+  'repair_require_diagnostic',
+  'repair_require_imei',
+  'repair_itemize_line_items',
+  'repair_price_includes_parts',
+  'repair_default_warranty_value',
+  'repair_default_warranty_unit',
+  'repair_default_input_criteria',
+  'repair_default_due_value',
+  'repair_default_due_unit',
+] as const;
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function TicketsRepairsSettings() {
@@ -190,6 +234,14 @@ export function TicketsRepairsSettings() {
     return config[key] ?? fallback;
   }
 
+  function saveOwnedConfig() {
+    const patch: Record<string, string> = {};
+    for (const key of TICKETS_REPAIRS_OWNED_KEYS) {
+      if (key in config) patch[key] = config[key];
+    }
+    saveMutation.mutate(patch);
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -215,7 +267,7 @@ export function TicketsRepairsSettings() {
           <button
             onClick={() => setSubTab('tickets')}
             className={cn(
-              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+              'btn btn-xs rounded-md',
               subTab === 'tickets'
                 ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
                 : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
@@ -226,7 +278,7 @@ export function TicketsRepairsSettings() {
           <button
             onClick={() => setSubTab('repairs')}
             className={cn(
-              'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+              'btn btn-xs rounded-md',
               subTab === 'repairs'
                 ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
                 : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
@@ -236,12 +288,12 @@ export function TicketsRepairsSettings() {
           </button>
         </div>
         <button
-          onClick={() => saveMutation.mutate(config)}
+          onClick={saveOwnedConfig}
           disabled={!dirty || saveMutation.isPending}
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            'btn btn-md',
             dirty
-              ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+              ? 'btn-primary'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >
@@ -409,13 +461,16 @@ export function TicketsRepairsSettings() {
             <SelectRow
               label="Default Date Sort"
               description="Default date sorting column"
-              value={val('ticket_default_date_sort', 'created')}
+              value={val('ticket_default_sort', 'urgency')}
               options={[
-                { value: 'created', label: 'Created Date' },
-                { value: 'due', label: 'Due Date' },
+                { value: 'urgency', label: 'Urgency' },
+                { value: 'created_at', label: 'Created Date' },
+                { value: 'updated_at', label: 'Updated Date' },
+                { value: 'due_on', label: 'Due Date' },
+                { value: 'order_id', label: 'Ticket Number' },
+                { value: 'total', label: 'Total' },
               ]}
-              onChange={(v) => set('ticket_default_date_sort', v)}
-              comingSoon
+              onChange={(v) => set('ticket_default_sort', v)}
             />
             <SelectRow
               label="Default Pagination"
@@ -431,14 +486,12 @@ export function TicketsRepairsSettings() {
             <SelectRow
               label="Default Sort Order"
               description="Default sort order on ticket listing"
-              value={val('ticket_default_sort_order', 'due_date')}
+              value={val('ticket_default_sort_order', 'DESC')}
               options={[
-                { value: 'due_date', label: 'By Due Date' },
-                { value: 'created_date', label: 'By Created Date' },
-                { value: 'ticket_number', label: 'By Ticket Number' },
+                { value: 'DESC', label: 'Descending' },
+                { value: 'ASC', label: 'Ascending' },
               ]}
               onChange={(v) => set('ticket_default_sort_order', v)}
-              comingSoon
             />
             <SelectRow
               label="Status after estimate creation"

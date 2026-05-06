@@ -4,13 +4,10 @@
  * Lets the owner invite 1-3 staff members up front so they're not alone in the
  * tickets list on day one. The step renders an editable list of rows (name +
  * email + role) plus a "+ Add another employee" button. On "Send invites" each
- * non-empty, valid row is POSTed individually to `/api/v1/users` with
- * `send_invite: true`; per-row status badges (sending / sent / failed) reflect
- * the call outcome. After all rows finish (success or failure), the wizard
- * advances via `onNext()`. "Skip" calls `onSkip ?? onNext` without sending.
- *
- * The endpoint isn't wrapped in `@/api/endpoints` yet, so we use plain `fetch`
- * with `credentials: 'include'` so the auth cookie tags along.
+ * non-empty, valid row is POSTed individually to the setup invite endpoint with
+ * `send_invite: true`; per-row status badges reflect account creation and email
+ * delivery. After all rows finish (success or failure), the wizard advances via
+ * `onNext()`. "Skip this step" advances without sending.
  *
  * Mockup: `mockups/web-setup-wizard.html` `<section id="screen-15">`.
  */
@@ -27,10 +24,11 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
+import { settingsApi } from '@/api/endpoints';
 import { validateEmail } from '@/services/validationService';
 
 type EmployeeRole = 'admin' | 'tech' | 'cashier';
-type RowStatus = 'idle' | 'sending' | 'sent' | 'failed';
+type RowStatus = 'idle' | 'sending' | 'sent' | 'created' | 'failed';
 
 interface EmployeeInvite {
   id: string;
@@ -81,17 +79,6 @@ function validateRow(row: EmployeeInvite): RowError | null {
   return Object.keys(errors).length > 0 ? errors : null;
 }
 
-/** Split a full-name string into first / last on the first space. */
-function splitName(full: string): { first_name: string; last_name: string } {
-  const trimmed = full.trim();
-  const idx = trimmed.indexOf(' ');
-  if (idx === -1) return { first_name: trimmed, last_name: '' };
-  return {
-    first_name: trimmed.slice(0, idx),
-    last_name: trimmed.slice(idx + 1).trim(),
-  };
-}
-
 const ROLE_OPTIONS: ReadonlyArray<{
   value: EmployeeRole;
   label: string;
@@ -114,6 +101,7 @@ export function StepFirstEmployees({
   const fieldIdPrefix = useId();
   const [rows, setRows] = useState<EmployeeInvite[]>(() => [emptyRow()]);
   const [statuses, setStatuses] = useState<Record<string, RowStatus>>({});
+  const [messages, setMessages] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, RowError>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -123,6 +111,12 @@ export function StepFirstEmployees({
     );
     // Clear inline error for the row on edit so the user can re-validate.
     setErrors((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setMessages((prev) => {
       if (!prev[id]) return prev;
       const next = { ...prev };
       delete next[id];
@@ -148,34 +142,55 @@ export function StepFirstEmployees({
       delete next[id];
       return next;
     });
+    setMessages((prev) => {
+      if (!prev[id]) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const sendOne = async (row: EmployeeInvite): Promise<boolean> => {
     setStatuses((prev) => ({ ...prev, [row.id]: 'sending' }));
+    setMessages((prev) => {
+      if (!prev[row.id]) return prev;
+      const next = { ...prev };
+      delete next[row.id];
+      return next;
+    });
     try {
-      const { first_name, last_name } = splitName(row.name);
-      const res = await fetch('/api/v1/users', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name,
-          last_name,
-          email: row.email.trim(),
-          role: row.role,
-          send_invite: true,
-          // PIN is optional. 4-digit numeric used by self-host shops for
-          // clock-in/out + register access. Server is expected to ignore the
-          // field for SaaS tenants where PIN-auth isn't enabled. Empty string
-          // is sent as undefined so backend doesn't try to hash an empty PIN.
-          pin: row.pin && row.pin.length === 4 ? row.pin : undefined,
-        }),
+      const res = await settingsApi.setupInvite({
+        name: row.name.trim(),
+        email: row.email.trim(),
+        role: row.role,
+        send_invite: true,
+        // PIN is optional. 4-digit numeric used by self-host shops for
+        // clock-in/out + register access. Empty string is sent as undefined so
+        // backend doesn't try to hash an empty PIN.
+        pin: row.pin && row.pin.length === 4 ? row.pin : undefined,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setStatuses((prev) => ({ ...prev, [row.id]: 'sent' }));
+      const deliveryStatus = res.data?.data?.delivery?.status;
+      if (deliveryStatus === 'sent') {
+        setStatuses((prev) => ({ ...prev, [row.id]: 'sent' }));
+        setMessages((prev) => ({ ...prev, [row.id]: 'Email invite delivered.' }));
+      } else if (deliveryStatus === 'not_configured') {
+        setStatuses((prev) => ({ ...prev, [row.id]: 'created' }));
+        setMessages((prev) => ({ ...prev, [row.id]: 'Account created; SMTP is not configured yet.' }));
+      } else if (deliveryStatus === 'failed') {
+        setStatuses((prev) => ({ ...prev, [row.id]: 'created' }));
+        setMessages((prev) => ({ ...prev, [row.id]: 'Account created; invite email failed to send.' }));
+      } else {
+        setStatuses((prev) => ({ ...prev, [row.id]: 'created' }));
+        setMessages((prev) => ({ ...prev, [row.id]: 'Account created.' }));
+      }
       return true;
-    } catch {
+    } catch (err) {
+      const message =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Invite failed.';
       setStatuses((prev) => ({ ...prev, [row.id]: 'failed' }));
+      setMessages((prev) => ({ ...prev, [row.id]: message }));
       return false;
     }
   };
@@ -194,11 +209,7 @@ export function StepFirstEmployees({
 
     // 2. Collect rows to actually send.
     const toSend = rows.filter((r) => !isEmptyRow(r));
-    if (toSend.length === 0) {
-      // Nothing to invite — behave like Skip.
-      (onSkip ?? onNext)();
-      return;
-    }
+    if (toSend.length === 0) return;
 
     // 3. Fire requests. Continue past per-row failures so the user sees the
     //    full picture; the retry link in the failed badge re-tries that row.
@@ -220,6 +231,11 @@ export function StepFirstEmployees({
   const handleSkip = () => {
     (onSkip ?? onNext)();
   };
+
+  const hasInviteReady = rows.some((row) => !isEmptyRow(row));
+  const canSendInvites =
+    hasInviteReady &&
+    rows.every((row) => isEmptyRow(row) || validateRow(row) === null);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -244,8 +260,10 @@ export function StepFirstEmployees({
             const nameId = `${fieldIdPrefix}-name-${row.id}`;
             const emailId = `${fieldIdPrefix}-email-${row.id}`;
             const roleId = `${fieldIdPrefix}-role-${row.id}`;
+            const pinId = `${fieldIdPrefix}-pin-${row.id}`;
             const RoleIcon =
               ROLE_OPTIONS.find((opt) => opt.value === row.role)?.Icon ?? Wrench;
+            const message = messages[row.id];
 
             return (
               <div
@@ -349,13 +367,13 @@ export function StepFirstEmployees({
                 {/* PIN — clock-in/register access. 4-digit numeric, optional. */}
                 <div className="w-24">
                   <label
-                    htmlFor={`${row.id}-pin`}
+                    htmlFor={pinId}
                     className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400"
                   >
                     PIN <span className="text-surface-400">(opt.)</span>
                   </label>
                   <input
-                    id={`${row.id}-pin`}
+                    id={pinId}
                     type="text"
                     inputMode="numeric"
                     pattern="\d{4}"
@@ -383,6 +401,11 @@ export function StepFirstEmployees({
                       <CheckCircle2 className="h-4 w-4" />
                       Invite sent
                     </span>
+                  ) : status === 'created' ? (
+                    <span className="inline-flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-300">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Account created
+                    </span>
                   ) : status === 'failed' ? (
                     <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-400">
                       <XCircle className="h-4 w-4" />
@@ -390,7 +413,7 @@ export function StepFirstEmployees({
                       <button
                         type="button"
                         onClick={() => handleRetry(row.id)}
-                        className="font-medium underline hover:no-underline"
+                        className="btn btn-xs font-medium underline hover:no-underline"
                       >
                         retry
                       </button>
@@ -398,13 +421,19 @@ export function StepFirstEmployees({
                   ) : null}
                 </div>
 
+                {message ? (
+                  <p className="basis-full text-xs text-surface-500 dark:text-surface-400">
+                    {message}
+                  </p>
+                ) : null}
+
                 {/* Remove */}
                 {rows.length > 1 ? (
                   <button
                     type="button"
                     onClick={() => removeRow(row.id)}
                     aria-label={`Remove employee row ${index + 1}`}
-                    className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-surface-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                    className="btn-icon btn-sm mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-surface-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -417,7 +446,7 @@ export function StepFirstEmployees({
         <button
           type="button"
           onClick={addRow}
-          className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 hover:underline dark:text-primary-400"
+          className="btn btn-sm mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 hover:underline dark:text-primary-400"
         >
           <Plus className="h-4 w-4" />
           Add another employee
@@ -429,7 +458,7 @@ export function StepFirstEmployees({
             type="button"
             onClick={onBack}
             disabled={submitting}
-            className="rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-lg rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             Back
           </button>
@@ -438,15 +467,15 @@ export function StepFirstEmployees({
               type="button"
               onClick={handleSkip}
               disabled={submitting}
-              className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
+              className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:bg-surface-700"
             >
-              Skip — solo operator
+              Skip this step
             </button>
             <button
               type="button"
               onClick={handleSendInvites}
-              disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={submitting || !canSendInvites}
+              className="btn btn-lg inline-flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? (
                 <>

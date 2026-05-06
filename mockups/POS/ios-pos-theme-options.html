@@ -3,773 +3,1378 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>POS background options — pick one</title>
+<title>Bizarre CRM POS - Canonical iOS Workflow</title>
 <style>
-  /* Shared cream-primary tokens (stay the same across all options) */
   :root {
-    --primary: #fdeed0;
-    --primary-bright: #fff7e0;
-    --on-primary: #2b1400;
-    --success: #34c47e;
-    --warning: #e8a33d;
-    --error: #e2526c;
-    --teal: #4db8c9;
-    --font-text: -apple-system, "SF Pro Text", "Inter", Segoe UI, Roboto, Arial, sans-serif;
-    --font-display: "Barlow Condensed", "SF Pro Display", -apple-system, Segoe UI, sans-serif;
+    --s-50: #F8F7F5;
+    --s-100: #F0EFEC;
+    --s-200: #E0DDD9;
+    --s-300: #C6C2BC;
+    --s-400: #9C9892;
+    --s-500: #6E6A64;
+    --s-600: #4E4A46;
+    --s-700: #1E1C1A;
+    --s-800: #161513;
+    --s-900: #0F0E0C;
+    --s-950: #080706;
+    --primary: #FDEED0;
+    --primary-strong: #F5DCA7;
+    --on-primary: #2B1400;
+    --teal: #4DB8C9;
+    --burgundy: #C5566D;
+    --success: #34C47E;
+    --warning: #E8A33D;
+    --error: #E2526C;
+    --glass: rgba(30, 28, 26, 0.54);
+    --glass-strong: rgba(22, 21, 19, 0.78);
+    --line: rgba(255, 250, 240, 0.10);
+    --line-strong: rgba(255, 250, 240, 0.18);
+    --shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+    --display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
   }
 
   * { box-sizing: border-box; }
-  html, body {
-    margin: 0; padding: 0;
-    background: #060608;
-    color: #f2eef9;
-    font-family: var(--font-text);
-    font-size: 13.5px;
-  }
-
-  h1 {
-    text-align: center;
-    padding: 28px 16px 6px; margin: 0;
-    font-size: 28px; font-weight: 700; letter-spacing: -0.02em;
-    background: linear-gradient(180deg, #fff, #b9aacc);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .intro {
-    text-align: center; color: #9a9ba5;
-    padding: 0 24px 28px; font-size: 14px; line-height: 1.55;
-    max-width: 780px; margin: 0 auto;
-  }
-  .intro code { background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; color: var(--primary); }
-
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(560px, 1fr));
-    gap: 28px;
-    padding: 8px 32px 56px;
-    max-width: 1800px; margin: 0 auto;
-  }
-
-  /* ─────────────────────────────────────────────────────────────
-     Option card — each sets its own CSS custom properties so the
-     nested sampler reads from that local scope.
-     ───────────────────────────────────────────────────────────── */
-  .option {
-    padding: 18px 20px 22px;
-    border-radius: 20px;
-    background: rgba(18,16,22,0.6);
-    border: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px);
-  }
-  .option-head {
-    display: flex; justify-content: space-between; align-items: baseline;
-    padding-bottom: 10px;
-  }
-  .option-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
-  .option-hex  { font-family: monospace; font-size: 11.5px; color: #9a9ba5; }
-  .option-note { font-size: 12.5px; color: #9a9ba5; line-height: 1.5; padding-bottom: 14px; }
-
-  /* The sampler — a compact POS strip rendered under each option's theme */
-  .sampler {
-    position: relative;
-    padding: 16px;
-    border-radius: 16px;
-    overflow: hidden;
-    background: var(--sp-bg-base);
-    border: 1px solid var(--sp-outline);
-    min-height: 340px;
-  }
-  .sampler .radials {
-    position: absolute; inset: 0;
-    background: var(--sp-radials);
-    pointer-events: none;
-  }
-  .sampler > * { position: relative; z-index: 1; }
-
-  /* Nav / topbar */
-  .sp-nav {
-    padding: 10px 12px;
-    background: var(--sp-glass-bg);
-    backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid var(--sp-glass-border);
-    border-radius: 14px;
-    display: flex; align-items: center; gap: 10px;
-    box-shadow: inset 0 1px 0 var(--sp-glass-hl);
-  }
-  .sp-title { font-weight: 700; font-size: 14px; color: var(--sp-on); }
-  .sp-meta { font-size: 11px; color: var(--sp-muted); }
-  .sp-search {
-    margin-left: auto;
-    padding: 6px 12px;
-    border-radius: 10px;
-    background: var(--sp-search-bg);
-    border: 1px solid var(--sp-outline);
-    font-size: 12px; color: var(--sp-muted);
-  }
-
-  .sp-row-strip {
-    margin-top: 10px;
-    padding: 10px 12px;
-    background: var(--sp-surface-glass-soft);
-    backdrop-filter: blur(14px) saturate(160%);
-    border-radius: 12px;
-    border: 1px solid var(--sp-outline);
-    display: flex; align-items: center; gap: 10px;
-  }
-  .sp-avatar {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: linear-gradient(160deg, #6ed4e3, #4db8c9);
-    color: #002d35; font-weight: 700; font-size: 11px;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .sp-name { font-size: 12.5px; font-weight: 700; color: var(--sp-on); }
-  .sp-sub { font-size: 10.5px; color: var(--sp-muted); }
-  .sp-total {
-    margin-left: auto;
-    font-family: var(--font-display);
-    font-size: 16px; font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.01em;
-    color: var(--sp-on);
-  }
-
-  /* Cart row (content, solid) */
-  .sp-cart-row {
-    margin-top: 10px;
-    padding: 10px 12px;
-    display: flex; gap: 10px; align-items: center;
-    background: var(--sp-surface-solid);
-    border: 1px solid var(--sp-outline);
-    border-radius: 10px;
-  }
-  .sp-cart-icon {
-    width: 30px; height: 30px; border-radius: 8px;
-    background: var(--sp-surface-elev);
-    border: 1px solid var(--sp-outline);
-    display: flex; align-items: center; justify-content: center;
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+    background:
+      radial-gradient(circle at 12% -8%, rgba(253, 238, 208, 0.075), transparent 34rem),
+      radial-gradient(circle at 96% 10%, rgba(77, 184, 201, 0.07), transparent 30rem),
+      linear-gradient(180deg, var(--s-950), var(--s-900) 44%, var(--s-950));
+    color: var(--s-50);
+    font-family: var(--font);
     font-size: 14px;
   }
-  .sp-cart-name { font-size: 12px; font-weight: 600; color: var(--sp-on); }
-  .sp-cart-sub { font-size: 10.5px; color: var(--sp-muted); }
-  .sp-cart-price {
-    font-family: var(--font-display);
-    font-size: 15px; font-weight: 700;
-    font-variant-numeric: tabular-nums;
+
+  body { padding: 28px 20px 52px; }
+
+  h1,
+  h2,
+  h3,
+  p { margin-top: 0; }
+
+  h1,
+  h2,
+  h3 { letter-spacing: 0; }
+
+  h1 {
+    margin-bottom: 10px;
+    text-align: center;
+    color: var(--s-50);
+    font-family: var(--display);
+    font-size: 32px;
+    line-height: 1.05;
+  }
+
+  .intro {
+    max-width: 940px;
+    margin: 0 auto 18px;
+    color: var(--s-300);
+    text-align: center;
+    line-height: 1.55;
+  }
+
+  code {
+    padding: 1px 5px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--primary);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .contract {
+    max-width: 1180px;
+    margin: 0 auto 26px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .contract-item,
+  .workflow-card,
+  .server-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(22, 21, 19, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .contract-item {
+    min-height: 118px;
+    padding: 14px;
+  }
+
+  .eyebrow {
+    margin-bottom: 8px;
+    color: var(--s-400);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+
+  .contract-item strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--s-50);
+    font-size: 15px;
+  }
+
+  .contract-item p,
+  .workflow-card p,
+  .server-card p {
+    margin: 0;
+    color: var(--s-300);
+    line-height: 1.48;
+  }
+
+  .contract-item.primary { border-left: 3px solid var(--primary); }
+  .contract-item.teal { border-left: 3px solid var(--teal); }
+  .contract-item.burgundy { border-left: 3px solid var(--burgundy); }
+  .contract-item.success { border-left: 3px solid var(--success); }
+
+  .workflow-strip {
+    max-width: 1180px;
+    margin: 0 auto 32px;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .workflow-card {
+    padding: 12px;
+  }
+
+  .workflow-card .step {
+    width: 26px;
+    height: 26px;
+    margin-bottom: 10px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  .workflow-card h3 {
+    margin-bottom: 5px;
+    color: var(--s-50);
+    font-size: 14px;
+  }
+
+  .stage {
+    max-width: 1500px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+    gap: 26px;
+    align-items: start;
+  }
+
+  .device-wrap {
+    min-width: 0;
+  }
+
+  .caption {
+    max-width: 430px;
+    min-height: 76px;
+    margin: 0 auto 10px;
+    text-align: center;
+  }
+
+  .caption h2 {
+    margin-bottom: 5px;
+    color: var(--primary);
+    font-size: 17px;
+  }
+
+  .caption p {
+    margin: 0;
+    color: var(--s-300);
+    line-height: 1.45;
+    font-size: 13px;
+  }
+
+  .iphone {
+    width: 390px;
+    height: 844px;
+    margin: 0 auto;
+    overflow: hidden;
+    position: relative;
+    border: 8px solid #060504;
+    border-radius: 50px;
+    background: var(--s-900);
+    box-shadow: var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .island {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    z-index: 20;
+    width: 124px;
+    height: 36px;
+    transform: translateX(-50%);
+    border-radius: 20px;
+    background: #000;
+  }
+
+  .home {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    z-index: 20;
+    width: 134px;
+    height: 5px;
+    transform: translateX(-50%);
+    border-radius: 999px;
+    background: rgba(248, 247, 245, 0.46);
+  }
+
+  .phone-screen {
+    height: 100%;
+    padding: 58px 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background:
+      radial-gradient(circle at 10% 0%, rgba(253, 238, 208, 0.08), transparent 16rem),
+      var(--s-900);
+  }
+
+  .glass,
+  .top-glass,
+  .bottom-glass,
+  .sheet {
+    border: 1px solid var(--line);
+    background: var(--glass);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 8px 24px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(22px) saturate(175%);
+    -webkit-backdrop-filter: blur(22px) saturate(175%);
+  }
+
+  .top-glass {
+    padding: 10px;
+    border-radius: 24px;
+  }
+
+  .nav-row,
+  .row,
+  .line-row,
+  .total-row,
+  .split-row,
+  .server-row,
+  .toolbar-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .nav-title {
+    color: var(--s-50);
+    font-weight: 800;
+    font-size: 17px;
+  }
+
+  .nav-pill,
+  .pill,
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 26px;
+    padding: 5px 9px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--s-300);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .status-pill.success {
+    border-color: rgba(52, 196, 126, 0.32);
+    color: var(--success);
+    background: rgba(52, 196, 126, 0.12);
+  }
+
+  .status-pill.warning {
+    border-color: rgba(232, 163, 61, 0.32);
+    color: var(--warning);
+    background: rgba(232, 163, 61, 0.12);
+  }
+
+  .status-pill.teal {
+    border-color: rgba(77, 184, 201, 0.32);
+    color: var(--teal);
+    background: rgba(77, 184, 201, 0.12);
+  }
+
+  .search {
+    height: 40px;
+    margin-top: 10px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 16px;
+    background: rgba(248, 247, 245, 0.08);
+    color: var(--s-300);
+    font-size: 13px;
+  }
+
+  .scroll {
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .solid {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--s-800);
+  }
+
+  .customer {
+    padding: 12px;
+  }
+
+  .avatar {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 13px;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-weight: 900;
+  }
+
+  .title-block {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .title-block strong {
+    display: block;
+    overflow: hidden;
+    color: var(--s-50);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .title-block span {
+    display: block;
+    margin-top: 2px;
+    color: var(--s-400);
+    font-size: 12px;
+  }
+
+  .steps {
+    padding: 10px 12px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .step-dot {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(248, 247, 245, 0.12);
+  }
+
+  .step-dot.done { background: var(--primary); }
+  .step-dot.current { background: var(--teal); }
+
+  .section {
+    padding: 12px;
+  }
+
+  .section h3,
+  .sheet h3,
+  .cart-panel h3,
+  .catalog-panel h3,
+  .inspector h3 {
+    margin-bottom: 10px;
+    color: var(--s-50);
+    font-size: 14px;
+  }
+
+  .catalog-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .item {
+    min-height: 94px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(30, 28, 26, 0.78);
+  }
+
+  .item strong {
+    color: var(--s-50);
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .item span {
+    color: var(--primary);
+    font-weight: 800;
+  }
+
+  .cart-lines {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+
+  .line-row {
+    min-height: 50px;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .line-row:last-child { border-bottom: 0; }
+
+  .line-row strong {
+    display: block;
+    color: var(--s-50);
+    font-size: 13px;
+  }
+
+  .line-row small {
+    display: block;
+    margin-top: 2px;
+    color: var(--s-400);
+  }
+
+  .price {
+    color: var(--primary);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .bottom-glass {
+    margin-top: auto;
+    padding: 12px;
+    border-radius: 22px;
+    background: var(--glass-strong);
+  }
+
+  .total-row {
+    margin-bottom: 10px;
+  }
+
+  .total-row .label {
+    color: var(--s-300);
+    font-size: 12px;
+  }
+
+  .total-row .amount {
+    color: var(--s-50);
+    font-size: 22px;
+    font-weight: 900;
+  }
+
+  .primary-btn,
+  .secondary-btn {
+    width: 100%;
+    min-height: 52px;
+    border: 0;
+    border-radius: 16px;
+    font: inherit;
+    font-weight: 850;
+  }
+
+  .primary-btn {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+
+  .secondary-btn {
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--s-50);
+  }
+
+  .sheet {
+    margin-top: auto;
+    padding: 14px;
+    border-radius: 26px 26px 0 0;
+    background: rgba(22, 21, 19, 0.88);
+  }
+
+  .handle {
+    width: 42px;
+    height: 4px;
+    margin: 0 auto 12px;
+    border-radius: 999px;
+    background: rgba(248, 247, 245, 0.24);
+  }
+
+  .form-grid {
+    display: grid;
+    gap: 8px;
+  }
+
+  .field {
+    min-height: 52px;
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .field span {
+    display: block;
+    color: var(--s-400);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0;
+  }
+
+  .field strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--s-50);
+    font-size: 13px;
+  }
+
+  .device-map {
+    height: 166px;
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background:
+      linear-gradient(145deg, rgba(248, 247, 245, 0.08), transparent),
+      rgba(8, 7, 6, 0.55);
+  }
+
+  .device-outline {
+    width: 82px;
+    height: 138px;
+    position: absolute;
+    left: 22px;
+    top: 14px;
+    border: 2px solid rgba(248, 247, 245, 0.34);
+    border-radius: 18px;
+  }
+
+  .damage {
+    width: 16px;
+    height: 16px;
+    position: absolute;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--error);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .damage.one { left: 74px; top: 42px; }
+  .damage.two { left: 38px; top: 118px; background: var(--warning); color: #1b1200; }
+
+  .test-list {
+    position: absolute;
+    left: 126px;
+    right: 12px;
+    top: 16px;
+    display: grid;
+    gap: 7px;
+  }
+
+  .test-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--s-300);
+    font-size: 12px;
+  }
+
+  .test-row b {
+    width: 25px;
+    height: 25px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    color: var(--on-primary);
+    background: var(--primary);
+  }
+
+  .test-row.warn b {
+    background: var(--warning);
+    color: #1b1200;
+  }
+
+  .payment-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .pay-method {
+    min-height: 72px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .pay-method.active {
+    border-color: rgba(253, 238, 208, 0.55);
+    background: rgba(253, 238, 208, 0.12);
+  }
+
+  .pay-method span {
+    color: var(--s-400);
+    font-size: 12px;
+  }
+
+  .pay-method strong {
+    color: var(--s-50);
+  }
+
+  .receipt-hero {
+    padding: 18px 12px;
+    border: 1px solid rgba(52, 196, 126, 0.35);
+    border-radius: 20px;
+    background: rgba(52, 196, 126, 0.12);
+    text-align: center;
+  }
+
+  .receipt-hero strong {
+    display: block;
+    color: var(--success);
+    font-size: 26px;
+  }
+
+  .receipt-hero span {
+    color: var(--s-300);
+  }
+
+  .ipad-wrap {
+    grid-column: 1 / -1;
+    overflow-x: auto;
+    padding-bottom: 12px;
+  }
+
+  .ipad-caption {
+    max-width: 900px;
+  }
+
+  .ipad {
+    width: 1194px;
+    height: 834px;
+    margin: 0 auto;
+    overflow: hidden;
+    position: relative;
+    border: 11px solid #060504;
+    border-radius: 38px;
+    background: var(--s-900);
+    box-shadow: var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  .camera {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    z-index: 10;
+    width: 9px;
+    height: 9px;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: #000;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+  }
+
+  .ipad-screen {
+    height: 100%;
+    display: grid;
+    grid-template-columns: 66px 1fr minmax(360px, 420px) minmax(280px, 340px);
+    grid-template-rows: 62px 1fr;
+    grid-template-areas:
+      "rail top top top"
+      "rail catalog cart inspector";
+    background:
+      radial-gradient(circle at 6% 0%, rgba(253, 238, 208, 0.07), transparent 24rem),
+      var(--s-900);
+  }
+
+  .rail {
+    grid-area: rail;
+    padding: 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    border-right: 1px solid var(--line);
+    background: rgba(22, 21, 19, 0.72);
+    backdrop-filter: blur(22px) saturate(175%);
+    -webkit-backdrop-filter: blur(22px) saturate(175%);
+  }
+
+  .brand {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-weight: 950;
+  }
+
+  .rail-btn {
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    color: var(--s-300);
+    font-size: 18px;
+  }
+
+  .rail-btn.active {
+    background: rgba(253, 238, 208, 0.14);
     color: var(--primary);
   }
 
-  /* Method tiles (glass chrome) */
-  .sp-methods {
-    margin-top: 10px;
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  .topbar-ipad {
+    grid-area: top;
+    padding: 10px 14px;
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    background: rgba(22, 21, 19, 0.66);
+    backdrop-filter: blur(22px) saturate(175%);
+    -webkit-backdrop-filter: blur(22px) saturate(175%);
   }
-  .sp-method {
-    padding: 10px 6px;
-    border-radius: 12px;
-    background: var(--sp-glass-bg);
-    backdrop-filter: blur(14px) saturate(180%);
-    border: 1px solid var(--sp-glass-border);
-    text-align: center;
-    box-shadow: inset 0 1px 0 var(--sp-glass-hl);
+
+  .toolbar-search {
+    min-height: 42px;
+    padding: 0 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(248, 247, 245, 0.07);
+    color: var(--s-300);
   }
-  .sp-method.selected {
-    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+
+  .toolbar-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .toolbar-action {
+    min-height: 42px;
+    padding: 0 13px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--s-50);
+    font-weight: 750;
+  }
+
+  .toolbar-action.primary {
+    background: var(--primary);
     color: var(--on-primary);
-    border-color: var(--primary);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 8px 20px rgba(253,238,208,0.2);
   }
-  .sp-method .mi { font-size: 16px; }
-  .sp-method .mn { font-size: 11px; font-weight: 700; margin-top: 3px; color: var(--sp-on); }
-  .sp-method.selected .mn { color: var(--on-primary); }
 
-  /* Primary CTA */
-  .sp-cta {
-    margin-top: 10px;
-    padding: 11px 14px;
+  .catalog-panel,
+  .cart-panel,
+  .inspector {
+    min-width: 0;
+    padding: 14px;
+    overflow: hidden;
+  }
+
+  .catalog-panel { grid-area: catalog; }
+
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .product {
+    min-height: 126px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(22, 21, 19, 0.84);
+  }
+
+  .product .thumb {
+    height: 44px;
     border-radius: 12px;
-    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
-    color: var(--on-primary);
-    font-weight: 800; font-size: 13px;
-    text-align: center;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 10px 24px var(--sp-cream-glow);
+    background:
+      linear-gradient(135deg, rgba(253, 238, 208, 0.2), rgba(77, 184, 201, 0.14)),
+      rgba(255, 255, 255, 0.04);
   }
 
-  /* Recent avatar strip */
-  .sp-avatars {
+  .product strong {
+    color: var(--s-50);
+    line-height: 1.25;
+  }
+
+  .product span {
+    color: var(--primary);
+    font-weight: 850;
+  }
+
+  .cart-panel {
+    grid-area: cart;
+    border-left: 1px solid var(--line);
+    background: rgba(15, 14, 12, 0.48);
+  }
+
+  .cart-panel .solid {
+    margin-bottom: 10px;
+  }
+
+  .cart-total {
     margin-top: 10px;
-    display: flex; gap: 10px; align-items: center;
-  }
-  .sp-avatar-big {
-    width: 36px; height: 36px; border-radius: 50%;
-    background: linear-gradient(160deg, #6ed4e3, #4db8c9);
-    color: #002d35; font-weight: 700; font-size: 12px;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 0 2px var(--sp-ring);
+    padding: 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 18px;
+    background: rgba(253, 238, 208, 0.08);
   }
 
-  .label-chip {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 99px;
-    font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
-    text-transform: uppercase;
+  .inspector {
+    grid-area: inspector;
+    border-left: 1px solid var(--line);
+    background: rgba(22, 21, 19, 0.82);
+    backdrop-filter: blur(24px) saturate(175%);
+    -webkit-backdrop-filter: blur(24px) saturate(175%);
   }
 
-  .recommend {
-    padding: 2px 8px; border-radius: 4px;
-    background: rgba(52,196,126,0.18);
-    border: 1px solid rgba(52,196,126,0.4);
-    color: var(--success);
-    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-left: 10px;
+  .server-section {
+    max-width: 1180px;
+    margin: 30px auto 0;
   }
 
-  /* ═════════════════════════════════════════════════════════════════════
-     OPTION THEMES — each sets --sp-* vars that drive the sampler
-     ═════════════════════════════════════════════════════════════════════ */
-
-  /* CURRENT — warm plum purple (what user dislikes) */
-  .theme-current {
-    --sp-on: #f2eef9;
-    --sp-muted: #b4adc5;
-    --sp-bg-base: #120c1a;
-    --sp-surface-solid: #1a1422;
-    --sp-surface-elev: #231a2e;
-    --sp-surface-glass-soft: rgba(36,31,46,0.35);
-    --sp-glass-bg: rgba(36,31,46,0.55);
-    --sp-glass-border: rgba(255,255,255,0.12);
-    --sp-glass-hl: rgba(255,255,255,0.08);
-    --sp-outline: rgba(255,255,255,0.08);
-    --sp-search-bg: rgba(255,255,255,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 15% -10%, rgba(253,238,208,0.07), transparent 55%),
-      radial-gradient(ellipse at 110% 100%, rgba(77,184,201,0.10), transparent 60%);
-    --sp-ring: rgba(253,238,208,0.3);
-    --sp-cream-glow: rgba(253,238,208,0.2);
+  .server-section h2 {
+    margin-bottom: 10px;
+    color: var(--primary);
+    text-align: center;
+    font-size: 18px;
   }
 
-  /* OPTION A — Warm graphite: near-black with subtle warm gray */
-  .theme-graphite {
-    --sp-on: #f0edea;
-    --sp-muted: #a8a4a0;
-    --sp-bg-base: #0f0e0d;
-    --sp-surface-solid: #1a1816;
-    --sp-surface-elev: #221f1c;
-    --sp-surface-glass-soft: rgba(30,28,26,0.4);
-    --sp-glass-bg: rgba(38,35,32,0.55);
-    --sp-glass-border: rgba(255,250,240,0.12);
-    --sp-glass-hl: rgba(255,250,240,0.06);
-    --sp-outline: rgba(255,250,240,0.08);
-    --sp-search-bg: rgba(255,250,240,0.04);
-    --sp-radials: none;
-    --sp-ring: rgba(253,238,208,0.3);
-    --sp-cream-glow: rgba(253,238,208,0.22);
+  .server-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
   }
 
-  /* OPTION B — Blueprint slate: cool tech-shop dark blue */
-  .theme-slate {
-    --sp-on: #e9eef5;
-    --sp-muted: #9aa5b2;
-    --sp-bg-base: #0b121a;
-    --sp-surface-solid: #141d28;
-    --sp-surface-elev: #1c2735;
-    --sp-surface-glass-soft: rgba(22,32,45,0.4);
-    --sp-glass-bg: rgba(32,42,55,0.55);
-    --sp-glass-border: rgba(200,220,255,0.14);
-    --sp-glass-hl: rgba(200,220,255,0.07);
-    --sp-outline: rgba(200,220,255,0.08);
-    --sp-search-bg: rgba(200,220,255,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 85% -10%, rgba(77,184,201,0.14), transparent 55%),
-      radial-gradient(ellipse at 10% 110%, rgba(253,238,208,0.05), transparent 60%);
-    --sp-ring: rgba(77,184,201,0.35);
-    --sp-cream-glow: rgba(253,238,208,0.2);
+  .server-card {
+    padding: 13px;
   }
 
-  /* OPTION C — Forest: premium dark green */
-  .theme-forest {
-    --sp-on: #ecefe9;
-    --sp-muted: #9ea89a;
-    --sp-bg-base: #0a1310;
-    --sp-surface-solid: #121e18;
-    --sp-surface-elev: #1a2922;
-    --sp-surface-glass-soft: rgba(20,34,26,0.4);
-    --sp-glass-bg: rgba(28,46,36,0.55);
-    --sp-glass-border: rgba(210,240,220,0.14);
-    --sp-glass-hl: rgba(210,240,220,0.07);
-    --sp-outline: rgba(210,240,220,0.08);
-    --sp-search-bg: rgba(210,240,220,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 12% 8%, rgba(52,196,126,0.10), transparent 55%);
-    --sp-ring: rgba(253,238,208,0.3);
-    --sp-cream-glow: rgba(253,238,208,0.2);
+  .server-card strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--s-50);
   }
 
-  /* OPTION D — Espresso: warm boutique brown */
-  .theme-espresso {
-    --sp-on: #f1ede8;
-    --sp-muted: #ab9f92;
-    --sp-bg-base: #120a06;
-    --sp-surface-solid: #1f1410;
-    --sp-surface-elev: #2b1d17;
-    --sp-surface-glass-soft: rgba(36,22,14,0.4);
-    --sp-glass-bg: rgba(52,32,22,0.55);
-    --sp-glass-border: rgba(255,230,200,0.14);
-    --sp-glass-hl: rgba(255,230,200,0.08);
-    --sp-outline: rgba(255,230,200,0.08);
-    --sp-search-bg: rgba(255,230,200,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 15% -10%, rgba(253,238,208,0.08), transparent 55%);
-    --sp-ring: rgba(253,238,208,0.4);
-    --sp-cream-glow: rgba(253,238,208,0.26);
+  .meta {
+    max-width: 1180px;
+    margin: 24px auto 0;
+    color: var(--s-400);
+    text-align: center;
+    font-size: 12px;
   }
 
-  /* OPTION E — OLED near-black: pure minimalism */
-  .theme-oled {
-    --sp-on: #f4f4f6;
-    --sp-muted: #9a9aa0;
-    --sp-bg-base: #050507;
-    --sp-surface-solid: #111113;
-    --sp-surface-elev: #1a1a1d;
-    --sp-surface-glass-soft: rgba(20,20,24,0.4);
-    --sp-glass-bg: rgba(28,28,32,0.55);
-    --sp-glass-border: rgba(255,255,255,0.12);
-    --sp-glass-hl: rgba(255,255,255,0.06);
-    --sp-outline: rgba(255,255,255,0.07);
-    --sp-search-bg: rgba(255,255,255,0.04);
-    --sp-radials: none;
-    --sp-ring: rgba(253,238,208,0.3);
-    --sp-cream-glow: rgba(253,238,208,0.2);
+  @media (max-width: 1180px) {
+    .contract,
+    .workflow-strip,
+    .server-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
-  /* OPTION F — Warm cream-tinted dark: subtle cream wash in the blacks */
-  .theme-cream-dark {
-    --sp-on: #f4eee0;
-    --sp-muted: #b8ad95;
-    --sp-bg-base: #100d07;
-    --sp-surface-solid: #1c1812;
-    --sp-surface-elev: #272116;
-    --sp-surface-glass-soft: rgba(32,28,20,0.4);
-    --sp-glass-bg: rgba(46,40,28,0.5);
-    --sp-glass-border: rgba(255,240,200,0.14);
-    --sp-glass-hl: rgba(255,240,200,0.08);
-    --sp-outline: rgba(255,240,200,0.08);
-    --sp-search-bg: rgba(255,240,200,0.04);
-    --sp-radials: none;
-    --sp-ring: rgba(253,238,208,0.4);
-    --sp-cream-glow: rgba(253,238,208,0.28);
-  }
-
-  /* OPTION G — Warm graphite + cream radial only (closest to current but no purple) */
-  .theme-graphite-warm {
-    --sp-on: #f2efea;
-    --sp-muted: #a8a29a;
-    --sp-bg-base: #0b0a09;
-    --sp-surface-solid: #171613;
-    --sp-surface-elev: #201e1a;
-    --sp-surface-glass-soft: rgba(30,28,24,0.4);
-    --sp-glass-bg: rgba(40,36,30,0.55);
-    --sp-glass-border: rgba(255,245,225,0.14);
-    --sp-glass-hl: rgba(255,245,225,0.08);
-    --sp-outline: rgba(255,245,225,0.08);
-    --sp-search-bg: rgba(255,245,225,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 12% -10%, rgba(253,238,208,0.08), transparent 55%),
-      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.04), transparent 60%);
-    --sp-ring: rgba(253,238,208,0.35);
-    --sp-cream-glow: rgba(253,238,208,0.24);
-  }
-
-  /* ═════════════════════════════════════════════════════════════════════
-     LIGHT THEME VARIANTS
-     ═════════════════════════════════════════════════════════════════════ */
-
-  /* LIGHT A — Light warm graphite */
-  .theme-light-graphite {
-    --sp-on: #1a1816;
-    --sp-muted: #5a5550;
-    --sp-bg-base: #faf8f5;
-    --sp-surface-solid: #ffffff;
-    --sp-surface-elev: #f5f2ed;
-    --sp-surface-glass-soft: rgba(255,250,245,0.72);
-    --sp-glass-bg: rgba(255,250,245,0.82);
-    --sp-glass-border: rgba(0,0,0,0.08);
-    --sp-glass-hl: rgba(255,255,255,0.90);
-    --sp-outline: rgba(0,0,0,0.08);
-    --sp-search-bg: rgba(0,0,0,0.04);
-    --sp-radials: none;
-    --sp-ring: rgba(43,20,0,0.15);
-    --sp-cream-glow: rgba(253,238,208,0.35);
-  }
-
-  /* LIGHT B — Light warm graphite + cream radial */
-  .theme-light-graphite-cream {
-    --sp-on: #1a1816;
-    --sp-muted: #5a5550;
-    --sp-bg-base: #faf8f4;
-    --sp-surface-solid: #ffffff;
-    --sp-surface-elev: #f5f0e8;
-    --sp-surface-glass-soft: rgba(255,248,238,0.75);
-    --sp-glass-bg: rgba(255,250,245,0.82);
-    --sp-glass-border: rgba(0,0,0,0.08);
-    --sp-glass-hl: rgba(255,255,255,0.90);
-    --sp-outline: rgba(0,0,0,0.08);
-    --sp-search-bg: rgba(0,0,0,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.45), transparent 55%),
-      radial-gradient(ellipse at 110% 100%, rgba(253,238,208,0.20), transparent 60%);
-    --sp-ring: rgba(43,20,0,0.15);
-    --sp-cream-glow: rgba(253,238,208,0.40);
-  }
-
-  /* LIGHT C — Light slate + cream radial */
-  .theme-light-slate-cream {
-    --sp-on: #1a2030;
-    --sp-muted: #5a6070;
-    --sp-bg-base: #f4f7fa;
-    --sp-surface-solid: #ffffff;
-    --sp-surface-elev: #edf1f7;
-    --sp-surface-glass-soft: rgba(240,245,255,0.75);
-    --sp-glass-bg: rgba(240,245,255,0.82);
-    --sp-glass-border: rgba(0,0,0,0.08);
-    --sp-glass-hl: rgba(255,255,255,0.90);
-    --sp-outline: rgba(0,0,0,0.08);
-    --sp-search-bg: rgba(0,0,0,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.35), transparent 55%);
-    --sp-ring: rgba(43,20,0,0.12);
-    --sp-cream-glow: rgba(253,238,208,0.35);
-  }
-
-  /* Light sampler surface overrides — text / borders need inversion */
-  .theme-light-graphite .sp-title,
-  .theme-light-graphite-cream .sp-title,
-  .theme-light-slate-cream .sp-title { color: var(--sp-on); }
-
-  .theme-light-graphite .sp-cart-name,
-  .theme-light-graphite-cream .sp-cart-name,
-  .theme-light-slate-cream .sp-cart-name { color: var(--sp-on); }
-
-  .theme-light-graphite .sp-name,
-  .theme-light-graphite-cream .sp-name,
-  .theme-light-slate-cream .sp-name { color: var(--sp-on); }
-
-  .theme-light-graphite .sp-method .mn,
-  .theme-light-graphite-cream .sp-method .mn,
-  .theme-light-slate-cream .sp-method .mn { color: var(--sp-on); }
-
-  /* OPTION H — Slate + cream radial: cool base with cream warmth */
-  .theme-slate-cream {
-    --sp-on: #eceff4;
-    --sp-muted: #9fa5ae;
-    --sp-bg-base: #0a0e14;
-    --sp-surface-solid: #141821;
-    --sp-surface-elev: #1d2230;
-    --sp-surface-glass-soft: rgba(22,27,37,0.42);
-    --sp-glass-bg: rgba(30,36,50,0.55);
-    --sp-glass-border: rgba(240,240,255,0.14);
-    --sp-glass-hl: rgba(240,240,255,0.07);
-    --sp-outline: rgba(240,240,255,0.08);
-    --sp-search-bg: rgba(240,240,255,0.04);
-    --sp-radials:
-      radial-gradient(ellipse at 10% -10%, rgba(253,238,208,0.08), transparent 55%);
-    --sp-ring: rgba(253,238,208,0.35);
-    --sp-cream-glow: rgba(253,238,208,0.22);
+  @media (max-width: 720px) {
+    body { padding-left: 10px; padding-right: 10px; }
+    h1 { font-size: 27px; }
+    .contract,
+    .workflow-strip,
+    .server-grid,
+    .stage { grid-template-columns: 1fr; }
+    .iphone { transform: scale(0.92); transform-origin: top center; margin-bottom: -66px; }
   }
 </style>
 </head>
 <body>
 
-<h1>POS background options</h1>
+<h1>Bizarre CRM POS - Canonical iOS Workflow</h1>
 <p class="intro">
-  Cream primary <code>#fdeed0</code> stays constant across every option. Only the base surface + glass tint + ambient radials change. Pick one and the full mockups adopt it. <code>theme-current</code> is the existing warm plum you asked to replace.
+  This file is now a canonical workflow reference. iOS keeps its own native expression:
+  Liquid Glass chrome, solid readable content, safe-area CTAs on iPhone, and split-view production
+  density on iPad. The workflow and server data stay identical to Android, tablet, and web POS.
 </p>
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     LIGHT THEME — system toggle
-     ═══════════════════════════════════════════════════════════════════════ -->
-<div style="text-align:center; padding:18px 24px 6px; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#9a9ba5; font-weight:600;">Light theme (system toggle)</div>
-<p style="text-align:center; color:#9a9ba5; padding:0 24px 20px; font-size:13.5px; line-height:1.55; max-width:780px; margin:0 auto;">
-  Light mode uses inverted surface colors. Cream primary <code style="background:rgba(0,0,0,0.08); padding:1px 6px; border-radius:4px; font-family:monospace; font-size:12px; color:#8b6000;">#fdeed0</code> stays constant — it reads as a warm highlight against light backgrounds. Glass uses <code style="background:rgba(0,0,0,0.08); padding:1px 6px; border-radius:4px; font-family:monospace; font-size:12px; color:#8b6000;">rgba(255,250,245,0.82)</code> instead of dark tinted glass.
+<section class="contract" aria-label="Canonical iOS POS contract">
+  <div class="contract-item primary">
+    <div class="eyebrow">Design system</div>
+    <strong>Warm graphite + cream</strong>
+    <p>Dark POS uses <code>#FDEED0</code> for decisive action, active state, focus, and step progress. Surfaces remain neutral.</p>
+  </div>
+  <div class="contract-item teal">
+    <div class="eyebrow">One server</div>
+    <strong>Shared POS state</strong>
+    <p>Customer, cart, repair draft, payment, receipt, and ticket records map to one backend contract across every platform.</p>
+  </div>
+  <div class="contract-item burgundy">
+    <div class="eyebrow">iPhone identity</div>
+    <strong>Thumb-first flow</strong>
+    <p>Search lives in the navigation drawer, editors are sheets, and the primary tender action is always pinned in the safe area.</p>
+  </div>
+  <div class="contract-item success">
+    <div class="eyebrow">iPad identity</div>
+    <strong>Persistent context</strong>
+    <p>Catalog, cart, and repair/tender inspector stay side by side so staff can work quickly without losing the sale context.</p>
+  </div>
+</section>
+
+<section class="workflow-strip" aria-label="Shared POS workflow">
+  <div class="workflow-card">
+    <div class="step">1</div>
+    <h3>Attach Customer</h3>
+    <p>Search, scan loyalty, or continue as walk-in. Customer context is visible before cart decisions.</p>
+  </div>
+  <div class="workflow-card">
+    <div class="step">2</div>
+    <h3>Add Work</h3>
+    <p>Scan SKU, search service, add repair intake, or reserve parts from the same catalog source.</p>
+  </div>
+  <div class="workflow-card">
+    <div class="step">3</div>
+    <h3>Edit Lines</h3>
+    <p>Quantity, discount, device, warranty, condition, and notes use platform-native line editors.</p>
+  </div>
+  <div class="workflow-card">
+    <div class="step">4</div>
+    <h3>Quote Repair</h3>
+    <p>Issue, diagnostics, device condition, access, terms, deposit, and signature autosave as a draft.</p>
+  </div>
+  <div class="workflow-card">
+    <div class="step">5</div>
+    <h3>Tender</h3>
+    <p>Cash, card, split tender, store credit, deposit, balance due, and failure states share one payment intent.</p>
+  </div>
+  <div class="workflow-card">
+    <div class="step">6</div>
+    <h3>Handoff</h3>
+    <p>Print or send receipt, create ticket, print repair label, and return to a clean sale state.</p>
+  </div>
+</section>
+
+<main class="stage">
+  <section class="device-wrap" aria-label="iPhone sale workflow">
+    <div class="caption">
+      <h2>iPhone POS - Sale In Progress</h2>
+      <p>Retail sale remains one-hand usable: customer context, focused catalog, visible cart, and one clear next action.</p>
+    </div>
+    <div class="iphone">
+      <div class="island"></div>
+      <div class="home"></div>
+      <div class="phone-screen">
+        <div class="top-glass">
+          <div class="nav-row">
+            <div>
+              <div class="nav-title">POS</div>
+              <div style="color: var(--s-400); font-size: 12px;">Store #1 · Pavel</div>
+            </div>
+            <span class="nav-pill">Sync live</span>
+          </div>
+          <div class="search">⌕ Search customer, SKU, repair, IMEI</div>
+        </div>
+
+        <div class="solid customer">
+          <div class="row">
+            <div class="avatar">AK</div>
+            <div class="title-block">
+              <strong>Anna Koval</strong>
+              <span>VIP · 2 open tickets · store credit $18.40</span>
+            </div>
+            <span class="status-pill teal">Attached</span>
+          </div>
+        </div>
+
+        <div class="solid steps">
+          <div class="step-dot done"></div>
+          <div class="step-dot current"></div>
+          <div class="step-dot"></div>
+          <div class="step-dot"></div>
+          <div class="step-dot"></div>
+        </div>
+
+        <div class="scroll">
+          <div class="solid section">
+            <div class="row">
+              <h3>Catalog</h3>
+              <span class="status-pill warning">Repair ready</span>
+            </div>
+            <div class="catalog-grid">
+              <div class="item"><strong>iPhone 14 screen install</strong><span>$189.00</span></div>
+              <div class="item"><strong>Tempered glass</strong><span>$24.00</span></div>
+              <div class="item"><strong>USB-C cable</strong><span>$18.00</span></div>
+              <div class="item"><strong>Battery diagnostic</strong><span>$0.00</span></div>
+            </div>
+          </div>
+
+          <div class="solid section">
+            <div class="row">
+              <h3>Cart</h3>
+              <span class="status-pill success">3 lines</span>
+            </div>
+            <div class="cart-lines">
+              <div class="line-row">
+                <div><strong>iPhone 14 screen install</strong><small>Device attached · warranty eligible</small></div>
+                <div class="price">$189.00</div>
+              </div>
+              <div class="line-row">
+                <div><strong>Tempered glass</strong><small>Qty 1 · attach to repair</small></div>
+                <div class="price">$24.00</div>
+              </div>
+              <div class="line-row">
+                <div><strong>Store credit</strong><small>Anna Koval account</small></div>
+                <div class="price">-$18.40</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bottom-glass">
+          <div class="total-row">
+            <div>
+              <div class="label">Total with tax</div>
+              <div style="color: var(--s-400); font-size: 12px;">Deposit allowed · receipt required</div>
+            </div>
+            <div class="amount">$212.11</div>
+          </div>
+          <button class="primary-btn">Tender $212.11</button>
+          <button class="secondary-btn">Add repair intake</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="device-wrap" aria-label="iPhone repair intake workflow">
+    <div class="caption">
+      <h2>iPhone POS - Repair Check-In</h2>
+      <p>Repair intake is a real workflow, not a note field: issue, condition, diagnostics, quote, terms, deposit, and signature.</p>
+    </div>
+    <div class="iphone">
+      <div class="island"></div>
+      <div class="home"></div>
+      <div class="phone-screen">
+        <div class="top-glass">
+          <div class="nav-row">
+            <div>
+              <div class="nav-title">New Repair</div>
+              <div style="color: var(--s-400); font-size: 12px;">Draft autosaved 11:42 AM</div>
+            </div>
+            <span class="nav-pill">Step 4 of 6</span>
+          </div>
+          <div class="search">⌕ iPhone 14 Pro · IMEI ending 3881</div>
+        </div>
+
+        <div class="solid steps">
+          <div class="step-dot done"></div>
+          <div class="step-dot done"></div>
+          <div class="step-dot done"></div>
+          <div class="step-dot current"></div>
+          <div class="step-dot"></div>
+        </div>
+
+        <div class="solid customer">
+          <div class="row">
+            <div class="avatar">AK</div>
+            <div class="title-block">
+              <strong>Anna Koval · iPhone 14 Pro</strong>
+              <span>Cracked display · Face ID must be verified after repair</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="scroll">
+          <div class="solid section">
+            <div class="row">
+              <h3>Condition + Diagnostics</h3>
+              <span class="status-pill warning">2 issues</span>
+            </div>
+            <div class="device-map">
+              <div class="device-outline"></div>
+              <div class="damage one">!</div>
+              <div class="damage two">!</div>
+              <div class="test-list">
+                <div class="test-row"><span>Touchscreen</span><b>✓</b></div>
+                <div class="test-row"><span>Face ID</span><b>?</b></div>
+                <div class="test-row warn"><span>Speaker</span><b>!</b></div>
+                <div class="test-row"><span>Charging</span><b>✓</b></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="solid section">
+            <div class="form-grid">
+              <div class="field"><span>Quote</span><strong>$189 labor+part · 90 minute ETA</strong></div>
+              <div class="field"><span>Access</span><strong>Passcode declined · customer available by SMS</strong></div>
+              <div class="field"><span>Terms</span><strong>Version 2026.04 accepted · signature required</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sheet">
+          <div class="handle"></div>
+          <h3>Collect Deposit</h3>
+          <div class="split-row" style="margin-bottom: 10px;">
+            <span style="color: var(--s-300);">Deposit now</span>
+            <strong style="font-size: 22px; color: var(--s-50);">$50.00</strong>
+          </div>
+          <button class="primary-btn">Create ticket + print label</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="device-wrap" aria-label="iPhone tender workflow">
+    <div class="caption">
+      <h2>iPhone POS - Tender And Handoff</h2>
+      <p>Tendering keeps payment confidence high: method state, split tender, receipt delivery, and ticket creation are explicit.</p>
+    </div>
+    <div class="iphone">
+      <div class="island"></div>
+      <div class="home"></div>
+      <div class="phone-screen">
+        <div class="top-glass">
+          <div class="nav-row">
+            <div>
+              <div class="nav-title">Tender</div>
+              <div style="color: var(--s-400); font-size: 12px;">Cart #POS-1049 · Anna Koval</div>
+            </div>
+            <span class="status-pill teal">Split ready</span>
+          </div>
+        </div>
+
+        <div class="solid section">
+          <div class="total-row">
+            <div>
+              <div class="label">Balance due</div>
+              <div style="color: var(--s-400); font-size: 12px;">After store credit and deposit</div>
+            </div>
+            <div class="amount">$162.11</div>
+          </div>
+        </div>
+
+        <div class="solid section">
+          <h3>Payment Method</h3>
+          <div class="payment-grid">
+            <div class="pay-method active"><span>Card</span><strong>$112.11</strong></div>
+            <div class="pay-method"><span>Cash</span><strong>$50.00</strong></div>
+            <div class="pay-method"><span>Store credit</span><strong>Applied</strong></div>
+            <div class="pay-method"><span>Manual</span><strong>Manager</strong></div>
+          </div>
+        </div>
+
+        <div class="solid section">
+          <h3>Receipt + Ticket</h3>
+          <div class="cart-lines">
+            <div class="line-row">
+              <div><strong>Customer receipt</strong><small>SMS + email · print optional</small></div>
+              <span class="status-pill success">Ready</span>
+            </div>
+            <div class="line-row">
+              <div><strong>Repair ticket #4831</strong><small>Queue: Mike · label prints at counter</small></div>
+              <span class="status-pill warning">Draft</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="receipt-hero">
+          <strong>$162.11</strong>
+          <span>Authorize card, mark cash received, then complete handoff.</span>
+        </div>
+
+        <div class="bottom-glass">
+          <button class="primary-btn">Charge + complete sale</button>
+          <button class="secondary-btn">Save as parked cart</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="device-wrap ipad-wrap" aria-label="iPad POS split workflow">
+    <div class="caption ipad-caption">
+      <h2>iPad POS - Split View Production Workflow</h2>
+      <p>The iPad version is not a stretched phone. It keeps the same server-backed flow but exposes catalog, cart, tender, and repair inspector at once for counter-speed work.</p>
+    </div>
+    <div class="ipad">
+      <div class="camera"></div>
+      <div class="ipad-screen">
+        <nav class="rail" aria-label="POS rail">
+          <div class="brand">B</div>
+          <div class="rail-btn active">⌕</div>
+          <div class="rail-btn">□</div>
+          <div class="rail-btn">◇</div>
+          <div class="rail-btn">✓</div>
+          <div style="flex: 1;"></div>
+          <div class="rail-btn">⚙</div>
+        </nav>
+
+        <header class="topbar-ipad">
+          <div class="toolbar-search">⌕ Search SKU, customer, repair ticket, IMEI, receipt</div>
+          <div class="toolbar-actions">
+            <div class="toolbar-action">Hold</div>
+            <div class="toolbar-action">Discount</div>
+            <div class="toolbar-action primary">Scan</div>
+          </div>
+        </header>
+
+        <section class="catalog-panel">
+          <div class="toolbar-row" style="margin-bottom: 12px;">
+            <div>
+              <h3 style="margin-bottom: 2px;">Catalog</h3>
+              <span style="color: var(--s-400); font-size: 12px;">Accessories, services, repairs, warranties</span>
+            </div>
+            <span class="status-pill teal">Inventory live</span>
+          </div>
+          <div class="product-grid">
+            <div class="product"><div class="thumb"></div><strong>iPhone 14 screen install</strong><span>$189.00</span></div>
+            <div class="product"><div class="thumb"></div><strong>Tempered glass</strong><span>$24.00</span></div>
+            <div class="product"><div class="thumb"></div><strong>USB-C cable braided</strong><span>$18.00</span></div>
+            <div class="product"><div class="thumb"></div><strong>Battery diagnostic</strong><span>$0.00</span></div>
+            <div class="product"><div class="thumb"></div><strong>Premium case</strong><span>$36.00</span></div>
+            <div class="product"><div class="thumb"></div><strong>Liquid damage intake</strong><span>$50.00</span></div>
+          </div>
+        </section>
+
+        <aside class="cart-panel">
+          <div class="solid customer">
+            <div class="row">
+              <div class="avatar">AK</div>
+              <div class="title-block">
+                <strong>Anna Koval</strong>
+                <span>VIP · SMS verified · 2 tickets</span>
+              </div>
+            </div>
+          </div>
+
+          <h3>Cart</h3>
+          <div class="cart-lines">
+            <div class="line-row">
+              <div><strong>iPhone 14 screen install</strong><small>Repair ticket draft attached</small></div>
+              <div class="price">$189.00</div>
+            </div>
+            <div class="line-row">
+              <div><strong>Tempered glass</strong><small>Upsell accepted</small></div>
+              <div class="price">$24.00</div>
+            </div>
+            <div class="line-row">
+              <div><strong>Store credit</strong><small>Applied from customer wallet</small></div>
+              <div class="price">-$18.40</div>
+            </div>
+          </div>
+
+          <div class="cart-total">
+            <div class="total-row">
+              <div>
+                <div class="label">Total with tax</div>
+                <div style="color: var(--s-400); font-size: 12px;">Payment intent ready</div>
+              </div>
+              <div class="amount">$212.11</div>
+            </div>
+            <button class="primary-btn">Tender</button>
+            <button class="secondary-btn">Park cart</button>
+          </div>
+        </aside>
+
+        <aside class="inspector">
+          <div class="row" style="margin-bottom: 12px;">
+            <h3>Repair Inspector</h3>
+            <span class="status-pill warning">Autosaved</span>
+          </div>
+          <div class="form-grid">
+            <div class="field"><span>Device</span><strong>iPhone 14 Pro · IMEI ending 3881</strong></div>
+            <div class="field"><span>Issue</span><strong>Cracked OLED, speaker intermittent</strong></div>
+            <div class="field"><span>Part reserve</span><strong>1 OEM pull screen · Bin A-14</strong></div>
+            <div class="field"><span>Quote</span><strong>$189 · 90 min · Mike queue +2</strong></div>
+            <div class="field"><span>Terms</span><strong>Signed · print drop-off receipt</strong></div>
+          </div>
+          <div style="height: 12px;"></div>
+          <button class="primary-btn">Create ticket #4831</button>
+        </aside>
+      </div>
+    </div>
+  </section>
+</main>
+
+<section class="server-section" aria-label="Server-backed POS objects">
+  <h2>Shared Server Objects</h2>
+  <div class="server-grid">
+    <div class="server-card">
+      <strong><code>POSSession</code></strong>
+      <p>Store, register, staff user, customer context, cart lifecycle, parked state, and audit trail.</p>
+    </div>
+    <div class="server-card">
+      <strong><code>CartLine</code></strong>
+      <p>SKU, service, repair line, discount, warranty, tax, inventory reservation, and line notes.</p>
+    </div>
+    <div class="server-card">
+      <strong><code>RepairDraft</code></strong>
+      <p>Issue, device, condition markers, tests, passcode policy, quote, ETA, terms, and signature.</p>
+    </div>
+    <div class="server-card">
+      <strong><code>PaymentIntent</code></strong>
+      <p>Cash, card, split tender, store credit, deposit, balance due, failure recovery, and refunds.</p>
+    </div>
+    <div class="server-card">
+      <strong><code>Receipt</code></strong>
+      <p>Printed receipt, SMS, email, tax details, customer copy, and repair drop-off receipt.</p>
+    </div>
+    <div class="server-card">
+      <strong><code>Ticket</code></strong>
+      <p>Repair queue entry, thermal label, QR link, technician assignment, and pickup handoff.</p>
+    </div>
+  </div>
+</section>
+
+<p class="meta">
+  File: <code>mockups/POS/ios-pos-theme-options.html</code> · Canonical iOS POS reference · Backup preserved as <code>mockups/POS/pre-codex-ios-pos-theme-options.html</code>
 </p>
-
-<div class="grid" style="margin-bottom:0; padding-bottom:20px;">
-
-  <!-- LIGHT A -->
-  <div class="option" style="background:rgba(245,242,238,0.9); border-color:rgba(0,0,0,0.07);">
-    <div class="option-head">
-      <div><span class="option-name" style="color:#1a1816;">LA · Light warm graphite</span><span class="recommend">Recommended</span></div>
-      <div class="option-hex">bg #faf8f5 · no radials</div>
-    </div>
-    <div class="option-note" style="color:#5a5550;">Clean warm-white surface. Cream primary reads as a warm highlight chip and CTA. Matches Apple's light material vocab. Ideal for well-lit retail counters.</div>
-    <div class="sampler theme-light-graphite" style="border-color:rgba(0,0,0,0.1);">
-      <div class="radials"></div>
-      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
-        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
-        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
-      </div>
-      <div class="sp-row-strip" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.07);">
-        <div class="sp-avatar">SM</div>
-        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
-        <div class="sp-total">$274.51</div>
-      </div>
-      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
-        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
-        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
-        <div class="sp-cart-price">$189</div>
-      </div>
-      <div class="sp-methods">
-        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
-        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
-        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
-      </div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- LIGHT B -->
-  <div class="option" style="background:rgba(245,242,238,0.9); border-color:rgba(0,0,0,0.07);">
-    <div class="option-head">
-      <div><span class="option-name" style="color:#1a1816;">LB · Light warm graphite + cream radial</span><span class="recommend">Strong pick</span></div>
-      <div class="option-hex">bg #faf8f4 · cream radials in corners</div>
-    </div>
-    <div class="option-note" style="color:#5a5550;">Same warm-white base but cream radials bloom in the corners, giving the screen a warm glow that mirrors the dark G option. Best if the brand identity relies on cream atmosphere.</div>
-    <div class="sampler theme-light-graphite-cream" style="border-color:rgba(0,0,0,0.1);">
-      <div class="radials"></div>
-      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
-        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
-        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
-      </div>
-      <div class="sp-row-strip" style="background:rgba(253,238,208,0.30); border-color:rgba(0,0,0,0.07);">
-        <div class="sp-avatar">SM</div>
-        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
-        <div class="sp-total">$274.51</div>
-      </div>
-      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
-        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
-        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
-        <div class="sp-cart-price">$189</div>
-      </div>
-      <div class="sp-methods">
-        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
-        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
-        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
-      </div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- LIGHT C -->
-  <div class="option" style="background:rgba(238,242,248,0.9); border-color:rgba(0,0,0,0.07);">
-    <div class="option-head">
-      <div><span class="option-name" style="color:#1a2030;">LC · Light slate + cream radial</span></div>
-      <div class="option-hex">bg #f4f7fa · cream top-left radial</div>
-    </div>
-    <div class="option-note" style="color:#5a6070;">Cool blue-white base — mirrors the dark H option. Cream radial adds warmth without going full warm-white. Good pairing if the dark mode uses H or B (slate family).</div>
-    <div class="sampler theme-light-slate-cream" style="border-color:rgba(0,0,0,0.1);">
-      <div class="radials"></div>
-      <div class="sp-nav" style="border-color:rgba(0,0,0,0.1);">
-        <div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div>
-        <div class="sp-search" style="background:rgba(0,0,0,0.05); border-color:rgba(0,0,0,0.1);">🔍 Search</div>
-      </div>
-      <div class="sp-row-strip" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.07);">
-        <div class="sp-avatar">SM</div>
-        <div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div>
-        <div class="sp-total">$274.51</div>
-      </div>
-      <div class="sp-cart-row" style="background:#fff; border-color:rgba(0,0,0,0.07);">
-        <div class="sp-cart-icon" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.08);">🔧</div>
-        <div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div>
-        <div class="sp-cart-price">$189</div>
-      </div>
-      <div class="sp-methods">
-        <div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div>
-        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">💳</div><div class="mn">Card</div></div>
-        <div class="sp-method" style="background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.09);"><div class="mi">🎁</div><div class="mn">Gift</div></div>
-      </div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-</div>
-
-<!-- Divider -->
-<div style="max-width:900px; margin:24px auto 0; padding:0 32px;">
-  <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:20px;">
-    <div style="text-align:center; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#9a9ba5; font-weight:600; margin-bottom:4px;">Dark theme (system toggle)</div>
-    <p style="text-align:center; color:#9a9ba5; font-size:13px; margin:0 0 20px;">The existing 9 dark options below. Option A is currently applied to the iPhone + iPad mockups.</p>
-  </div>
-</div>
-
-<div class="grid">
-
-  <!-- OPTION Current (baseline) -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">Current · Warm plum</span></div>
-      <div class="option-hex">bg #120c1a · glass rgba(36,31,46,0.55)</div>
-    </div>
-    <div class="option-note">Current baseline. Warm purple plum base + cream + teal radial washes. You said this feels wrong — listed here for comparison.</div>
-    <div class="sampler theme-current">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION A -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">A · Warm graphite</span><span class="recommend">Recommended</span></div>
-      <div class="option-hex">bg #0f0e0d · no radials</div>
-    </div>
-    <div class="option-note">Near-black with a subtle warm-gray tint — zero hue competition with cream. Graphite feels premium, neutral, serves the product not the chrome. Matches Apple's own dark material vocabulary. No ambient radials — cleanest.</div>
-    <div class="sampler theme-graphite">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION B -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">B · Blueprint slate</span></div>
-      <div class="option-hex">bg #0b121a · teal + cream radials</div>
-    </div>
-    <div class="option-note">Cool dark blue. "Tech shop" identity — blueprint vibes, pairs with teal accent and cream naturally. Feels more service-industry than boutique. Leans into the repair-shop positioning.</div>
-    <div class="sampler theme-slate">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION C -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">C · Forest green</span></div>
-      <div class="option-hex">bg #0a1310 · success green radial</div>
-    </div>
-    <div class="option-note">Premium dark green. Uncommon, stands out in the POS category. Collides with the <code>success</code> semantic green — risks a sale looking "confirmed" when it isn't. Probably avoid unless you want strong brand-unique vibe.</div>
-    <div class="sampler theme-forest">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION D -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">D · Espresso</span></div>
-      <div class="option-hex">bg #120a06 · cream radial</div>
-    </div>
-    <div class="option-note">Warm espresso brown. Boutique-store feel — warm-coffee-shop identity. Cream feels native against it. Might be "too warm" if the store sells tech; leans café/apparel.</div>
-    <div class="sampler theme-espresso">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION E -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">E · OLED near-black</span></div>
-      <div class="option-hex">bg #050507 · no radials, no tint</div>
-    </div>
-    <div class="option-note">Pure minimalism. Battery-friendly on OLED devices (iPhone 16 Pro runs less power on near-black pixels). Every accent pops to maximum. Can feel clinical / humorless.</div>
-    <div class="sampler theme-oled">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION F -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">F · Cream-tint dark</span></div>
-      <div class="option-hex">bg #100d07 · no radials</div>
-    </div>
-    <div class="option-note">Near-black with a whisper of cream in the shadows — the blacks feel warm without committing to brown. Cream primary reads as part of the environment, not imposed on it. Subtle.</div>
-    <div class="sampler theme-cream-dark">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION G -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">G · Warm graphite + cream radial</span><span class="recommend">Strong pick</span></div>
-      <div class="option-hex">bg #0b0a09 · cream-only radials</div>
-    </div>
-    <div class="option-note">Closest feel to current but <b>without the purple</b>. Warm-gray base + soft cream radials in corners = the moody-yet-warm ambience, with zero hue conflict. Keeps the "premium atmosphere" vibe that flat graphite loses.</div>
-    <div class="sampler theme-graphite-warm">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-  <!-- OPTION H -->
-  <div class="option">
-    <div class="option-head">
-      <div><span class="option-name">H · Slate + cream radial</span></div>
-      <div class="option-hex">bg #0a0e14 · cream top-left radial</div>
-    </div>
-    <div class="option-note">Blueprint slate but using cream (not teal) for the ambient radial. Combines "tech shop" coolness with cream warmth, without letting teal dominate. If cool base feels too industrial, this softens it.</div>
-    <div class="sampler theme-slate-cream">
-      <div class="radials"></div>
-      <div class="sp-nav"><div><div class="sp-title">POS · new sale</div><div class="sp-meta">Store #1 · Pavel I.</div></div><div class="sp-search">🔍 Search</div></div>
-      <div class="sp-row-strip"><div class="sp-avatar">SM</div><div><div class="sp-name">Sarah M.</div><div class="sp-sub">3 lines · ticket draft</div></div><div class="sp-total">$274.51</div></div>
-      <div class="sp-cart-row"><div class="sp-cart-icon">🔧</div><div style="flex:1;"><div class="sp-cart-name">iPhone 14 Pro Screen</div><div class="sp-cart-sub">Qty 1</div></div><div class="sp-cart-price">$189</div></div>
-      <div class="sp-methods"><div class="sp-method selected"><div class="mi">💵</div><div class="mn">Cash</div></div><div class="sp-method"><div class="mi">💳</div><div class="mn">Card</div></div><div class="sp-method"><div class="mi">🎁</div><div class="mn">Gift</div></div></div>
-      <div class="sp-cta">Charge · $274.51</div>
-    </div>
-  </div>
-
-</div>
-
-<div style="max-width: 900px; margin: 0 auto; padding: 8px 32px 56px; color: #9a9ba5; font-size: 13px; line-height: 1.7;">
-  <h2 style="color: #f2eef9; font-size: 17px; font-weight: 700; margin: 0 0 10px;">Pick rubric — how to decide</h2>
-  <ul style="padding-left: 18px; margin: 0;">
-    <li><b style="color:#f2eef9;">Must not compete with cream.</b> Any hue too close to beige / yellow / orange makes cream invisible. Options A / G / H pass cleanly.</li>
-    <li><b style="color:#f2eef9;">Must not collide with semantic colors.</b> Option C (forest green) conflicts with <code style="color:var(--primary);">success</code>. Option D (espresso) borders on warning amber at high-saturation areas.</li>
-    <li><b style="color:#f2eef9;">Atmospheric vs. flat.</b> Options A / E / F are flat (no radials). Options G / H keep the ambient glow without purple. Flat = more Apple-like minimalism; radial = more boutique / premium-feel.</li>
-    <li><b style="color:#f2eef9;">Shop identity.</b> If the business is tech-repair-first = slate family (B / H). If it's retail-cream-bizarre brand = warm family (A / G / D). If minimal / modern = OLED or cream-dark (E / F).</li>
-  </ul>
-  <div style="margin-top: 16px; padding: 14px 16px; border-radius: 12px; background: rgba(253,238,208,0.06); border: 1px solid rgba(253,238,208,0.25); color: var(--primary); font-size: 13px;">
-    <b>Shortest answer: pick <span style="font-family: monospace;">G · Warm graphite + cream radial</span>.</b> It drops the purple (your complaint) while preserving the moody ambient feel that makes cream glow. Flat graphite (A) loses the atmosphere; slate (B) shifts the whole product identity.
-  </div>
-</div>
 
 </body>
 </html>

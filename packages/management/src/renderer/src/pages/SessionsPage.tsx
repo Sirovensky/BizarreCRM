@@ -9,15 +9,7 @@ import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
-
-interface Session {
-  id: string;
-  username: string;
-  ip_address: string;
-  user_agent: string;
-  created_at: string;
-  expires_at: string;
-}
+import type { SessionEntry } from '@/api/bridge';
 
 /**
  * Short human-friendly relative string: "5m", "2h 14m", "3d". Used for
@@ -58,10 +50,13 @@ function shortUserAgent(ua: string | undefined): string {
 }
 
 export function SessionsPage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessions, setSessions] = useState<SessionEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [revokeTarget, setRevokeTarget] = useState<Session | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<SessionEntry | null>(null);
+  const [revokeAllOpen, setRevokeAllOpen] = useState(false);
+  const [revokingAll, setRevokingAll] = useState(false);
   const currentUsername = useAuthStore((s) => s.username);
+  const logout = useAuthStore((s) => s.logout);
 
   // Force a re-render once per 30s so countdown/duration chips tick.
   const [, forceTick] = useState(0);
@@ -75,8 +70,8 @@ export function SessionsPage() {
       const res = await getAPI().superAdmin.getSessions();
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
-        const list = Array.isArray(res.data) ? res.data : (res.data as { sessions: Session[] }).sessions ?? [];
-        setSessions(list as Session[]);
+        const list = Array.isArray(res.data) ? res.data : res.data.sessions ?? [];
+        setSessions(list);
       }
     } catch {
       toast.error('Sessions load failed');
@@ -96,6 +91,27 @@ export function SessionsPage() {
       refresh();
     } else {
       toast.error(formatApiError(res));
+    }
+  };
+
+  const handleRevokeAll = async () => {
+    setRevokingAll(true);
+    try {
+      const res = await getAPI().superAdmin.revokeAllSessions();
+      if (res.success) {
+        const count = typeof res.data?.count === 'number' ? res.data.count : sessions.length;
+        toast.success(`${count} active session${count === 1 ? '' : 's'} revoked`);
+        setSessions([]);
+        setRevokeAllOpen(false);
+        logout();
+        window.dispatchEvent(new Event('managementAuthNavigateLogin'));
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch {
+      toast.error('Could not revoke all sessions');
+    } finally {
+      setRevokingAll(false);
     }
   };
 
@@ -128,9 +144,19 @@ export function SessionsPage() {
             </span>
           )}
         </h1>
-        <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
-          <RefreshCw className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setRevokeAllOpen(true)}
+            disabled={sessions.length === 0 || revokingAll}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-red-300 border border-red-900/60 bg-red-950/20 hover:bg-red-950/40 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            Revoke All
+          </button>
+          <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {sessions.length === 0 ? (
@@ -211,6 +237,18 @@ export function SessionsPage() {
         danger confirmLabel="Revoke"
         onConfirm={handleRevoke}
         onCancel={() => setRevokeTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={revokeAllOpen}
+        title="Revoke All Sessions"
+        message="Every active super-admin session, including this one, will be revoked immediately. You will need to log in again."
+        danger
+        confirmLabel={revokingAll ? 'Revoking...' : 'Revoke All'}
+        requireTyping="REVOKE ALL"
+        disabled={revokingAll}
+        onConfirm={handleRevokeAll}
+        onCancel={() => setRevokeAllOpen(false)}
       />
     </div>
   );

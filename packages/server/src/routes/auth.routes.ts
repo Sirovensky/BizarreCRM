@@ -6,7 +6,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { generateSecret, verifySync } from 'otplib';
 import QRCode from 'qrcode';
 import { config } from '../config.js';
-import { authMiddleware, JWT_SIGN_OPTIONS, JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
+import {
+  authMiddleware,
+  authCsrfMatches,
+  clearAccessTokenCookie,
+  getBearerAccessToken,
+  getRequestAccessToken,
+  issueAccessTokenCookie,
+  JWT_SIGN_OPTIONS,
+  JWT_VERIFY_OPTIONS,
+} from '../middleware/auth.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { audit } from '../utils/audit.js';
 import { logTenantAuthEvent } from '../utils/masterAudit.js';
@@ -410,6 +419,7 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
   // NOTE: for req.secure to reflect HTTPS behind a reverse proxy, ensure
   // `app.set('trust proxy', 'loopback')` (or similar) is enabled in index.ts.
   const isSecureConnection = req.secure || config.nodeEnv === 'production';
+  issueAccessTokenCookie(req, res, accessToken);
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: isSecureConnection,
@@ -1367,6 +1377,7 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
     // SEC-H17: SameSite=Strict on refresh rotation too — must match issueTokens().
     // SCAN-905: use req.secure so staging/dev HTTPS also sets the Secure flag.
     const isSecureConnection = req.secure || config.nodeEnv === 'production';
+    issueAccessTokenCookie(req, res, accessToken);
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: isSecureConnection,
@@ -1415,9 +1426,49 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
 
 // POST /logout
 // SCAN-1143: wrap in asyncHandler so thrown errors route to errorHandler.
-router.post('/logout', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
+router.post('/logout', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  await adb.run('DELETE FROM sessions WHERE id = ?', req.user!.sessionId);
+  let tokenRef = getRequestAccessToken(req);
+  const cookieRefreshToken = (req as any).cookies?.refreshToken;
+  const bodyRefreshToken = req.body?.refreshToken;
+  const bearerToken = getBearerAccessToken(req);
+  if (tokenRef?.source === 'cookie' && bearerToken && !authCsrfMatches(req)) {
+    tokenRef = { token: bearerToken, source: 'bearer' };
+  }
+  const usesCookieSession = Boolean((tokenRef?.source === 'cookie' && !bearerToken) || (cookieRefreshToken && !bodyRefreshToken && !bearerToken));
+
+  if (usesCookieSession && !authCsrfMatches(req)) {
+    res.status(403).json({ success: false, code: ERROR_CODES.ERR_CSRF_MISMATCH, message: 'CSRF token invalid' });
+    return;
+  }
+
+  let sessionId: string | null = null;
+  const refreshToken = cookieRefreshToken || bodyRefreshToken;
+  if (tokenRef) {
+    try {
+      const payload = verifyJwtWithRotation(tokenRef.token, 'access', JWT_VERIFY_OPTIONS) as any;
+      if (payload.type === 'access' && typeof payload.sessionId === 'string') {
+        sessionId = payload.sessionId;
+      }
+    } catch {
+      // Try the refresh token below so an expired access cookie can still log out.
+    }
+  }
+  if (!sessionId && refreshToken) {
+    try {
+      const payload = verifyJwtWithRotation(refreshToken, 'refresh', JWT_VERIFY_OPTIONS) as any;
+      if (payload.type === 'refresh' && typeof payload.sessionId === 'string') {
+        sessionId = payload.sessionId;
+      }
+    } catch {
+      // Logout is idempotent: stale/invalid tokens still get client cookies cleared.
+    }
+  }
+
+  if (sessionId) {
+    await adb.run('DELETE FROM sessions WHERE id = ?', sessionId);
+  }
+  clearAccessTokenCookie(res);
   res.clearCookie('refreshToken', { path: '/' });
   // SEC-H89: Clear csrf_token alongside refreshToken on logout.
   res.clearCookie('csrf_token', { path: '/' });
@@ -1559,6 +1610,7 @@ router.post('/switch-user', authMiddleware, asyncHandler(async (req: Request, re
   // are short-lived and should never cross origins.
   // SCAN-905: req.secure honours trust-proxy; production fallback as safety net.
   const isSecureConnection = req.secure || config.nodeEnv === 'production';
+  issueAccessTokenCookie(req, res, accessToken);
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: isSecureConnection,
@@ -2072,10 +2124,22 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
     res.status(400).json({ success: false, message: 'Valid email is required' });
     return;
   }
-  if (!backupCode || typeof backupCode !== 'string' || backupCode.length < 16) {
+  const rawBackupCode = typeof backupCode === 'string' ? backupCode.trim() : '';
+  const compactBackupCode = rawBackupCode.replace(/[\s-]/g, '');
+  if (!rawBackupCode || compactBackupCode.length < 16) {
     res.status(400).json({ success: false, message: 'Valid backup code is required' });
     return;
   }
+  const formattedCrockfordBackupCode =
+    compactBackupCode.length === 16
+      ? compactBackupCode.toUpperCase().match(/.{1,4}/g)?.join('-') ?? compactBackupCode.toUpperCase()
+      : compactBackupCode.toUpperCase();
+  const backupCodeCandidates = Array.from(new Set([
+    rawBackupCode,
+    formattedCrockfordBackupCode,
+    compactBackupCode,
+    compactBackupCode.toLowerCase(),
+  ]));
   if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
     res.status(400).json({ success: false, message: 'New password must be 8 to 128 characters' });
     return;
@@ -2129,7 +2193,7 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
     try { hashedCodes = JSON.parse(currentCodesJson); } catch { hashedCodes = []; }
 
     const matchIdx = hashedCodes.findIndex(h => {
-      try { return bcrypt.compareSync(backupCode, h); } catch { return false; }
+      try { return backupCodeCandidates.some(candidate => bcrypt.compareSync(candidate, h)); } catch { return false; }
     });
     if (matchIdx === -1) break; // Code not found in this snapshot.
 

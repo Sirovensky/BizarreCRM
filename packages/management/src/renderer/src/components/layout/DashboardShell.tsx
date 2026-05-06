@@ -4,7 +4,7 @@ import { AlertTriangle } from 'lucide-react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { StatusFooter } from './StatusFooter';
-import { PageErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { PageErrorBoundary, ShellSectionErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { useServerHealth } from '@/hooks/useServerHealth';
 import { useServerStore } from '@/stores/serverStore';
 import { BannerCertWarning } from '@/components/BannerCertWarning';
@@ -38,45 +38,64 @@ export function DashboardShell() {
       >
         Skip to main content
       </a>
-      {/* AUDIT-MGT-006: visible warning when TLS cert pinning is disabled */}
-      <BannerCertWarning />
-      {/* AUDIT-MGT-018: visible warning when signed-tag verification bypass is active */}
-      <BannerTagVerifyWarning />
+      <ShellSectionErrorBoundary section="banner" fallbackTitle="TLS warning unavailable">
+        {/* AUDIT-MGT-006: visible warning when TLS cert pinning is disabled */}
+        <BannerCertWarning />
+      </ShellSectionErrorBoundary>
+      <ShellSectionErrorBoundary section="banner" fallbackTitle="Update warning unavailable">
+        {/* AUDIT-MGT-018: visible warning when signed-tag verification bypass is active */}
+        <BannerTagVerifyWarning />
+      </ShellSectionErrorBoundary>
       {/* Global Cmd/Ctrl+K / `/` command palette mounted once at the shell. */}
       <CommandPalette />
       {/* `?` opens keyboard shortcut help overlay. */}
       <KeyboardShortcutsHelp />
-      <Header />
+      <ShellSectionErrorBoundary section="header">
+        <Header />
+      </ShellSectionErrorBoundary>
       {/* DASH-ELEC-233: offline banner in the shell so it appears on every page,
           not only when the operator happens to be on OverviewPage. */}
-      {!isOnline && (
-        <div
-          role="alert"
-          className="flex items-center gap-3 px-4 py-2 bg-red-950/40 border-b border-red-900/50"
-        >
-          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
-          <div>
-            <span className="text-xs font-semibold text-red-300">Server Offline — </span>
-            <span className="text-xs text-red-400">{lastError ?? 'Unable to reach the CRM server'}</span>
+      <ShellSectionErrorBoundary section="banner" fallbackTitle="Offline warning unavailable" resetKey={isOnline}>
+        {!isOnline && (
+          <div
+            role="alert"
+            className="flex items-center gap-3 px-4 py-2 bg-red-950/40 border-b border-red-900/50"
+          >
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <div>
+              <span className="text-xs font-semibold text-red-300">Server Offline — </span>
+              <span className="text-xs text-red-400">{lastError ?? 'Unable to reach the CRM server'}</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </ShellSectionErrorBoundary>
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        <ShellSectionErrorBoundary section="sidebar">
+          <Sidebar />
+        </ShellSectionErrorBoundary>
         {/* DASH-ELEC-092: id + tabIndex=-1 so focus() works programmatically */}
-        <main
-          id="main-content"
-          ref={mainRef}
-          tabIndex={-1}
-          aria-label="Main content"
-          className="flex-1 overflow-y-auto p-3 lg:p-5 xl:p-6 outline-none"
+        <ShellSectionErrorBoundary
+          section="main"
+          fallbackId="main-content"
+          fallbackTabIndex={-1}
+          resetKey={pathname}
         >
-          <PageErrorBoundary key={pathname}>
-            <Outlet />
-          </PageErrorBoundary>
-        </main>
+          <main
+            id="main-content"
+            ref={mainRef}
+            tabIndex={-1}
+            aria-label="Main content"
+            className="flex-1 overflow-y-auto p-3 lg:p-5 xl:p-6 outline-none"
+          >
+            <PageErrorBoundary key={pathname} fallbackTitle="This page encountered an error">
+              <Outlet />
+            </PageErrorBoundary>
+          </main>
+        </ShellSectionErrorBoundary>
       </div>
-      <StatusFooter />
+      <ShellSectionErrorBoundary section="footer">
+        <StatusFooter />
+      </ShellSectionErrorBoundary>
     </div>
   );
 }

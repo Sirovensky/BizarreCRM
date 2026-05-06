@@ -37,6 +37,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -202,6 +203,13 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isSubmitting = true)
             try {
+                ImageUploadPolicy.validate(context, uri, ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES)?.let {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = it,
+                    )
+                    return@launch
+                }
                 val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes == null) {
                     _state.value = _state.value.copy(
@@ -210,9 +218,20 @@ class ProfileViewModel @Inject constructor(
                     )
                     return@launch
                 }
+                if (bytes.size > ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES) {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        snackbarMessage = "Image exceeds the ${ImageUploadPolicy.formatSize(ImageUploadPolicy.SMALL_IMAGE_MAX_BYTES)} size limit.",
+                    )
+                    return@launch
+                }
                 val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
                 val requestBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
-                val part = MultipartBody.Part.createFormData("avatar", "avatar.jpg", requestBody)
+                val part = MultipartBody.Part.createFormData(
+                    "avatar",
+                    "avatar.${ImageUploadPolicy.extensionForMime(mimeType)}",
+                    requestBody,
+                )
                 val response = settingsApi.uploadAvatar(part)
                 if (response.success) {
                     val newUrl = response.data?.avatarUrl

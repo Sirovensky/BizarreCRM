@@ -4,6 +4,13 @@ import { Image as ImageIcon, Upload, ArrowLeft, ArrowRight } from 'lucide-react'
 import type { StepProps } from '../wizardTypes';
 import { validateHexColor } from '@/services/validationService';
 import { api } from '@/api/client';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  IMAGE_UPLOAD_FORMAT_LABEL,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  formatUploadSize,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 /**
  * Step 13 — Logo & color.
@@ -12,7 +19,7 @@ import { api } from '@/api/client';
  * `mockups/web-setup-wizard.html`:
  *
  *   - Pill breadcrumb (Step 12 · Receipts → Step 13 · Logo → Step 14 · Payment terminal)
- *   - Logo upload card (PNG/JPG/WebP/GIF, ≤ 2 MB, MIME + magic-byte sniff)
+ *   - Logo upload card (JPEG/PNG/WebP/GIF, ≤ 5 MB, MIME + magic-byte sniff)
  *   - Accent color: 5 Tailwind primary-scale presets + freeform `#RRGGBB` text input
  *     validated by `validateHexColor` (WEB-S4-012). Default cream `#fdeed0`.
  *   - Back / Skip / Continue footer wired to the shell's StepProps callbacks.
@@ -24,29 +31,11 @@ import { api } from '@/api/client';
  * Settings → Branding.
  */
 
-const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
-type AllowedMime = (typeof ALLOWED_MIME)[number];
-
 // WEB-FG-014: the `accept=` attr is a hint, not a guard. A `.svg` (XSS via
 // inline <script>) or a renamed `evil.exe` will still post through. Match
 // the server-side allow-list (jpeg/png/webp/gif) by both `file.type` AND a
 // magic-byte sniff so a renamed binary that claims `image/png` via the OS
 // shell is rejected before we POST it.
-const sniffImageMime = async (file: File): Promise<AllowedMime | null> => {
-  const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-  // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return 'image/png';
-  // JPEG: FF D8 FF
-  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
-  // GIF: "GIF87a" or "GIF89a"
-  if (head[0] === 0x47 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x38) return 'image/gif';
-  // WEBP: "RIFF" .... "WEBP"
-  if (
-    head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46 &&
-    head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50
-  ) return 'image/webp';
-  return null;
-};
 
 interface ColorPreset {
   id: string;
@@ -81,17 +70,13 @@ export function StepLogo({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      setError('Logo must be under 2 MB.');
-      return;
-    }
-    if (!ALLOWED_MIME.includes(file.type as AllowedMime)) {
-      setError('Logo must be a PNG, JPEG, WebP, or GIF image.');
-      return;
-    }
-    const sniffed = await sniffImageMime(file);
-    if (!sniffed || sniffed !== file.type) {
-      setError('File contents do not match the image type. Please upload a real PNG, JPEG, WebP, or GIF.');
+    const validationError = await validateImageFile(file, {
+      maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
+      label: 'Logo',
+      sniff: true,
+    });
+    if (validationError) {
+      setError(validationError);
       return;
     }
     setUploading(true);
@@ -191,7 +176,7 @@ export function StepLogo({
         {/* ── Logo upload ───────────────────────────────────────────── */}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">
-            Logo (PNG, JPG, WebP, GIF — max 2 MB)
+            Logo ({IMAGE_UPLOAD_FORMAT_LABEL} - max {formatUploadSize(SMALL_IMAGE_UPLOAD_MAX_BYTES)})
           </label>
           {logoUrl ? (
             <div className="flex items-center gap-4 rounded-xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-700/30">
@@ -212,7 +197,7 @@ export function StepLogo({
                 Replace
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  accept={IMAGE_UPLOAD_ACCEPT}
                   onChange={handleFileChange}
                   className="hidden"
                   disabled={uploading}
@@ -225,7 +210,7 @@ export function StepLogo({
               {uploading ? 'Uploading…' : 'Click to upload logo'}
               <input
                 type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
+                accept={IMAGE_UPLOAD_ACCEPT}
                 onChange={handleFileChange}
                 className="hidden"
                 disabled={uploading}
@@ -303,7 +288,7 @@ export function StepLogo({
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -312,15 +297,15 @@ export function StepLogo({
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+              className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
             >
-              Skip
+              Skip this step
             </button>
             <button
               type="button"
               onClick={handleContinue}
               disabled={uploading}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

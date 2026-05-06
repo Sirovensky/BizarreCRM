@@ -32,12 +32,63 @@
 import crypto from 'crypto';
 import dns from 'dns';
 import net from 'net';
+import { TextDecoder } from 'util';
 import { createLogger } from '../utils/logger.js';
 // assertPublicUrl from ssrfGuard.ts is intentionally NOT imported here.
 // SEC-H92 uses the local assertWebhookUrl (below) which tags errors with
 // isSsrf: true so deliverWithRetry can skip retries on policy blocks.
 
 const logger = createLogger('webhooks');
+
+export const WEBHOOK_FAILURE_PAYLOAD_PREVIEW_BYTES = 4 * 1024;
+
+export interface WebhookFailurePayloadPreview {
+  sent_payload: string | null;
+  payload_bytes: number | null;
+  payload_truncated: boolean;
+}
+
+export function formatWebhookFailurePayloadPreview(
+  payload: unknown,
+  maxBytes = WEBHOOK_FAILURE_PAYLOAD_PREVIEW_BYTES,
+): WebhookFailurePayloadPreview {
+  if (typeof payload !== 'string') {
+    return {
+      sent_payload: null,
+      payload_bytes: null,
+      payload_truncated: false,
+    };
+  }
+
+  const buffer = Buffer.from(payload, 'utf8');
+  if (buffer.length <= maxBytes) {
+    return {
+      sent_payload: payload,
+      payload_bytes: buffer.length,
+      payload_truncated: false,
+    };
+  }
+
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let end = Math.max(0, maxBytes);
+  while (end > 0) {
+    try {
+      return {
+        sent_payload: decoder.decode(buffer.subarray(0, end)),
+        payload_bytes: buffer.length,
+        payload_truncated: true,
+      };
+    } catch {
+      end -= 1;
+    }
+  }
+
+  return {
+    sent_payload: '',
+    payload_bytes: buffer.length,
+    payload_truncated: true,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // SEC-H92: Local SSRF IP helpers

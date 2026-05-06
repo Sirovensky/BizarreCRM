@@ -11,6 +11,12 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
+import { InventoryItemPicker } from '@/components/inventory/InventoryItemPicker';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 // Returns the given path only if it's safe to render as an `<a href>` target.
 // Accepts relative paths starting with `/` (typical uploads location) and
@@ -43,20 +49,21 @@ interface ShrinkageRow {
 }
 
 const REASON_COLORS = {
-  damaged: 'bg-amber-100 text-amber-700',
-  stolen: 'bg-red-100 text-red-700',
-  lost: 'bg-surface-200 text-surface-700',
-  expired: 'bg-purple-100 text-purple-700',
-  other: 'bg-blue-100 text-blue-700',
+  damaged: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  stolen: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  lost: 'bg-surface-200 text-surface-700 dark:bg-surface-700 dark:text-surface-300',
+  expired: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  other: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
 };
 
 export function ShrinkagePage() {
   const queryClient = useQueryClient();
   const [showNew, setShowNew] = useState(false);
-  const [itemId, setItemId] = useState('');
+  const [itemId, setItemId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState<ShrinkageRow['reason']>('damaged');
   const [notes, setNotes] = useState('');
+  const [photoName, setPhotoName] = useState('');
   const photoRef = useRef<HTMLInputElement>(null);
 
   const { data: shrinkageData } = useQuery({
@@ -76,7 +83,16 @@ export function ShrinkagePage() {
       fd.append('quantity', quantity);
       fd.append('reason', reason);
       if (notes) fd.append('notes', notes);
-      if (photoRef.current?.files?.[0]) fd.append('photo', photoRef.current.files[0]);
+      if (photoRef.current?.files?.[0]) {
+        const photo = photoRef.current.files[0];
+        const error = await validateImageFile(photo, {
+          maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
+          label: `"${photo.name}"`,
+        });
+        if (error) throw new Error(error);
+        fd.append('photo', photo);
+      }
+      if (!itemId) throw new Error('Inventory item is required');
       const res = await api.post(`/inventory-enrich/${itemId}/shrinkage`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -86,10 +102,11 @@ export function ShrinkagePage() {
       toast.success('Shrinkage recorded');
       queryClient.invalidateQueries({ queryKey: ['shrinkage'] });
       setShowNew(false);
-      setItemId('');
+      setItemId(null);
       setQuantity('');
       setReason('damaged');
       setNotes('');
+      setPhotoName('');
       if (photoRef.current) photoRef.current.value = '';
     },
     // WEB-FL-024 (Fixer-C9 2026-04-25): consolidate hand-rolled
@@ -99,6 +116,10 @@ export function ShrinkagePage() {
   });
 
   const total = rows.reduce((s, r) => s + r.quantity, 0);
+  const clearPhoto = () => {
+    setPhotoName('');
+    if (photoRef.current) photoRef.current.value = '';
+  };
 
   return (
     <div className="space-y-6">
@@ -123,15 +144,15 @@ export function ShrinkagePage() {
       </div>
 
       {showNew && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
-          <h3 className="font-semibold">Record new shrinkage event</h3>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3 dark:border-amber-900/60 dark:bg-amber-950/30">
+          <h3 className="font-semibold text-amber-950 dark:text-amber-100">Record new shrinkage event</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
+            <InventoryItemPicker
               value={itemId}
-              onChange={(e) => setItemId(e.target.value)}
-              placeholder="Inventory item ID"
-              type="number"
-              className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+              onChange={(item) => setItemId(item?.id ?? null)}
+              label="Inventory item"
+              placeholder="Search item..."
+              required
             />
             <input
               value={quantity}
@@ -139,12 +160,12 @@ export function ShrinkagePage() {
               placeholder="Quantity lost"
               type="number"
               min="1"
-              className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-amber-900/60 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             <select
               value={reason}
               onChange={(e) => setReason(e.target.value as ShrinkageRow['reason'])}
-              className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-amber-900/60 dark:bg-surface-900 dark:text-surface-100"
             >
               <option value="damaged">Damaged</option>
               <option value="stolen">Stolen</option>
@@ -157,15 +178,40 @@ export function ShrinkagePage() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Notes (optional)"
-            className="w-full rounded-md border border-surface-300 px-3 py-2 text-sm"
+            className="w-full rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-amber-900/60 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             rows={2}
           />
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="inline-flex h-10 w-fit cursor-pointer items-center gap-2 rounded-md border border-surface-300 bg-white px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 focus-within:ring-2 focus-within:ring-primary-500 focus-within:ring-offset-2 dark:border-amber-900/60 dark:bg-surface-900 dark:text-surface-200 dark:hover:bg-surface-800 dark:focus-within:ring-offset-surface-950">
               <Camera className="h-4 w-4" />
               <span>Attach photo</span>
-              <input ref={photoRef} type="file" accept="image/*" className="hidden" />
+              <input
+                ref={photoRef}
+                type="file"
+                accept={IMAGE_UPLOAD_ACCEPT}
+                className="sr-only"
+                aria-describedby="shrinkage-photo-feedback"
+                onChange={(e) => setPhotoName(e.target.files?.[0]?.name ?? '')}
+              />
             </label>
+            <div id="shrinkage-photo-feedback" className="min-w-0 text-sm text-surface-600 dark:text-surface-300">
+              {photoName ? (
+                <span className="block max-w-xs truncate" title={photoName}>
+                  {photoName}
+                </span>
+              ) : (
+                <span className="text-surface-500">No photo selected</span>
+              )}
+            </div>
+            {photoName && (
+              <button
+                type="button"
+                onClick={clearPhoto}
+                className="w-fit rounded-md border border-surface-300 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-amber-900/60 dark:text-surface-200 dark:hover:bg-surface-900"
+              >
+                Clear
+              </button>
+            )}
           </div>
           <div className="flex gap-2">
             <button
@@ -178,7 +224,7 @@ export function ShrinkagePage() {
             </button>
             <button
               onClick={() => setShowNew(false)}
-              className="rounded-md border border-surface-300 px-4 py-2 text-sm"
+              className="rounded-md border border-surface-300 px-4 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-amber-900/60 dark:text-surface-200 dark:hover:bg-surface-900"
             >
               Cancel
             </button>
@@ -186,9 +232,9 @@ export function ShrinkagePage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto">
+      <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto dark:border-surface-700 dark:bg-surface-800">
         <table className="w-full text-sm">
-          <thead className="bg-surface-50 border-b border-surface-200">
+          <thead className="bg-surface-50 border-b border-surface-200 dark:border-surface-700 dark:bg-surface-900">
             <tr>
               <th className="text-left px-3 py-2">When</th>
               <th className="text-left px-3 py-2">Item</th>
@@ -207,7 +253,7 @@ export function ShrinkagePage() {
               </tr>
             )}
             {rows.map((r) => (
-              <tr key={r.id} className="border-b border-surface-100 last:border-0">
+              <tr key={r.id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
                 <td className="px-3 py-2 text-xs text-surface-500">
                   {new Date(r.reported_at).toLocaleString()}
                 </td>

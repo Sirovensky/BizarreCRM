@@ -6,16 +6,17 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
-import com.bizarreelectronics.crm.data.remote.api.StocktakeApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeCommitRequest
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeCountLine
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
+import com.bizarreelectronics.crm.data.repository.StocktakeRepository
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -60,7 +61,7 @@ data class StocktakeUiState(
 @HiltViewModel
 class StocktakeViewModel @Inject constructor(
     private val inventoryRepository: InventoryRepository,
-    private val stocktakeApi: StocktakeApi,
+    private val stocktakeRepository: StocktakeRepository,
     private val syncQueueDao: SyncQueueDao,
     private val serverMonitor: ServerReachabilityMonitor,
     private val gson: Gson,
@@ -95,7 +96,7 @@ class StocktakeViewModel @Inject constructor(
     private suspend fun tryStartOnServer(): String? {
         if (!serverMonitor.isEffectivelyOnline.value) return null
         return try {
-            stocktakeApi.startSession().data?.sessionId
+            stocktakeRepository.startLegacySession()
         } catch (e: HttpException) {
             if (e.code() == 404) {
                 Log.d(TAG, "stocktake/start 404 — continuing offline (server not yet deployed)")
@@ -154,7 +155,7 @@ class StocktakeViewModel @Inject constructor(
     /** Look up a scanned barcode in the local DB and add to count sheet. */
     fun onBarcodeScanned(rawValue: String) {
         viewModelScope.launch {
-            val item = inventoryRepository.lookupBarcode(rawValue)
+            val item = lookupStocktakeItem(rawValue)
             if (item != null) {
                 setCount(
                     itemId = item.id,
@@ -169,6 +170,16 @@ class StocktakeViewModel @Inject constructor(
                     error = "No item found for barcode: $rawValue",
                 )
             }
+        }
+    }
+
+    private suspend fun lookupStocktakeItem(rawValue: String): InventoryItemEntity? {
+        val code = rawValue.trim()
+        if (code.isBlank()) return null
+        inventoryRepository.lookupBarcode(code)?.let { return it }
+        return inventoryRepository.searchItems(code).first().firstOrNull { item ->
+            item.upcCode.equals(code, ignoreCase = true) ||
+                item.sku.equals(code, ignoreCase = true)
         }
     }
 
@@ -220,7 +231,7 @@ class StocktakeViewModel @Inject constructor(
     }
 
     /**
-     * Attempt a single-call commit via [StocktakeApi.commitSession].
+     * Attempt a single-call commit via [StocktakeRepository.commitLegacySession].
      * Returns true if the server accepted it. Returns false on 404 / offline.
      */
     private suspend fun tryCommitOnServer(
@@ -229,7 +240,7 @@ class StocktakeViewModel @Inject constructor(
     ): Boolean {
         if (!serverMonitor.isEffectivelyOnline.value) return false
         return try {
-            stocktakeApi.commitSession(
+            stocktakeRepository.commitLegacySession(
                 StocktakeCommitRequest(
                     sessionId = _state.value.sessionId,
                     lines = lines,

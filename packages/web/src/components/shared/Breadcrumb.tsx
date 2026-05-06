@@ -32,7 +32,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
             ) : (
               <Link
                 to={item.href}
-                className="text-teal-500 dark:text-teal-400 hover:underline cursor-pointer transition-colors"
+                className="cursor-pointer text-primary-600 transition-colors hover:underline dark:text-primary-400"
               >
                 {item.label}
               </Link>

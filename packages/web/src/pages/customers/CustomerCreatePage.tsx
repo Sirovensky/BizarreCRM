@@ -62,6 +62,7 @@ export function CustomerCreatePage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [duplicates, setDuplicates] = useState<any[]>([]);
+  const [geocodeError, setGeocodeError] = useState('');
   const dupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didPrefillPhoneRef = useRef(false);
   const phoneParam = searchParams.get('phone') || '';
@@ -131,9 +132,15 @@ export function CustomerCreatePage() {
       const coords = res.data?.data;
       if (coords) {
         setForm((prev) => ({ ...prev, lat: coords.lat, lng: coords.lng }));
+        setGeocodeError('');
+      } else {
+        setForm((prev) => ({ ...prev, lat: null, lng: null }));
+        setGeocodeError('Could not find coordinates for this address.');
       }
-    } catch {
-      // Geocode failure is non-fatal — silently skip
+    } catch (err: unknown) {
+      setForm((prev) => ({ ...prev, lat: null, lng: null }));
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setGeocodeError(msg || 'Address lookup failed. Coordinates were not saved.');
     }
   }, [form.address1, form.city, form.state, form.postcode, form.country]);
 
@@ -142,6 +149,7 @@ export function CustomerCreatePage() {
     onSuccess: async (res) => {
       const customer = res.data?.data;
       const cfEntries = Object.entries(customFieldValues).filter(([, v]) => v !== '');
+      let customFieldsSaved = cfEntries.length === 0;
       if (cfEntries.length > 0 && customer?.id) {
         try {
           await customFieldApi.saveValues(
@@ -149,12 +157,14 @@ export function CustomerCreatePage() {
             customer.id,
             cfEntries.map(([k, v]) => ({ definition_id: Number(k), value: v })),
           );
-        } catch {
-          // Non-fatal: custom fields saved separately from the core record
+          customFieldsSaved = true;
+        } catch (err: unknown) {
+          const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+          toast.error(`Customer created, but custom fields did not save${msg ? `: ${msg}` : '.'}`, { duration: 7000 });
         }
       }
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Customer created');
+      if (customFieldsSaved) toast.success('Customer created');
       navigate(`/customers/${customer?.id}`);
     },
     onError: (err: unknown) => {
@@ -200,6 +210,15 @@ export function CustomerCreatePage() {
         newErrors.email = 'Email is too long (max 254 characters)';
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
         newErrors.email = 'Invalid email';
+      }
+    }
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+    for (const def of customFieldDefs) {
+      if (def.is_required && !String(customFieldValues[def.id] ?? '').trim()) {
+        newErrors[`custom_${def.id}`] = `${def.field_name} is required`;
       }
     }
     if (Object.keys(newErrors).length > 0) {
@@ -460,6 +479,11 @@ export function CustomerCreatePage() {
                   />
                 </FormField>
               </div>
+              {geocodeError && (
+                <p role="alert" className="text-xs text-amber-600 dark:text-amber-400">
+                  {geocodeError}
+                </p>
+              )}
             </div>
           </div>
 
@@ -535,7 +559,17 @@ export function CustomerCreatePage() {
                     key={def.id}
                     def={def}
                     value={customFieldValues[def.id] ?? ''}
-                    onChange={(v) => setCustomFieldValues((prev) => ({ ...prev, [def.id]: v }))}
+                    onChange={(v) => {
+                      setCustomFieldValues((prev) => ({ ...prev, [def.id]: v }));
+                      setErrors((prev) => {
+                        const key = `custom_${def.id}`;
+                        if (!prev[key]) return prev;
+                        const next = { ...prev };
+                        delete next[key];
+                        return next;
+                      });
+                    }}
+                    error={errors[`custom_${def.id}`]}
                   />
                 ))}
               </div>
@@ -613,10 +647,12 @@ function CustomFieldInput({
   def,
   value,
   onChange,
+  error,
 }: {
   def: { id: number; field_name: string; field_type: string; options: string | null; is_required: number };
   value: string;
   onChange: (v: string) => void;
+  error?: string;
 }) {
   const inputId = `cf_${def.id}`;
   let options: string[] = [];
@@ -712,6 +748,11 @@ function CustomFieldInput({
         {!!def.is_required && <span className="text-red-500 ml-0.5" aria-hidden="true">*</span>}
       </label>
       {control}
+      {error && (
+        <p role="alert" className="mt-1 text-xs text-red-500">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

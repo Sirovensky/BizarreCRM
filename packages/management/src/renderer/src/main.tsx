@@ -73,6 +73,8 @@ const queryClient = new QueryClient({
       staleTime: 10_000,
       retry: 1,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      refetchIntervalInBackground: false,
     },
   },
 });
@@ -85,14 +87,14 @@ const queryClient = new QueryClient({
 // document body so the user has *some* signal instead of a blank window.
 const rootElement = document.getElementById('root');
 if (!rootElement) {
-  document.body.innerHTML =
-    '<div style="font-family: system-ui, sans-serif; color: #fca5a5; ' +
-    'background:#09090b; padding:32px; text-align:center;">' +
-    '<h1 style="font-size:18px;">Dashboard failed to mount</h1>' +
-    '<p style="margin-top:8px;font-size:12px;">' +
-    'The root element was missing from index.html. Try reinstalling the ' +
-    'BizarreCRM Management dashboard from setup.bat.' +
-    '</p></div>';
+  const wrapper = document.createElement('div');
+  wrapper.className = 'dashboard-mount-error';
+  const heading = document.createElement('h1');
+  heading.textContent = 'Dashboard failed to mount';
+  const copy = document.createElement('p');
+  copy.textContent = 'The root element was missing from index.html. Try reinstalling the BizarreCRM Management dashboard from setup.bat.';
+  wrapper.append(heading, copy);
+  document.body.replaceChildren(wrapper);
   throw new Error('Dashboard root element not found');
 }
 

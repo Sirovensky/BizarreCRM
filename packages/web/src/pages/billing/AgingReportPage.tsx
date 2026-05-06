@@ -98,8 +98,8 @@ export function AgingReportPage() {
     : 0;
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Aging Report</h1>
+    <div className="p-6 space-y-6 text-surface-900 dark:text-surface-100">
+      <h1 className="text-2xl font-semibold text-surface-900 dark:text-surface-100">Aging Report</h1>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         {BUCKET_ORDER.map((key) => {
@@ -111,15 +111,15 @@ export function AgingReportPage() {
               onClick={() => setSelectedBucket(isSelected ? null : key)}
               className={`rounded-lg border p-4 text-left transition ${
                 isSelected
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? 'border-primary-500 bg-primary-50 text-primary-950 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-100'
+                  : 'border-surface-200 bg-white text-surface-900 hover:border-surface-300 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:hover:border-surface-600'
               }`}
             >
-              <div className="text-xs uppercase text-gray-500">{key} days</div>
+              <div className="text-xs uppercase text-surface-500 dark:text-surface-400">{key} days</div>
               <div className="mt-1 text-2xl font-semibold">
                 {formatCents(bucket.total_cents)}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-surface-500 dark:text-surface-400">
                 {bucket.count} invoice{bucket.count === 1 ? '' : 's'}
               </div>
             </button>
@@ -127,8 +127,8 @@ export function AgingReportPage() {
         })}
       </div>
 
-      <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-        <span>Total outstanding: <strong>{formatCents(totalDueCents)}</strong></span>
+      <div className="rounded-md border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800/70 dark:text-surface-200">
+        <span>Total outstanding: <strong className="text-surface-900 dark:text-surface-100">{formatCents(totalDueCents)}</strong></span>
         {selected.size > 0 && (
           <span className="ml-4 inline-flex items-center gap-3">
             <span>{selected.size} selected</span>
@@ -136,7 +136,7 @@ export function AgingReportPage() {
             <button
               onClick={() => bulkReminderMut.mutate([...selected])}
               disabled={bulkReminderMut.isPending}
-              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {bulkReminderMut.isPending
                 ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -147,9 +147,9 @@ export function AgingReportPage() {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600">
+      <div className="overflow-x-auto rounded-lg border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-900">
+        <table className="w-full text-sm text-surface-900 dark:text-surface-100">
+          <thead className="bg-surface-50 text-surface-600 dark:bg-surface-800 dark:text-surface-300">
             <tr>
               <th className="w-8 px-3 py-2" />
               <th className="px-3 py-2 text-left">Invoice</th>
@@ -164,20 +164,21 @@ export function AgingReportPage() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-400">Loading…</td></tr>
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-surface-400">Loading…</td></tr>
             ) : filteredInvoices.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-400">No overdue invoices</td></tr>
+              <tr><td colSpan={8} className="px-3 py-6 text-center text-surface-400">No overdue invoices</td></tr>
             ) : (
               filteredInvoices.map((inv) => (
-                <tr key={inv.id} className="border-t border-gray-100">
+                <tr key={inv.id} className="border-t border-surface-100 dark:border-surface-800">
                   <td className="px-3 py-2">
                     <input
                       type="checkbox"
                       checked={selected.has(inv.id)}
                       onChange={() => toggleSelect(inv.id)}
+                      className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800"
                     />
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">{inv.order_id}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-surface-700 dark:text-surface-300">{inv.order_id}</td>
                   <td className="px-3 py-2">{inv.customer_name ?? `#${inv.customer_id}`}</td>
                   <td className="px-3 py-2">{inv.due_date ?? '—'}</td>
                   <td className="px-3 py-2 text-right">
@@ -190,7 +191,7 @@ export function AgingReportPage() {
                     <button
                       onClick={() => handleRowReminder(inv)}
                       disabled={sendingId === inv.id || bulkReminderMut.isPending}
-                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       title="Send payment reminder"
                     >
                       {sendingId === inv.id

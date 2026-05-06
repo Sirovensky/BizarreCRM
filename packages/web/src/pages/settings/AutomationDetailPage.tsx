@@ -116,7 +116,7 @@ export function AutomationDetailPage() {
         <AlertCircle className="h-10 w-10 text-red-400 mb-3" />
         <p className="text-sm text-surface-500 mb-4">Automation rule not found.</p>
         <button
-          className="text-primary-600 hover:underline text-sm"
+          className="btn btn-ghost btn-sm text-primary-600"
           onClick={() => navigate(-1)}
         >
           Go back
@@ -165,7 +165,7 @@ export function AutomationDetailPage() {
         {isAdmin && (
           <div className="flex gap-2">
             <button
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded border text-sm text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="btn btn-secondary btn-sm border text-surface-600 dark:text-surface-300"
               disabled={dryRunMut.isPending}
               onClick={() => dryRunMut.mutate()}
             >
@@ -177,7 +177,7 @@ export function AutomationDetailPage() {
               Dry-run
             </button>
             <button
-              className="px-3 py-1.5 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700"
+              className="btn btn-primary btn-sm rounded"
               onClick={() => setShowEdit(true)}
             >
               Edit rule

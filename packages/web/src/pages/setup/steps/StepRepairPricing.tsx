@@ -1,13 +1,17 @@
 import { useState, type JSX } from 'react';
 import { Smartphone, Wrench, Sparkles, Info, Calculator, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { repairPricingApi } from '@/api/endpoints';
 import type {
+  RepairPricingAutoMarginPreview,
+  RepairPricingAutoMarginSettings,
+  RepairPricingMatrixResponse,
   RepairPricingSeedDefaultsResponse,
   RepairPricingSeedPricing,
 } from '@/api/types';
 import { formatApiError } from '@/utils/apiError';
+import { formatCurrency } from '@/utils/format';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
 type PricingMode = 'tier' | 'matrix' | 'auto_margin';
@@ -27,8 +31,9 @@ type PricingMode = 'tier' | 'matrix' | 'auto_margin';
  *   Tier B (3-5 yr) — bread-and-butter mainstream volume.
  *   Tier C (6+ yr) — get-in-door pricing, thin labor margin.
  *
- * Per-device override and the full virtualized matrix still live in Settings
- * → Repair pricing. This setup step only seeds day-1 tier defaults.
+ * Per-device override and auto-margin modes are wired to the same runtime
+ * repair-pricing APIs used by Settings, so choices made here immediately
+ * become the pricing model the ticket/POS flows consume.
  */
 
 type ServiceKey = 'screen' | 'battery' | 'charge_port' | 'back_glass' | 'camera';
@@ -101,6 +106,17 @@ const API_TIER_BY_LETTER: Record<TierLetter, ApiTier> = {
 };
 
 const SETUP_PRICING_CATEGORY = 'phone';
+
+const DEFAULT_AUTO_MARGIN_SETTINGS: RepairPricingAutoMarginSettings = {
+  preset: 'custom',
+  target_type: 'percent',
+  target_margin_pct: 60,
+  target_profit_amount: 80,
+  calculation_basis: 'gross_margin',
+  rounding_mode: 'off',
+  cap_pct: 25,
+  rules: [],
+};
 
 /** Build the PendingWrites key for `(tier, service)`. Typed as PricingKey so
  *  the patch object below stays narrowly typed without `as any`. */
@@ -183,9 +199,42 @@ export function StepRepairPricing({
   const [saving, setSaving] = useState(false);
 
   // Active pricing mode (segmented control at top of card). Only 'tier' is
-  // wired; the other two render PLACEHOLDER content explaining the future
-  // surface. User can flip between them to preview what's coming.
+  // wired through the same runtime APIs as Settings so the wizard can seed,
+  // override, or configure automation before the first ticket is created.
   const [mode, setMode] = useState<PricingMode>('tier');
+  const [matrixSearch, setMatrixSearch] = useState('');
+  const [matrixDrafts, setMatrixDrafts] = useState<Record<string, { value: string; priceId: number | null; serviceId: number; deviceId: number }>>({});
+  const [matrixSaving, setMatrixSaving] = useState(false);
+  const [autoDraft, setAutoDraft] = useState<RepairPricingAutoMarginSettings | null>(null);
+  const [autoPreview, setAutoPreview] = useState<RepairPricingAutoMarginPreview | null>(null);
+  const [autoPreviewInput, setAutoPreviewInput] = useState({ supplierCost: '45', currentLabor: '120' });
+  const [autoSaving, setAutoSaving] = useState(false);
+
+  const matrixQuery = useQuery({
+    queryKey: ['repair-pricing', 'setup-matrix', matrixSearch],
+    queryFn: async () => {
+      const res = await repairPricingApi.getMatrix({
+        category: SETUP_PRICING_CATEGORY,
+        q: matrixSearch.trim() || undefined,
+        limit: 60,
+      });
+      return res.data.data as RepairPricingMatrixResponse;
+    },
+    enabled: mode === 'matrix',
+    staleTime: 30_000,
+  });
+
+  const autoSettingsQuery = useQuery({
+    queryKey: ['repair-pricing', 'auto-margin-settings'],
+    queryFn: async () => {
+      const res = await repairPricingApi.getAutoMarginSettings();
+      return res.data.data;
+    },
+    enabled: mode === 'auto_margin',
+    staleTime: 30_000,
+  });
+
+  const autoSettings = autoDraft ?? autoSettingsQuery.data ?? DEFAULT_AUTO_MARGIN_SETTINGS;
 
   const handleChange = (tier: TierLetter, service: ServiceKey, raw: string) => {
     const k = pricingKey(tier, service);
@@ -212,13 +261,115 @@ export function StepRepairPricing({
     toast.success('Industry medians loaded. Continue to seed them on the server.');
   };
 
+  const handleMatrixDraft = (
+    deviceId: number,
+    serviceId: number,
+    priceId: number | null,
+    raw: string,
+  ) => {
+    const value = clampDollars(raw);
+    setMatrixDrafts((prev) => ({
+      ...prev,
+      [`${deviceId}:${serviceId}`]: { value, priceId, serviceId, deviceId },
+    }));
+  };
+
+  const handleSaveMatrix = async () => {
+    const drafts = Object.values(matrixDrafts).filter((draft) => draft.value !== '');
+    if (drafts.length === 0) {
+      toast('No matrix edits to save.', { icon: 'i' });
+      return;
+    }
+    setMatrixSaving(true);
+    try {
+      for (const draft of drafts) {
+        const labor_price = Number.parseInt(draft.value, 10);
+        if (!Number.isFinite(labor_price) || labor_price < 0) {
+          throw new Error('Every matrix cell must be a non-negative number.');
+        }
+        if (draft.priceId) {
+          await repairPricingApi.updatePrice(draft.priceId, {
+            labor_price,
+            is_custom: 1,
+            is_active: 1,
+          });
+        } else {
+          await repairPricingApi.createPrice({
+            device_model_id: draft.deviceId,
+            repair_service_id: draft.serviceId,
+            labor_price,
+            default_grade: 'A',
+            is_active: 1,
+            is_custom: 1,
+          });
+        }
+      }
+      setMatrixDrafts({});
+      await matrixQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing'] });
+      toast.success(`Saved ${drafts.length} matrix edit${drafts.length === 1 ? '' : 's'}`);
+    } catch (err: unknown) {
+      toast.error(`Couldn't save matrix edits: ${formatApiError(err)}`);
+    } finally {
+      setMatrixSaving(false);
+    }
+  };
+
+  const updateAutoDraft = (patch: Partial<RepairPricingAutoMarginSettings>) => {
+    setAutoDraft({ ...autoSettings, ...patch });
+    setAutoPreview(null);
+  };
+
+  const handlePreviewAutoMargin = async () => {
+    try {
+      const res = await repairPricingApi.previewAutoMargin({
+        ...autoSettings,
+        supplier_cost: Number(autoPreviewInput.supplierCost),
+        current_labor_price: Number(autoPreviewInput.currentLabor),
+      });
+      setAutoPreview(res.data.data);
+    } catch (err: unknown) {
+      toast.error(`Couldn't preview auto-margin: ${formatApiError(err)}`);
+    }
+  };
+
+  const handleSaveAutoMargin = async () => {
+    setAutoSaving(true);
+    try {
+      const res = await repairPricingApi.setAutoMarginSettings(autoSettings);
+      setAutoDraft(res.data.data);
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing', 'auto-margin-settings'] });
+      toast.success('Auto-margin rules saved');
+    } catch (err: unknown) {
+      toast.error(`Couldn't save auto-margin rules: ${formatApiError(err)}`);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  const handleRunAutoMargin = async () => {
+    setAutoSaving(true);
+    try {
+      await repairPricingApi.setAutoMarginSettings(autoSettings);
+      const res = await repairPricingApi.recomputeProfits({ auto_margin: true });
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing'] });
+      const adjusted = (res.data?.data?.auto_margin?.adjusted ?? 0) as number;
+      toast.success(`Auto-margin run complete: ${adjusted} price${adjusted === 1 ? '' : 's'} adjusted`);
+    } catch (err: unknown) {
+      toast.error(`Couldn't run auto-margin: ${formatApiError(err)}`);
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
   const handleContinue = async () => {
     // Final flush — guarantees pending matches the visible form before advancing.
     onUpdate(pricingPatch(values));
     setSaving(true);
     try {
       const res = await repairPricingApi.seedDefaults({
-        category: SETUP_PRICING_CATEGORY,
+        shop_type: pending.shop_type,
+        category: pending.shop_type ? 'all' : SETUP_PRICING_CATEGORY,
         pricing: seedPricingPayload(values),
         overwrite_custom: false,
       });
@@ -233,10 +384,10 @@ export function StepRepairPricing({
     }
   };
 
-  const MODES: Array<{ id: PricingMode; label: string; placeholder: boolean; ticket?: string }> = [
-    { id: 'tier', label: 'Tier by model age', placeholder: false },
-    { id: 'matrix', label: 'Per-device matrix', placeholder: true, ticket: 'DPI-11' },
-    { id: 'auto_margin', label: 'Auto-margin rules', placeholder: true, ticket: 'DPI-7/8/9' },
+  const MODES: Array<{ id: PricingMode; label: string; badge?: string }> = [
+    { id: 'tier', label: 'Tier by model age' },
+    { id: 'matrix', label: 'Per-device matrix', badge: `${Object.keys(matrixDrafts).length} edits` },
+    { id: 'auto_margin', label: 'Auto-margin rules', badge: autoDraft ? 'Unsaved' : undefined },
   ];
 
   return (
@@ -265,16 +416,16 @@ export function StepRepairPricing({
                 type="button"
                 onClick={() => setMode(m.id)}
                 className={[
-                  'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
+                  'btn btn-sm inline-flex items-center gap-2 !rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
                   active
                     ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-50'
                     : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
                 ].join(' ')}
               >
                 {m.label}
-                {m.placeholder && (
+                {m.badge && (
                   <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
-                    Preview
+                    {m.badge}
                   </span>
                 )}
               </button>
@@ -364,118 +515,285 @@ export function StepRepairPricing({
         </div>
       )}
 
-      {/* ─── Per-device matrix (PLACEHOLDER) ─────────────────────────
-          DPI-11. Real implementation will render a virtualized table of
-          ~200 device models × 5 services with bulk-edit + CSV roundtrip. */}
-      {mode === 'matrix' && (
-      <div className="rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
-            Placeholder
-          </span>
-          <span className="text-xs font-medium text-surface-500 dark:text-surface-400">DPI-11</span>
-        </div>
-        <h3 className="text-base font-semibold text-surface-900 dark:text-surface-50">
-          Full per-device matrix
-        </h3>
-        <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
-          Spreadsheet of every model × service. Override the iPhone 15 Pro screen without touching anything else. Bulk-edit, CSV roundtrip, profit heatmap.
-        </p>
-        <div className="mt-4 overflow-hidden rounded-lg border border-surface-200 bg-white opacity-70 dark:border-surface-700 dark:bg-surface-800">
-          <table className="w-full text-xs">
-            <thead className="bg-surface-100 dark:bg-surface-900">
-              <tr>
-                <th className="px-3 py-2 text-left font-semibold text-surface-700 dark:text-surface-200">Device</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Screen</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Battery</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Charge port</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Back glass</th>
-                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Camera</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
-              {[
-                { d: 'iPhone 15 Pro', vals: [240, 95, 145, 220, 165] },
-                { d: 'iPhone 14', vals: [200, 80, 120, 180, 140] },
-                { d: 'iPhone 12', vals: [140, 70, 100, 130, 100] },
-                { d: 'Galaxy S24', vals: [220, 90, 130, 200, 150] },
-                { d: 'Galaxy S20', vals: [125, 65, 90, 110, 90] },
-              ].map((row) => (
-                <tr key={row.d}>
-                  <td className="px-3 py-2 font-medium text-surface-800 dark:text-surface-200">{row.d}</td>
-                  {row.vals.map((v, i) => (
-                    <td key={i} className="px-3 py-2 text-right text-surface-600 dark:text-surface-400">${v}</td>
-                  ))}
-                </tr>
-              ))}
-              <tr>
-                <td colSpan={6} className="px-3 py-2 text-center text-[11px] italic text-surface-400">
-                  …and ~195 more rows
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          className="mt-4 cursor-not-allowed rounded-lg border border-surface-300 bg-white px-4 py-2 text-xs font-medium text-surface-400 dark:border-surface-600 dark:bg-surface-800"
-        >
-          Open full matrix (coming soon)
-        </button>
-      </div>
-      )}
+      {mode === 'matrix' && (() => {
+        const matrix = matrixQuery.data;
+        const services = (matrix?.services ?? []) as Array<{ id: number; name: string; slug: string }>;
+        return (
+          <div className="rounded-xl border border-surface-200 bg-white p-5 dark:border-surface-700 dark:bg-surface-800">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-surface-900 dark:text-surface-50">
+                  Per-device matrix
+                </h3>
+                <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
+                  Edit individual model/service labor prices. Saved cells become custom runtime prices.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="search"
+                  value={matrixSearch}
+                  onChange={(e) => setMatrixSearch(e.target.value)}
+                  placeholder="Search device or maker"
+                  className="w-56 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveMatrix}
+                  disabled={matrixSaving || Object.keys(matrixDrafts).length === 0}
+                  className="btn btn-md inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {matrixSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
+                  Save matrix edits
+                </button>
+              </div>
+            </div>
 
-      {/* ─── Auto-margin rules (PLACEHOLDER) ─────────────────────────
-          DPI-7..DPI-9. Real implementation will let the shop pick a
-          target margin (% or $-over-parts-cost) and recompute labor
-          whenever the catalog scraper updates parts pricing. */}
-      {mode === 'auto_margin' && (
-      <div className="rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
-            Placeholder
-          </span>
-          <span className="text-xs font-medium text-surface-500 dark:text-surface-400">DPI-7 / 8 / 9</span>
-        </div>
-        <h3 className="text-base font-semibold text-surface-900 dark:text-surface-50">
-          Auto-margin rules
-        </h3>
-        <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
-          Set a target margin %, choose rounding to .99, whole dollar, or .98, and the server recalculates pricing whenever supplier costs change.
-        </p>
-        <div className="mt-4 grid grid-cols-1 gap-3 opacity-70 sm:grid-cols-2">
-          <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Rounding</p>
-            <select disabled aria-disabled="true" className="mt-1.5 w-full cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900">
-              <option>Round up to .99</option>
-              <option>Round up to $1</option>
-              <option>Round up to .98</option>
-            </select>
+            {matrixQuery.isLoading ? (
+              <div className="flex items-center justify-center py-12 text-sm text-surface-500">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading matrix
+              </div>
+            ) : matrixQuery.isError ? (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                Could not load the pricing matrix.
+              </div>
+            ) : !matrix || matrix.devices.length === 0 || services.length === 0 ? (
+              <div className="mt-4 rounded-lg border border-surface-200 bg-surface-50 p-4 text-sm text-surface-500 dark:border-surface-700 dark:bg-surface-900/40">
+                No active phone devices or repair services found yet.
+              </div>
+            ) : (
+              <div className="mt-4 max-h-[520px] overflow-auto rounded-lg border border-surface-200 dark:border-surface-700">
+                <table className="min-w-full text-xs">
+                  <thead className="sticky top-0 z-10 bg-surface-100 dark:bg-surface-900">
+                    <tr>
+                      <th className="sticky left-0 z-20 min-w-56 bg-surface-100 px-3 py-2 text-left font-semibold text-surface-700 dark:bg-surface-900 dark:text-surface-200">
+                        Device
+                      </th>
+                      {services.map((service) => (
+                        <th key={service.id} className="min-w-28 px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">
+                          {service.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
+                    {matrix.devices.map((device) => (
+                      <tr key={device.device_model_id} className="hover:bg-surface-50 dark:hover:bg-surface-900/50">
+                        <td className="sticky left-0 z-10 bg-white px-3 py-2 dark:bg-surface-800">
+                          <div className="font-medium text-surface-800 dark:text-surface-100">{device.device_model_name}</div>
+                          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-surface-500">
+                            <span>{device.manufacturer_name}</span>
+                            <span className="rounded-full bg-surface-100 px-1.5 py-0.5 dark:bg-surface-700">{device.tier_label}</span>
+                          </div>
+                        </td>
+                        {services.map((service) => {
+                          const price = device.prices.find((p) => p.repair_service_id === service.id);
+                          const draft = matrixDrafts[`${device.device_model_id}:${service.id}`];
+                          const value = draft?.value ?? (price?.labor_price == null ? '' : String(Math.round(price.labor_price)));
+                          const profit = price?.profit_estimate;
+                          return (
+                            <td key={service.id} className="px-2 py-2 text-right">
+                              <div className="flex flex-col items-end gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={9999}
+                                  value={value}
+                                  onChange={(e) => handleMatrixDraft(device.device_model_id, service.id, price?.price_id ?? null, e.target.value)}
+                                  aria-label={`${device.device_model_name} ${service.name} labor price`}
+                                  className="h-8 w-24 rounded-md border border-surface-200 bg-white px-2 text-right text-xs text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-500/30 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
+                                />
+                                <span className="text-[10px] text-surface-400">
+                                  {price?.is_custom ? 'Custom' : 'Tier'}{profit != null ? ` · ${formatCurrency(profit)} profit` : ''}
+                                </span>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-          <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Target</p>
+        );
+      })()}
+
+      {mode === 'auto_margin' && (
+      <div className="rounded-xl border border-surface-200 bg-white p-5 dark:border-surface-700 dark:bg-surface-800">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-surface-900 dark:text-surface-50">
+              Auto-margin rules
+            </h3>
+            <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
+              Save the target margin and rounding rules used by the server auto-margin job.
+            </p>
+          </div>
+          {autoSettingsQuery.isLoading ? (
+            <span className="inline-flex items-center gap-2 text-xs text-surface-500">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Loading rules
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Preset</span>
+            <select
+              value={autoSettings.preset}
+              onChange={(e) => updateAutoDraft({ preset: e.target.value as RepairPricingAutoMarginSettings['preset'] })}
+              className="mt-1.5 w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
+            >
+              <option value="custom">Custom</option>
+              <option value="high_traffic">High traffic</option>
+              <option value="mid_traffic">Mid traffic</option>
+              <option value="low_traffic">Low traffic</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Target type</span>
+            <select
+              value={autoSettings.target_type}
+              onChange={(e) => updateAutoDraft({ target_type: e.target.value as RepairPricingAutoMarginSettings['target_type'] })}
+              className="mt-1.5 w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
+            >
+              <option value="percent">Percent margin</option>
+              <option value="fixed_amount">Fixed profit</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+              {autoSettings.target_type === 'fixed_amount' ? 'Target profit' : 'Target margin'}
+            </span>
             <div className="mt-1.5 flex items-center gap-2">
               <input
-                type="text"
-                value="60"
-                disabled
-                aria-disabled="true"
-                className="w-20 cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-right text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900"
+                type="number"
+                min={0}
+                max={autoSettings.target_type === 'fixed_amount' ? 10000 : 95}
+                value={autoSettings.target_type === 'fixed_amount' ? autoSettings.target_profit_amount : autoSettings.target_margin_pct}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  if (autoSettings.target_type === 'fixed_amount') updateAutoDraft({ target_profit_amount: value });
+                  else updateAutoDraft({ target_margin_pct: value });
+                }}
+                className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-right text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
               />
-              <span className="text-sm text-surface-500">%</span>
+              <span className="w-8 text-sm text-surface-500">
+                {autoSettings.target_type === 'fixed_amount' ? '$' : '%'}
+              </span>
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Basis</span>
+            <select
+              value={autoSettings.calculation_basis}
+              onChange={(e) => updateAutoDraft({ calculation_basis: e.target.value as RepairPricingAutoMarginSettings['calculation_basis'] })}
+              className="mt-1.5 w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
+            >
+              <option value="gross_margin">Gross margin</option>
+              <option value="markup">Markup</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Rounding</span>
+            <select
+              value={autoSettings.rounding_mode}
+              onChange={(e) => updateAutoDraft({ rounding_mode: e.target.value as RepairPricingAutoMarginSettings['rounding_mode'] })}
+              className="mt-1.5 w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
+            >
+              <option value="off">No rounding</option>
+              <option value="nearest_dollar">Nearest dollar</option>
+              <option value="nearest_5">Round up to nearest $5</option>
+              <option value="nearest_10">Round up to nearest $10</option>
+              <option value="psychological_99">Round up to nearest $5 minus $0.01</option>
+              <option value="psychological_95">Round up to nearest $5 minus $0.05</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Nightly cap</span>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={autoSettings.cap_pct}
+                onChange={(e) => updateAutoDraft({ cap_pct: Number(e.target.value) })}
+                className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-right text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100"
+              />
+              <span className="w-8 text-sm text-surface-500">%</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-5 rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-900/40">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <label className="block">
+              <span className="text-xs font-medium text-surface-500">Supplier cost</span>
+              <input
+                type="number"
+                min={0}
+                value={autoPreviewInput.supplierCost}
+                onChange={(e) => setAutoPreviewInput((prev) => ({ ...prev, supplierCost: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-surface-300 bg-white px-2 py-1.5 text-right text-sm dark:border-surface-600 dark:bg-surface-800"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-surface-500">Current labor</span>
+              <input
+                type="number"
+                min={0}
+                value={autoPreviewInput.currentLabor}
+                onChange={(e) => setAutoPreviewInput((prev) => ({ ...prev, currentLabor: e.target.value }))}
+                className="mt-1 w-full rounded-md border border-surface-300 bg-white px-2 py-1.5 text-right text-sm dark:border-surface-600 dark:bg-surface-800"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={handlePreviewAutoMargin}
+              className="btn btn-sm self-end rounded-md border border-surface-300 bg-white px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+            >
+              Preview
+            </button>
+            <div className="self-end text-sm text-surface-600 dark:text-surface-300">
+              {autoPreview ? (
+                <span>
+                  Suggested {formatCurrency(autoPreview.rounded_labor_price)} · profit {formatCurrency(autoPreview.profit_estimate)}
+                </span>
+              ) : (
+                <span>Preview a sample part cost</span>
+              )}
             </div>
           </div>
         </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <p className="text-[11px] text-surface-500 dark:text-surface-400">
-            Re-runs whenever the daily catalog scraper finds a parts-cost change.
-          </p>
-          <label className="flex items-center gap-2 text-xs font-medium text-surface-400">
-            <input type="checkbox" disabled aria-disabled="true" className="cursor-not-allowed" />
-            Enable auto-margin (coming soon)
-          </label>
+
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={handleSaveAutoMargin}
+            disabled={autoSaving}
+            className="btn btn-md inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-semibold text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200"
+          >
+            {autoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
+            Save rules
+          </button>
+          <button
+            type="button"
+            onClick={handleRunAutoMargin}
+            disabled={autoSaving}
+            className="btn btn-md inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {autoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
+            Save and run now
+          </button>
         </div>
       </div>
       )}
@@ -487,7 +805,7 @@ export function StepRepairPricing({
             type="button"
             onClick={handleApplyMedians}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-md inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <Sparkles className="h-4 w-4" aria-hidden="true" />
             Apply industry medians
@@ -496,7 +814,7 @@ export function StepRepairPricing({
       )}
 
       <p className="mt-3 text-center text-xs text-surface-400 dark:text-surface-500">
-        Per-device matrix + Auto-margin are backed by server routes; the full wizard editor remains tracked in TODO.md.
+        All three modes write to the same repair-pricing model used by tickets, POS, and Settings.
       </p>
 
       <div className="mt-8 flex flex-col items-start justify-between gap-3 border-t border-surface-200 pt-5 sm:flex-row sm:items-center dark:border-surface-700">
@@ -504,7 +822,7 @@ export function StepRepairPricing({
           type="button"
           onClick={onBack}
           disabled={saving}
-          className="text-sm font-medium text-surface-600 hover:text-surface-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
+          className="btn btn-lg text-sm font-medium text-surface-600 hover:text-surface-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
         >
           ← Back
         </button>
@@ -514,16 +832,16 @@ export function StepRepairPricing({
               type="button"
               onClick={onSkip}
               disabled={saving}
-              className="text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-200"
+              className="btn btn-lg text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-200"
             >
-              Skip
+              Skip this step
             </button>
           ) : null}
           <button
             type="button"
             onClick={handleContinue}
             disabled={saving}
-            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? 'Seeding pricing' : 'Continue'}
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}

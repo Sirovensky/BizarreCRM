@@ -217,7 +217,7 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+          className="btn btn-lg flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
         >
           {submitting ? (
             <>
@@ -233,7 +233,7 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
           <button
             type="button"
             onClick={onBack}
-            className="text-sm font-medium text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
+            className="btn btn-sm text-sm font-medium text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
           >
             ← Back
           </button>

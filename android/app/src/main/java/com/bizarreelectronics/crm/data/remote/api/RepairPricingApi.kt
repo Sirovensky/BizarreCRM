@@ -23,6 +23,8 @@ import retrofit2.http.Query
  *   POST /api/v1/repair-pricing/services
  *   PUT  /api/v1/repair-pricing/services/:id
  *   GET  /api/v1/repair-pricing/lookup
+ *   POST /api/v1/repair-pricing/prices
+ *   PUT  /api/v1/repair-pricing/prices/:id
  *
  * All endpoints are 404-tolerant: callers catch [retrofit2.HttpException] with
  * code 404 and fall back gracefully (empty list / no-op).
@@ -53,6 +55,26 @@ interface RepairPricingApi {
     suspend fun pricingLookup(
         @Query("device_model_id") deviceModelId: Int,
         @Query("repair_service_id") serviceId: Int,
+    ): ApiResponse<RepairPriceLookup>
+
+    /**
+     * Create a model-specific labor price for an existing service.
+     *
+     * Server contract: POST /api/v1/repair-pricing/prices with
+     * { device_model_id, repair_service_id, labor_price }. The server defaults
+     * is_custom=1 and returns the created repair_prices row.
+     */
+    @POST("repair-pricing/prices")
+    suspend fun createPrice(@Body body: UpsertRepairPriceRequest): ApiResponse<RepairPriceLookup>
+
+    /**
+     * Update an existing model-specific labor price row. Used when lookup
+     * returns a zero-price placeholder row for the selected model/service.
+     */
+    @PUT("repair-pricing/prices/{id}")
+    suspend fun updatePrice(
+        @Path("id") id: Long,
+        @Body body: UpsertRepairPriceRequest,
     ): ApiResponse<RepairPriceLookup>
 
     /**
@@ -130,4 +152,18 @@ data class BulkPriceAdjustRequest(
     val flatAdjustment: Double = 0.0,
     @SerializedName("pct_adjustment")
     val pctAdjustment: Double = 0.0,
+)
+
+/**
+ * Request body for POST/PUT repair-pricing/prices.
+ *
+ * [laborPrice] is a plain Double on the wire (server stores as REAL), not cents.
+ */
+data class UpsertRepairPriceRequest(
+    @SerializedName("device_model_id")
+    val deviceModelId: Long,
+    @SerializedName("repair_service_id")
+    val repairServiceId: Long,
+    @SerializedName("labor_price")
+    val laborPrice: Double,
 )

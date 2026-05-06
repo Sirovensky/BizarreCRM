@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { SignOptions, VerifyOptions } from 'jsonwebtoken';
+import crypto from 'crypto';
 import { config } from '../config.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 import { createLogger } from '../utils/logger.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -23,6 +25,69 @@ export const JWT_VERIFY_OPTIONS: VerifyOptions = {
   issuer: JWT_ISSUER,
   audience: JWT_AUDIENCE,
 };
+
+export const ACCESS_TOKEN_COOKIE_NAME = 'accessToken';
+export const AUTH_CSRF_COOKIE_NAME = 'csrf_token';
+export const AUTH_CSRF_HEADER_NAME = 'x-csrf-token';
+export const ACCESS_TOKEN_MAX_AGE_MS = 60 * 60 * 1000;
+
+type AccessTokenSource = 'cookie' | 'bearer';
+
+function cookieValue(req: Request, name: string): string | undefined {
+  const cookies = (req as Request & { cookies?: Record<string, string> }).cookies;
+  const value = cookies?.[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export function getBearerAccessToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.slice(7).trim();
+  return token || null;
+}
+
+export function getRequestAccessToken(req: Request): { token: string; source: AccessTokenSource } | null {
+  const cookieToken = cookieValue(req, ACCESS_TOKEN_COOKIE_NAME);
+  if (cookieToken) return { token: cookieToken, source: 'cookie' };
+
+  const bearerToken = getBearerAccessToken(req);
+  if (bearerToken) return { token: bearerToken, source: 'bearer' };
+
+  return null;
+}
+
+function isStateChangingMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+}
+
+export function authCsrfMatches(req: Request): boolean {
+  const csrfHeader = req.headers[AUTH_CSRF_HEADER_NAME];
+  const csrfHeaderValue = Array.isArray(csrfHeader) ? csrfHeader[0] : csrfHeader;
+  const csrfCookieValue = cookieValue(req, AUTH_CSRF_COOKIE_NAME);
+  if (!csrfHeaderValue || !csrfCookieValue) return false;
+
+  try {
+    const headerBuf = Buffer.from(csrfHeaderValue, 'utf8');
+    const cookieBuf = Buffer.from(csrfCookieValue, 'utf8');
+    return headerBuf.length === cookieBuf.length && crypto.timingSafeEqual(headerBuf, cookieBuf);
+  } catch {
+    return false;
+  }
+}
+
+export function issueAccessTokenCookie(req: Request, res: Response, accessToken: string): void {
+  res.cookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
+    httpOnly: true,
+    secure: req.secure || config.nodeEnv === 'production',
+    sameSite: 'strict',
+    maxAge: ACCESS_TOKEN_MAX_AGE_MS,
+    path: '/',
+  });
+}
+
+export function clearAccessTokenCookie(res: Response): void {
+  res.clearCookie(ACCESS_TOKEN_COOKIE_NAME, { path: '/' });
+}
 
 // SEC (A8): Reject sessions that haven't been used in this many days.
 // Matches the max refresh-token lifetime assumption (30d default / 90d trusted)
@@ -43,6 +108,23 @@ export interface AuthUser {
   // means no custom role is assigned and the legacy ROLE_PERMISSIONS map
   // is authoritative.
   customRolePermissions: Set<string> | null;
+  // SEC-M61: table-backed per-user grants/denies. Missing keys inherit from
+  // the custom-role/default-role matrix; explicit false is a deny override.
+  permissionOverrides?: Map<string, boolean> | null;
+}
+
+export type PermissionResolutionSource =
+  | 'user_grant'
+  | 'user_deny'
+  | 'custom_role'
+  | 'admin_role'
+  | 'default_role'
+  | 'legacy_user_grant'
+  | 'none';
+
+export interface PermissionResolution {
+  allowed: boolean;
+  source: PermissionResolutionSource;
 }
 
 declare global {
@@ -55,13 +137,22 @@ declare global {
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   const rid = res.locals.requestId as string | undefined;
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  let tokenRef = getRequestAccessToken(req);
+  if (!tokenRef) {
     res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_NO_TOKEN, 'No token provided', rid));
     return;
   }
+  if (tokenRef.source === 'cookie' && isStateChangingMethod(req.method) && !authCsrfMatches(req)) {
+    const bearerToken = getBearerAccessToken(req);
+    if (bearerToken) {
+      tokenRef = { token: bearerToken, source: 'bearer' };
+    } else {
+      res.status(403).json(errorBody(ERROR_CODES.ERR_CSRF_MISMATCH, 'CSRF token invalid', rid));
+      return;
+    }
+  }
 
-  const token = authHeader.slice(7);
+  const token = tokenRef.token;
   try {
     // SEC (A6): Explicit algorithm + issuer + audience prevents alg-confusion
     // attacks (e.g. "none" algorithm, RS256/HS256 confusion) and token reuse
@@ -123,7 +214,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         'SELECT role_id FROM user_custom_roles WHERE user_id = ?',
         payload.userId
       ),
-    ]).then(async ([session, user, customRole]) => {
+      loadUserPermissionOverrides(req.asyncDb, payload.userId),
+    ]).then(async ([session, user, customRole, permissionOverrides]) => {
       if (!session) {
         res.status(401).json(errorBody(ERROR_CODES.ERR_AUTH_SESSION_EXPIRED, 'Session expired', rid));
         return;
@@ -200,6 +292,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         permissions: parsedPermissions,
         sessionId: payload.sessionId,
         customRolePermissions,
+        permissionOverrides,
       };
       // Prevent caching of authenticated API responses (sensitive data protection)
       res.setHeader('Cache-Control', 'no-store');
@@ -213,6 +306,64 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   }
 }
 
+async function loadUserPermissionOverrides(adb: AsyncDb, userId: number): Promise<Map<string, boolean> | null> {
+  try {
+    const rows = await adb.all<{ permission_key: string; allowed: number }>(
+      'SELECT permission_key, allowed FROM user_permissions WHERE user_id = ?',
+      userId,
+    );
+    if (rows.length === 0) return null;
+    return new Map(rows.map(row => [row.permission_key, row.allowed === 1]));
+  } catch (err) {
+    // Rolling upgrades and old test fixtures may briefly lack the table.
+    // Treat that as "no overrides" so legacy role behavior remains intact.
+    if (String((err as Error)?.message || err).includes('no such table: user_permissions')) {
+      logger.warn('auth: user_permissions table missing; treating user overrides as empty', { userId });
+      return null;
+    }
+    throw err;
+  }
+}
+
+export function resolveEffectivePermission(user: AuthUser, permission: string): PermissionResolution {
+  if (user.permissionOverrides?.has(permission)) {
+    const allowed = user.permissionOverrides.get(permission) === true;
+    return { allowed, source: allowed ? 'user_grant' : 'user_deny' };
+  }
+
+  // SEC-M61: users.permissions JSON remains a legacy grant-only escape hatch.
+  // A stored false never denied before this table existed, so it still only
+  // means "no legacy grant"; deny semantics live in user_permissions.
+  const legacyGrant = user.permissions?.[permission] === true;
+
+  if (user.customRolePermissions) {
+    if (user.customRolePermissions.has(permission)) {
+      return { allowed: true, source: 'custom_role' };
+    }
+    if (legacyGrant) return { allowed: true, source: 'legacy_user_grant' };
+    return { allowed: false, source: 'none' };
+  }
+
+  // SEC-H18: hard admin bypass kept for the common case where no custom role
+  // has been assigned, but SEC-M61 user-level deny overrides have already had
+  // the first say above.
+  if (user.role === 'admin') {
+    return { allowed: true, source: 'admin_role' };
+  }
+
+  const rolePerms: string[] = ROLE_PERMISSIONS[user.role] || [];
+  if (rolePerms.includes(permission)) {
+    return { allowed: true, source: 'default_role' };
+  }
+  if (legacyGrant) return { allowed: true, source: 'legacy_user_grant' };
+  return { allowed: false, source: 'none' };
+}
+
+export function hasPermission(user: AuthUser | null | undefined, permission: string): boolean {
+  if (!user) return false;
+  return resolveEffectivePermission(user, permission).allowed;
+}
+
 export function requirePermission(permission: string) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const rid = res.locals.requestId as string | undefined;
@@ -221,40 +372,7 @@ export function requirePermission(permission: string) {
       return;
     }
 
-    const userPerms = req.user.permissions || {};
-
-    // SEC-H18: when a custom role is assigned, its matrix is authoritative
-    // even for users whose `users.role` is still `'admin'`. Previously the
-    // hard admin bypass fired FIRST and short-circuited every custom-role
-    // check, which meant `PUT /roles/users/:userId/role` could demote an
-    // admin's custom role to something narrow (e.g. `cashier_readonly`)
-    // while `users.role='admin'` silently kept granting full permissions.
-    // Order flipped: custom-role check runs first; users.role='admin'
-    // bypass only applies when no custom role has been pinned.
-    if (req.user.customRolePermissions) {
-      if (
-        req.user.customRolePermissions.has(permission) ||
-        req.user.customRolePermissions.has('admin.full') ||
-        userPerms[permission]
-      ) {
-        next();
-        return;
-      }
-      res.status(403).json(errorBody(ERROR_CODES.ERR_PERM_INSUFFICIENT, 'Insufficient permissions', rid, { permission }));
-      return;
-    }
-
-    // SEC-H18: hard admin bypass kept for the (common) case where NO
-    // custom role has been assigned — prevents org lockout when the
-    // matrix hasn't been touched and keeps the legacy role model working.
-    if (req.user.role === 'admin') {
-      next();
-      return;
-    }
-
-    // Legacy fallback: no custom role assigned, use hardcoded ROLE_PERMISSIONS.
-    const rolePerms: string[] = ROLE_PERMISSIONS[req.user.role] || [];
-    if (rolePerms.includes(permission) || userPerms[permission]) {
+    if (hasPermission(req.user, permission)) {
       next();
       return;
     }

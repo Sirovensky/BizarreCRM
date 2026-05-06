@@ -1,43 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ScrollText, RefreshCw, Filter, Trash2, Download } from 'lucide-react';
-import { getAPI } from '@/api/bridge';
-import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
 import { formatDateTime } from '@/utils/format';
 import { downloadCsv, toCsv } from '@/utils/csv';
+import { useAuditLogQuery } from '@/hooks/useManagementQueries';
+import type { AuditEntry } from '@/api/bridge';
 import toast from 'react-hot-toast';
-
-interface AuditEntry {
-  id: number;
-  admin_username: string;
-  action: string;
-  details: string;
-  ip_address: string;
-  created_at: string;
-}
 
 const PAGE_SIZE = 200;
 
 export function AuditLogPage() {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [loading, setLoading] = useState(true);
   // DASH-ELEC-219: track which row has its details expanded.
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  // DASH-ELEC-064: offset-based pagination so installations with 50k+ entries
-  // don't silently truncate at 200. Resets to 0 when filters change.
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   // DASH-ELEC-063 (Fixer-B28 2026-04-25): mirror DiagnosticsPage and persist
   // filters in the URL search params so back-button + reload + shared deep
   // links restore the same view (e.g. ?action=login_failed&q=192.168). State
   // setters retain the prior useState ergonomics so call-sites need no churn.
   const [params, setParams] = useSearchParams();
   const actionFilter = params.get('action') ?? '';
+  const usernameFilter = params.get('username') ?? '';
   const textFilter = params.get('q') ?? '';
   const setActionFilter = useCallback((value: string) => {
-    setOffset(0);
     setParams((prev) => {
       const next = new URLSearchParams(prev);
       if (value) next.set('action', value); else next.delete('action');
@@ -51,51 +35,53 @@ export function AuditLogPage() {
       return next;
     }, { replace: true });
   }, [setParams]);
+  const setUsernameFilter = useCallback((value: string) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set('username', value); else next.delete('username');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
+  const applyUsernameFilter = useCallback((value: string) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set('username', value); else next.delete('username');
+      next.delete('q');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
 
-  const refresh = useCallback(async () => {
-    try {
-      // AUDIT-MGT-008: pass typed object; query string is built in main process.
-      // Server-side `action` filter narrows to one audit event type; the
-      // free-text filter is applied client-side against admin/details/ip.
-      const queryParams: { limit: number; action?: string } = { limit: PAGE_SIZE };
-      if (actionFilter) queryParams.action = actionFilter;
-      const res = await getAPI().superAdmin.getAuditLog(queryParams);
-      // AUDIT-MGT-010: detect 401 and trigger global auto-logout.
-      if (handleApiResponse(res)) return;
-      if (res.success && res.data) {
-        const list = Array.isArray(res.data) ? res.data : (res.data as { logs: AuditEntry[] }).logs ?? [];
-        setEntries(list as AuditEntry[]);
-        setOffset(list.length);
-        setHasMore(list.length === PAGE_SIZE);
-      }
-    } catch {
-      toast.error('Failed to load audit log');
-    } finally {
-      setLoading(false);
-    }
-  }, [actionFilter]);
+  const auditQueryParams = useMemo(
+    () => ({
+      limit: PAGE_SIZE,
+      action: actionFilter || undefined,
+      username: usernameFilter.trim() || undefined,
+    }),
+    [actionFilter, usernameFilter],
+  );
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useAuditLogQuery(auditQueryParams, PAGE_SIZE);
+  const entries = useMemo<AuditEntry[]>(
+    () => data?.pages.flatMap((page) => page.entries) ?? [],
+    [data],
+  );
 
-  const loadMore = useCallback(async () => {
-    setLoadingMore(true);
-    try {
-      const queryParams: { limit: number; offset: number; action?: string } = { limit: PAGE_SIZE, offset };
-      if (actionFilter) queryParams.action = actionFilter;
-      const res = await getAPI().superAdmin.getAuditLog(queryParams);
-      if (handleApiResponse(res)) return;
-      if (res.success && res.data) {
-        const list = Array.isArray(res.data) ? res.data : (res.data as { logs: AuditEntry[] }).logs ?? [];
-        setEntries((prev) => [...prev, ...(list as AuditEntry[])]);
-        setOffset((prev) => prev + list.length);
-        setHasMore(list.length === PAGE_SIZE);
-      }
-    } catch {
-      toast.error('Failed to load more entries');
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [actionFilter, offset]);
+  const refresh = useCallback(() => {
+    void refetch();
+  }, [refetch]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const loadMore = useCallback(() => {
+    void fetchNextPage();
+  }, [fetchNextPage]);
 
   // Distinct action names gathered from the currently-loaded batch — feeds
   // the action dropdown so operators do not need to remember "update_config"
@@ -117,8 +103,23 @@ export function AuditLogPage() {
     );
   }, [entries, textFilter]);
 
-  if (loading) {
+  if (isLoading && !data) {
     return <div className="flex items-center justify-center py-20"><RefreshCw className="w-5 h-5 text-surface-500 animate-spin" /></div>;
+  }
+
+  if (isError && !data) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20 text-sm text-surface-400">
+        <p>{error instanceof Error ? error.message : 'Failed to load audit log'}</p>
+        <button
+          onClick={refresh}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-surface-300 border border-surface-700 rounded hover:bg-surface-800"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -169,7 +170,7 @@ export function AuditLogPage() {
             Export CSV
           </button>
           <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${isFetching && !isFetchingNextPage ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
@@ -186,24 +187,28 @@ export function AuditLogPage() {
         </select>
         <input
           type="text"
+          value={usernameFilter}
+          onChange={(e) => setUsernameFilter(e.target.value)}
+          placeholder="Filter user…"
+          title="Searches usernames server-side across the audit log."
+          className="w-40 px-2 py-1 bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-600"
+        />
+        <input
+          type="text"
           value={textFilter}
           onChange={(e) => setTextFilter(e.target.value)}
           placeholder="Filter admin / IP / details…"
-          // DASH-ELEC-220 (Fixer-C26 2026-04-25): make the client-side-only
-          // nature of this filter discoverable. Server already truncates to
-          // limit=200, so a search for a name not in the most-recent 200
-          // returns nothing — confusing without this hint. Server-side
-          // username param is still TODO; tracked in TODO.md.
-          title="Searches the most recent 200 entries client-side; older matches won't appear until server-side filtering ships."
+          title="Filters the loaded rows client-side. Use the user field for server-side username search."
           className="flex-1 min-w-[180px] max-w-sm px-2 py-1 bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-600"
         />
-        {(actionFilter || textFilter) && (
+        {(actionFilter || usernameFilter || textFilter) && (
           <button
             onClick={() => {
               // Single setParams call so the back-stack records one entry.
               setParams((prev) => {
                 const next = new URLSearchParams(prev);
                 next.delete('action');
+                next.delete('username');
                 next.delete('q');
                 return next;
               }, { replace: true });
@@ -215,9 +220,9 @@ export function AuditLogPage() {
           </button>
         )}
       </div>
-      {textFilter && entries.length >= 200 && (
+      {textFilter && entries.length >= PAGE_SIZE && (
         <div className="text-[11px] text-amber-500/80 -mt-2">
-          Showing matches in the most recent 200 entries only. Use the action dropdown to widen the server-side query.
+          Text search is applied to loaded rows only. Use the user field for server-side username search.
         </div>
       )}
 
@@ -242,13 +247,15 @@ export function AuditLogPage() {
                 <tr key={e.id} className="border-b border-surface-800/50 hover:bg-surface-800/30">
                   <td className="py-1.5 px-2 text-surface-500 whitespace-nowrap">{formatDateTime(e.created_at)}</td>
                   <td className="py-1.5 px-2 text-surface-300 font-medium">
-                    <button
-                      onClick={() => setTextFilter(e.admin_username)}
-                      className="hover:underline underline-offset-2"
-                      title={`Filter to ${e.admin_username}`}
-                    >
-                      {e.admin_username}
-                    </button>
+                    {e.admin_username ? (
+                      <button
+                        onClick={() => applyUsernameFilter(e.admin_username)}
+                        className="hover:underline underline-offset-2"
+                        title={`Filter to ${e.admin_username}`}
+                      >
+                        {e.admin_username}
+                      </button>
+                    ) : '—'}
                   </td>
                   <td className="py-1.5 px-2 font-mono text-accent-400">
                     <button
@@ -288,15 +295,15 @@ export function AuditLogPage() {
 
       {/* DASH-ELEC-064: "Load next 200" button — only visible when more entries
           may exist (last fetch returned a full page). */}
-      {hasMore && (
+      {hasNextPage && (
         <div className="flex justify-center pt-1">
           <button
             onClick={loadMore}
-            disabled={loadingMore}
+            disabled={isFetchingNextPage}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-400 border border-surface-700 rounded-lg hover:bg-surface-800 disabled:opacity-50 transition-colors"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingMore ? 'animate-spin' : ''}`} />
-            {loadingMore ? 'Loading…' : 'Load next 200'}
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetchingNextPage ? 'animate-spin' : ''}`} />
+            {isFetchingNextPage ? 'Loading…' : 'Load next 200'}
           </button>
         </div>
       )}

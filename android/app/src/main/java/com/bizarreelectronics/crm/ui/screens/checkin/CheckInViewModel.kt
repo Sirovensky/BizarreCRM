@@ -2,12 +2,12 @@ package com.bizarreelectronics.crm.ui.screens.checkin
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
 import com.bizarreelectronics.crm.data.local.db.dao.CheckInDraftDao
 import com.bizarreelectronics.crm.data.local.db.entities.CheckInDraftEntity
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.api.RepairPricingApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
+import com.bizarreelectronics.crm.data.remote.api.UpsertRepairPriceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
 import com.google.gson.Gson
@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -50,14 +51,22 @@ class CheckInViewModel @Inject constructor(
     fun advance() {
         val current = _uiState.value.currentStep
         if (current < TOTAL_STEPS - 1) {
+            if (current == 4 && shouldSaveManualPriceDefault(_uiState.value)) {
+                saveManualPriceDefaultThenAdvance()
+                return
+            }
             val next = current + 1
-            _uiState.update { it.copy(currentStep = next) }
-            // Quote step (index 4) — auto-fill subtotal from RepairPricingApi
-            // catalog. Server services seeded at first-run setup wizard
-            // (todofixes426 commit 07ec4c4b). Honors user override: skips if
-            // subtotal already set or auto-fill already ran.
-            if (next == 4) maybeAutoFillQuoteSubtotal()
+            advanceToStep(next)
         }
+    }
+
+    private fun advanceToStep(next: Int) {
+        _uiState.update { it.copy(currentStep = next) }
+        // Quote step (index 4) — auto-fill subtotal from RepairPricingApi
+        // catalog. Server services seeded at first-run setup wizard
+        // (todofixes426 commit 07ec4c4b). Honors user override: skips if
+        // subtotal already set or auto-fill already ran.
+        if (next == 4) maybeAutoFillQuoteSubtotal()
     }
 
     fun goBack() {
@@ -69,6 +78,7 @@ class CheckInViewModel @Inject constructor(
 
     fun canAdvance(): Boolean {
         val s = _uiState.value
+        if (s.isSavingManualPriceDefault) return false
         return when (s.currentStep) {
             0 -> s.symptoms.isNotEmpty()
             5 -> s.signatureBase64 != null && s.agreedToTerms && s.consentBackup &&
@@ -197,7 +207,29 @@ class CheckInViewModel @Inject constructor(
     fun setQuoteSubtotalCents(cents: Long) {
         // Mark as user-touched so subsequent advance()→Quote re-entries don't
         // overwrite the manual value with the auto-fill.
-        _uiState.update { it.copy(quoteSubtotalCents = cents, subtotalAutoFilled = true) }
+        val normalized = cents.coerceAtLeast(0L)
+        _uiState.update { current ->
+            val priceChanged = current.quoteSubtotalCents != normalized
+            current.copy(
+                quoteSubtotalCents = normalized,
+                subtotalAutoFilled = true,
+                saveManualPriceAsDefault = current.saveManualPriceAsDefault && normalized > 0L,
+                manualPriceDefaultSaved = current.manualPriceDefaultSaved && !priceChanged,
+                manualPriceDefaultSaveMessage = if (priceChanged) null else current.manualPriceDefaultSaveMessage,
+                manualPriceDefaultSaveError = if (priceChanged) null else current.manualPriceDefaultSaveError,
+            )
+        }
+        scheduleSave()
+    }
+
+    fun setSaveManualPriceAsDefault(save: Boolean) {
+        _uiState.update {
+            it.copy(
+                saveManualPriceAsDefault = save,
+                manualPriceDefaultSaveError = null,
+                manualPriceDefaultSaveMessage = null,
+            )
+        }
         scheduleSave()
     }
 
@@ -224,6 +256,7 @@ class CheckInViewModel @Inject constructor(
         viewModelScope.launch {
             var totalCents = 0L
             var matched = false
+            var manualDefaultCandidate: ManualPriceDefaultCandidate? = null
             try {
                 for (symptom in s.symptoms) {
                     val query = symptomToServiceQuery[symptom] ?: continue
@@ -236,14 +269,19 @@ class CheckInViewModel @Inject constructor(
                     //      device-specific override (RepairDesk parity).
                     //   2. Otherwise fall back to the service's default
                     //      labor price.
-                    var priceDollars = first.laborPrice
+                    var priceDollars = 0.0
+                    var lookupCompleted = modelId == null || modelId <= 0L
+                    var existingPriceId: Long? = null
                     if (modelId != null && modelId > 0L) {
                         runCatching {
                             val lookup = repairPricingApi.pricingLookup(
                                 deviceModelId = modelId.toInt(),
                                 serviceId = first.id.toInt(),
                             )
-                            val perDevice = lookup.data?.laborPrice
+                            lookupCompleted = true
+                            val lookupData = lookup.data
+                            existingPriceId = lookupData?.id
+                            val perDevice = lookupData?.laborPrice
                             if (perDevice != null && perDevice > 0.0) {
                                 priceDollars = perDevice
                             }
@@ -251,9 +289,24 @@ class CheckInViewModel @Inject constructor(
                         // Quiet failure: per-device lookup is best-effort;
                         // missing override means use the service default.
                     }
+                    if (priceDollars <= 0.0 && first.laborPrice > 0.0) {
+                        priceDollars = first.laborPrice
+                    }
                     if (priceDollars > 0.0) {
                         totalCents += (priceDollars * 100).toLong()
                         matched = true
+                    } else if (
+                        manualDefaultCandidate == null &&
+                        modelId != null &&
+                        modelId > 0L &&
+                        lookupCompleted
+                    ) {
+                        manualDefaultCandidate = ManualPriceDefaultCandidate(
+                            deviceModelId = modelId,
+                            repairServiceId = first.id,
+                            repairServiceName = first.name,
+                            existingPriceId = existingPriceId,
+                        )
                     }
                 }
             } catch (_: Exception) {
@@ -262,12 +315,112 @@ class CheckInViewModel @Inject constructor(
                 // pricing catalog may simply be empty pre-setup-wizard.
                 return@launch
             }
+            val latest = _uiState.value
+            if (latest.quoteSubtotalCents > 0L || latest.subtotalAutoFilled) {
+                if (manualDefaultCandidate != null && latest.manualPriceDefaultCandidate == null) {
+                    _uiState.update { it.copy(manualPriceDefaultCandidate = manualDefaultCandidate) }
+                    scheduleSave()
+                }
+                return@launch
+            }
             if (matched) {
                 _uiState.update {
-                    it.copy(quoteSubtotalCents = totalCents, subtotalAutoFilled = true)
+                    it.copy(
+                        quoteSubtotalCents = totalCents,
+                        subtotalAutoFilled = true,
+                        manualPriceDefaultCandidate = null,
+                        saveManualPriceAsDefault = false,
+                        manualPriceDefaultSaved = false,
+                        manualPriceDefaultSaveMessage = null,
+                        manualPriceDefaultSaveError = null,
+                    )
+                }
+                scheduleSave()
+            } else if (manualDefaultCandidate != null) {
+                _uiState.update {
+                    it.copy(
+                        manualPriceDefaultCandidate = manualDefaultCandidate,
+                        saveManualPriceAsDefault = false,
+                        manualPriceDefaultSaved = false,
+                        manualPriceDefaultSaveMessage = null,
+                        manualPriceDefaultSaveError = null,
+                    )
                 }
                 scheduleSave()
             }
+        }
+    }
+
+    private fun shouldSaveManualPriceDefault(s: CheckInUiState): Boolean =
+        s.saveManualPriceAsDefault &&
+            s.quoteSubtotalCents > 0L &&
+            s.manualPriceDefaultCandidate != null &&
+            !s.manualPriceDefaultSaved
+
+    private fun saveManualPriceDefaultThenAdvance() {
+        val s = _uiState.value
+        val candidate = s.manualPriceDefaultCandidate ?: run {
+            advanceToStep(s.currentStep + 1)
+            return
+        }
+        val laborPrice = s.quoteSubtotalCents / 100.0
+        _uiState.update {
+            it.copy(
+                isSavingManualPriceDefault = true,
+                manualPriceDefaultSaveError = null,
+                manualPriceDefaultSaveMessage = null,
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                val request = UpsertRepairPriceRequest(
+                    deviceModelId = candidate.deviceModelId,
+                    repairServiceId = candidate.repairServiceId,
+                    laborPrice = laborPrice,
+                )
+                val existingPriceId = candidate.existingPriceId
+                if (existingPriceId != null) {
+                    repairPricingApi.updatePrice(existingPriceId, request)
+                } else {
+                    repairPricingApi.createPrice(request)
+                }
+            }.onSuccess { response ->
+                val savedPriceId = response.data?.id
+                _uiState.update {
+                    val updatedCandidate = if (savedPriceId != null) {
+                        it.manualPriceDefaultCandidate?.copy(existingPriceId = savedPriceId)
+                    } else {
+                        it.manualPriceDefaultCandidate
+                    }
+                    it.copy(
+                        manualPriceDefaultCandidate = updatedCandidate,
+                        isSavingManualPriceDefault = false,
+                        manualPriceDefaultSaved = true,
+                        manualPriceDefaultSaveMessage = "Default repair price saved.",
+                    )
+                }
+                scheduleSave()
+                if (_uiState.value.currentStep == 4) {
+                    advanceToStep(5)
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isSavingManualPriceDefault = false,
+                        manualPriceDefaultSaveError = manualPriceDefaultSaveErrorMessage(error),
+                    )
+                }
+            }
+        }
+    }
+
+    private fun manualPriceDefaultSaveErrorMessage(error: Throwable): String {
+        val http = error as? HttpException
+        return when (http?.code()) {
+            400 -> "Could not save default price. It may already exist or be outside the allowed range. Uncheck this option to continue without saving."
+            403 -> "You do not have permission to save default repair prices. Uncheck this option to continue."
+            404 -> "Default price saving is not available on this server. Uncheck this option to continue."
+            else -> error.message ?: "Could not save default price. Uncheck this option to continue without saving."
         }
     }
 
@@ -430,6 +583,14 @@ data class CheckInUiState(
      *  from the pricing catalog has run. Prevents repeat advance()→Quote
      *  visits from clobbering a manually-entered value. */
     val subtotalAutoFilled: Boolean = false,
+    /** Present when a service/model pair is known but no model-specific price
+     *  exists, so a manually-entered subtotal can be saved as the future default. */
+    val manualPriceDefaultCandidate: ManualPriceDefaultCandidate? = null,
+    val saveManualPriceAsDefault: Boolean = false,
+    val isSavingManualPriceDefault: Boolean = false,
+    val manualPriceDefaultSaved: Boolean = false,
+    val manualPriceDefaultSaveMessage: String? = null,
+    val manualPriceDefaultSaveError: String? = null,
     val taxRateBps: Int = 800,
     val depositCents: Long = 0L,
     val depositFullBalance: Boolean = false,
@@ -450,6 +611,13 @@ data class CheckInUiState(
     val dueOnPickupCents: Long get() = (quoteTotalCents - depositCents).coerceAtLeast(0L)
     val progressFraction: Float get() = (currentStep + 1) / CheckInViewModel.TOTAL_STEPS.toFloat()
 }
+
+data class ManualPriceDefaultCandidate(
+    val deviceModelId: Long,
+    val repairServiceId: Long,
+    val repairServiceName: String,
+    val existingPriceId: Long? = null,
+)
 
 // ── Domain types ───────────────────────────────────────────────────────────────
 

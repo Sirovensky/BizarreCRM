@@ -54,7 +54,7 @@ export function Header() {
       {/* Left: Title + Status (not draggable) */}
       <div className="flex items-center gap-3">
         <Server className="w-4 h-4 text-accent-400" />
-        <span className="text-sm font-semibold text-surface-200">BizarreCRM</span>
+        <span className="font-logo text-base font-normal text-surface-200">BizarreCRM</span>
         <StatusBadge status={serverState} />
         {ageSec != null && (
           <span
@@ -70,7 +70,7 @@ export function Header() {
       </div>
 
       {/* Center: Drag handle — fills all available space */}
-      <div className="flex-1 h-full" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+      <div className="app-region-drag flex-1 h-full" />
 
       {/* Right: User + window controls (not draggable).
           - The ⌘K palette hint was removed per operator feedback. The

@@ -15,8 +15,8 @@
  * production no token is returned (verification gate) and we still hand
  * off to the verifyEmail phase via onNext().
  *
- * The captured email is forwarded via onUpdate({ signup_email }) so
- * Step 6 (Store info) can pre-fill the shop email field without re-asking.
+ * The captured email and slug are forwarded via onUpdate so Step 2 can
+ * verify/resend and Step 6 can pre-fill the shop email field without re-asking.
  */
 import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
@@ -172,8 +172,13 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
         captcha_token: import.meta.env.DEV ? 'dev-captcha-token' : '',
       });
 
-      // Persist captured email for Step 6 pre-fill.
-      onUpdate({ signup_email: cleanEmail });
+      // Persist captured email/slug for verification and Step 6 pre-fill.
+      onUpdate({ signup_email: cleanEmail, signup_slug: cleanSlug });
+      try {
+        sessionStorage.setItem('pending_signup_slug', cleanSlug);
+      } catch {
+        // Non-critical: pending writes are the canonical source.
+      }
 
       // Dev mode: server returned tokens — drop them into authStore so the
       // next request is authenticated. Production returns no token (the
@@ -379,7 +384,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
         <button
           type="submit"
           disabled={submitting || !formValid}
-          className="bg-primary-500 hover:bg-primary-500 text-primary-950 font-semibold py-3 rounded-lg w-full inline-flex items-center justify-center gap-2 transition disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn btn-lg bg-primary-500 hover:bg-primary-500 text-primary-950 font-semibold py-3 rounded-lg w-full inline-flex items-center justify-center gap-2 transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
           {submitting ? 'Creating your shop…' : 'Create my shop'}

@@ -3,23 +3,32 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Printer, ArrowRightLeft, Send, Pencil, Save, X,
   CheckCircle, History, ChevronDown, ChevronUp, XCircle, Plus, Trash2,
+  FileSignature, Link2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
+import type { EstimateSignature, EstimateSignPublicSummary } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
-import { useState } from 'react';
+import { CopyButton } from '@/components/shared/CopyButton';
+import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
+import { useAuthStore } from '@/stores/authStore';
+import { useEffect, useState } from 'react';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: '#6b7280',
   sent: '#3b82f6',
   approved: '#22c55e',
+  signed: '#16a34a',
   rejected: '#ef4444',
   converted: '#8b5cf6',
 };
+
+const ESTIMATE_ACTION_BUTTON_CLASS =
+  'inline-flex min-h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium sm:w-auto sm:px-4';
 
 // ENR-LE6 estimate version row — minimal shared shape (id + version + timestamp).
 // Server returns more fields (snapshot blob, author, diff metadata) but the UI
@@ -30,13 +39,240 @@ interface EstimateVersion {
   created_at: string;
 }
 
+interface EstimateSignSession {
+  token: string;
+  url: string;
+  expiresAt: string;
+}
+
+function decodeUrlSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function extractEstimateSignToken(url: string): string {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    const segment = parsed.pathname.split('/').filter(Boolean).pop() || '';
+    return decodeUrlSegment(segment);
+  } catch {
+    const segment = url.split('?')[0]?.split('/').filter(Boolean).pop() || '';
+    return decodeUrlSegment(segment);
+  }
+}
+
+function SignatureRow({ signature }: { signature: EstimateSignature }) {
+  return (
+    <div className="rounded-lg border border-surface-200 p-3 text-sm dark:border-surface-700">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-medium text-surface-900 dark:text-surface-100">{signature.signer_name}</p>
+          {signature.signer_email && (
+            <p className="truncate text-xs text-surface-500 dark:text-surface-400">{signature.signer_email}</p>
+          )}
+        </div>
+        <span className="shrink-0 text-xs text-surface-500 dark:text-surface-400">
+          {formatDate(signature.signed_at)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function EstimateSignDialog({
+  session,
+  fallbackEmail,
+  onClose,
+  onSigned,
+}: {
+  session: EstimateSignSession;
+  fallbackEmail?: string | null;
+  onClose: () => void;
+  onSigned: () => void;
+}) {
+  const [signerName, setSignerName] = useState('');
+  const [signerEmail, setSignerEmail] = useState(fallbackEmail || '');
+  const [signatureDataUrl, setSignatureDataUrl] = useState('');
+
+  const summaryQuery = useQuery({
+    queryKey: ['estimate-sign-public-summary', session.token],
+    queryFn: () => estimateApi.getSigningEstimate(session.token),
+    retry: false,
+  });
+  const publicSummary: EstimateSignPublicSummary | undefined = summaryQuery.data?.data?.data;
+
+  useEffect(() => {
+    if (!signerName && publicSummary?.customer_name) {
+      setSignerName(publicSummary.customer_name);
+    }
+  }, [publicSummary?.customer_name, signerName]);
+
+  const submitMut = useMutation({
+    mutationFn: () => estimateApi.submitSigningEstimate(session.token, {
+      signer_name: signerName.trim(),
+      signer_email: signerEmail.trim() || undefined,
+      signature_data_url: signatureDataUrl,
+    }),
+    onSuccess: () => {
+      toast.success('Estimate signed');
+      onSigned();
+    },
+    onError: (err: any) => toast.error(formatApiError(err) || 'Failed to sign estimate'),
+  });
+
+  const handleSignatureSave = (dataUrl: string) => {
+    if (
+      dataUrl &&
+      !dataUrl.startsWith('data:image/png;base64,') &&
+      !dataUrl.startsWith('data:image/svg+xml;base64,')
+    ) {
+      setSignatureDataUrl('');
+      toast.error('Signature is too large to save. Please clear it and try a simpler signature.');
+      return;
+    }
+    setSignatureDataUrl(dataUrl);
+  };
+
+  const canSubmit =
+    signerName.trim().length > 0 &&
+    signatureDataUrl.length > 0 &&
+    !summaryQuery.isLoading &&
+    !summaryQuery.isError &&
+    !submitMut.isPending;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="presentation"
+      onClick={() => {
+        if (!submitMut.isPending) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="estimate-sign-title"
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <h2 id="estimate-sign-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+              Estimate signature
+            </h2>
+            <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+              Expires {formatDate(session.expiresAt)}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            disabled={submitMut.isPending}
+            className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-600 disabled:opacity-50 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mb-5 rounded-lg border border-surface-200 bg-surface-50 p-3 dark:border-surface-700 dark:bg-surface-800/60">
+          <div className="flex items-center gap-2 text-xs font-medium text-surface-500 dark:text-surface-400">
+            <Link2 className="h-3.5 w-3.5" />
+            <span className="truncate">{session.url}</span>
+            <CopyButton text={session.url} />
+          </div>
+        </div>
+
+        {summaryQuery.isLoading ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
+          </div>
+        ) : summaryQuery.isError || !publicSummary ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+            This signing link is no longer available.
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="grid gap-3 rounded-lg border border-surface-200 p-4 text-sm dark:border-surface-700 sm:grid-cols-3">
+              <div>
+                <p className="text-xs uppercase text-surface-500 dark:text-surface-400">Estimate</p>
+                <p className="font-medium text-surface-900 dark:text-surface-100">{publicSummary.order_id}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-surface-500 dark:text-surface-400">Customer</p>
+                <p className="font-medium text-surface-900 dark:text-surface-100">{publicSummary.customer_name || 'Customer'}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-surface-500 dark:text-surface-400">Total</p>
+                <p className="font-medium text-surface-900 dark:text-surface-100">{formatCurrency(publicSummary.total || 0)}</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-surface-700 dark:text-surface-300">Signer name</span>
+                <input
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  className="input"
+                  maxLength={200}
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-surface-700 dark:text-surface-300">Signer email</span>
+                <input
+                  value={signerEmail}
+                  onChange={(e) => setSignerEmail(e.target.value)}
+                  className="input"
+                  type="email"
+                  maxLength={254}
+                />
+              </label>
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium text-surface-700 dark:text-surface-300">Signature</p>
+              <SignatureCanvas onSave={handleSignatureSave} width={560} height={160} />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitMut.isPending}
+                className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => submitMut.mutate()}
+                disabled={!canSubmit}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
+                Save signature
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const userRole = useAuthStore((s) => s.user?.role);
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState('');
   const [showVersions, setShowVersions] = useState(false);
+  const [signSession, setSignSession] = useState<EstimateSignSession | null>(null);
   // WEB-W2-019: inline line-item editing state
   const [editingItems, setEditingItems] = useState(false);
   const [draftItems, setDraftItems] = useState<Array<{
@@ -58,6 +294,7 @@ export function EstimateDetailPage() {
   });
 
   const estimate = data?.data?.data;
+  const canManageSigning = userRole === 'admin' || userRole === 'manager';
 
   // Version history query (ENR-LE6)
   const { data: versionsData, isLoading: versionsLoading } = useQuery({
@@ -67,6 +304,15 @@ export function EstimateDetailPage() {
     staleTime: 60_000, // versions of completed/sent estimates rarely change minute-to-minute
   });
   const versions: EstimateVersion[] = versionsData?.data?.data || [];
+
+  const { data: signaturesData, isLoading: signaturesLoading, isError: signaturesError } = useQuery({
+    queryKey: ['estimate-signatures', numericId],
+    queryFn: () => estimateApi.signatures(numericId),
+    enabled: idIsValid && canManageSigning,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const signatures: EstimateSignature[] = signaturesData?.data?.data || [];
 
   const sendMut = useMutation({
     mutationFn: () => estimateApi.send(Number(id)),
@@ -123,6 +369,20 @@ export function EstimateDetailPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to reject'),
   });
 
+  const createSignUrlMut = useMutation({
+    mutationFn: () => estimateApi.createSignUrl(Number(id)),
+    onSuccess: (res) => {
+      const payload = res.data?.data;
+      const token = payload?.url ? extractEstimateSignToken(payload.url) : '';
+      if (!payload?.url || !token) {
+        toast.error('Signing link response was invalid');
+        return;
+      }
+      setSignSession({ token, url: payload.url, expiresAt: payload.expires_at });
+    },
+    onError: (err: any) => toast.error(formatApiError(err) || 'Failed to create signing link'),
+  });
+
   // WEB-W2-019: line-item save mutation — reuses the existing PUT /:id endpoint
   const lineItemsMut = useMutation({
     mutationFn: (items: typeof draftItems) =>
@@ -135,49 +395,69 @@ export function EstimateDetailPage() {
     onError: () => toast.error('Failed to save line items'),
   });
 
+  const estimateBreadcrumbItems = [
+    { label: 'Estimates', href: '/estimates' },
+    { label: estimate?.order_id || (id ? `Estimate #${id}` : 'Estimate') },
+  ];
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
+      <div>
+        <Breadcrumb items={estimateBreadcrumbItems} />
+        <div className="flex items-center justify-center py-20" aria-busy="true" aria-label="Loading estimate">
+          <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
+        </div>
       </div>
     );
   }
 
   if (isError || !estimate) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-lg font-medium text-surface-600 dark:text-surface-400">Estimate not found</p>
-        <Link to="/estimates" className="mt-4 text-sm text-primary-600 hover:underline">Back to estimates</Link>
+      <div>
+        <Breadcrumb items={estimateBreadcrumbItems} />
+        <div className="flex flex-col items-center justify-center py-20" role="alert">
+          <p className="text-lg font-medium text-surface-600 dark:text-surface-400">Estimate not found</p>
+          <Link to="/estimates" className="mt-4 text-sm text-primary-600 hover:underline">Back to estimates</Link>
+        </div>
       </div>
     );
   }
 
   const color = STATUS_COLORS[estimate.status] || '#6b7280';
   const lineItems: any[] = estimate.line_items || [];
+  const estimateContentLocked =
+    estimate.status === 'signed' ||
+    estimate.status === 'converted' ||
+    estimate.status === 'rejected';
   // Mutually exclusive action buttons — without this gate a rapid click on
   // Convert mid-Send navigates away while the first mutation is still in
   // flight, leaving the server in an inconsistent state.
-  const anyMutationPending = sendMut.isPending || approveMut.isPending || convertMut.isPending || rejectMut.isPending;
+  const anyMutationPending =
+    sendMut.isPending ||
+    approveMut.isPending ||
+    convertMut.isPending ||
+    rejectMut.isPending ||
+    createSignUrlMut.isPending;
+  const canStartSigning =
+    canManageSigning &&
+    !estimateContentLocked;
 
   return (
     <div>
-      <Breadcrumb items={[
-        { label: 'Estimates', href: '/estimates' },
-        { label: estimate.order_id || `Estimate #${id}` },
-      ]} />
+      <Breadcrumb items={estimateBreadcrumbItems} />
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/estimates')} className="rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <button onClick={() => navigate('/estimates')} className="shrink-0 rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <h1 className="min-w-0 break-words text-2xl font-bold text-surface-900 dark:text-surface-100">
                 Estimate {estimate.order_id}
               </h1>
               <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
                 style={{ backgroundColor: `${color}18`, color }}
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
@@ -187,7 +467,20 @@ export function EstimateDetailPage() {
             <p className="text-sm text-surface-500">Created {formatDate(estimate.created_at)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2" data-estimate-actions="true">
+        <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(8.75rem,1fr))] gap-2 sm:flex sm:flex-wrap sm:items-center lg:w-auto lg:justify-end" data-estimate-actions="true">
+          {canStartSigning && (
+            <button
+              onClick={() => createSignUrlMut.mutate()}
+              disabled={anyMutationPending}
+              className={cn(
+                ESTIMATE_ACTION_BUTTON_CLASS,
+                'border border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+              )}
+            >
+              {createSignUrlMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
+              E-sign
+            </button>
+          )}
           {(estimate.status === 'draft' || estimate.status === 'sent') && (
             <button
               onClick={async () => {
@@ -197,7 +490,10 @@ export function EstimateDetailPage() {
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className={cn(
+                ESTIMATE_ACTION_BUTTON_CLASS,
+                'border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+              )}
             >
               {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {estimate.status === 'sent' ? 'Resend' : 'Send'}
@@ -210,7 +506,10 @@ export function EstimateDetailPage() {
                 catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className={cn(
+                ESTIMATE_ACTION_BUTTON_CLASS,
+                'border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+              )}
             >
               {approveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
               Approve
@@ -223,14 +522,17 @@ export function EstimateDetailPage() {
                 catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className={cn(
+                ESTIMATE_ACTION_BUTTON_CLASS,
+                'border border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+              )}
             >
               {convertMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}
               Convert to Ticket
             </button>
           )}
           {/* WEB-W2-020: Reject button — available on any non-terminal status */}
-          {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
+          {!estimateContentLocked && (
             <button
               onClick={async () => {
                 try {
@@ -239,7 +541,10 @@ export function EstimateDetailPage() {
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending}
-              className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className={cn(
+                ESTIMATE_ACTION_BUTTON_CLASS,
+                'border border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+              )}
             >
               {rejectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
               Reject
@@ -247,7 +552,10 @@ export function EstimateDetailPage() {
           )}
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
+            className={cn(
+              ESTIMATE_ACTION_BUTTON_CLASS,
+              'border border-surface-200 text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800',
+            )}
           >
             <Printer className="h-4 w-4" />
             Print
@@ -286,7 +594,7 @@ export function EstimateDetailPage() {
             <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
               <h3 className="font-semibold text-surface-900 dark:text-surface-100">Line Items</h3>
               {/* WEB-W2-019: edit line items inline (only for non-terminal estimates) */}
-              {!editingItems && estimate.status !== 'converted' && estimate.status !== 'rejected' && (
+              {!editingItems && !estimateContentLocked && (
                 <button
                   onClick={() => {
                     setDraftItems(lineItems.map((li: any) => ({
@@ -400,7 +708,7 @@ export function EstimateDetailPage() {
           <div className="card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider">Notes</h3>
-              {!editing && (
+              {!editing && !estimateContentLocked && (
                 <button onClick={() => { setEditing(true); setNotes(estimate.notes || ''); }}
                   className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
                   <Pencil className="h-3 w-3" /> Edit
@@ -507,6 +815,40 @@ export function EstimateDetailPage() {
             </dl>
           </div>
 
+          {canManageSigning && (
+            <div className="card p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider">Signatures</h3>
+                {canStartSigning && (
+                  <button
+                    type="button"
+                    onClick={() => createSignUrlMut.mutate()}
+                    disabled={anyMutationPending}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                  >
+                    {createSignUrlMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSignature className="h-3.5 w-3.5" />}
+                    Sign
+                  </button>
+                )}
+              </div>
+              {signaturesLoading ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-surface-400" />
+                </div>
+              ) : signaturesError ? (
+                <p className="text-xs text-red-500 dark:text-red-400">Signatures unavailable</p>
+              ) : signatures.length === 0 ? (
+                <p className="text-xs text-surface-400 dark:text-surface-500 italic">No signatures captured</p>
+              ) : (
+                <div className="space-y-2">
+                  {signatures.map((signature) => (
+                    <SignatureRow key={signature.id} signature={signature} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Version History (ENR-LE6) */}
           <div className="card p-5" data-version-history="true">
             <button
@@ -552,6 +894,19 @@ export function EstimateDetailPage() {
           </div>
         </div>
       </div>
+      {signSession && (
+        <EstimateSignDialog
+          session={signSession}
+          fallbackEmail={estimate.customer_email}
+          onClose={() => setSignSession(null)}
+          onSigned={() => {
+            setSignSession(null);
+            queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+            queryClient.invalidateQueries({ queryKey: ['estimate-signatures', numericId] });
+            queryClient.invalidateQueries({ queryKey: ['estimates'] });
+          }}
+        />
+      )}
     </div>
   );
 }

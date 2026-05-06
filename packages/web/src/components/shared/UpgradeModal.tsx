@@ -4,6 +4,7 @@ import { FEATURE_NAMES, PLAN_DEFINITIONS } from '@bizarre-crm/shared';
 import { api } from '@/api/client';
 import { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { Button } from './Button';
 
 export function UpgradeModal() {
   const { upgradeModalOpen, upgradeModalFeature, closeUpgradeModal, plan } = usePlanStore();
@@ -88,14 +89,17 @@ export function UpgradeModal() {
         className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <button
+        <Button
           type="button"
           onClick={closeUpgradeModal}
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+          variant="ghost"
+          size="sm"
+          iconOnly
+          className="absolute right-4 top-4 text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
           aria-label="Close upgrade dialog"
         >
           <X aria-hidden="true" className="h-5 w-5" />
-        </button>
+        </Button>
 
         <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 px-8 py-6 text-primary-950">
           <div className="flex items-center gap-2">
@@ -137,19 +141,23 @@ export function UpgradeModal() {
           </ul>
 
           <div className="mt-6 flex gap-3">
-            <button
+            <Button
               onClick={handleUpgrade}
               disabled={loading || plan === 'pro'}
-              className="flex-1 rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-[colors,box-shadow,transform] hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+              size="lg"
+              fullWidth
+              className="bg-gradient-to-r from-primary-500 to-primary-700 font-semibold shadow-lg hover:shadow-xl"
             >
               {loading ? 'Starting checkout…' : plan === 'pro' ? 'Already on Pro' : 'Upgrade to Pro'}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={closeUpgradeModal}
-              className="rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+              variant="secondary"
+              size="lg"
+              className="font-semibold"
             >
               Maybe later
-            </button>
+            </Button>
           </div>
 
           <p className="mt-3 text-center text-xs text-surface-500 dark:text-surface-400">

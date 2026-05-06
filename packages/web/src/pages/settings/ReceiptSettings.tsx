@@ -6,6 +6,11 @@ import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { ReceiptLivePreview } from './components/ReceiptLivePreview';
 import { ComingSoonBadge } from './components/ComingSoonBadge';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  INLINE_LOGO_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 // ─── Field Rows ──────────────────────────────────────────────────────────────
 
@@ -67,11 +72,17 @@ function LogoUploadRow({ label, description, value, onChange }: {
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 500_000) {
-      toast.error('Logo must be under 500KB');
+    const error = await validateImageFile(file, {
+      maxBytes: INLINE_LOGO_MAX_BYTES,
+      label: 'Logo',
+      sniff: true,
+    });
+    if (error) {
+      toast.error(error);
+      e.target.value = '';
       return;
     }
     const reader = new FileReader();
@@ -93,7 +104,7 @@ function LogoUploadRow({ label, description, value, onChange }: {
             <img src={value} alt="Logo" className="h-12 w-auto max-w-[160px] rounded border border-surface-200 dark:border-surface-700 object-contain" />
             <button
               onClick={() => onChange('')}
-              className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"
+              className="btn-icon btn-xs absolute -right-1.5 -top-1.5 rounded-full bg-red-500 text-white hover:bg-red-600"
             >
               <X className="h-3 w-3" />
             </button>
@@ -101,13 +112,13 @@ function LogoUploadRow({ label, description, value, onChange }: {
         ) : (
           <button
             onClick={() => inputRef.current?.click()}
-            className="inline-flex items-center gap-2 rounded-lg border border-dashed border-surface-300 px-4 py-2 text-sm text-surface-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500"
+            className="btn btn-secondary btn-md border-dashed border-surface-300 text-surface-500 hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500"
           >
             <Upload className="h-4 w-4" />
             Upload Logo
           </button>
         )}
-        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <input ref={inputRef} type="file" accept={IMAGE_UPLOAD_ACCEPT} className="hidden" onChange={handleFile} />
       </div>
     </div>
   );
@@ -122,6 +133,45 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 // ─── Main Component ──────────────────────────────────────────────────────────
+
+const RECEIPT_OWNED_KEYS = [
+  'receipt_logo',
+  'receipt_title',
+  'receipt_header',
+  'receipt_default_size',
+  'receipt_terms',
+  'receipt_footer',
+  'label_width_mm',
+  'label_height_mm',
+  'receipt_thermal_terms',
+  'receipt_thermal_footer',
+  'receipt_cfg_pre_conditions_page',
+  'receipt_cfg_pre_conditions_thermal',
+  'receipt_cfg_post_conditions_page',
+  'receipt_cfg_signature_page',
+  'receipt_cfg_signature_thermal',
+  'receipt_cfg_po_so_page',
+  'receipt_cfg_po_so_thermal',
+  'receipt_cfg_security_code_page',
+  'receipt_cfg_security_code_thermal',
+  'receipt_cfg_tax',
+  'receipt_cfg_discount_thermal',
+  'receipt_cfg_line_price_incl_tax_thermal',
+  'receipt_cfg_transaction_id_page',
+  'receipt_cfg_transaction_id_thermal',
+  'receipt_cfg_due_date',
+  'receipt_cfg_employee_name',
+  'receipt_cfg_description_page',
+  'receipt_cfg_description_thermal',
+  'receipt_cfg_parts_page',
+  'receipt_cfg_parts_thermal',
+  'receipt_cfg_part_sku',
+  'receipt_cfg_network_thermal',
+  'receipt_cfg_service_desc_page',
+  'receipt_cfg_service_desc_thermal',
+  'receipt_cfg_device_location',
+  'receipt_cfg_barcode',
+] as const;
 
 // ─── Toggle Row ─────────────────────────────────────────────────────────────
 
@@ -237,9 +287,9 @@ function ReceiptTemplatesEditor() {
                   onClick={() => saveMutation.mutate({ id: tpl.id, header_text: header, footer_text: footer })}
                   disabled={!isDirty || saveMutation.isPending}
                   className={cn(
-                    'inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                    'btn btn-xs',
                     isDirty
-                      ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                      ? 'btn-primary'
                       : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
                   )}
                 >
@@ -323,7 +373,7 @@ export function ReceiptSettings() {
             <button
               onClick={() => setActiveTab('content')}
               className={cn(
-                'px-3 py-1 text-sm font-medium transition-colors',
+                'btn btn-xs rounded-none',
                 activeTab === 'content'
                   ? 'bg-primary-600 text-primary-950'
                   : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
@@ -334,7 +384,7 @@ export function ReceiptSettings() {
             <button
               onClick={() => setActiveTab('configuration')}
               className={cn(
-                'px-3 py-1 text-sm font-medium transition-colors',
+                'btn btn-xs rounded-none',
                 activeTab === 'configuration'
                   ? 'bg-primary-600 text-primary-950'
                   : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
@@ -345,12 +395,18 @@ export function ReceiptSettings() {
           </div>
         </div>
         <button
-          onClick={() => saveMutation.mutate(config)}
+          onClick={() => {
+            const patch: Record<string, string> = {};
+            for (const k of RECEIPT_OWNED_KEYS) {
+              if (k in config) patch[k] = config[k];
+            }
+            saveMutation.mutate(patch);
+          }}
           disabled={!dirty || saveMutation.isPending}
           className={cn(
-            'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            'btn btn-md',
             dirty
-              ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+              ? 'btn-primary'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >
@@ -393,7 +449,7 @@ export function ReceiptSettings() {
         <SectionHeader title="General" />
         <LogoUploadRow
           label="Receipt Logo"
-          description="Logo displayed at the top of receipts (max 500KB)"
+          description="JPEG, PNG, WebP, or GIF. Max 500 KB."
           value={val('receipt_logo')}
           onChange={(v) => set('receipt_logo', v)}
         />
@@ -605,8 +661,8 @@ export function ReceiptSettings() {
         <ToggleRow label="Display part SKU" desc="Print SKU codes next to parts on receipts" configKey="receipt_cfg_part_sku" val={val} set={set} />
         <ToggleRow label="Display service network on thermal receipt" desc="Show device network/carrier on thermal receipts" configKey="receipt_cfg_network_thermal" val={val} set={set} />
         <ToggleRow label="Display repair service description on page receipt" desc="Show repair service descriptions on page receipts" configKey="receipt_cfg_service_desc_page" val={val} set={set} />
-        <ToggleRow label="Display repair service description on thermal receipt" desc="Show repair service descriptions on thermal receipts" configKey="receipt_cfg_service_desc_thermal" val={val} set={set} comingSoon />
-        <ToggleRow label="Display item physical location" desc="Show device storage location on receipts" configKey="receipt_cfg_device_location" val={val} set={set} comingSoon />
+        <ToggleRow label="Display repair service description on thermal receipt" desc="Show repair service descriptions on thermal receipts" configKey="receipt_cfg_service_desc_thermal" val={val} set={set} />
+        <ToggleRow label="Display item physical location" desc="Show device storage location on receipts" configKey="receipt_cfg_device_location" val={val} set={set} />
         <ToggleRow label="Display barcode" desc="Print barcode on receipts for scanning" configKey="receipt_cfg_barcode" val={val} set={set} />
       </div>}
     </div>

@@ -1,10 +1,12 @@
-import { Component, StrictMode, useEffect } from 'react';
-import type { ReactNode, ErrorInfo } from 'react';
+import { StrictMode, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster, toast, useToasterStore } from 'react-hot-toast';
 import App from './App';
+import { ErrorBoundary, isChunkLoadError, tryReloadForChunkError } from './components/shared/PageErrorBoundary';
+import { AUTH_CLEAR_EVENT, AUTH_READY_EVENT, useAuthStore } from './stores/authStore';
+import { setupReactQueryIndexedDbPersistence } from './queryPersistence';
 import './styles/globals.css';
 
 // D4-10: dismiss oldest visible toast when count exceeds `max`. Prevents
@@ -60,70 +62,6 @@ function ToastAvalancheGuard({ max }: { max: number }): null {
     }
   }, [toasts, max]);
   return null;
-}
-
-// ─── Global Error Boundary ────────────────────────────────────────
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, error: null };
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    // eslint-disable-next-line no-console
-    console.error('Uncaught render error:', error, info.componentStack);
-    // WEB-FE-011 (Fixer-OOO 2026-04-25): forward to the server crash sink
-    // so this isn't a console-only signal. Best-effort; a missing endpoint
-    // or offline tab silently degrades back to the previous behaviour.
-    try {
-      const reporter = (globalThis as {
-        __bizarreReportCrash?: (p: {
-          message: string;
-          stack?: string;
-          componentStack?: string;
-        }) => void;
-      }).__bizarreReportCrash;
-      reporter?.({
-        message: error?.message ?? 'unknown render error',
-        stack: error?.stack,
-        componentStack: info?.componentStack ?? undefined,
-      });
-    } catch { /* never throw out of componentDidCatch */ }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      // WEB-FE-023: Tailwind classes (with `dark:` variants) so the root
-      // boundary at least respects prefers-color-scheme. Tailwind has run
-      // before React mounts, so utility classes are available even when
-      // every page chunk failed to render.
-      return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-surface-50 p-8 text-center font-sans dark:bg-surface-950">
-          <div className="mb-4 text-5xl" aria-hidden="true">&#9888;</div>
-          <h1 className="mb-2 text-2xl font-bold text-surface-900 dark:text-surface-50">
-            Something went wrong
-          </h1>
-          <p className="mb-6 max-w-lg text-surface-500 dark:text-surface-400">
-            An unexpected error occurred. Please reload the page to try again.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
-          >
-            Reload Page
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
 }
 
 // ─── App Bootstrap ────────────────────────────────────────────────
@@ -192,11 +130,18 @@ const queryClient = new QueryClient({
   },
 });
 
+const queryPersistence = setupReactQueryIndexedDbPersistence(
+  queryClient,
+  () => useAuthStore.getState().user,
+  AUTH_READY_EVENT,
+);
+
 // @audit-fixed: clear React Query cache on logout / forced session-clear so the
 // next sign-in does not display the previous user's tickets, customers, etc.
 // authStore dispatches this event in `logout()` and on the LOGOUT_REQUIRED path.
 if (typeof window !== 'undefined') {
-  window.addEventListener('bizarre-crm:auth-cleared', () => {
+  window.addEventListener(AUTH_CLEAR_EVENT, () => {
+    queryPersistence.clearPersistedCache();
     queryClient.clear();
     // WEB-FJ-006 / FIXED-by-Fixer-JJJ 2026-04-25 — wipe PII residue from
     // the previous session: `recent_views` (Sidebar) and `crm_recent_searches`
@@ -252,67 +197,6 @@ if (typeof window !== 'undefined') {
   // must stay in sync with PageErrorBoundary — a prior (url, ts) pair
   // within 30 s blocks a second retry so genuine 404s fall through to
   // the manual card instead of looping (SCAN-1184).
-  const CHUNK_RELOAD_SENTINEL = 'bizarre:chunk-reload-attempted';
-  // WEB-FI-009 (Fixer-SSS 2026-04-25): pair the message regex with a name
-  // gate so a user-authored error that happens to contain phrases like
-  // "Importing a module script failed" (e.g. a string baked into a server
-  // response or an i18n catalog entry) cannot trigger an infinite reload
-  // loop limited only by the 30s sentinel. Genuine dynamic-import failures
-  // surface either as `name === 'TypeError'` (Chrome/Safari/Firefox path
-  // for Failed to fetch dynamically imported module) or as `name ===
-  // 'ChunkLoadError'` (legacy bundler / explicit class). Anything else
-  // that merely shares a substring is treated as user error and bubbles
-  // to the boundary card instead of nuking the page.
-  const looksLikeChunkMessage = (msg: string): boolean =>
-    /Failed to fetch dynamically imported module/i.test(msg) ||
-    /error loading dynamically imported module/i.test(msg) ||
-    /Importing a module script failed/i.test(msg) ||
-    /ChunkLoadError/i.test(msg);
-  const isChunkError = (name: string, msg: string): boolean => {
-    if (name === 'ChunkLoadError') return true;
-    if (name === 'TypeError' && looksLikeChunkMessage(msg)) return true;
-    return false;
-  };
-  const handleChunkReload = (): void => {
-    try {
-      const raw = sessionStorage.getItem(CHUNK_RELOAD_SENTINEL);
-      const now = Date.now();
-      const url = window.location.href;
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as { ts?: number; url?: string };
-          if (
-            parsed &&
-            typeof parsed.ts === 'number' &&
-            parsed.url === url &&
-            now - parsed.ts < 30_000
-          ) {
-            return; // already tried for this URL within the grace window
-          }
-        } catch (err) {
-          // WEB-FV-010 (Fixer-C4 2026-04-25): surface migration-path hits so we
-          // can detect when the sentinel payload format changed under us. The
-          // catch still falls through and overwrites the slot.
-          // eslint-disable-next-line no-console
-          console.warn('[main] chunk-reload sentinel payload corrupt — overwriting', err);
-        }
-      }
-      sessionStorage.setItem(
-        CHUNK_RELOAD_SENTINEL,
-        JSON.stringify({ ts: now, url }),
-      );
-      // eslint-disable-next-line no-console
-      console.warn('[main] stale chunk detected outside React tree — auto-reloading once');
-      window.location.reload();
-    } catch (err) {
-      // WEB-FV-010 (Fixer-C4 2026-04-25): sessionStorage unavailable (private
-      // mode, quota, blocked third-party storage). Log so ops can see the
-      // recovery branch fire instead of silently leaving the user on the
-      // manual boundary card.
-      // eslint-disable-next-line no-console
-      console.warn('[main] sessionStorage unavailable — chunk-reload sentinel skipped', err);
-    }
-  };
   // WEB-FE-009 (Fixer-426B 2026-04-26): bfcache restore guard.
   // Safari/Firefox may restore a tab from the back/forward cache (`pageshow`
   // with `event.persisted === true`). The in-memory React Query cache (the
@@ -320,12 +204,12 @@ if (typeof window !== 'undefined') {
   // hasn't elapsed the page re-renders with stale data from the *previous*
   // user session — no refetch fires and the wrong user's data is briefly
   // visible. Fix: on bfcache restore, force-invalidate all active queries so
-  // each of them revalidates before paint. If auth has expired (token gone),
+  // each of them revalidates before paint. If the cookie-session hint is gone,
   // also clear the cache + hard-redirect to /login.
   window.addEventListener('pageshow', (e: PageTransitionEvent) => {
     if (!e.persisted) return; // normal forward nav — nothing to do
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
+    const hasSessionHint = /(?:^|;\s*)csrf_token=/.test(document.cookie);
+    if (!hasSessionHint) {
       // Session gone while tab was in bfcache — wipe and redirect.
       queryClient.clear();
       if (!window.location.pathname.startsWith('/login')) {
@@ -339,11 +223,8 @@ if (typeof window !== 'undefined') {
   });
 
   window.addEventListener('unhandledrejection', (e) => {
-    const reason = e.reason as { message?: string; name?: string } | undefined;
-    const msg = reason?.message ?? String(reason ?? '');
-    const name = reason?.name ?? '';
-    if (isChunkError(name, msg)) {
-      handleChunkReload();
+    if (isChunkLoadError(e.reason)) {
+      tryReloadForChunkError('[main]');
     }
   });
   window.addEventListener('error', (e) => {
@@ -352,16 +233,15 @@ if (typeof window !== 'undefined') {
     // path. If `e.error` is missing (some browsers null it for cross-origin
     // script errors) we conservatively skip the reload rather than reload
     // on a substring-only match.
-    const errName = (e.error as Error | undefined)?.name ?? '';
-    if (errName && isChunkError(errName, e.message || '')) {
-      handleChunkReload();
+    if (isChunkLoadError(e.error)) {
+      tryReloadForChunkError('[main]');
     }
   });
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
+    <ErrorBoundary variant="root" boundaryName="RootErrorBoundary" autoReloadChunks>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <App />

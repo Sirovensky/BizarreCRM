@@ -338,19 +338,19 @@ export function TrackingPage() {
             <button
               type="button"
               onClick={goBack}
-              className="text-sm text-primary-600 hover:text-primary-800 flex items-center gap-1 mb-2"
+              className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 flex items-center gap-1 mb-2"
             >
               <ArrowLeft className="w-4 h-4" /> Search again
             </button>
 
             {/* Status card */}
-            <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden">
-              <div className="px-5 py-5 border-b border-slate-100 dark:border-surface-800">
+            <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
+              <div className="px-5 py-5 border-b border-surface-100 dark:border-surface-800">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h2 className="text-xl font-bold font-mono text-slate-800 dark:text-surface-100">{portalData.order_id}</h2>
+                    <h2 className="text-xl font-bold font-mono text-surface-900 dark:text-surface-100">{portalData.order_id}</h2>
                     {portalData.customer_first_name && (
-                      <p className="text-sm text-slate-500 dark:text-surface-400 mt-0.5">Hello, {portalData.customer_first_name}</p>
+                      <p className="text-sm text-surface-500 dark:text-surface-400 mt-0.5">Hello, {portalData.customer_first_name}</p>
                     )}
                   </div>
                   <span
@@ -364,14 +364,14 @@ export function TrackingPage() {
 
               {/* Progress bar */}
               {portalData.status.name.toLowerCase() !== 'cancelled' && (
-                <div className="px-5 py-5 border-b border-slate-100 dark:border-surface-800 bg-slate-50/50 dark:bg-surface-800/40">
+                <div className="px-5 py-5 border-b border-surface-100 dark:border-surface-800 bg-surface-50/70 dark:bg-surface-800/40">
                   <ProgressIndicator step={getProgress(portalData.status.name)} />
                 </div>
               )}
 
               {/* Estimated completion */}
               {portalData.due_on && !portalData.status.is_closed && (
-                <div className="px-5 py-3 border-b border-slate-100 dark:border-surface-800 bg-primary-50/50 dark:bg-primary-900/20">
+                <div className="px-5 py-3 border-b border-surface-100 dark:border-surface-800 bg-primary-50/50 dark:bg-primary-900/20">
                   <p className="text-sm text-primary-700 dark:text-primary-300 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     Estimated completion: <strong>{formatDateTime(portalData.due_on)}</strong>
@@ -381,7 +381,7 @@ export function TrackingPage() {
             </div>
 
             {/* Tab navigation */}
-            <div className="flex bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden">
+            <div className="flex bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
               {[
                 { key: 'status' as const, label: 'Details', icon: Search },
                 { key: 'timeline' as const, label: t('timeline.title'), icon: Clock },
@@ -395,7 +395,7 @@ export function TrackingPage() {
                   className={`flex-1 py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 transition-colors border-b-2 ${
                     activeTab === tab.key
                       ? 'border-primary-600 text-primary-600 bg-primary-50/50 dark:text-primary-400 dark:bg-primary-900/20'
-                      : 'border-transparent text-slate-500 dark:text-surface-400 hover:text-slate-700 dark:hover:text-surface-200 hover:bg-slate-50 dark:hover:bg-surface-800/50'
+                      : 'border-transparent text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-800/50'
                   }`}
                 >
                   <tab.icon className="w-4 h-4" />
@@ -405,7 +405,7 @@ export function TrackingPage() {
             </div>
 
             {/* Tab content */}
-            <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden">
+            <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 overflow-hidden">
 
               {/* Details tab */}
               {activeTab === 'status' && (
@@ -413,19 +413,19 @@ export function TrackingPage() {
                   {/* Devices */}
                   {portalData.devices.length > 0 && (
                     <div>
-                      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Device(s) Being Repaired</h3>
+                      <h3 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3">Device(s) Being Repaired</h3>
                       <div className="space-y-3">
                         {portalData.devices.map((d, i) => (
-                          <div key={i} className="bg-slate-50 rounded-lg p-4">
+                          <div key={i} className="bg-surface-50 dark:bg-surface-800/60 border border-surface-100 dark:border-surface-700 rounded-lg p-4">
                             <div className="flex items-center justify-between">
-                              <span className="font-medium text-slate-800">{d.name || 'Device'}</span>
+                              <span className="font-medium text-surface-900 dark:text-surface-100">{d.name || 'Device'}</span>
                               {d.status && (
-                                <span className="text-xs px-2 py-1 bg-slate-200 text-slate-600 rounded-full">{d.status}</span>
+                                <span className="text-xs px-2 py-1 bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-200 rounded-full">{d.status}</span>
                               )}
                             </div>
-                            {d.type && <p className="text-xs text-slate-500 mt-1">Type: {d.type}</p>}
-                            {d.due_on && <p className="text-xs text-slate-500 mt-1">Due: {formatDateTime(d.due_on)}</p>}
-                            {d.notes && <p className="text-sm text-slate-600 mt-2">{d.notes}</p>}
+                            {d.type && <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">Type: {d.type}</p>}
+                            {d.due_on && <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">Due: {formatDateTime(d.due_on)}</p>}
+                            {d.notes && <p className="text-sm text-surface-600 dark:text-surface-300 mt-2">{d.notes}</p>}
                           </div>
                         ))}
                       </div>
@@ -435,16 +435,16 @@ export function TrackingPage() {
                   {/* Dates */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Checked In</h3>
-                      <p className="text-sm text-slate-700 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <h3 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-1">Checked In</h3>
+                      <p className="text-sm text-surface-700 dark:text-surface-300 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-surface-400 dark:text-surface-500" />
                         {formatDateTime(portalData.created_at)}
                       </p>
                     </div>
                     <div>
-                      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Last Updated</h3>
-                      <p className="text-sm text-slate-700 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                      <h3 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-1">Last Updated</h3>
+                      <p className="text-sm text-surface-700 dark:text-surface-300 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-surface-400 dark:text-surface-500" />
                         {formatDateTime(portalData.updated_at)}
                       </p>
                     </div>
@@ -455,13 +455,13 @@ export function TrackingPage() {
               {/* Timeline tab */}
               {activeTab === 'timeline' && (
                 <div className="p-5">
-                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">{t('timeline.title')}</h3>
+                  <h3 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">{t('timeline.title')}</h3>
                   {portalData.history.length === 0 ? (
-                    <p className="text-sm text-slate-400 py-4 text-center">{t('timeline.empty')}</p>
+                    <p className="text-sm text-surface-500 dark:text-surface-400 py-4 text-center">{t('timeline.empty')}</p>
                   ) : (
                     <div className="relative">
                       {/* Vertical line */}
-                      <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-slate-200" />
+                      <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-surface-200 dark:bg-surface-700" />
                       <ul className="space-y-4">
                         {portalData.history.map((h, i) => (
                           <li key={i} className="relative pl-9">
@@ -469,13 +469,13 @@ export function TrackingPage() {
                             <div className={`absolute left-1.5 top-1 w-3 h-3 rounded-full border-2 ${
                               i === portalData.history.length - 1
                                 ? 'bg-primary-500 border-primary-500'
-                                : 'bg-white border-slate-300'
+                                : 'bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600'
                             }`} />
                             <div>
-                              <p className="text-sm text-slate-800 font-medium">
+                              <p className="text-sm text-surface-900 dark:text-surface-100 font-medium">
                                 {formatAction(h)}
                               </p>
-                              <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(h.created_at)}</p>
+                              <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{formatDateTime(h.created_at)}</p>
                             </div>
                           </li>
                         ))}
@@ -496,27 +496,27 @@ export function TrackingPage() {
                   {(() => { const inv = fullInvoice ?? portalData.invoice; return inv ? (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-700">Invoice {inv.order_id}</h3>
+                        <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-200">Invoice {inv.order_id}</h3>
                         <InvoiceStatusBadge status={inv.status} />
                       </div>
 
                       {/* Line items (if we loaded the full invoice) */}
                       {inv.line_items && inv.line_items.length > 0 && (
-                        <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                        <div className="border border-surface-200 dark:border-surface-700 rounded-lg overflow-x-auto">
                           <table className="w-full text-sm">
-                            <thead className="bg-slate-50">
+                            <thead className="bg-surface-50 dark:bg-surface-800/60">
                               <tr>
-                                <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500">Item</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Qty</th>
-                                <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Total</th>
+                                <th className="text-left px-3 py-2 text-xs font-semibold text-surface-500 dark:text-surface-400">Item</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold text-surface-500 dark:text-surface-400">Qty</th>
+                                <th className="text-right px-3 py-2 text-xs font-semibold text-surface-500 dark:text-surface-400">Total</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
                               {inv.line_items.map((li, i) => (
                                 <tr key={i}>
-                                  <td className="px-3 py-2 text-slate-700">{li.description || 'Service'}</td>
-                                  <td className="px-3 py-2 text-right text-slate-600">{li.quantity}</td>
-                                  <td className="px-3 py-2 text-right text-slate-700">${li.total.toFixed(2)}</td>
+                                  <td className="px-3 py-2 text-surface-700 dark:text-surface-300">{li.description || 'Service'}</td>
+                                  <td className="px-3 py-2 text-right text-surface-600 dark:text-surface-400">{li.quantity}</td>
+                                  <td className="px-3 py-2 text-right text-surface-700 dark:text-surface-300">${li.total.toFixed(2)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -525,44 +525,44 @@ export function TrackingPage() {
                       )}
 
                       {/* Totals */}
-                      <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+                      <div className="bg-surface-50 dark:bg-surface-800/60 border border-surface-100 dark:border-surface-700 rounded-lg p-4 space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-slate-500">Subtotal</span>
-                          <span className="text-slate-700">${inv.subtotal.toFixed(2)}</span>
+                          <span className="text-surface-500 dark:text-surface-400">Subtotal</span>
+                          <span className="text-surface-700 dark:text-surface-300">${inv.subtotal.toFixed(2)}</span>
                         </div>
                         {inv.discount > 0 && (
                           <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Discount</span>
-                            <span className="text-green-600">-${inv.discount.toFixed(2)}</span>
+                            <span className="text-surface-500 dark:text-surface-400">Discount</span>
+                            <span className="text-green-600 dark:text-green-300">-${inv.discount.toFixed(2)}</span>
                           </div>
                         )}
                         <div className="flex justify-between text-sm">
-                          <span className="text-slate-500">Tax</span>
-                          <span className="text-slate-700">${inv.tax.toFixed(2)}</span>
+                          <span className="text-surface-500 dark:text-surface-400">Tax</span>
+                          <span className="text-surface-700 dark:text-surface-300">${inv.tax.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-sm font-bold border-t border-slate-200 pt-2">
-                          <span className="text-slate-800">Total</span>
-                          <span className="text-slate-800">${inv.total.toFixed(2)}</span>
+                        <div className="flex justify-between text-sm font-bold border-t border-surface-200 dark:border-surface-700 pt-2">
+                          <span className="text-surface-900 dark:text-surface-100">Total</span>
+                          <span className="text-surface-900 dark:text-surface-100">${inv.total.toFixed(2)}</span>
                         </div>
                         {inv.amount_paid > 0 && (
                           <div className="flex justify-between text-sm">
-                            <span className="text-slate-500">Paid</span>
-                            <span className="text-green-600">${inv.amount_paid.toFixed(2)}</span>
+                            <span className="text-surface-500 dark:text-surface-400">Paid</span>
+                            <span className="text-green-600 dark:text-green-300">${inv.amount_paid.toFixed(2)}</span>
                           </div>
                         )}
                         {inv.amount_due > 0 && (
                           <div className="flex justify-between text-sm font-semibold">
-                            <span className="text-red-600">Amount Due</span>
-                            <span className="text-red-600">${inv.amount_due.toFixed(2)}</span>
+                            <span className="text-red-600 dark:text-red-300">Amount Due</span>
+                            <span className="text-red-600 dark:text-red-300">${inv.amount_due.toFixed(2)}</span>
                           </div>
                         )}
                       </div>
                     </div>
                   ) : (
                     <div className="py-8 text-center">
-                      <DollarSign className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                      <p className="text-sm text-slate-400">No invoice has been generated for this repair yet.</p>
-                      <p className="text-xs text-slate-400 mt-1">An invoice will appear here once your repair is complete.</p>
+                      <DollarSign className="w-10 h-10 text-surface-300 dark:text-surface-600 mx-auto mb-3" />
+                      <p className="text-sm text-surface-500 dark:text-surface-400">No invoice has been generated for this repair yet.</p>
+                      <p className="text-xs text-surface-500 dark:text-surface-500 mt-1">An invoice will appear here once your repair is complete.</p>
                     </div>
                   ); })()}
                 </div>
@@ -571,19 +571,19 @@ export function TrackingPage() {
               {/* Message tab */}
               {activeTab === 'message' && (
                 <div className="p-5 space-y-4">
-                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Send Us a Message</h3>
-                  <p className="text-sm text-slate-500">
+                  <h3 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider">Send Us a Message</h3>
+                  <p className="text-sm text-surface-500 dark:text-surface-400">
                     Have a question about your repair? Send us a message and we will get back to you.
                   </p>
 
                   {/* Previous messages */}
                   {portalData.messages.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-4">Your Messages</h4>
+                      <h4 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mt-4">Your Messages</h4>
                       {portalData.messages.map(m => (
-                        <div key={m.id} className="bg-primary-50 rounded-lg p-3">
-                          <p className="text-sm text-slate-700">{m.content}</p>
-                          <p className="text-xs text-slate-400 mt-1">{formatDateTime(m.created_at)}</p>
+                        <div key={m.id} className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/40 rounded-lg p-3">
+                          <p className="text-sm text-surface-700 dark:text-surface-200">{m.content}</p>
+                          <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">{formatDateTime(m.created_at)}</p>
                         </div>
                       ))}
                     </div>
@@ -591,8 +591,8 @@ export function TrackingPage() {
 
                   {/* Message form */}
                   {portalData.status.is_closed ? (
-                    <div className="bg-slate-50 rounded-lg p-4 text-center">
-                      <p className="text-sm text-slate-500">This ticket is closed. Please call us if you need further assistance.</p>
+                    <div className="bg-surface-50 dark:bg-surface-800/60 border border-surface-100 dark:border-surface-700 rounded-lg p-4 text-center">
+                      <p className="text-sm text-surface-500 dark:text-surface-400">This ticket is closed. Please call us if you need further assistance.</p>
                     </div>
                   ) : (
                     <>
@@ -603,10 +603,10 @@ export function TrackingPage() {
                         placeholder="Type your message here..."
                         maxLength={2000}
                         rows={4}
-                        className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-transparent resize-none"
+                        className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-4 py-3 text-sm text-surface-900 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-surface-900 focus-visible:border-transparent resize-none"
                       />
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-400">{messageText.length}/2000</span>
+                        <span className="text-xs text-surface-500 dark:text-surface-400">{messageText.length}/2000</span>
                         <button
                           type="button"
                           onClick={sendMessage}
@@ -626,7 +626,7 @@ export function TrackingPage() {
 
                   {/* Success toast */}
                   {messageSent && (
-                    <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg p-3 flex items-center gap-2">
+                    <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 rounded-lg p-3 flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                       <p className="text-sm">Message sent! We will respond as soon as possible.</p>
                     </div>
@@ -637,16 +637,16 @@ export function TrackingPage() {
 
             {/* Call us card */}
             {storePhone && (
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Need Help?</h3>
+              <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-surface-200 dark:border-surface-700 p-5">
+                <h3 className="text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3">Need Help?</h3>
                 <a
                   href={`tel:${storePhone.replace(/\D/g, '')}`}
-                  className="flex items-center gap-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg px-4 py-3 transition-colors"
+                  className="flex items-center gap-3 bg-green-50 dark:bg-green-900/30 hover:bg-green-100 dark:hover:bg-green-900/40 border border-green-200 dark:border-green-800 rounded-lg px-4 py-3 transition-colors"
                 >
-                  <PhoneCall className="w-5 h-5 text-green-600" />
+                  <PhoneCall className="w-5 h-5 text-green-600 dark:text-green-300" />
                   <div>
-                    <p className="text-sm font-semibold text-green-800">Call Us</p>
-                    <p className="text-sm text-green-600">{storePhone}</p>
+                    <p className="text-sm font-semibold text-green-800 dark:text-green-200">Call Us</p>
+                    <p className="text-sm text-green-600 dark:text-green-300">{storePhone}</p>
                   </div>
                 </a>
               </div>
@@ -794,10 +794,10 @@ function InvoiceStatusBadge({ status }: { status: string }) {
     paid: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200',
     partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
     unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200',
-    draft: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    voided: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500',
+    draft: 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300',
+    voided: 'bg-surface-100 text-surface-400 dark:bg-surface-800 dark:text-surface-500',
   };
-  const cls = colors[status.toLowerCase()] || 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+  const cls = colors[status.toLowerCase()] || 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300';
   return (
     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cls}`}>
       {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -817,7 +817,7 @@ function ProgressIndicator({ step }: { step: number }) {
             {i > 0 && (
               <div
                 className={`absolute top-3 right-1/2 w-full h-0.5 -translate-y-1/2 ${
-                  i <= step ? 'bg-primary-500' : 'bg-slate-200'
+                  i <= step ? 'bg-primary-500' : 'bg-surface-200 dark:bg-surface-700'
                 }`}
                 style={{ zIndex: 0 }}
               />
@@ -825,15 +825,15 @@ function ProgressIndicator({ step }: { step: number }) {
             <div
               className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
                 isCurrent
-                  ? 'bg-primary-600 text-primary-950 ring-4 ring-primary-100'
+                  ? 'bg-primary-600 text-primary-950 ring-4 ring-primary-100 dark:ring-primary-900/40'
                   : isActive
                   ? 'bg-primary-500 text-primary-950'
-                  : 'bg-slate-200 text-slate-400'
+                  : 'bg-surface-200 dark:bg-surface-700 text-surface-500 dark:text-surface-400'
               }`}
             >
               {isActive ? '\u2713' : i + 1}
             </div>
-            <span className={`mt-2 text-xs font-medium ${isActive ? 'text-primary-600' : 'text-slate-400'}`}>
+            <span className={`mt-2 text-xs font-medium ${isActive ? 'text-primary-600 dark:text-primary-400' : 'text-surface-500 dark:text-surface-400'}`}>
               {label}
             </span>
           </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Play,
   Square,
@@ -12,18 +13,22 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
-import { getAPI } from '@/api/bridge';
-import type { ServiceStatus, WatchdogEvent } from '@/api/bridge';
+import { getAPI, type ApiResponse } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatUptime } from '@/utils/format';
 import { useServerStore } from '@/stores/serverStore';
+import { managementQueryKeys } from '@/hooks/managementQueryKeys';
+import { useWatchdogEventsQuery } from '@/hooks/useManagementQueries';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 
+const STAT_CARD_CLASS = 'relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700';
+
 export function ServerControlPage() {
-  const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
+  const queryClient = useQueryClient();
+  const serviceStatus = useServerStore((s) => s.serviceStatus);
   const [loading, setLoading] = useState<string | null>(null);
   const [autoStart, setAutoStart] = useState<boolean | null>(null);
   const [rateLimitBypass, setRateLimitBypass] = useState(false);
@@ -37,95 +42,43 @@ export function ServerControlPage() {
   // before the second dialog could open.
   const [killAllStep, setKillAllStep] = useState<1 | 2 | null>(null);
 
-  // Watchdog events emitted by packages/server/scripts/watchdog.cjs.
-  const [watchdogEvents, setWatchdogEvents] = useState<WatchdogEvent[]>([]);
+  const { data: watchdogEvents = [] } = useWatchdogEventsQuery();
   const [watchdogClearing, setWatchdogClearing] = useState(false);
 
   const serverUptime = useServerStore((s) => s.stats?.uptime);
 
-  const refreshStatus = useCallback(async () => {
-    try {
-      const status = await getAPI().service.getStatus();
-      setServiceStatus(status);
-      // Sync auto-start toggle from service status (only on first load)
-      if (autoStart === null && status.startType !== 'unknown') {
-        setAutoStart(status.startType === 'auto');
-      }
-    } catch {
-      setServiceStatus(null);
+  useEffect(() => {
+    if (autoStart === null && serviceStatus?.startType && serviceStatus.startType !== 'unknown') {
+      setAutoStart(serviceStatus.startType === 'auto');
     }
-  }, [autoStart]);
-
-  // Watchdog events poll. Cheap (small JSONL read), runs every 5s while the
-  // tab is visible. We do NOT toast on new events here — the dedicated
-  // Watchdog Status card in the JSX surfaces state. Toasting on every poll
-  // would spam the operator.
-  const refreshWatchdogEvents = useCallback(async () => {
-    try {
-      const res = await getAPI().management.getWatchdogEvents();
-      if (res.ok) {
-        setWatchdogEvents(res.events);
-      }
-    } catch (err) {
-      console.warn('[ServerControlPage] getWatchdogEvents failed', err);
-    }
-  }, []);
+  }, [autoStart, serviceStatus?.startType]);
 
   const acknowledgeWatchdog = useCallback(async () => {
     setWatchdogClearing(true);
     try {
       const res = await getAPI().management.clearWatchdogEvents();
-      if (res.ok) {
-        setWatchdogEvents([]);
-        toast.success('Watchdog state cleared');
-      } else {
+      if ('success' in res) {
+        const apiRes = res as ApiResponse;
+        if (handleApiResponse(apiRes)) return;
+        if (!apiRes.success) {
+          toast.error(formatApiError(apiRes));
+          return;
+        }
+      } else if (!res.ok) {
         toast.error(`Clear failed: ${res.message ?? res.code ?? 'unknown'}`);
+        return;
       }
+      queryClient.setQueryData(managementQueryKeys.watchdogEvents(), []);
+      await queryClient.invalidateQueries({ queryKey: managementQueryKeys.watchdogEvents() });
+      toast.success('Watchdog state cleared');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Clear failed');
     } finally {
       setWatchdogClearing(false);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
-    // MGT-026: Use 10 s base interval (was 3 s) to reduce background noise.
-    // Pause polling while the tab/window is hidden; resume when visible.
-    const POLL_INTERVAL = 10_000;
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-
-    const startPolling = () => {
-      if (intervalId !== null) return;
-      intervalId = setInterval(refreshStatus, POLL_INTERVAL);
-    };
-
-    const stopPolling = () => {
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        refreshStatus();
-        startPolling();
-      }
-    };
-
-    refreshStatus();
-    refreshWatchdogEvents();
-    if (!document.hidden) startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Watchdog events poll independently on a 5s interval. Same visibility
-    // pause behavior as the service-status poll but smaller cadence because
-    // the file read is cheap and operators expect quicker feedback when the
-    // watchdog reacts.
-    const watchdogIntervalId = setInterval(refreshWatchdogEvents, 5_000);
-
     // Load platform config
     getAPI().superAdmin.getConfig().then((res) => {
       // MGT-023: detect auth expiry on authenticated IPC calls.
@@ -140,13 +93,7 @@ export function ServerControlPage() {
       // rate-limit-bypass=false state.
       console.warn('[ServerControlPage] superAdmin.getConfig failed', err);
     });
-
-    return () => {
-      stopPolling();
-      clearInterval(watchdogIntervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [refreshStatus, refreshWatchdogEvents]);
+  }, []);
 
   // Derive the headline watchdog state from the events tail. A fatal /
   // cascade-abort / cert-expired event is sticky until acknowledged. A
@@ -230,7 +177,7 @@ export function ServerControlPage() {
         toast.success(`${name} successful`);
       }
       await new Promise((r) => setTimeout(r, 1500));
-      await refreshStatus();
+      await queryClient.invalidateQueries({ queryKey: managementQueryKeys.serverHealth() });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Action failed');
     } finally {
@@ -247,7 +194,7 @@ export function ServerControlPage() {
       <h1 className="text-base lg:text-lg font-bold text-surface-100">Server Control</h1>
 
       {/* Service Status Card */}
-      <div className="stat-card !p-4 lg:!p-6">
+      <div className={`${STAT_CARD_CLASS} !p-4 lg:!p-6`}>
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
@@ -290,7 +237,7 @@ export function ServerControlPage() {
                     toast.error(`Auto-start failed: ${res.message ?? res.output ?? 'unknown error'}`);
                   } else {
                     toast.success(newState ? 'Auto-start enabled' : 'Auto-start disabled');
-                    await refreshStatus();
+                    await queryClient.invalidateQueries({ queryKey: managementQueryKeys.serverHealth() });
                   }
                 } catch (err) {
                   setAutoStart(prev);
@@ -397,13 +344,13 @@ export function ServerControlPage() {
       {/* Watchdog Status Card.
           Surfaces state from packages/server/scripts/watchdog.cjs. The
           watchdog appends events to logs/watchdog-events.jsonl which the
-          dashboard polls every 5s via management:get-watchdog-events.
+          dashboard polls every 5s via the management/watchdog-events query.
           Color/icon mapping mirrors the four severity bands defined in
           watchdogState above. Fatal + cert-expired states require an
           explicit operator acknowledge (Clear button) before the card
           can return to healthy. */}
       <div className={
-        'stat-card !p-4 lg:!p-5 border-l-4 ' +
+        `${STAT_CARD_CLASS} !p-4 lg:!p-5 border-l-4 ` +
         (watchdogState.severity === 'fatal'
           ? 'border-red-500'
           : watchdogState.severity === 'warn'

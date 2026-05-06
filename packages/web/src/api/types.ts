@@ -1,3 +1,5 @@
+import type { InvoiceDetail, InvoiceLineItem } from '@/types/invoice';
+
 /** Typed request body interfaces for the API layer.
  *  Each interface matches the fields read by the corresponding backend route handler. */
 
@@ -34,7 +36,7 @@ export interface AddDeviceInput {
   network?: string;
   service_id?: number;
   price?: number;
-  warranty?: string;
+  warranty?: boolean;
   warranty_days?: number;
 }
 
@@ -43,12 +45,24 @@ export interface UpdateDeviceInput {
   device_type?: string;
   imei?: string;
   serial?: string;
+  security_code?: string | null;
   color?: string;
   network?: string;
+  status_id?: number | null;
+  assigned_to?: number | null;
   service_id?: number;
   price?: number;
+  line_discount?: number;
+  tax_class_id?: number | null;
+  tax_inclusive?: boolean;
   warranty?: string;
   warranty_days?: number;
+  due_on?: string | null;
+  collected_date?: string | null;
+  device_location?: string | null;
+  additional_notes?: string | null;
+  pre_conditions?: string[];
+  post_conditions?: string[];
 }
 
 // @audit-fixed: `POST /tickets/devices/:deviceId/parts` rejects requests
@@ -342,6 +356,38 @@ export interface GetTransactionsParams {
   to_date?: string;
 }
 
+export interface PosReturnLineInput {
+  line_item_id: number;
+  quantity: number;
+  reason: string;
+}
+
+export interface PosReturnInput {
+  invoice_id: number;
+  items: PosReturnLineInput[];
+}
+
+export interface PosReturnableLineItem extends InvoiceLineItem {
+  returned_quantity: number;
+  returnable_quantity: number;
+}
+
+export interface PosReturnableInvoice extends Omit<InvoiceDetail, 'line_items'> {
+  line_items: PosReturnableLineItem[];
+}
+
+export interface PosReturnResponse {
+  credit_note: InvoiceDetail;
+  items: Array<{
+    line_item_id: number;
+    description: string;
+    quantity: number;
+    amount: number;
+    reason: string;
+  }>;
+  total_credited: number;
+}
+
 // Matches the shape the server expects in `pos.routes.ts` for each line item
 // in a unified-POS checkout call. The server does its own validation of
 // quantity/price — this interface is the client-side contract only.
@@ -374,7 +420,13 @@ export interface CheckoutWithTicketInput {
   misc_items?: PosMiscLineItem[];
   payment_method?: string | null;
   payment_amount?: number;
-  payments?: Array<{ method: string; amount: number; reference?: string }>;
+  payments?: Array<{
+    method: string;
+    amount: number;
+    processor?: string;
+    reference?: string;
+    transaction_id?: string;
+  }>;
   tip?: number;
   discount?: number;
   notes?: string;
@@ -505,6 +557,8 @@ export interface CreateRepairPriceInput {
   labor_price?: number;
   base_price?: number;
   category?: string;
+  default_grade?: string;
+  is_active?: boolean | number;
   is_custom?: boolean | number;
   auto_margin_enabled?: boolean | number;
 }
@@ -515,6 +569,8 @@ export interface UpdateRepairPriceInput {
   labor_price?: number;
   base_price?: number;
   category?: string;
+  default_grade?: string;
+  is_active?: boolean | number;
   is_custom?: boolean | number;
   auto_margin_enabled?: boolean | number;
 }
@@ -530,7 +586,54 @@ export interface RepairPricingTierDescriptor {
   key: RepairPricingTier;
   label: string;
   maxAgeYears: number | null;
+  color?: string;
   device_count?: number;
+}
+
+export interface RepairPricingTiersResponse {
+  thresholds: RepairPricingTierThresholds;
+  tiers: RepairPricingTierDescriptor[];
+}
+
+export interface RepairPricingTierThresholdImpact {
+  previous: RepairPricingTierThresholds;
+  next: RepairPricingTierThresholds;
+  devices_crossing: number;
+  price_rows_repriceable: number;
+  custom_rows_preserved: number;
+  missing_tier_defaults: number;
+  estimated_labor_delta: number;
+  crossings: Array<{
+    device_model_id: number;
+    device_model_name: string;
+    release_year: number | null;
+    old_tier: RepairPricingTier;
+    new_tier: RepairPricingTier;
+    repriceable_rows: number;
+    custom_rows: number;
+    missing_defaults: number;
+    estimated_labor_delta: number;
+  }>;
+}
+
+export interface RepairPricingSetTiersResponse extends RepairPricingTiersResponse {
+  impact?: RepairPricingTierThresholdImpact;
+  rebase?: {
+    evaluated: number;
+    rebased: number;
+    skipped_custom: number;
+    crossing_count: number;
+  };
+}
+
+export interface RepairPricingMatrixService {
+  id: number;
+  name: string;
+  slug: string;
+  category: string | null;
+  description?: string | null;
+  is_active?: number;
+  sort_order?: number;
 }
 
 export interface RepairPricingMatrixQuery {
@@ -539,6 +642,7 @@ export interface RepairPricingMatrixQuery {
   repair_service_id?: number;
   q?: string;
   limit?: number;
+  hot?: boolean;
 }
 
 export interface RepairPricingMatrixPrice {
@@ -572,13 +676,59 @@ export interface RepairPricingMatrixDevice {
   tier: RepairPricingTier;
   tier_label: string;
   is_popular: number;
+  ticket_count_30d?: number;
   prices: RepairPricingMatrixPrice[];
 }
 
 export interface RepairPricingMatrixResponse {
   thresholds: RepairPricingTierThresholds;
-  services: unknown[];
+  services: RepairPricingMatrixService[];
   devices: RepairPricingMatrixDevice[];
+}
+
+export interface RepairPricingMatrixUpdateInput {
+  updates: Array<{
+    device_model_id: number;
+    repair_service_id: number;
+    labor_price: number;
+    updated_at?: string | null;
+    supplier_cost?: number | null;
+  }>;
+}
+
+export interface RepairPricingMatrixUpdateResponse {
+  inserted: number;
+  updated: number;
+  price_ids: number[];
+}
+
+export interface RepairPricingMatrixImportDiffRow {
+  device_id: number;
+  device_name: string;
+  release_year: number | null;
+  service_id: number;
+  service_name: string;
+  labor_price: number;
+  existing_price_id: number | null;
+  old_labor_price: number | null;
+  old_is_custom: number | null;
+  change: 'insert' | 'update' | 'unchanged';
+}
+
+export interface RepairPricingMatrixImportResponse {
+  summary: {
+    total: number;
+    insert: number;
+    update: number;
+    unchanged: number;
+  };
+  rows: RepairPricingMatrixImportDiffRow[];
+}
+
+export interface RepairPricingMatrixImportCommitResponse {
+  inserted: number;
+  updated: number;
+  unchanged: number;
 }
 
 export interface RepairPricingTierApplyInput {
@@ -608,12 +758,13 @@ export type RepairPricingSeedPricing = Partial<
 
 export interface RepairPricingSeedDefaultsInput {
   category?: string;
+  shop_type?: string;
   pricing?: RepairPricingSeedPricing;
   overwrite_custom?: boolean;
 }
 
 export interface RepairPricingSeedServiceResult {
-  service_key: RepairPricingSeedServiceKey;
+  service_key: string;
   repair_service_id: number | null;
   repair_service_slug: string | null;
   missing: boolean;
@@ -657,12 +808,66 @@ export interface RepairPricingAuditRow {
   changed_by_username?: string | null;
 }
 
+export interface RepairPricingTierCrossing {
+  device_model_id: number;
+  device_name: string;
+  repair_service_id: number;
+  service_name: string;
+  old_tier: RepairPricingTier | string | null;
+  new_tier: RepairPricingTier;
+  old_labor: number;
+  new_labor: number;
+}
+
+export interface RepairPricingRebaseSummary {
+  date: string;
+  device_count: number;
+  crossing_count: number;
+  crossings: RepairPricingTierCrossing[];
+  acked_at: string | null;
+}
+
+export interface RepairPricingMarginAlert {
+  id: number;
+  repair_price_id: number;
+  device_model_id: number;
+  repair_service_id: number;
+  tier_label: RepairPricingTier | string | null;
+  labor_price: number;
+  supplier_cost: number | null;
+  profit_estimate: number | null;
+  amber_threshold: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+  acked_at: string | null;
+  device_model_name?: string;
+  repair_service_name?: string;
+  days_active?: number;
+}
+
+export interface RepairPricingMarginAlertSummary {
+  total_active: number;
+  unacked: number;
+  critical: number;
+}
+
 export interface RepairPricingProfitRecomputeInput {
   price_ids?: number[];
   auto_margin?: boolean;
 }
 
-export type RepairPricingRoundingMode = 'none' | 'ending_99' | 'whole_dollar' | 'ending_98';
+export type RepairPricingRoundingMode =
+  | 'off'
+  | 'nearest_dollar'
+  | 'nearest_5'
+  | 'nearest_10'
+  | 'psychological_99'
+  | 'psychological_95'
+  | 'none'
+  | 'ending_99'
+  | 'whole_dollar'
+  | 'ending_98';
 export type RepairPricingAutoMarginPreset = 'high_traffic' | 'mid_traffic' | 'low_traffic' | 'custom' | 'value' | 'balanced' | 'premium';
 export type RepairPricingAutoMarginTargetType = 'percent' | 'fixed_amount';
 export type RepairPricingAutoMarginBasis = 'gross_margin' | 'markup';
@@ -716,6 +921,41 @@ export interface RepairPricingAutoMarginPreview {
   capped_labor_price: number | null;
   profit_estimate: number;
   margin_pct: number;
+}
+
+export interface RepairPricingAutoMarginRunResult {
+  evaluated: number;
+  adjusted: number;
+  skipped: number;
+  preset: RepairPricingAutoMarginPreset;
+  target_type: RepairPricingAutoMarginTargetType;
+  target_margin_pct: number;
+  target_profit_amount: number;
+  calculation_basis: RepairPricingAutoMarginBasis;
+  rounding_mode: RepairPricingRoundingMode;
+  cap_pct: number;
+}
+
+export interface RepairPricingProfitRecomputeResult {
+  recompute: {
+    processed: number;
+    updated: number;
+    stale: number;
+  };
+  auto_margin: RepairPricingAutoMarginRunResult | null;
+}
+
+export interface RepairPricingRevertResult {
+  price: {
+    id?: number;
+    labor_price?: number;
+    is_custom?: number;
+    tier_label?: RepairPricingTier | string | null;
+    [key: string]: unknown;
+  };
+  tier: RepairPricingTier;
+  tier_label: string;
+  default_source: 'stored_default' | 'peer_average' | 'current_price';
 }
 
 export interface AddGradeInput {

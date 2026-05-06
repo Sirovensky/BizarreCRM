@@ -32,6 +32,9 @@ import { DateRangePicker } from '@/components/shared/DateRangePicker';
 
 type Tab = 'sales' | 'tickets' | 'employees' | 'inventory' | 'tax' | 'insights'
   | 'warranty' | 'devices' | 'parts' | 'tech-hours' | 'stalled' | 'acquisition';
+type DateRangeState = { from?: string; to?: string; preset?: string };
+type SalesGroupBy = 'day' | 'week' | 'month';
+type InsightsSubTab = 'tickets' | 'sales';
 
 interface SalesData {
   rows: { period: string; invoices: number; revenue: number; unique_customers: number }[];
@@ -182,11 +185,113 @@ const TABS: ReportTabConfig[] = [
   { key: 'acquisition', label: 'Customers', icon: UserPlus, proFeature: 'advancedReports' },
 ];
 
+const REPORT_TAB_KEYS = TABS.map((tab) => tab.key);
+const DATE_RANGE_PRESETS = ['today', 'yesterday', 'last_7', 'last_30', 'this_month', 'last_month', 'custom'] as const;
+const DEFAULT_REPORT_DATE_RANGE: DateRangeState = { preset: 'last_30' };
+const REPORT_CHART_AXIS_TICK_FILL = 'var(--reports-chart-axis-tick, rgb(var(--surface-500)))';
+
+function isValidTabParam(value: string | null): value is Tab {
+  return !!value && REPORT_TAB_KEYS.includes(value as Tab);
+}
+
+function isValidYmd(value: string | null | undefined): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+}
+
+function normalizeDateRange(value: DateRangeState): DateRangeState {
+  const preset = value.preset;
+  const isKnownPreset = !!preset && (DATE_RANGE_PRESETS as readonly string[]).includes(preset);
+  if (preset && preset !== 'custom' && isKnownPreset) {
+    return { preset };
+  }
+
+  const from = isValidYmd(value.from) ? value.from : undefined;
+  const to = isValidYmd(value.to) ? value.to : undefined;
+  if (from && to && from > to) {
+    return { ...DEFAULT_REPORT_DATE_RANGE };
+  }
+  if ((isKnownPreset && preset === 'custom') || from || to) {
+    return { preset: 'custom', from, to };
+  }
+  return { ...DEFAULT_REPORT_DATE_RANGE };
+}
+
+function dateRangeKey(value: DateRangeState): string {
+  return `${value.preset ?? ''}|${value.from ?? ''}|${value.to ?? ''}`;
+}
+
+function readDateRangeParam(params: URLSearchParams): DateRangeState {
+  return normalizeDateRange({
+    preset: params.get('preset') ?? undefined,
+    from: params.get('from') ?? undefined,
+    to: params.get('to') ?? undefined,
+  });
+}
+
+function writeDateRangeParam(params: URLSearchParams, value: DateRangeState) {
+  const next = normalizeDateRange(value);
+  params.delete('preset');
+  params.delete('from');
+  params.delete('to');
+  if (next.preset && next.preset !== 'custom') {
+    if (next.preset !== DEFAULT_REPORT_DATE_RANGE.preset) {
+      params.set('preset', next.preset);
+    }
+    return;
+  }
+  if (next.preset === 'custom') params.set('preset', 'custom');
+  if (next.from) params.set('from', next.from);
+  if (next.to) params.set('to', next.to);
+}
+
+function readGroupByParam(params: URLSearchParams): SalesGroupBy {
+  const value = params.get('groupBy');
+  return value === 'week' || value === 'month' ? value : 'day';
+}
+
+function writeGroupByParam(params: URLSearchParams, value: SalesGroupBy) {
+  if (value === 'day') params.delete('groupBy');
+  else params.set('groupBy', value);
+}
+
+function readInsightsSubTabParam(params: URLSearchParams): InsightsSubTab {
+  return params.get('subTab') === 'sales' ? 'sales' : 'tickets';
+}
+
+function writeInsightsSubTabParam(params: URLSearchParams, value: InsightsSubTab) {
+  if (value === 'tickets') params.delete('subTab');
+  else params.set('subTab', value);
+}
+
+function readCompareParam(params: URLSearchParams): boolean {
+  const value = params.get('compare');
+  return value === '1' || value === 'true';
+}
+
+function writeCompareParam(params: URLSearchParams, value: boolean) {
+  if (value) params.set('compare', '1');
+  else params.delete('compare');
+}
+
 // ─── Sales Tab ────────────────────────────────────────────────────────────────
 
-function SalesTab({ from, to }: { from: string; to: string }) {
+function SalesTab({
+  from,
+  to,
+  groupBy,
+  onGroupByChange,
+}: {
+  from: string;
+  to: string;
+  groupBy: SalesGroupBy;
+  onGroupByChange: (groupBy: SalesGroupBy) => void;
+}) {
   const navigate = useNavigate();
-  const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
@@ -300,7 +405,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
             {(['day', 'week', 'month'] as const).map((g) => (
               <button
                 key={g}
-                onClick={() => setGroupBy(g)}
+                onClick={() => onGroupByChange(g)}
                 className={cn(
                   'px-3 py-1 text-xs font-medium rounded-md transition-colors',
                   groupBy === g
@@ -369,9 +474,9 @@ function SalesTab({ from, to }: { from: string; to: string }) {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={rawChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
-                      <XAxis dataKey="period" tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <XAxis dataKey="period" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       {/* @audit-fixed: chart axis was hardcoded "$" — now uses formatCurrency to honor store currency */}
-                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
+                      <YAxis tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <Tooltip contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }} formatter={(value: number) => [formatCurrency(value), 'Revenue']} labelFormatter={(label: string) => `${label} (click to view invoices)`} />
                       <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6, style: { cursor: 'pointer' } }} />
                     </LineChart>
@@ -611,8 +716,8 @@ function TechWorkloadChart() {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} barCategoryGap="20%">
               <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#9ca3af' }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
               <Tooltip contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: '1px solid #374151', borderRadius: 8, color: '#f3f4f6' }} />
               <Bar dataKey="Open" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
               <Bar dataKey="In Progress" stackId="a" fill="#f59e0b" />
@@ -955,10 +1060,21 @@ interface InsightsData {
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1'];
 
-function InsightsTab({ from, to }: { from: string; to: string }) {
-  const [subTab, setSubTab] = useState<'tickets' | 'sales'>('tickets');
-  const [compare, setCompare] = useState(false);
-
+function InsightsTab({
+  from,
+  to,
+  subTab,
+  onSubTabChange,
+  compare,
+  onCompareChange,
+}: {
+  from: string;
+  to: string;
+  subTab: InsightsSubTab;
+  onSubTabChange: (subTab: InsightsSubTab) => void;
+  compare: boolean;
+  onCompareChange: (compare: boolean) => void;
+}) {
   // Calculate previous period (same duration, shifted back)
   const fromMs = new Date(from + 'T00:00:00').getTime();
   const toMs = new Date(to + 'T00:00:00').getTime();
@@ -1015,7 +1131,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
           {(['tickets', 'sales'] as const).map((t) => (
             <button
               key={t}
-              onClick={() => setSubTab(t)}
+              onClick={() => onSubTabChange(t)}
               className={cn(
                 'px-4 py-1.5 text-xs font-medium rounded-md transition-colors',
                 subTab === t
@@ -1031,7 +1147,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
           <input
             type="checkbox"
             checked={compare}
-            onChange={(e) => setCompare(e.target.checked)}
+            onChange={(e) => onCompareChange(e.target.checked)}
             className="h-3.5 w-3.5 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
           />
           <span className="text-surface-500 dark:text-surface-400">
@@ -1055,8 +1171,8 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={popular_models} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                    <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} />
-                    <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                    <XAxis type="number" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
+                    <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                     <Tooltip
                       contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
                       formatter={(value: number) => [value, 'Repairs']}
@@ -1091,8 +1207,8 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   {comparisonRepairs ? (
                     <BarChart data={comparisonRepairs} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                      <YAxis tick={{ fontSize: 12, fill: '#9ca3af' }} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
+                      <YAxis tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
                       />
@@ -1102,8 +1218,8 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   ) : (
                     <BarChart data={repairs_by_month} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                      <YAxis tick={{ fontSize: 12, fill: '#9ca3af' }} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
+                      <YAxis tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
                         formatter={(value: number) => [value, 'Tickets']}
@@ -1128,8 +1244,8 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={popular_services} margin={{ left: 0, right: 20, top: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af' }} angle={-20} textAnchor="end" height={60} />
-                    <YAxis tick={{ fontSize: 12, fill: '#9ca3af' }} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: REPORT_CHART_AXIS_TICK_FILL }} angle={-20} textAnchor="end" height={60} />
+                    <YAxis tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                     <Tooltip
                       contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
                       formatter={(value: number) => [value, 'Count']}
@@ -1167,8 +1283,8 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                     <BarChart data={comparisonRevenue} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
                       {/* @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): chart axes/tooltips honored hardcoded "$" — switched to formatCurrency for tenant currency */}
-                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
-                      <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <XAxis type="number" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
+                      <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
                         formatter={(value: number) => [formatCurrency(value)]}
@@ -1179,8 +1295,8 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   ) : (
                     <BarChart data={revenue_by_model} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
-                      <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <XAxis type="number" tick={{ fontSize: 12, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
+                      <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
                         formatter={(value: number) => [formatCurrency(value), 'Revenue']}
@@ -1205,27 +1321,62 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
 // ─── Main ReportsPage ─────────────────────────────────────────────────────────
 
 export function ReportsPage() {
-  // WEB-FK-010 (Fixer-B10 2026-04-25): persist activeTab to URL search params
-  // so refresh / shared link keeps the user on the tab they drilled into.
-  // Refresh on `tickets` tab no longer kicks back to `sales`; managers can
-  // copy-paste a permalink to a colleague.
+  // WEB-FK-010: report URLs carry validated view state for refresh/share links.
   const [searchParams, setSearchParams] = useSearchParams();
-  const TAB_KEYS = TABS.map(t => t.key) as Tab[];
-  const isValidTab = (v: string | null): v is Tab => !!v && (TAB_KEYS as string[]).includes(v);
-  const initialTab: Tab = isValidTab(searchParams.get('tab')) ? (searchParams.get('tab') as Tab) : 'sales';
-  const [activeTab, setActiveTabState] = useState<Tab>(initialTab);
-  const setActiveTab = useCallback((next: Tab) => {
-    setActiveTabState(next);
+  const [activeTab, setActiveTabState] = useState<Tab>(() => (
+    isValidTabParam(searchParams.get('tab')) ? searchParams.get('tab') as Tab : 'sales'
+  ));
+  const [dateRange, setDateRangeState] = useState<DateRangeState>(() => readDateRangeParam(searchParams));
+  const [groupBy, setGroupByState] = useState<SalesGroupBy>(() => readGroupByParam(searchParams));
+  const [insightsSubTab, setInsightsSubTabState] = useState<InsightsSubTab>(() => readInsightsSubTabParam(searchParams));
+  const [compareInsights, setCompareInsightsState] = useState(() => readCompareParam(searchParams));
+  const [exportLoading, setExportLoading] = useState(false);
+  const updateReportSearchParams = useCallback((write: (params: URLSearchParams) => void) => {
     setSearchParams((prev) => {
       const sp = new URLSearchParams(prev);
-      if (next === 'sales') sp.delete('tab');
-      else sp.set('tab', next);
+      write(sp);
       return sp;
     }, { replace: true });
   }, [setSearchParams]);
-  const [dateRange, setDateRange] = useState<{ from?: string; to?: string; preset?: string }>({
-    preset: 'last_30',
-  });
+
+  useEffect(() => {
+    const nextTab = isValidTabParam(searchParams.get('tab')) ? searchParams.get('tab') as Tab : 'sales';
+    const nextDateRange = readDateRangeParam(searchParams);
+    const nextGroupBy = readGroupByParam(searchParams);
+    const nextInsightsSubTab = readInsightsSubTabParam(searchParams);
+    const nextCompareInsights = readCompareParam(searchParams);
+
+    setActiveTabState((current) => current === nextTab ? current : nextTab);
+    setDateRangeState((current) => dateRangeKey(current) === dateRangeKey(nextDateRange) ? current : nextDateRange);
+    setGroupByState((current) => current === nextGroupBy ? current : nextGroupBy);
+    setInsightsSubTabState((current) => current === nextInsightsSubTab ? current : nextInsightsSubTab);
+    setCompareInsightsState((current) => current === nextCompareInsights ? current : nextCompareInsights);
+  }, [searchParams]);
+
+  const setActiveTab = useCallback((next: Tab) => {
+    setActiveTabState(next);
+    updateReportSearchParams((sp) => {
+      if (next === 'sales') sp.delete('tab');
+      else sp.set('tab', next);
+    });
+  }, [updateReportSearchParams]);
+  const setDateRange = useCallback((next: DateRangeState) => {
+    const normalized = normalizeDateRange(next);
+    setDateRangeState(normalized);
+    updateReportSearchParams((sp) => writeDateRangeParam(sp, normalized));
+  }, [updateReportSearchParams]);
+  const setGroupBy = useCallback((next: SalesGroupBy) => {
+    setGroupByState(next);
+    updateReportSearchParams((sp) => writeGroupByParam(sp, next));
+  }, [updateReportSearchParams]);
+  const setInsightsSubTab = useCallback((next: InsightsSubTab) => {
+    setInsightsSubTabState(next);
+    updateReportSearchParams((sp) => writeInsightsSubTabParam(sp, next));
+  }, [updateReportSearchParams]);
+  const setCompareInsights = useCallback((next: boolean) => {
+    setCompareInsightsState(next);
+    updateReportSearchParams((sp) => writeCompareParam(sp, next));
+  }, [updateReportSearchParams]);
   const { from: fromDate, to: toDate } = resolveDateRange(dateRange);
   const queryClient = useQueryClient();
 
@@ -1249,9 +1400,11 @@ export function ReportsPage() {
       openUpgradeModal(currentTab.proFeature);
       setActiveTab('sales');
     }
-  }, [activeTab, planHasFetched, planFeatures, isReportTabLocked, openUpgradeModal]);
+  }, [activeTab, planHasFetched, planFeatures, isReportTabLocked, openUpgradeModal, setActiveTab]);
 
   async function handleExport() {
+    if (exportLoading) return;
+    setExportLoading(true);
     try {
       const dateStr = `${fromDate}_to_${toDate}`;
 
@@ -1264,8 +1417,8 @@ export function ReportsPage() {
 
       if (activeTab === 'sales') {
         const data = await getCached<SalesData>(
-          ['reports', 'sales', fromDate, toDate, 'day'],
-          async () => { const res = await reportApi.sales({ from_date: fromDate, to_date: toDate, group_by: 'day' }); return res.data.data as SalesData; },
+          ['reports', 'sales', fromDate, toDate, groupBy],
+          async () => { const res = await reportApi.sales({ from_date: fromDate, to_date: toDate, group_by: groupBy }); return res.data.data as SalesData; },
         );
         downloadCsv(`sales_${dateStr}.csv`,
           ['Period', 'Invoices', 'Revenue', 'Unique Customers'],
@@ -1388,11 +1541,13 @@ export function ReportsPage() {
       }
     } catch {
       toast.error('Export failed');
+    } finally {
+      setExportLoading(false);
     }
   }
 
   return (
-    <div>
+    <div className="[--reports-chart-axis-tick:rgb(var(--surface-500))] dark:[--reports-chart-axis-tick:rgb(var(--surface-400))]">
       {/* Header */}
       <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -1400,11 +1555,23 @@ export function ReportsPage() {
           <p className="text-surface-500 dark:text-surface-400">Analyze your business performance</p>
         </div>
         <button
+          type="button"
           onClick={handleExport}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
+          disabled={exportLoading}
+          aria-busy={exportLoading}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
         >
-          <Download className="h-4 w-4" />
-          Export
+          {exportLoading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Exporting...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Export
+            </>
+          )}
         </button>
       </div>
 
@@ -1424,14 +1591,23 @@ export function ReportsPage() {
 
       {/* Tab navigation */}
       <div className="card mb-6">
-        <div className="overflow-x-auto p-4">
-          <div className="flex gap-1 bg-surface-100 dark:bg-surface-800 rounded-lg p-1 w-fit">
+        <div className="p-4">
+          <div
+            role="tablist"
+            aria-label="Report sections"
+            className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2 rounded-lg bg-surface-100 p-1 dark:bg-surface-800"
+          >
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const locked = isReportTabLocked(tab);
+              const selected = activeTab === tab.key;
               return (
                 <button
                   key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-label={locked ? `${tab.label} report, requires Pro plan` : `${tab.label} report`}
                   onClick={() => {
                     if (locked && tab.proFeature) {
                       openUpgradeModal(tab.proFeature);
@@ -1440,8 +1616,8 @@ export function ReportsPage() {
                     setActiveTab(tab.key);
                   }}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap',
-                    activeTab === tab.key
+                    'flex min-h-10 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-medium transition-colors sm:px-3',
+                    selected
                       ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
                       : locked
                         ? 'text-surface-400 hover:text-surface-600 dark:text-surface-500 dark:hover:text-surface-400'
@@ -1449,9 +1625,14 @@ export function ReportsPage() {
                   )}
                   title={locked ? `${tab.label} requires Pro plan` : undefined}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  {locked && <Lock className="h-3 w-3 text-amber-500" />}
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{tab.label}</span>
+                  {locked && (
+                    <>
+                      <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-hidden="true" />
+                      <span className="sr-only">requires Pro plan</span>
+                    </>
+                  )}
                 </button>
               );
             })}
@@ -1460,12 +1641,28 @@ export function ReportsPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'sales' && <SalesTab from={fromDate} to={toDate} />}
+      {activeTab === 'sales' && (
+        <SalesTab
+          from={fromDate}
+          to={toDate}
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
+        />
+      )}
       {activeTab === 'tickets' && <TicketsTab from={fromDate} to={toDate} />}
       {activeTab === 'employees' && <EmployeesTab from={fromDate} to={toDate} />}
       {activeTab === 'inventory' && <InventoryTab />}
       {activeTab === 'tax' && <TaxTab from={fromDate} to={toDate} />}
-      {activeTab === 'insights' && <InsightsTab from={fromDate} to={toDate} />}
+      {activeTab === 'insights' && (
+        <InsightsTab
+          from={fromDate}
+          to={toDate}
+          subTab={insightsSubTab}
+          onSubTabChange={setInsightsSubTab}
+          compare={compareInsights}
+          onCompareChange={setCompareInsights}
+        />
+      )}
       {activeTab === 'warranty' && <WarrantyClaimsTab from={fromDate} to={toDate} />}
       {activeTab === 'devices' && <DeviceModelsTab from={fromDate} to={toDate} />}
       {activeTab === 'parts' && <PartsUsageTab from={fromDate} to={toDate} />}

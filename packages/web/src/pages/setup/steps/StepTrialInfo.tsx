@@ -85,7 +85,7 @@ export function StepTrialInfo({ onNext, onBack }: StepProps) {
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+          className="btn btn-lg flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -93,7 +93,7 @@ export function StepTrialInfo({ onNext, onBack }: StepProps) {
           <button
             type="button"
             onClick={onNext}
-            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
           >
             Continue to setup
             <ArrowRight className="h-4 w-4" />

@@ -114,3 +114,11 @@ antigravity.md
 # Per-host dashboard choice (electron vs browser) persisted by setup.mjs.
 # Operator-local; not for the repo.
 .bizarrecrm-dashboard-choice
+
+# Local agent/tool working dirs (Claude Code, Codex)
+.agents/
+.codex/
+.codex-plugins/
+
+# Stray npm tarballs
+lodash-*.tgz

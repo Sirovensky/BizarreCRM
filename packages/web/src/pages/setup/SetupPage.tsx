@@ -277,7 +277,7 @@ export function SetupPage() {
     onUpdate: update,
     onNext: goNext,
     onBack: goBack,
-    onSkip: handleSkip,
+    onSkip: goNext,
   };
 
   const renderStep = () => {
@@ -368,7 +368,7 @@ export function SetupPage() {
           <span className="font-['League_Spartan'] text-lg font-bold tracking-wide text-primary-700 dark:text-primary-400">
             BIZARRECRM SETUP
           </span>
-          <SkipToDashboard onSkip={handleSkip} disabled={saving} />
+          <SkipToDashboard onSkip={handleSkip} disabled={saving} label="Skip wizard" />
         </div>
       </div>
 

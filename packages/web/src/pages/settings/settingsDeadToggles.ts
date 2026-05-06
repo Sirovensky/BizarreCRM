@@ -51,45 +51,11 @@ export interface DeadToggleEntry {
  * which subsystems are lying. Order is cosmetic only (rendering is by key).
  */
 const DEAD_TOGGLES: DeadToggleEntry[] = [
-  // ── Theme / branding ────────────────────────────────────────────────────
-  {
-    key: 'theme_primary_color',
-    reason: 'UI stores the color but only a handful of components honor it.',
-    category: 'partial-backend',
-  },
-
-  // ── 3CX voice integration ───────────────────────────────────────────────
-  {
-    key: 'tcx_host',
-    reason: '3CX PBX client is not implemented on the server yet.',
-    category: 'not-wired',
-  },
-  {
-    key: 'tcx_username',
-    reason: 'Stored but never read by any backend service.',
-    category: 'not-wired',
-  },
-  {
-    key: 'tcx_extension',
-    reason: 'Stored but never read by any backend service.',
-    category: 'not-wired',
-  },
-
-  // ── Leads / notifications automation ────────────────────────────────────
-  {
-    key: 'lead_auto_assign',
-    reason: 'Leads module exists but round-robin assignment is not wired.',
-    category: 'planned',
-  },
-  {
-    key: 'estimate_followup_days',
-    reason: 'Value is saved but no cron job reads it.',
-    category: 'not-wired',
-  },
-
-  // ── Per-toggle receipt flags we know are UI-only ────────────────────────
-  // These ship as 'coming_soon' in settingsMetadata. Add more as they are
-  // discovered during the pre-launch audit sweep.
+  // Add store_config keys here only when the UI still renders a control whose
+  // value has no runtime consumer. WEB-UNWIRED-012 deliberately emptied this
+  // list for the audited settings: 3CX click-to-call, notification digests,
+  // lead assignment, estimate follow-ups, ticket sort defaults, and receipt
+  // print flags now have consumers or honest beta metadata.
 ];
 
 /** Quick lookup set for O(1) isDead() checks. */

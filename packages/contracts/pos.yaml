@@ -9,6 +9,8 @@ auth: bearer
 notes:
   - POS checkout touches invoices, inventory, payments, cash register, and tickets.
   - Checkout endpoints should be treated as transactional and idempotency-aware.
+  - Positive card payment legs must include real authorization metadata before
+    they are recorded: processor, reference, and transaction_id.
 endpoints:
   - method: GET
     path: /api/v1/pos/products

@@ -112,7 +112,7 @@ export function LoginPage() {
   // user back to their deep-link after successful auth instead of landing them
   // on `/`. Sanity-checked to start with `/` (and not `//`) so a poisoned state
   // value can't redirect off-origin.
-  const routerLocation = useLocation() as { state?: { from?: { pathname?: string; search?: string } } };
+  const routerLocation = useLocation() as { search?: string; state?: { from?: { pathname?: string; search?: string } } };
   const fromPath = (() => {
     const fp = routerLocation.state?.from?.pathname;
     if (typeof fp !== 'string' || !fp.startsWith('/') || fp.startsWith('//')) return '/';
@@ -151,7 +151,16 @@ export function LoginPage() {
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
+  const [forgotError, setForgotError] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [show2faRecovery, setShow2faRecovery] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryBackupCode, setRecoveryBackupCode] = useState('');
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [recoveryConfirmPassword, setRecoveryConfirmPassword] = useState('');
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoverySuccess, setRecoverySuccess] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
   // WEB-S4-006: track forgot-password failures so we can show hCaptcha after
   // the first rejection (backend returns 429 + captcha_required:true once
   // CAPTCHA_FAILURE_THRESHOLD is exceeded).
@@ -162,6 +171,14 @@ export function LoginPage() {
   const [needsSetupNoToken, setNeedsSetupNoToken] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const codeRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(routerLocation.search ?? '');
+    if (params.get('forgot') === '1') {
+      setShowForgot(true);
+      setForgotSent(false);
+    }
+  }, [routerLocation.search]);
 
   // WEB-S4-006: render hCaptcha widget inside the Forgot panel after first
   // failure. Widget is lazily loaded (script injected on first need) to avoid
@@ -349,12 +366,9 @@ export function LoginPage() {
       });
 
       if (meUser) {
-        const token = localStorage.getItem('accessToken');
-        if (token) {
-          completeLogin(token, '', meUser as Parameters<typeof completeLogin>[2]);
-          navigate(fromPath, { replace: true });
-          return;
-        }
+        completeLogin('', '', meUser as Parameters<typeof completeLogin>[2]);
+        navigate(fromPath, { replace: true });
+        return;
       }
       if (!cancelled) setAutoChecking(false);
     })();
@@ -399,6 +413,7 @@ export function LoginPage() {
         setManualSecret(setupData.secret);
         setStep('setup');
       } else {
+        if (!recoveryEmail && username.trim().includes('@')) setRecoveryEmail(username.trim());
         setStep('verify');
       }
     } catch (err: unknown) {
@@ -466,6 +481,59 @@ export function LoginPage() {
       setError(redactEmails(formatApiError(err) || 'Failed to set password'));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handle2faRecovery(e: React.FormEvent) {
+    e.preventDefault();
+    const email = recoveryEmail.trim().toLowerCase();
+    const compactCode = recoveryBackupCode.trim().replace(/[\s-]/g, '');
+    if (!email.includes('@')) {
+      setRecoveryError('Enter the email address on your account.');
+      return;
+    }
+    if (compactCode.length < 16) {
+      setRecoveryError('Enter one of your saved recovery codes.');
+      return;
+    }
+    if (recoveryPassword.length < 8 || recoveryPassword.length > 128) {
+      setRecoveryError('New password must be 8 to 128 characters.');
+      return;
+    }
+    if (recoveryPassword !== recoveryConfirmPassword) {
+      setRecoveryError('Passwords do not match.');
+      return;
+    }
+
+    setRecoveryError('');
+    setRecoveryLoading(true);
+    try {
+      await authApi.recoverWithBackupCode({
+        email,
+        backupCode: recoveryBackupCode.trim(),
+        newPassword: recoveryPassword,
+      });
+      setRecoverySuccess(true);
+      setRecoveryPassword('');
+      setRecoveryConfirmPassword('');
+      setPassword('');
+      setTotpCode('');
+      setError('');
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number; data?: { message?: string } } } | undefined;
+      if (!e?.response) {
+        setRecoveryError('Cannot reach the server. Check your connection and try again.');
+      } else if (e.response.status === 429) {
+        setRecoveryError(e.response.data?.message || 'Too many recovery attempts. Try again later.');
+      } else if (e.response.status === 400) {
+        setRecoveryError(e.response.data?.message || 'Check the recovery form and try again.');
+      } else if (e.response.status === 401) {
+        setRecoveryError('We could not verify that email and recovery code.');
+      } else {
+        setRecoveryError(redactEmails(formatApiError(err)));
+      }
+    } finally {
+      setRecoveryLoading(false);
     }
   }
 
@@ -707,18 +775,41 @@ export function LoginPage() {
                 {fieldErrors.password && <p id="login-password-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
               </div>
               <div className="flex justify-end">
-                <button type="button" onClick={() => setShowForgot(!showForgot)} className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgot(!showForgot);
+                    setForgotError('');
+                  }}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
                   Forgot password?
                 </button>
               </div>
               {showForgot && (
                 <div className="rounded-lg bg-surface-100 p-3 dark:bg-surface-700">
                   {forgotSent ? (
-                    <div className="flex items-center gap-2">
-                      <Check className="h-4 w-4 text-green-500" />
-                      <p className="text-xs text-surface-600 dark:text-surface-300">
-                        If an account with that email exists, a reset link has been sent. Check your inbox.
-                      </p>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                        <p className="text-xs text-surface-600 dark:text-surface-300">
+                          If an account with that email exists, a reset link has been sent. Check your inbox and spam folder.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotSent(false);
+                          setForgotEmail('');
+                          setForgotError('');
+                          setForgotFailCount(0);
+                          setForgotCaptchaToken('');
+                        }}
+                        className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                      >
+                        Send to a different email
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -727,7 +818,12 @@ export function LoginPage() {
                       </p>
                       {/* WEB-S4-006: hCaptcha widget — shown after first failed attempt */}
                       {forgotFailCount >= 1 && captchaSiteKey && (
-                        <div ref={forgotCaptchaContainerRef} className="mt-1" />
+                        <div className="mt-2 space-y-1" role="group" aria-label="Human verification">
+                          <p className="text-xs font-medium text-surface-600 dark:text-surface-300">
+                            Confirm you&apos;re human, then press Email reset link again.
+                          </p>
+                          <div ref={forgotCaptchaContainerRef} />
+                        </div>
                       )}
                       <div className="flex gap-2">
                         <label htmlFor="forgot-email" className="sr-only">Email for password reset</label>
@@ -735,8 +831,13 @@ export function LoginPage() {
                           id="forgot-email"
                           type="email"
                           value={forgotEmail}
-                          onChange={(e) => setForgotEmail(e.target.value)}
+                          onChange={(e) => {
+                            setForgotEmail(e.target.value);
+                            setForgotError('');
+                          }}
                           placeholder="your@email.com"
+                          aria-invalid={!!forgotError}
+                          aria-describedby={forgotError ? 'forgot-password-error' : undefined}
                           className="flex-1 rounded-lg border border-surface-300 bg-white px-3 py-1.5 text-xs text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
                         />
                         <button
@@ -744,6 +845,7 @@ export function LoginPage() {
                           disabled={forgotLoading || !forgotEmail.includes('@') || (forgotFailCount >= 1 && captchaSiteKey && !forgotCaptchaToken)}
                           onClick={async () => {
                             setForgotLoading(true);
+                            setForgotError('');
                             try {
                               // WEB-S4-006: pass captcha token on second+ attempts
                               await authApi.forgotPassword(forgotEmail.trim(), forgotFailCount >= 1 ? forgotCaptchaToken : undefined);
@@ -752,11 +854,22 @@ export function LoginPage() {
                               // WEB-S4-006: increment failure count so captcha widget
                               // renders on next attempt; do NOT reveal whether the
                               // email exists (set forgotSent = true for 404s).
-                              const e = err as { response?: { status?: number } } | undefined;
+                              const e = err as { response?: { status?: number; data?: { message?: string } } } | undefined;
                               if (e?.response?.status === 404 || e?.response?.status === 200) {
                                 setForgotSent(true);
                               } else {
                                 setForgotFailCount(prev => prev + 1);
+                                const status = e?.response?.status;
+                                const message = e?.response?.data?.message;
+                                if (!e?.response) {
+                                  setForgotError('Cannot reach the server. Check your connection and try again.');
+                                } else if (status === 429) {
+                                  setForgotError(message || 'Too many reset attempts. Try again later.');
+                                } else if (status === 400) {
+                                  setForgotError(message || 'Enter a valid email address.');
+                                } else {
+                                  setForgotError(formatApiError(err));
+                                }
                                 // Reset captcha so user can get a fresh token
                                 if (forgotCaptchaWidgetIdRef.current !== null && window.hcaptcha) {
                                   window.hcaptcha.reset(forgotCaptchaWidgetIdRef.current);
@@ -767,12 +880,17 @@ export function LoginPage() {
                               setForgotLoading(false);
                             }
                           }}
-                          className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                          className="flex items-center gap-1 rounded-lg border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-primary-700 dark:bg-primary-950/30 dark:text-primary-300 dark:hover:bg-primary-950/50"
                         >
                           {forgotLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
-                          Send
+                          {forgotLoading ? 'Sending...' : 'Email reset link'}
                         </button>
                       </div>
+                      {forgotError && (
+                        <p id="forgot-password-error" role="alert" aria-live="polite" className="text-xs text-red-600 dark:text-red-400">
+                          {forgotError}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -852,7 +970,7 @@ export function LoginPage() {
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
                 {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
                 <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
-                  className="w-full rounded-lg bg-green-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                  className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify & Complete Setup'}
                 </button>
               </form>
@@ -860,72 +978,205 @@ export function LoginPage() {
           )}
 
           {step === 'verify' && (
-            <form onSubmit={handleVerify} className="space-y-5">
-              <div className="flex items-center gap-3 rounded-lg bg-primary-50 p-3 dark:bg-primary-950/30">
-                <ShieldCheck className="h-5 w-5 shrink-0 text-primary-600" />
-                <p className="text-xs text-primary-800 dark:text-primary-300">
-                  Open your authenticator app and enter the 6-digit code.
-                </p>
-              </div>
-              <label htmlFor="2fa-verify-code" className="sr-only">6-digit authenticator code</label>
-              <input id="2fa-verify-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
-                aria-label="6-digit authenticator code"
-                value={totpCode} onChange={(e) => {
-                  // WEB-S4-040: auto-submit when all 6 digits are entered so
-                  // the user doesn't have to tap/click Verify manually.
-                  const v = e.target.value.replace(/\D/g, '');
-                  setTotpCode(v);
-                  if (v.length === 6) {
-                    requestAnimationFrame(() => {
-                      (e.target.closest('form') as HTMLFormElement | null)?.requestSubmit();
-                    });
-                  }
-                }}
-                placeholder="000000" autoFocus
-                className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
-              {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
-              {/* WEB-S4-008: trust-device checkbox with help tooltip explaining
-                  what 90-day trust means and linking to the Sessions settings
-                  page where users can revoke trusted devices. */}
-              <div className="flex items-center gap-2">
-                <label htmlFor="trust-device" className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    id="trust-device"
-                    type="checkbox"
-                    checked={trustDevice}
-                    onChange={(e) => setTrustDevice(e.target.checked)}
-                    className="h-4 w-4 rounded border-surface-300 dark:border-surface-600 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="text-xs text-surface-500 dark:text-surface-400">Trust this device for 90 days</span>
-                </label>
-                <div className="relative group">
-                  <HelpCircle className="h-3.5 w-3.5 text-surface-400 cursor-help" aria-hidden="true" />
-                  <div
-                    role="tooltip"
-                    className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 rounded-lg bg-surface-800 dark:bg-surface-700 px-3 py-2 text-xs text-white shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-50"
-                  >
-                    Skips the 2FA step on this browser for 90 days. Use only on personal, trusted devices &mdash; not shared computers.{' '}
-                    <a
-                      href="/settings?tab=sessions"
-                      className="underline text-primary-300 pointer-events-auto"
-                      tabIndex={-1}
+            <div className="space-y-5">
+              <form onSubmit={handleVerify} className="space-y-5" noValidate>
+                <div className="flex items-center gap-3 rounded-lg bg-primary-50 p-3 dark:bg-primary-950/30">
+                  <ShieldCheck className="h-5 w-5 shrink-0 text-primary-600" />
+                  <p className="text-xs text-primary-800 dark:text-primary-300">
+                    Open your authenticator app and enter the 6-digit code.
+                  </p>
+                </div>
+                <label htmlFor="2fa-verify-code" className="sr-only">6-digit authenticator code</label>
+                <input id="2fa-verify-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
+                  aria-label="6-digit authenticator code"
+                  value={totpCode} onChange={(e) => {
+                    // WEB-S4-040: auto-submit when all 6 digits are entered so
+                    // the user doesn't have to tap/click Verify manually.
+                    const v = e.target.value.replace(/\D/g, '');
+                    setTotpCode(v);
+                    if (v.length === 6) {
+                      requestAnimationFrame(() => {
+                        (e.target.closest('form') as HTMLFormElement | null)?.requestSubmit();
+                      });
+                    }
+                  }}
+                  placeholder="000000" autoFocus
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
+                {/* WEB-S4-008: trust-device checkbox with help tooltip explaining
+                    what 90-day trust means and linking to the Sessions settings
+                    page where users can revoke trusted devices. */}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="trust-device" className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      id="trust-device"
+                      type="checkbox"
+                      checked={trustDevice}
+                      onChange={(e) => setTrustDevice(e.target.checked)}
+                      className="h-4 w-4 rounded border-surface-300 dark:border-surface-600 text-primary-600 focus:ring-primary-500"
+                    />
+                    <span className="text-xs text-surface-500 dark:text-surface-400">Trust this device for 90 days</span>
+                  </label>
+                  <div className="relative group">
+                    <HelpCircle className="h-3.5 w-3.5 text-surface-400 cursor-help" aria-hidden="true" />
+                    <div
+                      role="tooltip"
+                      className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 rounded-lg bg-surface-800 dark:bg-surface-700 px-3 py-2 text-xs text-white shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-50"
                     >
-                      Revoke trusted sessions
-                    </a>{' '}
-                    in Settings if this device is lost or compromised.
-                    <span className="absolute left-1/2 -translate-x-1/2 top-full border-4 border-transparent border-t-surface-800 dark:border-t-surface-700" />
+                      Skips the 2FA step on this browser for 90 days. Use only on personal, trusted devices &mdash; not shared computers.{' '}
+                      <a
+                        href="/settings?tab=sessions"
+                        className="underline text-primary-300 pointer-events-auto"
+                        tabIndex={-1}
+                      >
+                        Revoke trusted sessions
+                      </a>{' '}
+                      in Settings if this device is lost or compromised.
+                      <span className="absolute left-1/2 -translate-x-1/2 top-full border-4 border-transparent border-t-surface-800 dark:border-t-surface-700" />
+                    </div>
                   </div>
                 </div>
+                <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
+                  className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                  {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify'}
+                </button>
+                <button type="button" onClick={() => { setStep('password'); setError(''); }}
+                  className="w-full text-xs text-surface-400 hover:text-surface-600">
+                  Back to login
+                </button>
+              </form>
+
+              <div className="border-t border-surface-200 pt-4 dark:border-surface-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !show2faRecovery;
+                    if (next && !recoveryEmail && username.trim().includes('@')) setRecoveryEmail(username.trim());
+                    setShow2faRecovery(next);
+                    setRecoveryError('');
+                    setRecoverySuccess(false);
+                  }}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-surface-300 bg-white px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Lost your 2FA device?
+                </button>
               </div>
-              <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
-                {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify'}
-              </button>
-              <button type="button" onClick={() => { setStep('password'); setError(''); }}
-                className="w-full text-xs text-surface-400 hover:text-surface-600">
-                Back to login
-              </button>
-            </form>
+
+              {show2faRecovery && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                  {recoverySuccess ? (
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+                        <p className="text-xs text-amber-900 dark:text-amber-200">
+                          Password reset and 2FA turned off. Sign in with the new password, then set up 2FA again.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStep('password');
+                          setShow2faRecovery(false);
+                          setRecoverySuccess(false);
+                          setError('');
+                        }}
+                        className="w-full rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-primary-950 hover:bg-primary-700"
+                      >
+                        Back to sign in
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handle2faRecovery} className="space-y-3" noValidate>
+                      <div className="flex items-start gap-2">
+                        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+                        <p className="text-xs text-amber-900 dark:text-amber-200">
+                          Use a saved recovery code to reset your password and turn off 2FA.
+                        </p>
+                      </div>
+                      <div>
+                        <label htmlFor="2fa-recovery-email" className="mb-1 block text-xs font-medium text-amber-950 dark:text-amber-100">Account email</label>
+                        <input
+                          id="2fa-recovery-email"
+                          type="email"
+                          value={recoveryEmail}
+                          onChange={(e) => { setRecoveryEmail(e.target.value); setRecoveryError(''); }}
+                          autoComplete="email"
+                          aria-invalid={!!recoveryError}
+                          aria-describedby={recoveryError ? '2fa-recovery-error' : undefined}
+                          className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-amber-700 dark:bg-surface-800 dark:text-surface-100"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="2fa-recovery-code" className="mb-1 block text-xs font-medium text-amber-950 dark:text-amber-100">Recovery code</label>
+                        <input
+                          id="2fa-recovery-code"
+                          type="text"
+                          value={recoveryBackupCode}
+                          onChange={(e) => { setRecoveryBackupCode(e.target.value); setRecoveryError(''); }}
+                          autoComplete="one-time-code"
+                          spellCheck={false}
+                          placeholder="XXXX-XXXX-XXXX-XXXX"
+                          aria-invalid={!!recoveryError}
+                          aria-describedby={recoveryError ? '2fa-recovery-error' : undefined}
+                          className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-amber-700 dark:bg-surface-800 dark:text-surface-100"
+                        />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label htmlFor="2fa-recovery-password" className="mb-1 block text-xs font-medium text-amber-950 dark:text-amber-100">New password</label>
+                          <input
+                            id="2fa-recovery-password"
+                            type="password"
+                            value={recoveryPassword}
+                            onChange={(e) => { setRecoveryPassword(e.target.value); setRecoveryError(''); }}
+                            autoComplete="new-password"
+                            minLength={8}
+                            aria-invalid={!!recoveryError}
+                            aria-describedby={recoveryError ? '2fa-recovery-error' : undefined}
+                            className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-amber-700 dark:bg-surface-800 dark:text-surface-100"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="2fa-recovery-confirm" className="mb-1 block text-xs font-medium text-amber-950 dark:text-amber-100">Confirm</label>
+                          <input
+                            id="2fa-recovery-confirm"
+                            type="password"
+                            value={recoveryConfirmPassword}
+                            onChange={(e) => { setRecoveryConfirmPassword(e.target.value); setRecoveryError(''); }}
+                            autoComplete="new-password"
+                            minLength={8}
+                            aria-invalid={!!recoveryError}
+                            aria-describedby={recoveryError ? '2fa-recovery-error' : undefined}
+                            className="w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-amber-700 dark:bg-surface-800 dark:text-surface-100"
+                          />
+                        </div>
+                      </div>
+                      {recoveryError && (
+                        <p id="2fa-recovery-error" role="alert" aria-live="polite" className="text-xs text-red-700 dark:text-red-300">
+                          {recoveryError}
+                        </p>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={
+                          recoveryLoading ||
+                          !recoveryEmail.includes('@') ||
+                          recoveryBackupCode.trim().replace(/[\s-]/g, '').length < 16 ||
+                          recoveryPassword.length < 8 ||
+                          recoveryPassword !== recoveryConfirmPassword
+                        }
+                        aria-busy={recoveryLoading}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {recoveryLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                        Reset password and turn off 2FA
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

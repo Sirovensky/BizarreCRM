@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { Inbox, PackageCheck, Receipt, Send, Code, ArrowLeft, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { settingsApi } from '@/api/endpoints';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
 /**
@@ -19,11 +20,12 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
  * tokens that the notification service substitutes at send time. The variable
  * cheatsheet inserts a token at the textarea cursor on click.
  *
- * Persists 6 keys via `onUpdate` on every change. The shell's bulk
- * PUT /settings/config flushes them at the end of the wizard.
+ * Persists keys via `onUpdate` on every change. The server maps those wizard
+ * keys into the real `notification_templates` rows when the shell flushes
+ * PUT /settings/config, so runtime sends consume these edits.
  *
- * "Send test" is a stub for now — actual SMS/email send wires up once
- * the SMS provider (Step 16) and SMTP (Step 17) are configured.
+ * "Send test" calls the real provider-backed test endpoint and reports
+ * channel success/failure from the backend.
  */
 
 type TemplateKey =
@@ -137,6 +139,7 @@ export function StepNotificationTemplates({
     invoice_paid: false,
     appt_reminder: false,
   });
+  const [testingKey, setTestingKey] = useState<TemplateKey | null>(null);
 
   const getValue = (key: keyof PendingWrites, fallback: string): string => {
     const v = pending[key];
@@ -178,8 +181,38 @@ export function StepNotificationTemplates({
     onUpdate({ [bodyKey]: currentValue + token } as Partial<PendingWrites>);
   };
 
-  const handleSendTest = () => {
-    toast('Test send will be wired once SMS + SMTP are configured.', { icon: 'i' });
+  const handleSendTest = async (tpl: TemplateDef, subject: string, body: string) => {
+    if (testingKey) return;
+    setTestingKey(tpl.key);
+    try {
+      const res = await settingsApi.testNotificationTemplate({
+        template_key: tpl.key,
+        subject,
+        body,
+        recipient_email: pending.store_email || pending.signup_email,
+        recipient_phone: pending.store_phone,
+      });
+      const channels = res.data?.data?.channels as
+        | {
+            email?: { attempted?: boolean; success?: boolean };
+            sms?: { attempted?: boolean; success?: boolean; simulated?: boolean };
+          }
+        | undefined;
+      const sent = [
+        channels?.email?.attempted && channels.email.success ? 'email' : null,
+        channels?.sms?.attempted && channels.sms.success ? (channels.sms.simulated ? 'SMS simulation' : 'SMS') : null,
+      ].filter(Boolean).join(' + ');
+      toast.success(sent ? `Test sent via ${sent}` : 'Test notification sent');
+    } catch (err: unknown) {
+      const message =
+        (err as { response?: { data?: { message?: string; data?: { message?: string } } }; message?: string })?.response?.data?.data?.message ||
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+        (err as { message?: string })?.message ||
+        'Could not send the test notification.';
+      toast.error(message);
+    } finally {
+      setTestingKey(null);
+    }
   };
 
   const handleSkip = () => {
@@ -316,7 +349,7 @@ export function StepNotificationTemplates({
                 <button
                   type="button"
                   onClick={() => toggleCheatsheet(tpl.key)}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+                  className="btn btn-xs inline-flex items-center gap-1 text-xs font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
                   aria-expanded={isExpanded}
                   aria-controls={`tpl-cheatsheet-${tpl.key}`}
                 >
@@ -337,7 +370,7 @@ export function StepNotificationTemplates({
                           key={v}
                           type="button"
                           onClick={() => insertVariable(tpl.key, tpl.bodyKey, bodyValue, v)}
-                          className="inline-flex bg-primary-100 dark:bg-primary-500/10 text-primary-900 dark:text-primary-300 px-2 py-1 rounded text-xs font-mono cursor-pointer hover:bg-primary-200"
+                          className="btn btn-xs inline-flex bg-primary-100 dark:bg-primary-500/10 text-primary-900 dark:text-primary-300 px-2 py-1 rounded text-xs font-mono cursor-pointer hover:bg-primary-200"
                         >
                           {`{${v}}`}
                         </button>
@@ -350,14 +383,15 @@ export function StepNotificationTemplates({
               <div className="flex items-center gap-3 border-t border-surface-100 pt-3 dark:border-surface-700">
                 <button
                   type="button"
-                  onClick={handleSendTest}
-                  className="inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-xs font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+                  onClick={() => handleSendTest(tpl, subjValue, bodyValue)}
+                  disabled={testingKey === tpl.key}
+                  className="btn btn-sm inline-flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-xs font-semibold text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
                 >
-                  <Send className="h-3.5 w-3.5" />
-                  Send test
+                  <Send className={`h-3.5 w-3.5 ${testingKey === tpl.key ? 'animate-pulse' : ''}`} />
+                  {testingKey === tpl.key ? 'Sending test...' : 'Send test'}
                 </button>
                 <span className="text-[11px] text-surface-500 dark:text-surface-400">
-                  Splits between SMS / email — wired once providers are configured.
+                  Sends through configured SMS / email providers to your setup contact.
                 </span>
               </div>
             </div>
@@ -369,7 +403,7 @@ export function StepNotificationTemplates({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+          className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
@@ -378,14 +412,14 @@ export function StepNotificationTemplates({
           <button
             type="button"
             onClick={handleSkip}
-            className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
-            Skip
+            Skip this step
           </button>
           <button
             type="button"
             onClick={onNext}
-            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
           >
             Continue
             <ArrowRight className="h-4 w-4" />

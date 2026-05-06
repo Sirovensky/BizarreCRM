@@ -417,7 +417,7 @@ export function AutomationModal({
           <h3 id="automation-rule-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {rule ? 'Edit Automation Rule' : 'Create Automation Rule'}
           </h3>
-          <button aria-label="Close" onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
+          <button aria-label="Close" onClick={onClose} className="btn-icon btn-xs text-surface-400">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -483,14 +483,14 @@ export function AutomationModal({
         <div className="flex items-center justify-end gap-3 p-5 border-t border-surface-200 dark:border-surface-700">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300 bg-surface-100 dark:bg-surface-800 rounded-lg hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors"
+            className="btn btn-secondary btn-sm"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-primary btn-sm"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {rule ? 'Update Rule' : 'Create Rule'}
@@ -695,7 +695,7 @@ export function AutomationsTab() {
         </div>
         <button
           onClick={() => { setEditingRule(null); setShowModal(true); }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
+          className="btn btn-primary btn-md"
         >
           <Plus className="h-4 w-4" /> New Rule
         </button>
@@ -712,7 +712,7 @@ export function AutomationsTab() {
             </p>
             <button
               onClick={() => { setEditingRule(null); setShowModal(true); }}
-              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
+              className="btn btn-primary btn-md mt-4"
             >
               <Plus className="h-4 w-4" /> Create First Rule
             </button>
@@ -769,14 +769,14 @@ export function AutomationsTab() {
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => { setEditingRule(rule); setShowModal(true); }}
-                      className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-primary-500"
+                      className="btn-icon btn-xs text-surface-400 hover:text-primary-500 dark:hover:bg-surface-700"
                       title="Edit rule"
                     >
                       <Zap className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(rule)}
-                      className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400 hover:text-red-500"
+                      className="btn-icon btn-xs text-surface-400 hover:text-red-500 dark:hover:bg-surface-700"
                       title="Delete rule"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -821,7 +821,7 @@ export function AutomationsTab() {
                       <button
                         onClick={(e) => { e.stopPropagation(); dryRunMut.mutate(rule.id); }}
                         disabled={dryRunMut.isPending && dryRunMut.variables === rule.id}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-[10px] font-medium"
+                        className="btn btn-secondary btn-xs text-[10px] dark:bg-surface-700 dark:hover:bg-surface-600"
                         title="Dry-run — check if this rule would fire (no side effects)"
                       >
                         <FlaskConical className="h-3 w-3" /> Dry-run

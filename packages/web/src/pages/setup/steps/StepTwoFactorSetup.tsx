@@ -169,7 +169,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
                 toast.error('Could not copy — select and copy manually');
               }
             }}
-            className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:underline dark:text-amber-300"
+            className="btn btn-xs mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 hover:underline dark:text-amber-300"
           >
             <Copy className="h-3.5 w-3.5" />
             Copy all codes
@@ -187,7 +187,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
             <button
               type="button"
               onClick={onBack}
-              className="text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+              className="btn btn-lg text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
             >
               ← Back
             </button>
@@ -195,7 +195,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
               type="button"
               onClick={onNext}
               disabled={!savedAck}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
             >
               I've saved these — continue
               <ShieldCheck className="h-4 w-4" />
@@ -266,7 +266,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
             <button
               type="button"
               onClick={() => setShowManual((v) => !v)}
-              className="text-xs font-semibold uppercase tracking-wide text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
+              className="btn btn-xs text-xs font-semibold uppercase tracking-wide text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
             >
               {showManual ? 'Hide manual entry' : 'Or enter manually'}
             </button>
@@ -278,7 +278,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
                 <button
                   type="button"
                   onClick={handleCopySecret}
-                  className="inline-flex items-center gap-1 rounded-md border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
+                  className="btn btn-xs inline-flex items-center gap-1 rounded-md border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
                   aria-label="Copy secret"
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -310,7 +310,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
               type="button"
               onClick={handleVerify}
               disabled={enrolling || verifying || code.length !== 6 || !!enrollError}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
+              className="btn btn-lg mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
             >
               {verifying ? (
                 <>
@@ -331,7 +331,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
           <button
             type="button"
             onClick={onBack}
-            className="text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+            className="btn btn-lg text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
           >
             ← Back
           </button>
@@ -339,7 +339,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
             <button
               type="button"
               onClick={handleSkip}
-              className="text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
+              className="btn btn-lg text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
             >
               Skip 2FA for now
             </button>

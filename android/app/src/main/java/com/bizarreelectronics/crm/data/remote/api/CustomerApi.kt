@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.BulkTagRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
+import com.bizarreelectronics.crm.data.remote.dto.CustomerAddress
 import com.bizarreelectronics.crm.data.remote.dto.CustomerDetail
 import com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListData
@@ -79,6 +80,11 @@ interface CustomerApi {
     /** Customer's on-file devices (mockup PHONE 2 'ON FILE' picker). */
     @GET("customers/{id}/assets")
     suspend fun getAssets(@Path("id") id: Long): ApiResponse<List<com.bizarreelectronics.crm.data.remote.dto.CustomerAsset>>
+
+    // CROSS9c: normalized list derived from the current customer address fields.
+    // Older servers may 404; CustomerDetailScreen falls back to CustomerEntity.
+    @GET("customers/{id}/addresses")
+    suspend fun getAddresses(@Path("id") id: Long): ApiResponse<List<CustomerAddress>>
 
     @POST("customers")
     suspend fun createCustomer(@Body request: CreateCustomerRequest): ApiResponse<CustomerDetail>

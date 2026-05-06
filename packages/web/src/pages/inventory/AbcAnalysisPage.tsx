@@ -41,10 +41,10 @@ interface AbcResponse {
 }
 
 const CLASS_COLORS: Record<string, string> = {
-  A: 'bg-green-100 text-green-700 border-green-300',
-  B: 'bg-blue-100 text-blue-700 border-blue-300',
-  C: 'bg-amber-100 text-amber-700 border-amber-300',
-  DEAD: 'bg-red-100 text-red-700 border-red-300',
+  A: 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700',
+  B: 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
+  C: 'bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700',
+  DEAD: 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
 };
 
 export function AbcAnalysisPage() {
@@ -124,7 +124,7 @@ export function AbcAnalysisPage() {
         <select
           value={days}
           onChange={(e) => setDays(parseInt(e.target.value, 10))}
-          className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+          className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
         >
           <option value={30}>Last 30 days</option>
           <option value={90}>Last 90 days</option>
@@ -134,7 +134,7 @@ export function AbcAnalysisPage() {
         {data && (
           <button
             onClick={handleExportCsv}
-            className="inline-flex items-center gap-1.5 rounded-md border border-surface-300 px-3 py-2 text-sm font-medium hover:bg-surface-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-surface-300 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
           >
             <Download className="h-4 w-4" /> Export CSV
           </button>
@@ -160,7 +160,7 @@ export function AbcAnalysisPage() {
               className={cn(
                 'rounded-lg border-2 p-4 text-left transition-all',
                 CLASS_COLORS[cls],
-                filter === cls && 'ring-2 ring-offset-2 ring-primary-500',
+                filter === cls && 'ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-surface-950',
               )}
             >
               <div className="flex items-center justify-between">
@@ -180,27 +180,27 @@ export function AbcAnalysisPage() {
       )}
 
       {data && data.clearance_suggestions.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/30">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-red-800">Clearance suggestions</h3>
+            <h3 className="font-semibold text-red-800 dark:text-red-200">Clearance suggestions</h3>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
                   const allIds = new Set(data.clearance_suggestions.map((s) => s.id));
                   setSelectedClearance(selectedClearance.size === allIds.size ? new Set() : allIds);
                 }}
-                className="text-xs text-red-700 underline"
+                className="text-xs text-red-700 underline dark:text-red-300"
               >
                 {selectedClearance.size === data.clearance_suggestions.length ? 'Deselect all' : 'Select all'}
               </button>
             </div>
           </div>
-          <p className="text-sm text-red-700 mb-3">
+          <p className="text-sm text-red-700 mb-3 dark:text-red-300">
             {data.clearance_suggestions.length} dead-stock items tying up capital — select and mark for 50% clearance
           </p>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {data.clearance_suggestions.slice(0, 20).map((s) => (
-              <div key={s.id} className="flex items-center gap-2 text-sm">
+              <div key={s.id} className="flex items-center gap-2 text-sm text-red-950 dark:text-red-100">
                 <input
                   type="checkbox"
                   checked={selectedClearance.has(s.id)}
@@ -209,7 +209,7 @@ export function AbcAnalysisPage() {
                     if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
                     setSelectedClearance(next);
                   }}
-                  className="h-4 w-4 rounded border-red-400"
+                  className="h-4 w-4 rounded border-red-400 dark:border-red-700 dark:bg-surface-900"
                 />
                 <span className="flex-1">{s.name}</span>
                 <span className="font-mono text-xs">
@@ -221,9 +221,9 @@ export function AbcAnalysisPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto">
+      <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto dark:border-surface-700 dark:bg-surface-800">
         <table className="w-full text-sm">
-          <thead className="bg-surface-50 border-b border-surface-200">
+          <thead className="bg-surface-50 border-b border-surface-200 dark:border-surface-700 dark:bg-surface-900">
             <tr>
               <th className="text-left px-3 py-2">Item</th>
               <th className="text-center px-3 py-2">Class</th>
@@ -235,7 +235,7 @@ export function AbcAnalysisPage() {
           </thead>
           <tbody>
             {filtered.slice(0, 200).map((i) => (
-              <tr key={i.id} className="border-b border-surface-100 last:border-0">
+              <tr key={i.id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
                 <td className="px-3 py-2">
                   <div className="font-medium">{i.name}</div>
                   <div className="text-xs text-surface-500">{i.sku}</div>

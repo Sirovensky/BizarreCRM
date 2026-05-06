@@ -11,12 +11,15 @@ import { usePlanStore } from '@/stores/planStore';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { initCurrencyFromSettings } from '@/utils/format';
+import { applyPrimaryAccent } from '@/utils/themeAccent';
 import { Menu, AlertTriangle, X } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
+import { useFormKeyboardShortcuts } from '@/hooks/useFormKeyboardShortcuts';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
+import { Button } from '@/components/shared/Button';
 
 // Shape of the augmented config payload returned by `settingsApi.getConfig()`.
 // Every field is optional because the server merges store config with env
@@ -35,6 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Connect to WebSocket when authenticated (AppShell only renders for logged-in users)
   useWebSocket();
+  useFormKeyboardShortcuts();
 
   // Fetch tenant plan + usage on mount, refetch on focus
   // SCAN-1146: rapid alt-tab or mobile focus-loss storms previously fired
@@ -77,6 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const currency = configData?.data?.data?.store_currency;
     if (currency) initCurrencyFromSettings(currency);
+    applyPrimaryAccent(configData?.data?.data?.theme_primary_color as string | undefined);
   }, [configData]);
 
   // Close mobile sidebar on route change
@@ -181,13 +186,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <OfflineBanner />
         <Header
           hamburgerButton={
-            <button
+            <Button
               onClick={() => setMobileSidebarOpen(true)}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200 md:hidden"
+              variant="ghost"
+              size="sm"
+              iconOnly
+              className="text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200 md:hidden"
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
-            </button>
+            </Button>
           }
         />
         {isDev && !devBannerDismissed && (
@@ -198,7 +206,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={dismissDevBanner}
               aria-label="Dismiss development mode warning"
-              className="ml-1 rounded p-0.5 transition-colors hover:bg-white/20 focus-visible:outline-none focus:ring-2 focus:ring-white/50"
+              className="btn-icon btn-xs ml-1 !text-white hover:bg-white/20 focus-visible:outline-none focus:ring-2 focus:ring-white/50"
             >
               <X className="h-3.5 w-3.5" />
             </button>

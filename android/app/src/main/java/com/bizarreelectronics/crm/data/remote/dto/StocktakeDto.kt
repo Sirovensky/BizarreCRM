@@ -84,9 +84,11 @@ data class StocktakeCommitRequest(
 /**
  * One count row returned inside [StocktakeSessionDetail.counts].
  * Mirrors `stocktake_counts` JOIN `inventory_items` from stocktake.routes.ts.
+ * `POST /stocktake/:id/counts` returns a compact row without id/counted_at, so
+ * those fields stay nullable and UI keys fall back to inventoryItemId.
  */
 data class StocktakeCount(
-    val id: Int,
+    val id: Int? = null,
     @SerializedName("stocktake_id")
     val stocktakeId: Int,
     @SerializedName("inventory_item_id")
@@ -98,7 +100,7 @@ data class StocktakeCount(
     val variance: Int,
     val notes: String?,
     @SerializedName("counted_at")
-    val countedAt: String,
+    val countedAt: String? = null,
     /** Item name from the JOIN. */
     val name: String?,
     val sku: String?,

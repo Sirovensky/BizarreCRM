@@ -2,8 +2,8 @@
  * PaymentLinksPage - list / create / cancel customer payment requests.
  * §52 idea 1. Staff-facing at /billing/payment-links.
  *
- * These requests show the customer their balance but do not collect cards
- * until a hosted checkout provider is wired end to end.
+ * These requests show the customer their balance and, when a tenant-owned
+ * Stripe account is configured, send them through hosted checkout.
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -62,9 +62,10 @@ export function PaymentLinksPage() {
     },
     staleTime: 60_000,
   });
-  const paymentLinksEnabled = configData?.['billing_pay_link_enabled'] === 'true';
+  const paymentLinksFlag = configData?.['billing_pay_link_enabled'];
+  const paymentLinksEnabled = paymentLinksFlag === 'true' || paymentLinksFlag === '1';
   const paymentLinksDisabledReason =
-    'Payment links are not yet active — configure a checkout provider first (Settings → Payments).';
+    'Payment links are not yet active. Configure a checkout provider first in Settings > Payment Processing.';
 
   const { data, isLoading } = useQuery({
     queryKey: ['payment-links', filter],
@@ -188,8 +189,7 @@ export function PaymentLinksPage() {
         </div>
       ) : (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Payment request links show customers the amount due, but they do not charge cards or mark invoices paid.
-          Take payment through POS or your terminal until hosted checkout is connected.
+          Payment request links use the shop's configured checkout provider. Invoices are marked paid only after a signed provider webhook confirms the payment.
         </div>
       )}
 
@@ -262,10 +262,10 @@ export function PaymentLinksPage() {
           <button type="button"
             key={s}
             onClick={() => setFilter(s)}
-            className={`rounded-full border px-3 py-1 text-sm ${
+            className={`rounded-full border px-3 py-1 text-sm transition-colors ${
               filter === s
-                ? 'border-primary-500 bg-primary-50 text-primary-800'
-                : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                ? 'border-primary-500 bg-primary-50 text-primary-800 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-200'
+                : 'border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800'
             }`}
           >
             {s}
@@ -273,9 +273,9 @@ export function PaymentLinksPage() {
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600">
+      <div className="overflow-x-auto rounded-lg border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-900">
+        <table className="w-full text-sm text-surface-900 dark:text-surface-100">
+          <thead className="bg-surface-50 text-surface-600 dark:bg-surface-800 dark:text-surface-300">
             <tr>
               <th className="px-3 py-2 text-left">Token</th>
               <th className="px-3 py-2 text-left">Amount</th>
@@ -286,12 +286,12 @@ export function PaymentLinksPage() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-surface-500 dark:text-surface-400">Loading...</td></tr>
             ) : !data || data.length === 0 ? (
-              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">No payment requests yet</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-surface-500 dark:text-surface-400">No payment requests yet</td></tr>
             ) : (
               data.map((row) => (
-                <tr key={row.id} className="border-t border-gray-100">
+                <tr key={row.id} className="border-t border-surface-100 dark:border-surface-800">
                   <td className="px-3 py-2 font-mono text-xs">{row.token.slice(0, 12)}…</td>
                   <td className="px-3 py-2">{formatCents(row.amount_cents)}</td>
                   <td className="px-3 py-2">
@@ -300,7 +300,7 @@ export function PaymentLinksPage() {
                   <td className="px-3 py-2">{row.click_count}</td>
                   <td className="px-3 py-2 text-right space-x-2">
                     <button type="button"
-                      className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                      className="rounded border border-surface-300 px-2 py-1 text-xs text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
                       onClick={() => copyLink(row.token)}
                       aria-label={`Copy payment link for ${row.token.slice(0, 8)}`}
                     >
@@ -308,7 +308,7 @@ export function PaymentLinksPage() {
                     </button>
                     {canManagePaymentLinks && row.status === 'active' ? (
                       <button type="button"
-                        className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                        className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30"
                         onClick={() => cancelMutation.mutate(row.id)}
                         disabled={cancelMutation.isPending && cancelMutation.variables === row.id}
                         aria-label={`Cancel payment request ${row.token.slice(0, 8)}`}
@@ -330,11 +330,11 @@ export function PaymentLinksPage() {
 function statusPill(status: string): string {
   const base = 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium ';
   switch (status) {
-    case 'active':    return base + 'bg-green-100 text-green-800';
-    case 'paid':      return base + 'bg-blue-100 text-blue-800';
-    case 'expired':   return base + 'bg-gray-100 text-gray-700';
-    case 'cancelled': return base + 'bg-red-100 text-red-800';
-    default:          return base + 'bg-gray-100 text-gray-700';
+    case 'active':    return base + 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
+    case 'paid':      return base + 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
+    case 'expired':   return base + 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300';
+    case 'cancelled': return base + 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+    default:          return base + 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300';
   }
 }
 

@@ -1,7 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, MailCheck, ShieldCheck, Store, XCircle } from 'lucide-react';
+import { Button } from '../../components/shared/Button';
+import { FormError } from '../../components/shared/FormError';
 import { signupApi } from '../../api/endpoints';
 import { redactEmails } from '../../utils/apiError';
+import { cn } from '../../utils/cn';
+import {
+  assessSignupPassword,
+  checkPwnedPassword,
+  type PasswordStrengthAssessment,
+} from '../../utils/passwordSecurity';
 
 const HCAPTCHA_SCRIPT_SRC = 'https://js.hcaptcha.com/1/api.js?render=explicit';
 
@@ -60,6 +70,13 @@ interface FieldErrors {
   captcha?: string;
 }
 
+type PasswordBreachCheck =
+  | { status: 'idle'; password?: string }
+  | { status: 'checking'; password: string }
+  | { status: 'safe'; password: string }
+  | { status: 'breached'; password: string; count: number }
+  | { status: 'error'; password: string; message: string };
+
 export function SignupPage() {
   const [slug, setSlug] = useState('');
   const [shopName, setShopName] = useState('');
@@ -67,6 +84,7 @@ export function SignupPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordBreachCheck, setPasswordBreachCheck] = useState<PasswordBreachCheck>({ status: 'idle' });
 
   const [slugStatus, setSlugStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [slugMessage, setSlugMessage] = useState('');
@@ -82,10 +100,6 @@ export function SignupPage() {
     /** Subdomain URL of the new shop, e.g. https://slug.bizarrecrm.com — present when provisioned. */
     tenantUrl?: string;
   } | null>(null);
-  // WIZARD-EMAIL-1: track dev-skip state on the signup success screen so the
-  // owner can short-circuit email verification while SMTP is still un-wired.
-  const [devSkipState, setDevSkipState] = useState<'idle' | 'submitting' | 'failed'>('idle');
-  const [devSkipError, setDevSkipError] = useState('');
   const captchaSiteKey = (import.meta.env.VITE_HCAPTCHA_SITE_KEY || '').trim();
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaReady, setCaptchaReady] = useState(!captchaSiteKey);
@@ -94,6 +108,17 @@ export function SignupPage() {
   const slugTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captchaContainerRef = useRef<HTMLDivElement | null>(null);
   const captchaWidgetIdRef = useRef<string | number | null>(null);
+  const passwordCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const passwordCheckAbortRef = useRef<AbortController | null>(null);
+  const latestPasswordRef = useRef('');
+
+  const passwordStrength = useMemo(
+    () => assessSignupPassword(password, { email, shopName, slug }),
+    [email, password, shopName, slug],
+  );
+  const activePasswordBreachCheck: PasswordBreachCheck = passwordBreachCheck.password === password
+    ? passwordBreachCheck
+    : { status: 'idle', password };
 
   // Auto-generate slug from shop name
   const handleShopNameChange = (name: string) => {
@@ -227,6 +252,60 @@ export function SignupPage() {
     };
   }, [captchaSiteKey]);
 
+  useEffect(() => {
+    latestPasswordRef.current = password;
+    if (passwordCheckTimerRef.current) clearTimeout(passwordCheckTimerRef.current);
+    passwordCheckAbortRef.current?.abort();
+
+    if (!password || password.length < 8 || !passwordStrength.isAcceptable) {
+      setPasswordBreachCheck({ status: 'idle', password });
+      return () => {
+        if (passwordCheckTimerRef.current) clearTimeout(passwordCheckTimerRef.current);
+      };
+    }
+
+    setPasswordBreachCheck(prev => (
+      prev.password === password && (prev.status === 'safe' || prev.status === 'breached')
+        ? prev
+        : { status: 'idle', password }
+    ));
+
+    passwordCheckTimerRef.current = setTimeout(() => {
+      const controller = new AbortController();
+      passwordCheckAbortRef.current = controller;
+      setPasswordBreachCheck({ status: 'checking', password });
+
+      checkPwnedPassword(password, controller.signal)
+        .then(result => {
+          if (controller.signal.aborted || latestPasswordRef.current !== password) return;
+          setPasswordBreachCheck(result.compromised
+            ? { status: 'breached', password, count: result.count }
+            : { status: 'safe', password });
+          if (!result.compromised) {
+            setFieldErrors(prev => {
+              const current = prev.admin_password ?? '';
+              if (!current.startsWith('Finish checking') && !current.startsWith('Password breach check')) {
+                return prev;
+              }
+              return { ...prev, admin_password: undefined };
+            });
+          }
+        })
+        .catch(error => {
+          if (controller.signal.aborted || latestPasswordRef.current !== password) return;
+          const message = error instanceof Error && error.message
+            ? error.message
+            : 'Password breach check is unavailable.';
+          setPasswordBreachCheck({ status: 'error', password, message });
+        });
+    }, 450);
+
+    return () => {
+      if (passwordCheckTimerRef.current) clearTimeout(passwordCheckTimerRef.current);
+      passwordCheckAbortRef.current?.abort();
+    };
+  }, [password, passwordStrength.isAcceptable]);
+
   const validate = (): boolean => {
     const errors: FieldErrors = {};
     if (!slug || slug.length < 3) errors.slug = 'Shop URL is required (min 3 characters)';
@@ -234,14 +313,26 @@ export function SignupPage() {
     if (slugStatus === 'invalid') errors.slug = 'Invalid format';
     if (!shopName.trim() || shopName.trim().length < 2) errors.shop_name = 'Shop name is required';
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) errors.admin_email = 'Valid email is required';
-    if (!password || password.length < 8) errors.admin_password = 'Password must be at least 8 characters';
+    if (!password || password.length < 8) {
+      errors.admin_password = 'Password must be at least 8 characters';
+    } else if (!passwordStrength.isAcceptable) {
+      errors.admin_password = passwordStrength.suggestions[0] || 'Choose a stronger password';
+    } else if (activePasswordBreachCheck.status === 'breached') {
+      errors.admin_password = `Choose a different password. This one appears in ${formatBreachCount(activePasswordBreachCheck.count)}.`;
+    } else if (activePasswordBreachCheck.status === 'checking') {
+      errors.admin_password = 'Finish checking this password against breach data before creating the shop.';
+    } else if (activePasswordBreachCheck.status === 'error') {
+      errors.admin_password = `${activePasswordBreachCheck.message} Try again before creating the shop.`;
+    } else if (activePasswordBreachCheck.status !== 'safe') {
+      errors.admin_password = 'Password breach check has not completed yet.';
+    }
     if (password !== confirmPassword) errors.confirm_password = 'Passwords do not match';
     if (captchaSiteKey && !captchaToken) errors.captcha = 'Please complete the verification check';
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setApiError('');
     if (!validate()) return;
@@ -313,291 +404,279 @@ export function SignupPage() {
     //   provisioned=false → production path; verification email pending; user
     //                       must click the link to finish provisioning.
     const fallbackUrl = success.tenantUrl || getTenantUrl(success.slug, '/login?fresh=1');
+    const successMessage = success.provisioned
+      ? getProvisionedSuccessMessage(success, fallbackUrl)
+      : (success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`);
+    const SuccessIcon = success.provisioned ? CheckCircle2 : MailCheck;
+
     return (
-      <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Roboto', sans-serif" }}>
-        <div style={{ textAlign: 'center', maxWidth: 440, padding: 32 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>{success.provisioned ? '✅' : '✉️'}</div>
-          <h2 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>
+      <main className="flex min-h-screen items-center justify-center bg-surface-50 px-4 py-10 font-sans text-surface-900 dark:bg-surface-950 dark:text-surface-100 sm:px-6">
+        <section className="w-full max-w-md rounded-lg border border-surface-200 bg-white p-8 text-center shadow-xl shadow-surface-900/10 dark:border-surface-700 dark:bg-surface-900 dark:shadow-black/30">
+          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300">
+            <SuccessIcon className="h-7 w-7" aria-hidden="true" />
+          </div>
+          <h2 className="font-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
             {success.provisioned ? 'Shop ready!' : 'Check Your Email'}
           </h2>
-          <p style={{ color: '#555', fontSize: 16, marginBottom: 24, lineHeight: 1.5 }}>
-            {success.provisioned
-              ? (() => {
-                  // Display the host portion of the actual server-provided URL
-                  // so localhost dev shows "vizcompare.localhost" not the
-                  // hardcoded ".bizarrecrm.com" production string.
-                  let host = '';
-                  try {
-                    host = new URL(success.tenantUrl ?? fallbackUrl).host;
-                  } catch {
-                    host = `${success.slug}.${resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}`;
-                  }
-                  return `Your shop ${host} is live and you're signed in. Click below to start setting it up.`;
-                })()
-              : (success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`)}
+          <p className="mt-3 text-base leading-7 text-surface-600 dark:text-surface-300">
+            {successMessage}
           </p>
 
           {success.provisioned && (
             <a
               href={fallbackUrl}
-              style={{
-                display: 'inline-block',
-                background: '#0891B2',
-                color: '#fff',
-                padding: '12px 28px',
-                borderRadius: 8,
-                fontSize: 16,
-                fontWeight: 600,
-                textDecoration: 'none',
-                marginBottom: 16,
-              }}
+              className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-surface-900 px-5 text-sm font-semibold text-primary-100 transition-colors hover:bg-surface-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-primary-500 dark:text-primary-950 dark:hover:bg-primary-400 dark:focus-visible:ring-primary-400 dark:focus-visible:ring-offset-surface-900"
             >
-              Open your shop &rarr;
+              Open your shop
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </a>
           )}
 
-          <div style={{ marginTop: success.provisioned ? 8 : 24, fontSize: 14, color: '#666' }}>
-            <Link to="/" style={{ color: '#0E7490', fontWeight: 600, textDecoration: 'none' }}>Return to home</Link>
+          <div className={cn('text-sm text-surface-500 dark:text-surface-400', success.provisioned ? 'mt-4' : 'mt-6')}>
+            <Link to="/" className="font-semibold text-cyan-800 underline-offset-4 hover:underline dark:text-cyan-300">
+              Return to home
+            </Link>
           </div>
-
-          {/* WIZARD-EMAIL-1 (TEMPORARY — must be removed before SaaS launch).
-              Outbound email isn't wired yet, so without this button a dev test
-              cannot complete the signup flow end-to-end. The matching backend
-              route /api/v1/signup/verify/dev-skip is gated behind
-              NODE_ENV !== 'production' AND WIZARD_DEV_SKIP_EMAIL=1. */}
-          {/* Dev-skip button only useful when the shop is NOT yet provisioned
-              (production-style email-pending path). When the server already
-              auto-provisioned in dev mode, success.provisioned is true and
-              the "Open your shop" CTA above is the right next step. */}
-          {import.meta.env.DEV && !success.provisioned && (
-            <div style={{ marginTop: 32, padding: 16, background: '#FEF3C7', border: '1px solid #FBBF24', borderRadius: 8, textAlign: 'left' }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dev only</p>
-              <p style={{ fontSize: 13, color: '#78350F', marginBottom: 12 }}>
-                SMTP isn't wired yet. Use this to provision the tenant immediately and bypass the email-link step.
-              </p>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (devSkipState === 'submitting') return;
-                  setDevSkipState('submitting');
-                  setDevSkipError('');
-                  try {
-                    const r = await fetch('/api/v1/signup/verify/dev-skip', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                      credentials: 'include',
-                      body: JSON.stringify({ slug: success.slug, adminEmail: success.adminEmail }),
-                    });
-                    const body = await r.json().catch(() => ({}));
-                    if (!r.ok) {
-                      setDevSkipState('failed');
-                      if (r.status === 404) {
-                        setDevSkipError('Dev-skip not enabled on the server. Set NODE_ENV != production AND WIZARD_DEV_SKIP_EMAIL=1, then restart.');
-                      } else {
-                        setDevSkipError(body?.message || `Dev-skip failed (HTTP ${r.status}).`);
-                      }
-                      return;
-                    }
-                    // Success — backend has provisioned the tenant and set
-                    // refresh-token + csrf cookies. Redirect to the subdomain
-                    // login (or directly into the wizard if accessToken came
-                    // back). The full URL is guaranteed safe since slug is our
-                    // own input.
-                    const url = body?.data?.url || getTenantUrl(success.slug, '/login?verified=1');
-                    window.location.href = url;
-                  } catch (e: unknown) {
-                    setDevSkipState('failed');
-                    setDevSkipError(e instanceof Error ? e.message : 'Network error.');
-                  }
-                }}
-                disabled={devSkipState === 'submitting'}
-                style={{
-                  background: devSkipState === 'submitting' ? '#FBBF24' : '#F59E0B',
-                  color: '#451A03',
-                  border: 'none',
-                  borderRadius: 6,
-                  padding: '8px 14px',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: devSkipState === 'submitting' ? 'wait' : 'pointer',
-                }}
-              >
-                {devSkipState === 'submitting' ? 'Skipping…' : 'Skip email check (dev only)'}
-              </button>
-              {devSkipError && (
-                <p style={{ marginTop: 10, fontSize: 12, color: '#991B1B' }}>{devSkipError}</p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+        </section>
+      </main>
     );
   }
 
-  const submitDisabled = submitting || slugStatus === 'checking' || (Boolean(captchaSiteKey) && !captchaReady);
+  const passwordAriaDescribedBy = [
+    fieldErrors.admin_password ? 'signup-password-error' : undefined,
+    password ? 'signup-password-security' : undefined,
+  ].filter(Boolean).join(' ') || undefined;
+  const passwordCheckPending = password.length >= 8
+    && passwordStrength.isAcceptable
+    && activePasswordBreachCheck.status === 'checking';
+  const submitDisabled = submitting || slugStatus === 'checking' || passwordCheckPending || (Boolean(captchaSiteKey) && !captchaReady);
+  const signupHost = resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', fontFamily: "'Jost', 'Roboto', sans-serif" }}>
-      {/* WEB-FA-024: dropped per-page <style>@import — Bebas Neue is loaded
-          once globally via index.html <link rel="stylesheet">. The inline
-          @import duplicated the network round-trip on every signup mount
-          AND blocked first paint while the @import resolved. League Spartan
-          + Roboto refs further down fall back to Jost / system stack which
-          aligns with the project_brand_fonts (Jost) canonical body face. */}
-      <div style={{ width: '100%', maxWidth: 460 }}>
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <Link to="/" style={{ textDecoration: 'none', display: 'inline-block' }}>
-            <span style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 32, color: '#bc398f', letterSpacing: 3, cursor: 'pointer' }}>BIZARRECRM</span>
-          </Link>
-          <h1 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 40, color: '#0891B2', letterSpacing: 2, marginTop: 8, marginBottom: 4 }}>
-            Create Your Shop
-          </h1>
-          <p style={{ color: '#666', fontSize: 15 }}>Free to start. No credit card required.</p>
-        </div>
+    <main className="min-h-screen bg-surface-50 font-sans text-surface-900 dark:bg-surface-950 dark:text-surface-100">
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl items-center px-4 py-10 sm:px-6 lg:px-8">
+        <div className="grid w-full gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(400px,460px)] lg:items-center">
+          <section className="hidden lg:block">
+            <Link to="/" className="inline-flex font-logo text-3xl text-pink-700 transition-colors hover:text-pink-800 dark:text-pink-300 dark:hover:text-pink-200">
+              BIZARRECRM
+            </Link>
+            <h1 className="mt-6 max-w-xl font-display text-5xl font-semibold leading-tight text-cyan-800 dark:text-cyan-200">
+              Create your repair shop workspace.
+            </h1>
+            <p className="mt-4 max-w-lg text-base leading-7 text-surface-600 dark:text-surface-300">
+              Free to start. No credit card required. Your shop gets a dedicated URL after email verification.
+            </p>
 
-        {/* Form card */}
-        <form onSubmit={handleSubmit} noValidate style={{ background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
-          {apiError && (
-            <div role="alert" aria-live="assertive" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#dc2626', fontSize: 14 }}>
-              {apiError}
-            </div>
-          )}
-
-          {/* Shop Name */}
-          <FieldGroup htmlFor="signup-shop-name" label="Shop Name" error={fieldErrors.shop_name} errorId="signup-shop-name-error">
-            <input
-              id="signup-shop-name"
-              type="text"
-              value={shopName}
-              onChange={e => handleShopNameChange(e.target.value)}
-              placeholder="My Repair Shop"
-              maxLength={100}
-              autoFocus
-              aria-invalid={!!fieldErrors.shop_name}
-              aria-describedby={fieldErrors.shop_name ? 'signup-shop-name-error' : undefined}
-              style={inputStyle(!!fieldErrors.shop_name)}
-            />
-          </FieldGroup>
-
-          {/* Slug */}
-          <FieldGroup htmlFor="signup-slug" label="Shop URL" error={fieldErrors.slug} errorId="signup-slug-error">
-            <div style={{ display: 'flex' }}>
-              <input
-                id="signup-slug"
-                type="text"
-                value={slug}
-                onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                placeholder="your-shop"
-                maxLength={30}
-                aria-invalid={!!fieldErrors.slug}
-                aria-describedby={
-                  fieldErrors.slug
-                    ? 'signup-slug-error'
-                    : slugStatus !== 'idle'
-                      ? 'signup-slug-status'
-                      : undefined
-                }
-                style={{ ...inputStyle(!!fieldErrors.slug), borderRadius: '8px 0 0 8px', borderRight: 'none' }}
-              />
-              <span style={{
-                display: 'flex', alignItems: 'center', padding: '0 12px',
-                background: '#f5f5f5', border: `2px solid ${fieldErrors.slug ? '#fca5a5' : '#ddd'}`,
-                borderLeft: 'none', borderRadius: '0 8px 8px 0', color: '#999', fontSize: 13, whiteSpace: 'nowrap',
-              }}>.{resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}</span>
-            </div>
-            {slugStatus !== 'idle' && (
-              <div id="signup-slug-status" style={{ marginTop: 4, fontSize: 13, color: slugStatus === 'available' ? '#16a34a' : slugStatus === 'checking' ? '#999' : '#dc2626' }}>
-                {slugStatus === 'checking' ? 'Checking...' : slugMessage}
+            <div className="mt-8 grid max-w-lg gap-4">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-200 text-primary-950 dark:bg-primary-500/20 dark:text-primary-300">
+                  <Store className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="font-semibold text-surface-900 dark:text-surface-100">Dedicated tenant setup</p>
+                  <p className="mt-1 text-sm leading-6 text-surface-600 dark:text-surface-400">
+                    Your URL, owner account, and first-run setup stay scoped to your shop.
+                  </p>
+                </div>
               </div>
-            )}
-          </FieldGroup>
-
-          {/* Email */}
-          <FieldGroup htmlFor="signup-email" label="Email" error={fieldErrors.admin_email} errorId="signup-email-error">
-            <input
-              id="signup-email"
-              type="email"
-              value={email}
-              onChange={e => { setEmail(e.target.value); setFieldErrors(p => ({ ...p, admin_email: undefined })); }}
-              placeholder="you@example.com"
-              maxLength={254}
-              aria-invalid={!!fieldErrors.admin_email}
-              aria-describedby={fieldErrors.admin_email ? 'signup-email-error' : undefined}
-              style={inputStyle(!!fieldErrors.admin_email)}
-            />
-          </FieldGroup>
-
-          {/* Password */}
-          <FieldGroup htmlFor="signup-password" label="Password" error={fieldErrors.admin_password} errorId="signup-password-error">
-            <div style={{ position: 'relative' }}>
-              <input
-                id="signup-password"
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={e => { setPassword(e.target.value); setFieldErrors(p => ({ ...p, admin_password: undefined })); }}
-                placeholder="Min 8 characters"
-                maxLength={128}
-                aria-invalid={!!fieldErrors.admin_password}
-                aria-describedby={fieldErrors.admin_password ? 'signup-password-error' : undefined}
-                style={{ ...inputStyle(!!fieldErrors.admin_password), paddingRight: 44 }}
-              />
-              <button type="button" onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                aria-pressed={showPassword}
-                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, fontFamily: "'Roboto', sans-serif" }}>
-                {showPassword ? 'Hide' : 'Show'}
-              </button>
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300">
+                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="font-semibold text-surface-900 dark:text-surface-100">Protected signup checks</p>
+                  <p className="mt-1 text-sm leading-6 text-surface-600 dark:text-surface-400">
+                    Slug availability, CAPTCHA, and password safety checks run before the shop is created.
+                  </p>
+                </div>
+              </div>
             </div>
-          </FieldGroup>
+          </section>
 
-          {/* Confirm Password */}
-          <FieldGroup htmlFor="signup-confirm-password" label="Confirm Password" error={fieldErrors.confirm_password} errorId="signup-confirm-password-error">
-            <input
-              id="signup-confirm-password"
-              type={showPassword ? 'text' : 'password'}
-              value={confirmPassword}
-              onChange={e => { setConfirmPassword(e.target.value); setFieldErrors(p => ({ ...p, confirm_password: undefined })); }}
-              placeholder="Repeat password"
-              maxLength={128}
-              aria-invalid={!!fieldErrors.confirm_password}
-              aria-describedby={fieldErrors.confirm_password ? 'signup-confirm-password-error' : undefined}
-              style={inputStyle(!!fieldErrors.confirm_password)}
-            />
-          </FieldGroup>
+          <div className="w-full">
+            <div className="mb-6 text-center lg:hidden">
+              <Link to="/" className="inline-flex font-logo text-3xl text-pink-700 transition-colors hover:text-pink-800 dark:text-pink-300 dark:hover:text-pink-200">
+                BIZARRECRM
+              </Link>
+              <h1 className="mt-4 font-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
+                Create Your Shop
+              </h1>
+              <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">Free to start. No credit card required.</p>
+            </div>
 
+            <form
+              onSubmit={handleSubmit}
+              noValidate
+              aria-busy={submitting}
+              className="rounded-lg border border-surface-200 bg-white p-6 shadow-xl shadow-surface-900/10 dark:border-surface-700 dark:bg-surface-900 dark:shadow-black/30 sm:p-8"
+            >
+              <div className="mb-6 hidden text-center lg:block">
+                <h2 className="font-display text-4xl font-semibold text-cyan-800 dark:text-cyan-200">
+                  Create Your Shop
+                </h2>
+                <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
+                  Free to start. No credit card required.
+                </p>
+              </div>
 
-          {captchaSiteKey && (
-            <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError} errorId="signup-captcha-error">
-              <div ref={captchaContainerRef} style={{ minHeight: 78 }} />
-              {!captchaReady && !captchaError && (
-                <div style={{ marginTop: 4, fontSize: 13, color: '#666' }}>Loading verification...</div>
+              <FormError message={apiError} variant="banner" className="mb-5" />
+
+              <FieldGroup htmlFor="signup-shop-name" label="Shop Name" error={fieldErrors.shop_name} errorId="signup-shop-name-error">
+                <input
+                  id="signup-shop-name"
+                  type="text"
+                  value={shopName}
+                  onChange={e => {
+                    handleShopNameChange(e.target.value);
+                    setFieldErrors(p => ({ ...p, shop_name: undefined }));
+                  }}
+                  placeholder="My Repair Shop"
+                  maxLength={100}
+                  autoComplete="organization"
+                  autoFocus
+                  aria-invalid={!!fieldErrors.shop_name}
+                  aria-describedby={fieldErrors.shop_name ? 'signup-shop-name-error' : undefined}
+                  className={inputClass(!!fieldErrors.shop_name)}
+                />
+              </FieldGroup>
+
+              <FieldGroup htmlFor="signup-slug" label="Shop URL" error={fieldErrors.slug} errorId="signup-slug-error">
+                <div className="flex min-w-0">
+                  <input
+                    id="signup-slug"
+                    type="text"
+                    value={slug}
+                    onChange={e => {
+                      setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
+                      setFieldErrors(p => ({ ...p, slug: undefined }));
+                    }}
+                    placeholder="your-shop"
+                    maxLength={30}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    aria-invalid={!!fieldErrors.slug}
+                    aria-describedby={
+                      fieldErrors.slug
+                        ? 'signup-slug-error'
+                        : slugStatus !== 'idle'
+                          ? 'signup-slug-status'
+                          : undefined
+                    }
+                    className={inputClass(!!fieldErrors.slug, 'min-w-0 rounded-r-none border-r-0')}
+                  />
+                  <span className={slugHostClass(!!fieldErrors.slug)}>
+                    .{signupHost}
+                  </span>
+                </div>
+                {slugStatus !== 'idle' && (
+                  <div
+                    id="signup-slug-status"
+                    aria-live="polite"
+                    className={cn('mt-1.5 flex items-center gap-1.5 text-xs font-medium', slugStatusClass(slugStatus))}
+                  >
+                    {slugStatus === 'checking' && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
+                    {slugStatus === 'available' && <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />}
+                    {(slugStatus === 'taken' || slugStatus === 'invalid') && <XCircle className="h-3.5 w-3.5" aria-hidden="true" />}
+                    <span>{slugStatus === 'checking' ? 'Checking...' : slugMessage}</span>
+                  </div>
+                )}
+              </FieldGroup>
+
+              <FieldGroup htmlFor="signup-email" label="Email" error={fieldErrors.admin_email} errorId="signup-email-error">
+                <input
+                  id="signup-email"
+                  type="email"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setFieldErrors(p => ({ ...p, admin_email: undefined })); }}
+                  placeholder="you@example.com"
+                  maxLength={254}
+                  autoComplete="email"
+                  aria-invalid={!!fieldErrors.admin_email}
+                  aria-describedby={fieldErrors.admin_email ? 'signup-email-error' : undefined}
+                  className={inputClass(!!fieldErrors.admin_email)}
+                />
+              </FieldGroup>
+
+              <FieldGroup htmlFor="signup-password" label="Password" error={fieldErrors.admin_password} errorId="signup-password-error">
+                <div className="relative">
+                  <input
+                    id="signup-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => { setPassword(e.target.value); setFieldErrors(p => ({ ...p, admin_password: undefined })); }}
+                    placeholder="Min 8 characters"
+                    maxLength={128}
+                    autoComplete="new-password"
+                    aria-invalid={!!fieldErrors.admin_password}
+                    aria-describedby={passwordAriaDescribedBy}
+                    className={inputClass(!!fieldErrors.admin_password, 'pr-12')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute inset-y-1 right-1 inline-flex w-10 items-center justify-center rounded-md text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-100 dark:focus-visible:ring-cyan-400"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                  </button>
+                </div>
+                {password && (
+                  <PasswordSecurityFeedback
+                    breachCheck={activePasswordBreachCheck}
+                    strength={passwordStrength}
+                  />
+                )}
+              </FieldGroup>
+
+              <FieldGroup htmlFor="signup-confirm-password" label="Confirm Password" error={fieldErrors.confirm_password} errorId="signup-confirm-password-error">
+                <input
+                  id="signup-confirm-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => { setConfirmPassword(e.target.value); setFieldErrors(p => ({ ...p, confirm_password: undefined })); }}
+                  placeholder="Repeat password"
+                  maxLength={128}
+                  autoComplete="new-password"
+                  aria-invalid={!!fieldErrors.confirm_password}
+                  aria-describedby={fieldErrors.confirm_password ? 'signup-confirm-password-error' : undefined}
+                  className={inputClass(!!fieldErrors.confirm_password)}
+                />
+              </FieldGroup>
+
+              {captchaSiteKey && (
+                <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError} errorId="signup-captcha-error">
+                  <div ref={captchaContainerRef} className="min-h-[78px]" />
+                  {!captchaReady && !captchaError && (
+                    <div className="mt-1 text-xs text-surface-600 dark:text-surface-400">Loading verification...</div>
+                  )}
+                </FieldGroup>
               )}
-            </FieldGroup>
-          )}
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={submitDisabled}
-            style={{
-              width: '100%', padding: '14px 0', marginTop: 8,
-              background: submitDisabled ? '#999' : '#0E7490', color: '#fff', border: 'none', borderRadius: 8,
-              fontFamily: "'League Spartan', sans-serif", fontWeight: 600, fontSize: 16,
-              cursor: submitDisabled ? 'not-allowed' : 'pointer', transition: 'background .2s',
-            }}
-          >
-            {submitting ? 'Creating Your Shop...' : 'Create My Shop'}
-          </button>
-        </form>
+              <Button
+                type="submit"
+                size="lg"
+                fullWidth
+                disabled={submitDisabled}
+                leadingIcon={submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : undefined}
+                className="mt-2 h-12 bg-surface-900 text-primary-100 hover:bg-surface-800 active:bg-surface-700 dark:bg-primary-500 dark:text-primary-950 dark:hover:bg-primary-400 dark:active:bg-primary-600"
+              >
+                {submitting ? 'Creating Your Shop...' : 'Create My Shop'}
+              </Button>
+            </form>
 
-        {/* Footer links */}
-        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 14, color: '#666' }}>
-          Already have a shop?{' '}
-          <Link to="/?login=true" style={{ color: '#0E7490', fontWeight: 600, textDecoration: 'none' }}>Log in</Link>
+            <div className="mt-5 text-center text-sm text-surface-600 dark:text-surface-400">
+              Already have a shop?{' '}
+              <Link to="/?login=true" className="font-semibold text-cyan-800 underline-offset-4 hover:underline dark:text-cyan-300">
+                Log in
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -607,23 +686,131 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30);
 }
 
-function inputStyle(hasError: boolean): React.CSSProperties {
-  return {
-    width: '100%', padding: '11px 14px', fontSize: 15, color: '#1a1a1a',
-    border: `2px solid ${hasError ? '#fca5a5' : '#ddd'}`, borderRadius: 8,
-    outline: 'none', fontFamily: "'Roboto', sans-serif",
-    transition: 'border-color .2s', boxSizing: 'border-box',
-  };
+function getProvisionedSuccessMessage(
+  success: { slug: string; tenantUrl?: string },
+  fallbackUrl: string,
+): string {
+  // Display the host portion of the actual server-provided URL so localhost
+  // dev shows the real host instead of a production-shaped fallback.
+  let host = '';
+  try {
+    host = new URL(success.tenantUrl ?? fallbackUrl).host;
+  } catch {
+    host = `${success.slug}.${resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}`;
+  }
+  return `Your shop ${host} is live and you're signed in. Click below to start setting it up.`;
 }
 
-function FieldGroup({ label, error, errorId, htmlFor, children }: { label: string; error?: string; errorId?: string; htmlFor?: string; children: React.ReactNode }) {
+const INPUT_BASE =
+  'w-full rounded-lg border bg-white px-3.5 py-3 text-[15px] text-surface-900 shadow-sm transition-colors placeholder:text-surface-400 ' +
+  'focus:border-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-700/20 ' +
+  'dark:bg-surface-950 dark:text-surface-100 dark:placeholder:text-surface-500 dark:focus:border-cyan-400 dark:focus:ring-cyan-400/20';
+
+function inputClass(hasError: boolean, className?: string): string {
+  return cn(
+    INPUT_BASE,
+    hasError
+      ? 'border-error-300 focus:border-error-500 focus:ring-error-500/20 dark:border-error-700 dark:focus:border-error-400 dark:focus:ring-error-400/20'
+      : 'border-surface-300 dark:border-surface-700',
+    className,
+  );
+}
+
+function slugHostClass(hasError: boolean): string {
+  return cn(
+    'inline-flex max-w-[46%] shrink-0 items-center truncate rounded-r-lg border border-l-0 bg-surface-100 px-3 text-xs text-surface-500 dark:bg-surface-800 dark:text-surface-400 sm:text-sm',
+    hasError ? 'border-error-300 dark:border-error-700' : 'border-surface-300 dark:border-surface-700',
+  );
+}
+
+function PasswordSecurityFeedback({ strength, breachCheck }: { strength: PasswordStrengthAssessment; breachCheck: PasswordBreachCheck }) {
+  const strengthTone = getStrengthTone(strength.score);
+  const breachMessage = getBreachMessage(breachCheck);
+  const activePips = Math.max(1, Math.min(4, strength.score));
+
   return (
-    <div style={{ marginBottom: 18 }}>
-      <label htmlFor={htmlFor} style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 600, fontFamily: "'League Spartan', sans-serif", color: '#333' }}>
+    <div id="signup-password-security" className="mt-2" aria-live="polite">
+      <div className="flex items-center gap-3">
+        <div className="grid flex-1 grid-cols-4 gap-1" aria-hidden="true">
+          {[0, 1, 2, 3].map(index => (
+            <span
+              key={index}
+              className={cn(
+                'h-1.5 rounded-full transition-colors',
+                index < activePips ? strengthTone.bar : 'bg-surface-200 dark:bg-surface-700',
+              )}
+            />
+          ))}
+        </div>
+        <span className={cn('min-w-20 text-right text-xs font-semibold', strengthTone.text)}>
+          {strength.label}
+        </span>
+      </div>
+
+      {strength.suggestions.length > 0 && (
+        <p className="mt-1.5 text-xs leading-5 text-surface-500 dark:text-surface-400">
+          {strength.suggestions[0]}
+        </p>
+      )}
+
+      {strength.isAcceptable && breachMessage && (
+        <p className={cn('mt-1.5 text-xs leading-5', breachTextClass(breachCheck.status))}>
+          {breachMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function getStrengthTone(score: number): { bar: string; text: string } {
+  if (score >= 4) return { bar: 'bg-success-700 dark:bg-success-400', text: 'text-success-700 dark:text-success-300' };
+  if (score === 3) return { bar: 'bg-success-600 dark:bg-success-500', text: 'text-success-600 dark:text-success-300' };
+  if (score === 2) return { bar: 'bg-warning-600 dark:bg-warning-400', text: 'text-warning-700 dark:text-warning-300' };
+  return { bar: 'bg-error-600 dark:bg-error-400', text: 'text-error-600 dark:text-error-300' };
+}
+
+function breachTextClass(status: PasswordBreachCheck['status']): string {
+  if (status === 'safe') return 'text-success-700 dark:text-success-300';
+  if (status === 'breached' || status === 'error') return 'text-error-600 dark:text-error-300';
+  return 'text-surface-500 dark:text-surface-400';
+}
+
+function slugStatusClass(status: 'idle' | 'checking' | 'available' | 'taken' | 'invalid'): string {
+  if (status === 'available') return 'text-success-700 dark:text-success-300';
+  if (status === 'checking') return 'text-surface-500 dark:text-surface-400';
+  if (status === 'taken' || status === 'invalid') return 'text-error-600 dark:text-error-300';
+  return 'text-surface-500 dark:text-surface-400';
+}
+
+function getBreachMessage(check: PasswordBreachCheck): string {
+  switch (check.status) {
+    case 'checking':
+      return 'Checking breach data...';
+    case 'safe':
+      return 'No breach match found.';
+    case 'breached':
+      return `Seen in ${formatBreachCount(check.count)}.`;
+    case 'error':
+      return check.message;
+    case 'idle':
+    default:
+      return 'Waiting to check breach data.';
+  }
+}
+
+function formatBreachCount(count: number): string {
+  const safeCount = Number.isFinite(count) ? Math.max(0, count) : 0;
+  return `${safeCount.toLocaleString()} known ${safeCount === 1 ? 'breach' : 'breaches'}`;
+}
+
+function FieldGroup({ label, error, errorId, htmlFor, children }: { label: string; error?: string; errorId?: string; htmlFor?: string; children: ReactNode }) {
+  return (
+    <div className="mb-4">
+      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-semibold text-surface-800 dark:text-surface-200">
         {label}
       </label>
       {children}
-      {error && <div id={errorId} role="alert" aria-live="polite" style={{ marginTop: 4, fontSize: 13, color: '#dc2626' }}>{error}</div>}
+      <FormError id={errorId} message={error} />
     </div>
   );
 }

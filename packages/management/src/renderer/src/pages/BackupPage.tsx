@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Database, FolderOpen, Clock, Trash2, Download, RefreshCw, AlertTriangle, CheckCircle2, Undo2 } from 'lucide-react';
+import { Database, FolderOpen, Clock, Trash2, Download, Upload, RefreshCw, AlertTriangle, CheckCircle2, Undo2 } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -13,6 +13,8 @@ interface Backup {
   size: number;
   created: string;
 }
+
+const STAT_CARD_CLASS = 'relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700';
 
 /**
  * Server-side `listBackups()` returns rows shaped `{ name, size, date }`
@@ -63,6 +65,9 @@ export function BackupPage() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [downloadingTarget, setDownloadingTarget] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   // Multi-tenant mode: super-admins manage backups per-tenant via the
   // /super-admin/api/tenants/:slug/backups routes (the tenant-scoped
@@ -252,6 +257,53 @@ export function BackupPage() {
     }
   };
 
+  const handleDownload = async (filename: string) => {
+    setDownloadingTarget(filename);
+    try {
+      const res = await getAPI().admin.downloadBackup(filename);
+      if (!isMountedRef.current) return;
+      if (res.success) {
+        toast.success(
+          res.data?.metadataPath
+            ? 'Backup and metadata sidecar downloaded'
+            : 'Backup downloaded',
+        );
+      } else if (res.message !== 'Download canceled') {
+        toast.error(formatApiError(res));
+      }
+    } catch (err) {
+      if (isMountedRef.current) toast.error(err instanceof Error ? err.message : 'Download failed');
+    } finally {
+      if (isMountedRef.current) setDownloadingTarget(null);
+    }
+  };
+
+  const handleUploadFile = async (file: File | null) => {
+    const sourcePath = file ? getAPI().admin.getPathForFile(file) : '';
+    if (!sourcePath) {
+      toast.error('Electron did not provide a local file path for this upload');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await getAPI().admin.uploadBackup(sourcePath);
+      if (!isMountedRef.current) return;
+      if (res.success) {
+        toast.success(res.data?.metadataCopied
+          ? 'Backup and metadata sidecar uploaded'
+          : 'Backup uploaded without a metadata sidecar');
+        refresh();
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch (err) {
+      if (isMountedRef.current) toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      if (uploadInputRef.current) uploadInputRef.current.value = '';
+      if (isMountedRef.current) setUploading(false);
+    }
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center py-20"><RefreshCw className="w-5 h-5 text-surface-500 animate-spin" /></div>;
   }
@@ -314,6 +366,26 @@ export function BackupPage() {
           <button onClick={refresh} className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800">
             <RefreshCw className="w-4 h-4" />
           </button>
+          {!isMultiTenant && (
+            <>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept=".db,.enc,.db.enc"
+                className="hidden"
+                onChange={(e) => { void handleUploadFile(e.currentTarget.files?.[0] ?? null); }}
+              />
+              <button
+                onClick={() => uploadInputRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-surface-800 text-surface-200 rounded-lg hover:bg-surface-700 disabled:opacity-50"
+                title="Upload an off-box backup into the configured backup directory"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {uploading ? 'Uploading...' : 'Upload'}
+              </button>
+            </>
+          )}
           <button
             onClick={handleBackupNow}
             disabled={backing || (isMultiTenant === true && !selectedSlug)}
@@ -354,15 +426,15 @@ export function BackupPage() {
 
       {/* Aggregates */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="stat-card">
+        <div className={STAT_CARD_CLASS}>
           <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Total backups</div>
           <div className="text-2xl font-bold text-surface-100">{backups.length}</div>
         </div>
-        <div className="stat-card">
+        <div className={STAT_CARD_CLASS}>
           <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Total disk used</div>
           <div className="text-2xl font-bold text-surface-100">{formatBytes(totalSize)}</div>
         </div>
-        <div className="stat-card">
+        <div className={STAT_CARD_CLASS}>
           <div className="text-[11px] text-surface-500 uppercase tracking-wider mb-2">Latest size</div>
           <div className="text-2xl font-bold text-surface-100">
             {backups[0] ? formatBytes(backups[0].size) : '—'}
@@ -373,21 +445,21 @@ export function BackupPage() {
       {/* Settings summary */}
       {settings && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div className="stat-card">
+          <div className={STAT_CARD_CLASS}>
             <div className="flex items-center gap-2 mb-2">
               <FolderOpen className="w-4 h-4 text-surface-500" />
               <span className="text-[11px] text-surface-500 uppercase tracking-wider">Backup Path</span>
             </div>
             <div className="text-xs font-mono text-surface-300 truncate">{settings.backup_path || 'Not configured'}</div>
           </div>
-          <div className="stat-card">
+          <div className={STAT_CARD_CLASS}>
             <div className="flex items-center gap-2 mb-2">
               <Clock className="w-4 h-4 text-surface-500" />
               <span className="text-[11px] text-surface-500 uppercase tracking-wider">Schedule</span>
             </div>
             <div className="text-xs text-surface-300">{settings.schedule || 'Not scheduled'}</div>
           </div>
-          <div className="stat-card">
+          <div className={STAT_CARD_CLASS}>
             <div className="flex items-center gap-2 mb-2">
               <Database className="w-4 h-4 text-surface-500" />
               <span className="text-[11px] text-surface-500 uppercase tracking-wider">Last Backup</span>
@@ -413,6 +485,18 @@ export function BackupPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {!isMultiTenant && (
+                    <button
+                      onClick={() => { void handleDownload(b.filename); }}
+                      disabled={downloadingTarget === b.filename}
+                      className="p-1.5 rounded text-surface-500 hover:text-accent-400 hover:bg-surface-700 transition-colors disabled:opacity-50"
+                      title="Download this backup to an off-box location"
+                    >
+                      {downloadingTarget === b.filename
+                        ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        : <Download className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
                   <button
                     onClick={() => setRestoreTarget(b.filename)}
                     className="p-1.5 rounded text-surface-500 hover:text-amber-400 hover:bg-surface-700 transition-colors"

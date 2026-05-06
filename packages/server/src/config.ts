@@ -31,6 +31,31 @@ for (const envPath of envPaths) {
   }
 }
 
+const CAPTCHA_PROVIDERS = ['hcaptcha', 'turnstile', 'recaptcha'] as const;
+type CaptchaProvider = typeof CAPTCHA_PROVIDERS[number];
+
+function parseCaptchaProvider(raw: string | undefined): CaptchaProvider | null {
+  const value = (raw || 'hcaptcha').trim().toLowerCase();
+  return (CAPTCHA_PROVIDERS as readonly string[]).includes(value) ? value as CaptchaProvider : null;
+}
+
+function parseNumberEnv(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+const portalCaptchaProvider = parseCaptchaProvider(process.env.PORTAL_CAPTCHA_PROVIDER);
+const portalCaptchaSiteKey = (process.env.PORTAL_CAPTCHA_SITE_KEY || '').trim();
+const portalCaptchaSecret = (process.env.PORTAL_CAPTCHA_SECRET || '').trim();
+const portalCaptchaEnabled = !!portalCaptchaProvider && !!portalCaptchaSiteKey && !!portalCaptchaSecret;
+if (!portalCaptchaProvider && process.env.PORTAL_CAPTCHA_PROVIDER) {
+  console.warn('\n  [Portal CAPTCHA] Invalid PORTAL_CAPTCHA_PROVIDER — expected hcaptcha, turnstile, or recaptcha. Portal CAPTCHA disabled.\n');
+}
+if (!portalCaptchaEnabled && (portalCaptchaSiteKey || portalCaptchaSecret)) {
+  console.warn('\n  [Portal CAPTCHA] PORTAL_CAPTCHA_SITE_KEY and PORTAL_CAPTCHA_SECRET must both be set. Portal register CAPTCHA disabled.\n');
+}
+
 export const config = {
   // @audit-fixed: parseInt() without a radix previously relied on the implicit
   // base-10 interpretation. Explicit radix 10 is the standards-compliant form
@@ -235,6 +260,14 @@ export const config = {
   })(),
 
   nodeEnv: process.env.NODE_ENV || 'development',
+  // Customer portal registration CAPTCHA. Optional and fail-off unless a
+  // supported provider, public site key, and secret are all configured.
+  portalCaptchaProvider,
+  portalCaptchaSiteKey,
+  portalCaptchaSecret,
+  portalCaptchaEnabled,
+  portalCaptchaSeenIpTtlHours: parseNumberEnv(process.env.PORTAL_CAPTCHA_SEEN_IP_TTL_HOURS, 24, 1, 720),
+  portalRecaptchaMinScore: parseNumberEnv(process.env.PORTAL_RECAPTCHA_MIN_SCORE, 0, 0, 1),
   // Stripe billing — OPTIONAL feature. Previously fatal in production multi-tenant
   // mode, but per the project rule "server should never refuse to boot because of
   // an optional feature's config" (same as the Cloudflare fix in af34542), missing
@@ -308,6 +341,14 @@ export const config = {
   disableOutboundEmail: process.env.DISABLE_OUTBOUND_EMAIL === 'true',
   disableOutboundSms: process.env.DISABLE_OUTBOUND_SMS === 'true',
   disableOutboundVoice: process.env.DISABLE_OUTBOUND_VOICE === 'true',
+
+  // Hosted-tier BizarreSMS relay. These are platform-level secrets: tenant
+  // admins opt into `sms_provider_type=bizarresms`, but the relay URL/token
+  // are owned by the hosted BizarreCRM deployment and must never live in a
+  // tenant DB.
+  bizarreSmsRelayUrl: (process.env.BIZARRESMS_RELAY_URL || '').trim(),
+  bizarreSmsRelayToken: (process.env.BIZARRESMS_RELAY_TOKEN || '').trim(),
+  bizarreSmsWebhookSecret: (process.env.BIZARRESMS_WEBHOOK_SECRET || '').trim(),
 
   // NOTE: Store info, 3CX, SMTP, SMS, RepairDesk, and BlockChyp credentials
   // are all stored per-tenant in each tenant's store_config DB table.

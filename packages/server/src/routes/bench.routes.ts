@@ -41,6 +41,14 @@ import {
   validateArrayBounds,
   validateIntegerQuantity,
 } from '../utils/validate.js';
+import {
+  IMAGE_UPLOAD_EXTENSIONS,
+  IMAGE_UPLOAD_FORMAT_ERROR,
+  IMAGE_UPLOAD_MIME_TYPES,
+  isSupportedImageMime,
+  sanitizedImageExtension,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+} from '../utils/imageUploadPolicy.js';
 
 // Post-enrichment audit §9: per-user cap on defect report POSTs. Every
 // report writes one row + optionally an image + optionally a notification.
@@ -80,8 +88,8 @@ const router = Router();
 //     COUNT quota is enforced by fileUploadValidator.
 // ────────────────────────────────────────────────────────────────────────────
 
-const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp'] as const;
-const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_MIMES = IMAGE_UPLOAD_MIME_TYPES;
+const ALLOWED_EXTENSIONS = IMAGE_UPLOAD_EXTENSIONS;
 
 if (!fs.existsSync(config.uploadsPath)) {
   fs.mkdirSync(config.uploadsPath, { recursive: true });
@@ -110,7 +118,7 @@ function makeBenchUpload(kind: string) {
           .catch((err) => cb(err as Error, ''));
       },
       filename: (_req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
+        const ext = sanitizedImageExtension(file.originalname);
         if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
           cb(new Error('Unsupported image file extension'), '');
           return;
@@ -119,12 +127,12 @@ function makeBenchUpload(kind: string) {
       },
     }),
     limits: {
-      fileSize: 5 * 1024 * 1024, // 5 MB per file (images only)
+      fileSize: SMALL_IMAGE_UPLOAD_MAX_BYTES,
       files: 5, // no route here needs more than 2, extra buffer
     },
     fileFilter: (_req, file, cb) => {
-      if ((ALLOWED_MIMES as readonly string[]).includes(file.mimetype)) cb(null, true);
-      else cb(new Error('Only JPEG, PNG, WebP images allowed'));
+      if (isSupportedImageMime(file.mimetype)) cb(null, true);
+      else cb(new Error(IMAGE_UPLOAD_FORMAT_ERROR));
     },
   });
 }

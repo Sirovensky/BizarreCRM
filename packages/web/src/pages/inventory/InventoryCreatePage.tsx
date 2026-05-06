@@ -5,6 +5,7 @@ import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, settingsApi } from '@/api/endpoints';
 import { formatApiError } from '@/utils/apiError';
+import { formatCurrencySymbol } from '@/utils/format';
 
 // WEB-FL-023 (Fixer-C9 2026-04-25): replace `any[]` / `any` soup on tax-class
 // API result, mutation arg, mutation success res, and onError handler. Tax
@@ -46,6 +47,7 @@ const initialForm = {
 export function InventoryCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const currencySymbol = formatCurrencySymbol();
 
   const [form, setForm] = useState<typeof initialForm>(initialForm);
 
@@ -159,15 +161,15 @@ export function InventoryCreatePage() {
                 <div>
                   <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Cost Price</label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
-                    <input type="number" step="0.01" min="0" value={form.cost_price} onChange={(e) => set('cost_price', e.target.value)} className="input w-full pl-6" placeholder="0.00" />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">{currencySymbol}</span>
+                    <input type="number" step="0.01" min="0" value={form.cost_price} onChange={(e) => set('cost_price', e.target.value)} className="input w-full pl-12" placeholder="0.00" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Retail Price <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
-                    <input type="number" step="0.01" min="0" required value={form.retail_price} onChange={(e) => set('retail_price', e.target.value)} className="input w-full pl-6" placeholder="0.00" />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">{currencySymbol}</span>
+                    <input type="number" step="0.01" min="0" required value={form.retail_price} onChange={(e) => set('retail_price', e.target.value)} className="input w-full pl-12" placeholder="0.00" />
                   </div>
                 </div>
                 <div>

@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
+import { ACCESS_TOKEN_COOKIE_NAME, JWT_VERIFY_OPTIONS } from '../middleware/auth.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { createLogger } from '../utils/logger.js';
 import { trackInterval } from '../utils/trackInterval.js';
@@ -218,6 +218,23 @@ function checkRateLimit(ws: AuthenticatedSocket): boolean {
   return ws.msgWindowCount <= MAX_MESSAGES_PER_WINDOW;
 }
 
+function readCookieHeader(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    if (key !== name) continue;
+    const rawValue = part.slice(idx + 1).trim();
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return rawValue;
+    }
+  }
+  return null;
+}
+
 /**
  * SEC (WS1 rerun §24): Per-tenant origin allowlist.
  *
@@ -305,6 +322,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
     // time. We can't use req.headers.origin later because req is gone after
     // the connection event finishes.
     ws.origin = (req.headers.origin as string | undefined) ?? null;
+    const handshakeAccessToken = readCookieHeader(req.headers.cookie, ACCESS_TOKEN_COOKIE_NAME);
 
     // SEC-H86: Resolve client IP from socket directly. We intentionally do NOT
     // use X-Forwarded-For here — the WS upgrade `req` is not an Express request
@@ -420,7 +438,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
           : undefined;
         // Backwards compat: the original wire format was `{ type: 'auth', token: '...' }`
         // with no nested payload. Accept either shape.
-        const tokenCandidate = payloadObj?.token ?? msg.raw.token;
+        const tokenCandidate = payloadObj?.token ?? msg.raw.token ?? handshakeAccessToken;
         if (typeof tokenCandidate !== 'string' || tokenCandidate.length === 0) {
           log.warn('ws auth missing token');
           // SEC (WS4): Clear the auth timer even on failure so it does not

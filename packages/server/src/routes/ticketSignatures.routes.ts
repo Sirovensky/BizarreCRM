@@ -241,6 +241,13 @@ router.post(
     );
 
     const newId = Number(result.lastInsertRowid);
+    if (signatureKind === 'payment' || signatureKind === 'check_in') {
+      await adb.run(
+        `UPDATE tickets SET signature = ?, updated_at = datetime('now') WHERE id = ?`,
+        signatureDataUrl,
+        ticketId,
+      );
+    }
 
     audit(db, 'ticket_signature_captured', userId, ipAddress ?? 'unknown', {
       signature_id: newId,

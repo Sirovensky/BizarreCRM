@@ -76,10 +76,36 @@ export interface TicketDevice {
   // Joined
   status?: TicketStatus;
   assigned_user?: { id: number; first_name: string; last_name: string };
-  service?: { id: number; name: string };
+  service?: { id: number | null; name: string | null };
+  quote_lines?: TicketDeviceQuoteLine[];
+  service_lines?: TicketDeviceQuoteLine[];
+  misc_lines?: TicketDeviceQuoteLine[];
   parts?: TicketDevicePart[];
   photos?: TicketPhoto[];
   checklist?: TicketChecklist | null;
+}
+
+export interface TicketDeviceQuoteLine {
+  id: number;
+  ticket_device_id: number;
+  kind: 'service' | 'misc';
+  repair_service_id: number | null;
+  name: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  line_discount: number;
+  tax_amount: number;
+  tax_class_id: number | null;
+  tax_inclusive: boolean;
+  total: number;
+  price_cents: number;
+  amount_cents: number;
+  total_cents: number;
+  tax_amount_cents: number;
+  created_at: string;
+  updated_at: string;
+  repair_service?: { id: number; name: string; slug: string | null; category: string | null } | null;
 }
 
 export interface TicketDevicePart {

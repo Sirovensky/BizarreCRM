@@ -2,6 +2,62 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Bebas Neue';
+  src: url('../assets/fonts/bebas_neue_regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/inter_regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/inter_medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/inter_semibold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: url('../assets/fonts/inter_bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/jetbrains_mono_regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/jetbrains_mono_medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   :root {
     --sidebar-width: 208px;
@@ -62,25 +118,142 @@
   ::selection {
     background-color: rgba(59, 130, 246, 0.3);
   }
+
+  .app-region-drag {
+    -webkit-app-region: drag;
+  }
+
+  .dashboard-mount-error {
+    min-height: 100vh;
+    background: #09090b;
+    color: #fca5a5;
+    font-family: system-ui, sans-serif;
+    padding: 32px;
+    text-align: center;
+  }
+
+  .dashboard-mount-error h1 {
+    font-size: 18px;
+  }
+
+  .dashboard-mount-error p {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  /* Native browser virtualization. With 500-2000 long lines + break-all
+     wrapping, laying out every off-screen row dominates the frame. */
+  .log-line-virtualized {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 18px;
+  }
+
+  [data-width-pct='5'] { width: 5%; }
+  [data-width-pct='6'] { width: 6%; }
+  [data-width-pct='7'] { width: 7%; }
+  [data-width-pct='8'] { width: 8%; }
+  [data-width-pct='9'] { width: 9%; }
+  [data-width-pct='10'] { width: 10%; }
+  [data-width-pct='11'] { width: 11%; }
+  [data-width-pct='12'] { width: 12%; }
+  [data-width-pct='13'] { width: 13%; }
+  [data-width-pct='14'] { width: 14%; }
+  [data-width-pct='15'] { width: 15%; }
+  [data-width-pct='16'] { width: 16%; }
+  [data-width-pct='17'] { width: 17%; }
+  [data-width-pct='18'] { width: 18%; }
+  [data-width-pct='19'] { width: 19%; }
+  [data-width-pct='20'] { width: 20%; }
+  [data-width-pct='21'] { width: 21%; }
+  [data-width-pct='22'] { width: 22%; }
+  [data-width-pct='23'] { width: 23%; }
+  [data-width-pct='24'] { width: 24%; }
+  [data-width-pct='25'] { width: 25%; }
+  [data-width-pct='26'] { width: 26%; }
+  [data-width-pct='27'] { width: 27%; }
+  [data-width-pct='28'] { width: 28%; }
+  [data-width-pct='29'] { width: 29%; }
+  [data-width-pct='30'] { width: 30%; }
+  [data-width-pct='31'] { width: 31%; }
+  [data-width-pct='32'] { width: 32%; }
+  [data-width-pct='33'] { width: 33%; }
+  [data-width-pct='34'] { width: 34%; }
+  [data-width-pct='35'] { width: 35%; }
+  [data-width-pct='36'] { width: 36%; }
+  [data-width-pct='37'] { width: 37%; }
+  [data-width-pct='38'] { width: 38%; }
+  [data-width-pct='39'] { width: 39%; }
+  [data-width-pct='40'] { width: 40%; }
+  [data-width-pct='41'] { width: 41%; }
+  [data-width-pct='42'] { width: 42%; }
+  [data-width-pct='43'] { width: 43%; }
+  [data-width-pct='44'] { width: 44%; }
+  [data-width-pct='45'] { width: 45%; }
+  [data-width-pct='46'] { width: 46%; }
+  [data-width-pct='47'] { width: 47%; }
+  [data-width-pct='48'] { width: 48%; }
+  [data-width-pct='49'] { width: 49%; }
+  [data-width-pct='50'] { width: 50%; }
+  [data-width-pct='51'] { width: 51%; }
+  [data-width-pct='52'] { width: 52%; }
+  [data-width-pct='53'] { width: 53%; }
+  [data-width-pct='54'] { width: 54%; }
+  [data-width-pct='55'] { width: 55%; }
+  [data-width-pct='56'] { width: 56%; }
+  [data-width-pct='57'] { width: 57%; }
+  [data-width-pct='58'] { width: 58%; }
+  [data-width-pct='59'] { width: 59%; }
+  [data-width-pct='60'] { width: 60%; }
+  [data-width-pct='61'] { width: 61%; }
+  [data-width-pct='62'] { width: 62%; }
+  [data-width-pct='63'] { width: 63%; }
+  [data-width-pct='64'] { width: 64%; }
+  [data-width-pct='65'] { width: 65%; }
+  [data-width-pct='66'] { width: 66%; }
+  [data-width-pct='67'] { width: 67%; }
+  [data-width-pct='68'] { width: 68%; }
+  [data-width-pct='69'] { width: 69%; }
+  [data-width-pct='70'] { width: 70%; }
+  [data-width-pct='71'] { width: 71%; }
+  [data-width-pct='72'] { width: 72%; }
+  [data-width-pct='73'] { width: 73%; }
+  [data-width-pct='74'] { width: 74%; }
+  [data-width-pct='75'] { width: 75%; }
+  [data-width-pct='76'] { width: 76%; }
+  [data-width-pct='77'] { width: 77%; }
+  [data-width-pct='78'] { width: 78%; }
+  [data-width-pct='79'] { width: 79%; }
+  [data-width-pct='80'] { width: 80%; }
+  [data-width-pct='81'] { width: 81%; }
+  [data-width-pct='82'] { width: 82%; }
+  [data-width-pct='83'] { width: 83%; }
+  [data-width-pct='84'] { width: 84%; }
+  [data-width-pct='85'] { width: 85%; }
+  [data-width-pct='86'] { width: 86%; }
+  [data-width-pct='87'] { width: 87%; }
+  [data-width-pct='88'] { width: 88%; }
+  [data-width-pct='89'] { width: 89%; }
+  [data-width-pct='90'] { width: 90%; }
+  [data-width-pct='91'] { width: 91%; }
+  [data-width-pct='92'] { width: 92%; }
+  [data-width-pct='93'] { width: 93%; }
+  [data-width-pct='94'] { width: 94%; }
+  [data-width-pct='95'] { width: 95%; }
+  [data-width-pct='96'] { width: 96%; }
+  [data-width-pct='97'] { width: 97%; }
+  [data-width-pct='98'] { width: 98%; }
+  [data-width-pct='99'] { width: 99%; }
+  [data-width-pct='100'] { width: 100%; }
 }
 
 @layer components {
-  /* Stat card glow effect — denser padding at small widths (800x600 RDP
-     sessions) so the 3-column grid actually fits without overflow. */
-  .stat-card {
-    @apply relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700;
-  }
-
   /* Compact mode — operator opt-in. Ratchets padding tighter so more
      rows fit on RDP or small windows. Applied via data-density="compact"
      on <html>. Coverage expanded so the toggle has a visible effect on
-     EVERY page, not just stat-cards + tables. Operators previously
+     EVERY page, not just tables. Operators previously
      toggled it and saw no change because most pages render their own
      padded containers; we now also tighten the AppShell main content
      padding, sidebar entries, header height, and form rows. */
-  [data-density='compact'] .stat-card {
-    @apply p-2 lg:p-2.5;
-  }
   [data-density='compact'] table td {
     @apply py-1 px-1.5;
   }

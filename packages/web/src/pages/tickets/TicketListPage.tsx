@@ -43,21 +43,32 @@ const DATE_TABS = [
 ] as const;
 
 // ─── Sortable columns ──────────────────────────────────────────────
-type SortColumn = 'order_id' | 'created_at' | 'total' | 'status_id' | 'urgency';
+type SortColumn = 'order_id' | 'created_at' | 'updated_at' | 'due_on' | 'total' | 'status_id' | 'urgency';
 
 const SORT_COLUMNS: Record<SortColumn, string> = {
   order_id: 'order_id',
   created_at: 'created_at',
+  updated_at: 'updated_at',
+  due_on: 'due_on',
   total: 'total',
   status_id: 'status_id',
   urgency: 'urgency',
 };
+
+const EMPTY_STATUSES: TicketStatus[] = [];
 
 // ─── Helpers ────────────────────────────────────────────────────────
 function formatTicketId(orderId: string | number) {
   const str = String(orderId);
   if (str.startsWith('T-')) return str;
   return `T-${str.padStart(4, '0')}`;
+}
+
+function finiteProgressPercent(numerator: unknown, denominator: unknown): number {
+  const current = Number(numerator);
+  const total = Number(denominator);
+  if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.max(0, Math.min(100, (current / total) * 100));
 }
 
 
@@ -319,8 +330,7 @@ function SavedFiltersDropdown({
   );
 }
 
-// ─── Skeleton rows ──────────────────────────────────────────────────
-// ─── TicketRow (memoized to avoid re-rendering unchanged rows) ────
+// ─── TicketRow (memoized: parent passes stable row callbacks/props) ────
 interface TicketRowProps {
   ticket: Ticket;
   statuses: TicketStatus[];
@@ -702,7 +712,7 @@ const TicketRow = memo(function TicketRow({
   </Fragment>);
 });
 
-const SkeletonRow = memo(function SkeletonRow() {
+function SkeletonRow() {
   return (
     <tr className="animate-pulse">
       <td className="px-4 py-3"><div className="h-4 w-4 rounded bg-surface-200 dark:bg-surface-700" /></td>
@@ -717,7 +727,7 @@ const SkeletonRow = memo(function SkeletonRow() {
       <td className="px-4 py-3"><div className="h-4 w-16 rounded bg-surface-200 dark:bg-surface-700" /></td>
     </tr>
   );
-});
+}
 
 // ─── Main Component ─────────────────────────────────────────────────
 export function TicketListPage() {
@@ -772,14 +782,14 @@ export function TicketListPage() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [columnMenuOpen]);
 
-  function toggleColumn(col: OptionalColumn) {
+  const toggleColumn = useCallback((col: OptionalColumn) => {
     setVisibleColumns((prev) => {
       const next = new Set(prev);
       if (next.has(col)) next.delete(col); else next.add(col);
       localStorage.setItem('ticket-list-columns', JSON.stringify(Array.from(next)));
       return next;
     });
-  }
+  }, []);
 
   // Local search input with debounce
   const [searchInput, setSearchInput] = useState(keyword);
@@ -832,7 +842,7 @@ export function TicketListPage() {
     staleTime: 30_000, // refresh every 30s to pick up new statuses
   });
   // Server: res.json({ success: true, data: statuses }) — array directly.
-  const statuses: TicketStatus[] = statusData?.data?.data || [];
+  const statuses: TicketStatus[] = statusData?.data?.data || EMPTY_STATUSES;
 
   // ─── Fetch users (for Assigned To filter) ─────────────────────────
   const { data: usersData } = useQuery({
@@ -855,7 +865,14 @@ export function TicketListPage() {
     sort_order: sortOrder,
   };
 
-  const { data: ticketData, isLoading, isFetching } = useQuery({
+  const {
+    data: ticketData,
+    isLoading,
+    isFetching,
+    isError: ticketsIsError,
+    error: ticketsError,
+    refetch: refetchTickets,
+  } = useQuery({
     queryKey: ['tickets', ticketParams],
     queryFn: () => ticketApi.list(ticketParams),
     placeholderData: (prev) => prev,
@@ -887,6 +904,7 @@ export function TicketListPage() {
 
   const rawTickets: Ticket[] = ticketData?.data?.data?.tickets || ticketData?.data?.tickets || [];
   const pagination = ticketData?.data?.data?.pagination || ticketData?.data?.pagination || { page: 1, total: 0, total_pages: 1, per_page: 25 };
+  const ticketErrorMessage = ticketsIsError ? formatApiError(ticketsError) : '';
 
   // F19: ticket_show_closed — hide closed tickets when '0'
   // F20: ticket_show_empty — hide tickets with no devices when '0'
@@ -915,8 +933,11 @@ export function TicketListPage() {
     ? filteredStatusCounts
     : rawStatusCounts;
 
-  // Compute total created count
-  const totalCreated = statusCounts.reduce((sum, sc) => sum + (sc.count || 0), 0);
+	  // Compute total created count
+	  const totalCreated = statusCounts.reduce((sum, sc) => {
+	    const count = Number(sc.count);
+	    return sum + (Number.isFinite(count) ? Math.max(0, count) : 0);
+	  }, 0);
 
   // ─── Mutations ────────────────────────────────────────────────────
   const changeStatusMut = useMutation({
@@ -1063,13 +1084,15 @@ export function TicketListPage() {
   });
 
   // ─── Handlers ─────────────────────────────────────────────────────
+  const { mutate: mutateTicketStatus } = changeStatusMut;
   const handleChangeStatus = useCallback(
-    (ticketId: number, statusId: number) => changeStatusMut.mutate({ ticketId, statusId }),
-    [changeStatusMut],
+    (ticketId: number, statusId: number) => mutateTicketStatus({ ticketId, statusId }),
+    [mutateTicketStatus],
   );
 
   // TicketRow callback handlers (stable references for memo)
-  const handlePin = useCallback((id: number) => pinMut.mutate(id), [pinMut]);
+  const { mutate: mutatePin } = pinMut;
+  const handlePin = useCallback((id: number) => mutatePin(id), [mutatePin]);
   const handleAddNote = useCallback(async (ticketId: number, content: string) => {
     try {
       await ticketApi.addNote(ticketId, { type: 'internal', content });
@@ -1098,7 +1121,7 @@ export function TicketListPage() {
     });
   }
 
-  function handleSort(column: SortColumn) {
+  const handleSort = useCallback((column: SortColumn) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (sortBy === column) {
@@ -1111,15 +1134,15 @@ export function TicketListPage() {
       next.set('page', '1');
       return next;
     });
-  }
+  }, [setSearchParams, sortBy, sortOrder]);
 
-  function toggleSelect(id: number) {
+  const toggleSelect = useCallback((id: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   function toggleSelectAll() {
     if (selected.size === tickets.length) {
@@ -1227,10 +1250,11 @@ export function TicketListPage() {
         for (const sc of statusCounts) {
           const s = statuses.find(st => st.id === (sc.status_id || sc.id));
           if (!s) continue;
-          const count = sc.count || 0;
-          if (s.is_cancelled) cancelledCount += count;
-          else if (s.is_closed) closedCount += count;
-          else if (isOnHold(s.name)) onHoldCount += count;
+	          const rawCount = Number(sc.count);
+	          const count = Number.isFinite(rawCount) ? Math.max(0, rawCount) : 0;
+	          if (s.is_cancelled) cancelledCount += count;
+	          else if (s.is_closed) closedCount += count;
+	          else if (isOnHold(s.name)) onHoldCount += count;
           else openCount += count;
         }
 
@@ -1243,7 +1267,7 @@ export function TicketListPage() {
         ];
 
         // Progress bar segments — exclude cancelled
-        const barTotal = (openCount + onHoldCount + closedCount) || 1;
+	        const barTotal = openCount + onHoldCount + closedCount;
 
         return (
           <div className="mb-3 card px-3 md:px-4 py-3 shrink-0">
@@ -1274,15 +1298,15 @@ export function TicketListPage() {
             </div>
             {/* Colored progress bar (brighter shades) */}
             <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-surface-100 dark:bg-surface-800">
-              {openCount > 0 && (
-                <div style={{ width: `${(openCount / barTotal) * 100}%`, backgroundColor: '#60a5fa' }} title={`Open: ${openCount}`} />
-              )}
-              {onHoldCount > 0 && (
-                <div style={{ width: `${(onHoldCount / barTotal) * 100}%`, backgroundColor: '#fb923c' }} title={`On hold: ${onHoldCount}`} />
-              )}
-              {closedCount > 0 && (
-                <div style={{ width: `${(closedCount / barTotal) * 100}%`, backgroundColor: '#4ade80' }} title={`Closed: ${closedCount}`} />
-              )}
+	              {openCount > 0 && (
+	                <div style={{ width: `${finiteProgressPercent(openCount, barTotal)}%`, backgroundColor: '#60a5fa' }} title={`Open: ${openCount}`} />
+	              )}
+	              {onHoldCount > 0 && (
+	                <div style={{ width: `${finiteProgressPercent(onHoldCount, barTotal)}%`, backgroundColor: '#fb923c' }} title={`On hold: ${onHoldCount}`} />
+	              )}
+	              {closedCount > 0 && (
+	                <div style={{ width: `${finiteProgressPercent(closedCount, barTotal)}%`, backgroundColor: '#4ade80' }} title={`Closed: ${closedCount}`} />
+	              )}
             </div>
             {/* Legend + cancelled footnote */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
@@ -1473,7 +1497,7 @@ export function TicketListPage() {
               id="tlist-filter-status"
               value={statusFilter}
               onChange={(e) => setParam('status_id', e.target.value)}
-              className="hidden sm:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              className="min-w-[9rem] flex-1 rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 sm:flex-none"
             >
               <option value="">All Statuses</option>
               {statuses.map((s) => (
@@ -1633,6 +1657,31 @@ export function TicketListPage() {
               className="ml-auto text-sm text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
             >
               Clear
+            </button>
+          </div>
+        )}
+
+        {ticketsIsError && (
+          <div
+            role="alert"
+            className="flex flex-col gap-3 border-b border-error-200 bg-error-50 px-4 py-3 text-sm text-error-800 dark:border-error-900 dark:bg-error-950/40 dark:text-error-200 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <div>
+                <p className="font-semibold">Could not load latest tickets</p>
+                <p className="text-xs text-error-700 dark:text-error-300">
+                  {ticketErrorMessage}
+                  {rawTickets.length > 0 ? ' Showing the last loaded results.' : ''}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refetchTickets()}
+              className="inline-flex items-center justify-center rounded-lg border border-error-300 bg-white px-3 py-1.5 text-xs font-semibold text-error-700 transition-colors hover:bg-error-100 dark:border-error-800 dark:bg-error-950 dark:text-error-200 dark:hover:bg-error-900"
+            >
+              Retry
             </button>
           </div>
         )}

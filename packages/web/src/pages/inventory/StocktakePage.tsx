@@ -208,13 +208,13 @@ export function StocktakePage() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Session name (e.g. Q2 2026 full count)"
-              className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             <input
               value={newLocation}
               onChange={(e) => setNewLocation(e.target.value)}
               placeholder="Location (optional)"
-              className="rounded-md border border-surface-300 px-3 py-2 text-sm"
+              className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
           </div>
           <div className="mt-3 flex gap-2">
@@ -227,7 +227,7 @@ export function StocktakePage() {
             </button>
             <button
               onClick={() => setShowNew(false)}
-              className="rounded-lg border border-surface-300 px-4 py-2 text-sm"
+              className="rounded-lg border border-surface-300 px-4 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-900"
             >
               Cancel
             </button>
@@ -248,8 +248,8 @@ export function StocktakePage() {
               className={cn(
                 'w-full text-left rounded-lg border p-3 transition-colors',
                 selectedId === s.id
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-surface-200 hover:bg-surface-50',
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                  : 'border-surface-200 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800',
               )}
             >
               <div className="flex items-center justify-between">
@@ -257,9 +257,9 @@ export function StocktakePage() {
                 <span
                   className={cn(
                     'px-2 py-0.5 text-xs rounded-full',
-                    s.status === 'open' && 'bg-amber-100 text-amber-700',
-                    s.status === 'committed' && 'bg-green-100 text-green-700',
-                    s.status === 'cancelled' && 'bg-surface-100 text-surface-500',
+                    s.status === 'open' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                    s.status === 'committed' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+                    s.status === 'cancelled' && 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-300',
                   )}
                 >
                   {s.status}
@@ -275,7 +275,7 @@ export function StocktakePage() {
 
         <div className="lg:col-span-2 space-y-4">
           {!detailData && (
-            <div className="rounded-lg border border-dashed border-surface-300 p-8 text-center text-surface-400">
+            <div className="rounded-lg border border-dashed border-surface-300 p-8 text-center text-surface-400 dark:border-surface-700 dark:text-surface-500">
               Select a session to view counts
             </div>
           )}
@@ -295,11 +295,11 @@ export function StocktakePage() {
                   </div>
                   <div>
                     <div className="text-surface-500">Shortage</div>
-                    <div className="font-semibold text-lg text-red-600">-{detailData.summary.shortage}</div>
+                    <div className="font-semibold text-lg text-red-600 dark:text-red-400">-{detailData.summary.shortage}</div>
                   </div>
                   <div>
                     <div className="text-surface-500">Surplus</div>
-                    <div className="font-semibold text-lg text-green-600">+{detailData.summary.surplus}</div>
+                    <div className="font-semibold text-lg text-green-600 dark:text-green-400">+{detailData.summary.surplus}</div>
                   </div>
                 </div>
               </div>
@@ -315,14 +315,14 @@ export function StocktakePage() {
                       value={scanInput}
                       onChange={(e) => setScanInput(e.target.value)}
                       placeholder="Scan barcode or type SKU..."
-                      className="flex-1 rounded-md border border-surface-300 px-3 py-2"
+                      className="flex-1 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
                     />
                     <input
                       value={manualCountedQty}
                       onChange={(e) => setManualCountedQty(e.target.value)}
                       placeholder="Qty (blank = +1)"
                       type="number"
-                      className="w-32 rounded-md border border-surface-300 px-3 py-2"
+                      className="w-32 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
                     />
                     <button
                       type="submit"
@@ -355,7 +355,7 @@ export function StocktakePage() {
                         });
                         if (ok) cancelMut.mutate();
                       }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600"
+                      className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
                     >
                       <X className="h-4 w-4" /> Cancel
                     </button>
@@ -376,7 +376,7 @@ export function StocktakePage() {
                   </thead>
                   <tbody>
                     {detailData.counts.map((c) => (
-                      <tr key={c.id} className="border-b border-surface-100 last:border-0">
+                      <tr key={c.id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
                         <td className="px-3 py-2">
                           <div className="font-medium">{c.name}</div>
                           <div className="text-xs text-surface-500">{c.sku}</div>
@@ -386,8 +386,8 @@ export function StocktakePage() {
                         <td
                           className={cn(
                             'text-right px-3 py-2 font-semibold',
-                            c.variance > 0 && 'text-green-600',
-                            c.variance < 0 && 'text-red-600',
+                            c.variance > 0 && 'text-green-600 dark:text-green-400',
+                            c.variance < 0 && 'text-red-600 dark:text-red-400',
                           )}
                         >
                           {c.variance > 0 ? '+' : ''}

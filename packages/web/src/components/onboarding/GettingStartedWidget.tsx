@@ -51,7 +51,7 @@ interface ChecklistStep {
   route: string;
   doneKey: keyof Pick<
     OnboardingState,
-    'first_ticket_at' | 'first_invoice_at' | 'first_payment_at' | 'advanced_settings_unlocked'
+    'first_ticket_at' | 'first_invoice_at' | 'first_payment_at' | 'advanced_settings_unlocked' | 'sandbox_completed_at'
   > | null;
   comingSoon?: boolean;
 }
@@ -117,9 +117,8 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
       title: 'Try sandbox mode',
       description: 'Run a fake sale end-to-end — no inventory impact, nothing recorded.',
       icon: FlaskConical,
-      route: '',
-      doneKey: null,
-      comingSoon: true,
+      route: `/pos?sandbox=1&tutorial=checkout&step=${firstStepKey('checkout')}`,
+      doneKey: 'sandbox_completed_at',
     },
   ], []);
 
@@ -319,25 +318,19 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
                 <p className="text-xs text-surface-500 dark:text-surface-400">{step.description}</p>
               </div>
               {!done && (
-                step.comingSoon ? (
-                  <span className="rounded-md px-3 py-1.5 text-xs font-medium text-surface-400 dark:text-surface-500">
-                    Coming soon
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => navigate(step.route)}
-                    className={cn(
-                      'flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-                      isNext
-                        ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
-                        : 'text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10',
-                    )}
-                  >
-                    {isNext ? 'Start now' : 'Open'}
-                    <ArrowRight className="h-3 w-3" />
-                  </button>
-                )
+                <button
+                  type="button"
+                  onClick={() => navigate(step.route)}
+                  className={cn(
+                    'flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                    isNext
+                      ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                      : 'text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10',
+                  )}
+                >
+                  {isNext ? 'Start now' : 'Open'}
+                  <ArrowRight className="h-3 w-3" />
+                </button>
               )}
             </li>
           );

@@ -40,6 +40,7 @@ interface FetchOpts {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   body?: unknown;
   query?: Record<string, string | number | boolean | undefined>;
+  headers?: Record<string, string>;
 }
 
 /**
@@ -73,6 +74,13 @@ interface ApiResponse<T = unknown> {
   offline?: boolean;
 }
 
+interface BackupSettingsPayload {
+  backup_path: string;
+  schedule: string;
+  retention_days: number;
+  encryption_enabled: boolean;
+}
+
 /**
  * Build a query string from a record. Skips undefined values so callers
  * can spread optional params without checking each one.
@@ -104,6 +112,7 @@ async function api<T = unknown>(url: string, opts: FetchOpts = {}): Promise<ApiR
   try {
     const headers: Record<string, string> = {};
     if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+    Object.assign(headers, opts.headers);
     const token = getToken();
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const init: RequestInit = {
@@ -213,6 +222,11 @@ export function installBrowserShim(): void {
       listTenants: () => api('/super-admin/api/tenants'),
       createTenant: (data: unknown) => api('/super-admin/api/tenants', { method: 'POST', body: data }),
       getTenant: (slug: string) => api(`/super-admin/api/tenants/${encodeURIComponent(slug)}`),
+      updateTenant: (payload: { slug: string; plan?: string; name?: string }) =>
+        api(`/super-admin/api/tenants/${encodeURIComponent(payload.slug)}`, {
+          method: 'PUT',
+          body: { plan: payload.plan, name: payload.name },
+        }),
       suspendTenant: (slug: string) => api(`/super-admin/api/tenants/${encodeURIComponent(slug)}/suspend`, { method: 'POST' }),
       activateTenant: (slug: string) => api(`/super-admin/api/tenants/${encodeURIComponent(slug)}/activate`, { method: 'POST' }),
       deleteTenant: (slug: string) => api(`/super-admin/api/tenants/${encodeURIComponent(slug)}`, { method: 'DELETE' }),
@@ -220,16 +234,24 @@ export function installBrowserShim(): void {
       getAuditLog: (params?: Record<string, string | number | boolean | undefined>) => api('/super-admin/api/audit-log', { query: params }),
       getSessions: () => api('/super-admin/api/sessions'),
       revokeSession: (id: string) => api(`/super-admin/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      revokeAllSessions: () => api('/super-admin/api/sessions/revoke-all', { method: 'POST' }),
       getConfig: () => api('/super-admin/api/config'),
       getConfigSchema: () => api('/super-admin/api/config-schema'),
       updateConfig: (updates: unknown) => api('/super-admin/api/config', { method: 'PUT', body: updates }),
       listSecurityAlerts: (params?: Record<string, string | number | boolean | undefined>) => api('/super-admin/api/security-alerts', { query: params }),
       acknowledgeAlert: (id: number) => api(`/super-admin/api/security-alerts/${id}/acknowledge`, { method: 'POST' }),
       acknowledgeAllAlerts: () => api('/super-admin/api/security-alerts/acknowledge-all', { method: 'POST' }),
-      resetRateLimits: () => api('/super-admin/api/rate-limits/reset', { method: 'POST' }),
+      resetRateLimits: (payload: { tenantSlug?: string; all?: boolean; totpCode: string }) => {
+        const { totpCode, ...body } = payload;
+        return api('/super-admin/api/admin-tools/reset-rate-limits', {
+          method: 'POST',
+          body,
+          headers: { 'X-TOTP-Code': totpCode },
+        });
+      },
       listRateLimits: () => api('/super-admin/api/rate-limits'),
-      rotateJwtSecret: (purpose?: 'access' | 'refresh' | 'both') => api('/super-admin/api/rotate-jwt-secret', { method: 'POST', body: { purpose: purpose ?? 'both' } }),
-      backfillCloudflareDns: () => api('/super-admin/api/backfill-cloudflare-dns', { method: 'POST' }),
+      rotateJwtSecret: (purpose?: 'access' | 'refresh' | 'both', totpCode?: string) => api('/super-admin/api/rotate-jwt-secret', { method: 'POST', body: { purpose: purpose ?? 'both' }, headers: totpCode ? { 'X-TOTP-Code': totpCode } : undefined }),
+      backfillCloudflareDns: (totpCode: string) => api('/super-admin/api/admin-tools/backfill-cloudflare-dns', { method: 'POST', headers: { 'X-TOTP-Code': totpCode } }),
       listTenantAuthEvents: (params: { slug: string; [k: string]: unknown }) =>
         api(`/super-admin/api/tenants/${encodeURIComponent(params.slug)}/auth-events`, { query: params as never }),
       listTenantNotifications: (params: { slug: string; [k: string]: unknown }) =>
@@ -251,7 +273,7 @@ export function installBrowserShim(): void {
         api(`/super-admin/api/tenants/${encodeURIComponent(slug)}/backups/${encodeURIComponent(filename)}/restore`, { method: 'POST' }),
       tenantBackupSettingsGet: (slug: string) =>
         api(`/super-admin/api/tenants/${encodeURIComponent(slug)}/backup-settings`),
-      tenantBackupSettingsUpdate: (slug: string, settings: unknown) =>
+      tenantBackupSettingsUpdate: (slug: string, settings: BackupSettingsPayload) =>
         api(`/super-admin/api/tenants/${encodeURIComponent(slug)}/backup-settings`, { method: 'PUT', body: settings }),
       backupDrives: () => api('/super-admin/api/backup-drives'),
     },
@@ -264,8 +286,17 @@ export function installBrowserShim(): void {
       createFolder: (parentPath: string, name: string) =>
         api('/api/v1/admin/drives/mkdir', { method: 'POST', body: { path: parentPath, name } }),
       listBackups: () => api('/api/v1/admin/backups'),
+      getPathForFile: (_file: File) => '',
+      downloadBackup: (_filename: string) => Promise.resolve({
+        success: false,
+        message: 'Backup file download is available only in the Electron dashboard.',
+      }),
+      uploadBackup: (_sourcePath: string) => Promise.resolve({
+        success: false,
+        message: 'Backup file upload is available only in the Electron dashboard.',
+      }),
       runBackup: () => api('/api/v1/admin/backup', { method: 'POST' }),
-      updateBackupSettings: (settings: unknown) => api('/api/v1/admin/backup-settings', { method: 'PUT', body: settings }),
+      updateBackupSettings: (settings: BackupSettingsPayload) => api('/api/v1/admin/backup-settings', { method: 'PUT', body: settings }),
       deleteBackup: (filename: string) => api(`/api/v1/admin/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' }),
       restoreBackup: (filename: string) => api(`/api/v1/admin/backups/${encodeURIComponent(filename)}/restore`, { method: 'POST' }),
       // Env editor + log viewer hit new server endpoints under
@@ -274,6 +305,8 @@ export function installBrowserShim(): void {
       // the underlying URL is super-admin-gated.
       getEnvSettings: () => api('/super-admin/api/management/env'),
       setEnvSettings: (updates: unknown) => api('/super-admin/api/management/env', { method: 'PUT', body: updates }),
+      testEnvConnection: (target: 'captcha' | 'stripe' | 'cloudflare') =>
+        api('/super-admin/api/management/env/test-connection', { method: 'POST', body: { target } }),
       listLogs: () => api('/super-admin/api/management/logs'),
       tailLog: (params: { name: string; lines?: number }) =>
         api('/super-admin/api/management/logs/tail', { query: params }),
@@ -333,8 +366,9 @@ export function installBrowserShim(): void {
       // the IPC channel between renderer + main process binary). Browser
       // context uses the OS TLS chain; report an explicit "not applicable"
       // status so the renderer's banner UI can hide the warnings.
-      getCertPinningStatus: () => Promise.resolve({ success: true, data: { pinned: true, mode: 'browser' } }),
+      getCertPinningStatus: () => Promise.resolve({ success: true, data: { enabled: true } }),
       getTagVerifyStatus: () => Promise.resolve({ success: true, data: { verified: true, mode: 'browser' } }),
+      onPowerResume: (_listener: () => void) => () => {},
     },
   };
 

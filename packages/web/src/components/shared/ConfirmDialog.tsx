@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { Button } from './Button';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -124,21 +125,18 @@ export function ConfirmDialog({
         )}
 
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onCancel} className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800">
+          <Button onClick={onCancel} variant="secondary" size="sm">
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             ref={confirmRef}
             onClick={onConfirm}
             disabled={!typingMatch}
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition-[colors,box-shadow,transform] ${
-              !typingMatch
-                ? 'bg-surface-300 dark:bg-surface-600 cursor-not-allowed'
-                : danger ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'
-            }`}
+            variant={danger ? 'danger' : 'primary'}
+            size="sm"
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

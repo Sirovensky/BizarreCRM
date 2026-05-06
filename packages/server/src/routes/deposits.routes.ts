@@ -16,11 +16,13 @@ import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 import {
   validatePositiveAmount,
+  roundCents,
   validateTextLength,
   validateIntegerQuantity,
   validateId,
 } from '../utils/validate.js';
 import { parsePage, parsePageSize } from '../utils/pagination.js';
+import { isBlockChypEnabled, processRefund } from '../services/blockchyp.js';
 
 // Post-enrichment audit §9: per-user cap on deposit collection. Every POST
 // inserts a money row — a fat-fingered tap-to-collect on a touchscreen POS
@@ -50,6 +52,26 @@ function requireAdminDeposits(req: Request): void {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function nowSql(): string {
+  return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function dollarsFromCents(cents: number): number {
+  return roundCents(Number(cents || 0) / 100);
+}
+
+function invoiceStatus(total: number, paid: number): string {
+  if (paid <= 0) return 'unpaid';
+  if (paid >= total) return 'paid';
+  return 'partial';
+}
+
+function normalizeProcessor(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed || null;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,12 +205,54 @@ router.post('/', requirePermission('deposits.create'), asyncHandler(async (req: 
     'notes',
   );
 
+  let linkedPayment: Row | null = null;
+  if (req.body?.payment_id !== undefined && req.body?.payment_id !== null) {
+    const paymentId = validateIntegerQuantity(req.body.payment_id, 'payment_id');
+    linkedPayment = await req.asyncDb.get<Row>(
+      `SELECT id, amount, method, processor, transaction_id, processor_transaction_id,
+              processor_response, capture_state
+         FROM payments
+        WHERE id = ?`,
+      paymentId,
+    ) ?? null;
+    if (!linkedPayment) throw new AppError('Payment not found', 404);
+
+    const linkedAmountCents = Math.round(Number(linkedPayment.amount || 0) * 100);
+    if (linkedAmountCents !== amountCents) {
+      throw new AppError('Linked payment amount must match deposit amount', 400);
+    }
+    const linkedProcessor = normalizeProcessor(linkedPayment.processor)
+      ?? normalizeProcessor(linkedPayment.method);
+    if (linkedProcessor === 'blockchyp' && linkedPayment.capture_state !== 'captured') {
+      throw new AppError('Linked BlockChyp payment must be captured before it can back a deposit', 400);
+    }
+  }
+
+  const linkedProcessor = linkedPayment
+    ? (normalizeProcessor(linkedPayment.processor) ?? normalizeProcessor(linkedPayment.method))
+    : null;
+  const linkedProcessorTransactionId = linkedPayment
+    ? (linkedPayment.processor_transaction_id ?? linkedPayment.transaction_id ?? null)
+    : null;
   const collectedAt = nowIso();
   const txResults = await req.asyncDb.transaction([
     {
-      sql: `INSERT INTO deposits (customer_id, ticket_id, amount_cents, collected_at, notes)
-            VALUES (?, ?, ?, ?, ?)`,
-      params: [customerId, ticketId, amountCents, collectedAt, notes || null],
+      sql: `INSERT INTO deposits (
+              customer_id, ticket_id, amount_cents, collected_at, notes,
+              payment_id, processor, processor_transaction_id, processor_response
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        customerId,
+        ticketId,
+        amountCents,
+        collectedAt,
+        notes || null,
+        linkedPayment?.id ?? null,
+        linkedProcessor,
+        linkedProcessorTransactionId,
+        linkedPayment?.processor_response ?? null,
+      ],
     },
   ]);
   const result = txResults[0];
@@ -234,7 +298,10 @@ router.post('/:id/apply-to-invoice', requirePermission('deposits.apply'), asyncH
   // apply-to-invoice requests that both pass this pre-check will fight over
   // the WHERE clause and only one will see `changes === 1`.
   const deposit = await req.asyncDb.get<Row>(
-    'SELECT id, amount_cents, applied_to_invoice_id, refunded_at FROM deposits WHERE id = ?',
+    `SELECT id, customer_id, amount_cents, applied_to_invoice_id, applied_payment_id,
+            refunded_at, payment_id, processor, processor_transaction_id, processor_response
+       FROM deposits
+      WHERE id = ?`,
     id,
   );
   if (!deposit) throw new AppError('Deposit not found', 404);
@@ -246,34 +313,110 @@ router.post('/:id/apply-to-invoice', requirePermission('deposits.apply'), asyncH
   }
 
   const invoice = await req.asyncDb.get<Row>(
-    'SELECT id FROM invoices WHERE id = ?',
+    'SELECT id, customer_id, total, amount_paid, status FROM invoices WHERE id = ?',
     invoiceId,
   );
   if (!invoice) throw new AppError('Invoice not found', 404);
+  if (invoice.status === 'void') {
+    throw new AppError('Cannot apply a deposit to a voided invoice', 400);
+  }
+  if (invoice.customer_id != null && Number(invoice.customer_id) !== Number(deposit.customer_id)) {
+    throw new AppError('Invoice does not belong to the deposit customer', 400);
+  }
 
   const appliedAt = nowIso();
+  const appliedAtSql = nowSql();
+  const amount = dollarsFromCents(Number(deposit.amount_cents));
+  const priorPaid = roundCents(Number(invoice.amount_paid || 0));
+  const total = roundCents(Number(invoice.total || 0));
+  const newPaid = roundCents(priorPaid + amount);
+  const newDue = roundCents(Math.max(0, total - newPaid));
+  const newStatus = invoiceStatus(total, newPaid);
+  const paymentReference = `deposit-${id}`;
+
   // SEC-H64: atomic conditional UPDATE. TOCTOU-safe — SQLite WAL semantics
   // guarantee the WHERE clause is evaluated in the same transaction as the
   // write, so two concurrent applies cannot both claim the deposit. The
   // loser's UPDATE returns `changes === 0` and we 409 it.
-  const updateResult = await req.asyncDb.run(
-    `UPDATE deposits
-        SET applied_to_invoice_id = ?, applied_at = ?
-      WHERE id = ?
-        AND applied_to_invoice_id IS NULL
-        AND refunded_at IS NULL`,
+  try {
+    await req.asyncDb.transaction([
+      {
+        sql: `UPDATE deposits
+                SET applied_to_invoice_id = ?, applied_at = ?
+              WHERE id = ?
+                AND applied_to_invoice_id IS NULL
+                AND refunded_at IS NULL`,
+        params: [invoiceId, appliedAt, id],
+        expectChanges: true,
+        expectChangesError: 'Deposit already applied or refunded',
+      },
+      {
+        sql: `INSERT INTO payments (
+                invoice_id, amount, method, method_detail, transaction_id, notes,
+                payment_type, processor, reference, processor_transaction_id,
+                processor_response, capture_state, user_id, created_at, updated_at
+              )
+              VALUES (?, ?, 'deposit', 'Applied deposit', ?, ?, 'deposit', ?, ?, ?, ?, 'captured', ?, ?, ?)`,
+        params: [
+          invoiceId,
+          amount,
+          deposit.processor_transaction_id ?? null,
+          `Applied deposit #${id}`,
+          deposit.processor ?? null,
+          paymentReference,
+          deposit.processor_transaction_id ?? null,
+          deposit.processor_response ?? null,
+          req.user!.id,
+          appliedAtSql,
+          appliedAtSql,
+        ],
+      },
+      {
+        sql: `UPDATE deposits
+                SET applied_payment_id = (
+                  SELECT id
+                    FROM payments
+                   WHERE invoice_id = ? AND reference = ?
+                   ORDER BY id DESC
+                   LIMIT 1
+                )
+              WHERE id = ? AND applied_payment_id IS NULL`,
+        params: [invoiceId, paymentReference, id],
+        expectChanges: true,
+        expectChangesError: 'Deposit application payment link failed',
+      },
+      {
+        sql: `UPDATE invoices
+                SET amount_paid = ?,
+                    amount_due = ?,
+                    status = ?,
+                    updated_at = ?
+              WHERE id = ?`,
+        params: [newPaid, newDue, newStatus, appliedAtSql, invoiceId],
+      },
+    ]);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('already applied') || message.includes('payment link failed')) {
+      throw new AppError(message, 409);
+    }
+    throw err;
+  }
+
+  const appliedPayment = await req.asyncDb.get<{ id: number }>(
+    'SELECT id FROM payments WHERE invoice_id = ? AND reference = ? ORDER BY id DESC LIMIT 1',
     invoiceId,
-    appliedAt,
-    id,
+    paymentReference,
   );
-  if (updateResult.changes === 0) {
-    throw new AppError('Deposit already applied or refunded', 409);
+  if (!appliedPayment) {
+    throw new AppError('Deposit applied but payment link could not be loaded', 500);
   }
 
   audit(req.db, 'deposit.apply', req.user?.id ?? null, req.ip ?? '', {
     deposit_id: id,
     invoice_id: invoiceId,
     amount_cents: deposit.amount_cents,
+    payment_id: appliedPayment.id,
   });
 
   res.json({
@@ -281,6 +424,7 @@ router.post('/:id/apply-to-invoice', requirePermission('deposits.apply'), asyncH
     data: {
       id,
       applied_to_invoice_id: invoiceId,
+      applied_payment_id: appliedPayment.id,
       applied_at: appliedAt,
       amount_cents: deposit.amount_cents,
     },
@@ -302,35 +446,163 @@ router.delete('/:id', requirePermission('deposits.delete'), asyncHandler(async (
   // clean 404 on unknown id, then rely on the conditional UPDATE to serialize
   // concurrent refund attempts.
   const existing = await req.asyncDb.get<Row>(
-    'SELECT id, applied_to_invoice_id, refunded_at FROM deposits WHERE id = ?',
+    `SELECT d.id, d.amount_cents, d.applied_to_invoice_id, d.refunded_at,
+            d.refund_pending_at, d.payment_id, d.processor, d.processor_transaction_id,
+            p.method AS payment_method,
+            p.processor AS payment_processor,
+            p.transaction_id AS payment_transaction_id,
+            p.processor_transaction_id AS payment_processor_transaction_id,
+            p.capture_state AS payment_capture_state
+       FROM deposits d
+       LEFT JOIN payments p ON p.id = d.payment_id
+      WHERE d.id = ?`,
     id,
   );
   if (!existing) throw new AppError('Deposit not found', 404);
   if (existing.refunded_at) throw new AppError('Deposit already refunded', 409);
+  if (existing.refund_pending_at) throw new AppError('Deposit refund is already in progress', 409);
   if (existing.applied_to_invoice_id) {
     throw new AppError('Cannot refund a deposit that has been applied to an invoice', 409);
   }
 
   const refundedAt = nowIso();
+  const pendingAt = nowSql();
+  const amount = dollarsFromCents(Number(existing.amount_cents));
+  const processor = normalizeProcessor(existing.processor)
+    ?? normalizeProcessor(existing.payment_processor)
+    ?? normalizeProcessor(existing.payment_method);
+  const originalTransactionId = existing.processor_transaction_id
+    ?? existing.payment_processor_transaction_id
+    ?? existing.payment_transaction_id
+    ?? null;
+
   // SEC-H64: atomic conditional UPDATE. If a concurrent apply-to-invoice or
   // duplicate refund snuck in between the SELECT above and this UPDATE, the
   // WHERE guard rejects the second writer with `changes === 0`.
-  const updateResult = await req.asyncDb.run(
+  const claimResult = await req.asyncDb.run(
     `UPDATE deposits
-        SET refunded_at = ?
+        SET refund_pending_at = ?,
+            refund_error = NULL
       WHERE id = ?
         AND refunded_at IS NULL
-        AND applied_to_invoice_id IS NULL`,
-    refundedAt,
+        AND applied_to_invoice_id IS NULL
+        AND refund_pending_at IS NULL`,
+    pendingAt,
     id,
   );
-  if (updateResult.changes === 0) {
+  if (claimResult.changes === 0) {
     throw new AppError('Deposit already applied or refunded', 409);
   }
 
-  audit(req.db, 'deposit.refund', req.user?.id ?? null, req.ip ?? '', { id });
+  let processorRefund: Awaited<ReturnType<typeof processRefund>> | null = null;
+  if (processor === 'blockchyp') {
+    if (!isBlockChypEnabled(req.db)) {
+      await req.asyncDb.run(
+        `UPDATE deposits
+            SET refund_pending_at = NULL,
+                refund_error = ?
+          WHERE id = ?`,
+        'BlockChyp terminal is not enabled',
+        id,
+      );
+      throw new AppError('BlockChyp terminal is not enabled', 400);
+    }
+    if (!originalTransactionId) {
+      await req.asyncDb.run(
+        `UPDATE deposits
+            SET refund_pending_at = NULL,
+                refund_error = ?
+          WHERE id = ?`,
+        'Missing originating BlockChyp transaction id',
+        id,
+      );
+      throw new AppError('Missing originating BlockChyp transaction id for deposit refund', 400);
+    }
+    if (existing.payment_capture_state && existing.payment_capture_state !== 'captured') {
+      await req.asyncDb.run(
+        `UPDATE deposits
+            SET refund_pending_at = NULL,
+                refund_error = ?
+          WHERE id = ?`,
+        `Linked payment is not captured (${existing.payment_capture_state})`,
+        id,
+      );
+      throw new AppError('Linked payment is not captured; cannot refund through BlockChyp', 400);
+    }
 
-  res.json({ success: true, data: { id, refunded_at: refundedAt } });
+    processorRefund = await processRefund(req.db, amount, originalTransactionId, `deposit-${id}`);
+    if (!processorRefund.success) {
+      await req.asyncDb.run(
+        `UPDATE deposits
+            SET refund_pending_at = NULL,
+                refund_error = ?,
+                processor_response = COALESCE(?, processor_response)
+          WHERE id = ?`,
+        processorRefund.error ?? 'BlockChyp refund failed',
+        processorRefund.receiptSuggestions ? JSON.stringify(processorRefund.receiptSuggestions) : null,
+        id,
+      );
+      audit(req.db, 'deposit.blockchyp_refund_failed', req.user?.id ?? null, req.ip ?? '', {
+        id,
+        amount_cents: existing.amount_cents,
+        original_transaction_id: originalTransactionId,
+        transaction_ref: processorRefund.transactionRef,
+        error: processorRefund.error,
+      });
+      throw new AppError(processorRefund.error || 'BlockChyp refund failed', 400);
+    }
+  }
+
+  const finalizeResult = await req.asyncDb.run(
+    `UPDATE deposits
+        SET refunded_at = ?,
+            refunded_by_user_id = ?,
+            refund_pending_at = NULL,
+            refund_error = NULL,
+            processor = COALESCE(?, processor),
+            processor_refund_transaction_id = ?,
+            processor_response = COALESCE(?, processor_response),
+            refund_signature_file = ?,
+            refund_signature_file_path = ?,
+            accepted_terms_name = ?,
+            accepted_terms_text = ?,
+            accepted_terms_hash = ?,
+            accepted_terms_accepted_at = ?
+      WHERE id = ?
+        AND refunded_at IS NULL`,
+    refundedAt,
+    req.user!.id,
+    processorRefund ? 'blockchyp' : processor,
+    processorRefund?.transactionId ?? null,
+    processorRefund?.receiptSuggestions ? JSON.stringify(processorRefund.receiptSuggestions) : null,
+    processorRefund?.signatureFile ?? null,
+    processorRefund?.signatureFilePath ?? null,
+    processorRefund?.acceptedTerms?.name ?? null,
+    processorRefund?.acceptedTerms?.content ?? null,
+    processorRefund?.acceptedTerms?.contentHash ?? null,
+    processorRefund?.acceptedTerms?.acceptedAt ?? null,
+    id,
+  );
+  if (finalizeResult.changes === 0) {
+    throw new AppError('Deposit already refunded', 409);
+  }
+
+  audit(req.db, 'deposit.refund', req.user?.id ?? null, req.ip ?? '', {
+    id,
+    amount_cents: existing.amount_cents,
+    processor: processorRefund ? 'blockchyp' : processor,
+    processor_transaction_id: processorRefund?.transactionId ?? undefined,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      id,
+      refunded_at: refundedAt,
+      processor: processorRefund ? 'blockchyp' : processor,
+      processor_transaction_id: processorRefund?.transactionId ?? null,
+    },
+  });
 }));
 
 export default router;

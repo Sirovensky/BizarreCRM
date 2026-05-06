@@ -10,6 +10,8 @@ import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
 import { formatCurrency } from '@/utils/format';
 import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
+import { submitTrainingTransaction, useIsTraining } from './TrainingModeBanner';
+import { safeHexColor } from '@/utils/safeColor';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -25,6 +27,47 @@ const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: React.ElementT
   { key: 'Card', label: 'Card', icon: CreditCard },
   { key: 'Other', label: 'Other', icon: MoreHorizontal },
 ];
+
+const DEFAULT_TIER_COLOR = '#0f766e';
+
+function getOpaqueHexColor(color: string | undefined | null): string {
+  const safe = safeHexColor(color, DEFAULT_TIER_COLOR);
+  const hex = safe.slice(1);
+
+  if (hex.length === 3 || hex.length === 4) {
+    const r = hex.charAt(0);
+    const g = hex.charAt(1);
+    const b = hex.charAt(2);
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+
+  if (hex.length === 8) {
+    return `#${hex.slice(0, 6)}`;
+  }
+
+  return safe;
+}
+
+function getRelativeLuminance(hexColor: string): number {
+  const hex = getOpaqueHexColor(hexColor).slice(1);
+  const channel = (pair: string) => {
+    const value = parseInt(pair, 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const r = channel(hex.slice(0, 2));
+  const g = channel(hex.slice(2, 4));
+  const b = channel(hex.slice(4, 6));
+
+  return (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+}
+
+function getReadableTextColor(backgroundColor: string): '#000000' | '#ffffff' {
+  const luminance = getRelativeLuminance(backgroundColor);
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  const blackContrast = (luminance + 0.05) / 0.05;
+
+  return blackContrast >= whiteContrast ? '#000000' : '#ffffff';
+}
 
 // ─── Totals helper (shared cents-int helper) ────────────────────────
 // WEB-FH-005 (Fixer-O 2026-04-24): moved to `./totals.ts`. LeftPanel and
@@ -68,6 +111,7 @@ function buildPayload(
     device_location: r.device.device_location,
     warranty: r.device.warranty,
     warranty_days: r.device.warranty_days,
+    due_on: r.device.due_date ?? null,
     service_name: r.serviceName,
     repair_service_id: r.repairServiceId,
     selected_grade_id: r.selectedGradeId,
@@ -106,12 +150,14 @@ function buildPayload(
     ticket: {
       devices,
       source: meta.source,
+      referral_source: meta.referralSource || undefined,
       assigned_to: meta.assignedTo,
       discount,
       discount_reason: discountReason,
       internal_notes: meta.internalNotes,
       labels: meta.labels,
       due_date: meta.dueDate,
+      signature_data_url: undefined as string | undefined,
     },
     product_items: productItems,
     misc_items: misc,
@@ -131,6 +177,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const store = useUnifiedPosStore;
   const { setShowSuccess, meta, setMeta } = useUnifiedPosStore();
   const totals = useCheckoutTotals();
+  const isTraining = useIsTraining();
 
   const [method, setMethod] = useState<PaymentMethod>('Cash');
   const [cashGiven, setCashGiven] = useState('');
@@ -190,6 +237,16 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     staleTime: 60_000,
   });
   const membershipEnabled = configData?.['membership_enabled'] === 'true';
+  const requireReferral = configData?.['pos_require_referral'] === '1' || configData?.['pos_require_referral'] === 'true';
+
+  const { data: referralSourcesData } = useQuery({
+    queryKey: ['settings', 'referral-sources'],
+    queryFn: () => settingsApi.getReferralSources(),
+    enabled: requireReferral,
+    staleTime: 60_000,
+  });
+  const referralSources: Array<{ id: number; name: string }> =
+    referralSourcesData?.data?.data?.referral_sources || referralSourcesData?.data?.data || [];
 
   const { data: memberStatus } = useQuery({
     queryKey: ['membership', 'customer', customer?.id],
@@ -235,6 +292,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   });
 
   const showUpsell = membershipEnabled && !!customer?.id && !memberStatus && !!bestTier;
+  const bestTierColor = getOpaqueHexColor(bestTier?.color);
+  const bestTierTextColor = getReadableTextColor(bestTierColor);
 
   // D4-6: focus trap + ESC — keyboard-only techs must not tab out of the modal
   // into invisible elements behind the overlay. Tab / Shift+Tab cycle inside
@@ -308,8 +367,20 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         toast.error('Add at least two payment methods for split payment');
         return;
       }
+      if (validEntries.some((sp) => sp.method === 'Card') && !blockchypConfigured) {
+        toast.error('Pair a BlockChyp terminal before accepting card split payments');
+        return;
+      }
+    } else if (method === 'Card' && !blockchypConfigured) {
+      toast.error('Pair a BlockChyp terminal before accepting card payments');
+      return;
     } else if (method === 'Cash' && cashAmount < totals.total) {
       toast.error('Cash amount must be at least the total');
+      return;
+    }
+    const hasRepair = store.getState().cartItems.some((item) => item.type === 'repair');
+    if (requireReferral && hasRepair && !store.getState().meta.referralSource) {
+      toast.error('Select a referral source');
       return;
     }
 
@@ -318,12 +389,50 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       const validSplits = splitMode
         ? splitPayments.filter((sp) => parseFloat(sp.amount) > 0)
         : undefined;
+      const cardSplits = validSplits?.filter((sp) => sp.method === 'Card') ?? [];
+      const checkoutSplits = validSplits?.filter((sp) => sp.method !== 'Card');
+      const checkoutSplitTotal = checkoutSplits?.reduce(
+        (sum, sp) => sum + (parseFloat(sp.amount) || 0),
+        0,
+      ) ?? 0;
+      const initialPaymentAmount = splitMode
+        ? checkoutSplitTotal
+        : (method === 'Card' ? 0 : method === 'Cash' ? cashAmount : totals.total);
       const payload = buildPayload(
         store.getState(),
         method,
-        splitMode ? splitTotal : (method === 'Cash' ? cashAmount : totals.total),
-        validSplits,
+        initialPaymentAmount,
+        checkoutSplits && checkoutSplits.length > 0 ? checkoutSplits : undefined,
       );
+      if (signature) {
+        payload.ticket.signature_data_url = signature;
+      }
+
+      if (isTraining) {
+        await submitTrainingTransaction({
+          cart: payload,
+          total_cents: totals.totalCents,
+          kind: 'checkout',
+        });
+        await queryClient.invalidateQueries({ queryKey: ['onboarding-state'] });
+        await queryClient.invalidateQueries({ queryKey: ['onboarding', 'state'] });
+        setShowSuccess({
+          mode: 'checkout',
+          ticket: null,
+          invoice: {
+            id: 0,
+            order_id: 'TRAINING',
+            total: totals.total,
+          },
+          total: totals.total,
+          change: method === 'Cash' ? Math.max(0, cashAmount - totals.total) : 0,
+          customer_name: 'Training session',
+        });
+        window.dispatchEvent(new CustomEvent('pos:payment-completed'));
+        onClose();
+        return;
+      }
+
       // WEB-FH-001 / WEB-FH-002: stable idempotency key for this cart-session.
       // Reused on every retry of the SAME submit so a double-click or flaky
       // network can't double-charge — server idempotent middleware caches by
@@ -346,7 +455,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         const invoiceId: number | undefined = res.data?.data?.invoice?.id;
         if (invoiceId) {
           if (!splitMode && method === 'Card') {
-            // Single Card payment — charge full remaining balance.
+            // Single Card payment — charge the invoice balance after the
+            // server creates it unpaid; BlockChyp records the payment row only
+            // after authorization metadata exists.
             try {
               const terminalRes = await blockchypApi.processPayment(invoiceId);
               const terminalResult = terminalRes.data?.data;
@@ -369,8 +480,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             // BlockChyp `charge` for that leg's amount. Non-card legs (Cash/Other)
             // are already recorded by the POS checkout endpoint; we only hit
             // the terminal for Card legs.
-            const cardLegs = (validSplits ?? []).filter((sp) => sp.method === 'Card');
-            for (const leg of cardLegs) {
+            for (const leg of cardSplits) {
               const legAmount = parseFloat(leg.amount) || 0;
               if (legAmount <= 0) continue;
               try {
@@ -428,7 +538,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <h2 id="checkout-title" className="text-lg font-semibold text-surface-900 dark:text-surface-50">Checkout</h2>
-          <button aria-label="Close" onClick={onClose} className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button aria-label="Close" onClick={onClose} className="btn-icon btn-sm">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -460,11 +570,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
           {showUpsell && bestTier && (
             <div
               className="rounded-lg border-2 p-3"
-              style={{ borderColor: bestTier.color, backgroundColor: bestTier.color + '0D' }}
+              style={{ borderColor: bestTierColor, backgroundColor: `${bestTierColor}0D` }}
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <Sparkles className="h-5 w-5 shrink-0" style={{ color: bestTier.color }} />
+                  <Sparkles className="h-5 w-5 shrink-0" style={{ color: bestTierColor }} />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate">
                       Save {bestTier.discount_pct}% with {bestTier.name}!
@@ -480,8 +590,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     upsellSubscribeMut.mutate(bestTier.id);
                   }}
                   disabled={upsellSubscribeMut.isPending}
-                  className="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:opacity-90"
-                  style={{ backgroundColor: bestTier.color }}
+                  className="btn btn-xs shrink-0 !font-semibold hover:opacity-90"
+                  style={{ backgroundColor: bestTierColor, color: bestTierTextColor }}
                 >
                   {upsellSubscribeMut.isPending
                     ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -507,14 +617,41 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             />
           </div>
 
+          {requireReferral && store.getState().cartItems.some((item) => item.type === 'repair') && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                Referral Source <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={meta.referralSource}
+                onChange={(e) => setMeta({ referralSource: e.target.value })}
+                className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+              >
+                <option value="">Select referral source...</option>
+                {referralSources.map((src) => (
+                  <option key={src.id} value={src.name}>{src.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Payment Method */}
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-medium text-surface-700 dark:text-surface-300">Payment Method</p>
               <button
-                onClick={() => setSplitMode(!splitMode)}
+                onClick={() => {
+                  if (!splitMode && !blockchypConfigured) {
+                    setSplitPayments((payments) =>
+                      payments.map((payment) =>
+                        payment.method === 'Card' ? { ...payment, method: 'Other' } : payment,
+                      ),
+                    );
+                  }
+                  setSplitMode(!splitMode);
+                }}
                 className={cn(
-                  'flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  'btn btn-xs rounded-md',
                   splitMode
                     ? 'bg-teal-100 text-teal-700 dark:bg-teal-500/20 dark:text-teal-400'
                     : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
@@ -526,7 +663,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             </div>
 
             {!splitMode && (
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {PAYMENT_METHODS.map(({ key, label, icon: Icon }) => {
                   // AUDIT-WEB-003: Card is only available when a BlockChyp terminal
                   // is configured. No simulation fallback.
@@ -538,7 +675,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       title={isCardDisabled ? 'Terminal not configured — go to Settings → Payments to pair a BlockChyp terminal' : undefined}
                       onClick={() => { if (!isCardDisabled) { setMethod(key); setProcessing(false); } }}
                       className={cn(
-                        'flex flex-col items-center gap-1 rounded-lg border p-3 text-xs font-medium transition-colors',
+                        'btn btn-md !h-auto flex-col !gap-1 border !p-3 !whitespace-normal',
                         isCardDisabled
                           ? 'cursor-not-allowed border-surface-200 opacity-50 dark:border-surface-700'
                           : method === key
@@ -560,6 +697,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                 {splitPayments.map((sp, idx) => (
                   <div key={idx} className="flex items-center gap-2">
                     <select
+                      aria-label={`Split payment ${idx + 1} method`}
                       value={sp.method}
                       onChange={(e) => {
                         const updated = splitPayments.map((p, i) =>
@@ -570,7 +708,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                       className="flex-shrink-0 rounded-lg border border-surface-300 bg-white px-2 py-2 text-sm dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
                     >
                       {PAYMENT_METHODS.map(({ key, label }) => (
-                        <option key={key} value={key}>{label}</option>
+                        <option key={key} value={key} disabled={key === 'Card' && !blockchypConfigured}>{label}</option>
                       ))}
                     </select>
                     <div className="relative flex-1">
@@ -593,7 +731,8 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     {splitPayments.length > 2 && (
                       <button
                         onClick={() => setSplitPayments(splitPayments.filter((_, i) => i !== idx))}
-                        className="rounded p-1 text-surface-400 hover:text-red-500"
+                        className="btn-icon btn-xs hover:text-red-500"
+                        aria-label="Remove split payment"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -613,7 +752,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     }}
                     disabled={splitPayments.length >= 6}
                     title={splitPayments.length >= 6 ? 'Maximum of 6 split payments' : undefined}
-                    className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 disabled:cursor-not-allowed disabled:text-surface-400 disabled:hover:text-surface-400 dark:disabled:text-surface-500"
+                    className="btn btn-xs !px-0 text-teal-600 hover:text-teal-700 dark:text-teal-400 disabled:cursor-not-allowed disabled:text-surface-400 disabled:hover:text-surface-400 dark:disabled:text-surface-500"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {splitPayments.length >= 6 ? 'Max 6 split payments' : 'Add Method'}
@@ -656,7 +795,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                     key={amt}
                     type="button"
                     onMouseDown={(e) => { e.preventDefault(); setCashGiven(amt.toFixed(2)); }}
-                    className="rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700"
+                    className="btn btn-sm border border-surface-200 bg-white text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700"
                   >
                     ${amt.toFixed(2)}
                   </button>
@@ -685,7 +824,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         <div className="border-t border-surface-200 px-6 py-3 dark:border-surface-700">
           <button
             onClick={() => setShowSignature(!showSignature)}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
+            className="btn btn-xs !px-0 text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
           >
             <PenTool className="h-3.5 w-3.5" />
             {signature ? 'Signature captured' : 'Add customer signature (optional)'}
@@ -704,7 +843,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             onClick={handleCompleteCheckout}
             disabled={!canComplete}
             className={cn(
-              'w-full rounded-lg py-3 text-sm font-semibold transition-colors',
+              'btn btn-lg w-full !font-semibold',
               canComplete
                 ? 'bg-teal-600 text-white hover:bg-teal-700'
                 : 'cursor-not-allowed bg-surface-200 text-surface-400 dark:bg-surface-700 dark:text-surface-500',

@@ -287,7 +287,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
         />
       </div>
       {hasSignature && (
-        <button type="button" onClick={clear} className="inline-flex items-center gap-1 text-xs text-surface-500 hover:text-red-500 transition-colors">
+        <button type="button" onClick={clear} className="btn btn-xs btn-ghost gap-1 text-surface-500 hover:text-red-500">
           <Eraser aria-hidden="true" className="h-3 w-3" /> Clear signature
         </button>
       )}

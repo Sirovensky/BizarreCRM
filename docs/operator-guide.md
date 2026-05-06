@@ -130,6 +130,46 @@ Recommended operator habit:
 
 The backup panel and management tools can configure backup location, schedule, and retention.
 
+## Management Login Recovery
+
+The Management Dashboard super-admin login does not have self-service email password reset. That is intentional: recovery for this account requires local server or database administrator access.
+
+During first-time 2FA enrollment, save any recovery codes shown by the dashboard. Current builds show that block only when the server response includes recovery codes; if no codes are shown, use the local recovery steps below.
+
+Before changing the master database:
+
+1. Stop BizarreCRM.
+2. Back up `packages/server/data/master.db`.
+3. Run the smallest reset needed.
+4. Restart BizarreCRM.
+5. Log in and immediately re-enroll 2FA or store the new password in the approved password manager.
+
+### Lost Authenticator, Password Known
+
+Clear only the super-admin TOTP fields and active sessions. Replace `admin` if your super-admin username is different.
+
+```bash
+sqlite3 packages/server/data/master.db "UPDATE super_admins SET totp_secret_enc = NULL, totp_secret_iv = NULL, totp_secret_tag = NULL, totp_enabled = 0, updated_at = datetime('now') WHERE username = 'admin'; DELETE FROM super_admin_sessions;"
+```
+
+After restart, log in with the existing password. The dashboard will require 2FA setup again.
+
+### Forgot Super-Admin Password
+
+Choose a strong replacement password first. Generate a bcrypt hash locally from the repo root:
+
+```bash
+node -e "const bcrypt = require('bcryptjs'); console.log(bcrypt.hashSync(process.argv[1], 14));" "replace-with-a-long-unique-password"
+```
+
+Stop BizarreCRM, back up `packages/server/data/master.db`, then update the password hash and clear 2FA so the recovered account must enroll a fresh authenticator. Replace both `admin` and `<bcrypt-hash-from-command>` as appropriate.
+
+```bash
+sqlite3 packages/server/data/master.db "UPDATE super_admins SET password_hash = '<bcrypt-hash-from-command>', password_set = 1, totp_secret_enc = NULL, totp_secret_iv = NULL, totp_secret_tag = NULL, totp_enabled = 0, failed_login_count = 0, locked_until = NULL, updated_at = datetime('now') WHERE username = 'admin'; DELETE FROM super_admin_sessions;"
+```
+
+Restart BizarreCRM, log in with the replacement password, and complete 2FA setup. Do not leave a shared temporary password in service; if you used a handoff password, repeat the offline password-hash update with the final owner-held password.
+
 ## SMS/MMS And Voice Providers
 
 SMS and voice configuration is per shop. Configure it in the onboarding flow or Settings > SMS & Voice.
@@ -262,9 +302,21 @@ your shop's workload.
 
 ### Logs
 
+- `logs/bizarre-crm.out.log` — server stdout when supervised by PM2.
+- `logs/bizarre-crm.err.log` — server stderr when supervised by PM2.
 - `logs/bizarre-crm-watchdog.out.log` — watchdog stdout (state transitions, decisions).
 - `logs/bizarre-crm-watchdog.err.log` — watchdog stderr (PM2 spawn errors, crashes).
 - `logs/watchdog-events.jsonl` — structured event log read by the dashboard.
+
+Preferred production rotation stays at the host/supervisor layer: PM2
+`pm2-logrotate`, Docker log-driver `max-size` / `max-file`, journald
+retention, or OS `logrotate`. For self-hosted installs that cannot rely on
+those controls, the server also has an opt-in app-level rotating JSON/text
+file sink. Set `LOG_FILE_ENABLED=true`; optionally set `LOG_FILE_PATH`
+(default `logs/bizarre-crm.app.log` from the repo root), `LOG_FILE_MAX_SIZE`
+(default `50M`), and `LOG_FILE_MAX_FILES` (default `10`, including the active
+file). Stdout/stderr remain enabled for PM2/Docker, and file-sink failures
+disable only the sink, not the server.
 
 ### Operator commands
 

@@ -6,6 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import { employeeApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatTime } from '@/utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -237,8 +238,8 @@ function PayRateEditor({ employeeId, currentRate }: { employeeId: number; curren
       setEditing(false);
       queryClient.invalidateQueries({ queryKey: ['employee-detail', employeeId] });
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Failed to update pay rate');
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err));
     },
   });
 
@@ -475,8 +476,8 @@ export function EmployeeListPage() {
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
       queryClient.invalidateQueries({ queryKey: ['employee-hours'] });
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'Failed to clock in');
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err));
     },
   });
 
@@ -490,8 +491,8 @@ export function EmployeeListPage() {
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
       queryClient.invalidateQueries({ queryKey: ['employee-hours'] });
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || 'Failed to clock out');
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err));
     },
   });
 

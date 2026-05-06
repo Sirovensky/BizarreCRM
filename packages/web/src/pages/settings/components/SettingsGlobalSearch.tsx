@@ -150,7 +150,7 @@ export function SettingsGlobalSearch({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="rounded p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800"
+            className="btn-icon btn-xs text-surface-400 hover:text-surface-600"
             aria-label="Close search"
           >
             <X className="h-4 w-4" />

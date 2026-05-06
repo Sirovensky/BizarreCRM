@@ -151,7 +151,7 @@ export function SettingsTemplatePicker({
           <button
             type="button"
             onClick={() => setConfirmingId(null)}
-            className="ml-2 text-primary-600 hover:underline"
+            className="btn btn-ghost btn-xs ml-2 text-primary-600"
           >
             cancel
           </button>

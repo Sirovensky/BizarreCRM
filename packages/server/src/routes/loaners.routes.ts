@@ -3,10 +3,12 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
-import { validatePaginationOffset, validateId } from '../utils/validate.js';
+import { validatePaginationOffset, validateId, validatePrice, roundCents, validateTextLength } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { allocateCounter, formatInvoiceOrderId } from '../utils/counters.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
 const router = Router();
 
@@ -15,9 +17,40 @@ const router = Router();
 // the busiest counter-loading shift.
 const LOANER_WRITE_MAX = 60;
 const LOANER_WRITE_WINDOW_MS = 60_000;
+const RETURN_CONDITIONS = new Set(['good', 'fair', 'poor', 'damaged', 'missing']);
+const RETURN_PAYMENT_METHODS = new Set(['cash', 'check', 'external_terminal', 'other']);
+const RETURN_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  check: 'Check',
+  external_terminal: 'External terminal',
+  other: 'Other',
+};
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function userCan(req: any, permission: string): boolean {
+  const user = req.user;
+  if (!user) return false;
+  const explicit = user.permissions || {};
+  if (user.customRolePermissions) {
+    return user.customRolePermissions.has(permission) || user.customRolePermissions.has('admin.full') || !!explicit[permission];
+  }
+  if (user.role === 'admin') return true;
+  return (ROLE_PERMISSIONS[user.role] || []).includes(permission) || !!explicit[permission];
+}
+
+function optionalText(value: unknown, fieldName: string, maxLength: number): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw new AppError(`${fieldName} must be text`, 400);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return validateTextLength(trimmed, maxLength, fieldName);
+}
+
+function parseReturnPaymentFlag(value: unknown): boolean {
+  return value === true || value === 'true' || value === 1 || value === '1';
 }
 
 // SEC-M18: loaner rows expose serial + IMEI + current-holder name. That
@@ -172,19 +205,181 @@ router.post('/:id/return', requirePermission('inventory.adjust'), asyncHandler(a
   const db = req.db;
   const adb = req.asyncDb;
   const id = validateId(req.params.id, 'id');
-  const { condition_in, notes } = req.body;
-  const active = await adb.get<{ id: number }>(
-    'SELECT id FROM loaner_history WHERE loaner_device_id = ? AND returned_at IS NULL ORDER BY loaned_at DESC LIMIT 1',
+  const {
+    condition_in,
+    notes,
+    return_charge_amount,
+    return_charge_paid,
+    return_charge_payment_method,
+    return_charge_payment_reference,
+  } = req.body;
+  const active = await adb.get<{
+    id: number;
+    customer_id: number;
+    ticket_device_id: number;
+    loaner_name: string;
+    ticket_id: number | null;
+  }>(
+    `SELECT lh.id, lh.customer_id, lh.ticket_device_id, ld.name AS loaner_name, td.ticket_id
+       FROM loaner_history lh
+       JOIN loaner_devices ld ON ld.id = lh.loaner_device_id
+       LEFT JOIN ticket_devices td ON td.id = lh.ticket_device_id
+      WHERE lh.loaner_device_id = ? AND lh.returned_at IS NULL
+      ORDER BY lh.loaned_at DESC LIMIT 1`,
     id
   );
   if (!active) throw new AppError('Device is not currently loaned out', 400);
 
-  await adb.run('UPDATE loaner_history SET returned_at = ?, condition_in = ?, notes = COALESCE(?, notes) WHERE id = ?',
-    now(), condition_in || 'good', notes || null, active.id);
-  await adb.run('UPDATE loaner_devices SET status = ?, condition = COALESCE(?, condition), updated_at = ? WHERE id = ?',
-    'available', condition_in || null, now(), id);
-  audit(db, 'loaner_device_returned', req.user!.id, req.ip || 'unknown', { loaner_id: id, history_id: active.id, condition_in: condition_in || 'good' });
-  res.json({ success: true, data: { returned: true } });
+  const normalizedCondition = typeof condition_in === 'string' && condition_in.trim()
+    ? condition_in.trim().toLowerCase()
+    : 'good';
+  if (!RETURN_CONDITIONS.has(normalizedCondition)) {
+    throw new AppError('Invalid return condition', 400);
+  }
+  const cleanNotes = optionalText(notes, 'notes', 1000);
+  const chargeAmount = return_charge_amount === undefined || return_charge_amount === null || return_charge_amount === ''
+    ? 0
+    : validatePrice(return_charge_amount, 'return_charge_amount');
+  const shouldRecordPayment = parseReturnPaymentFlag(return_charge_paid);
+  const paymentMethod = typeof return_charge_payment_method === 'string' && return_charge_payment_method.trim()
+    ? return_charge_payment_method.trim().toLowerCase()
+    : 'cash';
+  const paymentReference = optionalText(return_charge_payment_reference, 'return_charge_payment_reference', 120);
+
+  if (shouldRecordPayment && chargeAmount <= 0) {
+    throw new AppError('return_charge_amount must be greater than 0 when recording a payment', 400);
+  }
+  if (chargeAmount <= 0 && paymentReference) {
+    throw new AppError('Payment reference requires a return charge amount', 400);
+  }
+  if (shouldRecordPayment && !RETURN_PAYMENT_METHODS.has(paymentMethod)) {
+    throw new AppError('Invalid return charge payment method', 400);
+  }
+  if (shouldRecordPayment && paymentMethod === 'external_terminal' && !paymentReference) {
+    throw new AppError('Payment reference is required for external terminal payments', 400);
+  }
+
+  if (chargeAmount > 0 && !userCan(req, 'invoices.create')) {
+    throw new AppError('Insufficient permissions to create a loaner return charge invoice', 403);
+  }
+  if (shouldRecordPayment && chargeAmount > 0 && !userCan(req, 'invoices.record_payment')) {
+    throw new AppError('Insufficient permissions to record a loaner return charge payment', 403);
+  }
+
+  const txNow = now();
+  const returnTx = db.transaction(() => {
+    db.prepare('UPDATE loaner_history SET returned_at = ?, condition_in = ?, notes = COALESCE(?, notes) WHERE id = ?')
+      .run(txNow, normalizedCondition, cleanNotes, active.id);
+    db.prepare('UPDATE loaner_devices SET status = ?, condition = COALESCE(?, condition), updated_at = ? WHERE id = ?')
+      .run('available', normalizedCondition, txNow, id);
+
+    let charge: null | {
+      id: number;
+      invoice_id: number;
+      invoice_order_id: string;
+      payment_id: number | null;
+      amount: number;
+      amount_paid: number;
+      amount_due: number;
+      status: string;
+      payment_method: string | null;
+      payment_reference: string | null;
+    } = null;
+
+    if (chargeAmount > 0) {
+      const orderId = formatInvoiceOrderId(allocateCounter(db, 'invoice_order_id'));
+      const paidAmount = shouldRecordPayment ? chargeAmount : 0;
+      const amountDue = roundCents(chargeAmount - paidAmount);
+      const invoiceStatus = shouldRecordPayment ? 'paid' : 'unpaid';
+      const invoiceNotes = [
+        `Loaner return charge for ${active.loaner_name}`,
+        cleanNotes ? `Return notes: ${cleanNotes}` : null,
+      ].filter(Boolean).join('\n');
+
+      const invoiceResult = db.prepare(`
+        INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
+          amount_paid, amount_due, status, notes, created_by)
+        VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?)
+      `).run(orderId, active.customer_id, active.ticket_id || null, chargeAmount, chargeAmount, paidAmount, amountDue,
+        invoiceStatus, invoiceNotes, req.user!.id);
+      const invoiceId = Number(invoiceResult.lastInsertRowid);
+
+      db.prepare(`
+        INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, notes)
+        VALUES (?, ?, 1, ?, ?, ?)
+      `).run(invoiceId, `Loaner return fee - ${active.loaner_name}`, chargeAmount, chargeAmount, cleanNotes);
+
+      let paymentId: number | null = null;
+      if (shouldRecordPayment) {
+        const methodLabel = RETURN_PAYMENT_METHOD_LABELS[paymentMethod] || paymentMethod;
+        const paymentResult = db.prepare(`
+          INSERT INTO payments
+            (invoice_id, amount, method, method_detail, transaction_id, notes, payment_type, user_id, reference, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'payment', ?, ?, ?, ?)
+        `).run(
+          invoiceId,
+          chargeAmount,
+          methodLabel,
+          paymentReference,
+          paymentReference,
+          `Loaner return charge payment for ${active.loaner_name}`,
+          req.user!.id,
+          paymentReference,
+          txNow,
+          txNow,
+        );
+        paymentId = Number(paymentResult.lastInsertRowid);
+      }
+
+      const chargeResult = db.prepare(`
+        INSERT INTO loaner_return_charges
+          (loaner_history_id, loaner_device_id, customer_id, ticket_id, invoice_id, payment_id, amount,
+           amount_paid, amount_due, status, payment_method, payment_reference, notes, created_by_user_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        active.id,
+        id,
+        active.customer_id,
+        active.ticket_id || null,
+        invoiceId,
+        paymentId,
+        chargeAmount,
+        paidAmount,
+        amountDue,
+        invoiceStatus,
+        shouldRecordPayment ? paymentMethod : null,
+        shouldRecordPayment ? paymentReference : null,
+        cleanNotes,
+        req.user!.id,
+        txNow,
+        txNow,
+      );
+
+      charge = {
+        id: Number(chargeResult.lastInsertRowid),
+        invoice_id: invoiceId,
+        invoice_order_id: orderId,
+        payment_id: paymentId,
+        amount: chargeAmount,
+        amount_paid: paidAmount,
+        amount_due: amountDue,
+        status: invoiceStatus,
+        payment_method: shouldRecordPayment ? paymentMethod : null,
+        payment_reference: shouldRecordPayment ? paymentReference : null,
+      };
+    }
+
+    return { charge };
+  });
+
+  const { charge } = returnTx();
+  audit(db, 'loaner_device_returned', req.user!.id, req.ip || 'unknown', {
+    loaner_id: id,
+    history_id: active.id,
+    condition_in: normalizedCondition,
+    return_charge: charge,
+  });
+  res.json({ success: true, data: { returned: true, return_charge: charge } });
 }));
 
 // DELETE /:id — Soft-delete loaner device

@@ -118,7 +118,7 @@ export function UpsellPrompt() {
       </div>
       <button
         onClick={addSuggestion}
-        className="flex items-center gap-1 rounded-md bg-amber-600 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-700"
+        className="btn btn-xs bg-amber-600 !font-semibold text-white hover:bg-amber-700"
       >
         <Plus className="h-3 w-3" />
         Add
@@ -126,7 +126,7 @@ export function UpsellPrompt() {
       <button
         onClick={() => setDismissed(true)}
         aria-label="Dismiss"
-        className="rounded p-1 text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-500/20"
+        className="btn-icon btn-xs text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-500/20"
       >
         <X className="h-3 w-3" />
       </button>

@@ -307,21 +307,21 @@ export function StepDefaultStatuses({
                 <button
                   type="button"
                   onClick={enableAll}
-                  className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
+                  className="btn btn-sm rounded-lg border border-surface-300 bg-surface-50 px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
                 >
                   Enable all
                 </button>
                 <button
                   type="button"
                   onClick={disableAll}
-                  className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
+                  className="btn btn-sm rounded-lg border border-surface-300 bg-surface-50 px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
                 >
                   Disable all
                 </button>
                 <button
                   type="button"
                   onClick={resetToDefaults}
-                  className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
+                  className="btn btn-sm rounded-lg border border-surface-300 bg-surface-50 px-3 py-1.5 text-xs font-medium text-surface-700 transition-colors hover:bg-surface-100 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-200 dark:hover:bg-surface-600"
                 >
                   Reset defaults
                 </button>
@@ -401,7 +401,7 @@ export function StepDefaultStatuses({
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <ArrowLeft className="h-4 w-4" />
             Back
@@ -410,15 +410,15 @@ export function StepDefaultStatuses({
             <button
               type="button"
               onClick={handleSkip}
-              className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+              className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
             >
-              Skip
+              Skip this step
             </button>
             <button
               type="button"
               onClick={handleContinue}
               disabled={saving || loading}
-              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? (
                 <>

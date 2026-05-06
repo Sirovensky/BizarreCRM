@@ -143,7 +143,7 @@ export function StepBusinessHours({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+          className="btn btn-lg flex items-center gap-2 rounded-lg border border-surface-200 bg-white px-5 py-3 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
@@ -152,14 +152,14 @@ export function StepBusinessHours({
           <button
             type="button"
             onClick={handleSkip}
-            className="rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
+            className="btn btn-lg rounded-lg px-4 py-3 text-sm font-medium text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
-            Skip
+            Skip this step
           </button>
           <button
             type="button"
             onClick={handleContinue}
-            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
           >
             Continue
             <ArrowRight className="h-4 w-4" />
@@ -209,7 +209,7 @@ export function SubStepFooter({
       <button
         type="button"
         onClick={onCancel}
-        className="flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+        className="btn btn-lg flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to hub
@@ -218,7 +218,7 @@ export function SubStepFooter({
         type="button"
         onClick={onComplete}
         disabled={completeDisabled}
-        className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Check className="h-4 w-4" />
         {completeLabel}

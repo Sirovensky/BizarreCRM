@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +14,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { voiceApi, type VoiceCall } from '@/api/endpoints';
+import { voiceApi, type VoiceCall, type VoiceCallsResponse } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
 
@@ -85,6 +85,64 @@ const STATUS_COLORS: Record<string, string> = {
   'no-answer': 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-400',
   in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
 };
+
+const PAGE_SIZE = 25;
+const FETCH_PAGE_SIZE = 100;
+
+type DirectionFilter = 'all' | VoiceCall['direction'];
+type VoiceCallsPayload = VoiceCallsResponse['data'];
+
+const DIRECTION_FILTER_OPTIONS: Array<{ value: DirectionFilter; label: string }> = [
+  { value: 'all', label: 'All directions' },
+  { value: 'inbound', label: 'Inbound' },
+  { value: 'outbound', label: 'Outbound' },
+];
+
+const STATUS_LABELS: Record<string, string> = {
+  initiated: 'Initiated',
+  queued: 'Queued',
+  ringing: 'Ringing',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  busy: 'Busy',
+  failed: 'Failed',
+  'no-answer': 'No answer',
+  canceled: 'Canceled',
+  cancelled: 'Cancelled',
+};
+
+function formatStatusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+async function fetchVoiceCallHistory(): Promise<VoiceCallsPayload> {
+  const firstResponse = await voiceApi.calls({ page: 1, pagesize: FETCH_PAGE_SIZE });
+  const firstPage = firstResponse.data.data;
+  const totalPages = Math.max(1, firstPage.pagination.total_pages || 1);
+
+  if (totalPages === 1) {
+    return firstPage;
+  }
+
+  const remainingCalls: VoiceCall[] = [];
+  for (let nextPage = 2; nextPage <= totalPages; nextPage += 4) {
+    const pageNumbers = Array.from(
+      { length: Math.min(4, totalPages - nextPage + 1) },
+      (_, index) => nextPage + index,
+    );
+    const responses = await Promise.all(
+      pageNumbers.map((page) => voiceApi.calls({ page, pagesize: FETCH_PAGE_SIZE })),
+    );
+    remainingCalls.push(...responses.flatMap((response) => response.data.data.calls));
+  }
+
+  return {
+    calls: [...firstPage.calls, ...remainingCalls],
+    pagination: firstPage.pagination,
+  };
+}
 
 function hasRecording(call: VoiceCall): boolean {
   // WEB-FN-013: only check `recording_url`; the on-disk path was removed
@@ -221,17 +279,52 @@ function CallRow({ call }: CallRowProps) {
 
 export function VoiceCallsListPage() {
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['voice-calls', page],
-    queryFn: () => voiceApi.calls({ page, pagesize: pageSize }),
+    queryKey: ['voice-calls', 'history'],
+    queryFn: fetchVoiceCallHistory,
     staleTime: 30_000,
   });
 
-  const calls = data?.data?.data?.calls ?? [];
-  const pagination = data?.data?.data?.pagination;
-  const totalPages = pagination?.total_pages ?? 1;
+  const allCalls = data?.calls ?? [];
+  const serverTotal = data?.pagination.total ?? allCalls.length;
+  const filtersActive = directionFilter !== 'all' || statusFilter !== 'all';
+  const statusOptions = useMemo(() => {
+    return Array.from(new Set(allCalls.map((call) => call.status).filter(Boolean)))
+      .sort((a, b) => formatStatusLabel(a).localeCompare(formatStatusLabel(b)))
+      .map((status) => ({ value: status, label: formatStatusLabel(status) }));
+  }, [allCalls]);
+  const filteredCalls = useMemo(() => {
+    return allCalls.filter((call) => {
+      if (directionFilter !== 'all' && call.direction !== directionFilter) return false;
+      if (statusFilter !== 'all' && call.status !== statusFilter) return false;
+      return true;
+    });
+  }, [allCalls, directionFilter, statusFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredCalls.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const firstResult = filteredCalls.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const lastResult = Math.min(filteredCalls.length, currentPage * PAGE_SIZE);
+  const calls = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredCalls.slice(start, start + PAGE_SIZE);
+  }, [currentPage, filteredCalls]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [directionFilter, statusFilter]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  function clearFilters() {
+    setDirectionFilter('all');
+    setStatusFilter('all');
+    setPage(1);
+  }
 
   return (
     <div>
@@ -239,9 +332,11 @@ export function VoiceCallsListPage() {
         <Phone className="h-6 w-6 text-primary-600" />
         <div>
           <h1 className="text-xl font-bold text-surface-900 dark:text-surface-100">Voice Calls</h1>
-          {pagination && (
+          {!isLoading && !isError && (
             <p className="text-sm text-surface-500 dark:text-surface-400">
-              {pagination.total} call{pagination.total !== 1 ? 's' : ''}
+              {filtersActive
+                ? `${filteredCalls.length} of ${serverTotal} call${serverTotal !== 1 ? 's' : ''}`
+                : `${serverTotal} call${serverTotal !== 1 ? 's' : ''}`}
             </p>
           )}
         </div>
@@ -266,7 +361,67 @@ export function VoiceCallsListPage() {
         </div>
       )}
 
-      {!isLoading && !isError && calls.length === 0 && (
+      {!isLoading && !isError && (allCalls.length > 0 || filtersActive) && (
+        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-900 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2">
+              <label htmlFor="voice-call-direction-filter" className="text-sm font-medium text-surface-600 dark:text-surface-300">
+                Direction
+              </label>
+              <select
+                id="voice-call-direction-filter"
+                value={directionFilter}
+                onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)}
+                className="rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm text-surface-700 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+              >
+                {DIRECTION_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="voice-call-status-filter" className="text-sm font-medium text-surface-600 dark:text-surface-300">
+                Status
+              </label>
+              <select
+                id="voice-call-status-filter"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm text-surface-700 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+              >
+                <option value="all">All statuses</option>
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 text-sm text-surface-500 dark:text-surface-400">
+            <span>
+              {filteredCalls.length === 0
+                ? 'No matching calls'
+                : `${firstResult}-${lastResult} of ${filteredCalls.length}`}
+            </span>
+            {filtersActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!isLoading && !isError && allCalls.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
           <Phone className="h-12 w-12 text-surface-300 dark:text-surface-600" />
           <p className="text-base font-medium text-surface-600 dark:text-surface-400">
@@ -282,6 +437,22 @@ export function VoiceCallsListPage() {
             </Link>
             .
           </p>
+        </div>
+      )}
+
+      {!isLoading && !isError && allCalls.length > 0 && calls.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+          <Phone className="h-12 w-12 text-surface-300 dark:text-surface-600" />
+          <p className="text-base font-medium text-surface-600 dark:text-surface-400">
+            No voice calls match these filters.
+          </p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="px-4 py-2 text-sm font-medium text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/20"
+          >
+            Clear filters
+          </button>
         </div>
       )}
 
@@ -311,12 +482,12 @@ export function VoiceCallsListPage() {
           {totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between text-sm text-surface-500">
               <span>
-                Page {page} of {totalPages}
+                Page {currentPage} of {totalPages}
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
+                  disabled={currentPage <= 1}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -324,7 +495,7 @@ export function VoiceCallsListPage() {
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
+                  disabled={currentPage >= totalPages}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                 >
                   Next

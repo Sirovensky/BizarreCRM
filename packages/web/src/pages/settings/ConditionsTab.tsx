@@ -59,7 +59,7 @@ export function ConditionsTab() {
                 key={cat.key}
                 onClick={() => setSelectedCategory(cat.key)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap',
+                  'btn btn-sm rounded-md',
                   selectedCategory === cat.key
                     ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
                     : 'text-surface-500 hover:text-surface-700 dark:hover:text-surface-300'
@@ -177,7 +177,7 @@ function CategoryTemplates({ category }: { category: string }) {
       ) : (
         <button
           onClick={() => setShowNewTemplate(true)}
-          className="btn btn-ghost w-full justify-center gap-2 border border-dashed border-surface-300 dark:border-surface-600 py-3 text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
+          className="btn btn-ghost btn-md w-full justify-center gap-2 border border-dashed border-surface-300 dark:border-surface-600 text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
         >
           <Plus className="h-4 w-4" />
           Add Template
@@ -288,14 +288,14 @@ function TemplateCard({
               <button
                 onClick={() => moveCheck(check.id, 'up')}
                 disabled={idx === 0}
-                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="btn-icon btn-xs h-4 w-4 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
               >
                 <ChevronUp className="h-3 w-3" />
               </button>
               <button
                 onClick={() => moveCheck(check.id, 'down')}
                 disabled={idx === sortedChecks.length - 1}
-                className="p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="btn-icon btn-xs h-4 w-4 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
               >
                 <ChevronDown className="h-3 w-3" />
               </button>
@@ -321,11 +321,11 @@ function TemplateCard({
                   onClick={() => {
                     if (editingLabel.trim()) updateCheckMutation.mutate({ id: check.id, data: { label: editingLabel.trim() } });
                   }}
-                  className="p-1 text-green-600 hover:text-green-700"
+                  className="btn-icon btn-xs text-green-600 hover:text-green-700"
                 >
                   <Check className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => setEditingCheckId(null)} className="p-1 text-surface-400 hover:text-surface-600">
+                <button onClick={() => setEditingCheckId(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                   <X className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -340,21 +340,21 @@ function TemplateCard({
                   setEditingCheckId(check.id);
                   setEditingLabel(check.label);
                 }}
-                className="p-1 text-surface-400 hover:text-primary-600"
+                className="btn-icon btn-xs text-surface-400 hover:text-primary-600"
                 title="Edit label"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </button>
               <button
                 onClick={() => updateCheckMutation.mutate({ id: check.id, data: { is_active: check.is_active ? 0 : 1 } })}
-                className="p-1 text-surface-400 hover:text-amber-600"
+                className="btn-icon btn-xs text-surface-400 hover:text-amber-600"
                 title={check.is_active ? 'Deactivate' : 'Activate'}
               >
                 {check.is_active ? <ToggleRight className="h-4 w-4 text-green-500" /> : <ToggleLeft className="h-4 w-4" />}
               </button>
               <button
                 onClick={() => deleteCheckMutation.mutate(check.id)}
-                className="p-1 text-surface-400 hover:text-red-600"
+                className="btn-icon btn-xs text-surface-400 hover:text-red-600"
                 title="Remove check"
               >
                 <X className="h-3.5 w-3.5" />
@@ -454,7 +454,7 @@ function ChecklistTemplatesSection() {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wide">Repair Checklists</h3>
         <button onClick={() => { setEditingId(null); setForm({ name: '', device_type: '', items: '' }); setShowAdd(!showAdd); }}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700">
+          className="btn btn-ghost btn-xs text-primary-600 hover:text-primary-700">
           <Plus className="h-3.5 w-3.5" /> New Template
         </button>
       </div>
@@ -482,10 +482,10 @@ function ChecklistTemplatesSection() {
             rows={5} placeholder="One checklist item per line:&#10;1. Open device&#10;2. Remove battery&#10;3. Replace screen&#10;4. Test display&#10;5. Reassemble"
             className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono resize-none" />
           <div className="flex gap-2 mt-2">
-            <button onClick={handleSubmit} className="px-3 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700">
+            <button onClick={handleSubmit} className="btn btn-primary btn-sm">
               {editingId ? 'Update' : 'Create'}
             </button>
-            <button onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-3 py-1.5 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+            <button onClick={() => { setShowAdd(false); setEditingId(null); }} className="btn btn-ghost btn-sm text-surface-500 hover:text-surface-700">Cancel</button>
           </div>
         </div>
       )}
@@ -512,11 +512,11 @@ function ChecklistTemplatesSection() {
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <button aria-label="Edit" onClick={() => handleEdit(t)} className="p-1 text-surface-400 hover:text-amber-600"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button aria-label="Edit" onClick={() => handleEdit(t)} className="btn-icon btn-xs text-surface-400 hover:text-amber-600"><Pencil className="h-3.5 w-3.5" /></button>
                   <button aria-label="Delete" onClick={async () => {
                     try { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }
                     catch (err) { toast.error(formatApiError(err)); }
-                  }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  }} className="btn-icon btn-xs text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             );

@@ -29,6 +29,7 @@ import {
 import toast from 'react-hot-toast';
 import { deviceTemplateApi, inventoryApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
+import { formatCents } from '@/utils/format';
 
 interface TemplatePart {
   inventory_item_id: number;
@@ -242,7 +243,7 @@ export function DeviceTemplatesPage() {
         </div>
         <button
           onClick={() => setEditing({ ...EMPTY_FORM })}
-          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+          className="btn btn-primary btn-md"
         >
           <Plus className="h-4 w-4" /> New template
         </button>
@@ -282,18 +283,18 @@ export function DeviceTemplatesPage() {
                       <Clock className="h-3 w-3" /> {t.est_labor_minutes}m
                     </span>
                   )}
-                  {t.suggested_price > 0 && (
-                    <span className="flex items-center gap-1">
-                      <DollarSign className="h-3 w-3" /> {(t.suggested_price / 100).toFixed(2)}
-                    </span>
-                  )}
+	                  {t.suggested_price > 0 && (
+	                    <span className="flex items-center gap-1">
+	                      <DollarSign className="h-3 w-3" /> {formatCents(t.suggested_price)}
+	                    </span>
+	                  )}
                   <span>{(t.parts ?? []).length} part(s)</span>
                 </div>
               </div>
               <div className="flex gap-1">
                 <button
                   onClick={() => startEdit(t)}
-                  className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700"
+                  className="btn-icon btn-xs text-surface-500 hover:text-surface-700 dark:hover:bg-surface-700"
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
@@ -304,7 +305,7 @@ export function DeviceTemplatesPage() {
                     // brand fonts and queues correctly with other modals.
                     if (await confirm(`Delete template "${t.name}"?`, { danger: true, confirmLabel: 'Delete' })) deleteMut.mutate(t.id);
                   }}
-                  className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  className="btn-icon btn-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -327,7 +328,7 @@ export function DeviceTemplatesPage() {
               <h2 id="device-tpl-edit-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
                 {editing.id ? 'Edit template' : 'New template'}
               </h2>
-              <button onClick={() => setEditing(null)} className="p-1 text-surface-400 hover:text-surface-600">
+              <button onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -469,7 +470,7 @@ export function DeviceTemplatesPage() {
                       />
                       <button
                         onClick={() => removePart(i)}
-                        className="p-1 text-red-500 hover:text-red-700"
+                        className="btn-icon btn-xs text-red-500 hover:text-red-700"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -488,7 +489,7 @@ export function DeviceTemplatesPage() {
                       <button
                         key={item.id}
                         onClick={() => addPart(item)}
-                        className="flex w-full items-center justify-between px-2 py-1 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700"
+                        className="btn btn-ghost btn-xs w-full justify-between text-left dark:hover:bg-surface-700"
                       >
                         <span className="truncate">{item.name}</span>
                         <span className="text-surface-400">{item.in_stock} in stock</span>
@@ -513,7 +514,7 @@ export function DeviceTemplatesPage() {
                       />
                       <button
                         onClick={() => removeChecklistItem(i)}
-                        className="p-1 text-red-500 hover:text-red-700"
+                        className="btn-icon btn-xs text-red-500 hover:text-red-700"
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -522,7 +523,7 @@ export function DeviceTemplatesPage() {
                 </div>
                 <button
                   onClick={addChecklistItem}
-                  className="mt-1 text-xs text-primary-600 hover:underline dark:text-primary-400"
+                  className="btn btn-ghost btn-xs mt-1 text-primary-600 dark:text-primary-400"
                 >
                   + Add step
                 </button>
@@ -542,14 +543,14 @@ export function DeviceTemplatesPage() {
             <div className="mt-6 flex justify-end gap-2">
               <button
                 onClick={() => setEditing(null)}
-                className="rounded-lg border border-surface-300 px-4 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+                className="btn btn-secondary btn-sm border border-surface-300 dark:border-surface-600"
               >
                 Cancel
               </button>
               <button
                 onClick={() => saveMut.mutate(editing)}
                 disabled={!editing.name || saveMut.isPending}
-                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="btn btn-primary btn-sm"
               >
                 {saveMut.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

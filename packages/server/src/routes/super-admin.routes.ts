@@ -38,10 +38,11 @@ import QRCode from 'qrcode';
 import { verifySync } from 'otplib';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
-import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants } from '../services/tenant-provisioning.js';
+import { provisionTenant, suspendTenant, activateTenant, deleteTenant, listTenants, listTenantsPaginated } from '../services/tenant-provisioning.js';
 import { repairTenant } from '../services/tenant-repair.js';
 import { getTenantDb, releaseTenantDb, getPoolStats, closeAllTenantDbs } from '../db/tenant-pool.js';
 import { createAsyncDb } from '../db/async-db.js';
+import { formatWebhookFailurePayloadPreview } from '../services/webhooks.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure, clearRateLimit } from '../utils/rateLimiter.js';
 import { clearPlanCache } from '../middleware/tenantResolver.js';
@@ -98,6 +99,8 @@ const TIER_AUDIT_FIELDS: readonly string[] = [
   'stripe_customer_id',
   'stripe_subscription_id',
 ];
+const TENANT_PLAN_NAMES = Object.keys(PLAN_DEFINITIONS) as TenantPlan[];
+const DISALLOWED_TENANT_NAME_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u202A-\u202E\u2066-\u2069]/;
 
 function snapshotTierFields(row: AnyRow | undefined): Record<string, unknown> {
   if (!row) return {};
@@ -106,6 +109,27 @@ function snapshotTierFields(row: AnyRow | undefined): Record<string, unknown> {
     if (f in row) out[f] = row[f];
   }
   return out;
+}
+
+function snapshotTenantUpdateFields(row: AnyRow | undefined, changedFields: readonly string[]): Record<string, unknown> {
+  const out = snapshotTierFields(row);
+  for (const field of changedFields) {
+    if (field === 'name') out.name = row?.name ?? null;
+    if (field === 'trial_ends_at') out.trial_ends_at = row?.trial_ends_at ?? null;
+  }
+  return out;
+}
+
+async function upsertTenantStoreName(slug: string, name: string): Promise<void> {
+  let tenantDb: Awaited<ReturnType<typeof getTenantDb>> | undefined;
+  try {
+    tenantDb = await getTenantDb(slug);
+    tenantDb
+      .prepare("INSERT INTO store_config (key, value) VALUES ('store_name', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(name);
+  } finally {
+    if (tenantDb !== undefined) releaseTenantDb(slug);
+  }
 }
 
 // ─── Guards ─────────────────────────────────────────────────────────
@@ -670,21 +694,63 @@ router.get('/dashboard', (_req, res) => {
 
 // ─── Tenant Management ──────────────────────────────────────────────
 
-router.get('/tenants', (req, res) => {
-  const { status, plan } = req.query as Record<string, string>;
-  const tenants = listTenants({ status, plan });
+router.get('/tenants', async (req, res) => {
+  const { status, plan, search, q, sort, order } = req.query as Record<string, string | undefined>;
+  const searchTerm = search ?? q;
+  const wantsPagination =
+    req.query.page !== undefined ||
+    req.query.per_page !== undefined ||
+    req.query.pagesize !== undefined ||
+    req.query.pageSize !== undefined ||
+    req.query.limit !== undefined;
+  const result = wantsPagination
+    ? listTenantsPaginated({
+      status,
+      plan,
+      search: searchTerm,
+      page: parsePage(req.query.page),
+      pageSize: parsePageSize(req.query.per_page ?? req.query.pagesize ?? req.query.pageSize ?? req.query.limit),
+      sort,
+      order,
+    })
+    : { tenants: listTenants({ status, plan, search: searchTerm }), pagination: null };
   // SEC-M22: redact db_path from the list view. The path is an internal
   // filesystem detail (e.g. "tenants/acme.db") that gives attackers a
   // file-primitive target if they ever get a path-traversal or file-read
   // foothold elsewhere. Callers only need the size; keep db_path available
   // on the single-tenant detail view for ops tools.
-  const enriched = tenants.map((t: any) => {
+  const rowsWithTimestamps = await enrichTenantOperationalTimestamps(
+    getMasterDb(),
+    result.tenants as AnyRow[],
+  );
+  const enriched = rowsWithTimestamps.map((t: any) => {
     let dbSizeMb = 0;
     try { dbSizeMb = Math.round(fs.statSync(path.join(config.tenantDataDir, t.db_path)).size / (1024 * 1024) * 100) / 100; } catch {}
     const { db_path: _redacted, ...safe } = t;
     return { ...safe, db_size_mb: dbSizeMb };
   });
-  res.json({ success: true, data: { tenants: enriched } });
+  res.json({
+    success: true,
+    data: {
+      tenants: enriched,
+      ...(result.pagination
+        ? {
+          pagination: {
+            page: result.pagination.page,
+            per_page: result.pagination.pageSize,
+            total: result.pagination.total,
+            total_pages: result.pagination.totalPages,
+            sort: result.pagination.sort,
+            order: result.pagination.order,
+            search: result.pagination.search,
+            ...(result.pagination.outOfBounds
+              ? { out_of_bounds: true, requested_page: result.pagination.requestedPage }
+              : {}),
+          },
+        }
+        : {}),
+    },
+  });
 });
 
 // @audit-fixed: Previously this route called provisionTenant() with whatever
@@ -773,7 +839,6 @@ router.get('/tenants/:slug', async (req, res) => {
 
 router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_update'), async (req, res) => {
   const masterDb = getMasterDb()!;
-  const ALLOWED_PLANS: readonly TenantPlan[] = ['free', 'pro'];
   const errors: string[] = [];
 
   // Q3: Reject any body key that is NOT in the hard-coded whitelist. This is
@@ -792,8 +857,8 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
 
   // Validate plan
   if (req.body.plan !== undefined) {
-    if (typeof req.body.plan !== 'string' || !ALLOWED_PLANS.includes(req.body.plan as TenantPlan)) {
-      errors.push(`plan must be one of: ${ALLOWED_PLANS.join(', ')}`);
+    if (typeof req.body.plan !== 'string' || !TENANT_PLAN_NAMES.includes(req.body.plan as TenantPlan)) {
+      errors.push(`plan must be one of: ${TENANT_PLAN_NAMES.join(', ')}`);
     }
   }
 
@@ -823,8 +888,10 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
 
   // Validate name (non-empty string, reasonable length)
   if (req.body.name !== undefined) {
-    if (typeof req.body.name !== 'string' || req.body.name.trim().length === 0 || req.body.name.length > 200) {
+    if (typeof req.body.name !== 'string' || req.body.name.trim().length === 0 || req.body.name.trim().length > 200) {
       errors.push('name must be a non-empty string (max 200 characters)');
+    } else if (DISALLOWED_TENANT_NAME_CHARS.test(req.body.name.trim())) {
+      errors.push('name contains disallowed control or bidi codepoints');
     }
   }
 
@@ -860,8 +927,6 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
     return res.status(404).json({ success: false, code: ERROR_CODES.ERR_TENANT_NOT_FOUND, message: 'Tenant not found' });
   }
 
-  const beforeSnapshot = snapshotTierFields(existing);
-
   const allowedFields: Record<string, any> = {};
   if (req.body.plan !== undefined) allowedFields['plan'] = req.body.plan;
   if (req.body.max_users !== undefined) allowedFields['max_users'] = req.body.max_users;
@@ -890,6 +955,7 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
 
   const keys = Object.keys(allowedFields);
   if (keys.length === 0) return res.status(400).json({ success: false, message: 'No fields to update' });
+  const beforeSnapshot = snapshotTenantUpdateFields(existing, keys);
 
   // Q3: Final paranoid check — every key passed to string interpolation MUST
   // be in the hard-coded whitelist. If something slipped through the earlier
@@ -901,10 +967,42 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
     }
   }
 
+  const shouldSyncStoreName = Object.prototype.hasOwnProperty.call(allowedFields, 'name') && allowedFields.name !== existing.name;
+  let tenantStoreNameSynced = false;
+  if (shouldSyncStoreName) {
+    try {
+      await upsertTenantStoreName(existing.slug, allowedFields.name);
+      tenantStoreNameSynced = true;
+    } catch (err) {
+      logger.error('tenant name update failed while syncing tenant store_config', {
+        slug: req.params.slug,
+        tenant_id: existing.id,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+      auditLog('tenant_update_rolled_back', req.superAdmin!.superAdminId, req.ip || 'unknown', {
+        slug: req.params.slug,
+        reason: 'tenant_store_name_sync_failed',
+        before: beforeSnapshot,
+        attempted_after: allowedFields,
+      });
+      return res.status(502).json({
+        success: false,
+        message: 'Tenant shop name sync failed — rename was not applied. Repair the tenant DB and try again.',
+      });
+    }
+  }
+
   const setClause = keys.map(k => `${k} = ?`).join(', ');
   const params = keys.map(k => allowedFields[k]);
   params.push(req.params.slug);
-  masterDb.prepare(`UPDATE tenants SET ${setClause}, updated_at = datetime('now') WHERE slug = ?`).run(...params);
+  try {
+    masterDb.prepare(`UPDATE tenants SET ${setClause}, updated_at = datetime('now') WHERE slug = ?`).run(...params);
+  } catch (err) {
+    if (tenantStoreNameSynced) {
+      try { await upsertTenantStoreName(existing.slug, existing.name); } catch {}
+    }
+    throw err;
+  }
 
   // PL1: If the plan changed, reconcile the Stripe subscription. Without this,
   // downgrading Pro -> Free leaves the Stripe subscription active (customer
@@ -968,7 +1066,7 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
       try {
         const rollbackKeys: string[] = [];
         const rollbackParams: unknown[] = [];
-        for (const f of TIER_AUDIT_FIELDS) {
+        for (const f of keys) {
           if (f in existing && TENANT_UPDATE_FIELD_WHITELIST.has(f)) {
             rollbackKeys.push(`${f} = ?`);
             rollbackParams.push(existing[f]);
@@ -979,6 +1077,9 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
           masterDb
             .prepare(`UPDATE tenants SET ${rollbackKeys.join(', ')}, updated_at = datetime('now') WHERE slug = ?`)
             .run(...rollbackParams);
+        }
+        if (tenantStoreNameSynced) {
+          await upsertTenantStoreName(existing.slug, existing.name);
         }
       } catch (rollbackErr) {
         logger.error('Rollback also failed — DB is in an inconsistent state', {
@@ -1013,7 +1114,7 @@ router.put('/tenants/:slug', requireStepUpTotpSuperAdmin('super_admin_tenant_upd
   const afterRow = masterDb
     .prepare('SELECT * FROM tenants WHERE slug = ?')
     .get(req.params.slug) as AnyRow | undefined;
-  const afterSnapshot = snapshotTierFields(afterRow);
+  const afterSnapshot = snapshotTenantUpdateFields(afterRow, keys);
   const stripeSyncApplied = (allowedFields as Record<string, unknown>)._stripeSyncApplied;
   auditLog('tenant_updated', req.superAdmin!.superAdminId, req.ip || 'unknown', {
     slug: req.params.slug,
@@ -1084,6 +1185,38 @@ function lookupTenantBySlug(slug: string): { id: number; status: string } | null
   return row ?? null;
 }
 
+const TENANT_ACTION_REASON_MAX = 1000;
+
+function parseTenantActionReason(
+  body: unknown,
+  action: 'suspend' | 'activate',
+): { success: true; reason: string | null } | { success: false; message: string } {
+  const raw = body && typeof body === 'object'
+    ? (body as { reason?: unknown }).reason
+    : undefined;
+
+  if (raw === undefined || raw === null) {
+    if (action === 'suspend') {
+      return { success: false, message: 'Suspension reason is required' };
+    }
+    return { success: true, reason: null };
+  }
+
+  if (typeof raw !== 'string') {
+    return { success: false, message: 'Reason must be text' };
+  }
+
+  const reason = raw.trim();
+  if (action === 'suspend' && reason.length === 0) {
+    return { success: false, message: 'Suspension reason is required' };
+  }
+  if (reason.length > TENANT_ACTION_REASON_MAX) {
+    return { success: false, message: `Reason must be ${TENANT_ACTION_REASON_MAX} characters or fewer` };
+  }
+
+  return { success: true, reason: reason || null };
+}
+
 function disconnectTenantWebSockets(slug: string): number {
   // Lazy-import to avoid circular dependencies between routes and ws/server.
   // We close any AuthenticatedSocket whose tenantSlug matches.
@@ -1110,6 +1243,10 @@ function disconnectTenantWebSockets(slug: string): number {
 }
 
 router.post('/tenants/:slug/suspend', requireStepUpTotpSuperAdmin('super_admin_tenant_suspend'), (req: Request<{ slug: string }>, res: Response) => {
+  const parsedReason = parseTenantActionReason(req.body, 'suspend');
+  if (!parsedReason.success) {
+    return res.status(400).json({ success: false, message: parsedReason.message });
+  }
   const before = lookupTenantBySlug(req.params.slug);
   const result = suspendTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
@@ -1120,6 +1257,7 @@ router.post('/tenants/:slug/suspend', requireStepUpTotpSuperAdmin('super_admin_t
     tenant_id: before?.id ?? null,
     previous_status: before?.status ?? null,
     websockets_closed: wsClosed,
+    reason: parsedReason.reason,
   });
   res.json({ success: true, data: { message: `${req.params.slug} suspended`, websockets_closed: wsClosed } });
 });
@@ -1158,6 +1296,10 @@ router.post('/tenants/:slug/repair', requireStepUpTotpSuperAdmin('super_admin_te
 });
 
 router.post('/tenants/:slug/activate', requireStepUpTotpSuperAdmin('super_admin_tenant_activate'), (req: Request<{ slug: string }>, res: Response) => {
+  const parsedReason = parseTenantActionReason(req.body, 'activate');
+  if (!parsedReason.success) {
+    return res.status(400).json({ success: false, message: parsedReason.message });
+  }
   const before = lookupTenantBySlug(req.params.slug);
   const result = activateTenant(req.params.slug);
   if (!result.success) return res.status(400).json({ success: false, message: result.error });
@@ -1166,6 +1308,7 @@ router.post('/tenants/:slug/activate', requireStepUpTotpSuperAdmin('super_admin_
     slug: req.params.slug,
     tenant_id: before?.id ?? null,
     previous_status: before?.status ?? null,
+    reason: parsedReason.reason,
   });
   res.json({ success: true, data: { message: `${req.params.slug} activated` } });
 });
@@ -1718,15 +1861,269 @@ router.get('/health', (_req, res) => {
 
 // ─── Audit Log ──────────────────────────────────────────────────────
 
+const AUDIT_LOG_MAX_PAGE_SIZE = 500;
+const AUDIT_LOG_MAX_OFFSET = 100_000;
+const TENANT_TIMESTAMP_LOOKUP_CONCURRENCY = 8;
+
+function tenantIdOf(row: AnyRow): number | null {
+  const id = Number(row.id);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function nonEmptyTimestamp(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function tenantIdList(rows: AnyRow[]): number[] {
+  return Array.from(
+    new Set(
+      rows
+        .map(tenantIdOf)
+        .filter((id): id is number => id !== null),
+    ),
+  );
+}
+
+function latestTenantAuthActivity(masterDb: NonNullable<ReturnType<typeof getMasterDb>>, rows: AnyRow[]): Map<number, string> {
+  const ids = tenantIdList(rows);
+  if (ids.length === 0) return new Map();
+
+  try {
+    const placeholders = ids.map(() => '?').join(', ');
+    const results = masterDb.prepare(`
+      SELECT tenant_id, MAX(created_at) AS last_active
+      FROM tenant_auth_events
+      WHERE tenant_id IN (${placeholders})
+        AND (
+          event LIKE ?
+          OR event IN (
+            'login_password_setup',
+            'password_set',
+            'password_changed',
+            'password_reset_completed',
+            'pin_changed',
+            '2fa_disabled',
+            '2fa_force_disabled'
+          )
+        )
+      GROUP BY tenant_id
+    `).all(...ids, '%success') as Array<{ tenant_id: number; last_active: string | null }>;
+
+    return new Map(
+      results
+        .map((row) => {
+          const id = Number(row.tenant_id);
+          const timestamp = nonEmptyTimestamp(row.last_active);
+          return Number.isSafeInteger(id) && timestamp ? [id, timestamp] as const : null;
+        })
+        .filter((entry): entry is readonly [number, string] => entry !== null),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function parseSuspensionAuditFallback(masterDb: NonNullable<ReturnType<typeof getMasterDb>>, ids: number[]): Map<number, string> {
+  const idSet = new Set(ids);
+  const timestamps = new Map<number, string>();
+
+  try {
+    const rows = masterDb.prepare(`
+      SELECT details, created_at
+      FROM master_audit_log
+      WHERE action = 'tenant_suspended'
+      ORDER BY created_at DESC
+    `).all() as Array<{ details: string | null; created_at: string | null }>;
+
+    for (const row of rows) {
+      const timestamp = nonEmptyTimestamp(row.created_at);
+      if (!timestamp || !row.details) continue;
+      try {
+        const details = JSON.parse(row.details) as { tenant_id?: unknown };
+        const tenantId = Number(details.tenant_id);
+        if (idSet.has(tenantId) && !timestamps.has(tenantId)) {
+          timestamps.set(tenantId, timestamp);
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    return new Map();
+  }
+
+  return timestamps;
+}
+
+function latestTenantSuspensions(masterDb: NonNullable<ReturnType<typeof getMasterDb>>, rows: AnyRow[]): Map<number, string> {
+  const ids = tenantIdList(rows);
+  if (ids.length === 0) return new Map();
+
+  try {
+    const placeholders = ids.map(() => '?').join(', ');
+    const results = masterDb.prepare(`
+      SELECT
+        CAST(json_extract(details, '$.tenant_id') AS INTEGER) AS tenant_id,
+        MAX(created_at) AS suspended_at
+      FROM master_audit_log
+      WHERE action = 'tenant_suspended'
+        AND details IS NOT NULL
+        AND CAST(json_extract(details, '$.tenant_id') AS INTEGER) IN (${placeholders})
+      GROUP BY tenant_id
+    `).all(...ids) as Array<{ tenant_id: number; suspended_at: string | null }>;
+
+    return new Map(
+      results
+        .map((row) => {
+          const id = Number(row.tenant_id);
+          const timestamp = nonEmptyTimestamp(row.suspended_at);
+          return Number.isSafeInteger(id) && timestamp ? [id, timestamp] as const : null;
+        })
+        .filter((entry): entry is readonly [number, string] => entry !== null),
+    );
+  } catch {
+    return parseSuspensionAuditFallback(masterDb, ids);
+  }
+}
+
+async function tenantSessionLastActive(slug: unknown): Promise<string | null> {
+  if (typeof slug !== 'string' || !slug) return null;
+
+  let tenantDb: Awaited<ReturnType<typeof getTenantDb>> | undefined;
+  try {
+    tenantDb = await getTenantDb(slug);
+    const row = tenantDb.prepare(`
+      SELECT MAX(last_active) AS last_active
+      FROM sessions
+      WHERE last_active IS NOT NULL
+    `).get() as { last_active?: string | null } | undefined;
+    return nonEmptyTimestamp(row?.last_active);
+  } catch {
+    return null;
+  } finally {
+    if (tenantDb !== undefined) releaseTenantDb(slug);
+  }
+}
+
+async function tenantSessionLastActiveMap(rows: AnyRow[]): Promise<Map<number, string>> {
+  const timestamps = new Map<number, string>();
+  let nextIndex = 0;
+  const workerCount = Math.min(TENANT_TIMESTAMP_LOOKUP_CONCURRENCY, rows.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < rows.length) {
+      const row = rows[nextIndex++];
+      const tenantId = tenantIdOf(row);
+      if (tenantId === null) continue;
+      const timestamp = await tenantSessionLastActive(row.slug);
+      if (timestamp) timestamps.set(tenantId, timestamp);
+    }
+  }));
+
+  return timestamps;
+}
+
+async function enrichTenantOperationalTimestamps(
+  masterDb: NonNullable<ReturnType<typeof getMasterDb>> | null,
+  rows: AnyRow[],
+): Promise<AnyRow[]> {
+  if (!masterDb || rows.length === 0) {
+    return rows.map((row) => ({ ...row, last_active: null, suspended_at: null }));
+  }
+
+  const authActivity = latestTenantAuthActivity(masterDb, rows);
+  const sessionActivity = await tenantSessionLastActiveMap(rows);
+  const suspensions = latestTenantSuspensions(masterDb, rows);
+
+  return rows.map((row) => {
+    const tenantId = tenantIdOf(row);
+    const lastActive = tenantId !== null
+      ? sessionActivity.get(tenantId) ?? authActivity.get(tenantId) ?? null
+      : null;
+    const suspendedAt = row.status === 'suspended' && tenantId !== null
+      ? suspensions.get(tenantId) ?? null
+      : null;
+    return { ...row, last_active: lastActive, suspended_at: suspendedAt };
+  });
+}
+
+function parseAuditLogPageSize(raw: unknown, fallback = 50): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(Math.floor(n), AUDIT_LOG_MAX_PAGE_SIZE);
+}
+
+function parseAuditLogOffset(raw: unknown): { ok: true; value: number } | { ok: false; message: string } {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: 0 };
+  if (Array.isArray(raw) || (typeof raw !== 'string' && typeof raw !== 'number')) {
+    return { ok: false, message: 'Invalid offset' };
+  }
+  const value = typeof raw === 'string' ? raw.trim() : raw;
+  if (typeof value === 'string' && !/^\d+$/.test(value)) {
+    return { ok: false, message: 'Invalid offset' };
+  }
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > AUDIT_LOG_MAX_OFFSET) {
+    return { ok: false, message: 'Invalid offset' };
+  }
+  return { ok: true, value: n };
+}
+
+function parseAuditLogTextParam(raw: unknown, field: string, maxLength: number): { ok: true; value: string | null } | { ok: false; message: string } {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, value: null };
+  if (typeof raw !== 'string') {
+    return { ok: false, message: `Invalid ${field}` };
+  }
+  const value = raw.trim();
+  if (!value) return { ok: true, value: null };
+  if (value.length > maxLength) {
+    return { ok: false, message: `${field} exceeds ${maxLength} chars` };
+  }
+  return { ok: true, value };
+}
+
+function escapeAuditLogLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 router.get('/audit-log', (req, res) => {
   const masterDb = getMasterDb()!;
-  const limit = parsePageSize(req.query.limit, 50);
+  // The Electron audit viewer intentionally requests 200-row pages; keep this
+  // route's local cap aligned with the IPC schema while still bounding scans.
+  const limit = parseAuditLogPageSize(req.query.limit, 50);
+  const offset = parseAuditLogOffset(req.query.offset);
+  if (!offset.ok) {
+    return res.status(400).json({ success: false, message: offset.message });
+  }
+
+  const action = parseAuditLogTextParam(req.query.action, 'action', 128);
+  if (!action.ok) {
+    return res.status(400).json({ success: false, message: action.message });
+  }
+  const username = parseAuditLogTextParam(req.query.username, 'username', 128);
+  if (!username.ok) {
+    return res.status(400).json({ success: false, message: username.message });
+  }
+
+  const conditions: string[] = [];
+  const queryParams: unknown[] = [];
+  if (action.value) {
+    conditions.push('al.action = ?');
+    queryParams.push(action.value);
+  }
+  if (username.value) {
+    conditions.push("LOWER(sa.username) LIKE LOWER(?) ESCAPE '\\'");
+    queryParams.push(`%${escapeAuditLogLike(username.value)}%`);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   const logs = masterDb.prepare(`
     SELECT al.*, sa.username as admin_username
     FROM master_audit_log al
     LEFT JOIN super_admins sa ON sa.id = al.super_admin_id
-    ORDER BY al.created_at DESC LIMIT ?
-  `).all(limit);
+    ${where}
+    ORDER BY al.created_at DESC LIMIT ? OFFSET ?
+  `).all(...queryParams, limit, offset.value);
   res.json({ success: true, data: { logs } });
 });
 
@@ -1742,6 +2139,31 @@ router.get('/sessions', (req, res) => {
     ORDER BY s.created_at DESC
   `).all();
   res.json({ success: true, data: { sessions } });
+});
+
+router.post('/sessions/revoke-all', requireStepUpTotpSuperAdmin('super_admin_sessions_revoke_all'), (req, res) => {
+  const masterDb = getMasterDb()!;
+  const actorId = req.superAdmin!.superAdminId;
+  const revokeActiveSessions = masterDb.transaction(() => {
+    const sessions = masterDb.prepare(`
+      SELECT s.id, s.super_admin_id, sa.username
+      FROM super_admin_sessions s
+      LEFT JOIN super_admins sa ON sa.id = s.super_admin_id
+      WHERE s.expires_at > datetime('now')
+    `).all() as Array<{ id: string; super_admin_id: number; username: string | null }>;
+    const result = masterDb
+      .prepare("DELETE FROM super_admin_sessions WHERE expires_at > datetime('now')")
+      .run();
+    return { sessions, count: result.changes };
+  });
+  const { sessions: revokedSessions, count } = revokeActiveSessions();
+  const distinctAdminIds = new Set(revokedSessions.map((session) => session.super_admin_id));
+  auditLog('sessions_revoked_all', actorId, req.ip || 'unknown', {
+    revoked_count: count,
+    distinct_super_admin_count: distinctAdminIds.size,
+    actor_sessions_revoked: revokedSessions.filter((session) => session.super_admin_id === actorId).length,
+  });
+  res.json({ success: true, data: { revoked: true, count } });
 });
 
 // @audit-fixed: Previously this route silently DELETEd any super_admin_sessions
@@ -1951,6 +2373,7 @@ router.get('/tenant-auth-events', (req, res) => {
 // this schema and renders one toggle/input per entry. Keep `default`
 // in sync with the value the server treats as "unset".
 type PlatformConfigKind = 'flag' | 'value';
+type PlatformConfigStatus = 'active' | 'coming_soon' | 'dead';
 
 interface PlatformConfigField {
   key: string;
@@ -1958,6 +2381,8 @@ interface PlatformConfigField {
   label: string;
   description: string;
   default: string;
+  status?: PlatformConfigStatus;
+  statusReason?: string;
 }
 
 const PLATFORM_CONFIG_FIELDS: readonly PlatformConfigField[] = [
@@ -1970,16 +2395,29 @@ const PLATFORM_CONFIG_FIELDS: readonly PlatformConfigField[] = [
       'Off by default — dashboard normally talks to the server through the local ' +
       'IPC bridge, so this is only needed for headless tooling.',
     default: 'false',
+    status: 'active',
   },
   {
     key: 'management_rate_limit_bypass',
     kind: 'flag',
     label: 'Bypass rate limit on Management API',
     description:
-      'Skip the per-IP rate limiter on /api/v1/management. Useful when running ' +
-      'load tests or migrations that hammer the management endpoints. Leave OFF ' +
-      'in normal operation — every request still hits the auth layer.',
+      'Legacy placeholder for bypassing the per-IP limiter on /api/v1/management. ' +
+      'No server-side rate limiter currently reads this key, so changing it has no effect.',
     default: 'false',
+    status: 'dead',
+    statusReason: 'No backend rate limiter reads this platform_config key yet.',
+  },
+  {
+    key: 'telemetry_opt_in',
+    kind: 'flag',
+    label: 'Crash reporting & diagnostics',
+    description:
+      'Allow future outbound crash reports and diagnostic analytics. Off by default; ' +
+      'today, crash monitoring remains local and no telemetry is sent.',
+    default: 'false',
+    status: 'coming_soon',
+    statusReason: 'Stored for a future telemetry pipeline; current crash monitoring is local only.',
   },
 ] as const;
 
@@ -1998,7 +2436,9 @@ router.get('/config', (req: Request, res: Response) => {
   }
 
   const rows = masterDb.prepare('SELECT key, value, updated_at FROM platform_config').all() as { key: string; value: string; updated_at: string }[];
-  const config: Record<string, string> = {};
+  const config: Record<string, string> = Object.fromEntries(
+    PLATFORM_CONFIG_FIELDS.map((field) => [field.key, field.default])
+  );
   for (const row of rows) {
     config[row.key] = row.value;
   }
@@ -2182,9 +2622,22 @@ router.get('/tenants/:slug/webhook-failures', async (req: Request, res: Response
       params.push(event);
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const rows = tdb
-      .prepare(`SELECT id, endpoint, event, attempts, last_error, last_status, created_at FROM webhook_delivery_failures ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...params, limit);
+    const rowsRaw = tdb
+      .prepare(`SELECT id, endpoint, event, attempts, last_error, last_status, created_at, payload FROM webhook_delivery_failures ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit) as Array<{
+        id: number;
+        endpoint: string;
+        event: string;
+        attempts: number;
+        last_error: string | null;
+        last_status: number | null;
+        created_at: string;
+        payload?: string | null;
+      }>;
+    const rows = rowsRaw.map(({ payload, ...row }) => ({
+      ...row,
+      ...formatWebhookFailurePayloadPreview(payload),
+    }));
     const byEventRaw = tdb
       .prepare('SELECT event, COUNT(*) as c FROM webhook_delivery_failures GROUP BY event ORDER BY c DESC LIMIT 20')
       .all() as Array<{ event: string; c: number }>;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -80,16 +80,34 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
   });
 
   const totalToReceive = receiving.reduce((s, r) => s + r.receive_qty, 0);
+  const closeModal = useCallback(() => {
+    if (!receiveMut.isPending) onClose();
+  }, [onClose, receiveMut.isPending]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeModal();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [closeModal]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeModal}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="receive-po-title"
+        aria-describedby="receive-po-summary"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-center justify-between p-5 border-b border-surface-200 dark:border-surface-700">
           <div>
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Receive Items</h2>
+            <h2 id="receive-po-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Receive Items</h2>
             <p className="text-sm text-surface-500">{poOrderId}</p>
           </div>
-          <button onClick={onClose} className="text-surface-400 hover:text-surface-600 p-1">
+          <button onClick={closeModal} disabled={receiveMut.isPending} className="text-surface-400 hover:text-surface-600 p-1 disabled:opacity-50">
             ✕
           </button>
         </div>
@@ -130,9 +148,9 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
         </div>
 
         <div className="p-5 border-t border-surface-200 dark:border-surface-700 flex justify-between items-center">
-          <span className="text-sm text-surface-500">Total units to receive: <strong>{totalToReceive}</strong></span>
+          <span id="receive-po-summary" className="text-sm text-surface-500">Total units to receive: <strong>{totalToReceive}</strong></span>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-3 py-2 text-sm text-surface-500 hover:text-surface-700">
+            <button onClick={closeModal} disabled={receiveMut.isPending} className="px-3 py-2 text-sm text-surface-500 hover:text-surface-700 disabled:opacity-50">
               Cancel
             </button>
             <button
@@ -357,6 +375,11 @@ export function PurchaseOrdersPage() {
     newPo.items.some(
       (i) => typeof i.inventory_item_id === 'number' && i.inventory_item_id > 0,
     );
+  const createDisabledReason = !newPo.supplier_id
+    ? 'Select a supplier before creating this purchase order.'
+    : !newPo.items.some((i) => typeof i.inventory_item_id === 'number' && i.inventory_item_id > 0)
+      ? 'Add at least one inventory item before creating this purchase order.'
+      : '';
 
   return (
     <div>
@@ -379,8 +402,9 @@ export function PurchaseOrdersPage() {
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">New Purchase Order</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
-              <label className="block text-xs font-medium text-surface-500 mb-1">Supplier <span className="text-red-500">*</span></label>
+              <label htmlFor="po-supplier" className="block text-xs font-medium text-surface-500 mb-1">Supplier <span className="text-red-500">*</span></label>
               <select
+                id="po-supplier"
                 value={newPo.supplier_id}
                 onChange={(e) => setNewPo({ ...newPo, supplier_id: e.target.value ? Number(e.target.value) : '' })}
                 className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
@@ -392,8 +416,9 @@ export function PurchaseOrdersPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
+              <label htmlFor="po-notes" className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
               <input
+                id="po-notes"
                 value={newPo.notes}
                 onChange={(e) => setNewPo({ ...newPo, notes: e.target.value })}
                 placeholder="Notes (optional)"
@@ -407,6 +432,7 @@ export function PurchaseOrdersPage() {
             {newPo.items.map((item, i) => (
               <div key={i} className="flex gap-2 items-center">
                 <select
+                  aria-label={`Inventory item for purchase order line ${i + 1}`}
                   value={item.inventory_item_id}
                   onChange={(e) => {
                     const invId = e.target.value ? Number(e.target.value) : ('' as const);
@@ -428,6 +454,7 @@ export function PurchaseOrdersPage() {
                   ))}
                 </select>
                 <input
+                  aria-label={`Quantity for purchase order line ${i + 1}`}
                   type="number"
                   min="1"
                   value={item.quantity_ordered}
@@ -436,6 +463,7 @@ export function PurchaseOrdersPage() {
                   placeholder="Qty"
                 />
                 <input
+                  aria-label={`Unit cost for purchase order line ${i + 1}`}
                   type="number"
                   step="0.01"
                   min="0"
@@ -445,7 +473,7 @@ export function PurchaseOrdersPage() {
                   placeholder="Unit cost"
                 />
                 {newPo.items.length > 1 && (
-                  <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600 text-xs">
+                  <button onClick={() => removeItem(i)} aria-label={`Remove purchase order line ${i + 1}`} className="text-red-400 hover:text-red-600 text-xs">
                     Remove
                   </button>
                 )}
@@ -464,12 +492,18 @@ export function PurchaseOrdersPage() {
               <button
                 onClick={() => createMut.mutate()}
                 disabled={!canSubmit || createMut.isPending}
+                aria-describedby={createDisabledReason ? 'po-create-help' : undefined}
                 className="px-4 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin inline" /> : 'Create PO'}
               </button>
             </div>
           </div>
+          {createDisabledReason && (
+            <p id="po-create-help" className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+              {createDisabledReason}
+            </p>
+          )}
         </div>
       )}
 

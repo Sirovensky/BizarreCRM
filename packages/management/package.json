@@ -13,47 +13,61 @@
   "type": "module",
   "main": "dist/main/index.js",
   "engines": {
-    "node": ">=22.11.0 <25"
+    "node": ">=22.12.0 <25"
   },
   "scripts": {
-    "dev": "concurrently -k -n main,renderer \"npm run build:main -- --watch\" \"vite --port 5174\"",
+    "dev": "concurrently -k -n main,preload,renderer,electron -c blue,magenta,cyan,green \"npm run build:main -- --watch --preserveWatchOutput\" \"node scripts/dev-preload-watch.js\" \"vite --port 5174\" \"wait-on dist/main/index.js dist/preload/index.cjs http://127.0.0.1:5174 && nodemon --watch dist/main --watch dist/preload --ext js,cjs --exec \\\"electron .\\\"\"",
     "dev:electron": "npm run build:main && npm run build:preload && electron .",
     "build:main": "tsc --project tsconfig.node.json",
     "build:preload": "tsc --project tsconfig.preload.json && node -e \"require('fs').renameSync('dist/preload/index.js','dist/preload/index.cjs')\"",
     "build:renderer": "vite build",
     "build:renderer:web": "vite build --config vite.config.web.ts",
     "build": "npm run build:main && npm run build:preload && npm run build:renderer",
+    "lint": "eslint src",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
     "start": "electron .",
-    "package": "npm run build && electron-builder --win"
+    "package": "npm run build && node scripts/package-win-signed.js"
   },
   "dependencies": {
     "@bizarre-crm/shared": "*",
-    "zod": "^3.25.76"
-  },
-  "devDependencies": {
-    "@electron/fuses": "^2.0.0",
-    "app-builder-bin": "5.0.0-alpha.10",
     "@tanstack/react-query": "^5.62.0",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.0",
-    "autoprefixer": "^10.4.0",
     "clsx": "^2.1.0",
-    "concurrently": "^9.0.0",
     "date-fns": "^4.1.0",
-    "electron": "39.8.7",
-    "electron-builder": "^26.8.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
     "lucide-react": "^0.468.0",
-    "postcss": "^8.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hot-toast": "^2.4.0",
     "react-router-dom": "^7.1.0",
     "tailwind-merge": "^2.6.0",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@electron/fuses": "^2.0.0",
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.0",
+    "concurrently": "^9.0.0",
+    "electron": "^42.0.0",
+    "electron-builder": "^26.8.1",
+    "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.6.0",
+    "nodemon": "^3.1.14",
+    "postcss": "^8.5.14",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.59.2",
     "vite": "^6.0.0",
-    "zustand": "^5.0.0"
+    "vitest": "^4.1.5",
+    "wait-on": "^9.0.5"
   }
 }

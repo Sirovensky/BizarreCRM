@@ -55,13 +55,14 @@ export default {
         },
       },
       fontFamily: {
-        // DASH-ELEC-024: brand font stack — Futura Medium for body (loaded via
-        // @font-face in globals.css), Jost as web-safe fallback, Inter for
-        // system UI fallback. See memory/feedback_brand_color.md for brand spec.
+        // DASH-ELEC-024: renderer font stack. globals.css self-hosts the
+        // repo-bundled OFL assets we have: Bebas Neue, Inter, and JetBrains
+        // Mono. Futura Medium, Jost, and Saved By Zero are not present in this
+        // repo, so they stay as local/system-only heads of the fallback chain.
         sans: ['Futura Medium', 'Jost', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        // Bebas Neue for display/heading use (large numerals, section headers).
-        display: ['Bebas Neue', 'Futura Medium', 'Jost', 'sans-serif'],
-        heading: ['Bebas Neue', 'Futura Medium', 'Jost', 'sans-serif'],
+        display: ['Bebas Neue', 'Futura Medium', 'Jost', 'Inter', 'sans-serif'],
+        heading: ['Bebas Neue', 'Futura Medium', 'Jost', 'Inter', 'sans-serif'],
+        logo: ['Saved By Zero', 'Bebas Neue', 'Futura Medium', 'Jost', 'Inter', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       animation: {

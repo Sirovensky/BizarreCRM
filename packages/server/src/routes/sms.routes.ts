@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import multer from 'multer';
 import { config } from '../config.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { sendSms, getSmsProvider } from '../services/smsProvider.js';
+import { getProviderForDb, getSmsProvider, sendSmsTenant } from '../services/smsProvider.js';
 import type { MmsMedia, InboundMessage } from '../services/smsProvider.js';
 import { broadcast } from '../ws/server.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -14,11 +14,19 @@ import { checkWindowRate, recordWindowFailure, consumeWindowRate } from '../util
 import { reserveStorage } from '../services/usageTracker.js';
 import { validateIsoDate } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { WS_EVENTS } from '@bizarre-crm/shared';
 import type { AsyncDb } from '../db/async-db.js';
 import { tryAutoRespond } from '../services/smsAutoResponderMatcher.js';
+import {
+  IMAGE_UPLOAD_FORMAT_ERROR,
+  IMAGE_UPLOAD_MIME_TYPES,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  imageExtensionForMime,
+  isSupportedImageMime,
+} from '../utils/imageUploadPolicy.js';
 
 const logger = createLogger('sms.routes');
 
@@ -85,10 +93,43 @@ function redactPhone(phone: unknown): string {
 
 const router = Router();
 
+function isManagerOrAdmin(req: Request): boolean {
+  const role = (req as any).user?.role;
+  return role === 'admin' || role === 'manager';
+}
+
+function requireReminderAccess(req: Request, reminder: { created_by: number }): void {
+  if (isManagerOrAdmin(req)) return;
+  if (reminder.created_by === (req as any).user?.id) return;
+  throw new AppError('Reminder not found', 404);
+}
+
+function parseReminderDueAt(value: unknown): string {
+  if (typeof value !== 'string') throw new AppError('due_at is required', 400);
+  const normalized = validateIsoDate(value, 'due_at', false);
+  if (!normalized || !/T\d{2}:\d{2}/.test(normalized)) {
+    throw new AppError('due_at must include a date and time', 400);
+  }
+  const due = new Date(normalized);
+  if (Number.isNaN(due.getTime())) throw new AppError('Invalid due_at datetime', 400);
+  if (due.getTime() <= Date.now() - 60_000) throw new AppError('due_at must be in the future', 400);
+  return due.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function normalizeReminderPhone(raw: unknown): { phone: string; convPhone: string } {
+  if (typeof raw !== 'string' || !raw.trim()) throw new AppError('phone is required', 400);
+  if (raw.length > 30) throw new AppError('Phone number too long', 400);
+  const convPhone = normalizePhone(raw);
+  if (convPhone.length < 8 || convPhone.length > 15) {
+    throw new AppError('Phone number is not valid enough for a follow-up reminder', 400);
+  }
+  return { phone: raw.trim(), convPhone };
+}
+
 // --- MMS media upload config ---
-const MMS_MAX_SIZE = 5 * 1024 * 1024; // 5MB upload limit
+const MMS_MAX_SIZE = SMALL_IMAGE_UPLOAD_MAX_BYTES;
 const MMS_COMPRESS_THRESHOLD = 600 * 1024; // 600KB — compress images over this for MMS
-const ALLOWED_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_MEDIA_TYPES = IMAGE_UPLOAD_MIME_TYPES;
 
 const mmsDir = path.join(config.uploadsPath, 'mms');
 if (!fs.existsSync(mmsDir)) fs.mkdirSync(mmsDir, { recursive: true });
@@ -103,18 +144,14 @@ const mmsUpload = multer({
     },
     filename: (_req, file, cb) => {
       // SEC: Derive extension from validated MIME type, not user-supplied filename
-      const MIME_TO_EXT: Record<string, string> = {
-        'image/jpeg': '.jpg', 'image/png': '.png',
-        'image/gif': '.gif', 'image/webp': '.webp',
-      };
-      const ext = MIME_TO_EXT[file.mimetype] || '.jpg';
+      const ext = imageExtensionForMime(file.mimetype) || '.jpg';
       cb(null, `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`);
     },
   }),
   limits: { fileSize: MMS_MAX_SIZE },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MEDIA_TYPES.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Only JPEG, PNG, GIF, WebP images are allowed'));
+    if (isSupportedImageMime(file.mimetype)) cb(null, true);
+    else cb(new Error(IMAGE_UPLOAD_FORMAT_ERROR));
   },
 });
 
@@ -204,6 +241,132 @@ router.get('/unread-count', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// SMS follow-up reminders
+// ---------------------------------------------------------------------------
+
+router.get('/reminders', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const userId = req.user!.id;
+  const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
+  const dueOnly = req.query.due === '1' || req.query.due === 'true';
+  const phone = typeof req.query.phone === 'string' ? normalizePhone(req.query.phone) : '';
+  const id = req.query.id ? Number(req.query.id) : null;
+
+  const where: string[] = ['1=1'];
+  const params: unknown[] = [];
+  if (id && Number.isFinite(id)) {
+    where.push('r.id = ?');
+    params.push(id);
+  }
+  if (status && status !== 'all') {
+    where.push('r.status = ?');
+    params.push(status);
+  }
+  if (dueOnly) where.push("r.status = 'pending' AND r.due_at <= datetime('now')");
+  if (phone) {
+    where.push('r.conv_phone = ?');
+    params.push(phone);
+  }
+  if (!isManagerOrAdmin(req)) {
+    where.push('r.created_by = ?');
+    params.push(userId);
+  }
+
+  const reminders = await adb.all<any>(`
+    SELECT r.*,
+           TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')) AS customer_name,
+           TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS created_by_name
+    FROM sms_followup_reminders r
+    LEFT JOIN customers c ON c.id = r.customer_id
+    LEFT JOIN users u ON u.id = r.created_by
+    WHERE ${where.join(' AND ')}
+    ORDER BY CASE WHEN r.status = 'pending' AND r.due_at <= datetime('now') THEN 0 ELSE 1 END,
+             r.due_at ASC
+    LIMIT 100
+  `, ...params);
+
+  res.json({ success: true, data: { reminders } });
+}));
+
+router.post('/reminders', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const { phone, label, note } = req.body ?? {};
+  const { convPhone } = normalizeReminderPhone(phone);
+  const dueAt = parseReminderDueAt(req.body?.due_at);
+  const safeLabel = typeof label === 'string' && label.trim() ? label.trim().slice(0, 80) : 'Follow up';
+  const safeNote = typeof note === 'string' && note.trim() ? note.trim().slice(0, 1000) : null;
+
+  const customer = await adb.get<any>(`
+    SELECT id FROM customers
+    WHERE is_deleted = 0 AND (phone = ? OR mobile = ?)
+    UNION
+    SELECT c.id FROM customers c
+    JOIN customer_phones cp ON cp.customer_id = c.id
+    WHERE c.is_deleted = 0 AND cp.phone = ?
+    LIMIT 1
+  `, convPhone, convPhone, convPhone);
+
+  const result = await adb.run(`
+    INSERT INTO sms_followup_reminders (conv_phone, phone, customer_id, label, note, due_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `, convPhone, String(phone).trim(), customer?.id ?? null, safeLabel, safeNote, dueAt, req.user!.id);
+
+  const reminder = await adb.get<any>('SELECT * FROM sms_followup_reminders WHERE id = ?', result.lastInsertRowid);
+  audit(req.db, 'sms_followup_reminder_created', req.user!.id, req.ip || 'unknown', {
+    reminder_id: result.lastInsertRowid,
+    conv_phone_last4: convPhone.slice(-4),
+    due_at: dueAt,
+  });
+  res.status(201).json({ success: true, data: reminder });
+}));
+
+router.post('/reminders/:id/complete', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid reminder id', 400);
+  const reminder = await adb.get<any>('SELECT id, created_by FROM sms_followup_reminders WHERE id = ?', id);
+  if (!reminder) throw new AppError('Reminder not found', 404);
+  requireReminderAccess(req, reminder);
+
+  await adb.run(`
+    UPDATE sms_followup_reminders
+    SET status = 'completed', completed_by = ?, completed_at = datetime('now'), updated_at = datetime('now')
+    WHERE id = ?
+  `, req.user!.id, id);
+  const updated = await adb.get<any>('SELECT * FROM sms_followup_reminders WHERE id = ?', id);
+  res.json({ success: true, data: updated });
+}));
+
+router.post('/reminders/:id/snooze', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid reminder id', 400);
+  const reminder = await adb.get<any>('SELECT id, created_by FROM sms_followup_reminders WHERE id = ?', id);
+  if (!reminder) throw new AppError('Reminder not found', 404);
+  requireReminderAccess(req, reminder);
+
+  const dueAt = parseReminderDueAt(req.body?.due_at);
+  await adb.run(`
+    UPDATE sms_followup_reminders
+    SET status = 'pending', due_at = ?, notified_at = NULL, updated_at = datetime('now')
+    WHERE id = ?
+  `, dueAt, id);
+  const updated = await adb.get<any>('SELECT * FROM sms_followup_reminders WHERE id = ?', id);
+  res.json({ success: true, data: updated });
+}));
+
+router.delete('/reminders/:id', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid reminder id', 400);
+  const reminder = await adb.get<any>('SELECT id, created_by FROM sms_followup_reminders WHERE id = ?', id);
+  if (!reminder) throw new AppError('Reminder not found', 404);
+  requireReminderAccess(req, reminder);
+  await adb.run("UPDATE sms_followup_reminders SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", id);
+  res.json({ success: true, data: { id, status: 'cancelled' } });
+}));
+
+// ---------------------------------------------------------------------------
 // GET /sms/conversations
 // ---------------------------------------------------------------------------
 router.get('/conversations', async (req, res) => {
@@ -211,7 +374,20 @@ router.get('/conversations', async (req, res) => {
   // WEB-S6-034: accept `q=` (debounced server-side search) or legacy `keyword=`.
   const keyword = ((req.query.q as string) || (req.query.keyword as string) || '').trim();
   const includeArchived = req.query.include_archived === '1' || req.query.include_archived === 'true';
+  const assignedTo = typeof req.query.assigned_to === 'string' ? req.query.assigned_to : 'all';
+  if (!['all', 'me', 'unassigned'].includes(assignedTo)) {
+    throw new AppError('assigned_to must be all, me, or unassigned', 400);
+  }
   const userId = req.user!.id;
+
+  const where: string[] = [];
+  const params: unknown[] = [userId];
+  if (assignedTo === 'me') {
+    where.push('ca.assigned_user_id = ?');
+    params.push(userId);
+  } else if (assignedTo === 'unassigned') {
+    where.push('ca.assigned_user_id IS NULL');
+  }
 
   const conversations = await adb.all<any>(`
     SELECT
@@ -232,12 +408,16 @@ router.get('/conversations', async (req, res) => {
           )),
           '1970-01-01'
         )
-      ) as unread_count
+      ) as unread_count,
+      ca.assigned_user_id,
+      ca.assigned_at
     FROM sms_messages m1
+    LEFT JOIN conversation_assignments ca ON ca.phone = m1.conv_phone
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     GROUP BY conv_phone
     ORDER BY last_message_at DESC
     LIMIT 200
-  `, userId);
+  `, ...params);
 
   // --- Batch lookups to avoid N+1 queries ---
   const convPhones = conversations.map((c: any) => c.conv_phone);
@@ -488,6 +668,34 @@ const DAILY_TENANT_SMS_CAP = (() => {
   return Number.isFinite(n) && n >= 1 ? n : 500;
 })();
 
+function estimateSmsSegments(body: string, isMms: boolean): number {
+  if (isMms) return 1;
+  const text = body || '';
+  if (!text) return 1;
+  const gsm7 = /^[\u000A\u000D\u0020-\u007E£¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!"#¤%&'()*+,\-.\/0-9:;<=>?¡A-ZÄÖÑÜ§¿a-zäöñüà{}\\[~\]|^€]*$/.test(text);
+  const single = gsm7 ? 160 : 70;
+  const multipart = gsm7 ? 153 : 67;
+  return text.length <= single ? 1 : Math.ceil(text.length / multipart);
+}
+
+async function resolveDailyTenantSmsCap(req: Request, adb: AsyncDb): Promise<number> {
+  const row = await adb.get<{ provider?: string | null; tier?: string | null }>(
+    `SELECT
+       MAX(CASE WHEN key = 'sms_provider_type' THEN value END) AS provider,
+       MAX(CASE WHEN key = 'tier' THEN value END) AS tier
+     FROM store_config
+     WHERE key IN ('sms_provider_type', 'tier')`,
+  );
+  if (row?.provider !== 'bizarresms') return DAILY_TENANT_SMS_CAP;
+
+  const tier = req.tenantTrialActive
+    ? 'trial'
+    : String(row?.tier || req.tenantPlan || 'free').toLowerCase();
+  if (tier === 'pro_plus' || tier === 'pro+') return 2000;
+  if (tier === 'pro') return 500;
+  return 50;
+}
+
 router.post('/send', async (req, res, next) => {
   try {
     const adb = req.asyncDb;
@@ -511,9 +719,10 @@ router.post('/send', async (req, res, next) => {
           AND created_at > datetime('now', '-1 day')`,
     );
     const sentToday = sentTodayRow?.n ?? 0;
-    if (sentToday >= DAILY_TENANT_SMS_CAP) {
+    const dailyTenantSmsCap = await resolveDailyTenantSmsCap(req, adb);
+    if (sentToday >= dailyTenantSmsCap) {
       throw new AppError(
-        `Daily SMS cap reached (${DAILY_TENANT_SMS_CAP}/day). Contact support to raise the limit.`,
+        `Daily SMS cap reached (${dailyTenantSmsCap}/day). Contact support to raise the limit.`,
         429,
       );
     }
@@ -736,7 +945,7 @@ router.post('/send', async (req, res, next) => {
     `,
       storePhone, to, convPhone, body,
       initialStatus,
-      getSmsProvider().name,
+      getProviderForDb(req.db, req.tenantSlug).name,
       entity_type || null, entity_id || null, userId,
       messageType,
       mediaItems.length > 0 ? JSON.stringify(mediaItems.map(m => m.url)) : null,
@@ -758,7 +967,7 @@ router.post('/send', async (req, res, next) => {
     // before marking the message as 'sent'. Previously we trusted any non-thrown
     // call, which meant ConsoleProvider dev sends looked like real deliveries
     // to the rest of the app (inflated usage counters, "sent" status in UI).
-    const providerResult = await sendSms(to, body, storePhone, mediaItems.length > 0 ? mediaItems : undefined);
+    const providerResult = await sendSmsTenant(req.db, req.tenantSlug, to, body, storePhone, mediaItems.length > 0 ? mediaItems : undefined);
     const providerOk = providerResult.success === true && providerResult.simulated !== true;
 
     if (providerOk) {
@@ -779,7 +988,7 @@ router.post('/send', async (req, res, next) => {
       // reconcile and rate-limit the tenant if desync is material.
       try {
         const { incrementSmsCount } = await import('../services/usageTracker.js');
-        await incrementSmsCount(req.tenantId);
+        await incrementSmsCount(req.tenantId, estimateSmsSegments(body, mediaItems.length > 0));
       } catch (e: unknown) {
         logger.error('sms analytics update failed (fail-closed)', {
           msgId,
@@ -1167,7 +1376,7 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
     // ENR-SMS6: Auto-reply when outside business hours
     try {
       const autoReplyEnabled = await adb.get<any>("SELECT value FROM store_config WHERE key = 'auto_reply_enabled'");
-      if (autoReplyEnabled?.value === '1') {
+      if (autoReplyEnabled?.value === '1' || autoReplyEnabled?.value === 'true') {
         const [hoursRow, replyMsgRow, tzRow] = await Promise.all([
           adb.get<any>("SELECT value FROM store_config WHERE key = 'business_hours'"),
           adb.get<any>("SELECT value FROM store_config WHERE key = 'auto_reply_message'"),
@@ -1329,7 +1538,7 @@ export async function smsStatusWebhookHandler(req: Request, res: Response): Prom
     await adb.run(`UPDATE sms_messages SET ${updates.join(', ')} WHERE provider_message_id = ?`, ...params);
 
     // Broadcast status update
-    broadcast('sms:status_updated', { providerId: status.providerId, status: status.status }, req.tenantSlug || null);
+    broadcast(WS_EVENTS.SMS_STATUS_UPDATED, { providerId: status.providerId, status: status.status }, req.tenantSlug || null);
 
     res.status(200).json({ success: true });
   } catch (err: any) {

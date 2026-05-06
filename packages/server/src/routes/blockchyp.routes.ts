@@ -9,6 +9,8 @@ import {
   processPayment,
   refreshClient,
   adjustTip,
+  voidCharge,
+  captureCharge,
   deleteSignatureFile,
   BlockChypIndeterminateError,
 } from '../services/blockchyp.js';
@@ -27,6 +29,20 @@ const router = Router();
 // doesn't bloat the idempotency table, looser than a full UUID regex so
 // clients can pass other collision-safe identifiers (nanoid, ULID, etc.).
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9._-]{8,128}$/;
+
+function nowSql(): string {
+  return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function invoiceStatus(total: number, paid: number): string {
+  if (paid <= 0) return 'unpaid';
+  if (paid >= total) return 'paid';
+  return 'partial';
+}
 
 interface IdempotencyRow {
   id: number;
@@ -376,8 +392,9 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
         sql: `
           INSERT INTO payments (invoice_id, amount, method, method_detail, transaction_id,
             processor_transaction_id, processor_response, signature_file, signature_file_path,
+            accepted_terms_name, accepted_terms_text, accepted_terms_hash, accepted_terms_accepted_at,
             notes, user_id, processor, reference, capture_state, created_at, updated_at)
-          VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, ?, 'blockchyp', ?, 'captured', datetime('now'), datetime('now'))
+          VALUES (?, ?, 'BlockChyp', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'blockchyp', ?, 'captured', datetime('now'), datetime('now'))
         `,
         params: [
           invoice.id,
@@ -388,6 +405,10 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
           result.receiptSuggestions ? JSON.stringify(result.receiptSuggestions) : null,
           result.signatureFile ?? null,
           result.signatureFilePath ?? null,
+          result.acceptedTerms?.name ?? null,
+          result.acceptedTerms?.content ?? null,
+          result.acceptedTerms?.contentHash ?? null,
+          result.acceptedTerms?.acceptedAt ?? null,
           result.authCode ? `Auth: ${result.authCode}` : null,
           userId,
           result.transactionRef ?? result.transactionId ?? null,
@@ -432,6 +453,8 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
       tip: tipAmount,
       test_mode: result.testMode,
       signature_file: result.signatureFile ?? null,
+      accepted_terms_hash: result.acceptedTerms?.contentHash ?? null,
+      accepted_terms_name: result.acceptedTerms?.name ?? null,
       card_type: result.cardType ?? null,
       last4: result.last4 ?? null,
     });
@@ -473,11 +496,9 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
 
 // ─── BL8: Void a BlockChyp payment ────────────────────────────────
 //
-// When a payment is voided, any captured signature file becomes orphaned
-// on disk. This endpoint deletes the signature file, audit-logs the void,
-// and flips the payment record notes. It does NOT call BlockChyp's void
-// API (that's a separate refunds flow owned by refunds.routes.ts); it is
-// the cleanup half of a void workflow.
+// Voids the processor transaction first, then marks the local payment row
+// voided and backs the amount out of the invoice balance. The void_pending_at
+// claim prevents concurrent duplicate void calls from both reaching BlockChyp.
 
 router.post('/void-payment', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
@@ -496,10 +517,18 @@ router.post('/void-payment', asyncHandler(async (req: Request, res: Response) =>
     invoice_id: number;
     amount: number;
     processor_transaction_id: string | null;
+    transaction_id: string | null;
     signature_file: string | null;
     signature_file_path: string | null;
     method: string;
-  }>('SELECT id, invoice_id, amount, processor_transaction_id, signature_file, signature_file_path, method FROM payments WHERE id = ?', paymentId);
+    capture_state: string | null;
+    void_pending_at: string | null;
+  }>(`
+    SELECT id, invoice_id, amount, processor_transaction_id, transaction_id,
+           signature_file, signature_file_path, method, capture_state, void_pending_at
+      FROM payments
+     WHERE id = ?
+  `, paymentId);
 
   if (!payment) {
     throw new AppError('Payment not found', 404);
@@ -507,37 +536,260 @@ router.post('/void-payment', asyncHandler(async (req: Request, res: Response) =>
   if (payment.method !== 'BlockChyp') {
     throw new AppError('Payment is not a BlockChyp transaction', 400);
   }
+  if (payment.capture_state === 'voided') {
+    throw new AppError('Payment is already voided', 409);
+  }
+  if (payment.void_pending_at) {
+    throw new AppError('Payment void is already in progress', 409);
+  }
+
+  const originalTransactionId = payment.processor_transaction_id ?? payment.transaction_id ?? null;
+  if (!originalTransactionId) {
+    throw new AppError('Payment is missing a BlockChyp transaction id', 400);
+  }
+  if (!isBlockChypEnabled(db)) {
+    throw new AppError('BlockChyp terminal is not enabled', 400);
+  }
+
+  const claimResult = await adb.run(
+    `UPDATE payments
+        SET void_pending_at = ?,
+            void_error = NULL,
+            updated_at = datetime('now')
+      WHERE id = ?
+        AND COALESCE(capture_state, 'captured') != 'voided'
+        AND void_pending_at IS NULL`,
+    nowSql(),
+    payment.id,
+  );
+  if (claimResult.changes === 0) {
+    throw new AppError('Payment void is already in progress', 409);
+  }
+
+  const voidResult = await voidCharge(db, originalTransactionId, String(payment.id));
+  if (!voidResult.success) {
+    await adb.run(
+      `UPDATE payments
+          SET void_pending_at = NULL,
+              void_error = ?,
+              processor_response = COALESCE(?, processor_response),
+              updated_at = datetime('now')
+        WHERE id = ?`,
+      voidResult.error ?? 'BlockChyp void failed',
+      voidResult.response ? JSON.stringify(voidResult.response) : null,
+      payment.id,
+    );
+    audit(db, 'blockchyp_payment_void_failed', req.user!.id, req.ip || 'unknown', {
+      payment_id: payment.id,
+      invoice_id: payment.invoice_id,
+      transaction_id: originalTransactionId,
+      amount: payment.amount,
+      error: voidResult.error,
+      transaction_ref: voidResult.transactionRef,
+    });
+    throw new AppError(voidResult.error || 'BlockChyp void failed', 400);
+  }
 
   // BL8: delete the signature file from disk.
   const deleted = deleteSignatureFile(payment.signature_file_path);
+
+  const invoice = await adb.get<{ id: number; total: number; amount_paid: number }>(
+    'SELECT id, total, amount_paid FROM invoices WHERE id = ?',
+    payment.invoice_id,
+  );
+  const priorPaid = roundMoney(Number(invoice?.amount_paid ?? 0));
+  const total = roundMoney(Number(invoice?.total ?? 0));
+  const newPaid = roundMoney(Math.max(0, priorPaid - Number(payment.amount || 0)));
+  const newDue = roundMoney(Math.max(0, total - newPaid));
+  const newStatus = invoiceStatus(total, newPaid);
 
   // BL8: audit log with transaction id linkage.
   audit(db, 'blockchyp_payment_voided', req.user!.id, req.ip || 'unknown', {
     payment_id: payment.id,
     invoice_id: payment.invoice_id,
-    transaction_id: payment.processor_transaction_id,
+    transaction_id: originalTransactionId,
+    void_transaction_id: voidResult.transactionId,
+    transaction_ref: voidResult.transactionRef,
     amount: payment.amount,
     signature_file: payment.signature_file,
     signature_file_deleted: deleted,
   });
 
   // Flag the payment row so the signature fields don't resolve to stale data.
-  await adb.run(
-    `UPDATE payments
-        SET signature_file = NULL,
-            signature_file_path = NULL,
-            notes = COALESCE(notes || ' | ', '') || 'Voided by user ' || ? || ' at ' || datetime('now'),
-            updated_at = datetime('now')
-      WHERE id = ?`,
-    req.user!.id, payment.id,
-  );
+  await adb.transaction([
+    {
+      sql: `UPDATE payments
+              SET signature_file = NULL,
+                  signature_file_path = NULL,
+                  capture_state = 'voided',
+                  void_pending_at = NULL,
+                  void_error = NULL,
+                  voided_at = datetime('now'),
+                  voided_by_user_id = ?,
+                  processor_response = COALESCE(?, processor_response),
+                  notes = COALESCE(notes || ' | ', '') || 'Voided by user ' || ? || ' at ' || datetime('now'),
+                  updated_at = datetime('now')
+            WHERE id = ?`,
+      params: [
+        req.user!.id,
+        voidResult.response ? JSON.stringify(voidResult.response) : null,
+        req.user!.id,
+        payment.id,
+      ],
+      expectChanges: true,
+      expectChangesError: 'Payment void local update failed',
+    },
+    {
+      sql: `UPDATE invoices
+              SET amount_paid = ?,
+                  amount_due = ?,
+                  status = ?,
+                  updated_at = datetime('now')
+            WHERE id = ?`,
+      params: [newPaid, newDue, newStatus, payment.invoice_id],
+    },
+  ]);
 
   res.json({
     success: true,
     data: {
       paymentId: payment.id,
-      transactionId: payment.processor_transaction_id,
+      transactionId: originalTransactionId,
+      voidTransactionId: voidResult.transactionId,
       signatureFileDeleted: deleted,
+    },
+  });
+}));
+
+// ─── Capture a prior BlockChyp authorization ──────────────────────
+//
+// There is no auth-only sale flow in the current UI, but the SDK supports
+// capture and legacy/imported rows can carry capture_state='authorized'. This
+// endpoint keeps the settlement state transition explicit and guarded.
+
+router.post('/capture-payment', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const adb = req.asyncDb;
+  const { paymentId, amount } = req.body;
+
+  if (!paymentId) {
+    throw new AppError('paymentId is required', 400);
+  }
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin access required to capture a payment', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+  }
+
+  const captureAmount = amount === undefined || amount === null
+    ? null
+    : Number(amount);
+  if (captureAmount !== null && (!Number.isFinite(captureAmount) || captureAmount <= 0)) {
+    throw new AppError('amount must be a positive number when provided', 400);
+  }
+
+  const payment = await adb.get<{
+    id: number;
+    invoice_id: number;
+    amount: number;
+    processor_transaction_id: string | null;
+    transaction_id: string | null;
+    method: string;
+    capture_state: string | null;
+    capture_pending_at: string | null;
+  }>(`
+    SELECT id, invoice_id, amount, processor_transaction_id, transaction_id,
+           method, capture_state, capture_pending_at
+      FROM payments
+     WHERE id = ?
+  `, paymentId);
+
+  if (!payment) throw new AppError('Payment not found', 404);
+  if (payment.method !== 'BlockChyp') {
+    throw new AppError('Payment is not a BlockChyp transaction', 400);
+  }
+  if (payment.capture_state !== 'authorized') {
+    throw new AppError(`Payment cannot be captured from state ${payment.capture_state ?? 'captured'}`, 409);
+  }
+  if (payment.capture_pending_at) {
+    throw new AppError('Payment capture is already in progress', 409);
+  }
+  if (!isBlockChypEnabled(db)) {
+    throw new AppError('BlockChyp terminal is not enabled', 400);
+  }
+
+  const originalTransactionId = payment.processor_transaction_id ?? payment.transaction_id ?? null;
+  if (!originalTransactionId) {
+    throw new AppError('Payment is missing a BlockChyp transaction id', 400);
+  }
+
+  const claimResult = await adb.run(
+    `UPDATE payments
+        SET capture_pending_at = ?,
+            capture_error = NULL,
+            updated_at = datetime('now')
+      WHERE id = ?
+        AND capture_state = 'authorized'
+        AND capture_pending_at IS NULL`,
+    nowSql(),
+    payment.id,
+  );
+  if (claimResult.changes === 0) {
+    throw new AppError('Payment capture is already in progress', 409);
+  }
+
+  const result = await captureCharge(db, originalTransactionId, captureAmount, String(payment.id));
+  if (!result.success) {
+    await adb.run(
+      `UPDATE payments
+          SET capture_pending_at = NULL,
+              capture_error = ?,
+              processor_response = COALESCE(?, processor_response),
+              updated_at = datetime('now')
+        WHERE id = ?`,
+      result.error ?? 'BlockChyp capture failed',
+      result.response ? JSON.stringify(result.response) : null,
+      payment.id,
+    );
+    audit(db, 'blockchyp_payment_capture_failed', req.user!.id, req.ip || 'unknown', {
+      payment_id: payment.id,
+      invoice_id: payment.invoice_id,
+      transaction_id: originalTransactionId,
+      error: result.error,
+      transaction_ref: result.transactionRef,
+    });
+    throw new AppError(result.error || 'BlockChyp capture failed', 400);
+  }
+
+  await adb.run(
+    `UPDATE payments
+        SET capture_state = 'captured',
+            capture_pending_at = NULL,
+            capture_error = NULL,
+            captured_at = datetime('now'),
+            captured_by_user_id = ?,
+            processor_transaction_id = COALESCE(?, processor_transaction_id),
+            processor_response = COALESCE(?, processor_response),
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    req.user!.id,
+    result.transactionId ?? null,
+    result.response ? JSON.stringify(result.response) : null,
+    payment.id,
+  );
+
+  audit(db, 'blockchyp_payment_captured', req.user!.id, req.ip || 'unknown', {
+    payment_id: payment.id,
+    invoice_id: payment.invoice_id,
+    transaction_id: result.transactionId ?? originalTransactionId,
+    transaction_ref: result.transactionRef,
+    amount: captureAmount ?? payment.amount,
+  });
+
+  res.json({
+    success: true,
+    data: {
+      paymentId: payment.id,
+      transactionId: result.transactionId ?? originalTransactionId,
+      transactionRef: result.transactionRef,
     },
   });
 }));

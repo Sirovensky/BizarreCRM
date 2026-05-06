@@ -3,6 +3,11 @@ import { Paperclip, X, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { smsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  validateImageFile,
+} from '@/utils/imageUploadPolicy';
 
 /**
  * Quick SMS attachment button — audit §51.15.
@@ -29,9 +34,6 @@ interface QuickSmsAttachmentButtonProps {
   disabled?: boolean;
 }
 
-const MAX_MMS_BYTES = 5 * 1024 * 1024; // 5MB — backend hard cap
-const ALLOWED = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
 export function QuickSmsAttachmentButton({
   value,
   onChange,
@@ -45,12 +47,12 @@ export function QuickSmsAttachmentButton({
   async function onPick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!ALLOWED.includes(file.type)) {
-      toast.error('Only JPEG / PNG / GIF / WebP allowed');
-      return;
-    }
-    if (file.size > MAX_MMS_BYTES) {
-      toast.error('Max 5MB per attachment');
+    const error = await validateImageFile(file, {
+      maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
+      label: `"${file.name}"`,
+    });
+    if (error) {
+      toast.error(error);
       return;
     }
 
@@ -83,7 +85,7 @@ export function QuickSmsAttachmentButton({
       <input
         ref={fileRef}
         type="file"
-        accept={ALLOWED.join(',')}
+        accept={IMAGE_UPLOAD_ACCEPT}
         onChange={onPick}
         className="hidden"
       />

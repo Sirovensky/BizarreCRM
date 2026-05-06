@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { crmApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
+import { formatApiError } from '@/utils/apiError';
 import { cn } from '@/utils/cn';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -189,11 +191,32 @@ export function ReviewsPage() {
   const markPublicMut = useMutation({
     mutationFn: ({ id, public_posted }: { id: number; public_posted: boolean }) =>
       crmApi.replyToReview(id, { public_posted }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      toast.success(variables.public_posted ? 'Review marked publicly posted' : 'Review marked private');
       queryClient.invalidateQueries({ queryKey: ['customer-reviews'] });
     },
-    onError: () => toast.error('Failed to update review'),
+    onError: (err: unknown) => toast.error(formatApiError(err)),
   });
+
+  const handlePublicToggle = async (review: CustomerReview) => {
+    if (markPublicMut.isPending) return;
+
+    const nextPublicPosted = !review.public_posted;
+    const label = customerLabel(review);
+    const ok = await confirm(
+      nextPublicPosted
+        ? `Mark ${label}'s review as publicly posted?`
+        : `Mark ${label}'s review as private?`,
+      {
+        title: nextPublicPosted ? 'Mark review public?' : 'Mark review private?',
+        confirmLabel: nextPublicPosted ? 'Mark public' : 'Mark private',
+        danger: nextPublicPosted,
+      },
+    );
+    if (!ok) return;
+
+    markPublicMut.mutate({ id: review.id, public_posted: nextPublicPosted });
+  };
 
   return (
     <div>
@@ -307,15 +330,20 @@ export function ReviewsPage() {
                       type="button"
                       aria-label={r.public_posted ? 'Mark review private' : 'Mark review as publicly posted'}
                       title={r.public_posted ? 'Mark private' : 'Mark as publicly posted'}
-                      onClick={() => markPublicMut.mutate({ id: r.id, public_posted: !r.public_posted })}
+                      onClick={() => { void handlePublicToggle(r); }}
+                      disabled={markPublicMut.isPending}
                       className={cn(
-                        'rounded-lg p-1.5 transition-colors',
+                        'rounded-lg p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
                         r.public_posted
                           ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30'
                           : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700',
                       )}
                     >
-                      <CheckCircle aria-hidden="true" className="h-4 w-4" />
+                      {markPublicMut.isPending && markPublicMut.variables?.id === r.id ? (
+                        <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle aria-hidden="true" className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>

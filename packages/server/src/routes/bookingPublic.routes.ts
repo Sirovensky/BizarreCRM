@@ -20,6 +20,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
+import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
 const log = createLogger('bookingPublic');
@@ -78,6 +79,55 @@ interface SlotWindow {
   end_time: string;
 }
 
+type BookingPolicy = {
+  onlineEnabled: boolean;
+  walkinsEnabled: boolean;
+  minNoticeHours: number;
+  maxLeadDays: number;
+};
+
+async function readConfig(adb: AsyncDb, keys: readonly string[]): Promise<Record<string, string>> {
+  const rows = await adb.all<{ key: string; value: string }>(
+    `SELECT key, value FROM store_config WHERE key IN (${keys.map(() => '?').join(',')})`,
+    ...keys,
+  );
+  const cfg: Record<string, string> = {};
+  for (const row of rows) cfg[row.key] = row.value;
+  return cfg;
+}
+
+function pickConfig(cfg: Record<string, string>, keys: readonly string[], fallback: string): string {
+  for (const key of keys) {
+    const value = cfg[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return fallback;
+}
+
+function pickConfigInt(cfg: Record<string, string>, keys: readonly string[], fallback: number): number {
+  const parsed = Number.parseInt(pickConfig(cfg, keys, String(fallback)), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+async function loadBookingPolicy(adb: AsyncDb): Promise<BookingPolicy> {
+  const cfg = await readConfig(adb, [
+    'booking_online_enabled',
+    'booking_enabled',
+    'booking_walkins_enabled',
+    'booking_lead_hours',
+    'booking_min_notice_hours',
+    'booking_max_days_ahead',
+    'booking_max_lead_days',
+  ]);
+
+  return {
+    onlineEnabled: pickConfig(cfg, ['booking_online_enabled', 'booking_enabled'], '0') === '1',
+    walkinsEnabled: pickConfig(cfg, ['booking_walkins_enabled'], '1') !== '0',
+    minNoticeHours: pickConfigInt(cfg, ['booking_lead_hours', 'booking_min_notice_hours'], 24),
+    maxLeadDays: pickConfigInt(cfg, ['booking_max_days_ahead', 'booking_max_lead_days'], 30),
+  };
+}
+
 /**
  * Generate candidate 30-min slots between open and close times.
  * Returns strings like "09:00", "09:30", …
@@ -114,12 +164,15 @@ router.get('/config', asyncHandler(async (req, res) => {
 
   const adb = req.asyncDb;
 
-  // Check booking is enabled
-  const enabledRow = await adb.get<{ value: string }>(
-    "SELECT value FROM store_config WHERE key = 'booking_enabled'",
-  );
-  if (!enabledRow || enabledRow.value !== '1') {
-    res.json({ success: true, data: { enabled: false } });
+  const bookingPolicy = await loadBookingPolicy(adb);
+  if (!bookingPolicy.onlineEnabled) {
+    res.json({
+      success: true,
+      data: {
+        enabled: false,
+        walkins_enabled: bookingPolicy.walkinsEnabled,
+      },
+    });
     return;
   }
 
@@ -155,13 +208,7 @@ router.get('/config', asyncHandler(async (req, res) => {
   );
 
   // Booking settings
-  const settingKeys = [
-    'booking_min_notice_hours',
-    'booking_max_lead_days',
-    'booking_require_phone',
-    'booking_require_email',
-    'booking_confirmation_mode',
-  ];
+  const settingKeys = ['booking_require_phone', 'booking_require_email', 'booking_confirmation_mode'];
   const settingRows = await adb.all<{ key: string; value: string }>(
     `SELECT key, value FROM store_config WHERE key IN (${settingKeys.map(() => '?').join(',')})`,
     ...settingKeys,
@@ -181,8 +228,9 @@ router.get('/config', asyncHandler(async (req, res) => {
       hours,
       exceptions,
       settings: {
-        min_notice_hours:     parseInt(settings['booking_min_notice_hours'] ?? '24', 10),
-        max_lead_days:        parseInt(settings['booking_max_lead_days'] ?? '30', 10),
+        min_notice_hours:     bookingPolicy.minNoticeHours,
+        max_lead_days:        bookingPolicy.maxLeadDays,
+        walkins_enabled:      bookingPolicy.walkinsEnabled,
         require_phone:        settings['booking_require_phone'] === '1',
         require_email:        settings['booking_require_email'] === '1',
         confirmation_mode:    settings['booking_confirmation_mode'] ?? 'manual',
@@ -220,11 +268,8 @@ router.get('/availability', asyncHandler(async (req, res) => {
 
   const adb = req.asyncDb;
 
-  // --- Booking enabled check ---
-  const enabledRow = await adb.get<{ value: string }>(
-    "SELECT value FROM store_config WHERE key = 'booking_enabled'",
-  );
-  if (!enabledRow || enabledRow.value !== '1') {
+  const bookingPolicy = await loadBookingPolicy(adb);
+  if (!bookingPolicy.onlineEnabled) {
     res.json({ success: true, data: [] });
     return;
   }
@@ -287,10 +332,7 @@ router.get('/availability', asyncHandler(async (req, res) => {
   }
 
   // --- min_notice_hours: reject dates too soon ---
-  const minNoticeRow = await adb.get<{ value: string }>(
-    "SELECT value FROM store_config WHERE key = 'booking_min_notice_hours'",
-  );
-  const minNoticeHours = parseInt(minNoticeRow?.value ?? '24', 10);
+  const minNoticeHours = bookingPolicy.minNoticeHours;
   const nowMs = Date.now();
   // Earliest bookable moment (in ms)
   const earliestBookableMs = nowMs + minNoticeHours * 60 * 60 * 1000;
@@ -303,10 +345,7 @@ router.get('/availability', asyncHandler(async (req, res) => {
   }
 
   // --- max_lead_days: reject dates too far out ---
-  const maxLeadRow = await adb.get<{ value: string }>(
-    "SELECT value FROM store_config WHERE key = 'booking_max_lead_days'",
-  );
-  const maxLeadDays = parseInt(maxLeadRow?.value ?? '30', 10);
+  const maxLeadDays = bookingPolicy.maxLeadDays;
   const maxDateMs = nowMs + maxLeadDays * 24 * 60 * 60 * 1000;
   const requestedDateStartMs = new Date(dateStr + 'T00:00:00Z').getTime();
   if (requestedDateStartMs > maxDateMs) {

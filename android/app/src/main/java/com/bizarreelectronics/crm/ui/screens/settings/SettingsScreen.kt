@@ -297,6 +297,8 @@ fun SettingsScreen(
     onTeamSettings: (() -> Unit)? = null,
     // §19.12 — opens the Data settings (import/export/cache/reset).
     onDataSettings: (() -> Unit)? = null,
+    // CROSS57 — opens the Superuser hub for native advanced routes and web-only admin tools.
+    onSuperuser: (() -> Unit)? = null,
     // §19.13 — opens Full diagnostics.
     onFullDiagnostics: (() -> Unit)? = null,
     // §19.14 — opens App info (OSS licenses, Privacy, Terms, Rate app).
@@ -671,6 +673,15 @@ fun SettingsScreen(
                     icon = Icons.Default.Storage,
                     title = "Data",
                     onClick = onDataSettings,
+                )
+            }
+
+            if (onSuperuser != null) {
+                SettingsRowWithSubtitle(
+                    icon = Icons.Default.ManageAccounts,
+                    title = "Superuser",
+                    subtitle = "Advanced Android routes and web admin tools",
+                    onClick = onSuperuser,
                 )
             }
 

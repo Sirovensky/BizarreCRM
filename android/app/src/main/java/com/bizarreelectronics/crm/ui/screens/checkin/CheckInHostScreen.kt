@@ -68,6 +68,7 @@ fun CheckInHostScreen(
     val isQuoteStep = state.currentStep == 4
     val ctaLabel = when {
         state.isSubmitting -> "Creating ticket…"
+        state.isSavingManualPriceDefault -> "Saving default…"
         isLastStep -> "Create ticket · print label"
         isQuoteStep -> "Get signature & check in →"
         else -> "Next"
@@ -188,11 +189,17 @@ fun CheckInHostScreen(
                         laborMinutes = state.laborMinutes,
                         quoteTotalCents = state.quoteTotalCents,
                         dueOnPickupCents = state.dueOnPickupCents,
+                        manualPriceDefaultCandidate = state.manualPriceDefaultCandidate,
+                        saveManualPriceAsDefault = state.saveManualPriceAsDefault,
+                        isSavingManualPriceDefault = state.isSavingManualPriceDefault,
+                        manualPriceDefaultSaveMessage = state.manualPriceDefaultSaveMessage,
+                        manualPriceDefaultSaveError = state.manualPriceDefaultSaveError,
                         onDepositChange = viewModel::setDepositCents,
                         onDepositFullBalance = viewModel::setDepositFullBalance,
                         onLaborMinutesChange = viewModel::setLaborMinutes,
                         onLaborTechChange = viewModel::setLaborTechId,
                         onSubtotalChange = viewModel::setQuoteSubtotalCents,
+                        onSaveManualPriceAsDefaultChange = viewModel::setSaveManualPriceAsDefault,
                     )
                     5 -> CheckInStep6Sign(
                         agreedToTerms = state.agreedToTerms,

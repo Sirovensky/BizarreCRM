@@ -31,10 +31,10 @@ interface QueueTicket {
 function ageBadge(createdAt: string): { label: string; color: string } {
   const ageMs = Date.now() - new Date(createdAt).getTime();
   const days = Math.floor(ageMs / 86400000);
-  if (days >= 14) return { label: `${days}d old`, color: 'bg-red-100 text-red-700' };
-  if (days >= 7)  return { label: `${days}d old`, color: 'bg-amber-100 text-amber-700' };
-  if (days >= 3)  return { label: `${days}d old`, color: 'bg-yellow-100 text-yellow-700' };
-  return { label: `${days}d old`, color: 'bg-gray-100 text-gray-700' };
+  if (days >= 14) return { label: `${days}d old`, color: 'bg-error-100 text-error-700 dark:bg-error-950/40 dark:text-error-200' };
+  if (days >= 7)  return { label: `${days}d old`, color: 'bg-warning-100 text-warning-800 dark:bg-warning-950/40 dark:text-warning-200' };
+  if (days >= 3)  return { label: `${days}d old`, color: 'bg-warning-50 text-warning-700 dark:bg-warning-950/30 dark:text-warning-300' };
+  return { label: `${days}d old`, color: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300' };
 }
 
 function dueBadge(dueOn: string | null): { label: string; color: string } | null {
@@ -42,10 +42,10 @@ function dueBadge(dueOn: string | null): { label: string; color: string } | null
   const due = new Date(dueOn).getTime();
   const now = Date.now();
   const diffDays = Math.floor((due - now) / 86400000);
-  if (diffDays < 0)  return { label: `${Math.abs(diffDays)}d overdue`, color: 'bg-red-100 text-red-700' };
-  if (diffDays === 0) return { label: 'due today', color: 'bg-amber-100 text-amber-700' };
-  if (diffDays <= 2)  return { label: `due in ${diffDays}d`, color: 'bg-yellow-100 text-yellow-700' };
-  return { label: `due ${new Date(dueOn).toLocaleDateString()}`, color: 'bg-gray-100 text-gray-700' };
+  if (diffDays < 0)  return { label: `${Math.abs(diffDays)}d overdue`, color: 'bg-error-100 text-error-700 dark:bg-error-950/40 dark:text-error-200' };
+  if (diffDays === 0) return { label: 'due today', color: 'bg-warning-100 text-warning-800 dark:bg-warning-950/40 dark:text-warning-200' };
+  if (diffDays <= 2)  return { label: `due in ${diffDays}d`, color: 'bg-warning-50 text-warning-700 dark:bg-warning-950/30 dark:text-warning-300' };
+  return { label: `due ${new Date(dueOn).toLocaleDateString()}`, color: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300' };
 }
 
 export function MyQueuePage() {
@@ -66,41 +66,41 @@ export function MyQueuePage() {
   const tickets: QueueTicket[] = data || [];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto text-surface-900 dark:text-surface-100">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 dark:text-surface-100">My Queue</h1>
-        <p className="text-sm text-gray-500 dark:text-surface-400">
+        <h1 className="text-2xl font-bold text-surface-800 dark:text-surface-100">My Queue</h1>
+        <p className="text-sm text-surface-500 dark:text-surface-400">
           Tickets assigned to you, sorted by due date and age. Updates every 30 seconds.
         </p>
       </header>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-12 text-gray-500">
+        <div className="flex items-center justify-center py-12 text-surface-500 dark:text-surface-400">
           <Clock className="w-5 h-5 animate-spin mr-2" /> Loading queue...
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded p-4 flex items-center">
+        <div className="bg-error-50 border border-error-200 text-error-700 rounded p-4 flex items-center dark:border-error-900 dark:bg-error-950/40 dark:text-error-200">
           <AlertCircle className="w-5 h-5 mr-2" />
           Failed to load your queue. Try refreshing.
         </div>
       )}
 
       {!isLoading && tickets.length === 0 && (
-        <div className="bg-white dark:bg-surface-900 border dark:border-surface-700 rounded-lg p-12 text-center">
-          <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-surface-100">All caught up</h2>
-          <p className="text-sm text-gray-500 dark:text-surface-400 mt-1">
+        <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg p-12 text-center">
+          <CheckCircle2 className="w-12 h-12 text-success-500 dark:text-success-400 mx-auto mb-3" />
+          <h2 className="text-lg font-semibold text-surface-800 dark:text-surface-100">All caught up</h2>
+          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
             You have no open tickets assigned to you right now.
           </p>
         </div>
       )}
 
       {tickets.length > 0 && (
-        <div className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-surface-800 text-gray-600 dark:text-surface-300 text-left text-xs uppercase">
+        <div className="bg-white dark:bg-surface-900 rounded-lg shadow border border-surface-200 dark:border-surface-700 overflow-x-auto">
+          <table className="w-full text-sm text-surface-700 dark:text-surface-200">
+            <thead className="bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-300 text-left text-xs uppercase">
               <tr>
                 <th className="px-4 py-3">Order</th>
                 <th className="px-4 py-3">Customer</th>
@@ -111,18 +111,18 @@ export function MyQueuePage() {
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
               {tickets.map((t) => {
                 const age = ageBadge(t.created_at);
                 const due = dueBadge(t.due_on);
                 return (
-                  <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-surface-800/50">
-                    <td className="px-4 py-3 font-mono text-xs text-primary-600">{t.order_id}</td>
+                  <tr key={t.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
+                    <td className="px-4 py-3 font-mono text-xs text-primary-600 dark:text-primary-400">{t.order_id}</td>
                     <td className="px-4 py-3">
                       {t.first_name || ''} {t.last_name || ''}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-primary-50 text-primary-700">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300">
                         {t.status_name || '—'}
                       </span>
                     </td>
@@ -137,16 +137,16 @@ export function MyQueuePage() {
                           {due.label}
                         </span>
                       ) : (
-                        <span className="text-xs text-gray-400">—</span>
+                        <span className="text-xs text-surface-400 dark:text-surface-500">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono">
+                    <td className="px-4 py-3 text-right font-mono text-surface-900 dark:text-surface-100">
                       {formatCurrency(Number(t.total || 0))}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
                         to={`/tickets/${t.id}`}
-                        className="inline-flex items-center text-primary-600 hover:text-primary-800 text-xs font-semibold"
+                        className="inline-flex items-center text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 text-xs font-semibold"
                       >
                         Open <ArrowRight className="w-3 h-3 ml-1" />
                       </Link>

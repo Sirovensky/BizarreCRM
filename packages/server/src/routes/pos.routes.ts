@@ -29,10 +29,25 @@ import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePosPinSale, requirePosPinByMode } from '../middleware/requirePosPin.js';
+import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
+import { verifyTenantStripePaymentIntent } from '../services/tenantStripe.js';
 
 const logger = createLogger('pos');
 
 const router = Router();
+
+const POS_SIGNATURE_MAX_CHARS = 100 * 1024;
+function validateOptionalSignatureDataUrl(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw new AppError('signature must be a data URL string', 400);
+  if (!value.startsWith('data:image/png;base64,') && !value.startsWith('data:image/jpeg;base64,')) {
+    throw new AppError('signature must be a PNG or JPEG data URL', 400);
+  }
+  if (value.length > POS_SIGNATURE_MAX_CHARS) {
+    throw new AppError('signature is too large', 400);
+  }
+  return value;
+}
 
 /**
  * POS7: Look up (or create) the special "Walk-in" customer row.
@@ -113,13 +128,14 @@ router.get('/products', asyncHandler(async (req, res) => {
     return row?.value === '0' || row?.value === 'false' ? false : true; // default: show
   };
 
-  const [showBundles, showDevices, showServices, showLabor, showAccessories, showMisc] = await Promise.all([
+  const [showBundles, showDevices, showServices, showLabor, showAccessories, showMisc, showOutOfStock] = await Promise.all([
     getToggle('pos_show_bundles'),
     getToggle('pos_show_devices'),
     getToggle('pos_show_services'),
     getToggle('pos_show_labor'),
     getToggle('pos_show_accessories'),
     getToggle('pos_show_misc'),
+    getToggle('pos_show_out_of_stock'),
   ]);
 
   const hiddenCategories: string[] = [];
@@ -137,6 +153,9 @@ router.get('/products', asyncHandler(async (req, res) => {
 
   if (item_type) { where += ' AND item_type = ?'; params.push(item_type); }
   if (category) { where += ' AND category = ?'; params.push(category); }
+  if (!showOutOfStock) {
+    where += " AND (item_type = 'service' OR COALESCE(in_stock, 0) > 0)";
+  }
   if (keyword) {
     where += " AND (name LIKE ? ESCAPE '\\' OR sku LIKE ? ESCAPE '\\' OR upc LIKE ? ESCAPE '\\')";
     const k = `%${escapeLike(keyword)}%`;
@@ -177,7 +196,10 @@ router.get('/register', asyncHandler(async (req, res) => {
     adb.get<any>('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_out\' AND DATE(created_at) = DATE(\'now\')'),
     adb.get<any>('SELECT COALESCE(SUM(p.amount),0) as t FROM payments p JOIN invoices inv ON inv.id = p.invoice_id WHERE p.method = \'cash\' AND DATE(p.created_at) = DATE(\'now\')'),
     adb.all<any>(`
-      SELECT cr.*, u.first_name || ' ' || u.last_name as user_name
+      SELECT cr.*,
+             u.first_name,
+             u.last_name,
+             TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS user_name
       FROM cash_register cr LEFT JOIN users u ON u.id = cr.user_id
       WHERE DATE(cr.created_at) = DATE('now')
       ORDER BY cr.created_at DESC LIMIT 20
@@ -1397,6 +1419,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     payments: splitPayments,
     signature_file,
   } = req.body;
+  const signatureDataUrl = validateOptionalSignatureDataUrl(ticketData?.signature_data_url ?? ticketData?.signature);
 
   if (!mode || !['create_ticket', 'checkout'].includes(mode)) {
     throw new AppError('mode must be "create_ticket" or "checkout"', 400);
@@ -1417,10 +1440,6 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       ORDER BY cs.created_at DESC LIMIT 1
     `, customer_id) : Promise.resolve(undefined),
   ]);
-
-  if ((requireReferral?.value === '1' || requireReferral?.value === 'true') && customer_id && !ticketData?.referral_source) {
-    throw new AppError('Referral source is required', 400);
-  }
 
   // POS7: walk-in sales are allowed, but instead of storing customer_id = null
   // (which leaves rows orphaned from every customer-scoped report) we resolve
@@ -1536,6 +1555,15 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   let preparedTicketTax = 0;
   let preparedTicketTotal = 0;
 
+  if (
+    (requireReferral?.value === '1' || requireReferral?.value === 'true') &&
+    customer_id &&
+    newTicketShouldBeCreated &&
+    !ticketData?.referral_source
+  ) {
+    throw new AppError('Referral source is required', 400);
+  }
+
   if (newTicketShouldBeCreated) {
     // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
     // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
@@ -1613,16 +1641,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       }
     }
 
-    // Resolve warranty defaults ONCE for all devices that don't override.
-    // The legacy code queried these config rows inside the per-device loop,
-    // issuing 2*N SELECTs. One read suffices since the config doesn't change
-    // mid-request.
-    const [wVal, wUnit] = await Promise.all([
-      adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_value'"),
-      adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'repair_default_warranty_unit'"),
-    ]);
-    const defaultWarrantyRaw = wVal?.value ? parseInt(wVal.value) : 0;
-    const defaultWarrantyDays = wUnit?.value === 'months' ? defaultWarrantyRaw * 30 : defaultWarrantyRaw;
+    const warrantyDefaults = await getRepairWarrantyDefaults(adb);
 
     // Build prepared device plan (all async reads done here, no writes)
     for (const dev of ticketData.devices) {
@@ -1633,10 +1652,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, devTaxClassId, dev.tax_inclusive ?? false);
       const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
-      // SW-D11: Auto-fill default warranty, respecting unit setting
       const warrantyDays = (dev.warranty_days === undefined || dev.warranty_days === null)
-        ? defaultWarrantyDays
+        ? resolveRepairWarrantyDays(warrantyDefaults, dev)
         : dev.warranty_days;
+      const warranty = dev.warranty !== undefined ? dev.warranty : warrantyDays > 0;
 
       const preparedParts: PreparedPart[] = [];
       if (dev.parts && Array.isArray(dev.parts)) {
@@ -1670,7 +1689,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         tax_class_id: devTaxClassId,
         tax_inclusive: dev.tax_inclusive ? 1 : 0,
         total: deviceTotal,
-        warranty: dev.warranty ? 1 : 0,
+        warranty: warranty ? 1 : 0,
         warranty_days: warrantyDays,
         due_on: dev.due_on ?? null,
         device_location: dev.device_location ?? null,
@@ -1947,6 +1966,42 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   const CARD_METHODS = new Set(['card', 'credit', 'debit', 'blockchyp', 'stripe']);
   const isCardMethod = (m: string | null | undefined): boolean =>
     !!m && CARD_METHODS.has(m.toLowerCase());
+  const requireCardAuthorizationMetadata = (
+    method: string | null | undefined,
+    amount: number,
+    processor: string | null,
+    reference: string | null,
+    transactionId: string | null,
+  ): void => {
+    if (!isCardMethod(method) || amount <= 0) return;
+    if (!processor || !transactionId || !reference) {
+      throw new AppError('Card payments require processor, reference, and transaction_id authorization metadata', 400);
+    }
+  };
+  const verifyStripeAuthorizationIfNeeded = async (
+    amount: number,
+    processor: string | null,
+    reference: string | null,
+    transactionId: string | null,
+  ): Promise<void> => {
+    if (String(processor ?? '').toLowerCase() !== 'stripe') return;
+    const verified = await verifyTenantStripePaymentIntent(req.db, transactionId || reference, toCents(amount), {
+      allowedSources: ['pos'],
+    });
+    const existing = await adb.get<{ id: number }>(`
+      SELECT id FROM payments
+       WHERE LOWER(COALESCE(processor, '')) = 'stripe'
+         AND (
+           processor_transaction_id = ?
+           OR transaction_id = ?
+           OR reference = ?
+         )
+       LIMIT 1
+    `, verified.id, verified.id, verified.id);
+    if (existing) {
+      throw new AppError('Stripe PaymentIntent has already been recorded', 409);
+    }
+  };
 
   interface NormalizedCheckoutPayment {
     method: string;
@@ -1975,12 +2030,18 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         );
         if (!validMethod) throw new AppError(`Invalid payment method: ${method}`, 400);
 
+        const processor = validateOptionalRefString(sp?.processor, 'processor', 64);
+        const reference = validateOptionalRefString(sp?.reference, 'reference', 128);
+        const transactionId = validateOptionalRefString(sp?.transaction_id, 'transaction_id', 128);
+        requireCardAuthorizationMetadata(method, amt, processor, reference, transactionId);
+        await verifyStripeAuthorizationIfNeeded(amt, processor, reference, transactionId);
+
         normalizedCheckoutPayments.push({
           method,
           amount: amt,
-          processor: validateOptionalRefString(sp?.processor, 'processor', 64),
-          reference: validateOptionalRefString(sp?.reference, 'reference', 128),
-          transaction_id: validateOptionalRefString(sp?.transaction_id, 'transaction_id', 128),
+          processor,
+          reference,
+          transaction_id: transactionId,
         });
         totalPaidSplit = roundCents(totalPaidSplit + amt);
         if (isCardMethod(method)) cardPaidSplit = roundCents(cardPaidSplit + amt);
@@ -1993,13 +2054,20 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       overpaymentMethodLabel = splitPayments.map((p: any) => p.method).join('+');
     } else {
       // Legacy single payment
-      normalizedCheckoutPayments.push({
-        method: payment_method,
-        amount: paidAmount,
-        processor: validateOptionalRefString(req.body?.processor, 'processor', 64),
-        reference: validateOptionalRefString(req.body?.reference, 'reference', 128),
-        transaction_id: validateOptionalRefString(req.body?.transaction_id, 'transaction_id', 128),
-      });
+      const singleProcessor = validateOptionalRefString(req.body?.processor, 'processor', 64);
+      const singleReference = validateOptionalRefString(req.body?.reference, 'reference', 128);
+      const singleTransactionId = validateOptionalRefString(req.body?.transaction_id, 'transaction_id', 128);
+      requireCardAuthorizationMetadata(payment_method, paidAmount, singleProcessor, singleReference, singleTransactionId);
+      await verifyStripeAuthorizationIfNeeded(paidAmount, singleProcessor, singleReference, singleTransactionId);
+      if (paidAmount > 0) {
+        normalizedCheckoutPayments.push({
+          method: payment_method,
+          amount: paidAmount,
+          processor: singleProcessor,
+          reference: singleReference,
+          transaction_id: singleTransactionId,
+        });
+      }
       const rawOver = roundCents(Math.max(0, paidAmount - invoiceTotal));
       if (isCardMethod(payment_method)) {
         cardOverpayment = rawOver;
@@ -2060,8 +2128,8 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     txQueries.push({
       sql: `
         INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
-                             source, labels, due_on, created_by, tracking_token, signature_file, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             source, referral_source, labels, due_on, signature, created_by, tracking_token, signature_file, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       params: [
         ticketOrderId,
@@ -2071,8 +2139,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         ticketData.discount ?? 0,
         ticketData.discount_reason ?? null,
         ticketData.source ?? 'Walk-in',
+        ticketData.referral_source ?? null,
         JSON.stringify(ticketData.labels ?? []),
         newTicketDueOn,
+        signatureDataUrl,
         userId,
         newTicketTrackingToken,
         signature_file ?? null,
@@ -2080,6 +2150,26 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         now(),
       ],
     });
+
+    if (signatureDataUrl) {
+      txQueries.push({
+        sql: `
+          INSERT INTO ticket_signatures
+            (ticket_id, signature_kind, signer_name, signer_role,
+             signature_data_url, captured_by_user_id, ip_address, user_agent)
+          VALUES (${TICKET_ID_SQL}, 'payment', 'Customer', 'customer', ?, ?, ?, ?)
+        `,
+        params: [
+          ticketIdParam(),
+          signatureDataUrl,
+          userId,
+          req.socket?.remoteAddress ?? null,
+          typeof req.headers['user-agent'] === 'string'
+            ? req.headers['user-agent'].slice(0, 256)
+            : null,
+        ],
+      });
+    }
 
     // Devices + parts. Parts FK uses `(SELECT MAX(id) FROM ticket_devices
     // WHERE ticket_id = ...)` — since we queue parts immediately after
@@ -2489,11 +2579,53 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
 }));
 
 // ---------------------------------------------------------------------------
+// GET /pos/returnable-invoice/:invoiceId — invoice detail for the POS return modal.
+// Includes cumulative quantities already returned through /pos/return so the
+// cashier cannot accidentally request more units than remain returnable.
+router.get('/returnable-invoice/:invoiceId', asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const userRole = req.user!.role;
+  if (userRole !== 'admin' && userRole !== 'manager') {
+    throw new AppError('Only admin or manager can process returns', 403);
+  }
+
+  const invId = Number(req.params.invoiceId);
+  if (!Number.isInteger(invId) || invId <= 0) throw new AppError('invoice_id must be a positive integer', 400);
+
+  const invoice = await adb.get<any>(`
+    SELECT inv.*, c.first_name, c.last_name, c.organization, c.email AS customer_email, c.phone AS customer_phone
+    FROM invoices inv
+    LEFT JOIN customers c ON c.id = inv.customer_id
+    WHERE inv.id = ?
+  `, invId);
+  if (!invoice) throw new AppError('Invoice not found', 404);
+  if (invoice.status === 'void') throw new AppError('Cannot process a return on a voided invoice', 400);
+  if (invoice.status === 'credit_note') throw new AppError('Cannot process a return on a credit note', 400);
+
+  const lineItems = await adb.all<any>(`
+    SELECT
+      li.*,
+      COALESCE(SUM(prli.quantity), 0) AS returned_quantity,
+      MAX(li.quantity - COALESCE((
+        SELECT SUM(inner_prli.quantity)
+        FROM pos_return_line_items inner_prli
+        WHERE inner_prli.original_line_item_id = li.id
+      ), 0), 0) AS returnable_quantity
+    FROM invoice_line_items li
+    LEFT JOIN pos_return_line_items prli ON prli.original_line_item_id = li.id
+    WHERE li.invoice_id = ?
+    GROUP BY li.id
+    ORDER BY li.id ASC
+  `, invId);
+
+  res.json({ success: true, data: { ...invoice, line_items: lineItems } });
+}));
+
 // ENR-POS2: POST /pos/return — Return/exchange workflow
 // Creates a credit note (negative invoice), restores stock, records reason.
 // Admin/manager only.
 // ---------------------------------------------------------------------------
-router.post('/return', asyncHandler(async (req, res) => {
+router.post('/return', idempotent, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
   const userId = req.user!.id;
@@ -2524,6 +2656,7 @@ router.post('/return', asyncHandler(async (req, res) => {
   const invoice = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invId);
   if (!invoice) throw new AppError('Invoice not found', 404);
   if (invoice.status === 'void') throw new AppError('Cannot process a return on a voided invoice', 400);
+  if (invoice.status === 'credit_note') throw new AppError('Cannot process a return on a credit note', 400);
 
   let creditTotal = 0;
   const returnDetails: any[] = [];
@@ -2543,8 +2676,18 @@ router.post('/return', asyncHandler(async (req, res) => {
     );
     if (!lineItem) throw new AppError(`Line item ${liId} not found on invoice ${invId}`, 404);
 
-    if (itemQty > lineItem.quantity) {
-      throw new AppError(`Return quantity (${itemQty}) exceeds invoiced quantity (${lineItem.quantity})`, 400);
+    const returnedRow = await adb.get<any>(
+      'SELECT COALESCE(SUM(quantity), 0) AS returned_quantity FROM pos_return_line_items WHERE original_line_item_id = ?',
+      liId,
+    );
+    const alreadyReturned = Number(returnedRow?.returned_quantity ?? 0);
+    const returnableQty = Math.max(0, Number(lineItem.quantity) - alreadyReturned);
+
+    if (itemQty > returnableQty) {
+      throw new AppError(
+        `Return quantity (${itemQty}) exceeds remaining returnable quantity (${returnableQty}) for ${lineItem.description}`,
+        400,
+      );
     }
 
     const unitPrice = lineItem.unit_price;
@@ -2612,6 +2755,11 @@ router.post('/return', asyncHandler(async (req, res) => {
       INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, tax_amount, total, created_at, updated_at)
       VALUES (?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))
     `, creditNoteId, `RETURN: ${detail.description}`, -detail.quantity, detail.amount / detail.quantity, -detail.amount);
+
+    await adb.run(`
+      INSERT INTO pos_return_line_items (original_invoice_id, original_line_item_id, credit_note_id, quantity, reason, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `, invId, detail.line_item_id, creditNoteId, detail.quantity, detail.reason, userId);
   }
 
   // Create refund record

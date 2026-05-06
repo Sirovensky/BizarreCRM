@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Calendar, ChevronDown } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { Button } from './Button';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -165,7 +166,7 @@ export function DateRangePicker({
   return (
     <div ref={containerRef} className="relative">
       {/* Trigger button */}
-      <button
+      <Button
         ref={triggerRef}
         type="button"
         onClick={() => { setOpen((prev) => !prev); setFocusedIndex(-1); }}
@@ -173,8 +174,9 @@ export function DateRangePicker({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
+        variant="secondary"
+        size="sm"
         className={cn(
-          'inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors',
           'border-surface-200 bg-white text-surface-700 hover:bg-surface-50',
           'dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700',
           open && 'ring-2 ring-primary-500/40',
@@ -183,7 +185,7 @@ export function DateRangePicker({
         <Calendar className="h-4 w-4 text-surface-400" />
         <span className="truncate max-w-[180px]">{displayLabel}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 text-surface-400 transition-transform', open && 'rotate-180')} />
-      </button>
+      </Button>
 
       {/* Dropdown */}
       {open && (
@@ -200,7 +202,7 @@ export function DateRangePicker({
           {/* Preset list */}
           <div ref={menuRef} className="p-1.5">
             {presets.map((preset, index) => (
-              <button
+              <Button
                 key={preset.value}
                 role="menuitem"
                 tabIndex={focusedIndex === index ? 0 : -1}
@@ -208,8 +210,11 @@ export function DateRangePicker({
                 onMouseEnter={() => setFocusedIndex(index)}
                 onFocus={() => setFocusedIndex(index)}
                 ref={(el) => { if (focusedIndex === index && el) el.focus(); }}
+                variant="ghost"
+                size="sm"
+                fullWidth
                 className={cn(
-                  'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                  '!justify-start text-left',
                   value.preset === preset.value
                     ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-400'
                     : focusedIndex === index
@@ -218,7 +223,7 @@ export function DateRangePicker({
                 )}
               >
                 {preset.label}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -259,19 +264,15 @@ export function DateRangePicker({
                   )}
                 />
               </div>
-              <button
+              <Button
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={!value.from || !value.to}
-                className={cn(
-                  'w-full rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors',
-                  value.from && value.to
-                    ? 'bg-primary-600 hover:bg-primary-700'
-                    : 'bg-surface-300 dark:bg-surface-600 cursor-not-allowed',
-                )}
+                size="sm"
+                fullWidth
               >
                 Apply
-              </button>
+              </Button>
             </div>
           )}
         </div>

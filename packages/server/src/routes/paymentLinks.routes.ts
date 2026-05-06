@@ -16,6 +16,7 @@ import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { createPaymentLink, isBlockChypEnabled } from '../services/blockchyp.js';
+import { createTenantStripeCheckoutSession, isTenantStripeCheckoutEnabled } from '../services/tenantStripe.js';
 import {
   validatePositiveAmount,
   validateIsoDate,
@@ -148,8 +149,18 @@ authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
   let invoiceIdClean: number | null = null;
   if (invoice_id !== undefined && invoice_id !== null) {
     invoiceIdClean = validateIntegerQuantity(invoice_id, 'invoice_id');
-    const inv = await adb.get('SELECT id FROM invoices WHERE id = ?', invoiceIdClean);
+    const inv = await adb.get<{ id: number; amount_due: number; status: string }>(
+      'SELECT id, amount_due, status FROM invoices WHERE id = ?',
+      invoiceIdClean,
+    );
     if (!inv) throw new AppError('Invoice not found', 404);
+    if (inv.status === 'void' || inv.status === 'paid') {
+      throw new AppError(`Cannot create payment link for a ${inv.status} invoice`, 400);
+    }
+    const dueCents = Math.round(Number(inv.amount_due ?? 0) * 100);
+    if (amountCents > dueCents) {
+      throw new AppError('Payment link amount exceeds invoice balance due', 400);
+    }
   }
   let customerIdClean: number | null = null;
   if (customer_id !== undefined && customer_id !== null) {
@@ -343,7 +354,7 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
 
   // SEC-M60: select expires_at so we can reject stale links and flip status.
   const row = await adb.get<Row>(
-    `SELECT pl.id, pl.status, pl.invoice_id, pl.amount_cents, pl.description, pl.provider, pl.expires_at,
+    `SELECT pl.id, pl.status, pl.invoice_id, pl.customer_id, pl.amount_cents, pl.description, pl.provider, pl.expires_at,
             i.order_id AS invoice_order_id
        FROM payment_links pl
        LEFT JOIN invoices i ON i.id = pl.invoice_id
@@ -359,6 +370,77 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
   if (isLinkExpired(row.expires_at)) {
     await adb.run(`UPDATE payment_links SET status = 'expired' WHERE id = ?`, row.id);
     throw new AppError('Payment link has expired', 410);
+  }
+
+  if (row.provider === 'stripe') {
+    if (!isTenantStripeCheckoutEnabled(req.db)) {
+      audit(req.db, 'payment_link.pay_unavailable', null, req.ip ?? '', {
+        id: row.id,
+        reason: 'stripe_checkout_not_configured',
+        token_prefix: token.slice(0, 8),
+      });
+      res.json({
+        success: true,
+        data: {
+          id: row.id,
+          checkout_available: false,
+          error: 'Online Stripe checkout requires Stripe keys and a webhook signing secret.',
+        },
+      });
+      return;
+    }
+
+    const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
+    const origin = `${protocol}://${host}`;
+    const description = row.description
+      || (row.invoice_order_id ? `Invoice ${row.invoice_order_id}` : 'Payment');
+
+    audit(req.db, 'payment_link.checkout_started', null, req.ip ?? '', {
+      id: row.id,
+      invoice_id: row.invoice_id,
+      amount_cents: row.amount_cents,
+      provider: 'stripe',
+      token_prefix: token.slice(0, 8),
+    });
+
+    const session = await createTenantStripeCheckoutSession(req.db, {
+      tenantSlug: req.tenantSlug ?? null,
+      paymentLinkId: Number(row.id),
+      token,
+      amountCents: Number(row.amount_cents),
+      description,
+      invoiceId: row.invoice_id ? Number(row.invoice_id) : null,
+      customerId: row.customer_id ? Number(row.customer_id) : null,
+      successUrl: `${origin}/pay/${encodeURIComponent(token)}?stripe=success`,
+      cancelUrl: `${origin}/pay/${encodeURIComponent(token)}?stripe=cancelled`,
+    });
+    if (!session.url) {
+      throw new AppError('Stripe did not return a checkout URL', 502);
+    }
+
+    await adb.run(
+      `UPDATE payment_links
+          SET processor_checkout_id = ?,
+              processor_checkout_url = ?,
+              processor_status = ?
+        WHERE id = ?`,
+      session.id,
+      session.url,
+      session.status ?? null,
+      row.id,
+    );
+
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        checkout_available: true,
+        checkout_url: session.url,
+        checkout_id: session.id,
+      },
+    });
+    return;
   }
 
   // If BlockChyp is not configured for this tenant, return graceful fallback.

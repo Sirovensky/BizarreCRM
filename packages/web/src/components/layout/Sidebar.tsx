@@ -32,6 +32,7 @@ import {
   Target,
   TrendingUp,
   Gift,
+  WalletCards,
   Star,
   Phone,
   DollarSign,
@@ -40,6 +41,9 @@ import {
   Repeat,
   Award,
   Trophy,
+  Link2,
+  Clock3,
+  BellRing,
 } from 'lucide-react';
 
 interface NavItem {
@@ -80,7 +84,7 @@ const navSections: NavSection[] = [
       { label: 'Purchase Orders', path: '/purchase-orders', icon: Package },
       { label: 'Cash Register', path: '/cash-register', icon: DollarSign },
       { label: 'Loaners', path: '/loaners', icon: Smartphone },
-      { label: 'Gift Cards', path: '/gift-cards', icon: Gift },
+      { label: 'Gift Cards', path: '/gift-cards', icon: WalletCards },
       { label: 'Subscriptions', path: '/subscriptions', icon: Repeat },
     ],
   },
@@ -125,9 +129,9 @@ const navSections: NavSection[] = [
     title: 'Billing',
     adminOnly: true,
     items: [
-      { label: 'Payment Links', path: '/billing/payment-links', icon: FileText, adminOnly: true },
-      { label: 'Aging', path: '/billing/aging', icon: FileText, adminOnly: true },
-      { label: 'Dunning', path: '/billing/dunning', icon: FileText, adminOnly: true },
+      { label: 'Payment Links', path: '/billing/payment-links', icon: Link2, adminOnly: true },
+      { label: 'Aging', path: '/billing/aging', icon: Clock3, adminOnly: true },
+      { label: 'Dunning', path: '/billing/dunning', icon: BellRing, adminOnly: true },
     ],
   },
   {
@@ -174,6 +178,7 @@ export function Sidebar() {
 
   return (
     <aside
+      aria-label="Application sidebar"
       data-app-chrome="true"
       className={cn(
         'fixed inset-y-0 left-0 z-30 flex flex-col border-r border-surface-200 bg-white transition-all duration-200 dark:border-surface-800 dark:bg-surface-900',

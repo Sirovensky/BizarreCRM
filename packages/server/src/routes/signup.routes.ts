@@ -102,6 +102,9 @@ const RESERVED_SLUGS = new Set([
 // token+email in logs so they can recover if SMTP delivered but the process
 // restarted before the user clicked.
 const PENDING_SIGNUP_TTL_MS = 60 * 60 * 1000; // 1 hour
+const PENDING_SIGNUP_CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const PENDING_SIGNUP_RESEND_COOLDOWN_MS = 60 * 1000;
+const PENDING_SIGNUP_MAX_CODE_ATTEMPTS = 5;
 const pendingSignups = new Map<string, {
   slug: string;
   shopName: string;
@@ -111,6 +114,10 @@ const pendingSignups = new Map<string, {
   adminLastName?: string;
   createdAt: number;
   ipAddress: string;
+  emailCodeHash?: string;
+  emailCodeExpiresAt?: number;
+  emailCodeAttempts?: number;
+  lastEmailSentAt?: number;
 }>();
 
 // Sweep expired entries so the map does not grow without bound.
@@ -245,6 +252,31 @@ function peekSlugCheckCount(ip: string): number {
     return 0;
   }
   return entry.count;
+}
+
+function generateSignupEmailCode(): string {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+function hashSignupEmailCode(code: string): string {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+function timingSafeHexEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, 'hex');
+  const bBuf = Buffer.from(b, 'hex');
+  return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function findPendingSignup(slug: string, adminEmail: string): { token: string; entry: NonNullable<ReturnType<typeof pendingSignups.get>> } | null {
+  const normalizedSlug = slug.trim().toLowerCase();
+  const normalizedEmail = adminEmail.trim().toLowerCase();
+  for (const [token, entry] of pendingSignups) {
+    if (entry.slug === normalizedSlug && entry.adminEmail.toLowerCase() === normalizedEmail) {
+      return { token, entry };
+    }
+  }
+  return null;
 }
 
 // ─── CAPTCHA verification (R5) ─────────────────────────────────────
@@ -495,12 +527,21 @@ async function sendVerificationEmail(
   token: string,
   slug: string,
   shopName: string,
+  emailCode?: string,
 ): Promise<boolean> {
   const verifyUrl = `https://${effectiveBaseDomain(req)}/api/v1/signup/verify/${encodeURIComponent(token)}`;
+  const codeHtml = emailCode
+    ? `
+      <p style="margin:24px 0 8px;color:#334155">Or enter this verification code in the setup wizard:</p>
+      <div style="display:inline-block;letter-spacing:0.35em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:28px;font-weight:700;color:#0f172a;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:12px 18px">${emailCode}</div>
+      <p style="color:#64748b;font-size:13px">The code expires in 10 minutes.</p>
+    `
+    : '';
   const html = `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
       <h2 style="margin-top:0">Confirm your shop</h2>
       <p>Thanks for signing up for BizarreCRM. Please confirm your email to finish creating <strong>${shopName}</strong> (${slug}).</p>
+      ${codeHtml}
       <p style="margin:24px 0">
         <a href="${verifyUrl}" style="background:#3b82f6;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block">Confirm and create my shop</a>
       </p>
@@ -607,15 +648,10 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     return;
   }
 
-  // TEMP-NO-EMAIL-VERIF (2026-04-24): email verification fully disabled
-  // because outbound SMTP is not yet configured / send-failed reports from
-  // production. Restore the SEC-H94 / BH-0002 gate by flipping the constant
-  // back to the env-flag expression once SMTP is healthy:
-  //   const skipEmailVerification = process.env.SKIP_EMAIL_VERIFICATION === '1' && config.nodeEnv !== 'production';
-  // While this is `true`, /signup provisions tenants synchronously without
-  // proving control of the email — re-enable before opening signup to the
-  // public internet.
-  const skipEmailVerification = true;
+  // Email verification is the canonical signup gate. Local/dev environments
+  // that intentionally need the old synchronous provisioning path must opt in
+  // with SKIP_EMAIL_VERIFICATION=1; production never honors that bypass.
+  const skipEmailVerification = process.env.SKIP_EMAIL_VERIFICATION === '1' && config.nodeEnv !== 'production';
   if (skipEmailVerification) {
     logger.warn('signup: TEMP-NO-EMAIL-VERIF — email verification disabled', { slug: normalizedSlug, email: normalizedEmail });
     const result = await provisionTenant({
@@ -658,6 +694,8 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   // Production: stash pending signup and send verification email.
   // No DB writes, no CF DNS record, no tenant directory until link is clicked.
   const verifyToken = crypto.randomBytes(32).toString('hex');
+  const emailCode = generateSignupEmailCode();
+  const now = Date.now();
   pendingSignups.set(verifyToken, {
     slug: normalizedSlug,
     shopName: String(shop_name).trim(),
@@ -665,47 +703,18 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     adminPassword: admin_password,
     adminFirstName: admin_first_name?.toString()?.trim(),
     adminLastName: admin_last_name?.toString()?.trim(),
-    createdAt: Date.now(),
+    createdAt: now,
     ipAddress: ip,
+    emailCodeHash: hashSignupEmailCode(emailCode),
+    emailCodeExpiresAt: now + PENDING_SIGNUP_CODE_TTL_MS,
+    emailCodeAttempts: 0,
+    lastEmailSentAt: now,
   });
   // SCAN-743: log token prefix so operators can re-send the email if the process
   // restarts between here and the user clicking the verification link.
   logger.info('pending signup created', { slug: normalizedSlug, email: normalizedEmail, tokenPrefix: verifyToken.slice(0, 8) });
 
-  // WIZARD-EMAIL-1 (TEMPORARY): when the dev-skip gate is on, do NOT attempt
-  // to send the verification email — outbound SMTP is not yet wired in this
-  // build, so any send fails and bricks the signup flow. Instead log the
-  // verify token URL so an operator can manually click it, and return success
-  // so the frontend lands on its "Check your email" screen where the
-  // dev-only "Skip email check" button can finish the provisioning.
-  //
-  // Triple-gated identical to the dev-skip endpoint itself:
-  //   NODE_ENV !== 'production'  AND  WIZARD_DEV_SKIP_EMAIL === '1'
-  //
-  // Removal: tracked in TODO.md as WIZARD-EMAIL-1.
-  const devSkipEmail =
-    process.env.NODE_ENV !== 'production' &&
-    process.env.WIZARD_DEV_SKIP_EMAIL === '1';
-
-  if (devSkipEmail) {
-    const verifyUrl = `https://${effectiveBaseDomain(req)}/api/v1/signup/verify/${encodeURIComponent(verifyToken)}`;
-    logger.warn('[WIZARD-EMAIL-1] dev-skip mode — verification email NOT sent', {
-      slug: normalizedSlug,
-      email: normalizedEmail,
-      verifyUrl,
-      tokenPrefix: verifyToken.slice(0, 8),
-    });
-    audit(req.db, 'signup_pending_dev_skip_email', null, ip, { slug: normalizedSlug, email: normalizedEmail });
-    res.status(202).json({
-      success: true,
-      data: {
-        message: 'Email sending is disabled in this dev build. Use the "Skip email check (dev only)" button to provision the shop.',
-      },
-    });
-    return;
-  }
-
-  const emailSent = await sendVerificationEmail(req, req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
+  const emailSent = await sendVerificationEmail(req, req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim(), emailCode);
   if (!emailSent) {
     // Remove the pending entry so this attempt doesn't occupy the email quota
     // slot without the user being able to complete it.
@@ -836,32 +845,11 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
   }
 }));
 
-// ─── POST /signup/verify/dev-skip ──────────────────────────────────
-// WIZARD-EMAIL-1 (TEMPORARY — must be removed before SaaS launch).
-//
-// Outbound email is not yet wired in this build, so the wizard's
-// email-verification step in StepVerifyEmail can't actually receive a
-// code. To unblock end-to-end dogfooding of the SaaS-mode wizard, this
-// endpoint short-circuits the token-link step: given a slug + adminEmail
-// matching a pending signup, it provisions the tenant immediately as if
-// the email had been verified.
-//
-// Gated behind BOTH:
-//   process.env.NODE_ENV !== 'production'
-//   process.env.WIZARD_DEV_SKIP_EMAIL === '1'
-//
-// Returns 404 (not 403) in production so it's indistinguishable from a
-// route that doesn't exist. Audit-logs every call regardless of outcome.
-//
-// REMOVAL: tracked as TODO `WIZARD-EMAIL-1`. Delete this entire handler,
-// the matching button in StepVerifyEmail.tsx, and the env-var check once
-// SMTP is wired and the real /verify/:token flow is dogfooded.
-router.post('/verify/dev-skip', asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  // Gate 1 — production hard-block. 404 not 403 to avoid surfacing existence.
-  if (process.env.NODE_ENV === 'production' || process.env.WIZARD_DEV_SKIP_EMAIL !== '1') {
-    res.status(404).json({ success: false, message: 'Not found' });
-    return;
-  }
+// ─── POST /signup/verify-code — Complete signup from setup wizard ──
+// The public email still carries a single-use link for browsers, but the
+// SaaS setup wizard presents a 6-digit code so the user can stay in-flow.
+// Both paths consume the same pending signup and provision exactly once.
+router.post('/verify-code', asyncHandler(async (req: Request, res: Response): Promise<void> => {
   if (!config.multiTenant) {
     res.status(404).json({ success: false, message: 'Not available' });
     return;
@@ -869,57 +857,59 @@ router.post('/verify/dev-skip', asyncHandler(async (req: Request, res: Response)
 
   const slug = String(req.body?.slug || '').trim().toLowerCase();
   const adminEmail = String(req.body?.adminEmail || req.body?.email || '').trim().toLowerCase();
-  if (!slug || !adminEmail) {
-    res.status(400).json({ success: false, message: 'slug and adminEmail are required' });
+  const code = String(req.body?.code || '').trim();
+
+  if (!slug || !adminEmail || !/^\d{6}$/.test(code)) {
+    res.status(400).json({ success: false, message: 'Shop URL, email, and a 6-digit code are required' });
     return;
   }
 
-  // Find the pending entry by (slug + email). Token is irrelevant on this path.
-  let matchedToken: string | null = null;
-  let matchedEntry: ReturnType<typeof pendingSignups.get> = undefined;
-  for (const [token, entry] of pendingSignups) {
-    if (entry.slug === slug && entry.adminEmail.toLowerCase() === adminEmail) {
-      matchedToken = token;
-      matchedEntry = entry;
-      break;
-    }
-  }
-  if (!matchedToken || !matchedEntry) {
-    audit(req.db, 'signup_dev_skip_failed', null, req.ip || 'unknown', {
-      slug, adminEmail, reason: 'no_matching_pending_entry',
-    });
-    res.status(404).json({ success: false, message: 'No pending signup found for that slug + email' });
+  const match = findPendingSignup(slug, adminEmail);
+  if (!match) {
+    res.status(404).json({ success: false, message: 'No pending signup found for that shop and email' });
     return;
   }
 
-  // Same single-use guarantee as the real /verify/:token path.
-  pendingSignups.delete(matchedToken);
+  const { token, entry } = match;
+  const now = Date.now();
+  if (now - entry.createdAt > PENDING_SIGNUP_TTL_MS) {
+    pendingSignups.delete(token);
+    res.status(400).json({ success: false, message: 'This verification code has expired. Please sign up again.' });
+    return;
+  }
+  if (!entry.emailCodeHash || !entry.emailCodeExpiresAt || now > entry.emailCodeExpiresAt) {
+    res.status(400).json({ success: false, message: 'This verification code has expired. Please resend a new code.' });
+    return;
+  }
+  if ((entry.emailCodeAttempts ?? 0) >= PENDING_SIGNUP_MAX_CODE_ATTEMPTS) {
+    res.status(429).json({ success: false, message: 'Too many verification attempts. Please resend a new code.' });
+    return;
+  }
+
+  const submittedHash = hashSignupEmailCode(code);
+  if (!timingSafeHexEqual(submittedHash, entry.emailCodeHash)) {
+    entry.emailCodeAttempts = (entry.emailCodeAttempts ?? 0) + 1;
+    res.status(400).json({ success: false, message: 'Invalid verification code' });
+    return;
+  }
+
+  pendingSignups.delete(token);
 
   const result = await provisionTenant({
-    slug: matchedEntry.slug,
-    name: matchedEntry.shopName,
-    adminEmail: matchedEntry.adminEmail,
-    adminPassword: matchedEntry.adminPassword,
-    adminFirstName: matchedEntry.adminFirstName,
-    adminLastName: matchedEntry.adminLastName,
+    slug: entry.slug,
+    name: entry.shopName,
+    adminEmail: entry.adminEmail,
+    adminPassword: entry.adminPassword,
+    adminFirstName: entry.adminFirstName,
+    adminLastName: entry.adminLastName,
   });
 
   if (!result.success) {
-    audit(req.db, 'signup_dev_skip_failed', null, req.ip || 'unknown', {
-      slug, adminEmail, reason: result.error,
-    });
     res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
     return;
   }
 
-  audit(req.db, 'signup_dev_skip_succeeded', null, req.ip || 'unknown', {
-    slug: result.slug, email: matchedEntry.adminEmail,
-  });
-  logger.warn('[WIZARD-EMAIL-1] dev-skip endpoint used — REMOVE BEFORE PRODUCTION', {
-    slug: result.slug, adminEmail,
-  });
-
-  // Issue tokens just like the real /verify path does.
+  audit(req.db, 'signup_verified_code', null, req.ip || entry.ipAddress, { slug: result.slug, email: entry.adminEmail });
   const tokenResult = await issueSignupTokens(result.slug!, req, res);
   const tenantUrl = `https://${result.slug}.${effectiveBaseDomain(req)}`;
 
@@ -929,14 +919,68 @@ router.post('/verify/dev-skip', asyncHandler(async (req: Request, res: Response)
       tenant_id: result.tenantId,
       slug: result.slug,
       url: tenantUrl,
-      message: 'Shop created (dev-skip).',
+      message: 'Shop created successfully.',
       ...(tokenResult && {
         accessToken: tokenResult.accessToken,
         user: tokenResult.user,
-        tenant: { id: result.tenantId, slug: result.slug, name: matchedEntry.shopName },
+        tenant: { id: result.tenantId, slug: result.slug, name: entry.shopName },
       }),
     },
   });
+}));
+
+// ─── POST /signup/resend-verification — Send a fresh code/link ─────
+router.post('/resend-verification', asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  if (!config.multiTenant) {
+    res.status(404).json({ success: false, message: 'Not available' });
+    return;
+  }
+
+  const slug = String(req.body?.slug || '').trim().toLowerCase();
+  const adminEmail = String(req.body?.adminEmail || req.body?.email || '').trim().toLowerCase();
+  if (!slug || !adminEmail) {
+    res.status(400).json({ success: false, message: 'Shop URL and email are required' });
+    return;
+  }
+
+  const match = findPendingSignup(slug, adminEmail);
+  if (!match) {
+    res.status(404).json({ success: false, message: 'No pending signup found for that shop and email' });
+    return;
+  }
+
+  const { token, entry } = match;
+  const now = Date.now();
+  if (now - entry.createdAt > PENDING_SIGNUP_TTL_MS) {
+    pendingSignups.delete(token);
+    res.status(400).json({ success: false, message: 'This signup has expired. Please sign up again.' });
+    return;
+  }
+  if (entry.lastEmailSentAt && now - entry.lastEmailSentAt < PENDING_SIGNUP_RESEND_COOLDOWN_MS) {
+    res.status(429).json({ success: false, message: 'Please wait a minute before resending.' });
+    return;
+  }
+
+  const nextToken = crypto.randomBytes(32).toString('hex');
+  const emailCode = generateSignupEmailCode();
+  const emailSent = await sendVerificationEmail(req, req.db, entry.adminEmail, nextToken, entry.slug, entry.shopName, emailCode);
+  if (!emailSent) {
+    logger.error('Failed to resend signup verification email', { email: entry.adminEmail, slug: entry.slug });
+    res.status(500).json({ success: false, message: 'Failed to resend verification email. Please try again.' });
+    return;
+  }
+
+  pendingSignups.delete(token);
+  pendingSignups.set(nextToken, {
+    ...entry,
+    emailCodeHash: hashSignupEmailCode(emailCode),
+    emailCodeExpiresAt: now + PENDING_SIGNUP_CODE_TTL_MS,
+    emailCodeAttempts: 0,
+    lastEmailSentAt: now,
+  });
+
+  audit(req.db, 'signup_verification_resent', null, req.ip || entry.ipAddress, { slug: entry.slug, email: entry.adminEmail });
+  res.json({ success: true, data: { message: 'Verification email sent.' } });
 }));
 
 // ─── GET /signup/check-slug/:slug ──────────────────────────────────

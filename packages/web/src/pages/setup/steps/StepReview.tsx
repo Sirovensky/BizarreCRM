@@ -31,9 +31,8 @@ interface StepReviewProps {
  * Shows a summary of what was collected across the wizard (mandatory fields +
  * any extras the user configured), masking sensitive credentials. Two CTAs:
  *   "Complete Setup" flushes everything with wizard_completed='true'
- *   "Skip extras" flushes everything with wizard_completed='skipped'
- *     (use this if the user filled out mandatory steps but wants to bail on
- *     the hub extras — their data is still saved)
+ *   "Skip wizard" flushes everything with wizard_completed='skipped'
+ *     (matching the top-right wizard exit action)
  */
 export function StepReview({ pending, completedCards, onBack, onComplete, onSkip, saving, error }: StepReviewProps) {
   // Run mandatory-field check before rendering CTAs
@@ -99,7 +98,7 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
             <button
               type="button"
               onClick={onBack}
-              className="mt-3 text-sm font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-200"
+            className="btn btn-sm mt-3 text-sm font-medium text-amber-800 underline underline-offset-2 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-200"
             >
               Go back and fix these fields
             </button>
@@ -159,7 +158,7 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
             type="button"
             onClick={onBack}
             disabled={saving}
-            className="flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
+            className="btn btn-lg flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to hub
@@ -169,16 +168,16 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
               type="button"
               onClick={onSkip}
               disabled={saving}
-              className="text-xs font-medium text-surface-500 hover:text-surface-900 disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
+              className="btn btn-lg text-xs font-medium text-surface-500 hover:text-surface-900 disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
             >
-              Skip extras for now
+              Skip wizard
             </button>
             <button
               type="button"
               onClick={onComplete}
               disabled={saving || isBlocked}
               title={isBlocked ? 'Fix missing fields before completing setup' : undefined}
-              className="flex items-center gap-2 rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
               Complete Setup

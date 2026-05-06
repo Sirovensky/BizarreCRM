@@ -88,7 +88,7 @@ export function CashDrawerWidget() {
         {shift ? (
           <button
             onClick={() => setOpenModal('close')}
-            className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+            className="btn btn-sm border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
             title={`Shift opened at ${new Date(shift.opened_at).toLocaleTimeString()} · float ${formatCents(shift.opening_float_cents)}`}
           >
             <Unlock className="h-4 w-4" />
@@ -97,7 +97,7 @@ export function CashDrawerWidget() {
         ) : (
           <button
             onClick={() => setOpenModal('open')}
-            className="flex items-center gap-1.5 rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300"
+            className="btn btn-sm border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300"
           >
             <Lock className="h-4 w-4" />
             Start Shift
@@ -168,7 +168,7 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Open Cash Drawer Shift
           </h3>
-          <button onClick={onClose} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button onClick={onClose} className="btn-icon btn-xs" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -199,7 +199,7 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
           <button
             onClick={submit}
             disabled={submitting}
-            className="w-full rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-md w-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {submitting ? 'Opening...' : 'Open Shift'}
           </button>
@@ -250,7 +250,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Close Shift & Count Drawer
           </h3>
-          <button onClick={onClose} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button onClick={onClose} className="btn-icon btn-xs" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -285,7 +285,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
           <button
             onClick={submit}
             disabled={submitting}
-            className="w-full rounded-lg bg-amber-600 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-md w-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {submitting ? 'Closing...' : 'Close Shift & View Z-Report'}
           </button>

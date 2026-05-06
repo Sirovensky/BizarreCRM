@@ -16,6 +16,7 @@ import { audit } from '../utils/audit.js';
 import { validateRequiredString, validateTextLength } from '../utils/validate.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '@bizarre-crm/shared';
+import { hasPermission, resolveEffectivePermission, type AuthUser } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -46,6 +47,24 @@ interface RoleRow {
   description: string | null;
   is_active: number;
   created_at: string;
+}
+
+interface UserPermissionTargetRow {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  permissions: string | null;
+}
+
+interface UserPermissionOverrideRow {
+  permission_key: string;
+  allowed: number;
+  updated_by_user_id: number | null;
+  updated_at: string | null;
+  updated_by_username: string | null;
 }
 
 /**
@@ -79,9 +98,9 @@ async function ensureDefaultPermsSeeded(adb: AsyncDb): Promise<void> {
   seededDbs.add(adb.dbPath);
 }
 
-function requireAdmin(req: any): void {
-  if (req?.user?.role !== 'admin') {
-    throw new AppError('Admin role required', 403);
+function requireUserManagement(req: any): void {
+  if (!hasPermission(req?.user, PERMISSIONS.USERS_MANAGE)) {
+    throw new AppError('users.manage permission required', 403);
   }
 }
 
@@ -92,16 +111,117 @@ function parseId(value: unknown, label = 'id'): number {
   return n;
 }
 
+function safeParsePermissions(raw: string | null | undefined): Record<string, boolean> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const safe: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'boolean') safe[key] = value;
+    }
+    return safe;
+  } catch {
+    return null;
+  }
+}
+
+async function getUserPermissionState(adb: AsyncDb, userId: number) {
+  const user = await adb.get<UserPermissionTargetRow>(
+    `SELECT id, username, email, first_name, last_name, role, permissions
+     FROM users
+     WHERE id = ? AND is_active = 1`,
+    userId,
+  );
+  if (!user) throw new AppError('User not found', 404);
+
+  const customRole = await adb.get<{
+    role_id: number;
+    role_name: string | null;
+    description: string | null;
+    is_active: number | null;
+  }>(
+    `SELECT ucr.role_id, cr.name AS role_name, cr.description, cr.is_active
+     FROM user_custom_roles ucr
+     LEFT JOIN custom_roles cr ON cr.id = ucr.role_id
+     WHERE ucr.user_id = ?`,
+    userId,
+  );
+
+  let customRolePermissions: Set<string> | null = null;
+  if (customRole?.role_id && customRole.is_active === 1) {
+    const rows = await adb.all<{ permission_key: string }>(
+      'SELECT permission_key FROM role_permissions WHERE role_id = ? AND allowed = 1',
+      customRole.role_id,
+    );
+    customRolePermissions = new Set(rows.map(row => row.permission_key));
+  }
+
+  const overrideRows = await adb.all<UserPermissionOverrideRow>(
+    `SELECT up.permission_key, up.allowed, up.updated_by_user_id, up.updated_at,
+            u.username AS updated_by_username
+     FROM user_permissions up
+     LEFT JOIN users u ON u.id = up.updated_by_user_id
+     WHERE up.user_id = ?
+     ORDER BY up.permission_key ASC`,
+    userId,
+  );
+  const permissionOverrides = overrideRows.length
+    ? new Map(overrideRows.map(row => [row.permission_key, row.allowed === 1]))
+    : null;
+
+  const authUser: AuthUser = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    role: user.role,
+    permissions: safeParsePermissions(user.permissions),
+    sessionId: '',
+    customRolePermissions,
+    permissionOverrides,
+  };
+
+  return {
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      first_name: user.first_name,
+      last_name: user.last_name,
+      role: user.role,
+    },
+    custom_role: customRole
+      ? {
+          role_id: customRole.role_id,
+          name: customRole.role_name,
+          description: customRole.description,
+          is_active: customRole.is_active,
+        }
+      : null,
+    overrides: overrideRows.map(row => ({
+      key: row.permission_key,
+      allowed: row.allowed === 1,
+      updated_by_user_id: row.updated_by_user_id,
+      updated_by_username: row.updated_by_username,
+      updated_at: row.updated_at,
+    })),
+    effective: PERMISSION_KEYS.map(key => ({
+      key,
+      ...resolveEffectivePermission(authUser, key),
+    })),
+  };
+}
+
 // ── ROLES CRUD ──────────────────────────────────────────────────────────────
 
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    // SCAN-1113: role list was visible to any authenticated user — the role
-    // names + descriptions are admin-surface metadata that should not leak
-    // to cashier/technician-tier users. Matches the adminOnly gating on all
-    // write sibling handlers.
-    requireAdmin(req);
+    // SCAN-1113: role list was visible to any authenticated user. Keep this
+    // behind the same effective users.manage gate as the write handlers.
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     await ensureDefaultPermsSeeded(adb);
     const rows = await adb.all<RoleRow>(
@@ -123,7 +243,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     const name = validateRequiredString(req.body?.name, 'name', 50).toLowerCase();
     const description = req.body?.description
@@ -151,7 +271,7 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     const id = parseId(req.params.id, 'role id');
     const description = req.body?.description !== undefined
@@ -185,7 +305,7 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     const id = parseId(req.params.id, 'role id');
     // Prevent deleting the 4 seeded roles — they're load-bearing.
@@ -207,8 +327,8 @@ router.delete(
 router.get(
   '/:id/permissions',
   asyncHandler(async (req, res) => {
-    // SCAN-1113: permission matrix is admin-only surface (settings page).
-    requireAdmin(req);
+    // SCAN-1113: permission matrix is user-management surface (settings page).
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     await ensureDefaultPermsSeeded(adb);
     const id = parseId(req.params.id, 'role id');
@@ -230,7 +350,7 @@ router.get(
 router.put(
   '/:id/permissions',
   asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     const db = req.db;
     const id = parseId(req.params.id, 'role id');
@@ -249,12 +369,10 @@ router.put(
       if (typeof u?.key !== 'string' || !PERMISSION_KEYS.includes(u.key)) {
         throw new AppError(`Unknown permission key: ${u?.key}`, 400);
       }
-      // Refuse to revoke admin.full on the 'admin' role — protects against lockout.
-      // (The shared permission model uses ROLE_PERMISSIONS.admin = Object.values;
-      // lockout protection via the explicit admin.full key stays valid even
-      // after SCAN-1099 because admin keeps every key.)
-      if (role.name === 'admin' && u.key === 'admin.full' && !u.allowed) {
-        throw new AppError('Cannot revoke admin.full from the admin role', 400);
+      // Built-in admin must remain the full-access recovery role. User-level
+      // denies can narrow a specific admin, but the role template stays whole.
+      if (role.name === 'admin' && !u.allowed) {
+        throw new AppError('Cannot revoke permissions from the built-in admin role', 400);
       }
     }
 
@@ -286,10 +404,99 @@ router.put(
 
 // ── USER ↔ ROLE ASSIGNMENT (mounted under /api/v1/roles for grouping) ───────
 
+router.get(
+  '/users/:userId/permissions',
+  asyncHandler(async (req, res) => {
+    requireUserManagement(req);
+    const userId = parseId(req.params.userId, 'user id');
+    const state = await getUserPermissionState(req.asyncDb, userId);
+    res.json({ success: true, data: state });
+  }),
+);
+
+router.put(
+  '/users/:userId/permissions',
+  asyncHandler(async (req, res) => {
+    requireUserManagement(req);
+    const adb: AsyncDb = req.asyncDb;
+    const db = req.db;
+    const userId = parseId(req.params.userId, 'user id');
+    const user = await adb.get<{ id: number; role: string }>(
+      'SELECT id, role FROM users WHERE id = ? AND is_active = 1',
+      userId,
+    );
+    if (!user) throw new AppError('User not found', 404);
+
+    const updates: Array<{ key?: unknown; allowed?: unknown }> = Array.isArray(req.body?.updates)
+      ? req.body.updates
+      : [];
+    if (updates.length === 0) throw new AppError('updates array is required', 400);
+    if (updates.length > PERMISSION_KEYS.length) throw new AppError('updates exceeds permission count', 400);
+
+    const normalized = updates.map((u) => {
+      if (typeof u?.key !== 'string' || !PERMISSION_KEYS.includes(u.key)) {
+        throw new AppError(`Unknown permission key: ${String(u?.key)}`, 400);
+      }
+      if (u.allowed !== true && u.allowed !== false && u.allowed !== null) {
+        throw new AppError('allowed must be true, false, or null', 400);
+      }
+      return { key: u.key, allowed: u.allowed };
+    });
+
+    const deniesUserManagement = normalized.some(
+      update => update.key === PERMISSIONS.USERS_MANAGE && update.allowed === false,
+    );
+    if (deniesUserManagement) {
+      if (req.user?.id === userId) {
+        throw new AppError('Cannot deny users.manage for your own account', 400);
+      }
+      if (user.role === 'admin') {
+        const adminCount = await adb.get<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND is_active = 1`,
+        );
+        if ((adminCount?.n ?? 0) <= 1) {
+          throw new AppError('Cannot deny users.manage for the last active admin', 400);
+        }
+      }
+    }
+
+    const applyTx = db.transaction((): number => {
+      const upsert = db.prepare(
+        `INSERT INTO user_permissions (user_id, permission_key, allowed, updated_by_user_id, updated_at)
+         VALUES (?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(user_id, permission_key) DO UPDATE SET
+           allowed = excluded.allowed,
+           updated_by_user_id = excluded.updated_by_user_id,
+           updated_at = datetime('now')`,
+      );
+      const remove = db.prepare(
+        'DELETE FROM user_permissions WHERE user_id = ? AND permission_key = ?',
+      );
+      let applied = 0;
+      for (const update of normalized) {
+        if (update.allowed === null) {
+          remove.run(userId, update.key);
+        } else {
+          upsert.run(userId, update.key, update.allowed ? 1 : 0, req.user!.id);
+        }
+        applied++;
+      }
+      return applied;
+    });
+    const applied = applyTx();
+
+    audit(req.db, 'user_permissions_updated', req.user!.id, req.ip || 'unknown', {
+      user_id: userId, count: applied,
+    });
+    const state = await getUserPermissionState(adb, userId);
+    res.json({ success: true, data: { user_id: userId, applied, ...state } });
+  }),
+);
+
 router.put(
   '/users/:userId/role',
   asyncHandler(async (req, res) => {
-    requireAdmin(req);
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     const userId = parseId(req.params.userId, 'user id');
     const roleId = parseId(String(req.body?.role_id ?? ''), 'role_id');
@@ -336,6 +543,7 @@ router.put(
 router.get(
   '/users/:userId/role',
   asyncHandler(async (req, res) => {
+    requireUserManagement(req);
     const adb: AsyncDb = req.asyncDb;
     const userId = parseId(req.params.userId, 'user id');
     const row = await adb.get(

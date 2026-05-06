@@ -15,12 +15,11 @@ import {
 import { cn } from '@/utils/cn';
 import { useServerStore } from '@/stores/serverStore';
 import { formatUptime, formatDecimal, formatNumber } from '@/utils/format';
-import { getAPI } from '@/api/bridge';
 import type { MetricsDataPoint } from '@/api/bridge';
-import { handleApiResponse } from '@/utils/handleApiResponse';
 import { Sparkline } from '@/components/Sparkline';
 import { SetupChecklist } from '@/components/SetupChecklist';
 import { RecentActivityWidget } from '@/components/RecentActivityWidget';
+import { useStatsHistoryQuery, useStatsHistorySeedQuery } from '@/hooks/useManagementQueries';
 
 interface StatCardProps {
   label: string;
@@ -33,9 +32,11 @@ interface StatCardProps {
   series?: readonly number[];
 }
 
+const STAT_CARD_CLASS = 'relative overflow-hidden rounded-lg border border-surface-800 bg-surface-900 p-3 lg:p-4 transition-colors hover:border-surface-700';
+
 function StatCard({ label, value, unit, icon: Icon, iconColor = 'text-accent-400', sublabel, series }: StatCardProps) {
   return (
-    <div className="stat-card">
+    <div className={STAT_CARD_CLASS}>
       <div className="flex items-center justify-between mb-1.5 lg:mb-2">
         <div className="min-w-0">
           <span className="text-[10px] lg:text-[11px] font-medium text-surface-500 uppercase tracking-wider">
@@ -371,16 +372,15 @@ function formatHoverTime(ts: string | number, range: TimeRange): string {
 
 function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: number; avg: number; peak: number; rpm: number; avgMs: number; p95Ms: number }) {
   const [range, setRange] = useState<TimeRange>('Live');
-  const [histData, setHistData] = useState<MetricsDataPoint[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  const selectedHistoryQuery = useStatsHistoryQuery(range, range !== 'Live');
+  const histData = range === 'Live' ? null : (selectedHistoryQuery.data ?? null);
+  const loading = range !== 'Live' && selectedHistoryQuery.isFetching && !selectedHistoryQuery.data;
 
   // Live data tracking
   const liveRef = useRef<DataPoint[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
   // AUDIT-MGT-012: stable ref to the latest draw params so that zero-dep
   // effects (seeded history, ResizeObserver) always call drawGraphFn with
@@ -413,34 +413,21 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
   // coarse-grained rollups.
   const seededRef = useRef(false);
   const [seedOldestMs, setSeedOldestMs] = useState<number | null>(null);
+  const seedQuery = useStatsHistorySeedQuery(!seededRef.current);
   useEffect(() => {
-    if (seededRef.current) return;
+    if (seededRef.current || !seedQuery.data) return;
     seededRef.current = true;
-    const attemptRanges: TimeRange[] = ['1h', '6h', '1d'];
-    (async () => {
-      for (const attempt of attemptRanges) {
-        try {
-          const res = await getAPI().management.getStatsHistory(attempt);
-          if (handleApiResponse(res)) return;
-          const data = res.data ?? [];
-          if (data.length < 3 && attempt !== '1d') continue;
-          const recent = data.slice(-LIVE_POINTS);
-          const h = liveRef.current;
-          if (h.length === 0 && recent.length > 0) {
-            for (const p of recent) {
-              const ts = new Date(p.timestamp.includes(' ') ? p.timestamp.replace(' ', 'T') + 'Z' : p.timestamp).getTime();
-              h.push({ value: p.rps_avg, time: ts });
-            }
-            if (h[0]) setSeedOldestMs(h[0].time);
-            if (drawParamsRef.current.range === 'Live') draw(null);
-          }
-          return;
-        } catch (err) {
-          console.warn(`[OverviewPage] seed stats history fetch for ${attempt} failed`, err);
-        }
+    const recent = seedQuery.data.slice(-LIVE_POINTS);
+    const h = liveRef.current;
+    if (h.length === 0 && recent.length > 0) {
+      for (const p of recent) {
+        const ts = new Date(p.timestamp.includes(' ') ? p.timestamp.replace(' ', 'T') + 'Z' : p.timestamp).getTime();
+        h.push({ value: p.rps_avg, time: ts });
       }
-    })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      if (h[0]) setSeedOldestMs(h[0].time);
+      if (drawParamsRef.current.range === 'Live') draw(null);
+    }
+  }, [draw, seedQuery.data]);
 
   // Push live data point
   useEffect(() => {
@@ -462,23 +449,8 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     if (drawParamsRef.current.range === 'Live') draw(null);
   }, [current, draw]);
 
-  // Fetch historical data when range changes
-  useEffect(() => {
-    if (range === 'Live') { setHistData(null); draw(null); return; }
-    let cancelled = false;
-    setLoading(true);
-    getAPI().management.getStatsHistory(range).then(res => {
-      if (cancelled) return;
-      // MGT-023: detect auth expiry on authenticated IPC calls.
-      if (handleApiResponse(res)) { setLoading(false); return; }
-      setHistData(res.data ?? []);
-      setLoading(false);
-    }).catch(() => { if (!cancelled) { setHistData([]); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, [range, draw]);
-
   // Redraw when data or hover changes
-  useEffect(() => { draw(hoverIdx); }, [hoverIdx, histData, range, draw]);
+  useEffect(() => { draw(hoverIdx); }, [hoverIdx, histData, loading, range, draw]);
 
   // Responsive sizing
   useEffect(() => {
@@ -555,13 +527,12 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     }
     if (closest >= 0 && closestDist < 20) {
       setHoverIdx(closest);
-      setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     } else {
-      setHoverIdx(null); setTooltipPos(null);
+      setHoverIdx(null);
     }
   }, [range, histData]);
 
-  const handleMouseLeave = useCallback(() => { setHoverIdx(null); setTooltipPos(null); }, []);
+  const handleMouseLeave = useCallback(() => { setHoverIdx(null); }, []);
 
   // Resolve hovered point for tooltip
   const hoveredValue = hoverIdx !== null
@@ -577,7 +548,7 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
   const hoveredP95 = hoverIdx !== null && range !== 'Live' ? histData?.[hoverIdx]?.p95_response_ms : undefined;
 
   return (
-    <div className="stat-card !p-3 lg:!p-4">
+    <div className={`${STAT_CARD_CLASS} !p-3 lg:!p-4`}>
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-accent-400" />
@@ -613,7 +584,7 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
         {TIME_RANGES.map(r => (
           <button
             key={r}
-            onClick={() => { setRange(r); setHoverIdx(null); setTooltipPos(null); }}
+            onClick={() => { setRange(r); setHoverIdx(null); }}
             className={cn(
               'px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors',
               range === r
@@ -646,24 +617,8 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
             return `Current ${formatDecimal(current)} requests per second, average ${formatDecimal(avg)} requests per second over ${sampleCount} samples`;
           })()}
         </p>
-        {hoverIdx !== null && tooltipPos && hoveredTime && (
-          <div
-            ref={tooltipRef}
-            className="absolute pointer-events-none z-10 bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 shadow-xl text-xs"
-            style={(() => {
-              // DASH-ELEC-290: clamp both axes against the actual rendered
-              // tooltip size (measured via ref) so it never overflows top or
-              // bottom of the chart container. First-frame fallback uses the
-              // old 60px estimate before the ref attaches.
-              const tipW = tooltipRef.current?.offsetWidth ?? 160;
-              const tipH = tooltipRef.current?.offsetHeight ?? 60;
-              const containerW = containerRef.current?.clientWidth ?? 300;
-              const containerH = containerRef.current?.clientHeight ?? 170;
-              const left = Math.max(0, Math.min(tooltipPos.x + 12, containerW - tipW));
-              const top = Math.max(0, Math.min(tooltipPos.y - tipH - 4, containerH - tipH));
-              return { left, top };
-            })()}
-          >
+        {hoverIdx !== null && hoveredTime && (
+          <div className="absolute right-2 top-2 pointer-events-none z-10 bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 shadow-xl text-xs">
             <div className="text-surface-400 mb-1">{formatHoverTime(hoveredTime, range)}</div>
             <div className="text-surface-100 font-bold text-sm">{formatDecimal(hoveredValue)} <span className="text-surface-500 font-normal">req/s</span></div>
             {hoveredP95 !== undefined && (

@@ -220,6 +220,12 @@ describe('dynamic repair pricing services', () => {
     expect(targetLaborForMargin(41, 60, 'ending_99')).toMatchObject({ uncapped: 102.5, rounded: 102.99 });
     expect(roundAutoMarginLabor(102.5, 'whole_dollar')).toBe(103);
     expect(roundAutoMarginLabor(102.5, 'ending_98')).toBe(102.98);
+    expect(roundAutoMarginLabor(147.62, 'off')).toBe(147.62);
+    expect(roundAutoMarginLabor(147.62, 'nearest_dollar')).toBe(148);
+    expect(roundAutoMarginLabor(147.62, 'nearest_5')).toBe(150);
+    expect(roundAutoMarginLabor(147.62, 'nearest_10')).toBe(150);
+    expect(roundAutoMarginLabor(147.62, 'psychological_99')).toBe(149.99);
+    expect(roundAutoMarginLabor(147.62, 'psychological_95')).toBe(149.95);
     expect(cappedAutoMarginLabor(100, 200, 60, 25, 'ending_99')).toBe(125);
 
     const db = buildDb();

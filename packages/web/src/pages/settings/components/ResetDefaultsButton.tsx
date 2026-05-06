@@ -68,7 +68,7 @@ export function ResetDefaultsButton({
         type="button"
         onClick={() => setConfirming(true)}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400 dark:hover:bg-surface-700',
+          'btn btn-secondary btn-xs border border-surface-200 bg-white text-surface-600 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400',
           className
         )}
         title={`Reset ${settingsCount} settings to defaults`}
@@ -93,7 +93,7 @@ export function ResetDefaultsButton({
         type="button"
         onClick={() => mutation.mutate()}
         disabled={mutation.isPending}
-        className="rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+        className="btn btn-danger btn-xs rounded"
       >
         {mutation.isPending ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -104,7 +104,7 @@ export function ResetDefaultsButton({
       <button
         type="button"
         onClick={() => setConfirming(false)}
-        className="rounded px-2 py-0.5 text-xs text-surface-600 hover:bg-white dark:text-surface-400 dark:hover:bg-surface-800"
+        className="btn btn-ghost btn-xs rounded text-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
       >
         Cancel
       </button>

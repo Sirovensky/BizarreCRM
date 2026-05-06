@@ -170,8 +170,9 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
         </div>
         <button
           onClick={clearCustomer}
-          className="shrink-0 rounded p-1 text-surface-400 hover:bg-surface-200 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300 transition-colors"
+          className="btn-icon btn-xs shrink-0 hover:bg-surface-200 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
           title="Remove customer"
+          aria-label="Remove customer"
         >
           <X className="h-4 w-4" />
         </button>
@@ -216,7 +217,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
             <li key={c.id}>
               <button
                 onClick={() => selectCustomer(c)}
-                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-surface-50 dark:hover:bg-surface-700/50 transition-colors"
+                className="btn btn-md !h-auto w-full !justify-start !gap-3 !px-3 !py-2 text-left !whitespace-normal hover:bg-surface-50 dark:hover:bg-surface-700/50"
               >
                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-100 dark:bg-surface-700">
                   <User className="h-3.5 w-3.5 text-surface-500" />
@@ -259,7 +260,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
           <button
             type="button"
             onClick={onNewCustomer}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 active:bg-primary-800"
+            className="btn btn-md w-full bg-primary-600 !font-semibold text-primary-950 hover:bg-primary-700 active:bg-primary-800"
           >
             <UserPlus className="h-4 w-4" />
             New Customer
@@ -269,7 +270,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
           type="button"
           onClick={handleWalkIn}
           disabled={walkInLoading}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-transparent px-4 py-2 text-sm font-medium text-surface-500 transition-colors hover:border-surface-200 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:border-surface-700 dark:hover:bg-surface-800/60 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-sm w-full border border-transparent text-surface-500 hover:border-surface-200 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:border-surface-700 dark:hover:bg-surface-800/60 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           <UserX className="h-4 w-4" />
           {walkInLoading ? 'Loading…' : 'Walk-in (no customer info)'}

@@ -12,21 +12,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        // POS redesign wave (2026-04-24) — brand cream `#fdeed0` is the
-        // project-wide primary (replacing previous orange). Dark end of the
-        // ramp pairs with `onPrimary #2b1400` for AA on light backgrounds.
+        // Runtime-themed primary ramp. Defaults are defined in globals.css
+        // and AppShell replaces the CSS variables from store_config
+        // `theme_primary_color` after settings load.
         primary: {
-          50:  '#fffefb',
-          100: '#fefcf4',
-          200: '#fdf8e8',
-          300: '#fdf4d6',
-          400: '#fdf0c8',
-          500: '#fdeed0',   // ← brand cream (canonical primary — matches iOS/Android dark accent)
-          600: '#f5dca7',   // warm honey (hover on dark surfaces)
-          700: '#e9c477',   // golden (active/focus on dark)
-          800: '#d6a54b',   // amber (light-mode accent, AA on white at 2.8:1 with dark text)
-          900: '#2b1400',   // onPrimary dark brown (AA on cream fills — 10.7:1)
-          950: '#1a0b00',
+          50:  'rgb(var(--primary-50) / <alpha-value>)',
+          100: 'rgb(var(--primary-100) / <alpha-value>)',
+          200: 'rgb(var(--primary-200) / <alpha-value>)',
+          300: 'rgb(var(--primary-300) / <alpha-value>)',
+          400: 'rgb(var(--primary-400) / <alpha-value>)',
+          500: 'rgb(var(--primary-500) / <alpha-value>)',
+          600: 'rgb(var(--primary-600) / <alpha-value>)',
+          700: 'rgb(var(--primary-700) / <alpha-value>)',
+          800: 'rgb(var(--primary-800) / <alpha-value>)',
+          900: 'rgb(var(--primary-900) / <alpha-value>)',
+          950: 'rgb(var(--primary-950) / <alpha-value>)',
         },
         // @audit-fixed (WEB-FM-002 / Fixer-K 2026-04-24): `bg-brand-*` /
         // `text-brand-*` / `border-brand-*` are referenced 21+ times across
@@ -38,17 +38,17 @@ export default {
         // 21-site rename. If a distinct brand ramp is ever introduced, swap
         // these values; the keys are stable.
         brand: {
-          50:  '#fffefb',
-          100: '#fefcf4',
-          200: '#fdf8e8',
-          300: '#fdf4d6',
-          400: '#fdf0c8',
-          500: '#fdeed0',
-          600: '#f5dca7',
-          700: '#e9c477',
-          800: '#d6a54b',
-          900: '#2b1400',
-          950: '#1a0b00',
+          50:  'rgb(var(--primary-50) / <alpha-value>)',
+          100: 'rgb(var(--primary-100) / <alpha-value>)',
+          200: 'rgb(var(--primary-200) / <alpha-value>)',
+          300: 'rgb(var(--primary-300) / <alpha-value>)',
+          400: 'rgb(var(--primary-400) / <alpha-value>)',
+          500: 'rgb(var(--primary-500) / <alpha-value>)',
+          600: 'rgb(var(--primary-600) / <alpha-value>)',
+          700: 'rgb(var(--primary-700) / <alpha-value>)',
+          800: 'rgb(var(--primary-800) / <alpha-value>)',
+          900: 'rgb(var(--primary-900) / <alpha-value>)',
+          950: 'rgb(var(--primary-950) / <alpha-value>)',
         },
         accent: {
           50: '#eff6ff',

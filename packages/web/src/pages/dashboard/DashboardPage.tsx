@@ -32,11 +32,12 @@ import {
   Plus, ArrowRight, Loader2, Info, Download, TrendingUp,
   Receipt, BadgeDollarSign, CreditCard, Wallet, FileText,
   Calendar, PackageX, FileWarning, BoxSelect,
-  Settings2, ChevronUp, ChevronDown, RotateCcw, X, Eye, EyeOff, CalendarClock, Lightbulb,
+  Settings2, ChevronUp, ChevronDown, RotateCcw, X, Eye, EyeOff, CalendarClock, Lightbulb, Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi, onboardingApi, type OnboardingState } from '@/api/endpoints';
+import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi, onboardingApi, repairPricingApi, type OnboardingState } from '@/api/endpoints';
 import { GettingStartedWidget } from '@/components/onboarding/GettingStartedWidget';
+import { ImportLaterReminder } from '@/components/onboarding/ImportLaterReminder';
 import { SampleDataCard } from '@/components/onboarding/SampleDataCard';
 import { SuccessCelebration } from '@/components/onboarding/SuccessCelebration';
 import { DailyNudge } from '@/components/onboarding/DailyNudge';
@@ -44,6 +45,8 @@ import { useMilestoneToasts } from '@/components/onboarding/useMilestoneToasts';
 import { useAuthStore } from '@/stores/authStore';
 import { useHasRole } from '@/hooks/useHasRole';
 import { cn } from '@/utils/cn';
+import { CSV_BOM, toCsvRow } from '@/utils/csv';
+import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate, formatTime } from '@/utils/format';
 // Business Intelligence layer (audit 47)
 import { ProfitHeroCard } from '@/components/reports/ProfitHeroCard';
@@ -68,6 +71,18 @@ interface DashboardKpis {
   sales_by_type: { type: string; quantity: number; sales: number; discounts: number; cogs: number; net_profit: number; tax: number }[];
   daily_sales: { date: string; sale: number; cogs: number; net_profit: number; margin: number; tax: number }[];
   open_tickets: { id: number; order_id: string; task: string; due_at: string | null; assigned_to: string; customer_name: string; status_name: string; status_color: string }[];
+}
+
+function downloadTextFile(contents: string, filename: string, type: string) {
+  const blob = new Blob([contents], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 interface MissingPart {
@@ -332,20 +347,6 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {Object.entries(supplierGroups).map(([source, group]) => (
-              group.urls.length > 0 && (
-                <button
-                  key={`banner-${source}`}
-                  onClick={() => handleOpenAllForSupplier(source)}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 text-sm font-medium transition-colors"
-                >
-                  <ShoppingCart className="h-3.5 w-3.5" />
-                  Order All — {SUPPLIER_LABELS[source] || source} ({group.urls.length})
-                </button>
-              )
-            ))}
-          </div>
         </div>
       )}
 
@@ -370,9 +371,11 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
             group.urls.length > 0 && (
               <button
                 key={`header-${source}`}
+                type="button"
                 onClick={() => handleOpenAllForSupplier(source)}
                 title={`Open all ${group.urls.length} parts from ${SUPPLIER_LABELS[source] || source} in new tabs to order`}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 text-xs font-medium transition-colors"
+                aria-label={`Open all ${group.urls.length} part${group.urls.length !== 1 ? 's' : ''} from ${SUPPLIER_LABELS[source] || source} in new tabs to order`}
+                className="btn btn-xs gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
               >
                 <ShoppingCart className="h-3.5 w-3.5" />
                 Order All — {SUPPLIER_LABELS[source] || source} ({group.urls.length})
@@ -418,6 +421,7 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
                       target="_blank"
                       rel="noopener noreferrer"
                       title={isAddToCart ? `Add to cart on ${p.catalog_source || 'supplier'}` : `View on ${p.catalog_source || 'supplier'}`}
+                      aria-label={`${isAddToCart ? 'Add to cart' : 'View part'} for ${p.part_name} on ${p.catalog_source || 'supplier'}`}
                       className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-blue-500"
                     >
                       {isAddToCart ? <ShoppingCart className="h-3.5 w-3.5" /> : <ExternalLink className="h-3.5 w-3.5" />}
@@ -425,10 +429,12 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
                   );
                 })()}
                 <button
+                  type="button"
                   onClick={() => addToQueueMut.mutate(p)}
                   disabled={addToQueueMut.isPending}
                   title="Add to order queue"
-                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  aria-label={`Add ${p.part_name} to order queue`}
+                  className="btn btn-xs gap-1 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
                 >
                   {addToQueueMut.isPending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -457,21 +463,6 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
             <> · Queue cost: <strong>${(queueSummary!.estimated_cost).toFixed(2)}</strong></>
           )}
         </p>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {Object.entries(supplierGroups).map(([source, group]) => (
-            group.urls.length > 0 && (
-              <button
-                key={source}
-                onClick={() => handleOpenAllForSupplier(source)}
-                title={`Open all ${group.urls.length} part${group.urls.length !== 1 ? 's' : ''} from ${SUPPLIER_LABELS[source] || source} in new tabs`}
-                className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2.5 py-1.5 text-xs font-medium transition-colors"
-              >
-                <ShoppingCart className="h-3 w-3" />
-                Order All from {SUPPLIER_LABELS[source] || source} ({group.urls.length})
-              </button>
-            )
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -578,7 +569,7 @@ function DashboardMetricChart({
               type="button"
               onClick={() => onModeChange(m)}
               className={cn(
-                'rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition-colors',
+                'btn btn-xs capitalize',
                 mode === m
                   ? 'bg-primary-600 text-primary-950'
                   : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
@@ -862,7 +853,7 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
         <button
           key={d}
           onClick={(e) => handleSnooze(itemKey, d, e)}
-          className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-surface-200 dark:bg-surface-700 text-surface-500 dark:text-surface-400 hover:bg-surface-300 dark:hover:bg-surface-600 transition-colors"
+          className="btn btn-xs h-6 px-1.5 text-[10px] bg-surface-200 text-surface-500 hover:bg-surface-300 dark:bg-surface-700 dark:text-surface-400 dark:hover:bg-surface-600"
           title={`Snooze for ${d} days`}
         >
           +{d}d
@@ -923,7 +914,7 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
               {staleTickets.length > SECTION_LIMIT && (
                 <button
                   onClick={() => setShowAllStale(v => !v)}
-                  className="w-full px-4 py-2 text-xs text-primary-600 dark:text-primary-400 hover:bg-surface-50 dark:hover:bg-surface-800/50 font-medium text-center"
+                  className="btn btn-xs btn-ghost w-full text-primary-600 dark:text-primary-400"
                 >
                   {showAllStale ? 'Show less' : `Show all (${staleTickets.length})`}
                 </button>
@@ -958,7 +949,7 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
               {overdueInvoices.length > SECTION_LIMIT && (
                 <button
                   onClick={() => setShowAllInvoices(v => !v)}
-                  className="w-full px-4 py-2 text-xs text-primary-600 dark:text-primary-400 hover:bg-surface-50 dark:hover:bg-surface-800/50 font-medium text-center"
+                  className="btn btn-xs btn-ghost w-full text-primary-600 dark:text-primary-400"
                 >
                   {showAllInvoices ? 'Show less' : `Show all (${overdueInvoices.length})`}
                 </button>
@@ -1087,7 +1078,7 @@ function TechDashboard({ userId }: { userId: number }) {
                 <button
                   key={g.label}
                   onClick={() => navigate(`/tickets${g.statusGroup ? `?status_group=${g.statusGroup}` : ''}`)}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer rounded-lg px-2.5 py-1.5 hover:bg-surface-50 dark:hover:bg-surface-800 transition-all"
+                  className="btn btn-xs btn-ghost gap-1.5 cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800"
                 >
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: g.color }} />
                   <span className="text-surface-700 dark:text-surface-300">{g.label}</span>
@@ -1145,7 +1136,7 @@ function TechDashboard({ userId }: { userId: number }) {
           <h3 className="font-semibold text-surface-900 dark:text-surface-100">My Assigned Tickets</h3>
           <button
             onClick={() => navigate('/tickets?assigned_to=me')}
-            className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+            className="btn btn-xs btn-ghost text-primary-600 hover:text-primary-700"
           >
             View All
           </button>
@@ -1295,7 +1286,7 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
       >
         <div className="flex items-center justify-between p-4 border-b border-surface-100 dark:border-surface-800">
           <h3 id="dashboard-customize-title" className="font-semibold text-surface-900 dark:text-surface-100">Customize Dashboard</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
+          <button onClick={onClose} className="btn-icon btn-xs text-surface-400">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -1306,7 +1297,7 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
               <div key={w.id} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800/50">
                 <button
                   onClick={() => toggle(w.id)}
-                  className={cn('p-1 rounded transition-colors', w.visible ? 'text-green-500 hover:text-green-600' : 'text-surface-300 hover:text-surface-400')}
+                  className={cn('btn-icon btn-xs', w.visible ? '!text-green-500 hover:!text-green-600' : '!text-surface-300 hover:!text-surface-400')}
                   title={w.visible ? 'Hide widget' : 'Show widget'}
                 >
                   {w.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -1318,14 +1309,14 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
                   <button
                     onClick={() => move(i, -1)}
                     disabled={i === 0}
-                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    className="btn-icon btn-xs text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700"
                   >
                     <ChevronUp className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => move(i, 1)}
                     disabled={i === draft.length - 1}
-                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    className="btn-icon btn-xs text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700"
                   >
                     <ChevronDown className="h-3.5 w-3.5" />
                   </button>
@@ -1337,17 +1328,17 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
         <div className="flex items-center justify-between p-4 border-t border-surface-100 dark:border-surface-800">
           <button
             onClick={reset}
-            className="inline-flex items-center gap-1.5 text-xs text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
+            className="btn btn-xs btn-ghost gap-1.5 text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
           >
             <RotateCcw className="h-3.5 w-3.5" /> Reset to Defaults
           </button>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-800">
+            <button onClick={onClose} className="btn btn-sm btn-secondary">
               Cancel
             </button>
             <button
               onClick={() => onSave(draft)}
-              className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 font-medium"
+              className="btn btn-sm btn-primary"
             >
               Save
             </button>
@@ -1384,7 +1375,7 @@ function TodaysAppointments() {
         </div>
         <button
           onClick={() => navigate('/calendar')}
-          className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+          className="btn btn-xs btn-ghost text-primary-600 hover:text-primary-700"
         >
           View Calendar
         </button>
@@ -1464,13 +1455,13 @@ function CogsInfoBanner({ kpis }: { kpis: DashboardKpis | null }) {
       <button
         onClick={handleSync}
         disabled={syncing}
-        className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+        className="btn btn-xs btn-ghost shrink-0 text-blue-600 hover:underline dark:text-blue-400"
       >
         {syncing ? 'Syncing...' : 'Sync from Catalog'}
       </button>
       <button
         onClick={() => navigate('/inventory')}
-        className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+        className="btn btn-xs btn-ghost shrink-0 text-blue-600 hover:underline dark:text-blue-400"
       >
         Go to Inventory
       </button>
@@ -1551,7 +1542,7 @@ function TopServicesWidget({ data }: { data: DashboardSummary | null }) {
         </div>
         <button
           onClick={() => navigate('/reports')}
-          className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+          className="btn btn-xs btn-ghost text-primary-600 hover:text-primary-700"
         >
           View Reports
         </button>
@@ -1691,7 +1682,7 @@ function StaffLeaderboardWidget({ data }: { data: DashboardSummary | null }) {
 
 // AUDIT-D5: Separate daily sales widget that always fetches last 7 days
 function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: string; to: string }; employeeId?: number }) {
-  const navigate = useNavigate();
+  const [isExporting, setIsExporting] = useState(false);
   const { data: salesKpiData, isLoading: salesLoading } = useQuery({
     queryKey: ['dashboard-kpis-7day', last7Range.from, last7Range.to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: last7Range.from, to_date: last7Range.to, employee_id: employeeId }),
@@ -1700,15 +1691,50 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
   });
   const dailySales = salesKpiData?.data?.data?.daily_sales ?? [];
 
+  const handleDownloadReport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const exportParams = {
+        from_date: last7Range.from,
+        to_date: last7Range.to,
+        employee_id: employeeId,
+        export_all: true,
+      } as Parameters<typeof reportApi.dashboardKpis>[0] & { export_all: boolean };
+      const response = await reportApi.dashboardKpis(exportParams);
+      const rows = response.data?.data?.daily_sales ?? [];
+      const csvRows = [
+        toCsvRow(['Date', 'Sales', 'COGS', 'Net Profit', 'Margin %', 'Tax']),
+        ...rows.map((row: DashboardKpis['daily_sales'][number]) => toCsvRow([
+          row.date,
+          row.sale,
+          row.cogs,
+          row.net_profit,
+          row.margin ?? '',
+          row.tax,
+        ])),
+      ];
+      const filename = `daily-sales-${last7Range.from}-to-${last7Range.to}.csv`;
+      downloadTextFile(CSV_BOM + csvRows.join('\n'), filename, 'text/csv;charset=utf-8');
+      toast.success(rows.length ? 'Daily Sales report downloaded' : 'Daily Sales report downloaded with no rows');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to download Daily Sales report');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="card">
       <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Daily Sales (Last 7 Days)</h3>
         <button
-          onClick={() => navigate('/reports')}
-          className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium"
+          onClick={handleDownloadReport}
+          disabled={isExporting}
+          className="btn btn-xs btn-ghost gap-1 text-primary-600 hover:text-primary-700"
         >
-          <Download className="h-3 w-3" /> Download Report
+          {isExporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+          {isExporting ? 'Downloading...' : 'Download Report'}
         </button>
       </div>
       <div className="overflow-x-auto max-h-80 overflow-y-auto">
@@ -1784,6 +1810,8 @@ function AdminOrManagerDashboard() {
   const [datePreset, setDatePreset] = useState<DatePreset>('thisMonth');
   const [employeeId, setEmployeeId] = useState<number | undefined>(undefined);
   const [showCustomize, setShowCustomize] = useState(false);
+  const [showRebaseModal, setShowRebaseModal] = useState(false);
+  const [showMarginAlertsModal, setShowMarginAlertsModal] = useState(false);
   const [activeMetrics, setActiveMetrics] = useState<Set<ChartMetric>>(new Set(['sale']));
   const [chartMode, setChartMode] = useState<ChartMode>('area');
   const toggleMetric = useCallback((m: ChartMetric) => {
@@ -1866,6 +1894,52 @@ function AdminOrManagerDashboard() {
     refetchIntervalInBackground: false,
   });
 
+  const { data: rebaseSummaryData } = useQuery({
+    queryKey: ['repair-pricing', 'rebase-summary'],
+    queryFn: () => repairPricingApi.getRebaseSummary(),
+    refetchInterval: JITTER_120K,
+    refetchIntervalInBackground: false,
+  });
+  const rebaseSummary = rebaseSummaryData?.data?.data ?? null;
+  const hasUnreadRebase = !!rebaseSummary && !rebaseSummary.acked_at && rebaseSummary.device_count > 0;
+
+  const { data: marginAlertSummaryData } = useQuery({
+    queryKey: ['repair-pricing', 'margin-alert-summary'],
+    queryFn: () => repairPricingApi.getMarginAlertSummary(),
+    refetchInterval: JITTER_120K_B,
+    refetchIntervalInBackground: false,
+  });
+  const marginAlertSummary = marginAlertSummaryData?.data?.data ?? null;
+  const hasMarginAlerts = (marginAlertSummary?.critical ?? 0) > 0 || (marginAlertSummary?.unacked ?? 0) > 0;
+
+  const { data: marginAlertsData } = useQuery({
+    queryKey: ['repair-pricing', 'margin-alerts', showMarginAlertsModal],
+    queryFn: () => repairPricingApi.getMarginAlerts({ limit: 25, min_days: (marginAlertSummary?.critical ?? 0) > 0 ? 7 : 0 }),
+    enabled: showMarginAlertsModal,
+    staleTime: 30_000,
+  });
+  const marginAlerts = marginAlertsData?.data?.data ?? [];
+
+  const ackRebaseMutation = useMutation({
+    mutationFn: () => repairPricingApi.ackRebaseSummary(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing', 'rebase-summary'] });
+      setShowRebaseModal(false);
+      toast.success('Tier shifts acknowledged');
+    },
+    onError: (err: unknown) => toast.error(formatApiError(err)),
+  });
+
+  const ackMarginAlertMutation = useMutation({
+    mutationFn: (id: number) => repairPricingApi.ackMarginAlert(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing', 'margin-alert-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing', 'margin-alerts'] });
+      toast.success('Margin alert acknowledged');
+    },
+    onError: (err: unknown) => toast.error(formatApiError(err)),
+  });
+
   // Today's summary (basic dashboard KPIs)
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['dashboard-summary'],
@@ -1914,6 +1988,13 @@ function AdminOrManagerDashboard() {
   });
   const onboardingState: OnboardingState | null = onboardingData?.data?.data ?? null;
 
+  const { data: setupStatusData } = useQuery({
+    queryKey: ['setup-status'],
+    queryFn: () => settingsApi.getSetupStatus(),
+    staleTime: 30_000,
+  });
+  const setupImportChoice = setupStatusData?.data?.data?.setup_imported_legacy_data ?? null;
+
   // Phase B1: hide noisy BI widgets until shop has taken a real payment
   const isDayOne = !onboardingState?.first_payment_at;
 
@@ -1929,6 +2010,8 @@ function AdminOrManagerDashboard() {
       {onboardingState && !onboardingState.checklist_dismissed && (
         <GettingStartedWidget preloadedState={onboardingState} />
       )}
+
+      <ImportLaterReminder setupImportChoice={setupImportChoice} />
 
       {/* Phase B2: day-3/5/7 re-engagement nudges */}
       <DailyNudge preloadedState={onboardingState} />
@@ -1947,6 +2030,28 @@ function AdminOrManagerDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {hasUnreadRebase && rebaseSummary && (
+            <button
+              type="button"
+              onClick={() => setShowRebaseModal(true)}
+              className="btn btn-sm flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-800 hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-200 dark:hover:bg-primary-500/20"
+            >
+              <TrendingUp className="h-4 w-4 flex-shrink-0" />
+              {rebaseSummary.device_count} device{rebaseSummary.device_count === 1 ? '' : 's'} crossed pricing tier
+            </button>
+          )}
+          {hasMarginAlerts && marginAlertSummary && (
+            <button
+              type="button"
+              onClick={() => setShowMarginAlertsModal(true)}
+              className="btn btn-sm flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800 hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200 dark:hover:bg-red-500/20"
+            >
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              {marginAlertSummary.critical > 0
+                ? `${marginAlertSummary.critical} margin alert${marginAlertSummary.critical === 1 ? '' : 's'} over 7 days`
+                : `${marginAlertSummary.unacked} margin alert${marginAlertSummary.unacked === 1 ? '' : 's'} need review`}
+            </button>
+          )}
           {hasMissingParts && (() => {
             const totalNeeded = missingParts.length + (queueSummary?.total_items ?? 0);
             return (
@@ -1960,7 +2065,7 @@ function AdminOrManagerDashboard() {
           })()}
           <button
             onClick={() => setShowCustomize(true)}
-            className="p-2 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+            className="btn-icon btn-sm text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
             title="Customize dashboard widgets"
           >
             <Settings2 className="h-4 w-4" />
@@ -1968,13 +2073,162 @@ function AdminOrManagerDashboard() {
         </div>
       </div>
 
+      {showRebaseModal && rebaseSummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="rebase-summary-title">
+          <div className="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl dark:bg-surface-900">
+            <div className="flex items-start justify-between gap-3 border-b border-surface-200 p-5 dark:border-surface-700">
+              <div>
+                <h2 id="rebase-summary-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+                  Pricing tier shifts
+                </h2>
+                <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+                  {rebaseSummary.crossing_count} price row{rebaseSummary.crossing_count === 1 ? '' : 's'} changed across {rebaseSummary.device_count} device{rebaseSummary.device_count === 1 ? '' : 's'} on {formatDate(rebaseSummary.date)}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRebaseModal(false)}
+                className="btn-icon btn-sm text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
+                aria-label="Close pricing tier shifts"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-[55vh] overflow-auto p-5">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-surface-100 text-left text-xs uppercase tracking-wide text-surface-500 dark:border-surface-800">
+                    <th className="py-2 pr-3 font-medium">Device</th>
+                    <th className="py-2 pr-3 font-medium">Service</th>
+                    <th className="py-2 pr-3 font-medium">Tier</th>
+                    <th className="py-2 text-right font-medium">Labor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+                  {rebaseSummary.crossings.map((row, index) => (
+                    <tr key={`${row.device_model_id}:${row.repair_service_id}:${index}`}>
+                      <td className="py-2 pr-3 font-medium text-surface-900 dark:text-surface-100">{row.device_name}</td>
+                      <td className="py-2 pr-3 text-surface-600 dark:text-surface-300">{row.service_name}</td>
+                      <td className="py-2 pr-3 text-surface-600 dark:text-surface-300">
+                        {String(row.old_tier ?? 'unknown').replace('tier_', '').toUpperCase()}{' -> '}{row.new_tier.replace('tier_', '').toUpperCase()}
+                      </td>
+                      <td className="py-2 text-right text-surface-700 dark:text-surface-200">
+                        {formatCurrency(row.old_labor)}{' -> '}{formatCurrency(row.new_labor)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-surface-200 p-4 dark:border-surface-700">
+              <button
+                type="button"
+                onClick={() => navigate('/settings?tab=repair-pricing')}
+                className="btn btn-secondary btn-sm"
+              >
+                Open pricing settings
+              </button>
+              <button
+                type="button"
+                onClick={() => ackRebaseMutation.mutate()}
+                disabled={ackRebaseMutation.isPending}
+                className="btn btn-primary btn-sm"
+              >
+                {ackRebaseMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Acknowledge
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMarginAlertsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="margin-alerts-title">
+          <div className="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl dark:bg-surface-900">
+            <div className="flex items-start justify-between gap-3 border-b border-surface-200 p-5 dark:border-surface-700">
+              <div>
+                <h2 id="margin-alerts-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+                  Repair margin alerts
+                </h2>
+                <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+                  {(marginAlertSummary?.critical ?? 0) > 0
+                    ? `${marginAlertSummary?.critical ?? 0} pricing row${(marginAlertSummary?.critical ?? 0) === 1 ? '' : 's'} have been below target profit for 7+ days.`
+                    : `${marginAlertSummary?.unacked ?? 0} active pricing row${(marginAlertSummary?.unacked ?? 0) === 1 ? '' : 's'} need review.`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMarginAlertsModal(false)}
+                className="btn-icon btn-sm text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
+                aria-label="Close margin alerts"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-[55vh] overflow-auto p-5">
+              {marginAlerts.length === 0 ? (
+                <div className="rounded-lg border border-surface-200 bg-surface-50 p-4 text-sm text-surface-600 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300">
+                  No margin alerts match this dashboard view.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-surface-100 text-left text-xs uppercase tracking-wide text-surface-500 dark:border-surface-800">
+                      <th className="py-2 pr-3 font-medium">Device</th>
+                      <th className="py-2 pr-3 font-medium">Service</th>
+                      <th className="py-2 pr-3 text-right font-medium">Profit</th>
+                      <th className="py-2 pr-3 text-right font-medium">Cost</th>
+                      <th className="py-2 text-right font-medium">Age</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+                    {marginAlerts.map((alert) => (
+                      <tr key={alert.id}>
+                        <td className="py-2 pr-3 font-medium text-surface-900 dark:text-surface-100">{alert.device_model_name ?? `Device #${alert.device_model_id}`}</td>
+                        <td className="py-2 pr-3 text-surface-600 dark:text-surface-300">{alert.repair_service_name ?? `Service #${alert.repair_service_id}`}</td>
+                        <td className="py-2 pr-3 text-right text-red-700 dark:text-red-300">{formatCurrency(alert.profit_estimate)}</td>
+                        <td className="py-2 pr-3 text-right text-surface-600 dark:text-surface-300">{formatCurrency(alert.supplier_cost)}</td>
+                        <td className="py-2 text-right text-surface-600 dark:text-surface-300">{alert.days_active ?? 0}d</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-surface-200 p-4 dark:border-surface-700">
+              <button
+                type="button"
+                onClick={() => navigate('/settings?tab=repair-pricing&subtab=automation')}
+                className="btn btn-secondary btn-sm"
+              >
+                Open alert settings
+              </button>
+              {marginAlerts.some((alert) => !alert.acked_at) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = marginAlerts.find((alert) => !alert.acked_at);
+                    if (next) ackMarginAlertMutation.mutate(next.id);
+                  }}
+                  disabled={ackMarginAlertMutation.isPending}
+                  className="btn btn-primary btn-sm"
+                >
+                  {ackMarginAlertMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Acknowledge next
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── Phase B1: Day-1 Focus row — visible only before first payment ─── */}
       {isDayOne && (
         <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => navigate('/pos')}
-            className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
+            className="btn btn-lg w-full !justify-start !gap-3 !rounded-xl border border-primary-200 bg-primary-50 text-left hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
               <ShoppingCart className="h-4 w-4" />
@@ -1988,7 +2242,7 @@ function AdminOrManagerDashboard() {
           <button
             type="button"
             onClick={() => navigate('/customers/new')}
-            className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
+            className="btn btn-lg w-full !justify-start !gap-3 !rounded-xl border border-primary-200 bg-primary-50 text-left hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
               <Plus className="h-4 w-4" />
@@ -2032,7 +2286,7 @@ function AdminOrManagerDashboard() {
                 key={dp.key}
                 onClick={() => setDatePreset(dp.key)}
                 className={cn(
-                  'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                  'btn btn-xs',
                   datePreset === dp.key
                     ? 'bg-primary-600 text-primary-950'
                     : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'
@@ -2157,7 +2411,7 @@ function AdminOrManagerDashboard() {
                           onClick={metricKey ? () => toggleMetric(metricKey) : (c.href ? () => navigate(c.href!) : undefined)}
                           style={isActive && metricDef ? { boxShadow: `0 0 0 2px ${metricDef.color}`, color: metricDef.color } : undefined}
                           className={cn(
-                            'text-xs bg-surface-50 dark:bg-surface-800/50 px-2 py-1 rounded transition-colors',
+                            'btn btn-xs bg-surface-50 dark:bg-surface-800/50',
                             isActive
                               ? 'text-surface-700 dark:text-surface-200'
                               : 'text-surface-400 dark:text-surface-500',
@@ -2187,7 +2441,7 @@ function AdminOrManagerDashboard() {
                   <h3 className="font-semibold text-surface-900 dark:text-surface-100">Sales By Item Type</h3>
                   <button
                     onClick={() => navigate('/reports')}
-                    className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                    className="btn btn-xs btn-ghost text-primary-600 hover:text-primary-700"
                   >
                     View Report
                   </button>
@@ -2240,7 +2494,7 @@ function AdminOrManagerDashboard() {
                     <h3 className="font-semibold text-surface-900 dark:text-surface-100">Repair Tickets</h3>
                     <button
                       onClick={() => navigate('/tickets')}
-                      className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                      className="btn btn-xs btn-ghost text-primary-600 hover:text-primary-700"
                     >
                       View All
                     </button>

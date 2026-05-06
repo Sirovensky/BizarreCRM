@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { createContext, createElement, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { settingsApi } from '@/api/endpoints';
 
 type SettingsMap = Record<string, string>;
+const EMPTY_SETTINGS: SettingsMap = {};
+const SETTINGS_QUERY_KEY = ['settings', 'config'] as const;
+const SETTINGS_STALE_TIME_MS = 5 * 60 * 1000;
 
 // Runtime narrowing for the server's settings payload. The endpoint is
 // documented to return `Record<string, string>`, but we never trust external
@@ -31,24 +34,43 @@ interface UseSettingsReturn {
   getSetting: (key: string, defaultValue?: string) => string;
 }
 
-export function useSettings(): UseSettingsReturn {
+const SettingsContext = createContext<UseSettingsReturn | null>(null);
+
+function useSettingsQueryValue(): UseSettingsReturn {
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['settings', 'config'],
+    queryKey: SETTINGS_QUERY_KEY,
     queryFn: async (): Promise<SettingsMap> => {
       const res = await settingsApi.getConfig();
       return coerceSettings(res.data?.data);
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: SETTINGS_STALE_TIME_MS,
   });
+  const settings = data ?? EMPTY_SETTINGS;
 
   // SCAN-1087: previously `getSetting` was recreated on every render, so
   // downstream consumers that pass it as a useEffect/useMemo dependency
   // re-ran on every unrelated render. Memoize with `useCallback` keyed on
   // `data` so the identity only changes when settings actually change.
   const getSetting = useCallback(
-    (key: string, defaultValue = ''): string => data?.[key] ?? defaultValue,
-    [data],
+    (key: string, defaultValue = ''): string => settings[key] ?? defaultValue,
+    [settings],
   );
 
-  return { settings: data ?? {}, isLoading, isError, error, getSetting };
+  return useMemo(
+    () => ({ settings, isLoading, isError, error, getSetting }),
+    [settings, isLoading, isError, error, getSetting],
+  );
+}
+
+export function SettingsProvider({ children }: { children: ReactNode }) {
+  const value = useSettingsQueryValue();
+  return createElement(SettingsContext.Provider, { value }, children);
+}
+
+export function useSettings(): UseSettingsReturn {
+  const context = useContext(SettingsContext);
+  if (!context) {
+    throw new Error('useSettings must be used within a SettingsProvider');
+  }
+  return context;
 }

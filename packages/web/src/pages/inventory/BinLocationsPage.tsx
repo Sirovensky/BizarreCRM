@@ -155,32 +155,32 @@ export function BinLocationsPage() {
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value.toUpperCase())}
                 placeholder="Code (e.g. A1-S2-B3)"
-                className="w-full rounded border border-surface-300 px-2 py-1 text-sm"
+                className="w-full rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
               />
               <input
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 placeholder="Description"
-                className="w-full rounded border border-surface-300 px-2 py-1 text-sm"
+                className="w-full rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
               />
               <div className="grid grid-cols-3 gap-1">
                 <input
                   value={newAisle}
                   onChange={(e) => setNewAisle(e.target.value)}
                   placeholder="Aisle"
-                  className="rounded border border-surface-300 px-2 py-1 text-xs"
+                  className="rounded border border-surface-300 bg-white px-2 py-1 text-xs text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
                 />
                 <input
                   value={newShelf}
                   onChange={(e) => setNewShelf(e.target.value)}
                   placeholder="Shelf"
-                  className="rounded border border-surface-300 px-2 py-1 text-xs"
+                  className="rounded border border-surface-300 bg-white px-2 py-1 text-xs text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
                 />
                 <input
                   value={newBin}
                   onChange={(e) => setNewBin(e.target.value)}
                   placeholder="Bin"
-                  className="rounded border border-surface-300 px-2 py-1 text-xs"
+                  className="rounded border border-surface-300 bg-white px-2 py-1 text-xs text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
                 />
               </div>
               <div className="flex gap-1">
@@ -194,7 +194,7 @@ export function BinLocationsPage() {
                 </button>
                 <button
                   onClick={() => setShowNew(false)}
-                  className="rounded border border-surface-300 px-2 py-1 text-xs"
+                  className="rounded border border-surface-300 px-2 py-1 text-xs text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-900"
                 >
                   Cancel
                 </button>
@@ -218,7 +218,7 @@ export function BinLocationsPage() {
                     });
                     if (ok) deleteMut.mutate(b.id);
                   }}
-                  className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:text-red-400 dark:hover:text-red-300"
                   disabled={deleteMut.isPending && deleteMut.variables === b.id}
                   aria-label={`Deactivate bin ${b.code}`}
                 >
@@ -237,7 +237,7 @@ export function BinLocationsPage() {
             <select
               value={windowDays}
               onChange={(e) => setWindowDays(parseInt(e.target.value, 10))}
-              className="rounded-md border border-surface-300 px-2 py-1 text-sm"
+              className="rounded-md border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
             >
               <option value={30}>Last 30 days</option>
               <option value={90}>Last 90 days</option>
@@ -271,9 +271,9 @@ export function BinLocationsPage() {
           </div>
 
           {heatmapData && heatmapData.suggestions.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <h3 className="font-semibold text-amber-800 mb-2">Re-layout suggestions</h3>
-              <ul className="text-sm text-amber-900 space-y-1">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+              <h3 className="font-semibold text-amber-800 mb-2 dark:text-amber-100">Re-layout suggestions</h3>
+              <ul className="text-sm text-amber-900 space-y-1 dark:text-amber-200">
                 {heatmapData.suggestions.map((s, i) => (
                   <li key={i}>
                     Bin <span className="font-mono font-bold">{s.bin_code}</span> has {s.picks} picks —

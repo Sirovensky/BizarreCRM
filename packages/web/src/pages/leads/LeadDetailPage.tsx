@@ -1,7 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Loader2, ArrowRightLeft, Pencil, Save, Phone, Mail,
+  Loader2, ArrowRightLeft, Pencil, Save, Phone, Mail,
   MapPin, User, Wrench, Calendar, X, Bell, Plus, Clock, Activity,
   AlertTriangle,
 } from 'lucide-react';
@@ -14,15 +14,19 @@ import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 
-const STATUS_COLORS: Record<string, string> = {
-  new: '#3b82f6',
-  contacted: '#f59e0b',
-  scheduled: '#f59e0b',
-  qualified: '#8b5cf6',
-  proposal: '#ec4899',
-  converted: '#22c55e',
-  lost: '#ef4444',
-};
+const LEAD_STATUSES = [
+  { value: 'new', label: 'New', color: '#3b82f6' },
+  { value: 'contacted', label: 'Contacted', color: '#8b5cf6' },
+  { value: 'scheduled', label: 'Scheduled', color: '#f59e0b' },
+  { value: 'qualified', label: 'Qualified', color: '#06b6d4' },
+  { value: 'proposal', label: 'Proposal', color: '#ec4899' },
+  { value: 'converted', label: 'Converted', color: '#22c55e' },
+  { value: 'lost', label: 'Lost', color: '#ef4444' },
+] as const;
+
+function getStatusConfig(status: string) {
+  return LEAD_STATUSES.find((s) => s.value === status) ?? { value: status, label: status, color: '#6b7280' };
+}
 
 const LOST_REASONS = [
   { value: 'price', label: 'Price too high' },
@@ -315,39 +319,44 @@ export function LeadDetailPage() {
     return items;
   }, [appointments, reminders, lead, nowMs]);
 
+  const leadBreadcrumbItems = [
+    { label: 'Leads', href: '/leads' },
+    { label: lead?.order_id ? `Lead ${lead.order_id}` : id ? `Lead #${id}` : 'Lead' },
+  ];
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
+      <div>
+        <Breadcrumb items={leadBreadcrumbItems} />
+        <div className="flex items-center justify-center py-20" aria-busy="true" aria-label="Loading lead">
+          <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
+        </div>
       </div>
     );
   }
 
   if (isError || !lead) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <p className="text-lg font-medium text-surface-600 dark:text-surface-400">Lead not found</p>
-        <Link to="/leads" className="mt-4 text-sm text-primary-600 hover:underline">Back to leads</Link>
+      <div>
+        <Breadcrumb items={leadBreadcrumbItems} />
+        <div className="flex flex-col items-center justify-center py-20" role="alert">
+          <p className="text-lg font-medium text-surface-600 dark:text-surface-400">Lead not found</p>
+          <Link to="/leads" className="mt-4 text-sm text-primary-600 hover:underline">Back to leads</Link>
+        </div>
       </div>
     );
   }
 
-  const color = STATUS_COLORS[lead.status] || '#6b7280';
+  const statusConfig = getStatusConfig(lead.status);
+  const color = statusConfig.color;
   const devices: any[] = lead.devices || [];
-  const statuses = ['new', 'contacted', 'scheduled', 'qualified', 'proposal', 'converted', 'lost'];
 
   return (
     <div>
-      <Breadcrumb items={[
-        { label: 'Leads', href: '/leads' },
-        { label: lead.order_id ? `Lead ${lead.order_id}` : `Lead #${id}` },
-      ]} />
+      <Breadcrumb items={leadBreadcrumbItems} />
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/leads')} className="rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">
@@ -355,26 +364,26 @@ export function LeadDetailPage() {
               </h1>
               {editingStatus ? (
                 <div className="flex items-center gap-1 flex-wrap">
-                  {statuses.map((s) => (
+                  {LEAD_STATUSES.map((s) => (
                     <button
-                      key={s}
+                      key={s.value}
                       onClick={() => {
-                        if (s === 'lost' && lead.status !== 'lost') {
+                        if (s.value === 'lost' && lead.status !== 'lost') {
                           setShowLostModal(true);
                           setEditingStatus(false);
                         } else {
-                          scheduleStatusChange(s, lead.status);
+                          scheduleStatusChange(s.value, lead.status);
                         }
                       }}
                       className={cn(
                         'rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition-colors',
-                        lead.status === s
+                        lead.status === s.value
                           ? 'ring-2 ring-offset-1 ring-primary-500'
                           : 'hover:opacity-80',
                       )}
-                      style={{ backgroundColor: `${STATUS_COLORS[s] || '#6b7280'}18`, color: STATUS_COLORS[s] || '#6b7280' }}
+                      style={{ backgroundColor: `${s.color}18`, color: s.color }}
                     >
-                      {s}
+                      {s.label}
                     </button>
                   ))}
                   <button onClick={() => setEditingStatus(false)} aria-label="Cancel status edit" className="p-0.5 text-surface-400"><X className="h-3.5 w-3.5" /></button>
@@ -386,7 +395,7 @@ export function LeadDetailPage() {
                   style={{ backgroundColor: `${color}18`, color }}
                 >
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
-                  {lead.status}
+                  {statusConfig.label}
                 </button>
               )}
             </div>

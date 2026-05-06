@@ -63,7 +63,7 @@ function PasswordInput({ value, onChange, placeholder }: { value: string; onChan
         aria-label={show ? 'Hide value' : 'Show value'}
         type="button"
         onClick={() => setShow(!show)}
-        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+        className="btn-icon btn-xs absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
       >
         {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </button>
@@ -222,7 +222,7 @@ export function BlockChypSettings() {
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending || !isDirty}
-          className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="btn btn-md bg-green-600 text-white hover:bg-green-700"
           title={!isDirty ? 'No changes to save' : 'Save dirty fields only'}
         >
           {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -282,7 +282,7 @@ export function BlockChypSettings() {
               <button
                 onClick={handleTestConnection}
                 disabled={testing || !form.blockchyp_api_key || !form.blockchyp_bearer_token || !form.blockchyp_signing_key}
-                className="flex items-center gap-2 rounded-lg border border-surface-300 bg-surface-50 px-4 py-2 text-sm font-medium hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:bg-surface-700 dark:hover:bg-surface-600"
+                className="btn btn-secondary btn-sm border border-surface-300 bg-surface-50 dark:border-surface-600 dark:bg-surface-700 dark:hover:bg-surface-600"
               >
                 {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
                 Test Connection

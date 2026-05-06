@@ -32,6 +32,14 @@ import { reserveStorage } from '../services/usageTracker.js';
 import { enqueueReceiptOcr } from '../services/receiptOcr.js';
 import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
+import {
+  GENERAL_IMAGE_UPLOAD_MAX_BYTES,
+  IMAGE_UPLOAD_EXTENSIONS,
+  IMAGE_UPLOAD_FORMAT_ERROR,
+  IMAGE_UPLOAD_MIME_TYPES,
+  isSupportedImageMime,
+  sanitizedImageExtension,
+} from '../utils/imageUploadPolicy.js';
 
 const router = Router({ mergeParams: true });
 
@@ -43,16 +51,9 @@ const RECEIPT_RATE_CATEGORY = 'expense_receipt_upload';
 const RECEIPT_RATE_MAX = 20;
 const RECEIPT_RATE_WINDOW_MS = 60_000; // 20 per minute per user
 
-const RECEIPT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
-
-const ALLOWED_RECEIPT_MIMES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-] as const;
-
-const ALLOWED_RECEIPT_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic']);
+const RECEIPT_MAX_BYTES = GENERAL_IMAGE_UPLOAD_MAX_BYTES;
+const ALLOWED_RECEIPT_MIMES = IMAGE_UPLOAD_MIME_TYPES;
+const ALLOWED_RECEIPT_EXTENSIONS = IMAGE_UPLOAD_EXTENSIONS;
 
 // ---------------------------------------------------------------------------
 // Multer configuration
@@ -77,7 +78,7 @@ const receiptUpload = multer({
       }
     },
     filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
+      const ext = sanitizedImageExtension(file.originalname);
       if (!ext || !ALLOWED_RECEIPT_EXTENSIONS.has(ext)) {
         cb(new Error('Unsupported receipt image extension'), '');
         return;
@@ -90,10 +91,10 @@ const receiptUpload = multer({
     files: 1,
   },
   fileFilter: (_req, file, cb) => {
-    if ((ALLOWED_RECEIPT_MIMES as readonly string[]).includes(file.mimetype)) {
+    if (isSupportedImageMime(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only JPEG, PNG, WebP, or HEIC allowed for receipt images'));
+      cb(new Error(IMAGE_UPLOAD_FORMAT_ERROR));
     }
   },
 });
