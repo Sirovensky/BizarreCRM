@@ -13,31 +13,20 @@ interface WsState {
   // consumers can render as a "Realtime updates offline — refresh to retry"
   // banner. Set after MAX_RECONNECT_ATTEMPTS consecutive failures.
   isWsOffline: boolean;
-  lastMessage: { type: string; data: unknown } | null;
   setConnected: (v: boolean) => void;
   setWsOffline: (v: boolean) => void;
-  setLastMessage: (msg: { type: string; data: unknown } | null) => void;
 }
 
 export const useWsStore = create<WsState>((set) => ({
   isConnected: false,
   isWsOffline: false,
-  lastMessage: null,
   setConnected: (v) => set({ isConnected: v }),
   setWsOffline: (v) => set({ isWsOffline: v }),
-  setLastMessage: (msg) => set({ lastMessage: msg }),
 }));
 
-// WEB-FO-016 (Fixer-B15 2026-04-25): wipe the module-scoped `lastMessage`
-// snapshot whenever auth is cleared (logout, switchUser). The Zustand
-// store persists across the auth lifecycle, so any future subscriber
-// would briefly read the prior user's last WS payload — a cross-tenant
-// leak shape even if no current consumer reads it. Belt-and-suspenders
-// against future regressions; mirrors the queryClient.clear() that
-// main.tsx already runs on the same event.
 if (typeof window !== 'undefined') {
   window.addEventListener('bizarre-crm:auth-cleared', () => {
-    useWsStore.setState({ lastMessage: null, isConnected: false, isWsOffline: false });
+    useWsStore.setState({ isConnected: false, isWsOffline: false });
   });
 }
 
@@ -321,7 +310,7 @@ export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
   // useCallback dependency or capturing a stale closure value.
   const scheduleReconnectRef = useRef<() => void>(() => { /* populated below */ });
 
-  const { setConnected, setLastMessage } = useWsStore();
+  const { setConnected } = useWsStore();
 
   const hasAuthSessionHint = useCallback(
     () => typeof document !== 'undefined' && /(?:^|;\s*)csrf_token=/.test(document.cookie),
@@ -427,9 +416,6 @@ export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
         // lastMessageAtRef above. Don't fan out to invalidation map.
         if (type === 'pong') return;
 
-        // Store last message
-        setLastMessage({ type, data });
-
         // Invalidate relevant query keys
         const entry = invalidationMap.current[type];
         if (entry) {
@@ -496,7 +482,7 @@ export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [enabled, hasAuthSessionHint, setConnected, setLastMessage, startHeartbeat, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
+  }, [enabled, hasAuthSessionHint, setConnected, startHeartbeat, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
   const { setWsOffline } = useWsStore();
 

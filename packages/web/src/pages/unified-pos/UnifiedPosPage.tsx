@@ -116,6 +116,20 @@ export function UnifiedPosPage() {
   const [cartCollapsed, setCartCollapsed] = useState(false);
   const [showReturnModal, setShowReturnModal] = useState(false);
   const toggleCart = useCallback(() => setCartCollapsed((v) => !v), []);
+
+  // WEB-UIUX-750: show a dismissible banner when a 401 interrupted a checkout
+  // mid-flight. The flag is written by the API client interceptor (client.ts)
+  // before forcing logout, and cleared here on first render.
+  const [showCheckoutInterrupted, setShowCheckoutInterrupted] = useState(() => {
+    try {
+      const flagged = sessionStorage.getItem('pos.checkout_interrupted') === '1';
+      if (flagged) sessionStorage.removeItem('pos.checkout_interrupted');
+      return flagged;
+    } catch {
+      return false;
+    }
+  });
+
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -457,6 +471,32 @@ export function UnifiedPosPage() {
     <div className="relative flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* Phase D2: device template nudge — dismissed per-session via localStorage */}
       <DeviceTemplateNudge />
+      {/* WEB-UIUX-750: checkout-interrupted banner — shown once after re-login
+          when a mid-checkout 401 forced logout. Link directs staff to Tickets. */}
+      {showCheckoutInterrupted && (
+        <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-700/50 dark:bg-amber-900/20">
+          <p className="flex-1 text-sm text-amber-800 dark:text-amber-200">
+            Your previous checkout was interrupted. Check{' '}
+            <button
+              type="button"
+              onClick={() => navigate('/tickets')}
+              className="font-semibold underline hover:no-underline"
+            >
+              Tickets
+            </button>{' '}
+            to verify.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowCheckoutInterrupted(false)}
+            className="btn-icon btn-xs text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-800/40"
+            aria-label="Dismiss"
+            title="Dismiss"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       <div className="border-b border-surface-200 bg-white px-4 py-2 dark:border-surface-700 dark:bg-surface-900">
         <TrainingModeBanner />
       </div>

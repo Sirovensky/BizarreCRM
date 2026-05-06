@@ -14,13 +14,14 @@ interface PinModalProps {
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_SECONDS = 60;
-// SCAN-1168: persist the lockout across full page reloads — previously the
-// counter lived in useState only, so a user who hit the 5-attempt cap could
-// just refresh the page and get 5 fresh attempts. sessionStorage scopes per
-// tab, which matches the UX intent (closing the tab = ending the kiosk
-// session). Server-side `authApi.verifyPin` has its own rate limit, but
-// that surfaces as "too many attempts" AFTER a dozen hits — the UI-level
-// cap is load-bearing for the "N remaining" message.
+// SCAN-1168 / WEB-UIUX-752: persist the lockout across full page reloads AND
+// across browser tabs — previously the counter lived in useState only, so a
+// user who hit the 5-attempt cap could just refresh the page or open a new
+// tab and get 5 fresh attempts. localStorage shares state across all tabs on
+// the same origin, closing the multi-tab brute-force vector. The lockout
+// still auto-expires after LOCKOUT_SECONDS. Server-side `authApi.verifyPin`
+// has its own rate limit, but that surfaces as "too many attempts" AFTER a
+// dozen hits — the UI-level cap is load-bearing for the "N remaining" message.
 const LOCKOUT_STORAGE_KEY = 'bizarre:pin-modal-lockout';
 
 interface PersistedLockout {
@@ -30,7 +31,7 @@ interface PersistedLockout {
 
 function readPersistedLockout(): PersistedLockout {
   try {
-    const raw = sessionStorage.getItem(LOCKOUT_STORAGE_KEY);
+    const raw = localStorage.getItem(LOCKOUT_STORAGE_KEY);
     if (!raw) return { failCount: 0, lockedUntil: null };
     const parsed = JSON.parse(raw) as Partial<PersistedLockout>;
     return {
@@ -43,7 +44,7 @@ function readPersistedLockout(): PersistedLockout {
 }
 
 function writePersistedLockout(next: PersistedLockout): void {
-  try { sessionStorage.setItem(LOCKOUT_STORAGE_KEY, JSON.stringify(next)); }
+  try { localStorage.setItem(LOCKOUT_STORAGE_KEY, JSON.stringify(next)); }
   catch (err) {
     // quota / sandboxed — best effort; lockout still tracked in component state.
     console.warn('[PinModal] persisting lockout state failed', err);
@@ -51,7 +52,7 @@ function writePersistedLockout(next: PersistedLockout): void {
 }
 
 function clearPersistedLockout(): void {
-  try { sessionStorage.removeItem(LOCKOUT_STORAGE_KEY); }
+  try { localStorage.removeItem(LOCKOUT_STORAGE_KEY); }
   catch { /* ignore */ }
 }
 

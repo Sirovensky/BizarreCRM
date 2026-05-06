@@ -3399,32 +3399,32 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED9: Concurrent Editor Conflicts
 
-- [ ] WEB-UIUX-734. **[BLOCKER] No version/etag on any write — server is naive last-write-wins.** Two cashiers editing same ticket — one notes, one status — both succeed; later PUT wins for fields it sends. L11, L4.
+- [ ] WEB-UIUX-734. **[BLOCKER] No version/etag on any write — server is naive last-write-wins.** Two cashiers editing same ticket — one notes, one status — both succeed; later PUT wins for fields it sends. L11, L4. **[AUTOLOOP-T34 BLOCKED: cross-cutting optimistic concurrency — version columns + If-Match + UI conflict prompts; not safe to implement unilaterally.]**
   `packages/web/src/api/client.ts:372-394` (acknowledged)
 
 - [ ] WEB-UIUX-735. **[BLOCKER] ReceiptSettings/InvoiceSettings/TicketsRepairsSettings/BlockChypSettings/SmsVoiceSettings/DataRetentionTab all PUT entire config blob.** Sibling tab clobber bug (PosSettings already fixed via OWNED_KEYS). L5, L16.
   Multiple settings tabs share `['settings','config']` cache
 
-- [ ] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11.
+- [ ] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11. **[AUTOLOOP-T34 BLOCKED: requires server endpoint expected_qty CAS + new client UI input; multi-component.]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:101-112,127-131`
 
 - [ ] WEB-UIUX-737. **[MAJOR] Optimistic mutations cancel queries but never reconcile WS pushes mid-flight.** User flips status to Done → WS pushes "In Progress" from co-worker → invalidate fires → user's optimistic Done disappears mid-render. Pill flickers, no signal. L11, L4.
   Tickets, sidebar, notes, kanban share pattern
 
-- [ ] WEB-UIUX-738. **[MAJOR] CustomerDetailPage InfoTab — WS-driven `customer:updated` invalidation + `useEffect setForm(newCustomer)` overwrites in-progress edits silently.** L6, L11.
+- [x] WEB-UIUX-738. **[MAJOR] CustomerDetailPage InfoTab — WS-driven `customer:updated` invalidation + `useEffect setForm(newCustomer)` overwrites in-progress edits silently.** L6, L11. **[AUTOLOOP-T34 RESOLVED: CustomerDetailPage InfoTab — useMemo isDirty check; useEffect skips setForm when dirty + shows deduped warning toast.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1104-1167,1200-1201`
 
 - [ ] WEB-UIUX-739. **[MAJOR] `useDraft` 2-tab race — same draft key in two tabs → setItem clobbers each other on debounce-tick.** No `storage` event listener, no merge. L6.
   `packages/web/src/hooks/useDraft.ts:28-32,86,215-219`
 
-- [ ] WEB-UIUX-740. **[MINOR] `useWsStore.lastMessage` stored on every event but ZERO consumers.** Pages can't show "Bob just edited this — refresh?" banners. Wasted state. L11.
+- [x] WEB-UIUX-740. **[MINOR] `useWsStore.lastMessage` stored on every event but ZERO consumers.** Pages can't show "Bob just edited this — refresh?" banners. Wasted state. L11. **[AUTOLOOP-T34 RESOLVED: useWsStore.lastMessage removed (zero consumers across codebase); state slim and writes eliminated.]**
   `packages/web/src/hooks/useWebSocket.ts:25-28,454`
 
 - [ ] WEB-UIUX-741. **[MINOR] No "stale data" age indicator anywhere.** Zero "edited X ago, refresh" badges. L11.
 
 #### ED5: Auth/Session/Permission Edges
 
-- [ ] WEB-UIUX-742. **[BLOCKER] SwitchUser is sticky forever — no auto-revert, no banner.** Manager switches in to override, walks away, cashier sells under manager identity. Only signal = name in Header avatar. L16, L11.
+- [ ] WEB-UIUX-742. **[BLOCKER] SwitchUser is sticky forever — no auto-revert, no banner.** Manager switches in to override, walks away, cashier sells under manager identity. Only signal = name in Header avatar. L16, L11. **[AUTOLOOP-T34 BLOCKED: switchUser fully replaces auth state via emitAuthCleared(); no original-user snapshot exists for "Switch back" banner.]**
   `packages/web/src/components/layout/Header.tsx:101,540-555`
   `packages/web/src/stores/authStore.ts:113-127`
   <!-- meta: fix=ImpersonationBanner-style-yellow-bar+auto-revert-after-N-min -->
@@ -3433,31 +3433,31 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/api/client.ts:78-108`
   `packages/web/src/components/shared/PermissionBoundary.tsx:18-25`
 
-- [ ] WEB-UIUX-744. **[BLOCKER] `auth-cleared` fires on cross-tab silent refresh — wipes drafts/dismissals on active tab even though SAME USER.** Tab B refreshes → tab A's drafts gone. L6, L7.
+- [x] WEB-UIUX-744. **[BLOCKER] `auth-cleared` fires on cross-tab silent refresh — wipes drafts/dismissals on active tab even though SAME USER.** Tab B refreshes → tab A's drafts gone. L6, L7. **[AUTOLOOP-T34 RESOLVED: emitAuthCleared/AuthBroadcastMessage pass prevUserId; authStore + useDraft skip destructive sweeps when prevUserId === current user_id.]**
   `packages/web/src/stores/authStore.ts:269-282`
   `packages/web/src/hooks/useDraft.ts:59`
 
 - [ ] WEB-UIUX-745. **[MAJOR] Mid-action 401 → form data lost.** Forced logout → SPA nav to /login → wipeAllDrafts() synchronous. Re-login lands on fromPath but form is fresh state. L4, L7.
   `packages/web/src/stores/authStore.ts:294-309`
 
-- [ ] WEB-UIUX-746. **[MAJOR] Cross-tab logout wipes drafts in current tab even mid-form — NO toast, NO warning before redirect.** L6, L4.
+- [x] WEB-UIUX-746. **[MAJOR] Cross-tab logout wipes drafts in current tab even mid-form — NO toast, NO warning before redirect.** L6, L4. **[AUTOLOOP-T34 RESOLVED: handleAuthBroadcastMessage scans localStorage for bizarrecrm:draft: keys; if drafts exist, toast.error + 700 ms delay before requestLoginNav.]**
   `packages/web/src/stores/authStore.ts:213-228`
 
 - [ ] WEB-UIUX-747. **[MAJOR] No global inactivity timeout / no expiring-session warning.** TODO since DASH-6. Token rolls forward indefinitely. L1, L16.
   `packages/web/src/stores/authStore.ts:62-71`
 
-- [ ] WEB-UIUX-748. **[MAJOR] POS cart bleeding partially mitigated (user-scoped key) but `auth-cleared` doesn't clear POS store.** Stale cart from cashier A persists, resumes on relogin (privacy: customer phone/email attached). L16.
+- [x] WEB-UIUX-748. **[MAJOR] POS cart bleeding partially mitigated (user-scoped key) but `auth-cleared` doesn't clear POS store.** Stale cart from cashier A persists, resumes on relogin (privacy: customer phone/email attached). L16. **[AUTOLOOP-T34 RESOLVED: POS store gets `bizarre-crm:auth-cleared` listener calling resetAll() — cart/customer/discounts/UI/idempotency cleared on logout/relogin.]**
   `packages/web/src/pages/unified-pos/store.ts:64-68`
 
 - [ ] WEB-UIUX-749. **[MAJOR] Trial expiry mid-action: 403 upgrade_required opens modal — but CART NOT PERSISTED before modal.** Cashier mid-sale loses cart. L4, L8.
   `packages/web/src/api/client.ts:294-313`
 
-- [ ] WEB-UIUX-750. **[MAJOR] Mid-checkout 401 → re-login lands back on POS but no banner: "Your previous checkout was interrupted. Check Tickets to verify."** Cashier may run sale twice on different till. L8, L11.
+- [x] WEB-UIUX-750. **[MAJOR] Mid-checkout 401 → re-login lands back on POS but no banner: "Your previous checkout was interrupted. Check Tickets to verify."** Cashier may run sale twice on different till. L8, L11. **[AUTOLOOP-T34 RESOLVED: client.ts sets `pos.checkout_interrupted` sessionStorage flag on 401 mid-checkout; UnifiedPosPage reads + clears + renders dismissible amber banner with /tickets link.]**
 
 - [ ] WEB-UIUX-751. **[MINOR] Expired password reset link copy intentionally vague + no resend affordance.** Three-click recovery (back to login → forgot → email → wait). L4, L14.
   `packages/web/src/pages/auth/ResetPasswordPage.tsx:71-84`
 
-- [ ] WEB-UIUX-752. **[MINOR] PIN modal lockout uses sessionStorage scoped per-tab → multi-tab brute force (10 attempts in 2 tabs).** Server catches but UI message misleading. L16.
+- [x] WEB-UIUX-752. **[MINOR] PIN modal lockout uses sessionStorage scoped per-tab → multi-tab brute force (10 attempts in 2 tabs).** Server catches but UI message misleading. L16. **[AUTOLOOP-T34 RESOLVED: PinModal lockout switched from sessionStorage to localStorage; cross-tab lockout shared, blocking multi-tab brute force.]**
   `packages/web/src/components/shared/PinModal.tsx:21-50`
 
 - [ ] WEB-UIUX-753. **[MINOR] TrialBanner expired state dismissible — silenced forever (key on trialEndsAt which doesn't change).** Should be non-dismissible. L8, L16.

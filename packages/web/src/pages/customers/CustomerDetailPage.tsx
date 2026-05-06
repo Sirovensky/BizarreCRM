@@ -1241,6 +1241,31 @@ function MembershipCard({ customerId }: { customerId: number }) {
   );
 }
 
+/** Build a plain form snapshot from a Customer record (used for init + dirty check). */
+function customerToForm(c: Customer) {
+  return {
+    first_name: c.first_name || '',
+    last_name: c.last_name || '',
+    type: c.type || 'individual',
+    organization: c.organization || '',
+    email: c.email || '',
+    phone: c.phone || '',
+    mobile: c.mobile || '',
+    address1: c.address1 || '',
+    address2: c.address2 || '',
+    city: c.city || '',
+    state: c.state || '',
+    postcode: c.postcode || '',
+    country: c.country || 'US',
+    referred_by: c.referred_by || '',
+    comments: c.comments || '',
+    tags: parseTags(c.tags).join(', '),
+    email_opt_in: c.email_opt_in,
+    sms_opt_in: c.sms_opt_in,
+    tax_number: c.tax_number || '',
+  };
+}
+
 function InfoTab({
   customer,
   customerId,
@@ -1250,52 +1275,30 @@ function InfoTab({
 }) {
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({
-    first_name: customer.first_name || '',
-    last_name: customer.last_name || '',
-    type: customer.type || 'individual',
-    organization: customer.organization || '',
-    email: customer.email || '',
-    phone: customer.phone || '',
-    mobile: customer.mobile || '',
-    address1: customer.address1 || '',
-    address2: customer.address2 || '',
-    city: customer.city || '',
-    state: customer.state || '',
-    postcode: customer.postcode || '',
-    country: customer.country || 'US',
-    referred_by: customer.referred_by || '',
-    comments: customer.comments || '',
-    tags: parseTags(customer.tags).join(', '),
-    email_opt_in: customer.email_opt_in,
-    sms_opt_in: customer.sms_opt_in,
-    tax_number: customer.tax_number || '',
-  });
+  const [form, setForm] = useState(() => customerToForm(customer));
 
-  // Reset form when customer changes
+  // WEB-UIUX-738: track whether the user has made local edits so that a
+  // WS-driven customer:updated invalidation doesn't silently clobber them.
+  const isDirty = React.useMemo(() => {
+    const clean = customerToForm(customer);
+    return (Object.keys(clean) as (keyof typeof clean)[]).some(
+      (k) => form[k] !== clean[k],
+    );
+  }, [form, customer]);
+
+  // Reset form when the server snapshot changes (e.g. after WS invalidation).
+  // If the user has unsaved edits, skip the reset and warn them instead.
   useEffect(() => {
-    setForm({
-      first_name: customer.first_name || '',
-      last_name: customer.last_name || '',
-      type: customer.type || 'individual',
-      organization: customer.organization || '',
-      email: customer.email || '',
-      phone: customer.phone || '',
-      mobile: customer.mobile || '',
-      address1: customer.address1 || '',
-      address2: customer.address2 || '',
-      city: customer.city || '',
-      state: customer.state || '',
-      postcode: customer.postcode || '',
-      country: customer.country || 'US',
-      referred_by: customer.referred_by || '',
-      comments: customer.comments || '',
-      tags: parseTags(customer.tags).join(', '),
-      email_opt_in: customer.email_opt_in,
-      sms_opt_in: customer.sms_opt_in,
-      tax_number: customer.tax_number || '',
-    });
-  }, [customer]);
+    if (isDirty) {
+      toast('Another user updated this customer. Save your changes or discard them to see the latest.', {
+        icon: '⚠️',
+        duration: 8000,
+        id: `ws-conflict-${customerId}`,
+      });
+      return;
+    }
+    setForm(customerToForm(customer));
+  }, [customer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateMutation = useMutation({
     mutationFn: (data: UpdateCustomerInput) =>

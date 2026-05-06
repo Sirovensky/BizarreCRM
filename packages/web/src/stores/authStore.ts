@@ -17,7 +17,7 @@ const AUTH_TAB_ID = (() => {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 })();
-type AuthBroadcastMessage = { type: 'cleared' | 'ready'; source: string; ts: number };
+type AuthBroadcastMessage = { type: 'cleared' | 'ready'; source: string; ts: number; prevUserId?: string | number | null };
 const authBroadcastChannel = typeof window !== 'undefined' && 'BroadcastChannel' in window
   ? new BroadcastChannel('bizarre-crm:auth')
   : null;
@@ -52,9 +52,9 @@ export { REQUEST_LOGIN_NAV_EVENT };
 function clearLegacyAccessToken(): void {
   try { localStorage.removeItem('accessToken'); } catch { /* legacy cleanup only */ }
 }
-function broadcastAuth(type: AuthBroadcastMessage['type']): void {
+function broadcastAuth(type: AuthBroadcastMessage['type'], prevUserId?: string | number | null): void {
   if (typeof window === 'undefined') return;
-  const msg: AuthBroadcastMessage = { type, source: AUTH_TAB_ID, ts: Date.now() };
+  const msg: AuthBroadcastMessage = { type, source: AUTH_TAB_ID, ts: Date.now(), prevUserId };
   try { authBroadcastChannel?.postMessage(msg); } catch { /* best-effort */ }
   try {
     localStorage.setItem(AUTH_BROADCAST_KEY, JSON.stringify(msg));
@@ -62,14 +62,18 @@ function broadcastAuth(type: AuthBroadcastMessage['type']): void {
     /* storage disabled — BroadcastChannel may still have worked */
   }
 }
-function emitAuthCleared(broadcast = true): void {
+// WEB-UIUX-744: prevUserId is the user.id that was active BEFORE the clear.
+// Wipe listeners compare it to the current store user_id; if they match, the
+// clear came from a silent refresh on the SAME user (cross-tab token renewal)
+// and destructive state sweeps (drafts, dismissals) are skipped.
+function emitAuthCleared(broadcast = true, prevUserId?: string | number | null): void {
   if (typeof window === 'undefined') return;
   try {
-    window.dispatchEvent(new CustomEvent(AUTH_CLEAR_EVENT));
+    window.dispatchEvent(new CustomEvent(AUTH_CLEAR_EVENT, { detail: { prevUserId: prevUserId ?? null } }));
   } catch (err) {
     console.warn('Failed to emit auth-cleared event', err);
   }
-  if (broadcast) broadcastAuth('cleared');
+  if (broadcast) broadcastAuth('cleared', prevUserId);
 }
 // Fired whenever the cookie-backed tenant session becomes available. Listeners
 // like useWebSocket use this to (re)connect now that authentication is live.
@@ -115,13 +119,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Clear any previous tenant's cached data before storing new credentials.
     // This prevents Tenant B from seeing Tenant A's React Query cache entries
     // when the same browser session is reused for a different login.
-    emitAuthCleared(false);
+    const prevUser = useAuthStore.getState().user;
+    emitAuthCleared(false, prevUser?.id ?? null);
     clearLegacyAccessToken();
     set({ user, isAuthenticated: true, isLoading: false });
     emitAuthReady();
   },
 
   logout: async () => {
+    const prevUser = useAuthStore.getState().user;
     try { await api.post('/auth/logout'); } catch (err) {
       // Network/server error during logout — proceed with local cleanup regardless,
       // but surface the failure so it's not invisible (server-side session may linger).
@@ -131,7 +137,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: null, isAuthenticated: false, isLoading: false });
     // @audit-fixed: notify listeners (queryClient, planStore, ws state) so the
     // next user does not inherit cached data from the user that just logged out.
-    emitAuthCleared();
+    // Pass null as prevUserId so listeners know this is a real logout (no user
+    // will be active after this) and perform full wipes unconditionally.
+    emitAuthCleared(true, prevUser?.id ?? null);
   },
 
   switchUser: async (pin: string) => {
@@ -142,7 +150,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     // (ticket/customer lists) and the WS socket kept subscriptions from
     // the outgoing user. Emit the clear BEFORE calling the API so listeners
     // tear down state while the PIN is still being validated.
-    emitAuthCleared(false);
+    const prevUser = useAuthStore.getState().user;
+    emitAuthCleared(false, prevUser?.id ?? null);
     const res = await api.post('/auth/switch-user', { pin });
     const { user } = res.data.data;
     clearLegacyAccessToken();
@@ -184,8 +193,15 @@ export const useAuthStore = create<AuthState>((set) => ({
 // `recent_views:*` is handled by Sidebar's own listener; `bizarrecrm:draft:*`
 // by useDraft's listener. This covers the `bizarrecrm:dismiss:*` namespace
 // (useDismissible) and any future `bizarrecrm:` prefixed additions.
+// WEB-UIUX-744: skip the sweep when auth-cleared was fired for a silent token
+// refresh with the SAME user still active (prevUserId matches current user.id).
 if (typeof window !== 'undefined') {
-  window.addEventListener('bizarre-crm:auth-cleared', () => {
+  window.addEventListener('bizarre-crm:auth-cleared', (e: Event) => {
+    const detail = (e as CustomEvent<{ prevUserId?: string | number | null }>).detail;
+    const currentUserId = useAuthStore.getState().user?.id ?? null;
+    // If prevUserId is set and equals the currently-authenticated user id, this
+    // clear came from a silent refresh on the same session — do not wipe.
+    if (detail?.prevUserId != null && detail.prevUserId === currentUserId) return;
     try {
       const toRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -206,21 +222,50 @@ if (typeof window !== 'undefined') {
 // We broadcast only a non-secret event marker, then sibling tabs re-hydrate
 // from the httpOnly cookie via /auth/me or clear local UI state.
 // ──────────────────────────────────────────────────────────────────
+
+/** WEB-UIUX-746: Returns true if any useDraft-persisted key exists in localStorage. */
+function hasSavedDrafts(): boolean {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('bizarrecrm:draft:')) return true;
+    }
+  } catch { /* storage disabled — assume no drafts */ }
+  return false;
+}
+
 function handleAuthBroadcastMessage(msg: AuthBroadcastMessage): void {
   if (!msg || msg.source === AUTH_TAB_ID) return;
   if (msg.type === 'cleared') {
     const wasAuthed = useAuthStore.getState().isAuthenticated;
+    const prevUserId = useAuthStore.getState().user?.id ?? null;
     useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
-    emitAuthCleared(false);
+    // Pass the local prevUserId so wipe listeners can decide if the user actually
+    // changed. For a cross-tab logout the remote prevUserId (msg.prevUserId) may
+    // differ from the local one when users differ between tabs, but we always use
+    // the local tab's prevUserId since it's what the local wipe listeners compare.
+    emitAuthCleared(false, prevUserId);
     if (wasAuthed && !window.location.pathname.startsWith('/login')) {
-      requestLoginNav();
+      // WEB-UIUX-746: warn the user if they had unsaved draft data before
+      // redirecting, so they know work is recoverable after re-login.
+      if (hasSavedDrafts()) {
+        toast.error('Logged out from another tab. Drafts saved locally — re-login to recover.');
+        setTimeout(requestLoginNav, 700);
+      } else {
+        requestLoginNav();
+      }
     }
     return;
   }
 
   if (msg.type === 'ready') {
+    // WEB-UIUX-744: a sibling tab completed a silent token refresh and broadcast
+    // 'ready'. We re-hydrate via checkAuth() but must NOT wipe drafts/dismissals
+    // if the same user is still active. Pass the current user.id as prevUserId so
+    // wipe listeners can skip destructive sweeps when the user hasn't changed.
+    const prevUserId = useAuthStore.getState().user?.id ?? null;
     useAuthStore.setState({ isLoading: true });
-    emitAuthCleared(false);
+    emitAuthCleared(false, prevUserId);
     queueMicrotask(() => {
       useAuthStore.getState().checkAuth();
     });

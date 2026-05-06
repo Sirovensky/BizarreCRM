@@ -56,7 +56,16 @@ function wipeAllDrafts(): void {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('bizarre-crm:auth-cleared', () => wipeAllDrafts());
+  // WEB-UIUX-744: skip draft wipe when auth-cleared fires for a cross-tab
+  // silent refresh on the SAME user. The event carries prevUserId in detail;
+  // if it matches the currently authenticated user, no user change occurred
+  // and drafts must not be wiped.
+  window.addEventListener('bizarre-crm:auth-cleared', (e: Event) => {
+    const detail = (e as CustomEvent<{ prevUserId?: string | number | null }>).detail;
+    const currentUserId = useAuthStore.getState().user?.id ?? null;
+    if (detail?.prevUserId != null && detail.prevUserId === currentUserId) return;
+    wipeAllDrafts();
+  });
 }
 
 // WEB-FO-021 (Fixer-C9 2026-04-25): module-level Set tracking every active

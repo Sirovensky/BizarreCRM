@@ -323,3 +323,14 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
     checkoutIdempotencyKey: state.checkoutIdempotencyKey,
   }),
 }));
+
+// WEB-UIUX-748: clear POS cart on auth-cleared so a stale cart from cashier A
+// never persists into cashier B's session after re-login. Module-level listener
+// mirrors the pattern used by planStore / useDraft / api/client. resetAll()
+// wipes cart, customer, discounts, UI state, and the idempotency key so every
+// new session starts completely clean.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    useUnifiedPosStore.getState().resetAll();
+  });
+}

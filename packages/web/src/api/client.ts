@@ -296,12 +296,30 @@ client.interceptors.response.use(
               : undefined;
           if (retryStatus === 401) {
             devWarn('Retried request still 401 after refresh; forcing logout.');
+            // WEB-UIUX-750: if the failing request was a POS checkout call,
+            // flag it so the POS page can show a "checkout interrupted" banner
+            // after the user re-authenticates.
+            if (
+              typeof window !== 'undefined' &&
+              (originalRequest.url?.includes('checkout') || originalRequest.url?.includes('/pos/')) &&
+              window.location.pathname.startsWith('/pos')
+            ) {
+              try { sessionStorage.setItem('pos.checkout_interrupted', '1'); } catch { /* ignore */ }
+            }
             forceLogout('session-expired');
           }
           return Promise.reject(retryErr);
         }
       } catch (refreshErr) {
         devWarn('Token refresh failed, logging out:', refreshErr);
+        // WEB-UIUX-750: same flag on refresh failure mid-checkout.
+        if (
+          typeof window !== 'undefined' &&
+          (originalRequest.url?.includes('checkout') || originalRequest.url?.includes('/pos/')) &&
+          window.location.pathname.startsWith('/pos')
+        ) {
+          try { sessionStorage.setItem('pos.checkout_interrupted', '1'); } catch { /* ignore */ }
+        }
         forceLogout('refresh-failed');
       }
     }
