@@ -287,7 +287,18 @@ export function installBrowserShim(): void {
       restart: () => api('/super-admin/api/management/service/restart', { method: 'POST' }),
       emergencyStop: () => api('/super-admin/api/management/service/emergency-stop', { method: 'POST' }),
       killAll: () => api('/super-admin/api/management/service/kill-all', { method: 'POST' }),
-      setAutoStart: (enabled: boolean) => api('/super-admin/api/management/service/auto-start', { method: 'POST', body: { enabled } }),
+      // Auto-start is READ-ONLY from the browser. Server can't sudo /
+      // install systemd/launchd/Task-Scheduler entries from inside its
+      // own process. The UI should call this method to learn the current
+      // state and display "configure via setup.{bat,sh,command}" if
+      // changes are needed. The Electron app could shell out + UAC
+      // escalate; the browser cannot.
+      setAutoStart: (_enabled: boolean) =>
+        Promise.resolve({
+          success: false,
+          message: 'Auto-start cannot be toggled from the dashboard. Re-run setup.{bat,command,sh} to enable or disable.',
+        }) as ReturnType<typeof api>,
+      getAutoStart: () => api('/super-admin/api/management/service/auto-start'),
       disable: () => api('/super-admin/api/management/service/disable', { method: 'POST' }),
     },
 

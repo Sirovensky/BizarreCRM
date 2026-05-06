@@ -545,28 +545,70 @@ router.post('/service/kill-all', (req: Request, res: Response) => {
   res.json({ success: true, output: ops.map((o) => o.stdout + o.stderr).join('\n') });
 });
 
-router.post('/service/auto-start', (req: Request, res: Response) => {
-  const enabledRaw = req.body?.enabled;
-  const enable = enabledRaw === true || enabledRaw === 'true';
-  // PM2's startup mechanism is per-platform and prints a sudo command we
-  // can't run from inside the server process (would need NOPASSWD sudo,
-  // which we are NOT going to require). Surface the command and instruct.
-  if (enable) {
-    const r = pm2(['startup']);
-    res.json({
-      success: false,
-      output: r.stdout + r.stderr,
-      message: 'Auto-start cannot be enabled from inside the server process — sudo escalation not available. Run the command printed in `output` from a terminal manually, then `pm2 save`.',
-    });
-  } else {
-    const r = pm2(['unstartup']);
-    res.json({
-      success: false,
-      output: r.stdout + r.stderr,
-      message: 'Auto-start cannot be disabled from inside the server process — run the printed sudo command manually.',
-    });
+/**
+ * GET /service/auto-start  — read-only status of OS boot-time autostart.
+ *
+ * Why GET-only and not POST: the server process cannot escalate to root
+ * to install/remove a systemd unit (Linux), launchd plist (macOS), or
+ * Task Scheduler entry (Windows). The autostart adapter at
+ * scripts/autostart/ is invoked by setup.bat/setup.command/setup.sh
+ * which prompt the operator for sudo before escalating. Pretending to
+ * toggle from the browser would either silently fail or require
+ * NOPASSWD sudo — both worse than just telling the operator to re-run
+ * setup.
+ *
+ * This endpoint reports the OS's current view: enabled / disabled /
+ * unknown. Dashboard renders read-only with a hint pointing at
+ * setup.{bat,sh,command}.
+ */
+router.get('/service/auto-start', (_req: Request, res: Response) => {
+  // Inline status check per OS. Mirror scripts/autostart/<os>.mjs's
+  // status() but without the dynamic import (avoids relative-path
+  // resolution drift between dev tsx and built dist).
+  let enabled = false;
+  let mechanism = 'unknown';
+  let raw = '';
+  try {
+    if (process.platform === 'linux') {
+      mechanism = 'systemd';
+      const user = process.env.USER || process.env.LOGNAME || '';
+      if (user) {
+        const r = spawnSync('systemctl', ['is-enabled', `pm2-${user}`], { encoding: 'utf8' });
+        raw = (r.stdout || r.stderr || '').trim();
+        enabled = r.status === 0 && raw === 'enabled';
+      }
+    } else if (process.platform === 'darwin') {
+      mechanism = 'launchd';
+      const user = process.env.USER || process.env.LOGNAME || '';
+      const r = spawnSync('launchctl', ['list'], { encoding: 'utf8' });
+      raw = r.stdout || '';
+      const re = new RegExp(`pm2[\\.\\-]${user}|com\\.pm2\\.${user}|local\\.PM2`, 'i');
+      enabled = re.test(raw);
+    } else if (process.platform === 'win32') {
+      mechanism = 'taskscheduler';
+      const r = spawnSync('schtasks', ['/Query', '/TN', 'BizarreCRM-PM2', '/FO', 'LIST', '/V'], {
+        encoding: 'utf8',
+        shell: true,
+      });
+      raw = r.stdout || '';
+      const m = raw.match(/^\s*(?:Status|Scheduled Task State)\s*:\s*(.+)$/mi);
+      const stateValue = m ? m[1].trim() : '';
+      enabled = r.status === 0 && /^(Ready|Running|Enabled)$/i.test(stateValue);
+    }
+  } catch (err) {
+    log.warn('auto-start status probe failed', { error: err instanceof Error ? err.message : String(err) });
   }
-  auditOp(req, 'super_admin_service_auto_start_request', { enable });
+  res.json({
+    success: true,
+    data: {
+      enabled,
+      mechanism,
+      readOnly: true,
+      message: enabled
+        ? 'Boot autostart is configured. To remove, re-run setup.{bat,command,sh} and decline the autostart prompt.'
+        : 'Boot autostart not configured. Run setup.{bat,command,sh} and accept the autostart prompt to enable.',
+    },
+  });
 });
 
 router.post('/service/disable', (req: Request, res: Response) => {
