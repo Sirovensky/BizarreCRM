@@ -4,8 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
+import { useAuthStore } from '@/stores/authStore';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): inline `$${n.toFixed(2)}` ignored tenant currency. Use shared formatCurrency.
-import { formatDate, formatCurrency as formatCurrencyShared } from '@/utils/format';
+import { formatDate, formatCurrency as formatCurrencyShared, dollarsFromMaybeCents } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,14 +35,7 @@ interface GiftCardDetail {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-// Mirror GiftCardsListPage.formatCurrency: server is mid-migration from
-// float-dollars to integer-cents. Treat large integer values as cents so a
-// silent server flip doesn't render every balance 100x wrong.
-function dollarsFromMaybeCents(amount: number): number {
-  if (!Number.isFinite(amount)) return 0;
-  return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
-}
+// dollarsFromMaybeCents is now imported from @/utils/format (WEB-UIUX-550).
 
 function formatCurrency(amount: number): string {
   // Magnitude only — sign is rendered separately by the caller (+/-).
@@ -60,10 +54,14 @@ function txLabel(type: TxType): string {
   }
 }
 
-function txColor(type: TxType): string {
+function txColor(type: TxType, amount: number): string {
   switch (type) {
     case 'purchase': return 'text-green-600 dark:text-green-400';
-    case 'redemption': return 'text-red-500 dark:text-red-400';
+    case 'redemption':
+      // Positive amount = refund/credit back to card → green; negative = spend → red.
+      return amount > 0
+        ? 'text-green-600 dark:text-green-400'
+        : 'text-red-600 dark:text-red-400';
     case 'adjustment': return 'text-blue-600 dark:text-blue-400';
   }
 }
@@ -174,6 +172,11 @@ export function GiftCardDetailPage() {
   const cardId = Number(id);
   const [showCode, setShowCode] = useState(false);
   const [showReloadModal, setShowReloadModal] = useState(false);
+  // WEB-UIUX-552: gate Reload on server-side permission (gift_cards.reload is
+  // admin/manager only). Free-plan cashiers don't have it, so the button must
+  // be inert rather than letting them fire a request that returns 403.
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canReload = userRole === 'admin' || userRole === 'manager';
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['gift-card', cardId],
@@ -280,7 +283,7 @@ export function GiftCardDetailPage() {
           )}
         </dl>
 
-        {card.status !== 'used' && card.status !== 'disabled' && (
+        {card.status !== 'used' && card.status !== 'disabled' && canReload && (
           <div className="mt-4 pt-4 border-t border-surface-100 dark:border-surface-800">
             <button
               onClick={() => setShowReloadModal(true)}
@@ -316,7 +319,7 @@ export function GiftCardDetailPage() {
                   <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{formatDate(tx.created_at)}</td>
                   <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type)}</td>
                   <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{tx.notes ?? '—'}</td>
-                  <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type)}`}>
+                  <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type, tx.amount)}`}>
                     {/* Fixer-WW: sign driven by tx.type so redemptions always
                         render `-$X` (matches POS convention) and -0 amounts
                         no longer flash as `+$0.00` (Math.abs trips -0). */}

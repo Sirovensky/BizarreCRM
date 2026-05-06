@@ -61,6 +61,8 @@ export function ShiftSchedulePage() {
   const canManageSchedule = userRole === 'admin' || userRole === 'manager';
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [showNew, setShowNew] = useState(false);
+  const [showAllTimeOff, setShowAllTimeOff] = useState(false);
+  const TIME_OFF_PREVIEW = 5;
   const [newUserId, setNewUserId] = useState<number | ''>('');
   const [newStart, setNewStart] = useState('');
   const [newEnd, setNewEnd] = useState('');
@@ -106,10 +108,13 @@ export function ShiftSchedulePage() {
   const createMut = useMutation({
     mutationFn: async () => {
       if (!canManageSchedule) throw new Error('Only admins and managers can create shifts');
+      // datetime-local values are local-time strings with no TZ offset; convert
+      // to UTC ISO before sending so the server stores canonical UTC regardless
+      // of the user's timezone or DST offset.
       const res = await api.post('/team/shifts', {
         user_id: Number(newUserId),
-        start_at: newStart,
-        end_at: newEnd,
+        start_at: new Date(newStart).toISOString(),
+        end_at: new Date(newEnd).toISOString(),
         role: newRole || null,
       });
       return res.data.data;
@@ -181,6 +186,7 @@ export function ShiftSchedulePage() {
         <div className="flex gap-2">
           <button
             className="px-3 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded text-sm text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700"
+            aria-label="Previous week"
             onClick={() => {
               const d = new Date(weekStart);
               d.setDate(d.getDate() - 7);
@@ -191,12 +197,14 @@ export function ShiftSchedulePage() {
           </button>
           <button
             className="px-3 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded text-sm text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700"
+            aria-label="This week"
             onClick={() => setWeekStart(startOfWeek(new Date()))}
           >
             This week
           </button>
           <button
             className="px-3 py-1.5 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded text-sm text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700"
+            aria-label="Next week"
             onClick={() => {
               const d = new Date(weekStart);
               d.setDate(d.getDate() + 7);
@@ -252,7 +260,11 @@ export function ShiftSchedulePage() {
                       {canManageSchedule ? (
                         <button
                           className="text-red-500 hover:text-red-700 mt-1 inline-flex items-center dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                          onClick={() => deleteMut.mutate(s.id)}
+                          onClick={() => {
+                            if (window.confirm('Delete this shift? Cannot be undone.')) {
+                              deleteMut.mutate(s.id);
+                            }
+                          }}
                           disabled={deleteMut.isPending && deleteMut.variables === s.id}
                           aria-label={`Remove shift for ${s.first_name ?? ''} ${s.last_name ?? ''}`}
                         >
@@ -269,39 +281,58 @@ export function ShiftSchedulePage() {
 
         <aside className="space-y-4">
           <div className="bg-white dark:bg-surface-900 rounded-lg shadow border border-surface-200 dark:border-surface-700 p-4">
-            <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100 mb-3">Pending time-off</h2>
+            <h2 className="text-sm font-semibold text-surface-800 dark:text-surface-100 mb-3">
+              Pending time-off
+              {timeOffPending.length > 0 && (
+                <span className="ml-1.5 text-xs font-normal text-surface-400 dark:text-surface-500">
+                  ({timeOffPending.length})
+                </span>
+              )}
+            </h2>
             {timeOffPending.length === 0 && (
               <p className="text-xs text-surface-500 dark:text-surface-400">No pending requests.</p>
             )}
-            {timeOffPending.map((r) => (
-              <div key={r.id} className="border-b border-surface-200 last:border-b-0 py-2 text-xs dark:border-surface-700">
-                <div className="font-semibold text-surface-800 dark:text-surface-100">
-                  {r.first_name} {r.last_name}
-                </div>
-                <div className="text-surface-500 dark:text-surface-400">
-                  {r.start_date} → {r.end_date}
-                </div>
-                {r.reason && <div className="text-surface-600 dark:text-surface-300 italic mt-1 line-clamp-2">{r.reason}</div>}
-                {canManageSchedule ? (
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      className="flex-1 bg-green-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                      onClick={() => reviewMut.mutate({ id: r.id, status: 'approved' })}
-                      disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
-                    >
-                      <Check className="w-3 h-3 mr-1" /> Approve
-                    </button>
-                    <button
-                      className="flex-1 bg-red-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                      onClick={() => reviewMut.mutate({ id: r.id, status: 'denied' })}
-                      disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
-                    >
-                      <X className="w-3 h-3 mr-1" /> Deny
-                    </button>
+            <div className="max-h-80 overflow-y-auto -mx-1 px-1">
+              {(showAllTimeOff ? timeOffPending : timeOffPending.slice(0, TIME_OFF_PREVIEW)).map((r) => (
+                <div key={r.id} className="border-b border-surface-200 last:border-b-0 py-2 text-xs dark:border-surface-700">
+                  <div className="font-semibold text-surface-800 dark:text-surface-100">
+                    {r.first_name} {r.last_name}
                   </div>
-                ) : null}
-              </div>
-            ))}
+                  <div className="text-surface-500 dark:text-surface-400">
+                    {r.start_date} → {r.end_date}
+                  </div>
+                  {r.reason && <div className="text-surface-600 dark:text-surface-300 italic mt-1 line-clamp-2">{r.reason}</div>}
+                  {canManageSchedule ? (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        className="flex-1 bg-green-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                        onClick={() => reviewMut.mutate({ id: r.id, status: 'approved' })}
+                        disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
+                      >
+                        <Check className="w-3 h-3 mr-1" /> Approve
+                      </button>
+                      <button
+                        className="flex-1 bg-red-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                        onClick={() => reviewMut.mutate({ id: r.id, status: 'denied' })}
+                        disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
+                      >
+                        <X className="w-3 h-3 mr-1" /> Deny
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            {timeOffPending.length > TIME_OFF_PREVIEW && (
+              <button
+                className="mt-2 w-full text-xs text-primary-600 dark:text-primary-400 hover:underline text-center"
+                onClick={() => setShowAllTimeOff((v) => !v)}
+              >
+                {showAllTimeOff
+                  ? `Show ${TIME_OFF_PREVIEW}`
+                  : `Show all ${timeOffPending.length}`}
+              </button>
+            )}
           </div>
         </aside>
       </div>
@@ -344,6 +375,9 @@ export function ShiftSchedulePage() {
                   onChange={(e) => setNewEnd(e.target.value)}
                 />
               </label>
+              <p className="text-xs text-surface-400 dark:text-surface-500">
+                Times in your local time ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+              </p>
               <label className="block">
                 <span className="text-xs font-semibold text-surface-600 dark:text-surface-300">Role (optional)</span>
                 <input

@@ -211,6 +211,22 @@ export function generateIdempotencyKey(prefix = 'req'): string {
   );
 }
 
+// ─── Gift-card amount heuristic ─────────────────────────────────────────────
+
+/**
+ * Server is mid-migration from float-dollars to integer-cents.
+ * Treat large integers (>= 1000 in magnitude) as cents so a silent server
+ * schema flip doesn't render every balance 100× wrong.
+ *
+ * Consolidates duplicates from GiftCardsListPage and GiftCardDetailPage
+ * (WEB-UIUX-550). Call `formatCurrency(dollarsFromMaybeCents(v))` or use
+ * the convenience wrappers on those pages.
+ */
+export function dollarsFromMaybeCents(amount: number): number {
+  if (!Number.isFinite(amount)) return 0;
+  return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
+}
+
 // ─── Relative time ──────────────────────────────────────────────────────────
 
 export function timeAgo(iso: string): string {

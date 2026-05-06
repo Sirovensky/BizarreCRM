@@ -78,6 +78,9 @@ export function MentionPicker({ onPick, onClose }: MentionPickerProps) {
   return (
     <div
       ref={ref}
+      id="mention-picker"
+      role="listbox"
+      aria-label="Mention a team member"
       className="absolute bottom-full left-0 mb-2 w-64 max-h-60 overflow-y-auto bg-white dark:bg-surface-800 border dark:border-surface-700 rounded-lg shadow-xl z-10"
     >
       <div className="px-3 py-1.5 border-b text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase">

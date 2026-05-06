@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
-import { formatCurrency as formatCurrencyShared, formatDate } from '@/utils/format';
+import { formatCurrency as formatCurrencyShared, formatDate, dollarsFromMaybeCents } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,22 +47,11 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Server currently returns balances as float-dollars on this endpoint, but the
-// rest of POS is migrating to integer-cents. Treat anything > 1000 as
-// already-cents (no real-world gift-card balance reaches $1000 in float-dollars
-// outside corporate gifting; if it does, it'll still render correctly because
-// 1000.5 -> 1000.50 dollars stays in dollar branch). This avoids the silent
-// 100x bug if the server flips representation, while keeping today's UX.
-// @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): keep the cents/dollars
-// heuristic (server flips representation depending on endpoint) but route
-// the final render through canonical `formatCurrency` so tenant currency +
-// locale reach this surface. Was a hardcoded `$` + `toFixed(2)` template.
+// dollarsFromMaybeCents imported from @/utils/format (WEB-UIUX-550).
+// Server is mid-migration from float-dollars to integer-cents; the heuristic
+// lives in the shared util so both gift-card pages stay in sync.
 function formatCurrency(amount: number): string {
-  if (!Number.isFinite(amount)) return formatCurrencyShared(0);
-  const dollars = Number.isInteger(amount) && Math.abs(amount) >= 1000
-    ? amount / 100
-    : amount;
-  return formatCurrencyShared(dollars);
+  return formatCurrencyShared(dollarsFromMaybeCents(amount));
 }
 
 function maskCode(code: string): string {

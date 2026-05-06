@@ -2733,43 +2733,43 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/team/TeamChatPage.tsx:129-131`
   <!-- meta: fix=detect-near-bottom-before-scroll -->
 
-- [ ] WEB-UIUX-536. **[MAJOR] TeamChatPage timestamps `toLocaleTimeString([], hour:2-digit minute:2-digit)` — strips date. Yesterday and today both show "10:30 AM". L14.
+- [x] WEB-UIUX-536. **[MAJOR] TeamChatPage timestamps `toLocaleTimeString([], hour:2-digit minute:2-digit)` — strips date. Yesterday and today both show "10:30 AM". L14. **[AUTOLOOP-T24 RESOLVED: TeamChatPage formatMessageTime helper — today=time, yesterday="Yesterday HH:MM", older=date+time.]**
   `packages/web/src/pages/team/TeamChatPage.tsx:283-285`
 
 - [ ] WEB-UIUX-537. **[MAJOR] ShiftSchedulePage `startOfWeek()` hardcodes Monday-start.** Tenants in regions with Sunday or Saturday week-start see misaligned grid. L14.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:47-54`
 
-- [ ] WEB-UIUX-538. **[MAJOR] ShiftSchedulePage `delete shift` button no confirm — single click destroys row.** L16, L8.
+- [x] WEB-UIUX-538. **[MAJOR] ShiftSchedulePage `delete shift` button no confirm — single click destroys row.** L16, L8. **[AUTOLOOP-T24 RESOLVED: ShiftSchedulePage delete-shift wrapped in window.confirm("Delete this shift? Cannot be undone.").]**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:251-258`
 
 - [ ] WEB-UIUX-539. **[MAJOR] ShiftSchedulePage time-off Approve/Deny buttons no confirm — accidental click immutably approves/denies.** L16, L8.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:284-300`
 
-- [ ] WEB-UIUX-540. **[MAJOR] ShiftSchedulePage `<input type="datetime-local">` submits in user's TZ but server stores UTC — DST or operator-in-different-TZ bookings shift by 1h.** L6, L14.
+- [x] WEB-UIUX-540. **[MAJOR] ShiftSchedulePage `<input type="datetime-local">` submits in user's TZ but server stores UTC — DST or operator-in-different-TZ bookings shift by 1h.** L6, L14. **[AUTOLOOP-T24 RESOLVED: datetime-local values converted to UTC ISO via new Date(...).toISOString() before POST; dynamic local-TZ hint shown.]**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:328-343,108-112`
 
 - [ ] WEB-UIUX-541. **[MAJOR] ShiftSchedulePage uses `e:any` on mutation onError 3 times.** Lost type safety. L4.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:124,136,148`
 
-- [ ] WEB-UIUX-542. **[MAJOR] MyQueuePage hardcodes `bg-red-100/text-red-700` etc. without dark variants.** Light-mode-only badges on dark-mode queue. L10, L9.
+- [ ] WEB-UIUX-542. **[MAJOR] MyQueuePage hardcodes `bg-red-100/text-red-700` etc. without dark variants.** Light-mode-only badges on dark-mode queue. L10, L9. **[AUTOLOOP-T24 BLOCKED: STALE — MyQueuePage already uses semantic tokens (error-/warning-/primary-/surface-) with full dark variants; no raw red/green hex.]**
   `packages/web/src/pages/team/MyQueuePage.tsx:34-48`
 
 - [ ] WEB-UIUX-543. **[MAJOR] MyQueuePage no sort columns, no filter — tech with 50+ tickets sees long table sorted by server.** L5.
   `packages/web/src/pages/team/MyQueuePage.tsx:100-160`
 
-- [ ] WEB-UIUX-544. **[MINOR] TeamChatPage `MentionPicker` shows on every `MENTION_TAIL_RE.test(tail)` change — no debounce + no aria-controls connecting picker to textarea.** L12.
+- [x] WEB-UIUX-544. **[MINOR] TeamChatPage `MentionPicker` shows on every `MENTION_TAIL_RE.test(tail)` change — no debounce + no aria-controls connecting picker to textarea.** L12. **[AUTOLOOP-T24 RESOLVED: textarea gets aria-controls + aria-expanded + aria-autocomplete=list; MentionPicker container gets id+role=listbox.]**
   `packages/web/src/pages/team/TeamChatPage.tsx:184-188,292-298`
 
 - [ ] WEB-UIUX-545. **[MINOR] TeamChatPage channel list has no unread/badge indicator — operators must open each channel to spot new messages.** L8.
   `packages/web/src/pages/team/TeamChatPage.tsx:244-258`
 
-- [ ] WEB-UIUX-546. **[MINOR] ShiftSchedulePage week navigation Prev/Next/This-week buttons no `aria-label` describing destination.** SR users hear "← Prev". L12.
+- [x] WEB-UIUX-546. **[MINOR] ShiftSchedulePage week navigation Prev/Next/This-week buttons no `aria-label` describing destination.** SR users hear "← Prev". L12. **[AUTOLOOP-T24 RESOLVED: ShiftSchedulePage Prev/Next/This-week buttons get aria-label.]**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:180-205`
 
 - [ ] WEB-UIUX-547. **[MINOR] ShiftSchedulePage day grid `min-h-[280px]` fixed — no auto-fit when many shifts overflow vertically (scroll lost).** L11.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:231`
 
-- [ ] WEB-UIUX-548. **[MINOR] ShiftSchedulePage time-off pending list has no "view all" — long list lives in sidebar with no overflow control.** L5.
+- [x] WEB-UIUX-548. **[MINOR] ShiftSchedulePage time-off pending list has no "view all" — long list lives in sidebar with no overflow control.** L5. **[AUTOLOOP-T24 RESOLVED: time-off pending list wrapped in max-h-80 overflow-y-auto + Show all/Show 5 toggle when >5 items + count badge.]**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:268-303`
 
 #### Gift Card Detail
@@ -2777,20 +2777,20 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-549. **[BLOCKER] GiftCardDetailPage ReloadModal no focus trap.** L12.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:115-155`
 
-- [ ] WEB-UIUX-550. **[MAJOR] GiftCardDetailPage `dollarsFromMaybeCents` ad-hoc heuristic.** Server schema flip risk; helper duplicated from list page. L4, L6.
+- [x] WEB-UIUX-550. **[MAJOR] GiftCardDetailPage `dollarsFromMaybeCents` ad-hoc heuristic.** Server schema flip risk; helper duplicated from list page. L4, L6. **[AUTOLOOP-T24 RESOLVED: dollarsFromMaybeCents extracted to utils/format.ts; both gift-card pages import shared helper.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-44`
   <!-- meta: fix=server-canonicalize-cents-or-shared-amount-utility -->
 
 - [ ] WEB-UIUX-551. **[MAJOR] GiftCardDetailPage `showCode` toggle reveals full code in DOM — no rate limit, no audit log, no auto-hide on tab blur.** Casual shoulder-surf risk for high-value cards. L16.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:233-244`
 
-- [ ] WEB-UIUX-552. **[MAJOR] GiftCardDetailPage Reload button enabled when `card.status !== 'used' && !== 'disabled'` — but no plan-feature gate (gift cards may be Pro-only).** Free-tenant click → 403. L8.
+- [x] WEB-UIUX-552. **[MAJOR] GiftCardDetailPage Reload button enabled when `card.status !== 'used' && !== 'disabled'` — but no plan-feature gate (gift cards may be Pro-only).** Free-tenant click → 403. L8. **[AUTOLOOP-T24 RESOLVED: Reload gated by canReload (role admin/manager) via useAuthStore; matches server RBAC (gift_cards.reload).]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-294`
 
 - [ ] WEB-UIUX-553. **[MAJOR] ReloadModal accepts `parseFloat(amount) <= 0` reject AT mutation but type=number `min=0.01` cosmetic only — pasting `-50` accepted by browser, mutation rejects with toast (better: client-side block).** L7.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-95,127-131`
 
-- [ ] WEB-UIUX-554. **[MINOR] GiftCardDetailPage txColor returns same red for `redemption` regardless of refund vs spend — no distinction.** L9.
+- [x] WEB-UIUX-554. **[MINOR] GiftCardDetailPage txColor returns same red for `redemption` regardless of refund vs spend — no distinction.** L9. **[AUTOLOOP-T24 RESOLVED: txColor takes amount param; redemption with amount>0 returns green-600 (refund), <0 red-600 (spend).]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:63-69`
 
 - [ ] WEB-UIUX-555. **[MINOR] GiftCardDetailPage transaction table no pagination — 1000-tx history loads in one query.** L15, L5.

@@ -35,6 +35,25 @@ function describeError(e: unknown, fallback: string): string {
   if (e instanceof Error && e.message) return e.message;
   return fallback;
 }
+
+function formatMessageTime(isoString: string): string {
+  const date = new Date(isoString);
+  const now = new Date();
+  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (isToday) return timeStr;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate();
+  if (isYesterday) return `Yesterday ${timeStr}`;
+  return `${date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${timeStr}`;
+}
 import { MentionPicker } from '@/components/team/MentionPicker';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -297,7 +316,7 @@ export function TeamChatPage() {
                     {m.first_name} {m.last_name}
                   </span>
                   <span className="text-xs text-surface-400 dark:text-surface-500">
-                    {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {formatMessageTime(m.created_at)}
                   </span>
                 </div>
                 <div className="text-surface-700 whitespace-pre-wrap break-words dark:text-surface-300">{m.body}</div>
@@ -319,6 +338,9 @@ export function TeamChatPage() {
                 rows={2}
                 placeholder="Type a message... use @username to mention someone"
                 value={draft}
+                aria-controls="mention-picker"
+                aria-expanded={showMentions}
+                aria-autocomplete="list"
                 onChange={(e) => handleDraftChange(e.target.value)}
                 onKeyDown={(e) => {
                   // Slack/Discord-style send shortcut:
