@@ -271,7 +271,7 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 const PING_INTERVAL_MS = 30_000;
 const PONG_TIMEOUT_MS = 60_000;
 
-export function useWebSocket() {
+export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient();
   // Keep queryClient in a ref so connect()'s useCallback doesn't need it as a
   // dep. Without this, a queryClient identity change (e.g. React Query DevTools
@@ -344,6 +344,7 @@ export function useWebSocket() {
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return;
+    if (!enabled) return; // WEB-UIUX-478: wait until caller signals ready
     if (!hasAuthSessionHint()) return; // Not authenticated
 
     // WEB-FD-003 (Fixer-A5 2026-04-25): refuse plaintext ws: in production.
@@ -495,7 +496,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [hasAuthSessionHint, setConnected, setLastMessage, startHeartbeat, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
+  }, [enabled, hasAuthSessionHint, setConnected, setLastMessage, startHeartbeat, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
   const { setWsOffline } = useWsStore();
 

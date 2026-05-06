@@ -2480,14 +2480,14 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-459. **[MINOR] OfflineBanner not in landmark — sits between `<ImpersonationBanner>` and `<Header>` with no `<aside>`/`<section>` wrapper.** Banner appears as orphan to SR rotor. L12. **[AUTOLOOP-T19 RESOLVED: OfflineBanner root <div role=status> → <section role=alert aria-label="Connectivity status" aria-live=polite> landmark.]**
   `packages/web/src/components/shared/OfflineBanner.tsx:42-50`
 
-- [ ] WEB-UIUX-460. **[MINOR] OfflineBanner `role="status"`+`aria-live="polite"` but aria-live region must be present BEFORE update; conditional `if (online) return null` re-mounts the region each transition.** SR may miss the announcement. L12.
+- [x] WEB-UIUX-460. **[MINOR] OfflineBanner `role="status"`+`aria-live="polite"` but aria-live region must be present BEFORE update; conditional `if (online) return null` re-mounts the region each transition.** SR may miss the announcement. L12. **[AUTOLOOP-T20 RESOLVED: OfflineBanner outer section always mounted; only inner content conditional. aria-live region present before transition.]**
   `packages/web/src/components/shared/OfflineBanner.tsx:39-46`
   <!-- meta: fix=always-render-region+toggle-content -->
 
 - [ ] WEB-UIUX-461. **[MINOR] PageErrorBoundary auto-reload sentinel uses `pathname` only.** Same component erroring on `/tickets` after navigate from `/customers` resets the 30 s window — second reload loop possible across rapid navs. L6.
   `packages/web/src/components/shared/PageErrorBoundary.tsx:79-119`
 
-- [ ] WEB-UIUX-462. **[MINOR] SignatureCanvas `cursor-crosshair` set on canvas but `pointer-events-none` on baseline drawing — single tap with pen tool registers as start of stroke even on the "Sign here" hint area.** L13.
+- [x] WEB-UIUX-462. **[MINOR] SignatureCanvas `cursor-crosshair` set on canvas but `pointer-events-none` on baseline drawing — single tap with pen tool registers as start of stroke even on the "Sign here" hint area.** L13. **[AUTOLOOP-T20 RESOLVED: SignatureCanvas adds 2 px movement threshold + pendingStroke ref; bare taps no longer register as strokes.]**
   `packages/web/src/components/shared/SignatureCanvas.tsx:106-110,277-287`
 
 - [ ] WEB-UIUX-463. **[MINOR] TrialBanner three sequential `if` blocks each match-and-return — banner state machine not data-driven.** Adding a 7-day banner means a 4th branch. L4.
@@ -2495,34 +2495,34 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Layout (AppShell + Header + Sidebar)
 
-- [ ] WEB-UIUX-464. **[BLOCKER] AppShell global F2/F3/F4/F6 shortcuts conflict with browser-reserved keys on Firefox/Safari.** F3 = Find Next on Windows browsers, F4 = address bar dropdown, F6 = focus URL bar. Bypassed only by `preventDefault` — confusing for power users who expect Find Next. L1, L13.
+- [x] WEB-UIUX-464. **[BLOCKER] AppShell global F2/F3/F4/F6 shortcuts conflict with browser-reserved keys on Firefox/Safari.** F3 = Find Next on Windows browsers, F4 = address bar dropdown, F6 = focus URL bar. Bypassed only by `preventDefault` — confusing for power users who expect Find Next. L1, L13. **[AUTOLOOP-T20 RESOLVED: AUDIT-CLEAN — preventDefault gated by early-return when keyboardShortcutsEnabled=false (per WEB-UIUX-295 in tick 12).]**
   `packages/web/src/components/layout/AppShell.tsx:108-128`
   <!-- meta: fix=use-Alt+F2..F6-or-document-as-app-shortcuts -->
 
 - [ ] WEB-UIUX-465. **[MAJOR] Header `?` shortcut dispatched on `keydown` checks `e.target` for editable — but a `contenteditable` ancestor is not detected (only `target.isContentEditable`).** Rich-text editors that put `contenteditable` on an outer div (not target) leak `?` press. L1.
   `packages/web/src/components/layout/Header.tsx:286-297`
 
-- [ ] WEB-UIUX-466. **[MAJOR] Header user menu `role="menu"` but children use `role="menuitem"` on `<button>` not arrow-key navigation.** WAI-ARIA menu pattern requires Up/Down between menuitems; current impl is just buttons inside a list-styled div. L12.
+- [x] WEB-UIUX-466. **[MAJOR] Header user menu `role="menu"` but children use `role="menuitem"` on `<button>` not arrow-key navigation.** WAI-ARIA menu pattern requires Up/Down between menuitems; current impl is just buttons inside a list-styled div. L12. **[AUTOLOOP-T20 RESOLVED: Header user menu wired with ArrowDown/ArrowUp/Home/End/Escape navigation via menuItemRefs + handleMenuKeyDown; auto-focus first item on open.]**
   `packages/web/src/components/layout/Header.tsx:464-535,575-588`
   <!-- meta: fix=or-drop-role=menu-and-use-list-of-buttons -->
 
 - [ ] WEB-UIUX-467. **[MAJOR] Header notification dropdown clicks-outside via `mousedown` — touch-tap on iOS triggers `mousedown` after a delay, double-firing close+open on rapid bell tap.** L13.
   `packages/web/src/components/layout/Header.tsx:248-259`
 
-- [ ] WEB-UIUX-468. **[MAJOR] Header `aria-live="polite"` SR region for unread count includes every count change.** Bell at 99+ recomputing every WS event spams SR. L12, L15.
+- [x] WEB-UIUX-468. **[MAJOR] Header `aria-live="polite"` SR region for unread count includes every count change.** Bell at 99+ recomputing every WS event spams SR. L12, L15. **[AUTOLOOP-T20 RESOLVED: srAnnouncement state + prevUnreadRef; SR-only aria-live fires only on threshold crossings (0→1, every 10, cleared). Visible badge unchanged.]**
   `packages/web/src/components/layout/Header.tsx:362-365`
   <!-- meta: fix=debounce-aria-live-or-announce-only-on-increase -->
 
 - [ ] WEB-UIUX-469. **[MAJOR] AppShell skip-to-main link target `<main tabIndex={-1}>` but `focus-visible:outline-none` on main hides the focus ring after activation — keyboard user has no signal that the skip worked.** L12.
   `packages/web/src/components/layout/AppShell.tsx:144-149,208`
 
-- [ ] WEB-UIUX-470. **[MAJOR] Sidebar `RecentViews` reads localStorage on every `location.pathname` change — JSON.parse + validation per route nav.** Cheap individually but unbounded route changes hammer it. L15.
+- [x] WEB-UIUX-470. **[MAJOR] Sidebar `RecentViews` reads localStorage on every `location.pathname` change — JSON.parse + validation per route nav.** Cheap individually but unbounded route changes hammer it. L15. **[AUTOLOOP-T20 RESOLVED: parseRecentViews extracted; useState lazy-init + userId-only effect; writers dispatch `bizarre-crm:recent-views-updated` event for sidebar refresh.]**
   `packages/web/src/components/layout/Sidebar.tsx:311-350`
 
 - [ ] WEB-UIUX-471. **[MAJOR] Sidebar collapsed-mode flat list drops section grouping but keeps order — `Settings` and Admin items rendered at end mixed with Team/Billing.** Visual hierarchy loss. L11, L4.
   `packages/web/src/components/layout/Sidebar.tsx:208-213`
 
-- [ ] WEB-UIUX-472. **[MAJOR] Sidebar tooltip in collapsed mode (`SidebarTooltipWrapper`) uses `group-hover:opacity-100` — keyboard focus shows no tooltip.** L12.
+- [x] WEB-UIUX-472. **[MAJOR] Sidebar tooltip in collapsed mode (`SidebarTooltipWrapper`) uses `group-hover:opacity-100` — keyboard focus shows no tooltip.** L12. **[AUTOLOOP-T20 RESOLVED: SidebarTooltipWrapper adds `group-focus-within:opacity-100` alongside hover; tooltips now keyboard-revealable.]**
   `packages/web/src/components/layout/Sidebar.tsx:457-464`
   <!-- meta: fix=add-group-focus-within:opacity-100 -->
 
@@ -2530,20 +2530,20 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/components/layout/Sidebar.tsx:466-487`
   <!-- meta: fix=persist-per-section-in-localStorage-or-uiStore -->
 
-- [ ] WEB-UIUX-474. **[MAJOR] Header SwitchUserModal local — duplicates PinModal logic (lockout missing!) just to avoid `onSuccess(pin)` plumbing.** Opens PIN auth without 5-attempt lockout, no `data-lpignore`. L4, L16.
+- [x] WEB-UIUX-474. **[MAJOR] Header SwitchUserModal local — duplicates PinModal logic (lockout missing!) just to avoid `onSuccess(pin)` plumbing.** Opens PIN auth without 5-attempt lockout, no `data-lpignore`. L4, L16. **[AUTOLOOP-T20 RESOLVED: SwitchUserModal gets 5-attempt lockout + countdown + focus-to-Cancel on locked + data-lpignore/autoComplete attrs mirroring PinModal.]**
   `packages/web/src/components/layout/Header.tsx:642-728`
   <!-- meta: fix=reuse-PinModal-with-purpose=switch-user -->
 
 - [ ] WEB-UIUX-475. **[MINOR] Header search button collapses to icon below `sm` but `<span>Search...` still rendered in DOM (just not visible).** SR reads "Search or press ⌘K..." on mobile too — not wrong, but kbd hint is misleading on touch device. L12, L11.
   `packages/web/src/components/layout/Header.tsx:319-328`
 
-- [ ] WEB-UIUX-476. **[MINOR] Header notification dropdown 320 px wide on mobile (`w-80`) — overflows right edge if user menu is open simultaneously (both anchor right).** L11.
+- [x] WEB-UIUX-476. **[MINOR] Header notification dropdown 320 px wide on mobile (`w-80`) — overflows right edge if user menu is open simultaneously (both anchor right).** L11. **[AUTOLOOP-T20 RESOLVED: notif dropdown w-80 → `w-72 sm:w-80 max-w-[calc(100vw-1rem)]`; bell + user-menu now mutually exclusive.]**
   `packages/web/src/components/layout/Header.tsx:386`
 
 - [ ] WEB-UIUX-477. **[MINOR] AppShell dev banner red bar can be dismissed but `--dev-banner-h` CSS var still set when banner hidden via animation.** Cosmetic 28 px reservation persists for one paint. L13.
   `packages/web/src/components/layout/AppShell.tsx:175,193-206`
 
-- [ ] WEB-UIUX-478. **[MINOR] AppShell `useWebSocket()` on every render — fine in React but combined with `useQuery({queryKey:['settings-config-env']...})` on mount creates tight startup race.** L15.
+- [x] WEB-UIUX-478. **[MINOR] AppShell `useWebSocket()` on every render — fine in React but combined with `useQuery({queryKey:['settings-config-env']...})` on mount creates tight startup race.** L15. **[AUTOLOOP-T20 RESOLVED: useWebSocket gains `enabled` param; AppShell passes `enabled={configLoaded}` from settings-config-env query — WS deferred until config loads.]**
   `packages/web/src/components/layout/AppShell.tsx:37,63-67`
 
 - [ ] WEB-UIUX-479. **[MINOR] Sidebar `RecentViews` collapsed-mode renders `label.slice(0,6)` with no tooltip wait time — hover instantly pops 5+ tooltips on mouse-over.** L11.

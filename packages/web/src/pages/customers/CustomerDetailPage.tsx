@@ -137,6 +137,10 @@ export function CustomerDetailPage() {
       const filtered = existing.filter((e) => !(e.type === 'customer' && e.id === customer.id));
       filtered.unshift(entry);
       localStorage.setItem(key, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
+      // WEB-UIUX-470: notify Sidebar.RecentViews to refresh from cache without
+      // re-parsing on every route nav; the event carries the key so multi-user
+      // scenarios skip irrelevant refreshes.
+      window.dispatchEvent(new CustomEvent('bizarre-crm:recent-views-updated', { detail: { key } }));
     } catch (err) {
       console.warn('Failed to update recent views:', err);
     }

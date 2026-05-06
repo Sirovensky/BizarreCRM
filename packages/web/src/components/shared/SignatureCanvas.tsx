@@ -44,6 +44,8 @@ function computePenColor(explicit?: string): string {
   return isDarkMode() ? DARK_PEN_COLOR : LIGHT_PEN_COLOR;
 }
 
+const STROKE_THRESHOLD = 2; // px — minimum movement before a stroke is committed
+
 export function SignatureCanvas({ onSave, width = 400, height = 150, initialValue, penColor }: SignatureCanvasProps) {
   // WEB-S5-021 (FIXED-by-Fixer-A19 2026-04-25): the original implementation
   // computed `resolvedPenColor` synchronously during render. If the parent
@@ -72,6 +74,10 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialValue);
+  // WEB-UIUX-462: track pending stroke start position so we only commit the
+  // stroke once the pointer has moved beyond STROKE_THRESHOLD pixels. A bare
+  // tap on the "Sign here" hint area otherwise immediately marks a stroke.
+  const pendingStroke = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -140,20 +146,32 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
   // missing. Attach the listeners natively with `{ passive: false }` in a
   // useEffect below; React handlers only cover mouse events now.
   const startDraw = useCallback((e: React.MouseEvent) => {
-    const ctx = canvasRef.current?.getContext('2d');
-    if (!ctx) return;
+    if (!canvasRef.current) return;
     const pos = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
-    setIsDrawing(true);
-    setHasSignature(true);
+    // WEB-UIUX-462: defer the actual stroke begin until movement is confirmed.
+    pendingStroke.current = pos;
   }, [getPos]);
 
   const draw = useCallback((e: React.MouseEvent) => {
-    if (!isDrawing) return;
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
     const pos = getPos(e);
+    // WEB-UIUX-462: commit pending stroke once movement exceeds threshold.
+    if (pendingStroke.current) {
+      const dx = pos.x - pendingStroke.current.x;
+      const dy = pos.y - pendingStroke.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > STROKE_THRESHOLD) {
+        ctx.beginPath();
+        ctx.moveTo(pendingStroke.current.x, pendingStroke.current.y);
+        pendingStroke.current = null;
+        setIsDrawing(true);
+        setHasSignature(true);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      }
+      return;
+    }
+    if (!isDrawing) return;
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
   }, [isDrawing, getPos]);
@@ -164,6 +182,8 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
   const clearRef = useRef<() => void>(() => {});
 
   const endDraw = useCallback(() => {
+    // WEB-UIUX-462: discard a tap that never moved past the threshold.
+    pendingStroke.current = null;
     if (!isDrawing) return;
     setIsDrawing(false);
     if (!canvasRef.current) return;
@@ -228,34 +248,46 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // WEB-UIUX-462: track pending touch start; only commit the stroke once
+    // movement exceeds STROKE_THRESHOLD px so a bare tap on the hint text
+    // does not register as a stroke start.
+    let pendingTouchPos: { x: number; y: number } | null = null;
+    let drawingNow = false;
     const handleStart = (e: TouchEvent) => {
       e.preventDefault();
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
       const pos = getPos(e);
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-      setIsDrawing(true);
-      setHasSignature(true);
+      pendingTouchPos = pos;
     };
-    // Grab the live drawing state via ref so the move/end listeners don't
-    // need to be re-installed on every isDrawing flip.
-    let drawingNow = false;
     const handleMove = (e: TouchEvent) => {
-      if (!drawingNow) return;
       e.preventDefault();
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       const pos = getPos(e);
+      if (pendingTouchPos) {
+        const dx = pos.x - pendingTouchPos.x;
+        const dy = pos.y - pendingTouchPos.y;
+        if (Math.sqrt(dx * dx + dy * dy) > STROKE_THRESHOLD) {
+          ctx.beginPath();
+          ctx.moveTo(pendingTouchPos.x, pendingTouchPos.y);
+          pendingTouchPos = null;
+          drawingNow = true;
+          setIsDrawing(true);
+          setHasSignature(true);
+          ctx.lineTo(pos.x, pos.y);
+          ctx.stroke();
+        }
+        return;
+      }
+      if (!drawingNow) return;
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
     };
     const handleEnd = () => {
+      pendingTouchPos = null;
       drawingNow = false;
       endDraw();
     };
     const trackStart = (e: TouchEvent) => {
-      drawingNow = true;
       handleStart(e);
     };
     canvas.addEventListener('touchstart', trackStart, { passive: false });

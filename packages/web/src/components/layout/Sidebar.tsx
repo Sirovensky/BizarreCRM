@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -308,51 +308,78 @@ if (typeof window !== 'undefined') {
   });
 }
 
-function RecentViews({ collapsed }: { collapsed: boolean }) {
-  const location = useLocation();
-  const userId = useAuthStore((s) => s.user?.id);
-  const [items, setItems] = useState<{ type: string; id: number; label: string; path: string }[]>([]);
+type RecentViewEntry = { type: string; id: number; label: string; path: string };
 
-  useEffect(() => {
-    try {
-      const stored: unknown = JSON.parse(localStorage.getItem(recentViewsKey(userId)) || '[]');
-      if (!Array.isArray(stored)) return;
-      // Validate each entry — without this, a corrupted or XSS-injected
-      // `path` field would flow straight into <NavLink to={item.path}>.
-      // WEB-FD-001 (Fixer-RRR 2026-04-25): also lock down `type` to a small
-      // allowlist (used as React `key` and to drive future icon mapping) and
-      // cap `label` length + strip control chars so a malicious localStorage
-      // writer cannot phish via the truncated collapsed-mode label.
-      const ALLOWED_TYPES = new Set(['ticket', 'customer', 'invoice', 'estimate', 'lead', 'product', 'employee']);
-      const safe: { type: string; id: number; label: string; path: string }[] = [];
-      for (const raw of stored.slice(0, 5)) {
-        if (!raw || typeof raw !== 'object') continue;
-        const it = raw as Record<string, unknown>;
-        const path = it.path;
-        if (typeof path !== 'string' || !path.startsWith('/')) continue;
-        // Reject paths with embedded protocol/host (e.g. "/\\evil.com") that
-        // some browsers normalize away from the leading slash.
-        if (path.startsWith('//') || path.includes('\\')) continue;
-        const type = typeof it.type === 'string' && ALLOWED_TYPES.has(it.type) ? it.type : '';
-        const rawLabel = typeof it.label === 'string' ? it.label : '';
-        // Strip C0/DEL control chars + cap at 64 chars so collapsed-mode
-        // 6-char slice cannot be primed with control chars or oversized
-        // blobs designed to spoof 'Settings'/'Reports' in the truncated UI.
-        // eslint-disable-next-line no-control-regex
-        const label = rawLabel.replace(/[ -]/g, '').slice(0, 64);
-        safe.push({
-          type,
-          id: typeof it.id === 'number' && Number.isFinite(it.id) ? it.id : 0,
-          label,
-          path,
-        });
-      }
-      setItems(safe);
-    } catch (err) {
-      // Corrupted recent_views JSON or storage unavailable — clear list silently.
-      console.warn('[Sidebar] recent_views parse failed', err);
+const ALLOWED_TYPES = new Set(['ticket', 'customer', 'invoice', 'estimate', 'lead', 'product', 'employee']);
+
+function parseRecentViews(userId: number | null | undefined): RecentViewEntry[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(recentViewsKey(userId)) || '[]');
+    if (!Array.isArray(stored)) return [];
+    // Validate each entry — without this, a corrupted or XSS-injected
+    // `path` field would flow straight into <NavLink to={item.path}>.
+    // WEB-FD-001 (Fixer-RRR 2026-04-25): also lock down `type` to a small
+    // allowlist (used as React `key` and to drive future icon mapping) and
+    // cap `label` length + strip control chars so a malicious localStorage
+    // writer cannot phish via the truncated collapsed-mode label.
+    const safe: RecentViewEntry[] = [];
+    for (const raw of stored.slice(0, 5)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const it = raw as Record<string, unknown>;
+      const path = it.path;
+      if (typeof path !== 'string' || !path.startsWith('/')) continue;
+      // Reject paths with embedded protocol/host (e.g. "/\\evil.com") that
+      // some browsers normalize away from the leading slash.
+      if (path.startsWith('//') || path.includes('\\')) continue;
+      const type = typeof it.type === 'string' && ALLOWED_TYPES.has(it.type) ? it.type : '';
+      const rawLabel = typeof it.label === 'string' ? it.label : '';
+      // Strip C0/DEL control chars + cap at 64 chars so collapsed-mode
+      // 6-char slice cannot be primed with control chars or oversized
+      // blobs designed to spoof 'Settings'/'Reports' in the truncated UI.
+      // eslint-disable-next-line no-control-regex
+      const label = rawLabel.replace(/[ -]/g, '').slice(0, 64);
+      safe.push({
+        type,
+        id: typeof it.id === 'number' && Number.isFinite(it.id) ? it.id : 0,
+        label,
+        path,
+      });
     }
-  }, [location.pathname, userId]);
+    return safe;
+  } catch (err) {
+    // Corrupted recent_views JSON or storage unavailable — clear list silently.
+    console.warn('[Sidebar] recent_views parse failed', err);
+    return [];
+  }
+}
+
+function RecentViews({ collapsed }: { collapsed: boolean }) {
+  const userId = useAuthStore((s) => s.user?.id);
+  // WEB-UIUX-470: cache parsed list in state so route navigations (pathname changes)
+  // never trigger another JSON.parse + validation pass. Parse only on userId change
+  // (login / logout / user switch) or when a writer page signals a storage update.
+  const [items, setItems] = useState<RecentViewEntry[]>(() => parseRecentViews(userId));
+
+  // Re-parse only when the logged-in user changes.
+  useEffect(() => {
+    setItems(parseRecentViews(userId));
+  }, [userId]);
+
+  // Listen for in-app writes so the sidebar refreshes when a writer page
+  // (CustomerDetailPage, TicketDetailPage, etc.) updates recent_views storage.
+  // Writers should dispatch 'bizarre-crm:recent-views-updated' with { key } detail
+  // after writing so the sidebar picks up the change without polling pathname.
+  useEffect(() => {
+    const storageKey = recentViewsKey(userId);
+    const handleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ key?: string }>).detail;
+      if (!detail?.key || detail.key === storageKey) {
+        setItems(parseRecentViews(userId));
+      }
+    };
+    window.addEventListener('bizarre-crm:recent-views-updated', handleUpdate);
+    return () => window.removeEventListener('bizarre-crm:recent-views-updated', handleUpdate);
+  }, [userId]);
 
   if (items.length === 0) return null;
 
@@ -461,7 +488,7 @@ function MyQueueWidget({ collapsed }: { collapsed: boolean }) {
 
 function SidebarTooltipWrapper({ label }: { label: string }) {
   return (
-    <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-surface-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-surface-100 dark:text-surface-900">
+    <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 rounded-md bg-surface-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 dark:bg-surface-100 dark:text-surface-900">
       {label}
       <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-surface-900 dark:border-r-surface-100" />
     </div>

@@ -36,8 +36,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Connect to WebSocket when authenticated (AppShell only renders for logged-in users)
-  useWebSocket();
   useFormKeyboardShortcuts();
 
   // Fetch tenant plan + usage on mount, refetch on focus
@@ -64,7 +62,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Payload shape: axios response `{ data: { success: true, data: <cfg> } }`
   // where `<cfg>` is the store-config map augmented with `_node_env` and
   // `store_currency` by `settings.routes.ts`.
-  const { data: configData } = useQuery<{ data?: { data?: ServerConfigPayload } }>({
+  const { data: configData, isSuccess: configLoaded } = useQuery<{ data?: { data?: ServerConfigPayload } }>({
     queryKey: ['settings-config-env'],
     queryFn: () => settingsApi.getConfig(),
     staleTime: 5 * 60 * 1000,
@@ -76,6 +74,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // banner showed in production too. Correct path is body→inner→key (CLAUDE.md "API
   // response shape" — most common bug).
   const isDev = configData?.data?.data?._node_env !== 'production';
+
+  // WEB-UIUX-478: gate WebSocket activation on settings-config-env success so
+  // the WS handshake never races against an auth-token overwrite from config.
+  useWebSocket({ enabled: configLoaded });
 
   // Initialise shared currency formatter from store settings
   useEffect(() => {

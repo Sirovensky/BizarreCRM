@@ -102,14 +102,83 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   // the ? key anywhere on the page (when no modal/input is focused).
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  // WEB-UIUX-468: separate SR announcement state so the aria-live region only
+  // updates on threshold crossings (0→1 and every 10 thereafter) instead of
+  // on every WS event. The visible badge still reflects `unreadCount` instantly.
+  const [srAnnouncement, setSrAnnouncement] = useState('');
+  const prevUnreadRef = useRef(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [smsUnreadCount, setSmsUnreadCount] = useState(0);
   const [showSwitchUser, setShowSwitchUser] = useState(false);
   const { switchUser } = useAuthStore();
 
+  // WEB-UIUX-468: fire SR announcement only on meaningful threshold crossings.
+  // Thresholds: any transition into 0, the first unread (0→1), and then every
+  // multiple of 10. Every other count change stays silent so WS spam doesn't
+  // flood screen-reader queues.
+  useEffect(() => {
+    const prev = prevUnreadRef.current;
+    prevUnreadRef.current = unreadCount;
+    if (unreadCount === 0 && prev > 0) {
+      setSrAnnouncement('No unread notifications');
+    } else if (prev === 0 && unreadCount === 1) {
+      setSrAnnouncement('1 unread notification');
+    } else if (unreadCount > 0 && unreadCount % 10 === 0) {
+      setSrAnnouncement(`${unreadCount} unread notifications`);
+    }
+    // No else — leave srAnnouncement unchanged so the region stays silent.
+  }, [unreadCount]);
+
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  // WEB-UIUX-466: refs for each menuitem button so arrow-key navigation can
+  // move focus programmatically without relying on DOM order queries.
+  const menuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [focusedMenuIndex, setFocusedMenuIndex] = useState(-1);
+
+  // WEB-UIUX-466: focus the first visible menuitem when the menu opens; reset
+  // the tracked index when the menu closes so re-opening starts at the top.
+  useEffect(() => {
+    if (userMenuOpen) {
+      setFocusedMenuIndex(0);
+      // Defer one tick so the menu is in the DOM before we try to focus.
+      setTimeout(() => { menuItemRefs.current[0]?.focus(); }, 0);
+    } else {
+      setFocusedMenuIndex(-1);
+      menuItemRefs.current = [];
+    }
+  }, [userMenuOpen]);
+
+  // WEB-UIUX-466: handle ArrowDown / ArrowUp / Home / End / Escape within the
+  // role="menu" container. Focus wraps at both edges (ARIA APG Menu pattern).
+  const handleMenuKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = menuItemRefs.current.filter(Boolean) as HTMLButtonElement[];
+    if (items.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = (focusedMenuIndex + 1) % items.length;
+      setFocusedMenuIndex(next);
+      items[next].focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = (focusedMenuIndex - 1 + items.length) % items.length;
+      setFocusedMenuIndex(prev);
+      items[prev].focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setFocusedMenuIndex(0);
+      items[0].focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      const last = items.length - 1;
+      setFocusedMenuIndex(last);
+      items[last].focus();
+    } else if (e.key === 'Escape') {
+      setUserMenuOpen(false);
+    }
+  }, [focusedMenuIndex]);
+
   const notificationUnreadAbortRef = useRef<AbortController | null>(null);
   const smsUnreadAbortRef = useRef<AbortController | null>(null);
   const notificationListAbortRef = useRef<AbortController | null>(null);
@@ -259,6 +328,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     const opening = !notifOpen;
     setNotifOpen(opening);
     if (opening) {
+      setUserMenuOpen(false); // mutex: close user menu
       fetchNotifications();
     } else {
       notificationListAbortRef.current?.abort();
@@ -440,8 +510,10 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
         {/* Notifications */}
         <div ref={notifRef} className="relative">
-          <span className="sr-only" aria-live="polite">
-            {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : ''}
+          {/* WEB-UIUX-468: only announce threshold crossings (0→1, every 10,
+              cleared to 0) — not every WS increment — to avoid SR spam. */}
+          <span className="sr-only" aria-live="polite" aria-atomic="true">
+            {srAnnouncement}
           </span>
           <Button
             onClick={handleBellClick}
@@ -466,7 +538,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           </Button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1.5 w-80 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+            <div className="absolute right-0 top-full z-50 mt-1.5 w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg sm:w-80 dark:border-surface-700 dark:bg-surface-800">
               {/* Header */}
               <div className="flex items-center justify-between border-b border-surface-100 px-4 py-3 dark:border-surface-700">
                 <p className="text-sm font-semibold text-surface-800 dark:text-surface-100">
@@ -518,7 +590,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         {/* User Menu */}
         <div ref={userMenuRef} className="relative">
           <Button
-            onClick={() => setUserMenuOpen((o) => !o)}
+            onClick={() => { setUserMenuOpen((o) => { if (!o) setNotifOpen(false); return !o; }); }}
             variant="ghost"
             size="sm"
             className={cn(
@@ -549,7 +621,9 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           </Button>
 
           {userMenuOpen && (
-            <div role="menu" aria-label="User menu" className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+            // WEB-UIUX-466: onKeyDown + menuItemRefs enable ArrowDown/Up navigation.
+            // eslint-disable-next-line jsx-a11y/interactive-supports-focus
+            <div role="menu" aria-label="User menu" onKeyDown={handleMenuKeyDown} className="absolute right-0 top-full z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
               {/* User Info */}
               <div className="border-b border-surface-100 px-4 py-3 dark:border-surface-700">
                 <p className="text-sm font-semibold text-surface-800 dark:text-surface-100">
@@ -567,10 +641,13 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   "you don't have access" toast every technician hit. The
                   Profile link still shows because /settings/users self-edit
                   is permitted for the current user. */}
-              <div className="p-1">
+              {/* WEB-UIUX-466: clear the ref slot array each render so hidden
+                  items (behind PermissionBoundary) don't leave stale refs. */}
+              <div className="p-1" ref={() => { menuItemRefs.current = []; }}>
                 <DropdownItem
                   icon={<User className="h-4 w-4" />}
                   label="Profile"
+                  itemRef={(el) => { menuItemRefs.current[menuItemRefs.current.length] = el; }}
                   onClick={() => { setUserMenuOpen(false); navigate('/settings/users'); }}
                 />
                 {/* SCAN-1145: managers have settings.edit server-side — let
@@ -582,6 +659,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   <DropdownItem
                     icon={<Settings className="h-4 w-4" />}
                     label="Settings"
+                    itemRef={(el) => { menuItemRefs.current[menuItemRefs.current.length] = el; }}
                     onClick={() => { setUserMenuOpen(false); navigate('/settings/store'); }}
                   />
                 </PermissionBoundary>
@@ -597,12 +675,14 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   <DropdownItem
                     icon={<ScrollText className="h-4 w-4" />}
                     label="Audit Logs"
+                    itemRef={(el) => { menuItemRefs.current[menuItemRefs.current.length] = el; }}
                     onClick={() => { setUserMenuOpen(false); navigate('/settings/audit-logs'); }}
                   />
                 </PermissionBoundary>
                 <DropdownItem
                   icon={<ArrowLeftRight className="h-4 w-4" />}
                   label="Switch User"
+                  itemRef={(el) => { menuItemRefs.current[menuItemRefs.current.length] = el; }}
                   onClick={() => { setUserMenuOpen(false); setShowSwitchUser(true); }}
                 />
               </div>
@@ -613,6 +693,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   icon={<LogOut className="h-4 w-4" />}
                   label="Log Out"
                   variant="danger"
+                  itemRef={(el) => { menuItemRefs.current[menuItemRefs.current.length] = el; }}
                   onClick={() => {
                     setUserMenuOpen(false);
                     logout();
@@ -647,19 +728,24 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   );
 }
 
+// WEB-UIUX-466: itemRef is a callback ref forwarded to the inner Button element
+// so the parent can build the menuItemRefs array used for arrow-key navigation.
 function DropdownItem({
   icon,
   label,
   variant = 'default',
+  itemRef,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   variant?: 'default' | 'danger';
+  itemRef?: (el: HTMLButtonElement | null) => void;
   onClick: () => void;
 }) {
   return (
     <Button
+      ref={itemRef}
       role="menuitem"
       onClick={onClick}
       variant="ghost"
@@ -729,11 +815,25 @@ const NotificationItem = memo(function NotificationItem({
   );
 });
 
+// WEB-UIUX-474: mirror PinModal's 5-attempt lockout + data-lpignore here.
+// We cannot reuse <PinModal> directly because PinModal calls authApi.verifyPin
+// internally and returns no pin value; SwitchUserModal must pass the raw PIN
+// to switchUser() externally. Duplicating only the lockout state (not the
+// full component) is the minimal, safe fix.
+const SWITCH_MAX_ATTEMPTS = 5;
+const SWITCH_LOCKOUT_SECONDS = 60;
+
 function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => Promise<void>; onCancel: () => void }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [failCount, setFailCount] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [lockCountdown, setLockCountdown] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  const isLocked = lockedUntil !== null && Date.now() < lockedUntil;
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -746,9 +846,35 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
     return () => window.removeEventListener('keydown', onKey);
   }, [onCancel]);
 
+  // Countdown timer while locked out — matches PinModal pattern.
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const tick = () => {
+      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockedUntil(null);
+        setLockCountdown(0);
+        setError('');
+        setFailCount(0);
+        inputRef.current?.focus();
+      } else {
+        setLockCountdown(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
+
+  // WEB-UIUX-445: move focus to Cancel when lockout activates so the user
+  // has a reachable, actionable target (PIN input becomes disabled).
+  useEffect(() => {
+    if (isLocked) cancelButtonRef.current?.focus();
+  }, [isLocked]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pin.trim() || loading) return;
+    if (!pin.trim() || loading || isLocked) return;
     setLoading(true);
     setError('');
     try {
@@ -756,8 +882,16 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
     } catch (err) {
       // Underlying error already mapped to a UI banner; log so the actual cause
       // (network vs auth vs server) is visible in console / Sentry.
-      console.warn('[PinModal] PIN unlock failed', err);
-      setError('Invalid PIN or switch failed');
+      console.warn('[SwitchUserModal] PIN switch failed', err);
+      const newCount = failCount + 1;
+      setFailCount(newCount);
+      if (newCount >= SWITCH_MAX_ATTEMPTS) {
+        const lockTs = Date.now() + SWITCH_LOCKOUT_SECONDS * 1000;
+        setLockedUntil(lockTs);
+        setError(`Too many attempts. Please wait ${SWITCH_LOCKOUT_SECONDS}s.`);
+      } else {
+        setError(`Invalid PIN (${SWITCH_MAX_ATTEMPTS - newCount} attempts remaining)`);
+      }
       setPin('');
       inputRef.current?.focus();
     } finally {
@@ -789,6 +923,8 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <p className="text-sm text-surface-500 dark:text-surface-400">Enter the PIN of the user to switch to.</p>
+          {/* SCAN-1163: data-lpignore + autoComplete="off" + data-form-type="other"
+              prevent password managers from offering to save the switch PIN. */}
           <input
             ref={inputRef}
             type="password"
@@ -796,18 +932,27 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
             pattern="[0-9]*"
             maxLength={6}
             value={pin}
-            onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
-            placeholder="PIN"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-primary-600 focus-visible:outline-none focus:ring-1 focus:ring-primary-600 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+            disabled={isLocked}
+            autoComplete="off"
+            data-lpignore="true"
+            data-form-type="other"
+            onChange={(e) => { if (!isLocked) { setPin(e.target.value.replace(/\D/g, '')); setError(''); } }}
+            placeholder={isLocked ? `Wait ${lockCountdown}s` : 'PIN'}
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-primary-600 focus-visible:outline-none focus:ring-1 focus:ring-primary-600 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
-          {error && <p className="text-center text-sm text-red-500">{error}</p>}
+          {isLocked && (
+            <p role="alert" aria-live="polite" className="text-center text-sm text-amber-600 dark:text-amber-400">
+              Locked. Press Cancel to close.
+            </p>
+          )}
+          {error && !isLocked && <p className="text-center text-sm text-red-500">{error}</p>}
           <div className="flex gap-3">
-            <Button type="button" onClick={onCancel} variant="secondary" size="sm" fullWidth>
+            <Button ref={cancelButtonRef} type="button" onClick={onCancel} variant="secondary" size="sm" fullWidth>
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={!pin.trim() || loading}
+              disabled={!pin.trim() || loading || isLocked}
               variant="primary"
               size="sm"
               fullWidth

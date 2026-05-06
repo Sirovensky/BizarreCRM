@@ -499,6 +499,9 @@ export function TicketDetailPage() {
         const filtered = list.filter((e) => !(e?.type === 'ticket' && e?.id === ticket.id));
         filtered.unshift(entry);
         localStorage.setItem(key, JSON.stringify(filtered.slice(0, 5)));
+        // WEB-UIUX-470: notify Sidebar.RecentViews to refresh from cache without
+        // re-parsing on every route nav.
+        window.dispatchEvent(new CustomEvent('bizarre-crm:recent-views-updated', { detail: { key } }));
       } catch { /* ignore */ }
     };
     const locks = (navigator as Navigator & {
