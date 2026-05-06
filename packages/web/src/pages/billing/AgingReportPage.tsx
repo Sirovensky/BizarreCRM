@@ -6,7 +6,8 @@
  */
 import { useMemo, useRef, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Loader2 } from 'lucide-react';
+import { Bell, CheckCircle, Loader2 } from 'lucide-react';
+import { EmptyState } from '@/components/shared/EmptyState';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { invoiceApi } from '@/api/endpoints';
@@ -129,6 +130,16 @@ export function AgingReportPage() {
     <div className="p-6 space-y-6 text-surface-900 dark:text-surface-100">
       <h1 className="text-2xl font-semibold text-surface-900 dark:text-surface-100">Aging Report</h1>
 
+      {!isLoading && data && data.invoices.length === 0 && (
+        <EmptyState
+          icon={CheckCircle}
+          title="No overdue invoices"
+          description="All invoices are current. Nothing to report."
+        />
+      )}
+
+      {(isLoading || !data || data.invoices.length > 0) && (
+      <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         {BUCKET_ORDER.map((key) => {
           const bucket = data?.buckets[key] ?? { count: 0, total_cents: 0 };
@@ -186,7 +197,7 @@ export function AgingReportPage() {
                   checked={allSelected}
                   onChange={toggleSelectAll}
                   disabled={allIds.length === 0}
-                  aria-label="Select all invoices"
+                  aria-label="Select all visible invoices"
                   className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800 disabled:opacity-40"
                 />
               </th>
@@ -213,6 +224,7 @@ export function AgingReportPage() {
                       type="checkbox"
                       checked={selected.has(inv.id)}
                       onChange={() => toggleSelect(inv.id)}
+                      aria-label={`Select invoice ${inv.id || inv.order_id}`}
                       className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800"
                     />
                   </td>
@@ -244,6 +256,8 @@ export function AgingReportPage() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -2213,13 +2213,13 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Voice
 
-- [ ] WEB-UIUX-380. **[BLOCKER] RecordingConsentDialog no focus trap, no Esc.** L12.
+- [x] WEB-UIUX-380. **[BLOCKER] RecordingConsentDialog no focus trap, no Esc.** L12. **[AUTOLOOP-T16 RESOLVED: RecordingConsentDialog wired with useFocusTrap + useEscClose; trapRef on inner content div.]**
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:23-72`
 
 - [ ] WEB-UIUX-381. **[MAJOR] VoiceCallsListPage table rows have no link/click affordance to call detail.** Dead-end UX. L5.
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:160-217`
 
-- [ ] WEB-UIUX-382. **[MINOR] STATUS_COLORS missing entries for "queued"/"ringing"/"canceled" Twilio statuses.** L6.
+- [x] WEB-UIUX-382. **[MINOR] STATUS_COLORS missing entries for "queued"/"ringing"/"canceled" Twilio statuses.** L6. **[AUTOLOOP-T16 RESOLVED: STATUS_COLORS adds queued/ringing/canceled Twilio statuses (neutral pill + warning).]**
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:81-87`
 
 #### Billing Pages + Components
@@ -2227,51 +2227,51 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [ ] WEB-UIUX-383. **[BLOCKER] AgingReportPage no dark-mode classes anywhere — pure light-mode page.** L10.
   `packages/web/src/pages/billing/AgingReportPage.tsx:100-209`
 
-- [ ] WEB-UIUX-385. **[BLOCKER] FinancingButton stub modal `bg-white p-6 shadow-xl` no dark variant.** L10.
+- [x] WEB-UIUX-385. **[BLOCKER] FinancingButton stub modal `bg-white p-6 shadow-xl` no dark variant.** L10. **[AUTOLOOP-T16 RESOLVED: FinancingButton stub modal + body + close button gain dark:bg-surface-800 + text-50 + border-700 partners.]**
   `packages/web/src/components/billing/FinancingButton.tsx:81-107`
 
 - [ ] WEB-UIUX-386. **[BLOCKER] FinancingButton modal no focus trap, no `aria-describedby`.** L12.
   `packages/web/src/components/billing/FinancingButton.tsx:81-108`
 
-- [ ] WEB-UIUX-387. **[BLOCKER] DepositCollectModal no focus trap.** L12.
+- [x] WEB-UIUX-387. **[BLOCKER] DepositCollectModal no focus trap.** L12. **[AUTOLOOP-T16 RESOLVED: DepositCollectModal wired with useFocusTrap(true); ref attached to inner dialog div.]**
   `packages/web/src/pages/billing/DepositCollectModal.tsx:73-89`
 
 - [ ] WEB-UIUX-388. **[BLOCKER] InstallmentPlanWizard whole component lacks dark-mode classes.** L10.
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:97-197`
 
-- [ ] WEB-UIUX-389. **[MAJOR] AgingReportPage row checkboxes no `aria-label`.** SR users hear unlabeled checkbox. L12.
+- [x] WEB-UIUX-389. **[MAJOR] AgingReportPage row checkboxes no `aria-label`.** SR users hear unlabeled checkbox. L12. **[AUTOLOOP-T16 RESOLVED: AgingReport row checkboxes get `aria-label="Select invoice <id>"`; select-all label updated to "Select all visible invoices".]**
   `packages/web/src/pages/billing/AgingReportPage.tsx:174-178`
 
 - [ ] WEB-UIUX-390. **[MAJOR] PaymentLinksPage form labels invisible — placeholder only, disappears on focus.** L7, L12.
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:208-248`
 
-- [ ] WEB-UIUX-391. **[MAJOR] PaymentLinksPage `cancelMutation` fires immediately — no confirm guard.** L16, L8.
+- [x] WEB-UIUX-391. **[MAJOR] PaymentLinksPage `cancelMutation` fires immediately — no confirm guard.** L16, L8. **[AUTOLOOP-T16 RESOLVED: STALE — PaymentLinksPage cancelMutation already wrapped in window.confirm by WEB-UIUX-179 in tick 6.]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:309-318`
   <!-- meta: fix=use-confirmStore -->
 
 - [ ] WEB-UIUX-392. **[MAJOR] FinancingButton: "Pay over time with Affirm" CTA + ComingSoonBadge legally implies availability.** L14, L16.
   `packages/web/src/components/billing/FinancingButton.tsx:69-78`
 
-- [ ] WEB-UIUX-393. **[MAJOR] InstallmentPlanWizard typed-name acceptance accepts "abc" (≥3 chars) as legal signature.** L7, L16.
+- [x] WEB-UIUX-393. **[MAJOR] InstallmentPlanWizard typed-name acceptance accepts "abc" (≥3 chars) as legal signature.** L7, L16. **[AUTOLOOP-T16 RESOLVED: InstallmentPlanWizard typed-name now requires exact customer-name match (case-insensitive trim) instead of ≥3-char acceptance.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:81-94,170-176`
 
 - [ ] WEB-UIUX-394. **[MAJOR] InstallmentPlanWizard amber acceptance card no dark variants — `text-amber-900`/`bg-amber-50` only.** L10, L12.
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:163-177`
 
-- [ ] WEB-UIUX-395. **[MINOR] AgingReportPage no empty state — empty buckets + headers shown when zero overdue.** L8.
+- [x] WEB-UIUX-395. **[MINOR] AgingReportPage no empty state — empty buckets + headers shown when zero overdue.** L8. **[AUTOLOOP-T16 RESOLVED: AgingReportPage shows EmptyState with CheckCircle when zero overdue invoices; bucket grid + table hidden.]**
   `packages/web/src/pages/billing/AgingReportPage.tsx:104-128`
 
 - [ ] WEB-UIUX-396. **[MINOR] AgingReportPage bucket cards lack `aria-pressed={isSelected}`.** L12.
   `packages/web/src/pages/billing/AgingReportPage.tsx:109-127`
 
-- [ ] WEB-UIUX-397. **[MINOR] InstallmentPlanWizard schedule uses local-time `setDate(d.getDate() + i*N)` — DST shifts last installment by 1h.** L6.
+- [x] WEB-UIUX-397. **[MINOR] InstallmentPlanWizard schedule uses local-time `setDate(d.getDate() + i*N)` — DST shifts last installment by 1h.** L6. **[AUTOLOOP-T16 RESOLVED: InstallmentPlan schedule uses Date.UTC + UTC-getters for offsets; DST 1 h shift eliminated.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:67-78`
   <!-- meta: fix=compute-in-UTC-noon-or-date-fns/addDays -->
 
 - [ ] WEB-UIUX-398. **[MINOR] DepositCollectModal `<input type="number" step="0.01">` accepts negatives — only blocked client-side after submit.** L7.
   `packages/web/src/pages/billing/DepositCollectModal.tsx:99-106`
 
-- [ ] WEB-UIUX-399. **[MINOR] PaymentLinksPage Token column shows `row.token.slice(0,12)…` — rows with same prefix indistinguishable.** L2.
+- [x] WEB-UIUX-399. **[MINOR] PaymentLinksPage Token column shows `row.token.slice(0,12)…` — rows with same prefix indistinguishable.** L2. **[AUTOLOOP-T16 RESOLVED: PaymentLinks Token column now displays `first6…last4` instead of `first12…`; shared-prefix rows distinguishable.]**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:295`
 
 - [ ] WEB-UIUX-400. **[MINOR] PaymentLinksPage feature-disabled banner generic — empty state doesn't say "and you can't create new ones until provider configured".** L8.

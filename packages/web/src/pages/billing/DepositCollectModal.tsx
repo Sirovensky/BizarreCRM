@@ -17,11 +17,12 @@
  *     />
  *   )}
  */
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { formatCents } from '@/utils/format';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface DepositCollectModalProps {
   customerId: number;
@@ -38,6 +39,9 @@ export function DepositCollectModal({
 }: DepositCollectModalProps) {
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+
+  // WEB-UIUX-387: trap keyboard focus inside the dialog while it is open.
+  const dialogRef = useFocusTrap(true);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,6 +93,7 @@ export function DepositCollectModal({
           honours the brand-surface-ramp swap; previously stayed bone-white in
           dark mode and floated as a legacy-gray island. */}
       <div
+        ref={dialogRef as React.RefObject<HTMLDivElement>}
         className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-surface-900"
         onClick={(e) => e.stopPropagation()}
       >

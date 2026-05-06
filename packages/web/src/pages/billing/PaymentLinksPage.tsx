@@ -349,7 +349,7 @@ export function PaymentLinksPage() {
             ) : (
               data.map((row) => (
                 <tr key={row.id} className="border-t border-surface-100 dark:border-surface-800">
-                  <td className="px-3 py-2 font-mono text-xs">{row.token.slice(0, 12)}…</td>
+                  <td className="px-3 py-2 font-mono text-xs">{`${row.token.slice(0, 6)}…${row.token.slice(-4)}`}</td>
                   <td className="px-3 py-2">{formatCents(row.amount_cents)}</td>
                   <td className="px-3 py-2">
                     <span className={statusPill(row.status)}>{row.status}</span>
@@ -359,7 +359,7 @@ export function PaymentLinksPage() {
                     <button type="button"
                       className="rounded border border-surface-300 px-2 py-1 text-xs text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
                       onClick={() => copyLink(row.token)}
-                      aria-label={`Copy payment link for ${row.token.slice(0, 8)}`}
+                      aria-label={`Copy payment link for ${row.token.slice(0, 6)}…${row.token.slice(-4)}`}
                     >
                       Copy
                     </button>
@@ -372,7 +372,7 @@ export function PaymentLinksPage() {
                           }
                         }}
                         disabled={cancelMutation.isPending && cancelMutation.variables === row.id}
-                        aria-label={`Cancel payment request ${row.token.slice(0, 8)}`}
+                        aria-label={`Cancel payment request ${row.token.slice(0, 6)}…${row.token.slice(-4)}`}
                       >
                         Cancel
                       </button>

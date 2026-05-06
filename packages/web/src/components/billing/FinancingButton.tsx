@@ -83,13 +83,13 @@ export function FinancingButton({
             role="dialog"
             aria-modal="true"
             aria-labelledby="financing-stub-title"
-            className="max-w-md rounded-lg bg-white p-6 shadow-xl"
+            className="max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-surface-800 dark:text-surface-50 dark:border dark:border-surface-700"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="financing-stub-title" className="mb-2 text-lg font-semibold">
               {providerLabel} financing (stub)
             </h3>
-            <p className="mb-4 text-sm text-gray-600">
+            <p className="mb-4 text-sm text-gray-600 dark:text-surface-300">
               Customer would be redirected to {providerLabel}'s hosted flow to finance
               <strong> {formatted}</strong>. Live API keys need to be configured in
               Settings &rarr; Payments before this works end-to-end.
@@ -97,7 +97,7 @@ export function FinancingButton({
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-surface-700 dark:text-surface-50 dark:hover:bg-surface-700"
                 onClick={() => setShowModal(false)}
               >
                 Close

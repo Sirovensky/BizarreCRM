@@ -823,6 +823,7 @@ export function InvoiceDetailPage() {
           <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-2">
             <InstallmentPlanWizard
               customerId={Number(invoice.customer_id)}
+              customerName={`${invoice.first_name} ${invoice.last_name}`.trim()}
               invoiceId={invoiceId}
               totalCents={Math.round(Number(invoice.amount_due) * 100)}
               onCancel={() => setShowInstallmentPlan(false)}

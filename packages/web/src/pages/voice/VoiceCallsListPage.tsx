@@ -17,6 +17,8 @@ import toast from 'react-hot-toast';
 import { voiceApi, type VoiceCall, type VoiceCallsResponse } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useEscClose } from '@/hooks/useEscClose';
 
 // WEB-FK-009: Consent confirmation dialog shown before playing a recording
 // when the caller was not confirmed to have been informed of recording.
@@ -29,6 +31,11 @@ function RecordingConsentDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  // WEB-UIUX-380: focus trap (WCAG 2.1 SC 2.1.2) + Esc to dismiss.
+  // Hooks must be called unconditionally before the early-return guard.
+  const trapRef = useFocusTrap(open);
+  useEscClose(onCancel, open);
+
   if (!open) return null;
   return (
     <div
@@ -38,7 +45,10 @@ function RecordingConsentDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
-      <div className="w-full max-w-sm rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-2xl p-6">
+      <div
+        ref={trapRef as React.RefObject<HTMLDivElement>}
+        className="w-full max-w-sm rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 shadow-2xl p-6"
+      >
         <div className="flex items-start gap-3 mb-4">
           <ShieldAlert className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
           <div>
@@ -84,6 +94,9 @@ const STATUS_COLORS: Record<string, string> = {
   busy: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
   'no-answer': 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-400',
   in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  queued: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-400',
+  ringing: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  canceled: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-400',
 };
 
 const PAGE_SIZE = 25;

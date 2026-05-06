@@ -25,6 +25,7 @@ interface InstallmentPreview {
 
 interface InstallmentPlanWizardProps {
   customerId: number;
+  customerName: string;
   invoiceId?: number | null;
   totalCents: number;
   onSubmit: (payload: {
@@ -42,6 +43,7 @@ interface InstallmentPlanWizardProps {
 
 export function InstallmentPlanWizard({
   customerId,
+  customerName,
   invoiceId = null,
   totalCents,
   onSubmit,
@@ -64,21 +66,22 @@ export function InstallmentPlanWizard({
     const perCent = Math.floor(totalCents / installmentCount);
     const remainder = totalCents - perCent * installmentCount;
     const rows: InstallmentPreview[] = [];
-    const start = new Date(`${startDate}T00:00:00`);
+    // Use UTC to avoid DST shifts displacing installment dates by 1 hour.
+    const start = new Date(`${startDate}T00:00:00Z`);
     if (isNaN(start.getTime())) return [];
     for (let i = 0; i < installmentCount; i++) {
-      const d = new Date(start);
-      d.setDate(d.getDate() + i * frequencyDays);
+      const next = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + i * frequencyDays));
       rows.push({
         index: i + 1,
-        due_date: d.toISOString().slice(0, 10),
+        due_date: next.toISOString().slice(0, 10),
         amount_cents: i === installmentCount - 1 ? perCent + remainder : perCent,
       });
     }
     return rows;
   }, [installmentCount, frequencyDays, startDate, totalCents]);
 
-  const acceptanceReady = acceptanceText.trim().length >= 3;
+  const acceptanceReady =
+    acceptanceText.trim().toLowerCase() === customerName.trim().toLowerCase();
 
   const handleSubmit = () => {
     if (!acceptanceReady) return;
@@ -167,11 +170,14 @@ export function InstallmentPlanWizard({
           from the card on file. This is the acceptance token stored with the plan — no
           charges will run without it.
         </p>
+        <p className="mt-1 font-medium">
+          Type exactly: <span className="font-semibold">{customerName}</span>
+        </p>
         <input
           type="text"
           value={acceptanceText}
           onChange={(e) => setAcceptanceText(e.target.value)}
-          placeholder="Customer's full legal name"
+          placeholder={customerName}
           className="mt-2 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm"
         />
       </div>
