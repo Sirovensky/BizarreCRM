@@ -1465,8 +1465,15 @@ export const blockchypApi = {
   // WEB-W3-004: optional `amount` for split-payment card legs. When present
   // the server charges that exact leg amount instead of the remaining invoice
   // balance. Validated server-side: > 0 and <= amountDue.
-  processPayment: (invoiceId: number, tip?: number, amount?: number) => {
-    const idempotencyKey = generateIdempotencyKey('bc');
+  // WEB-UIUX-935: idempotencyKey must be minted ONCE per logical payment
+  // attempt by the caller and reused on every retry. Generating a fresh key
+  // inside this function meant every retry was treated as a new charge by the
+  // server's (user, url, key) idempotency cache — causing double-charges when
+  // the operator clicked "Pay via Terminal" again after a 30 s timeout.
+  // Falls back to a generated key only when a caller omits it (e.g. places
+  // that don't yet have retry logic), but callers SHOULD always supply one.
+  processPayment: (invoiceId: number, idempotencyKey?: string, tip?: number, amount?: number) => {
+    const idemKey = idempotencyKey ?? generateIdempotencyKey('bc');
     return api.post<{
       success: boolean;
       data: {
@@ -1493,7 +1500,7 @@ export const blockchypApi = {
       };
     }>(
       '/blockchyp/process-payment',
-      { invoiceId, tip, amount, idempotency_key: idempotencyKey },
+      { invoiceId, tip, amount, idempotency_key: idemKey },
     );
   },
   adjustTip: (transaction_id: string, new_tip: number) =>

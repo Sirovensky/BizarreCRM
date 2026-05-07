@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -6,7 +6,7 @@ import {
   DollarSign, Ticket, Users, Package, Receipt,
   Download, TrendingUp,
   Hash, UserCheck, Clock, Boxes, AlertTriangle, BarChart3,
-  ShieldAlert, Smartphone, Cpu, UserPlus, Lock, FileText, Loader2,
+  ShieldAlert, Smartphone, Cpu, UserPlus, Lock, FileText, Loader2, RefreshCw,
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { usePlanStore } from '@/stores/planStore';
@@ -18,7 +18,7 @@ import {
 } from 'recharts';
 import { reportApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, timeAgo } from '@/utils/format';
 import {
   CHART_PALETTE,
   CHART_COLOR_PRIMARY,
@@ -1416,6 +1416,38 @@ export function ReportsPage() {
   const { from: fromDate, to: toDate } = resolveDateRange(dateRange);
   const queryClient = useQueryClient();
 
+  // WEB-UIUX-931: derive the most-recent dataUpdatedAt for the active tab so we
+  // can show an "Updated X ago" freshness indicator. We read directly from the
+  // React Query cache so no extra network call is needed.
+  const activeQueryKey = useMemo(() => {
+    switch (activeTab) {
+      case 'sales': return ['reports', 'sales', fromDate, toDate, groupBy];
+      case 'tickets': return ['reports', 'tickets', fromDate, toDate];
+      case 'employees': return ['reports', 'employees', fromDate, toDate];
+      case 'inventory': return ['reports', 'inventory'];
+      case 'tax': return ['reports', 'tax', fromDate, toDate];
+      case 'insights': return ['reports', 'insights', fromDate, toDate];
+      case 'warranty': return ['reports', 'warranty-claims', fromDate, toDate];
+      case 'devices': return ['reports', 'device-models', fromDate, toDate];
+      case 'parts': return ['reports', 'parts-usage', fromDate, toDate];
+      case 'tech-hours': return ['reports', 'technician-hours', fromDate, toDate];
+      case 'stalled': return ['reports', 'stalled-tickets', fromDate, toDate];
+      case 'acquisition': return ['reports', 'customer-acquisition', fromDate, toDate];
+      default: return null;
+    }
+  }, [activeTab, fromDate, toDate, groupBy]);
+
+  const [dataUpdatedAt, setDataUpdatedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!activeQueryKey) return;
+    const refresh = () => {
+      const state = queryClient.getQueryState(activeQueryKey);
+      setDataUpdatedAt(state?.dataUpdatedAt ?? null);
+    };
+    refresh();
+    return queryClient.getQueryCache().subscribe(() => refresh());
+  }, [activeQueryKey, queryClient]);
+
   // Tier gating: reads plan features and exposes upgrade modal opener
   const planFeatures = usePlanStore((s) => s.features);
   const planHasFetched = usePlanStore((s) => s.hasFetched);
@@ -1657,6 +1689,14 @@ export function ReportsPage() {
               value={dateRange}
               onChange={setDateRange}
             />
+            {/* WEB-UIUX-931: show "Updated X ago" so users know how fresh the
+                cached data is (staleTime: 30_000 makes staleness opaque otherwise). */}
+            {dataUpdatedAt != null && (
+              <span className="ml-auto flex items-center gap-1 text-xs text-surface-400 dark:text-surface-500 select-none">
+                <RefreshCw className="h-3 w-3 shrink-0" aria-hidden="true" />
+                Updated {timeAgo(new Date(dataUpdatedAt).toISOString())}
+              </span>
+            )}
           </div>
         </div>
       )}

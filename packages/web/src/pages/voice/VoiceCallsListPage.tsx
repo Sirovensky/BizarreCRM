@@ -199,14 +199,28 @@ function hasRecording(call: VoiceCall): boolean {
 // WEB-W3-023: Fetch a short-lived signed URL from the server, then open it.
 // The signed URL is an HMAC-protected token valid for 5 minutes — the raw
 // /calls/:id/recording endpoint requires session auth which <audio> src cannot send.
+// WEB-UIUX-943: surface status-specific error messages instead of generic fallback.
 async function openRecordingSecure(callId: number): Promise<void> {
   try {
     const res = await voiceApi.recordingSignedUrl(callId);
     const url = res.data?.data?.url;
     if (!url) throw new Error('No URL returned');
     window.open(url, '_blank', 'noopener,noreferrer');
-  } catch {
-    toast.error('Could not load recording');
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 401) {
+      toast.error('Provider authentication failed. Re-check API keys in Settings → SMS/Voice.');
+    } else if (status === 404) {
+      toast.error('Recording not found — provider may have purged it (typical after 90 days).');
+    } else if (status === 410) {
+      toast.error('Recording was deleted by provider.');
+    } else {
+      toast.error(
+        status != null
+          ? `Could not load recording (status ${status}) — try again or check provider console.`
+          : 'Could not load recording',
+      );
+    }
   }
 }
 

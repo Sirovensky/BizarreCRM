@@ -30,19 +30,28 @@ function sourceLabel(source: CatalogSource): string {
   return SOURCES.find((src) => src.key === source)?.label ?? source;
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  done:            'Done',
+  running:         'Running',
+  pending:         'Pending',
+  failed:          'Failed',
+  partial_failure: 'Done with errors',
+};
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { cls: string; icon: typeof Clock }> = {
-    done:    { cls: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400',  icon: CheckCircle2 },
-    running: { cls: 'bg-blue-100   text-blue-700   dark:bg-blue-900/30   dark:text-blue-400',   icon: RefreshCw    },
-    pending: { cls: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-300', icon: Clock       },
-    failed:  { cls: 'bg-red-100    text-red-700    dark:bg-red-900/30    dark:text-red-400',    icon: AlertCircle  },
+    done:            { cls: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400',   icon: CheckCircle2 },
+    running:         { cls: 'bg-blue-100   text-blue-700   dark:bg-blue-900/30   dark:text-blue-400',    icon: RefreshCw    },
+    pending:         { cls: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-300', icon: Clock        },
+    failed:          { cls: 'bg-red-100    text-red-700    dark:bg-red-900/30    dark:text-red-400',     icon: AlertCircle  },
+    partial_failure: { cls: 'bg-amber-100  text-amber-700  dark:bg-amber-900/30  dark:text-amber-400',   icon: AlertCircle  },
   };
-  const cfg = map[status] ?? map.pending;
+  const cfg = map[status] ?? { cls: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-300', icon: AlertCircle };
   const Icon = cfg.icon;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.cls}`}>
       <Icon className={cn('h-3 w-3', status === 'running' && 'animate-spin')} />
-      {status}
+      {STATUS_LABEL[status] ?? status}
     </span>
   );
 }

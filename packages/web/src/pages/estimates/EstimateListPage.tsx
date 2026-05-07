@@ -19,7 +19,11 @@ const ESTIMATE_STATUSES = [
   { value: 'draft', label: 'Draft', color: '#6b7280' },
   { value: 'sent', label: 'Sent', color: '#3b82f6' },
   { value: 'approved', label: 'Approved', color: '#22c55e' },
+  // WEB-UIUX-946: 'signed' status was missing from filter pills and status map
+  { value: 'signed', label: 'Signed', color: '#0ea5e9' },
   { value: 'rejected', label: 'Rejected', color: '#ef4444' },
+  // WEB-UIUX-950: 'cancelled' status referenced server-side, never mapped client-side
+  { value: 'cancelled', label: 'Cancelled', color: '#9ca3af' },
   { value: 'converted', label: 'Converted', color: '#8b5cf6' },
   { value: 'converting', label: 'Converting…', color: '#f59e0b' },
 ] as const;

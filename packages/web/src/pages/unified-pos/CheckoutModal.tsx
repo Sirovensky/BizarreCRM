@@ -9,7 +9,7 @@ import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useUnifiedPosStore } from './store';
 import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, generateIdempotencyKey } from '@/utils/format';
 import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 import { submitTrainingTransaction, useIsTraining } from './TrainingModeBanner';
 import { safeHexColor } from '@/utils/safeColor';
@@ -493,8 +493,12 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             // Single Card payment — charge the invoice balance after the
             // server creates it unpaid; BlockChyp records the payment row only
             // after authorization metadata exists.
+            // WEB-UIUX-935: mint ONE key per click here so that any retry of
+            // this same payment attempt reuses the same key and the server's
+            // idempotency cache short-circuits the duplicate charge.
+            const singleCardIdemKey = generateIdempotencyKey('bc');
             try {
-              const terminalRes = await blockchypApi.processPayment(invoiceId);
+              const terminalRes = await blockchypApi.processPayment(invoiceId, singleCardIdemKey);
               const terminalResult = terminalRes.data?.data;
               if (!terminalResult?.success) {
                 cardDeclined = true;
@@ -518,8 +522,11 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             for (const leg of cardSplits) {
               const legAmount = parseFloat(leg.amount) || 0;
               if (legAmount <= 0) continue;
+              // WEB-UIUX-935: each split leg is a distinct charge; mint one key
+              // per leg so the same leg cannot be double-charged on retry.
+              const legIdemKey = generateIdempotencyKey('bc-leg');
               try {
-                const terminalRes = await blockchypApi.processPayment(invoiceId, undefined, legAmount);
+                const terminalRes = await blockchypApi.processPayment(invoiceId, legIdemKey, undefined, legAmount);
                 const terminalResult = terminalRes.data?.data;
                 if (!terminalResult?.success) {
                   cardDeclined = true;

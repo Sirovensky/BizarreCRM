@@ -261,11 +261,13 @@ export function DateRangePicker({
                 <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">
                   To
                 </label>
+                {/* WEB-UIUX-933: cap "To" at today so future dates cannot be selected. */}
                 <input
                   type="date"
                   value={value.to ?? ''}
                   onChange={(e) => handleToChange(e.target.value)}
                   min={value.from ?? undefined}
+                  max={todayISO()}
                   className={cn(
                     'w-full rounded-lg border px-3 py-2 text-sm',
                     'border-surface-200 bg-white text-surface-900',

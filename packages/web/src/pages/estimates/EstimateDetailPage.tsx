@@ -22,8 +22,11 @@ const STATUS_COLORS: Record<string, string> = {
   draft: '#6b7280',
   sent: '#3b82f6',
   approved: '#22c55e',
+  // WEB-UIUX-946: 'signed' status was missing — add distinguishable blue-green
   signed: '#16a34a',
   rejected: '#ef4444',
+  // WEB-UIUX-950: 'cancelled' status referenced server-side, never mapped client-side — add gray/red-tinted
+  cancelled: '#9ca3af',
   converted: '#8b5cf6',
   converting: '#f59e0b',
 };
@@ -546,7 +549,8 @@ export function EstimateDetailPage() {
             <button
               onClick={async () => {
                 try {
-                  const confirmed = await confirm('Mark this estimate as approved?', { confirmLabel: 'Approve' });
+                  // WEB-UIUX-952: old copy hid audit gap — use danger confirm that surfaces the e-sign bypass
+                  const confirmed = await confirm("Approving on customer's behalf — this skips the customer e-sign and writes no signature row. Continue?", { confirmLabel: 'Approve', danger: true });
                   if (confirmed) { approveMut.mutate(); }
                   else { toast('Approval cancelled.'); }
                 }

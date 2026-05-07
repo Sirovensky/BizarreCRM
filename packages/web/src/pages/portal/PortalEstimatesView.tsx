@@ -164,7 +164,11 @@ function EstimateStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     sent: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
     approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+    // WEB-UIUX-946: 'signed' status was missing — blue-tinted to distinguish from approved
+    signed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     draft: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
+    // WEB-UIUX-950: 'cancelled' status referenced server-side, never mapped client-side — gray/red-tinted
+    cancelled: 'bg-red-50 text-red-500 dark:bg-red-950/30 dark:text-red-400',
     converted: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
     converting: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   };

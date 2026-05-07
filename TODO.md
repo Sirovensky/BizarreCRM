@@ -3810,12 +3810,12 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-930. **[MINOR] Avg Turnaround Hours card never discloses if On-Hold/Awaiting-Customer time excluded.** SummaryCard lacks tooltip prop. L14. **[AUTOLOOP-T59 RESOLVED: SummaryCard gained optional tooltip prop with ⓘ glyph + title/aria-label; Avg Turnaround now discloses On-Hold/Awaiting-Customer time excluded per server calculateAvgActiveRepairTime.]**
 
-- [ ] WEB-UIUX-931. **[MINOR] No `data_as_of` / generated_at timestamp on any Reports tab.** `staleTime: 30_000` cache opaque. L13, L11.
+- [x] WEB-UIUX-931. **[MINOR] No `data_as_of` / generated_at timestamp on any Reports tab.** `staleTime: 30_000` cache opaque. L13, L11. **[AUTOLOOP-T60 RESOLVED: 'Updated X ago' indicator added near Reports filter row using react-query dataUpdatedAt + timeAgo + RefreshCw icon; subscribes to cache changes for live updates.]**
 
 - [ ] WEB-UIUX-932. **[MINOR] Aging Report has NO date-range picker — "as of when" invisible.** L7, L13.
   `packages/web/src/pages/billing/AgingReportPage.tsx:46-52`
 
-- [ ] WEB-UIUX-933. **[MINOR] DateRangePicker custom-range "To" has NO upper bound — future date allowed.** Backend silently clamps; chart renders empty days. L7.
+- [x] WEB-UIUX-933. **[MINOR] DateRangePicker custom-range "To" has NO upper bound — future date allowed.** Backend silently clamps; chart renders empty days. L7. **[AUTOLOOP-T60 RESOLVED: DateRangePicker 'To' input gained max={todayISO()} so future dates can't be selected; 'From' unrestricted for historical ranges.]**
   `packages/web/src/components/shared/DateRangePicker.tsx:236,252-253`
 
 - [ ] WEB-UIUX-934. **[MINOR] `formatCurrency` swallows NaN as `$0.00`.** Server returns object → `$0.00` silently. Indistinguishable from real zero. L8, L13.
@@ -3823,19 +3823,19 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED23: External Integrations
 
-- [ ] WEB-UIUX-935. **[BLOCKER] BlockChyp `processPayment` mints fresh idempotency key per call.** Server idem cache keyed by `(user, url, key)` — every retry treated as fresh charge. Operator clicks "Pay via Terminal", times out at 30s, clicks again → server processes both. L16, L4.
+- [x] WEB-UIUX-935. **[BLOCKER] BlockChyp `processPayment` mints fresh idempotency key per call.** Server idem cache keyed by `(user, url, key)` — every retry treated as fresh charge. Operator clicks "Pay via Terminal", times out at 30s, clicks again → server processes both. L16, L4. **[AUTOLOOP-T60 RESOLVED: blockchypApi.processPayment accepts optional idempotencyKey; CheckoutModal mints once per click and reuses on retries so server (user,url,key) cache deduplicates.]**
   `packages/web/src/api/endpoints.ts:1177-1209`
 
 - [ ] WEB-UIUX-936. **[BLOCKER] Default 30s axios timeout shorter than terminal user-input window (60-90s).** Tap-to-pay/chip flow times out client-side while server still processing. Combined with above = double-charge. L16, L4.
   `packages/web/src/api/client.ts:65`
 
-- [ ] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11.
+- [ ] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **STATUS: BLOCKED — needs server reachability heartbeat field on /blockchyp/status; backend infra change, defer to terminal sprint**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:170-178`
 
 - [ ] WEB-UIUX-938. **[MAJOR] BlockChyp Test Connection requires unsaved keys — operator can't retest live key against offline terminal.** Saved secrets arrive redacted as `''`. Most common diagnostic ("did terminal go offline?") requires re-entering 3 secrets. L8, L4.
   `packages/web/src/pages/settings/BlockChypSettings.tsx:282-296`
 
-- [ ] WEB-UIUX-939. **[MAJOR] Catalog `partial_failure` job status falls through to "pending" badge.** Looks like in-progress job. Operator can't distinguish "still running" from "finished but skipped half". L11, L8.
+- [x] WEB-UIUX-939. **[MAJOR] Catalog `partial_failure` job status falls through to "pending" badge.** Looks like in-progress job. Operator can't distinguish "still running" from "finished but skipped half". L11, L8. **[AUTOLOOP-T60 RESOLVED: partial_failure status mapped to amber 'Done with errors' badge; unknown statuses fall to neutral warning instead of pending spinner.]**
   `packages/web/src/pages/catalog/CatalogPage.tsx:27-42`
 
 - [ ] WEB-UIUX-940. **[MAJOR] Supplier-template-drift / selector-mismatch invisible to UI.** Server logs `selector mismatch` warnings — UI shows generic `error_message` text truncated. No "stale catalog" amber banner. L8, L13.
@@ -3847,7 +3847,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-942. **[MAJOR · BLOCKED] No path from operator-facing 401 (invalid SMS provider key) to settings page that fixes it.** Generic toast. CheckoutModal pattern (`Terminal not configured — go to Settings → Payments`) missing for SMS. L4, L8.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-943. **[MAJOR] VoiceCallsListPage swallows recording-fetch errors with generic "Could not load recording".** 401/404/410 indistinguishable. No retrigger webhook path. L8.
+- [x] WEB-UIUX-943. **[MAJOR] VoiceCallsListPage swallows recording-fetch errors with generic "Could not load recording".** 401/404/410 indistinguishable. No retrigger webhook path. L8. **[AUTOLOOP-T60 RESOLVED: openRecordingSecure now dispatches status-specific toasts for 401/404/410 + status-code-included fallback for other errors.]**
 
 - [ ] WEB-UIUX-944. **[MINOR · BLOCKED] Webhook URL panel never tests bilateral connectivity.** No "send test webhook" action to verify provider can reach server, signing-secret matches. Silent drop if misconfigured. L8.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
@@ -3863,7 +3863,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 
 #### Blockers — Status drift, missing audit trail, unwired endpoints
 
-- [ ] WEB-UIUX-946. **[BLOCKER] `'signed'` status missing from every web status map.** `estimateSign.routes.ts:617` sets `status='signed'` on customer e-sign POST, yet `EstimateDetailPage.STATUS_COLORS` (`:16-22`) and `EstimateListPage.ESTIMATE_STATUSES` (`:17-24`) and portal `EstimateStatusBadge.colors` (`PortalEstimatesView:158-164`) ALL omit it. Mobile-signed estimate renders raw text "signed" with gray fallback, list-page filter pills can't filter by signed, customer portal shows draft-gray. L9, L1.
+- [x] WEB-UIUX-946. **[BLOCKER] `'signed'` status missing from every web status map.** `estimateSign.routes.ts:617` sets `status='signed'` on customer e-sign POST, yet `EstimateDetailPage.STATUS_COLORS` (`:16-22`) and `EstimateListPage.ESTIMATE_STATUSES` (`:17-24`) and portal `EstimateStatusBadge.colors` (`PortalEstimatesView:158-164`) ALL omit it. Mobile-signed estimate renders raw text "signed" with gray fallback, list-page filter pills can't filter by signed, customer portal shows draft-gray. L9, L1. **[AUTOLOOP-T60 RESOLVED: 'signed' status added to STATUS_COLORS (EstimateDetailPage), ESTIMATE_STATUSES + filter pills (EstimateListPage), and EstimateStatusBadge.colors (PortalEstimatesView).]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:16-22`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:158-164`
@@ -3874,7 +3874,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:132-139`
   <!-- meta: fix=portal-Approve-must-route-through-signed-token-flow-OR-capture-signer-name-+-IP-+-UA-server-side -->
 
-- [ ] WEB-UIUX-948. **[BLOCKER] No web UI for `POST /api/v1/estimates/:id/sign-url`.** `estimateSign.routes.ts:233-309` issues admin-side e-sign token + URL (`buildPublicSignUrl`) so staff can hand customer a secure copy-link or QR for in-shop signature pad. Zero callers in `packages/web/src` (grep `sign-url` → only authedRouter declaration in server). Desktop staff can't hand customer the e-sign URL — only mobile clients drive it. EstimateDetailPage has Send (SMS) but nothing for sign-link generation. L8, L3.
+- [ ] WEB-UIUX-948. **[BLOCKER] No web UI for `POST /api/v1/estimates/:id/sign-url`.** `estimateSign.routes.ts:233-309` issues admin-side e-sign token + URL (`buildPublicSignUrl`) so staff can hand customer a secure copy-link or QR for in-shop signature pad. Zero callers in `packages/web/src` (grep `sign-url` → only authedRouter declaration in server). Desktop staff can't hand customer the e-sign URL — only mobile clients drive it. EstimateDetailPage has Send (SMS) but nothing for sign-link generation. L8, L3. **STATUS: BLOCKED — needs new Generate Sign Link modal + QR render + TTL picker + clipboard wiring; multi-component, defer to estimates sprint**
   `packages/server/src/routes/estimateSign.routes.ts:233-309`
   <!-- meta: fix=add-Generate-Sign-Link-button-on-EstimateDetailPage+modal-with-copy+QR+TTL-picker -->
 
@@ -3882,7 +3882,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/server/src/routes/estimateSign.routes.ts:313-353`
   <!-- meta: fix=add-Signatures-card-on-EstimateDetailPage-sidebar-when-status===signed -->
 
-- [ ] WEB-UIUX-950. **[BLOCKER] `'cancelled'` status referenced server-side, never mapped client-side.** `estimates.routes.ts:740,808` blocks convert when `status='cancelled'`, yet ESTIMATE_STATUSES + STATUS_COLORS omit it. If a row exists with `cancelled`, list filter chip absent, badge gray fallback, detail page color undefined. Either set never reachable or dead code on client. L9.
+- [x] WEB-UIUX-950. **[BLOCKER] `'cancelled'` status referenced server-side, never mapped client-side.** `estimates.routes.ts:740,808` blocks convert when `status='cancelled'`, yet ESTIMATE_STATUSES + STATUS_COLORS omit it. If a row exists with `cancelled`, list filter chip absent, badge gray fallback, detail page color undefined. Either set never reachable or dead code on client. L9. **[AUTOLOOP-T60 RESOLVED: 'cancelled' status added to STATUS_COLORS + ESTIMATE_STATUSES + filter pills; gray/red-tinted styling.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
 
 #### Major — Truthfulness, hierarchy, recovery
@@ -3890,7 +3890,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [ ] WEB-UIUX-951. **[MAJOR] Self-approval check is server-side only — Approve button does NOT pre-disable when `created_by === currentUser.id`.** `estimates.routes.ts:1138-1143` rejects with 403 "Cannot approve your own estimate. Another admin must approve this one." — UI lets the operator click, then surfaces server's message via toast. Should disable button + tooltip "needs another admin to approve" up-front. L8, L1.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:206-218`
 
-- [ ] WEB-UIUX-952. **[MAJOR] Staff Approve confirm copy hides the audit gap.** "Mark this estimate as approved?" — does not warn this BYPASSES customer e-sign and writes no `estimate_signatures` row. Operator approving on customer's behalf has no in-UI signal that this is a unilateral action vs the customer's own portal/SMS approval. L7, L16.
+- [x] WEB-UIUX-952. **[MAJOR] Staff Approve confirm copy hides the audit gap.** "Mark this estimate as approved?" — does not warn this BYPASSES customer e-sign and writes no `estimate_signatures` row. Operator approving on customer's behalf has no in-UI signal that this is a unilateral action vs the customer's own portal/SMS approval. L7, L16. **[AUTOLOOP-T60 RESOLVED: Staff Approve confirm copy switched to danger-styled 'Approving on customer behalf — skips e-sign, no signature row. Continue?' so audit-bypass is visible.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
   <!-- meta: fix=copy=Approving-on-customer-behalf-skips-signature-capture+require-typing-INITIAL-OR-reason -->
 
