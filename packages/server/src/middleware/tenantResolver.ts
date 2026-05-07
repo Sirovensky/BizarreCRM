@@ -295,8 +295,29 @@ export async function tenantResolver(req: Request, res: Response, next: NextFunc
     return;
   }
 
-  // Skip tenant resolution for platform-level routes (super-admin, signup, webhooks, info)
-  const platformPaths = ['/super-admin', '/api/v1/signup', '/api/v1/sms/inbound-webhook', '/api/v1/sms/status-webhook', '/api/v1/voice/', '/api/v1/info', '/api/v1/management', '/api/v1/admin', '/api/v1/billing/webhook'];
+  // Skip tenant resolution for platform-level routes (super-admin, signup, webhooks, info).
+  //
+  // BUG-FIX 2026-05-07: previous list had `'/api/v1/voice/'` as a broad prefix,
+  // which silently dropped tenant context for EVERY voice route — including
+  // tenanted ones like `/api/v1/voice/calls`. Symptom: VoiceCallsListPage
+  // returned 401 with `tenantSlug: null`, the client's 401 interceptor flushed
+  // the session, the operator got logged out the moment they opened the page.
+  // The skip is meant only for the four telephony-provider webhook paths,
+  // which carry no auth cookie and identify the tenant by other means.
+  const platformPaths = [
+    '/super-admin',
+    '/api/v1/signup',
+    '/api/v1/sms/inbound-webhook',
+    '/api/v1/sms/status-webhook',
+    '/api/v1/voice/inbound-webhook',
+    '/api/v1/voice/status-webhook',
+    '/api/v1/voice/recording-webhook',
+    '/api/v1/voice/transcription-webhook',
+    '/api/v1/info',
+    '/api/v1/management',
+    '/api/v1/admin',
+    '/api/v1/billing/webhook',
+  ];
   if (platformPaths.some(p => req.path.startsWith(p))) {
     next();
     return;
