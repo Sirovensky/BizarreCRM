@@ -5070,7 +5070,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
   <!-- meta: fix=conditional-copy-based-on-invoice.amount_due:amount_due>0?Reduces-balance-by-X:Adds-to-customer's-store-credit-balance -->
 
-- [ ] WEB-UIUX-1223. **[MINOR] Cancel button on credit-note modal doesn't reset form state. Re-open shows stale amount + reason + note.** `InvoiceDetailPage.tsx:792-794` `onClick={() => setShowCreditNote(false)}`. Compare success path (line 173-174) which DOES reset. Same bug pattern as PO-create cancel (WEB-UIUX-1200). L4 flow consistency.
+- [x] WEB-UIUX-1223. **[MINOR] Cancel button on credit-note modal doesn't reset form state. Re-open shows stale amount + reason + note.** `InvoiceDetailPage.tsx:792-794` `onClick={() => setShowCreditNote(false)}`. Compare success path (line 173-174) which DOES reset. Same bug pattern as PO-create cancel (WEB-UIUX-1200). L4 flow consistency. **[AUTOLOOP-T63 RESOLVED: all three credit-note close paths (backdrop/Esc, X button, Discard) now reset creditNoteForm; matches existing success-path reset.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:791-794`
   <!-- meta: fix=cancel-handler:setShowCreditNote(false)+setCreditNoteForm({amount:'',reason:null,note:''})+also-Esc-handler-and-✕-handler -->
 
@@ -5080,7 +5080,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
   <!-- meta: fix=grid-cols-1-sm:grid-cols-2 -->
 
-- [ ] WEB-UIUX-1225. **[NIT] Credit-note `notes` field on the new invoice row stores `"Credit note: ${reason}"` (`invoices.routes.ts:1224`) — duplicates `credit_note_code` + `credit_note_note` columns. Three places store the reason; report queries that read `notes` get the legacy composed string while reports reading `credit_note_code` get the enum value.** Risk of divergence as new credit notes are issued. L13 schema dup.
+- [ ] WEB-UIUX-1225. **[NIT] Credit-note `notes` field on the new invoice row stores `"Credit note: ${reason}"` (`invoices.routes.ts:1224`) — duplicates `credit_note_code` + `credit_note_note` columns. Three places store the reason; report queries that read `notes` get the legacy composed string while reports reading `credit_note_code` get the enum value.** Risk of divergence as new credit notes are issued. L13 schema dup. **STATUS: BLOCKED — server invoices.routes.ts notes-column dedup needs read/write migration; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1213-1224`
   <!-- meta: fix=stop-writing-Credit-note-prefix-into-notes+OR-derive-notes-display-from-code+note-on-read+single-source-of-truth -->
 
@@ -5090,7 +5090,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Blocker — missing primitives + dead UI
 
-- [ ] WEB-UIUX-1226. **[BLOCKER] `LineItemDiscountMenu` (164 lines, complete chip-picker with 5 reason codes + percent input + portal positioning) is NEVER imported anywhere in the codebase — per-line discount UI does not exist for operators.** `LineItemDiscountMenu.tsx:1-164`. Verified by `grep -rn "LineItemDiscountMenu"` — only matches are inside its own file. `RepairsTab.tsx:790` always inits `lineDiscount: 0`, `LeftPanel.tsx:148/399` and `UnifiedPosPage.tsx:318` only read `device.line_discount` from a server-loaded ticket — there is no client write path. The cart row at `LeftPanel.tsx:585-589` displays a per-line discount line item if non-zero, but no UI lets the operator set one. Server (`pos.routes.ts:1630-1668`) accepts `line_discount` per device, validates and applies it, so backend is fully wired — only the client UI is missing. Operator wanting "10% off labor on this device only" has to (a) edit `laborPrice` directly to fake it (loses the audit reason, breaks reports that group by `line_discount`), or (b) apply a cart-wide discount that hits everything. L3 destination correctness (no entry point), L6 discoverability, L4 flow completion.
+- [ ] WEB-UIUX-1226. **[BLOCKER] `LineItemDiscountMenu` (164 lines, complete chip-picker with 5 reason codes + percent input + portal positioning) is NEVER imported anywhere in the codebase — per-line discount UI does not exist for operators.** `LineItemDiscountMenu.tsx:1-164`. Verified by `grep -rn "LineItemDiscountMenu"` — only matches are inside its own file. `RepairsTab.tsx:790` always inits `lineDiscount: 0`, `LeftPanel.tsx:148/399` and `UnifiedPosPage.tsx:318` only read `device.line_discount` from a server-loaded ticket — there is no client write path. The cart row at `LeftPanel.tsx:585-589` displays a per-line discount line item if non-zero, but no UI lets the operator set one. Server (`pos.routes.ts:1630-1668`) accepts `line_discount` per device, validates and applies it, so backend is fully wired — only the client UI is missing. Operator wanting "10% off labor on this device only" has to (a) edit `laborPrice` directly to fake it (loses the audit reason, breaks reports that group by `line_discount`), or (b) apply a cart-wide discount that hits everything. L3 destination correctness (no entry point), L6 discoverability, L4 flow completion. **STATUS: BLOCKED — wiring LineItemDiscountMenu requires RepairRow integration + types extension + payload thread; multi-component, defer to discount sprint**
   `packages/web/src/pages/unified-pos/LineItemDiscountMenu.tsx:1-164` (dead component)
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:585-608` (display path with no editor)
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:790` (init only, never updated)
@@ -5103,7 +5103,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Major — silent overrides, missing reasoning, dead paths
 
-- [ ] WEB-UIUX-1228. **[MAJOR] Server takes `Math.max(manualDiscount, membershipDiscountAmt)` by default — manual discount is silently DROPPED if membership tier discount is larger, with no UI feedback.** `pos.routes.ts:1881` `const discount = roundCents(Math.max(manualDiscount, membershipDiscountAmt))`. Operator types $5 manual "Damaged box" reason → customer's Gold tier gives 15% = $30 → final invoice records $30 discount, reason becomes the audit log's `discount_reason: 'Damaged box'` (manual reason preserved) but the manual $5 was discarded. Operator believes both applied. The `stack_membership` flag (line 1880 elided) lets them sum, but NO client passes it (verified — grepped `stack_membership` across web tree, zero matches). L7 silent state loss, L2 truthful feedback.
+- [ ] WEB-UIUX-1228. **[MAJOR] Server takes `Math.max(manualDiscount, membershipDiscountAmt)` by default — manual discount is silently DROPPED if membership tier discount is larger, with no UI feedback.** `pos.routes.ts:1881` `const discount = roundCents(Math.max(manualDiscount, membershipDiscountAmt))`. Operator types $5 manual "Damaged box" reason → customer's Gold tier gives 15% = $30 → final invoice records $30 discount, reason becomes the audit log's `discount_reason: 'Damaged box'` (manual reason preserved) but the manual $5 was discarded. Operator believes both applied. The `stack_membership` flag (line 1880 elided) lets them sum, but NO client passes it (verified — grepped `stack_membership` across web tree, zero matches). L7 silent state loss, L2 truthful feedback. **STATUS: BLOCKED — server pos.routes.ts Math.max behavior + stack_membership flag needs design review; backend, defer to discount sprint**
   `packages/server/src/routes/pos.routes.ts:1869-1889`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:102-121` (request payload — no `stack_membership` field)
   <!-- meta: fix=client-show-Member-tier-X-discount:-$Y-line-separately-from-manual+OR-add-stackMembership-toggle-with-explanation+server-warn-if-manual<member-and-not-stacking-(return-info-in-response) -->
@@ -5114,7 +5114,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:443-447`
   <!-- meta: fix=add-second-row-in-cart-totals-when-member-applied:Member-(Gold-15%)-(-$X)+toast-on-customer-pick:Auto-applied-Gold-tier-15%-discount+receipt-prints-each-discount-line-separately -->
 
-- [ ] WEB-UIUX-1230. **[MAJOR] `discount_reason` is captured client-side and sent in every checkout payload, but the `INSERT INTO invoices ...` statement at `pos.routes.ts:2217-2236` does NOT pass it.** Schema HAS `invoices.discount_reason TEXT` (`migrations/001_initial.sql:282`, `013_invoices_nullable_customer.sql:21`). For non-ticket sales (product-only carts), the reason vanishes from invoices.discount_reason — only audit_logs gets it. `InvoiceDetailPage.tsx:460` reads `invoice.discount_reason` and prints it parenthetically; for product-only checkouts it always renders blank. L13 schema/data integrity, L4 audit completeness, L7 truthful display.
+- [ ] WEB-UIUX-1230. **[MAJOR] `discount_reason` is captured client-side and sent in every checkout payload, but the `INSERT INTO invoices ...` statement at `pos.routes.ts:2217-2236` does NOT pass it.** Schema HAS `invoices.discount_reason TEXT` (`migrations/001_initial.sql:282`, `013_invoices_nullable_customer.sql:21`). For non-ticket sales (product-only carts), the reason vanishes from invoices.discount_reason — only audit_logs gets it. `InvoiceDetailPage.tsx:460` reads `invoice.discount_reason` and prints it parenthetically; for product-only checkouts it always renders blank. L13 schema/data integrity, L4 audit completeness, L7 truthful display. **STATUS: BLOCKED — server INSERT INTO invoices missing discount_reason column; backend SQL change, defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2215-2236` (missing column)
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:460`
   <!-- meta: fix=add-discount_reason-to-INSERT-INTO-invoices-(both-update-and-insert-arms)+pass-ticketData?.discount_reason ?? null+drop-redundant-audit-only-path-OR-keep-both -->
@@ -5123,7 +5123,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:936-948`
   <!-- meta: fix=toggle-pill-$/%-above-input+if-%-store-as-derived-amount=subtotal*p/100-OR-server-accept-discount_pct-and-resolve-(matches-membership-path)+show-both-values-in-summary -->
 
-- [ ] WEB-UIUX-1232. **[MAJOR] No client-side cap on typed discount amount — operator typing $1000 on a $200 cart only finds out after clicking Apply, then trying to checkout, then server returns 400 "Discount cannot exceed subtotal + tax".** `LeftPanel.tsx:880-888` clamps negatives to 0 but does not clamp upper bound. `pos.routes.ts:1886` rejects on server. Toast appears AFTER the operator has progressed to the checkout modal in many flows (because `setDiscount` always succeeds locally). L7 deferred error, L4 flow recovery — they have to reopen the cart, fix amount, re-progress.
+- [x] WEB-UIUX-1232. **[MAJOR] No client-side cap on typed discount amount — operator typing $1000 on a $200 cart only finds out after clicking Apply, then trying to checkout, then server returns 400 "Discount cannot exceed subtotal + tax".** `LeftPanel.tsx:880-888` clamps negatives to 0 but does not clamp upper bound. `pos.routes.ts:1886` rejects on server. Toast appears AFTER the operator has progressed to the checkout modal in many flows (because `setDiscount` always succeeds locally). L7 deferred error, L4 flow recovery — they have to reopen the cart, fix amount, re-progress. **[AUTOLOOP-T63 RESOLVED: discount amount clamped to subtotal client-side; Max helper text + amber 'Will zero the cart' warning shown when amount===subtotal.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:880-888`
   <!-- meta: fix=clamp-amount-to-subtotal+show-helper-Max:-${subtotal.toFixed(2)}-below-input+amber-warning-when-amount===subtotal:Will-zero-the-cart -->
 
@@ -5131,7 +5131,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:954-961`
   <!-- meta: fix=extract-DiscountReasonPicker-with-chips-loyalty/bulk/employee/damaged/manager-comp/custom+share-with-LineItemDiscountMenu-(once-it's-wired)+server-enum-validate-with-custom-allowed -->
 
-- [ ] WEB-UIUX-1234. **[MAJOR] `pos_show_discount_reason` defaults to off — most stores will leave it disabled, making the audit-log entry record `discount_reason: null` for every discounted sale. Audit trail is operationally useless.** `LeftPanel.tsx:867`. The toggle exists in `PosSettings.tsx:207-208` but the only enforcement is "block apply when amount > 0 and reason empty" (`LeftPanel.tsx:882-884`); when off, reason is never asked for. Manager investigating shrinkage gets `discount_reason: null` in audit_logs. L13 audit value vs. operator friction tradeoff, but default should err toward audit.
+- [x] WEB-UIUX-1234. **[MAJOR] `pos_show_discount_reason` defaults to off — most stores will leave it disabled, making the audit-log entry record `discount_reason: null` for every discounted sale. Audit trail is operationally useless.** `LeftPanel.tsx:867`. The toggle exists in `PosSettings.tsx:207-208` but the only enforcement is "block apply when amount > 0 and reason empty" (`LeftPanel.tsx:882-884`); when off, reason is never asked for. Manager investigating shrinkage gets `discount_reason: null` in audit_logs. L13 audit value vs. operator friction tradeoff, but default should err toward audit. **[AUTOLOOP-T63 RESOLVED: pos_show_discount_reason default flipped false→true in settingsMetadata.ts so new tenants get audit-friendly capture.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:867,882-884`
   `packages/web/src/pages/settings/PosSettings.tsx:207-208`
   <!-- meta: fix=default-pos_show_discount_reason-to-1+OR-make-reason-required-when-discount-exceeds-N-percent-(graduated-policy)+document-rationale-in-PosSettings-help-text -->
@@ -5142,7 +5142,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Minor — picker bugs, copy, ergonomics
 
-- [ ] WEB-UIUX-1236. **[MINOR] `Add discount` pill has Percent icon but field accepts dollars. Misleading affordance — operators expect % input.** `LeftPanel.tsx:904`. Confirms WEB-UIUX-1231: the percent icon was clearly the original design intent (matches `LineItemDiscountMenu.tsx:92` which IS percent). Either swap the icon to `DollarSign` OR add the % toggle and keep Percent. L2 truthful icon.
+- [x] WEB-UIUX-1236. **[MINOR] `Add discount` pill has Percent icon but field accepts dollars. Misleading affordance — operators expect % input.** `LeftPanel.tsx:904`. Confirms WEB-UIUX-1231: the percent icon was clearly the original design intent (matches `LineItemDiscountMenu.tsx:92` which IS percent). Either swap the icon to `DollarSign` OR add the % toggle and keep Percent. L2 truthful icon. **[AUTOLOOP-T63 RESOLVED: Add discount pill icon switched from Percent to Tag (lucide) since the field accepts dollars.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:904`
   <!-- meta: fix=swap-Percent-for-Tag-or-DollarSign-(lucide)+OR-implement-WEB-UIUX-1231-and-keep-Percent-as-default-mode -->
 
@@ -5150,7 +5150,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:881-887`
   <!-- meta: fix=use-validatePrice-style-parser-(strip-$,reject-comma,reject-scientific)+show-inline-error-Invalid-amount+keep-panel-open -->
 
-- [ ] WEB-UIUX-1238. **[MINOR] On Apply success, focus does not return to the trigger pill — focus drops to body. Keyboard / screen-reader users lose place.** `LeftPanel.tsx:880-888`. After `setOpen(false)` the panel unmounts; no `triggerRef.current?.focus()`. WCAG 2.4.3 focus-order. L11 a11y.
+- [x] WEB-UIUX-1238. **[MINOR] On Apply success, focus does not return to the trigger pill — focus drops to body. Keyboard / screen-reader users lose place.** `LeftPanel.tsx:880-888`. After `setOpen(false)` the panel unmounts; no `triggerRef.current?.focus()`. WCAG 2.4.3 focus-order. L11 a11y. **[AUTOLOOP-T63 RESOLVED: triggerRef + prevOpenRef + useEffect return focus to Add discount pill on close (WCAG 2.4.3).]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:864-919`
   <!-- meta: fix=add-triggerRef-on-the-Add-discount-button+useEffect-on-open-transition:if-was-open-and-now-closed-trigger.focus() -->
 
@@ -5158,7 +5158,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:864-981`
   <!-- meta: fix=mirror-LineItemDiscountMenu's-useEffect-Esc+outside-click-handlers+also-warn-on-dirty-state-(see-WEB-UIUX-1235) -->
 
-- [ ] WEB-UIUX-1240. **[MINOR] Aria-label on the Add-discount pill stays "Add order discount" even when a discount IS already applied — should switch to "Edit order discount: -$X" so screen reader announces state.** `LeftPanel.tsx:902`. L11 a11y (state announcement).
+- [x] WEB-UIUX-1240. **[MINOR] Aria-label on the Add-discount pill stays "Add order discount" even when a discount IS already applied — should switch to "Edit order discount: -$X" so screen reader announces state.** `LeftPanel.tsx:902`. L11 a11y (state announcement). **[AUTOLOOP-T63 RESOLVED: aria-label dynamic — 'Edit order discount: -$X' when discount applied, 'Add order discount' otherwise.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:898-906`
   <!-- meta: fix=aria-label={discount>0?`Edit order discount: -$${discount.toFixed(2)}`:'Add order discount'} -->
 

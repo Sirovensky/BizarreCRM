@@ -609,7 +609,7 @@ const POS_SETTINGS: SettingDef[] = [
     tab: 'pos',
     status: 'coming_soon',
     tooltip: 'Planned: add a "reason" field when applying a discount in POS. Currently discounts are applied without a reason.',
-    default: false,
+    default: true,
     type: 'boolean',
   },
   {

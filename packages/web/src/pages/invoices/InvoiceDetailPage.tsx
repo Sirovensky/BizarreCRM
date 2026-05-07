@@ -940,6 +940,7 @@ export function InvoiceDetailPage() {
               if (!window.confirm('Discard credit-note in progress?')) return;
             }
             setShowCreditNote(false);
+            setCreditNoteForm({ amount: '', code: null, note: '' });
           }}
         >
           <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
@@ -947,7 +948,7 @@ export function InvoiceDetailPage() {
               {/* WEB-UIUX-1054: "Issue" is more precise — the action issues a
                   credit instrument; "Create" is too generic. */}
               <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Issue Credit Note</h2>
-              <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
+              <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '' }); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -1090,7 +1091,7 @@ export function InvoiceDetailPage() {
               Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back.
             </p>
             <div className="flex gap-3 mt-4">
-              <button onClick={() => { setShowCreditNote(false); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+              <button onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '' }); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                 Discard
               </button>
               <button

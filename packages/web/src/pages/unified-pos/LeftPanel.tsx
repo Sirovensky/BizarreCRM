@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight, Percent, type LucideIcon } from 'lucide-react';
+import { Search, Barcode, Plus, Minus, Trash2, ShoppingCart, X, User, Ticket, Package, ChevronLeft, ChevronRight, Percent, Tag, type LucideIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, ticketApi, customerApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -941,10 +941,22 @@ function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
   const { discount, discountReason, setDiscount } = useUnifiedPosStore();
   const { getSetting } = useSettings();
   const requireReason = getSetting('pos_show_discount_reason') === '1';
+  // WEB-UIUX-1232: need subtotal to cap the discount amount
+  const { subtotal } = useTotals();
 
   const [open, setOpen] = useState(false);
   const [draftAmount, setDraftAmount] = useState('');
   const [draftReason, setDraftReason] = useState('');
+
+  // WEB-UIUX-1238: return focus to trigger pill on close
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    if (prevOpenRef.current && !open) {
+      triggerRef.current?.focus();
+    }
+    prevOpenRef.current = open;
+  }, [open]);
 
   // Sync draft values from store when panel opens
   const handleOpen = () => {
@@ -954,12 +966,14 @@ function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
   };
 
   const handleApply = () => {
-    const amount = parseFloat(draftAmount) || 0;
+    // WEB-UIUX-1232: clamp typed amount to subtotal
+    const raw = parseFloat(draftAmount) || 0;
+    const amount = Math.min(raw < 0 ? 0 : raw, subtotal);
     if (requireReason && amount > 0 && !draftReason.trim()) {
       toast.error('Reason is required for discounts');
       return;
     }
-    setDiscount(amount < 0 ? 0 : amount, draftReason.trim());
+    setDiscount(amount, draftReason.trim());
     setOpen(false);
   };
 
@@ -976,12 +990,15 @@ function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
     return (
       <div className="flex justify-between items-center text-xs text-surface-500 dark:text-surface-400">
         <button
+          ref={triggerRef}
           type="button"
           onClick={handleOpen}
           className="btn btn-xs !px-0 text-teal-600 dark:text-teal-400 hover:underline"
-          aria-label="Add order discount"
+          // WEB-UIUX-1240: dynamic aria-label reflects current discount state
+          aria-label={discount > 0 ? `Edit order discount: -$${discount.toFixed(2)}` : 'Add order discount'}
         >
-          <Percent className="h-3 w-3" />
+          {/* WEB-UIUX-1236: Tag icon — field accepts dollar amounts, not percentages */}
+          <Tag className="h-3 w-3" />
           {discount > 0 ? `Discount: -${formatCurrency(discount)}` : 'Add discount'}
         </button>
         {discount > 0 && (
@@ -1020,12 +1037,34 @@ function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
           inputMode="decimal"
           pattern="[0-9.]*"
           value={draftAmount}
-          onChange={(e) => setDraftAmount(e.target.value)}
+          // WEB-UIUX-1232: clamp display value to subtotal on blur
+          onChange={(e) => {
+            const val = e.target.value;
+            const numeric = parseFloat(val);
+            if (!isNaN(numeric) && numeric > subtotal) {
+              setDraftAmount(subtotal.toFixed(2));
+            } else {
+              setDraftAmount(val);
+            }
+          }}
           onKeyDown={(e) => e.key === 'Enter' && handleApply()}
           placeholder="0.00"
           autoFocus
           className="mt-0.5 w-full rounded border border-surface-300 dark:border-surface-600 bg-transparent px-2 py-1 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500"
         />
+        {/* WEB-UIUX-1232: helper text with cap and amber zero-cart warning */}
+        {subtotal > 0 && (
+          <p className={cn(
+            'mt-0.5 text-[10px]',
+            parseFloat(draftAmount) >= subtotal
+              ? 'text-amber-600 dark:text-amber-400'
+              : 'text-surface-400 dark:text-surface-500',
+          )}>
+            {parseFloat(draftAmount) >= subtotal
+              ? 'Will zero the cart'
+              : `Max: $${subtotal.toFixed(2)}`}
+          </p>
+        )}
       </label>
       {(requireReason || draftReason) && (
         <label className="block">
