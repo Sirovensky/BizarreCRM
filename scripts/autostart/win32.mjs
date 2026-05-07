@@ -176,12 +176,12 @@ export async function register(spec) {
 
   // Best-effort delete any prior task with this name. /F forces and
   // suppresses the confirm prompt. Errors here are fine — task may not exist.
-  spawnSync('schtasks', ['/Delete', '/TN', spec.name, '/F'], { stdio: 'ignore' });
+  spawnSync('schtasks.exe', ['/Delete', '/TN', spec.name, '/F'], { stdio: 'ignore' });
 
   // Create the new task. /XML imports our generated XML; no other flags
   // override it. We surface stdio so the operator sees any failure
   // (most common: not running as Administrator).
-  const r = spawnSync('schtasks', ['/Create', '/XML', xmlPath, '/TN', spec.name], {
+  const r = spawnSync('schtasks.exe', ['/Create', '/XML', xmlPath, '/TN', spec.name], {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
   });
@@ -203,7 +203,7 @@ export async function register(spec) {
 }
 
 export async function unregister(name) {
-  const r = spawnSync('schtasks', ['/Delete', '/TN', name, '/F'], {
+  const r = spawnSync('schtasks.exe', ['/Delete', '/TN', name, '/F'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
   });
@@ -225,14 +225,14 @@ export async function unregister(name) {
 export const __test = { buildXml, buildLauncher, validateName, esc };
 
 export async function status(name) {
-  // shell:true so schtasks resolves through cmd.exe consistently across
-  // Windows configs that don't have System32 first on PATH.
+  // schtasks.exe is in System32, which is always on PATH on Windows. Calling
+  // it directly avoids DEP0190 (shell:true + args array → unescaped concat).
   // windowsHide so this status probe doesn't pop a console window —
   // setup.mjs calls this on every run + the SPA polls it.
-  const r = spawnSync('schtasks', ['/Query', '/TN', name, '/FO', 'LIST', '/V'], {
+  const r = spawnSync('schtasks.exe', ['/Query', '/TN', name, '/FO', 'LIST', '/V'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
-    shell: true,
+    shell: false,
     windowsHide: true,
   });
   // Exit 0 + "ERROR: cannot find" never both occur. Non-zero typically

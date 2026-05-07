@@ -105,24 +105,38 @@ const IS_WIN = process.platform === 'win32';
  * 'node' in this set.
  */
 const WIN_CMD_SHIMS = new Set(['pm2', 'npm', 'npx']);
-function needsShell(cmd, opts) {
-  if (typeof opts?.shell === 'boolean') return opts.shell;
-  return IS_WIN && WIN_CMD_SHIMS.has(cmd);
+
+/**
+ * Resolve a command name to what spawnSync should actually invoke. On Windows,
+ * .cmd shims (pm2.cmd, npm.cmd, etc.) cannot be spawned directly without
+ * shell:true on older Node — but Node 22 emits DEP0190 when shell:true is
+ * combined with an args array (the args get concatenated into the shell
+ * command line without escaping → injection risk). The fix is to drop
+ * shell:true entirely and append `.cmd` to known shims so CreateProcess
+ * resolves them directly. spawnSync on Windows handles `.cmd` invocation
+ * via cmd.exe internally without exposing the unescaped-args path.
+ */
+function resolveExe(cmd) {
+  if (IS_WIN && WIN_CMD_SHIMS.has(cmd)) return cmd + '.cmd';
+  return cmd;
 }
 
 /**
  * Run a command synchronously with inherited stdio (so the operator sees
  * progress). Returns { ok, code }. Never throws — callers branch on `.ok`.
  *
- * `shell` flips automatically based on `cmd` on Windows (see WIN_CMD_SHIMS);
- * callers can override by passing `shell: true|false`.
+ * shell:false everywhere — see resolveExe() comment for the DEP0190 context.
+ * Callers that legitimately need shell parsing can pass `shell: true` and
+ * accept the deprecation warning (no current call site does).
  */
 function run(cmd, args = [], opts = {}) {
-  const r = spawnSync(cmd, args, {
+  const useShell = typeof opts.shell === 'boolean' ? opts.shell : false;
+  const exe = useShell ? cmd : resolveExe(cmd);
+  const r = spawnSync(exe, args, {
     cwd: opts.cwd || REPO_ROOT,
     stdio: opts.stdio || 'inherit',
     env: { ...process.env, ...(opts.env || {}) },
-    shell: needsShell(cmd, opts),
+    shell: useShell,
     encoding: 'utf8',
     timeout: opts.timeout,
   });
@@ -808,6 +822,11 @@ function printPm2Diagnostics() {
 
 // ─── 11. Boot autostart registration ───────────────────────────────────────
 
+// Persistent marker so we don't re-prompt for autostart consent every run.
+// "yes" means we tried (or succeeded); "no" means operator declined and
+// doesn't want to be asked again. Delete the file to re-prompt.
+const AUTOSTART_CHOICE_FILE = path.join(REPO_ROOT, '.bizarrecrm-autostart-choice');
+
 async function registerAutostart() {
   step('Registering boot autostart');
   if (process.env.SETUP_NO_AUTOSTART === '1') {
@@ -842,6 +861,25 @@ async function registerAutostart() {
     /* status() failure is non-fatal — fall through to consent + register */
   }
 
+  // Persisted choice — if operator already said "no" once, don't re-prompt
+  // every setup.bat run. They can re-enable by deleting the marker file.
+  try {
+    if (existsSync(AUTOSTART_CHOICE_FILE)) {
+      const stored = readFileSync(AUTOSTART_CHOICE_FILE, 'utf8').trim().toLowerCase();
+      if (stored === 'no') {
+        ok('Autostart previously declined (delete .bizarrecrm-autostart-choice to re-prompt).');
+        return;
+      }
+      // 'yes' but status() said not enabled → registration failed last time.
+      // Try again silently (no prompt) so operators who consented once don't
+      // have to re-answer when admin elevation succeeds on a later run.
+      if (stored === 'yes') {
+        // Fall through to registration block below without prompting.
+        return registerAutostartInner();
+      }
+    }
+  } catch { /* corrupt marker → fall through to prompt */ }
+
   // Operator consent — autostart adapters need sudo on Linux/macOS or
   // Administrator on Windows. Don't escalate without an explicit yes.
   // Both stdin AND stdout must be TTY: a piped stdout means the prompt
@@ -859,10 +897,17 @@ async function registerAutostart() {
     ok('Non-interactive (TTY check failed) — autostart skipped. Set SETUP_NO_AUTOSTART=0 + run interactively to enable, or pre-install the unit manually.');
     return;
   }
+  // Persist the answer either way so we don't re-prompt next run.
+  try { writeFileSync(AUTOSTART_CHOICE_FILE, (consent ? 'yes' : 'no') + '\n', { encoding: 'utf8' }); }
+  catch (err) { warn(`Could not persist autostart choice: ${err instanceof Error ? err.message : String(err)}`); }
   if (!consent) {
     ok('Operator declined autostart. Server will need manual `pm2 resurrect` after reboot.');
     return;
   }
+  return registerAutostartInner();
+}
+
+async function registerAutostartInner() {
 
   // PM2 JS entry resolution. Win32 adapter REQUIRES a working JS path —
   // its launcher does `"node.exe" "<pm2-bin>" resurrect`. Linux/macOS
