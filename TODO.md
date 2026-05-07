@@ -938,7 +938,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 - [ ] WEB-FQ-015. **[MED] Native browser `<select>` used 25× in pages while shared CommandPalette + custom dropdowns coexist — different a11y, hover, selection visuals.** `CustomerListPage.tsx:609,627`, `CustomerCreatePage.tsx:236`, all use raw `<select>` with `rounded-md` + Tailwind classes. Other surfaces (e.g. CustomerListPage:926 column-picker) hand-roll a custom `<div role="menu">` dropdown. Selects don't open to themed listbox; dropdowns don't follow native keyboard rules. No shared `<Select>` primitive. Date-picker landscape similar — 14 native `<input type="date">` only, no library; 0 themed pickers. (Memory says brand surface ramp drift.) **[AUTOLOOP-T0 BLOCKED: requires Radix/HeadlessUI + DatePicker deps + codemod 128 native selects. Too broad.]**
   <!-- meta: scope=web/pages+components; files=packages/web/src/pages/customers/CustomerCreatePage.tsx:236,packages/web/src/pages/customers/CustomerListPage.tsx:609,627,926; fix=add-shared/Select.tsx+shared/DatePicker.tsx-as-headless-radix/HeadlessUI-wrappers+codemod-25-native-selects -->
 
-- [ ] WEB-FQ-016. **[MED] Status-color usage uses raw amber/blue/green/red Tailwind colors with NO dark variants in 30+ spots — light-only badges.** `CustomerListPage.tsx:464` rounded-full badge; `DashboardPage.tsx:284,314,355,738,776` `text-amber-600 dark:text-amber-400` (dark variants present here) but `:1338,1873` only `text-red-500` / `text-green-600` (no dark:). Customer detail page `border-purple-200 text-purple-700 bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10` (long), but other pages omit the `dark:` arm. Inconsistent dark-mode coverage = washed-out badges in dark mode.
+- [ ] WEB-FQ-016. **[MED] Status-color usage uses raw amber/blue/green/red Tailwind colors with NO dark variants in 30+ spots — light-only badges.** `CustomerListPage.tsx:464` rounded-full badge; `DashboardPage.tsx:284,314,355,738,776` `text-amber-600 dark:text-amber-400` (dark variants present here) but `:1338,1873` only `text-red-500` / `text-green-600` (no dark:). Customer detail page `border-purple-200 text-purple-700 bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10` (long), but other pages omit the `dark:` arm. Inconsistent dark-mode coverage = washed-out badges in dark mode. **STATUS: BLOCKED — codemod across 30+ badge sites + StatusBadge component design; multi-component, defer to design-system sprint**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:1338,1873,packages/web/src/pages/customers/CustomerListPage.tsx:464; fix=define-StatusBadge-component-with-tone=success|warning|danger|info+full-light/dark-token-pairs -->
 
 - [~] WEB-FQ-017. **[LOW] Button-label conventions inconsistent — "Add" / "Add Customer" / "Create" / "New" coexist for the same intent across pages.** `CustomerListPage.tsx:577` Link label "Add Customer"; `tickets/TicketListPage.tsx:632` form button ">Add<"; many settings pages use `>Create<`; some `>New<`. Microcopy convention should pick one verb per CRUD slot ("Add X" for list-page CTAs, "Save changes" for edit, "Create X" only for wizards) and document it in a copywriting guide.
@@ -1017,7 +1017,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 - [ ] WEB-FAC-005. **[MED] Tooltips implemented as native `title="..."` attributes on 168 elements — no delay-in/out, OS-rendered (breaks brand), flickers on rapid mouse movement across icon clusters.** `Header.tsx:284,294,313`, `Sidebar.tsx:352`, `ImpersonationBanner.tsx:86`, etc. Native title shows after ~700ms with no fade, dismisses on movement, ignores keyboard focus (a11y gap). Build a shared `<Tooltip>` with `delayShow={300}` `delayHide={150}` + 150ms fade-in/out, focus-visible support, motion-reduce fallback to instant show. Replace all 168 `title=` callsites via codemod. **[AUTOLOOP-T1 BLOCKED: 168-site native title→Tooltip codemod, too broad.]**
   <!-- meta: scope=web/components; files=packages/web/src/components/layout/Header.tsx:284,294,313,packages/web/src/components/layout/Sidebar.tsx:352,packages/web/src/components/ImpersonationBanner.tsx:86; fix=author-shared/Tooltip.tsx+@radix-ui/react-tooltip+delay-300/150+motion-reduce:transition-none+codemod-title-attr -->
 
-- [ ] WEB-FAC-006. **[MED] No page-route transitions — `<Routes>` in `App.tsx:351,369` swap routes synchronously with zero crossfade, causing "white flash" between heavy pages (Dashboard -> CustomerList -> TicketDetail).** React Router v6 unmounts old route immediately. Wrap `<Routes location={location} />` in `framer-motion AnimatePresence` keyed on `location.pathname` with 150ms fade or short slide. Critical when Suspense fallback (Skeleton) chains multiple paint phases — currently looks broken instead of intentional.
+- [ ] WEB-FAC-006. **[MED] No page-route transitions — `<Routes>` in `App.tsx:351,369` swap routes synchronously with zero crossfade, causing "white flash" between heavy pages (Dashboard -> CustomerList -> TicketDetail).** React Router v6 unmounts old route immediately. Wrap `<Routes location={location} />` in `framer-motion AnimatePresence` keyed on `location.pathname` with 150ms fade or short slide. Critical when Suspense fallback (Skeleton) chains multiple paint phases — currently looks broken instead of intentional. **STATUS: BLOCKED — needs new framer-motion dependency + AnimatePresence wiring across all routes; defer to motion sprint**
   <!-- meta: scope=web/App; files=packages/web/src/App.tsx:351,369; fix=AnimatePresence+motion.div-key=pathname+150ms-fade+motion-reduce:duration-0 -->
 
 
@@ -2433,7 +2433,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-491. **[MAJOR] TicketActions HeaderStatusDropdown 80vh max + 18rem min-width on small screen overflows right edge.** L11. **[AUTOLOOP-T21 RESOLVED: HeaderStatusDropdown `min-w-[18rem]` → `min-w-0 sm:min-w-[18rem]` + `max-w-[calc(100vw-1rem)]`; viewport-safe.]**
   `packages/web/src/pages/tickets/TicketActions.tsx:75-76`
 
-- [ ] WEB-UIUX-492. **[MAJOR] TicketNotes `dangerouslySetInnerHTML` on system events — DOMPurify scoped to `b/i/em/strong` but description is server-supplied + may include user input.** Safe today, drift risk if event message format expands. L16.
+- [x] WEB-UIUX-492. **[MAJOR] TicketNotes `dangerouslySetInnerHTML` on system events — DOMPurify scoped to `b/i/em/strong` but description is server-supplied + may include user input.** Safe today, drift risk if event message format expands. L16. **[AUTOLOOP-T58 RESOLVED: extracted SYSTEM_EVENT_PURIFY_CONFIG module-level constant with threat-model comment so DOMPurify tag list cannot drift wider; ALLOWED_ATTR=[] locks out href/onclick.]**
   `packages/web/src/pages/tickets/TicketNotes.tsx:377-384`
 
 - [!] WEB-UIUX-493. **[MAJOR] TicketNotes Save button reads `noteContent.trim()` AFTER a 0.3s autosave debounce — fast click after typing may save trimmed empty if `useDraft` write is pending.** STALE 2026-05-07 — `noteContent` is React state and is current at click time; the debounce only writes to localStorage. The Save path already checks `noteContent.trim()` and the button is disabled for empty state.
@@ -2661,7 +2661,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/components/TrialBanner.tsx`
   <!-- meta: fix=delete-orphan-or-merge -->
 
-- [ ] WEB-UIUX-570. **[BLOCKER] ImpersonationBanner is a `<button>` covering entire bar — click anywhere exits impersonation.** Including X icon at line 107 looks like separate close action. Super-admin debugging tenant accidentally logs out by clicking banner text. L16, L12.
+- [x] WEB-UIUX-570. **[BLOCKER] ImpersonationBanner is a `<button>` covering entire bar — click anywhere exits impersonation.** Including X icon at line 107 looks like separate close action. Super-admin debugging tenant accidentally logs out by clicking banner text. L16, L12. **[AUTOLOOP-T58 RESOLVED: ImpersonationBanner split full-bar button into <div role=status> for info + dedicated <button aria-label='Exit impersonation'> wrapping only the X icon.]**
   `packages/web/src/components/ImpersonationBanner.tsx:96-109`
   <!-- meta: fix=split-status-display-from-action-target-use-role=status+separate-button -->
 
@@ -3007,7 +3007,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-676. **[MAJOR] Drawer-pop button optimistically toasts "Cash drawer opened" on HTTP 200.** No driver poll, no tactile confirm. Drawer disconnect/jam = silent fail with green toast. L8. **[AUTOLOOP-T31 RESOLVED: drawer-pop toast wording corrected to "Drawer command sent — verify the drawer opened" (HTTP 200 confirms command, not hardware state).]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:430-437`
 
-- [ ] WEB-UIUX-677. **[MAJOR] Print Receipt is fire-and-forget `window.print()` — no printer-online pre-check, no success/failure callback.** Cashier clicks → silence → walks away. L8.
+- [x] WEB-UIUX-677. **[MAJOR] Print Receipt is fire-and-forget `window.print()` — no printer-online pre-check, no success/failure callback.** Cashier clicks → silence → walks away. L8. **[AUTOLOOP-T58 RESOLVED: handlePrintReceipt adds onafterprint listener + matchMedia('print') fallback + 3s setTimeout fallback; button shows 'Printing…' until resolved then toast.success.]**
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:151-157`
 
 - [ ] WEB-UIUX-678. **[MAJOR · BLOCKED] No "if printer fails, still email" auto-fallback.** Three independent buttons, `handlePrintReceipt` calls `resetAll()` BEFORE navigation → loses access to email button. L4.
@@ -3039,7 +3039,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-686. **[MINOR] PrintPage autoprint `useEffect` deps include query result — refetch on focus triggers second `window.print()`.** L1, L13. **[AUTOLOOP-T31 RESOLVED: PrintPage adds `printedRef = useRef(false)` guard; window.print() runs only once per page lifecycle, immune to refetch-on-focus.]**
   `packages/web/src/pages/print/PrintPage.tsx:993-998`
 
-- [ ] WEB-UIUX-687. **[MINOR] QR receipt has no human-readable fallback URL or numeric code — customer can't scan, no typeable code.** Cellular customer can't access LAN-internal serverUrl. L4, L11.
+- [x] WEB-UIUX-687. **[MINOR] QR receipt has no human-readable fallback URL or numeric code — customer can't scan, no typeable code.** Cellular customer can't access LAN-internal serverUrl. L4, L11. **[AUTOLOOP-T58 RESOLVED: QrReceiptCode renders plain-text URL (monospaced, small) below QR + prominent #numericId short code; hideFallbackUrl prop suppresses for opaque tokens.]**
   `packages/web/src/components/billing/QrReceiptCode.tsx:20-60`
 
 - [ ] WEB-UIUX-688. **[MINOR] SuccessScreen `resetAll()` called BEFORE print navigation — print page fails, cart already wiped.** L4.
@@ -3083,14 +3083,14 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-699. **[MAJOR] Automation triggers don't include `customer_in_segment`.** Operator wanting "send VIP auto-reply" cannot express it. L5. **[AUTOLOOP-T32 BLOCKED: customer_in_segment trigger needs server segment evaluation engine + UI trigger config form; multi-component.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:42-48`
 
-- [ ] WEB-UIUX-700. **[MINOR] Segment value coercion: `Number("$50")` = NaN → falls through to string → segment matches zero customers silently.** L7.
+- [x] WEB-UIUX-700. **[MINOR] Segment value coercion: `Number("$50")` = NaN → falls through to string → segment matches zero customers silently.** L7. **[AUTOLOOP-T58 VERIFIED: coerceRuleValue strips non-numeric chars before Number(); returns null on invalid; save blocked + inline error rendered.]**
   `packages/web/src/pages/marketing/SegmentsPage.tsx:252-264`
 
 - [ ] WEB-UIUX-701. **[MINOR · BLOCKED] Campaign Run Now has no rate-limit / dispatch-lock indicator.** Two operators click within 30s → same customer in both segments gets 2 SMS. L5, L8.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/marketing/CampaignsPage.tsx:381-405`
 
-- [ ] WEB-UIUX-702. **[MINOR] Segment delete confirm doesn't enumerate referencing campaigns.** Active campaign breaks silently. L7.
+- [x] WEB-UIUX-702. **[MINOR] Segment delete confirm doesn't enumerate referencing campaigns.** Active campaign breaks silently. L7. **[AUTOLOOP-T58 VERIFIED: delete confirm enumerates referencing campaigns by name; soft-warning fallback when API unavailable.]**
   `packages/web/src/pages/marketing/SegmentsPage.tsx:172-189`
 
 ### Web UI/UX Audit — Pass 10 (2026-05-05, flow walk: process refund — server-vs-client gaps)
@@ -3168,7 +3168,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
   <!-- meta: fix=primary=Record-Payment-keep-Print-collapse-rest-into-overflow-menu -->
 
-- [ ] WEB-UIUX-721. **[MAJOR] No "Refund to original card" branch — server has no card-refund route either.** `blockchyp.routes.ts` exposes process-payment + void-payment but no refund endpoint. Card-charged customer always gets store credit, never card-credited back. Common SaaS expectation broken (chargeback risk). L8, L16.
+- [ ] WEB-UIUX-721. **[MAJOR] No "Refund to original card" branch — server has no card-refund route either.** `blockchyp.routes.ts` exposes process-payment + void-payment but no refund endpoint. Card-charged customer always gets store credit, never card-credited back. Common SaaS expectation broken (chargeback risk). L8, L16. **STATUS: BLOCKED — needs new server endpoint for blockchypApi.refund + UI wiring on CreditNote modal; multi-component, defer to refunds sprint**
   `packages/server/src/routes/blockchyp.routes.ts:131,482` (no refund route)
   <!-- meta: fix=add-blockchypApi.refund+wire-from-CreditNote-modal-when-card-payment-exists -->
 
@@ -3592,7 +3592,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-853. **[MAJOR] Wizard is 24 mandatory-or-skip body steps — "About 10 minutes" claim wildly optimistic.** Realistic 30-60min. 12% rage-quit at step 8. Skip cap = 3, cooldown 24h. L1, L14. **[AUTOLOOP-T40 RESOLVED: StepWelcome wizard time updated from "About 10 minutes" to "30-60 minutes (you can save and resume)".]**
   `packages/web/src/pages/setup/wizardTypes.ts:84-92`
 
-- [ ] WEB-UIUX-854. **[MAJOR] StepMobileAppQr unusable on SaaS — `lan_ip` from `/api/v1/info` meaningless behind Cloudflare.** L11.
+- [x] WEB-UIUX-854. **[MAJOR] StepMobileAppQr unusable on SaaS — `lan_ip` from `/api/v1/info` meaningless behind Cloudflare.** L11. **[AUTOLOOP-T58 RESOLVED: StepMobileAppQr added isLanHost RFC-1918 detector; on public hosts uses browser origin as primary; LAN/Public toggle when both differ; LAN-only deployments unchanged.]**
   `packages/web/src/pages/setup/steps/StepMobileAppQr.tsx:38-80`
 
 - [ ] WEB-UIUX-855. **[MAJOR · BLOCKED] Test SMS button fires BEFORE save — Twilio charges per attempt regardless.** No rate-limit, double-click sends 2 messages. L7, L16.

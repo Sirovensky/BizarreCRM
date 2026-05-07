@@ -13,11 +13,29 @@ import type { StepProps } from '../wizardTypes';
  *    phones to point at (must be LAN IP, not localhost). Defensive: handles
  *    both raw `{ lan_ip, ... }` and the project's standard `{ success,
  *    data: { ... } }` envelope.
- *  - Renders a large QR encoding the `server_url` and a Copy-URL button.
+ *  - On SaaS / public deployments the server's `lan_ip` is behind a proxy
+ *    and meaningless to mobile clients. Detection: if the browser is on a
+ *    routable public hostname (not an RFC-1918 IP, not *.local, not
+ *    localhost) the deployment is considered "public/SaaS" and we show the
+ *    public URL as primary. When both a LAN URL and public URL exist and
+ *    differ, a toggle lets staff choose.
+ *  - Renders a large QR encoding the chosen URL and a Copy-URL button.
  *  - Purely informational — no PendingWrites updates. Continue just calls
  *    `onNext()`. Skip is also allowed (owner can hand out QR later from
  *    Settings).
  */
+
+/** True when the hostname looks like a private/LAN address. */
+function isLanHost(hostname: string): boolean {
+  if (hostname === 'localhost') return true;
+  if (hostname.endsWith('.local')) return true;
+  // RFC-1918: 10.x, 172.16-31.x, 192.168.x
+  if (/^10\./.test(hostname)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true;
+  if (/^192\.168\./.test(hostname)) return true;
+  return false;
+}
+
 interface InfoResponse {
   lan_ip?: string;
   port?: number | string;
@@ -36,7 +54,9 @@ function unwrapInfo(json: unknown): InfoResponse {
 }
 
 export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Element {
-  const [serverUrl, setServerUrl] = useState<string>('');
+  const [lanUrl, setLanUrl] = useState<string>('');
+  const [publicUrl, setPublicUrl] = useState<string>('');
+  const [useLan, setUseLan] = useState<boolean>(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
 
@@ -55,25 +75,55 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
         const json = res.data;
         if (cancelled) return;
         const info = unwrapInfo(json);
-        // Prefer explicit server_url; fall back to building from lan_ip + port.
-        let url = info.server_url ?? '';
-        if (!url && info.lan_ip) {
+
+        // Build the LAN URL from lan_ip + port (or server_url when it looks
+        // like a private address).
+        let lan = '';
+        if (info.lan_ip) {
           const port = info.port ?? 443;
-          // Omit :443 since it's the default https port.
-          url = String(port) === '443'
+          lan = String(port) === '443'
             ? `https://${info.lan_ip}`
             : `https://${info.lan_ip}:${port}`;
+        } else if (info.server_url) {
+          try {
+            const h = new URL(info.server_url).hostname;
+            if (isLanHost(h)) lan = info.server_url;
+          } catch { /* ignore bad URLs */ }
         }
-        if (!url) {
-          throw new Error('Server did not return a LAN URL');
+
+        // Derive the public URL from the browser's current location.
+        const pub = `${window.location.protocol}//${window.location.host}`;
+
+        // Decide whether the browser itself is on a public host.
+        const browserIsPublic = !isLanHost(window.location.hostname);
+
+        if (browserIsPublic) {
+          // SaaS / public deployment: primary = public URL; LAN is secondary
+          // (and only shown when it actually differs from the public URL).
+          setPublicUrl(pub);
+          const lanDiffersFromPub = lan && lan !== pub;
+          setLanUrl(lanDiffersFromPub ? lan : '');
+          setUseLan(false);
+        } else {
+          // Self-hosted LAN deployment: use LAN URL (fall back to public).
+          const resolved = lan || pub;
+          setLanUrl(resolved);
+          setPublicUrl('');
+          setUseLan(true);
+          if (!lan) {
+            // LAN IP not in API response but we're on a LAN browser — use origin.
+            setError('LAN IP not detected; showing this server\'s URL instead.');
+          }
         }
-        setServerUrl(url);
       } catch (err: unknown) {
         if (cancelled) return;
         const msg =
           (err as { message?: string })?.message ||
-          'Could not detect the shop LAN URL. Pair phones manually from Settings later.';
+          'Could not detect the shop URL. Pair phones manually from Settings later.';
         setError(msg);
+        // Last-resort fallback: use the browser origin.
+        setPublicUrl(`${window.location.protocol}//${window.location.host}`);
+        setUseLan(false);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -82,6 +132,9 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
       cancelled = true;
     };
   }, []);
+
+  // Resolved URL used for the QR and copy button.
+  const serverUrl = useLan ? lanUrl : (publicUrl || lanUrl);
 
   const handleCopy = async () => {
     if (!serverUrl) return;
@@ -190,12 +243,49 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
               <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">{error}</p>
             ) : null}
 
+            {/* Toggle when both LAN and public URLs are available */}
+            {lanUrl && publicUrl ? (
+              <div className="mt-4 flex items-center gap-3 rounded-xl border border-surface-200 bg-surface-50 p-3 dark:border-surface-700 dark:bg-surface-900/40">
+                <span className="text-xs text-surface-600 dark:text-surface-400">Network:</span>
+                <button
+                  type="button"
+                  onClick={() => setUseLan(false)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    !useLan
+                      ? 'bg-primary-500 text-primary-950'
+                      : 'text-surface-600 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-700'
+                  }`}
+                >
+                  Public / cloud
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseLan(true)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    useLan
+                      ? 'bg-primary-500 text-primary-950'
+                      : 'text-surface-600 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-700'
+                  }`}
+                >
+                  Local network (LAN)
+                </button>
+              </div>
+            ) : null}
+
             <div className="mt-5 flex items-start gap-2 rounded-xl bg-surface-50 p-3 text-xs text-surface-600 dark:bg-surface-900/40 dark:text-surface-400">
               <Wifi className="mt-0.5 h-4 w-4 flex-shrink-0 text-surface-500 dark:text-surface-400" />
-              <p>
-                If your phones are not on the shop Wi-Fi, use Tailscale or share LAN access first.
-                Public Wi-Fi pairing is not supported.
-              </p>
+              {publicUrl && !lanUrl ? (
+                <p>
+                  This is a cloud-hosted shop — phones connect via the public URL above.
+                  No LAN configuration needed.
+                </p>
+              ) : (
+                <p>
+                  Phones must be on the same Wi-Fi as this server, or connected via Tailscale.
+                  Use the <strong>Public / cloud</strong> option above if your phones are
+                  outside the local network.
+                </p>
+              )}
             </div>
           </div>
         </div>

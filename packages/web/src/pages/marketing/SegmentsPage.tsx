@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Plus, RefreshCw, Trash2, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { crmApi } from '@/api/endpoints';
+import { crmApi, campaignsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { formatCents } from '@/utils/format';
 
@@ -173,8 +173,27 @@ export function SegmentsPage() {
                             // FC-007: themed confirm prevents single-click destruction of a hand-built
                             // segment that may be referenced by running campaigns. Auto segments are
                             // protected by the is_auto guard above.
+                            //
+                            // WEB-UIUX-702: enumerate referencing campaigns before confirming delete
+                            // so the user knows exactly what will break.
+                            let confirmMsg = `Delete segment "${s.name}"?`;
+                            try {
+                              const res = await campaignsApi.list();
+                              const allCampaigns: any[] = (res.data as any)?.data ?? (res.data as any) ?? [];
+                              const refs = allCampaigns.filter((c: any) => c.segment_id === s.id);
+                              if (refs.length > 0) {
+                                const first3 = refs.slice(0, 3).map((c: any) => c.name).join(', ');
+                                const extra = refs.length > 3 ? ` +${refs.length - 3} more` : '';
+                                confirmMsg += ` It is used by ${refs.length} campaign(s): ${first3}${extra}.`;
+                              } else {
+                                confirmMsg += ' No active campaigns reference this segment.';
+                              }
+                            } catch {
+                              // API unavailable — fall back to soft warning
+                              confirmMsg += ' Active campaigns referencing this segment will break.';
+                            }
                             const ok = await confirm(
-                              `Delete segment "${s.name}"? Campaigns referencing it will fail to send to its members.`,
+                              confirmMsg,
                               { title: 'Delete segment', confirmLabel: 'Delete', danger: true },
                             );
                             if (ok) remove.mutate(s.id);
@@ -245,12 +264,31 @@ function makeConditionRow(
  * Two or more conditions → compound form: { op: 'and'|'or', conditions: [...] }
  *   Each element is a flat single-field leaf: { field: { op: value } }
  */
+/**
+ * WEB-UIUX-700: Strip non-numeric characters (e.g. "$", ",") before coercing
+ * to Number so that inputs like "$50" don't silently produce NaN and fall
+ * through to a string value that matches zero customers.  Returns null when
+ * the stripped string still cannot be parsed as a finite number — callers
+ * must treat null as a validation error and block save.
+ */
+function coerceRuleValue(raw: string): string | number | null {
+  const stripped = String(raw).replace(/[^0-9.\-]/g, '');
+  const n = Number(stripped);
+  if (stripped !== '' && isFinite(n)) return n;
+  // If the original value is non-empty and non-numeric it may be an enum
+  // string (e.g. "at_risk") — keep as-is.
+  if (raw.trim() !== '' && stripped === '') return raw;
+  // stripped is non-empty but still NaN/Infinity → invalid numeric input
+  return null;
+}
+
 function serializeConditions(
   conditions: ConditionRow[],
   combinator: 'and' | 'or',
 ): Record<string, unknown> {
   const toLeaf = (c: ConditionRow): Record<string, unknown> => {
-    const ruleValue: string | number = isNaN(Number(c.value)) ? c.value : Number(c.value);
+    // WEB-UIUX-700: use coerceRuleValue; callers validate before reaching here
+    const ruleValue = coerceRuleValue(c.value) ?? c.value;
     return { [c.field]: { [c.op]: ruleValue } };
   };
 
@@ -274,6 +312,8 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
   // WEB-S6-022: multiple conditions with AND/OR combinator
   const [conditions, setConditions] = useState<ConditionRow[]>(() => [makeConditionRow()]);
   const [combinator, setCombinator] = useState<'and' | 'or'>('and');
+  // WEB-UIUX-700: per-condition value coercion errors (keyed by ConditionRow.id)
+  const [valueErrors, setValueErrors] = useState<Record<number, string>>({});
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -294,9 +334,24 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
     setConditions((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     );
+    // WEB-UIUX-700: validate numeric coercion when value changes
+    if ('value' in patch && patch.value !== undefined) {
+      const coerced = coerceRuleValue(patch.value);
+      setValueErrors((prev) => {
+        if (coerced === null) {
+          return { ...prev, [id]: `"${patch.value}" contains non-numeric characters (e.g. use 5000 not $50).` };
+        }
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
-  const allConditionsFilled = conditions.every((c) => c.value.trim() !== '');
+  // WEB-UIUX-700: block save when any condition has a coercion error
+  const allConditionsFilled =
+    conditions.every((c) => c.value.trim() !== '') &&
+    Object.keys(valueErrors).length === 0;
 
   const create = useMutation({
     mutationFn: async () => {
@@ -371,51 +426,64 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
           </div>
 
           {conditions.map((cond, idx) => (
-            <div key={cond.id} className="flex items-center gap-1.5">
-              {conditions.length > 1 && (
-                <span className="text-[10px] text-surface-400 w-6 shrink-0 text-right">
-                  {idx === 0 ? '' : combinator.toUpperCase()}
-                </span>
-              )}
-              {/* Field */}
-              <select
-                value={cond.field}
-                onChange={(e) => updateCondition(cond.id, { field: e.target.value as any })}
-                className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
-              >
-                {RULE_FIELDS.map((f) => (
-                  <option key={f.value} value={f.value}>{f.label}</option>
-                ))}
-              </select>
-              {/* Op */}
-              <select
-                value={cond.op}
-                onChange={(e) => updateCondition(cond.id, { op: e.target.value as any })}
-                className="w-14 px-1 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
-              >
-                {RULE_OPS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.value}</option>
-                ))}
-              </select>
-              {/* Value */}
-              <input
-                type="text"
-                value={cond.value}
-                onChange={(e) => updateCondition(cond.id, { value: e.target.value })}
-                placeholder="value"
-                className="w-24 px-2 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
-              />
-              {/* Remove — only when more than one condition */}
-              {conditions.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeCondition(cond.id)}
-                  className="text-red-500 hover:text-red-700 px-1"
-                  aria-label="Remove condition"
-                  title="Remove condition"
+            <div key={cond.id} className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                {conditions.length > 1 && (
+                  <span className="text-[10px] text-surface-400 w-6 shrink-0 text-right">
+                    {idx === 0 ? '' : combinator.toUpperCase()}
+                  </span>
+                )}
+                {/* Field */}
+                <select
+                  value={cond.field}
+                  onChange={(e) => updateCondition(cond.id, { field: e.target.value as any })}
+                  className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
                 >
-                  ×
-                </button>
+                  {RULE_FIELDS.map((f) => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
+                {/* Op */}
+                <select
+                  value={cond.op}
+                  onChange={(e) => updateCondition(cond.id, { op: e.target.value as any })}
+                  className="w-14 px-1 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-xs"
+                >
+                  {RULE_OPS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.value}</option>
+                  ))}
+                </select>
+                {/* Value — WEB-UIUX-700: highlight border on coercion error */}
+                <input
+                  type="text"
+                  value={cond.value}
+                  onChange={(e) => updateCondition(cond.id, { value: e.target.value })}
+                  placeholder="value"
+                  aria-invalid={!!valueErrors[cond.id]}
+                  className={`w-24 px-2 py-1.5 rounded-lg border bg-white dark:bg-surface-800 text-xs ${
+                    valueErrors[cond.id]
+                      ? 'border-red-500 dark:border-red-400'
+                      : 'border-surface-200 dark:border-surface-700'
+                  }`}
+                />
+                {/* Remove — only when more than one condition */}
+                {conditions.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeCondition(cond.id)}
+                    className="text-red-500 hover:text-red-700 px-1"
+                    aria-label="Remove condition"
+                    title="Remove condition"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {/* WEB-UIUX-700: inline coercion error message */}
+              {valueErrors[cond.id] && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 pl-8">
+                  {valueErrors[cond.id]}
+                </p>
               )}
             </div>
           ))}

@@ -19,6 +19,9 @@ export function SuccessScreen() {
   const { showSuccess, resetAll } = useUnifiedPosStore();
   const [smsSending, setSmsSending] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
+  // WEB-UIUX-677: track whether a print job has been dispatched so the UI can
+  // give the cashier feedback instead of silent fire-and-forget.
+  const [printDispatched, setPrintDispatched] = useState(false);
   const { canRefundOrVoidInvoice } = useUnifiedPosActionVisibility();
 
   // Derive IDs early (before hooks) so they can be passed to enabled checks.
@@ -196,10 +199,46 @@ export function SuccessScreen() {
   };
 
   // WEB-UIUX-1133: same rationale as handlePrintLabel above.
+  // WEB-UIUX-677: attach onafterprint + matchMedia('print') change listener +
+  // a 3 s setTimeout fallback so the cashier gets a toast confirmation instead
+  // of silent fire-and-forget. The new tab calls window.print() automatically
+  // (PrintPage.tsx), so we listen on the *current* window's print events which
+  // mirror the system print dialog lifecycle in most browsers.
   const handlePrintReceipt = () => {
-    if (ticketId) {
-      window.open(`/print/ticket/${ticketId}?size=receipt80&type=receipt`, '_blank');
-    }
+    if (!ticketId) return;
+
+    setPrintDispatched(true);
+
+    // Declare shared cleanup state up-front so all three handlers can reference
+    // each other without temporal-dead-zone issues.
+    // Fallback: matchMedia('print') change fires in some browsers that skip onafterprint.
+    const mql = window.matchMedia('print');
+    let resolved = false;
+
+    const cleanup = () => {
+      if (resolved) return;
+      resolved = true;
+      window.removeEventListener('afterprint', afterPrint);
+      mql.removeEventListener('change', mqlHandler);
+      clearTimeout(fallbackTimer);
+      setPrintDispatched(false);
+      toast.success('Print dispatched — check the printer');
+    };
+
+    // Primary callback: fires in Chrome/Firefox/Safari after the print dialog closes.
+    const afterPrint = () => cleanup();
+    window.addEventListener('afterprint', afterPrint, { once: true });
+
+    const mqlHandler = (e: MediaQueryListEvent) => {
+      // transitioning away from print media = dialog dismissed
+      if (!e.matches) cleanup();
+    };
+    mql.addEventListener('change', mqlHandler);
+
+    // Last-resort 3 s fallback for browsers that fire neither event.
+    const fallbackTimer = setTimeout(() => cleanup(), 3000);
+
+    window.open(`/print/ticket/${ticketId}?size=receipt80&type=receipt`, '_blank');
   };
 
   // WEB-UIUX-1133: navigate without resetAll() so the user can press Back and
@@ -329,10 +368,11 @@ export function SuccessScreen() {
           </button>
           <button
             onClick={handlePrintReceipt}
-            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            disabled={printDispatched}
+            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <Printer className="h-4 w-4" />
-            Print Receipt
+            {printDispatched ? 'Printing…' : 'Print Receipt'}
           </button>
           <button
             onClick={handleViewTicket}
@@ -469,10 +509,11 @@ export function SuccessScreen() {
         {!cardDeclined && (
           <button
             onClick={handlePrintReceipt}
-            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            disabled={printDispatched}
+            className="btn btn-md border border-surface-300 !px-5 text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <Printer className="h-4 w-4" />
-            Print Receipt
+            {printDispatched ? 'Printing…' : 'Print Receipt'}
           </button>
         )}
         {invoiceId && (

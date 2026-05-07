@@ -14,6 +14,17 @@ import type { TicketNote, TicketHistory } from '@bizarre-crm/shared';
 
 // ─── Constants ──────────────────────────────────────────────────────
 
+// Threat model: event.description is server-supplied and may include user input
+// (e.g. field values pasted into status change messages). Tag list MUST stay
+// narrow to prevent XSS if the event message format ever expands. No attributes
+// allowed — href and onclick are explicitly excluded to block link-injection and
+// JS execution vectors.
+const SYSTEM_EVENT_PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['b', 'i', 'em', 'strong'],
+  ALLOWED_ATTR: [] as string[],
+  KEEP_CONTENT: true,
+};
+
 const ACTIVITY_FILTERS = ['All', 'Notes', 'SMS', 'System'] as const;
 type ActivityFilter = typeof ACTIVITY_FILTERS[number];
 type ActivityApiFilter = 'all' | 'notes' | 'sms' | 'system';
@@ -428,10 +439,7 @@ export function TicketNotes({
                   <div className="flex-1 flex items-center gap-2 min-w-0">
                     <p className="text-xs text-surface-500 dark:text-surface-400"
                       dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(event.description || '', {
-                          ALLOWED_TAGS: ['b', 'i', 'em', 'strong'],
-                          ALLOWED_ATTR: [],
-                        })
+                        __html: DOMPurify.sanitize(event.description || '', SYSTEM_EVENT_PURIFY_CONFIG)
                       }}
                     />
                     <span className="shrink-0 text-[10px] text-surface-300 dark:text-surface-500">{timeAgo(event.created_at)}</span>
