@@ -7,7 +7,7 @@ import { cn } from '@/utils/cn';
 import { useUnifiedPosStore } from './store';
 import { CustomerSelector } from './CustomerSelector';
 import { genId } from './types';
-import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
+import { useDefaultTaxRate, useDefaultTaxRateWithStatus } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
 import { useSettings } from '@/hooks/useSettings';
 import { formatCurrency } from '@/utils/format';
@@ -1113,14 +1113,24 @@ function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
 export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onToggle?: () => void }) {
   const { cartItems, customer } = useUnifiedPosStore();
   const totals = useTotals();
-  const taxRate = useDefaultTaxRate();
+  const { rate: taxRate, isLoaded: taxRateLoaded } = useDefaultTaxRateWithStatus();
   const posActions = useUnifiedPosActionVisibility();
 
   // WEB-UIUX-771: fire a warning toast when the tax rate changes mid-session
   // so the cashier is not surprised by a silently-updated cart total.
+  // FIX: previous version fired on every POS mount because useDefaultTaxRate
+  // returns 0 while the query loads, then the real rate (e.g. 8.865%) arrives
+  // — that 0 → 8.865 transition was indistinguishable from a real mid-session
+  // rate change. Track the first settled value via taxRateLoaded so the
+  // initial async hydration does NOT fire the toast.
   const prevTaxRateRef = useRef<number | null>(null);
   useEffect(() => {
-    if (prevTaxRateRef.current !== null && prevTaxRateRef.current !== taxRate) {
+    if (!taxRateLoaded) return; // still loading — don't baseline yet
+    if (prevTaxRateRef.current === null) {
+      prevTaxRateRef.current = taxRate; // first settled value, baseline only
+      return;
+    }
+    if (prevTaxRateRef.current !== taxRate) {
       const oldRate = +(prevTaxRateRef.current * 100).toFixed(4);
       const newRate = +(taxRate * 100).toFixed(4);
       const newTotal = totals.total;
@@ -1128,9 +1138,9 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
         icon: '⚠️',
         duration: 6000,
       });
+      prevTaxRateRef.current = taxRate;
     }
-    prevTaxRateRef.current = taxRate;
-  }, [taxRate]); // intentional: only watch taxRate; totals.total is informational snapshot
+  }, [taxRate, taxRateLoaded]); // intentional: only watch taxRate + load flag; totals.total is informational snapshot
 
   // Collapsed bar
   if (collapsed) {

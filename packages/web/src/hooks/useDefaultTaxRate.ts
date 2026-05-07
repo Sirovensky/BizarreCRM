@@ -14,7 +14,18 @@ interface TaxClass {
  * tax classes defined — never uses a hard-coded constant.
  */
 export function useDefaultTaxRate(): number {
-  const { data } = useQuery({
+  return useDefaultTaxRateWithStatus().rate;
+}
+
+/**
+ * Same as useDefaultTaxRate but returns the load status alongside the rate
+ * so consumers can distinguish "still loading, falling back to 0" from
+ * "loaded, real rate is 0". Used by LeftPanel to suppress the false-positive
+ * "tax rate changed" toast that fired on every POS mount when the async
+ * load resolved from the 0 placeholder to the real rate.
+ */
+export function useDefaultTaxRateWithStatus(): { rate: number; isLoaded: boolean } {
+  const { data, isSuccess, isError } = useQuery({
     queryKey: ['tax-classes'],
     queryFn: () => settingsApi.getTaxClasses(),
     staleTime: 5 * 60 * 1000, // 5 min — tax rates rarely change mid-session
@@ -32,5 +43,10 @@ export function useDefaultTaxRate(): number {
   const defaultClass =
     taxClasses.find((tc) => tc.is_default) ?? taxClasses[0] ?? null;
 
-  return defaultClass ? defaultClass.rate / 100 : 0;
+  return {
+    rate: defaultClass ? defaultClass.rate / 100 : 0,
+    // Treat both success AND terminal-error as "loaded" so a 500 from the
+    // settings endpoint does not pin the rate-change toast indefinitely.
+    isLoaded: isSuccess || isError,
+  };
 }
