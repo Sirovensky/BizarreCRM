@@ -183,7 +183,7 @@ export function Sidebar() {
     .filter((section) => !section.adminOnly || isAdminOrManager)
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => !item.adminOnly || isAdminOrManager),
+      items: section.items.filter((item) => !item.adminOnly || userRole === 'admin'),
     }))
     .filter((section) => section.items.length > 0);
 

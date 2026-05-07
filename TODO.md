@@ -4670,7 +4670,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
 
 #### Blocker — irreversible action with no guardrails
 
-- [ ] WEB-UIUX-1140. **[BLOCKER] Lock button fires immediately on click, no `confirm()` / no modal — and server has NO unlock route. Mis-click = period frozen forever, recoverable only via raw SQL.** `CommissionPeriodLock.tsx:163-174` button calls `lockMut.mutate(p.id)` with zero confirmation. Server `team.routes.ts:882-902` writes `locked_at` + audit row but exposes no inverse — `grep -rn "unlock\|/payroll/unlock" packages/server/src/routes` returns nothing. `_team.payroll.ts:14-28` `isCommissionLocked` then refuses every commission/clock-entry edit in the [start_date, end_date] range (`commissions.ts:181,237`, `employees.routes.ts:375,447-448`, `pos.routes.ts:787`). Real consequence: admin clicks "Lock" on `2026-W14` thinking it was `2026-W13` → all W14 commission tickets/tips/timesheets are now read-only with no UI path back. L1 (irreversible action prominence), L8 (recovery).
+- [x] WEB-UIUX-1140. **[BLOCKER] Lock button fires immediately on click, no `confirm()` / no modal — and server has NO unlock route. Mis-click = period frozen forever, recoverable only via raw SQL.** `CommissionPeriodLock.tsx:163-174` button calls `lockMut.mutate(p.id)` with zero confirmation. Server `team.routes.ts:882-902` writes `locked_at` + audit row but exposes no inverse — `grep -rn "unlock\|/payroll/unlock" packages/server/src/routes` returns nothing. `_team.payroll.ts:14-28` `isCommissionLocked` then refuses every commission/clock-entry edit in the [start_date, end_date] range (`commissions.ts:181,237`, `employees.routes.ts:375,447-448`, `pos.routes.ts:787`). Real consequence: admin clicks "Lock" on `2026-W14` thinking it was `2026-W13` → all W14 commission tickets/tips/timesheets are now read-only with no UI path back. L1 (irreversible action prominence), L8 (recovery). **[AUTOLOOP-T54 VERIFIED: handleLockPeriod already wraps lockMut in confirmStore with danger:true; existing code satisfies the requirement.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:163-174`
   <!-- meta: fix=window.confirm(`Lock ${p.name}? This is permanent — commissions and time entries in ${p.start_date}→${p.end_date} can never be edited again.`)+show-typed-confirm-modal-with-name-echo+optionally-add-server-side-/payroll/unlock-admin+24h-window -->
 
@@ -4680,7 +4680,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
 
 #### Major — role gates, missing context, feedback gaps
 
-- [ ] WEB-UIUX-1142. **[MAJOR] Sidebar shows "Payroll" to managers (`isAdminOrManager`) but server `requireAdmin` rejects Lock and CSV-export — manager sees the page, clicks Lock or Download, gets a generic "Lock failed" / "CSV export failed" toast with no role context.** `Sidebar.tsx:120` entry `{ label: 'Payroll', path: '/team/payroll', icon: DollarSign, adminOnly: true }` is filtered through `isAdminOrManager = userRole === 'admin' || userRole === 'manager'` (`:166-173`) — manager passes the `adminOnly` filter. But `team.routes.ts:887` (`requireAdmin`) and `:910` (`requireAdmin`) gate the only mutating endpoints. Only `POST /payroll/periods` (`:861`) accepts manager. Net effect: manager sees a page where 2 of 3 actions silently 403. Either tighten sidebar to admin-only, or relax server, or surface "Admin only — ask owner" inline. L2 truth, L7 feedback specificity.
+- [x] WEB-UIUX-1142. **[MAJOR] Sidebar shows "Payroll" to managers (`isAdminOrManager`) but server `requireAdmin` rejects Lock and CSV-export — manager sees the page, clicks Lock or Download, gets a generic "Lock failed" / "CSV export failed" toast with no role context.** `Sidebar.tsx:120` entry `{ label: 'Payroll', path: '/team/payroll', icon: DollarSign, adminOnly: true }` is filtered through `isAdminOrManager = userRole === 'admin' || userRole === 'manager'` (`:166-173`) — manager passes the `adminOnly` filter. But `team.routes.ts:887` (`requireAdmin`) and `:910` (`requireAdmin`) gate the only mutating endpoints. Only `POST /payroll/periods` (`:861`) accepts manager. Net effect: manager sees a page where 2 of 3 actions silently 403. Either tighten sidebar to admin-only, or relax server, or surface "Admin only — ask owner" inline. L2 truth, L7 feedback specificity. **[AUTOLOOP-T54 RESOLVED: item-level filter changed from isAdminOrManager to userRole==='admin' so adminOnly entries (Payroll/Performance Reviews/Billing/Admin) hidden from managers.]**
   `packages/web/src/components/layout/Sidebar.tsx:120`
   <!-- meta: fix=either-restrict-sidebar-to-admin-only(role==='admin')-OR-conditionally-render-Lock+Download-with-role-tooltip-OR-relax-server-gate-to-admin-or-manager -->
 
@@ -4688,7 +4688,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:125-145`
   <!-- meta: fix=add-helper-line-under-section-heading:-Locking-prevents-edits-to-commissions,-tips,-and-clock-entries-in-the-period-range. -->
 
-- [ ] WEB-UIUX-1144. **[MAJOR] `locked_by_user_id` and `locked_at` are fetched (interface lines 23-24) but never rendered. After lock, second admin sees a closed-lock icon and nothing else — no "locked by Sasha · May 4 14:22" attribution.** `CommissionPeriodLock.tsx:158-161` locked-state branch shows only `<Lock className="w-4 h-4" />` inside a span. Audit metadata wasted; users can't verify their own lock applied (no echo) and can't see who froze the period when reconciling pay disputes. L7 feedback meaningfulness, L9 (locked-state usefulness).
+- [x] WEB-UIUX-1144. **[MAJOR] `locked_by_user_id` and `locked_at` are fetched (interface lines 23-24) but never rendered. After lock, second admin sees a closed-lock icon and nothing else — no "locked by Sasha · May 4 14:22" attribution.** `CommissionPeriodLock.tsx:158-161` locked-state branch shows only `<Lock className="w-4 h-4" />` inside a span. Audit metadata wasted; users can't verify their own lock applied (no echo) and can't see who froze the period when reconciling pay disputes. L7 feedback meaningfulness, L9 (locked-state usefulness). **[AUTOLOOP-T54 RESOLVED: locked-state branch now renders 'Locked by {user_id} · {formatDate(locked_at)}' so audit metadata is visible to second admin.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:158-161`
   <!-- meta: fix=resolve-locked_by_user_id-via-team-roster-lookup-(or-server-pre-join)-and-render-`Locked by ${name} · ${formatDate(locked_at)}`-as-secondary-text -->
 
@@ -4696,7 +4696,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:140-179`
   <!-- meta: fix=add-server-route-/payroll/periods/:id/summary-returning-{commission_count,clock_entry_count,employee_count,gross_total}+render-as-secondary-line-on-each-unlocked-row -->
 
-- [ ] WEB-UIUX-1146. **[MAJOR] CSV download success has no toast — only error path does. On flaky shop wifi or popup-blocker the operator clicks Download, nothing visible happens, retries → 2 CSVs land in Downloads.** `CommissionPeriodLock.tsx:96-123` success branch (`:113`) clicks the anchor and silently revokes the blob URL. Compare line 121 `toast.error('CSV export failed')`. Inconsistent with rest of app (e.g. `WEB-FB-006` blob exports). L7 feedback meaningfulness.
+- [x] WEB-UIUX-1146. **[MAJOR] CSV download success has no toast — only error path does. On flaky shop wifi or popup-blocker the operator clicks Download, nothing visible happens, retries → 2 CSVs land in Downloads.** `CommissionPeriodLock.tsx:96-123` success branch (`:113`) clicks the anchor and silently revokes the blob URL. Compare line 121 `toast.error('CSV export failed')`. Inconsistent with rest of app (e.g. `WEB-FB-006` blob exports). L7 feedback meaningfulness. **[AUTOLOOP-T54 RESOLVED: CSV download success now toast.success('Downloaded payroll-period-N.csv') so admin sees confirmation on flaky-wifi.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:96-123`
   <!-- meta: fix=after-a.click()-toast.success(`Downloaded payroll-period-${periodId}.csv`)-or-`Saved to Downloads` -->
 
@@ -4705,7 +4705,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:54-77`
   <!-- meta: fix=server-validation:-reject-when-EXISTS-payroll_periods-WHERE-(start_date<=newEnd-AND-end_date>=newStart)-AND-locked_at-IS-NOT-NULL+OR-warn-on-any-overlap+enforce-name-UNIQUE -->
 
-- [ ] WEB-UIUX-1148. **[MAJOR] Period list capped at server `LIMIT 100` with zero pagination/filter/search; weekly cadence × 2 years fills it; older periods silently fall off the end.** `team.routes.ts:852` `ORDER BY start_date DESC LIMIT 100`. Client `CommissionPeriodLock.tsx:35-44` accepts whatever it gets, no "load more". Manager opening the page after 24 months sees the most recent 100 weeks; periods 101+ are invisible to the UI even though the audit/CSV export still works by ID. L6 discoverability of historical data.
+- [ ] WEB-UIUX-1148. **[MAJOR] Period list capped at server `LIMIT 100` with zero pagination/filter/search; weekly cadence × 2 years fills it; older periods silently fall off the end.** `team.routes.ts:852` `ORDER BY start_date DESC LIMIT 100`. Client `CommissionPeriodLock.tsx:35-44` accepts whatever it gets, no "load more". Manager opening the page after 24 months sees the most recent 100 weeks; periods 101+ are invisible to the UI even though the audit/CSV export still works by ID. L6 discoverability of historical data. **STATUS: BLOCKED — server team.routes.ts pagination + year filter; multi-component, defer to payroll sprint**
   `packages/server/src/routes/team.routes.ts:847-856`
   <!-- meta: fix=add-?year=YYYY-or-?before=ISO+limit/offset-pagination+client-year-picker-or-Load-more-link -->
 
@@ -4714,7 +4714,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:128`
   <!-- meta: fix=rename-page-Payroll-Periods-OR-expand-page-to-include-per-employee-totals+pay-run-summary -->
 
-- [ ] WEB-UIUX-1150. **[MAJOR] `useQuery` `isLoading` state ignored — initial render shows "No payroll periods yet." for ~200-500ms before data lands. Empty-state false positive on cold load.** `CommissionPeriodLock.tsx:35-44` destructures only `{ data }`; `:136-138` shows the empty placeholder when `periods.length === 0`. Should branch on `isLoading` to render skeleton or "Loading periods…" first. L9 loading-state helpfulness.
+- [x] WEB-UIUX-1150. **[MAJOR] `useQuery` `isLoading` state ignored — initial render shows "No payroll periods yet." for ~200-500ms before data lands. Empty-state false positive on cold load.** `CommissionPeriodLock.tsx:35-44` destructures only `{ data }`; `:136-138` shows the empty placeholder when `periods.length === 0`. Should branch on `isLoading` to render skeleton or "Loading periods…" first. L9 loading-state helpfulness. **[AUTOLOOP-T54 RESOLVED: useQuery isLoading destructured; 3 skeleton rows + Loader2 render before empty state, fixing cold-load false positive.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:35-138`
   <!-- meta: fix=destructure-isLoading-and-render-3-skeleton-rows-or-Loader2-when-isLoading-before-the-empty-state -->
 
@@ -4724,7 +4724,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
 
 #### Minor — labels, validation, modal hygiene
 
-- [ ] WEB-UIUX-1152. **[MINOR] New-period modal primary button is "Save" — generic verb. Refactoring UI/NN-G: button labels should describe the noun action ("Create period").** `CommissionPeriodLock.tsx:237`. L2 truthful copy.
+- [x] WEB-UIUX-1152. **[MINOR] New-period modal primary button is "Save" — generic verb. Refactoring UI/NN-G: button labels should describe the noun action ("Create period").** `CommissionPeriodLock.tsx:237`. L2 truthful copy. **[AUTOLOOP-T54 RESOLVED: New-period modal Save button relabeled to 'Create period' (concrete noun action).]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:231-238`
   <!-- meta: fix=replace-Save-with-Create-period -->
 
@@ -4732,7 +4732,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:203-238`
   <!-- meta: fix=disable-Save-when-newStart>newEnd+inline-error-text-End-must-be-on-or-after-start -->
 
-- [ ] WEB-UIUX-1154. **[MINOR] Modal backdrop click closes without "discard changes?" guard — typing 5 fields then mis-clicking the backdrop wipes form state.** `CommissionPeriodLock.tsx:183` `onClick={() => setShowNew(false)}`. Esc handler at `:47-52` has the same property but Esc is at least a deliberate keystroke. L8 recovery.
+- [x] WEB-UIUX-1154. **[MINOR] Modal backdrop click closes without "discard changes?" guard — typing 5 fields then mis-clicking the backdrop wipes form state.** `CommissionPeriodLock.tsx:183` `onClick={() => setShowNew(false)}`. Esc handler at `:47-52` has the same property but Esc is at least a deliberate keystroke. L8 recovery. **[AUTOLOOP-T54 RESOLVED: backdrop-click + Esc now check isDirty (newName||newStart||newEnd) and confirm 'Discard this period?' before close.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:182-189`
   <!-- meta: fix=track-isDirty-(any-field-non-empty)+confirm(Discard-this-period?)-on-backdrop-or-Cancel-when-dirty -->
 
@@ -4740,7 +4740,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:163-174`
   <!-- meta: fix=aria-label=`Lock period ${p.name}`+title=`Permanently lock ${p.name}`+consider-Shield-or-Lock-icon-with-arrow -->
 
-- [ ] WEB-UIUX-1156. **[MINOR] Empty-CSV (period with zero commissions/clock entries) still triggers a download with header row + zeros for every active employee — no "No payroll data for this period" prompt.** `team.routes.ts:971-989` always emits a row per active user even when h/c/t are all 0. Operator opens an empty payroll CSV and wonders if export broke. L9 empty-state.
+- [ ] WEB-UIUX-1156. **[MINOR] Empty-CSV (period with zero commissions/clock entries) still triggers a download with header row + zeros for every active employee — no "No payroll data for this period" prompt.** `team.routes.ts:971-989` always emits a row per active user even when h/c/t are all 0. Operator opens an empty payroll CSV and wonders if export broke. L9 empty-state. **STATUS: BLOCKED — server team.routes.ts empty-CSV detection requires summary endpoint; defer to payroll sprint**
   `packages/server/src/routes/team.routes.ts:925-996`
   <!-- meta: fix=if-all-rows-zero-return-409-with-message-No-payroll-activity-or-client-pre-flight-via-/payroll/periods/:id/summary-(WEB-UIUX-1145) -->
 
@@ -4748,7 +4748,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:70-94`
   <!-- meta: fix=fall-through-to-data?.errors[0]?.message-or-data?.message-before-string-fallback -->
 
-- [ ] WEB-UIUX-1158. **[NIT] Bulk-lock for past closed periods absent — weekly cadence requires admin to click Lock + (eventual) confirm 4× per month per shop. No "Lock all periods ending before {date}" affordance.** `CommissionPeriodLock.tsx` only renders per-row buttons. After WEB-UIUX-1140 confirmation lands, bulk action saves rep-stress without lowering safety. L6 discoverability of bulk operation.
+- [ ] WEB-UIUX-1158. **[NIT] Bulk-lock for past closed periods absent — weekly cadence requires admin to click Lock + (eventual) confirm 4× per month per shop. No "Lock all periods ending before {date}" affordance.** `CommissionPeriodLock.tsx` only renders per-row buttons. After WEB-UIUX-1140 confirmation lands, bulk action saves rep-stress without lowering safety. L6 discoverability of bulk operation. **STATUS: BLOCKED — needs new server batch endpoint /payroll/lock-bulk + UI bulk-confirm; multi-component, defer to payroll sprint**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:139-180`
   <!-- meta: fix=add-Lock-all-closed-periods-button+confirm-dialog-listing-affected-period-names+server-batch-endpoint-/payroll/lock-bulk -->
 

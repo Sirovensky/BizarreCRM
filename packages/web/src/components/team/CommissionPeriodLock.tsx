@@ -16,6 +16,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { formatDate } from '@/utils/format';
 
 interface PayrollPeriod {
   id: number;
@@ -37,7 +38,8 @@ export function CommissionPeriodLock() {
     initialFocusSelector: 'input',
   });
 
-  const { data } = useQuery({
+  // WEB-UIUX-1150: destructure isLoading to avoid empty-state false positive on cold load.
+  const { data, isLoading } = useQuery({
     queryKey: ['team', 'payroll', 'periods'],
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: PayrollPeriod[] }>(
@@ -49,12 +51,20 @@ export function CommissionPeriodLock() {
   const periods: PayrollPeriod[] = data || [];
 
   // WEB-FX-003: Esc-to-close for new-period dialog.
+  // WEB-UIUX-1154: guard Esc with dirty-check so accidental key press doesn't silently discard work.
   useEffect(() => {
     if (!showNew) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowNew(false); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        const isDirty = newName || newStart || newEnd;
+        if (!isDirty || window.confirm('Discard this period?')) {
+          setShowNew(false);
+        }
+      }
+    };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [showNew]);
+  }, [showNew, newName, newStart, newEnd]);
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -117,6 +127,8 @@ export function CommissionPeriodLock() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      // WEB-UIUX-1146: toast success after triggering download.
+      toast.success(`Downloaded payroll-period-${periodId}.csv`);
       // Revoke after the click so the navigation/download has a chance to
       // start; 60s mirrors WEB-FJ-017 wallet-pass blob-revoke cadence.
       setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
@@ -150,7 +162,26 @@ export function CommissionPeriodLock() {
           <Plus className="w-3 h-3 mr-1" /> New period
         </button>
       </div>
-      {periods.length === 0 && (
+      {/* WEB-UIUX-1150: show loading skeleton on cold load to avoid empty-state false positive. */}
+      {isLoading && (
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="border dark:border-surface-700 rounded p-2 animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <div className="h-3 w-28 bg-surface-200 dark:bg-surface-700 rounded" />
+                  <div className="h-2.5 w-36 bg-surface-100 dark:bg-surface-700/60 rounded" />
+                </div>
+                <div className="h-6 w-16 bg-surface-200 dark:bg-surface-700 rounded" />
+              </div>
+            </div>
+          ))}
+          <p className="text-xs text-surface-500 dark:text-surface-400 text-center py-1 inline-flex items-center justify-center gap-1 w-full">
+            <Loader2 className="w-3 h-3 animate-spin" /> Loading periods…
+          </p>
+        </div>
+      )}
+      {!isLoading && periods.length === 0 && (
         <p className="text-xs text-surface-500 dark:text-surface-400 py-4 text-center">No payroll periods yet.</p>
       )}
       <div className="space-y-2">
@@ -173,8 +204,12 @@ export function CommissionPeriodLock() {
                   <Download className="w-4 h-4" />
                 </button>
                 {p.locked_at ? (
-                  <span className="inline-flex items-center text-surface-500 dark:text-surface-400" title="Locked">
+                  <span className="inline-flex flex-col items-end text-surface-500 dark:text-surface-400" title="Locked">
                     <Lock className="w-4 h-4" />
+                    {/* WEB-UIUX-1144: render locked_by_user_id + locked_at beneath the lock icon. */}
+                    <span className="text-[10px] leading-tight mt-0.5">
+                      Locked by {p.locked_by_user_id} · {formatDate(p.locked_at)}
+                    </span>
                   </span>
                 ) : (
                   <button
@@ -197,7 +232,16 @@ export function CommissionPeriodLock() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNew(false)}>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            // WEB-UIUX-1154: dirty-guard on backdrop click — confirm before discarding entered data.
+            const isDirty = newName || newStart || newEnd;
+            if (!isDirty || window.confirm('Discard this period?')) {
+              setShowNew(false);
+            }
+          }}
+        >
           <div
             ref={newPeriodDialogRef}
             role="dialog"
@@ -252,7 +296,8 @@ export function CommissionPeriodLock() {
                 onClick={() => createMut.mutate()}
               >
                 {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-                Save
+                {/* WEB-UIUX-1152: use explicit action label instead of generic "Save". */}
+                Create period
               </button>
             </div>
           </div>
