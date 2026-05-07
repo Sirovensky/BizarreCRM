@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DollarSign, Lock, Unlock, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -149,13 +149,23 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // WEB-UIUX-1177: track inline error so we can keep the amount value and
+  // refocus the input instead of swallowing the failure into a toast.
+  const [error, setError] = useState('');
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  // WEB-UIUX-1177: re-focus amount input whenever an error is set.
+  useEffect(() => {
+    if (error) amountRef.current?.focus();
+  }, [error]);
 
   const submit = async () => {
     const parsed = centsFromInput(amount);
     if (!parsed.ok) {
-      toast.error(parsed.reason ?? 'Enter a valid opening float');
+      setError(parsed.reason ?? 'Enter a valid opening float');
       return;
     }
+    setError('');
     setSubmitting(true);
     try {
       await api.post('/pos-enrich/drawer/open', {
@@ -165,7 +175,8 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
       toast.success('Shift opened');
       onOpened();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to open shift');
+      const msg = err instanceof Error ? err.message : 'Failed to open shift';
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -186,16 +197,23 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Opening Float ($)</span>
             <input
+              ref={amountRef}
               type="text" inputMode="decimal" pattern="[0-9.]*"
               step="0.01"
               min="0"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => { setAmount(e.target.value); setError(''); }}
               className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="200.00"
               autoFocus
+              aria-describedby={error ? 'open-shift-error' : undefined}
             />
           </label>
+          {error && (
+            <p id="open-shift-error" role="alert" aria-live="polite" className="text-xs text-red-500">
+              {error}
+            </p>
+          )}
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Notes (optional)</span>
             <input
@@ -231,6 +249,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
   const [counted, setCounted] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const qc = useQueryClient();
 
   const submit = async () => {
     const parsed = centsFromInput(counted);
@@ -240,10 +259,15 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
     }
     setSubmitting(true);
     try {
-      await api.post(`/pos-enrich/drawer/${shift.id}/close`, {
+      // WEB-UIUX-1167: capture response and seed z-report cache before onClosed/openZReport
+      // so the ZReportModal never has to round-trip to fetch data it already has.
+      const resp = await api.post(`/pos-enrich/drawer/${shift.id}/close`, {
         closing_counted_cents: parsed.cents,
         notes: notes.trim() || undefined,
       });
+      if (resp.data?.data) {
+        qc.setQueryData(['pos-enrich', 'z-report', shift.id], resp.data.data);
+      }
       toast.success('Shift closed');
       onClosed(shift.id);
     } catch (err) {

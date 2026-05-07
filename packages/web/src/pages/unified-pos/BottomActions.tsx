@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff, LockOpen } from 'lucide-react';
+import { X, Pen, Loader2, CheckCheck, AlertCircle, ShieldOff, Coins } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi, blockchypApi, settingsApi } from '@/api/endpoints';
 import { api } from '@/api/client';
@@ -25,6 +25,8 @@ function CashModal({ type, onClose }: CashModalProps) {
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // WEB-UIUX-1169: invalidate drawer-current + cash-register after cash-in/out.
+  const queryClient = useQueryClient();
 
   // WEB-FX-003: Esc dismisses unless we're mid-submit.
   useEffect(() => {
@@ -35,7 +37,9 @@ function CashModal({ type, onClose }: CashModalProps) {
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, submitting]);
 
-  const handleSubmit = async () => {
+  // WEB-UIUX-1175: handleSubmit is now wired to <form onSubmit> so Enter key submits.
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     const num = parseFloat(amount);
     if (!num || num <= 0) {
       toast.error('Enter a valid amount');
@@ -48,6 +52,9 @@ function CashModal({ type, onClose }: CashModalProps) {
       // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): hardcoded `$` + `toFixed(2)`
       // → tenant-aware currency formatter.
       toast.success(`Cash ${type === 'in' ? 'in' : 'out'}: ${formatCurrency(num)}`);
+      // WEB-UIUX-1169: keep drawer balance + register summary in sync after cash-in/out.
+      queryClient.invalidateQueries({ queryKey: ['pos-enrich', 'drawer-current'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-register'] });
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : `Cash ${type} failed`);
@@ -78,7 +85,8 @@ function CashModal({ type, onClose }: CashModalProps) {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="space-y-3 p-5">
+        {/* WEB-UIUX-1175: wrapped in <form> so Enter key submits. */}
+        <form onSubmit={handleSubmit} className="space-y-3 p-5">
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Amount ($)</label>
             <input
@@ -103,13 +111,13 @@ function CashModal({ type, onClose }: CashModalProps) {
             />
           </div>
           <button
-            onClick={handleSubmit}
+            type="submit"
             disabled={submitting}
             className="btn btn-md w-full bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {submitting ? 'Processing...' : `Confirm Cash ${type === 'in' ? 'In' : 'Out'}`}
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );
@@ -475,18 +483,20 @@ export function BottomActions() {
           </button>
           <button
             onClick={async () => {
+              // WEB-UIUX-1163: renamed from "Open Drawer" to "Pop Cash Drawer" to
+              // avoid verb collision with "Start Shift". Icon swapped to Coins.
               try {
                 await posApi.openDrawer();
-                toast.success('Drawer command sent — verify the drawer opened');
+                toast.success('Cash drawer popped — verify the drawer opened');
               } catch {
-                toast.error('Failed to open drawer');
+                toast.error('Failed to pop cash drawer');
               }
             }}
             className="btn btn-lg border border-surface-300 text-surface-600 hover:bg-surface-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-surface-400 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-800"
-            title="Open cash drawer"
+            title="Pop cash drawer"
           >
-            <LockOpen className="h-4 w-4" />
-            Open Drawer
+            <Coins className="h-4 w-4" />
+            Pop Cash Drawer
           </button>
           {/* Audit §43.4/§43.8: cash drawer shift controls + Z-report */}
           <CashDrawerWidget />

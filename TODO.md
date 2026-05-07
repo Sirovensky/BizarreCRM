@@ -4759,7 +4759,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
 
 #### Blocker — money-reconciliation, variance correctness, dual-systems
 
-- [ ] WEB-UIUX-1159. **[BLOCKER] `computeExpectedCents` IGNORES the `cash_register` table — every paid-in/paid-out from CashRegisterPage (legacy `posApi.cashIn`/`cashOut` → `/pos/cash-in`,`/pos/cash-out`) is invisible to the shift's expected_cents.** `posEnrich.routes.ts:211-229` sums only `payments WHERE method LIKE '%cash%'` between `opened_at..closed_at`. So a $200 float + $50 cash-in (till change) + $30 cash-out (vendor refund) + $0 sales should expect $220 in drawer, but the server computes $200 → declares a $20 OVER variance for an in-balance till. Cashier "investigates" a phantom variance every shift. **Money-correctness bug.** L1, L7, L13, L16.
+- [ ] WEB-UIUX-1159. **[BLOCKER] `computeExpectedCents` IGNORES the `cash_register` table — every paid-in/paid-out from CashRegisterPage (legacy `posApi.cashIn`/`cashOut` → `/pos/cash-in`,`/pos/cash-out`) is invisible to the shift's expected_cents.** `posEnrich.routes.ts:211-229` sums only `payments WHERE method LIKE '%cash%'` between `opened_at..closed_at`. So a $200 float + $50 cash-in (till change) + $30 cash-out (vendor refund) + $0 sales should expect $220 in drawer, but the server computes $200 → declares a $20 OVER variance for an in-balance till. Cashier "investigates" a phantom variance every shift. **Money-correctness bug.** L1, L7, L13, L16. **STATUS: BLOCKED — server posEnrich.routes.ts computeExpectedCents change + cash_register integration; multi-component, defer to cash sprint**
   `packages/server/src/routes/posEnrich.routes.ts:211-229`
   `packages/web/src/pages/pos/CashRegisterPage.tsx:54-86`
   <!-- meta: fix=expand-computeExpectedCents-to-also-SUM(amount-where-type=cash_in)-MINUS-SUM(amount-where-type=cash_out)-FROM-cash_register-WHERE-created_at-BETWEEN-?-AND-?+include-the-net-in-Z-report-payment_breakdown-as-Cash-Adjustments-row -->
@@ -4769,7 +4769,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx`
   <!-- meta: fix=consolidate-into-single-cash-drawer-domain:-make-/pos/cash-in-/pos/cash-out-also-write-to-cash_drawer_shifts.adjustments+OR-deprecate-CashRegisterPage-and-add-an-In-shift-Cash-Adjustments-section-on-CashDrawerWidget-modal -->
 
-- [ ] WEB-UIUX-1161. **[BLOCKER] `CloseShiftModal` does not surface expected cash, opening float math, or in-shift cash adjustments before the irreversible commit. Operator counts blind, sees variance only after the close mutation succeeds — and there is no reopen path.** `CashDrawerWidget.tsx:246-296` shows only opening float + counted input. The user submits and the server writes `closed_at`, freezes `z_report_json`, locks the shift; `posEnrich.routes.ts:303-385` rejects re-close (409) and there is no admin reverse-close endpoint anywhere. So a typo in counted (e.g., `2200` instead of `220.00`) is permanent and the next shift starts with the prior one's bad variance baked into the audit log. L7 feedback (no preview), L8 recovery (no undo), L1 finding the right number. L7, L8.
+- [ ] WEB-UIUX-1161. **[BLOCKER] `CloseShiftModal` does not surface expected cash, opening float math, or in-shift cash adjustments before the irreversible commit. Operator counts blind, sees variance only after the close mutation succeeds — and there is no reopen path.** `CashDrawerWidget.tsx:246-296` shows only opening float + counted input. The user submits and the server writes `closed_at`, freezes `z_report_json`, locks the shift; `posEnrich.routes.ts:303-385` rejects re-close (409) and there is no admin reverse-close endpoint anywhere. So a typo in counted (e.g., `2200` instead of `220.00`) is permanent and the next shift starts with the prior one's bad variance baked into the audit log. L7 feedback (no preview), L8 recovery (no undo), L1 finding the right number. L7, L8. **STATUS: BLOCKED — needs admin reverse-close endpoint + UI; server policy + audit changes; defer to cash sprint**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:220-296`
   `packages/server/src/routes/posEnrich.routes.ts:303-385`
   <!-- meta: fix=before-submit-show-Expected-row-(call-/pos-enrich/drawer/:id/preview-or-compute-locally)+confirm()-when-counted-is->-3x-or-<-third-of-expected+admin-only-/drawer/:id/reopen-endpoint-that-clears-closed_at+nulls-z_report_json+writes-audit-row -->
@@ -4781,7 +4781,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:142-176`
   <!-- meta: fix=server-flag-in_progress=true-when-closed_at-IS-NULL+omit-counted/variance-or-set-to-null+client-render-In-progress-section-without-variance-row-and-warning -->
 
-- [ ] WEB-UIUX-1163. **[MAJOR] "Open Drawer" (physical till-kick) sits adjacent to "Start Shift" (logical accounting) in `BottomActions` — both verbs read like "open the cash drawer", same icon family (LockOpen / Lock).** `BottomActions.tsx:429-446` renders "Open Drawer" then `<CashDrawerWidget />` which renders "Start Shift". A new cashier clicks "Open Drawer" expecting it to begin their shift; nothing in audit/state changes (toast: "Cash drawer opened"), drawer pops, then they're confused why "Close Shift" is greyed out. Label collision between hardware action and accounting action. L2 truthfulness, L1 findability of correct action. L1, L2.
+- [x] WEB-UIUX-1163. **[MAJOR] "Open Drawer" (physical till-kick) sits adjacent to "Start Shift" (logical accounting) in `BottomActions` — both verbs read like "open the cash drawer", same icon family (LockOpen / Lock).** `BottomActions.tsx:429-446` renders "Open Drawer" then `<CashDrawerWidget />` which renders "Start Shift". A new cashier clicks "Open Drawer" expecting it to begin their shift; nothing in audit/state changes (toast: "Cash drawer opened"), drawer pops, then they're confused why "Close Shift" is greyed out. Label collision between hardware action and accounting action. L2 truthfulness, L1 findability of correct action. L1, L2. **[AUTOLOOP-T55 RESOLVED: 'Open Drawer' button renamed to 'Pop Cash Drawer' with Coins icon (was LockOpen) so hardware action is distinguished from Start Shift accounting action.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:429-446`
   <!-- meta: fix=rename-Open-Drawer-to-Pop-Cash-Drawer+swap-icon-to-PackageOpen-or-Coins+group-with-receipt-printer-actions-not-shift-actions -->
 
@@ -4790,7 +4790,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/server/src/routes/pos.routes.ts:203-232`
   <!-- meta: fix=add-idempotency_key=crypto.randomUUID()-mint-on-modal-open+pass-on-call+wire-idempotent-middleware-to-/pos/cash-in-/pos/cash-out-routes-(same-as-/pos/transaction:253) -->
 
-- [ ] WEB-UIUX-1165. **[MAJOR] Open shift requires no role; close requires manager/admin (`requireManagerOrAdmin`). Asymmetric — cashier opens, then can't close at end of shift if no manager onsite.** `posEnrich.routes.ts:245-301` no role check on open; `:303-307` requires manager on close. End-of-shift cashier stuck staring at "Close Shift" button that 403s — error toast surfaces server message but no path forward (no "request manager approval" affordance, no manager-PIN inline gate like the high-value-sale path). L8 recovery, L1 findability of next step.
+- [ ] WEB-UIUX-1165. **[MAJOR] Open shift requires no role; close requires manager/admin (`requireManagerOrAdmin`). Asymmetric — cashier opens, then can't close at end of shift if no manager onsite.** `posEnrich.routes.ts:245-301` no role check on open; `:303-307` requires manager on close. End-of-shift cashier stuck staring at "Close Shift" button that 403s — error toast surfaces server message but no path forward (no "request manager approval" affordance, no manager-PIN inline gate like the high-value-sale path). L8 recovery, L1 findability of next step. **STATUS: BLOCKED — needs server auth flow with manager-PIN co-sign + UI fallback modal; security review; defer to cash sprint**
   `packages/server/src/routes/posEnrich.routes.ts:245-307`
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:225-244`
   <!-- meta: fix=add-inline-ManagerPinModal-fallback-when-close-returns-403+OR-allow-cashier-to-close-with-manager-PIN-co-sign-(server-accepts-pin-field-bypass-of-role-check) -->
@@ -4799,7 +4799,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:170-176`
   <!-- meta: fix=server-include-variance_warn_cents-in-z-report-payload-driven-by-store_config+default-500+UI-uses-the-payload-value-not-magic-number -->
 
-- [ ] WEB-UIUX-1167. **[MAJOR] Close-shift mutation returns the freshly-built `z_report_json` inline (`posEnrich.routes.ts:383`) — client throws it away and refetches via separate `GET /drawer/:id/z-report`.** `CashDrawerWidget.tsx:225-244` calls `api.post(.../close, ...)` with no `.then(res => res.data.data)`, then `onClosed(shift.id)` triggers `<ZReportModal>` whose `useQuery` fires a NEW fetch. Race: if the cached `z_report_json` write hasn't flushed (sync sqlite tx so unlikely but possible across read replicas), the GET rebuilds and could differ. Also wastes a round-trip. L9 perf, L7 consistency.
+- [x] WEB-UIUX-1167. **[MAJOR] Close-shift mutation returns the freshly-built `z_report_json` inline (`posEnrich.routes.ts:383`) — client throws it away and refetches via separate `GET /drawer/:id/z-report`.** `CashDrawerWidget.tsx:225-244` calls `api.post(.../close, ...)` with no `.then(res => res.data.data)`, then `onClosed(shift.id)` triggers `<ZReportModal>` whose `useQuery` fires a NEW fetch. Race: if the cached `z_report_json` write hasn't flushed (sync sqlite tx so unlikely but possible across read replicas), the GET rebuilds and could differ. Also wastes a round-trip. L9 perf, L7 consistency. **[AUTOLOOP-T55 RESOLVED: close-shift response data captured and seeded into ['pos-enrich','z-report',shiftId] cache before onClosed; saves roundtrip + closes race.]**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:225-244`
   `packages/server/src/routes/posEnrich.routes.ts:383`
   <!-- meta: fix=consume-close-response-data+seed-react-query-cache-with-queryClient.setQueryData(['pos-enrich','z-report',shiftId],-resp.data.data)-before-opening-modal -->
@@ -4808,7 +4808,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:79-83`
   <!-- meta: fix=add-Past-Shifts-link-on-CashDrawerWidget+ShiftHistoryPage-listing-cash_drawer_shifts+row-click-opens-ZReportModal-readonly -->
 
-- [ ] WEB-UIUX-1169. **[MAJOR] `CashDrawerWidget` query refetched only on widget mount + 30s staleTime — POS Cash In/Out via the older CashModal (`BottomActions.tsx`) does NOT invalidate `['pos-enrich','drawer-current']`.** UI shows stale shift state for up to 30s after a cash adjustment. Variance preview (when WEB-UIUX-1161 lands) would also be wrong. L7 feedback consistency.
+- [x] WEB-UIUX-1169. **[MAJOR] `CashDrawerWidget` query refetched only on widget mount + 30s staleTime — POS Cash In/Out via the older CashModal (`BottomActions.tsx`) does NOT invalidate `['pos-enrich','drawer-current']`.** UI shows stale shift state for up to 30s after a cash adjustment. Variance preview (when WEB-UIUX-1161 lands) would also be wrong. L7 feedback consistency. **[AUTOLOOP-T55 RESOLVED: CashModal cashIn/cashOut onSuccess invalidates ['pos-enrich','drawer-current'] + ['cash-register'] keeping drawer balance live.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:37-56`
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:68-75`
   <!-- meta: fix=on-cash-in/out-success-call-queryClient.invalidateQueries({queryKey:['pos-enrich','drawer-current']})+also-invalidate-cash-register -->
@@ -4818,7 +4818,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:142-211`
   <!-- meta: fix=server-JOIN-users-on-opened_by_user_id-and-closed_by_user_id+include-first/last+include-store_config.station_id-or-similar+UI-renders-Cashier-Manager-Duration-rows-above-totals -->
 
-- [ ] WEB-UIUX-1171. **[MAJOR] No reverse-close / reopen-shift path anywhere. A wrong counted value or accidental click on "Close Shift & View Z-Report" is permanent.** `posEnrich.routes.ts` exposes only `/open` and `/:id/close`. Recovery options: ZERO. The variance lives in the audit log forever; the next shift inherits a fictitious starting position if the operator over/undercounts. L8 recovery (cardinal rule — every irreversible action needs an admin path back).
+- [ ] WEB-UIUX-1171. **[MAJOR] No reverse-close / reopen-shift path anywhere. A wrong counted value or accidental click on "Close Shift & View Z-Report" is permanent.** `posEnrich.routes.ts` exposes only `/open` and `/:id/close`. Recovery options: ZERO. The variance lives in the audit log forever; the next shift inherits a fictitious starting position if the operator over/undercounts. L8 recovery (cardinal rule — every irreversible action needs an admin path back). **STATUS: BLOCKED — needs new admin POST /pos-enrich/drawer/:id/reopen endpoint with audit; server policy + UI confirm; defer to cash sprint**
   `packages/server/src/routes/posEnrich.routes.ts:303-385`
   <!-- meta: fix=admin-only-POST-/pos-enrich/drawer/:id/reopen-with-reason+nulls-closed_at+closing_counted_cents+expected_cents+variance_cents+z_report_json+writes-drawer_shift_reopened-audit-with-prior-values+UI-button-on-ZReportModal-(admin-role)-with-confirm-modal-and-required-reason -->
 
@@ -4830,7 +4830,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
 
 #### Minor — copy, validation, modal hygiene
 
-- [ ] WEB-UIUX-1173. **[MINOR] Variance copy reads "$5.00 short" / "$5.00 over" / "$0.00 exact" — awkward postfix word grammar; the zero case is especially weird (`"$0.00 exact"`).** `ZReportModal.tsx:169`. Refactoring UI / NN-Group: prefer "Short by $5.00", "Over by $5.00", "Balanced" (no amount). L2 label clarity.
+- [x] WEB-UIUX-1173. **[MINOR] Variance copy reads "$5.00 short" / "$5.00 over" / "$0.00 exact" — awkward postfix word grammar; the zero case is especially weird (`"$0.00 exact"`).** `ZReportModal.tsx:169`. Refactoring UI / NN-Group: prefer "Short by $5.00", "Over by $5.00", "Balanced" (no amount). L2 label clarity. **[AUTOLOOP-T55 RESOLVED: variance copy switched to prefix prepositional form ('Short by $X.XX', 'Over by $X.XX', 'Balanced') replacing awkward postfix grammar.]**
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:163-176`
   <!-- meta: fix=replace-with-variance===0?Balanced:variance>0?`Over-by-${formatCents(variance)}`:`Short-by-${formatCents(Math.abs(variance))}` -->
 
@@ -4838,7 +4838,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:42-50`
   <!-- meta: fix=either-make-it-actually-sign-(prepend-+-when->0)-or-inline-formatCents-everywhere-and-delete-the-helper -->
 
-- [ ] WEB-UIUX-1175. **[MINOR] `CashModal` (BottomActions) is a `<div>` not a `<form>` — Enter in Amount field does nothing. `ManagerPinModal` and `OpenShiftModal` callers each diverge on this. Inconsistent keyboard UX across cash-related modals.** `BottomActions.tsx:80-114` vs `:560-642` (form). Tablet keyboards expose "Go" / "Enter" prominently — operator hits it expecting submit. L7, L11 keyboard.
+- [x] WEB-UIUX-1175. **[MINOR] `CashModal` (BottomActions) is a `<div>` not a `<form>` — Enter in Amount field does nothing. `ManagerPinModal` and `OpenShiftModal` callers each diverge on this. Inconsistent keyboard UX across cash-related modals.** `BottomActions.tsx:80-114` vs `:560-642` (form). Tablet keyboards expose "Go" / "Enter" prominently — operator hits it expecting submit. L7, L11 keyboard. **[AUTOLOOP-T55 RESOLVED: CashModal body wrapped in <form onSubmit> so Enter key submits; matches OpenShiftModal pattern.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:80-114`
   <!-- meta: fix=wrap-in-form+onSubmit=handleSubmit+button-type=submit -->
 
@@ -4846,7 +4846,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:175-188`
   <!-- meta: fix=helper-text-below-input:Max-${formatCurrency(DRAWER_CAP_DOLLARS)}+(or-link-Increase-to-pos_high_volume_drawer-toggle-when-bumping-up-against-it) -->
 
-- [ ] WEB-UIUX-1177. **[MINOR] `OpenShiftModal` opens with `submitting=false` after error but does not re-focus the Amount input; placeholder "200.00" reappears as if untouched.** Combined with toast-only error feedback, operator may double-submit thinking the first click registered nothing. L7 (where did my error go?), L8.
+- [x] WEB-UIUX-1177. **[MINOR] `OpenShiftModal` opens with `submitting=false` after error but does not re-focus the Amount input; placeholder "200.00" reappears as if untouched.** Combined with toast-only error feedback, operator may double-submit thinking the first click registered nothing. L7 (where did my error go?), L8. **[AUTOLOOP-T55 RESOLVED: OpenShiftModal tracks error state + amountRef + useEffect refocus on failure; aria-live inline error keeps amount value.]**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:138-209`
   <!-- meta: fix=track-error-state-in-modal+render-inline-aria-live-error+keep-amount-value+focus-back-to-Amount-on-failure -->
 

@@ -166,7 +166,7 @@ function ZReportBody({ report }: ZReportBodyProps) {
               <VarianceIcon className="h-4 w-4" />
               Variance
             </span>
-            <span>{formatSignedCents(Math.abs(variance))} {variance < 0 ? 'short' : variance > 0 ? 'over' : 'exact'}</span>
+            <span>{variance === 0 ? 'Balanced' : variance > 0 ? `Over by ${formatCents(variance)}` : `Short by ${formatCents(Math.abs(variance))}`}</span>
           </div>
           {Math.abs(variance) >= 500 && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
