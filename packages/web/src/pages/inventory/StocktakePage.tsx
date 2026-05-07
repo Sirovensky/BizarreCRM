@@ -29,6 +29,7 @@ import { formatDateTime, formatCurrency } from '@/utils/format';
 // Customers / Tickets / Invoices, picks up dark mode + brand fonts, and is
 // not blocked by Safari's third-party-iframe modal suppression.
 import { useConfirmStore } from '@/stores/confirmStore';
+import { useAuthStore } from '@/stores/authStore';
 
 interface StocktakeSession {
   id: number;
@@ -67,10 +68,13 @@ interface StocktakeDetail {
 
 export function StocktakePage() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
   const [newLocation, setNewLocation] = useState('');
+  // WEB-UIUX-1358: session-level notes field state
+  const [newNotes, setNewNotes] = useState('');
   const [scanInput, setScanInput] = useState('');
   const [manualCountedQty, setManualCountedQty] = useState('');
   const scanRef = useRef<HTMLInputElement>(null);
@@ -103,7 +107,8 @@ export function StocktakePage() {
   }, [detailData?.session.status, detailData?.counts.length]);
 
   const createMut = useMutation({
-    mutationFn: async (body: { name: string; location: string }) => {
+    // WEB-UIUX-1358: include optional notes in session creation payload
+    mutationFn: async (body: { name: string; location: string; notes?: string }) => {
       const res = await api.post<{ success: boolean; data: StocktakeSession }>(
         '/stocktake',
         body,
@@ -116,6 +121,7 @@ export function StocktakePage() {
       setShowNew(false);
       setNewName('');
       setNewLocation('');
+      setNewNotes(''); // WEB-UIUX-1358: reset notes field
       setSelectedId(session.id);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to open session'),
@@ -126,8 +132,22 @@ export function StocktakePage() {
       const res = await api.post(`/stocktake/${selectedId}/counts`, body);
       return res.data.data;
     },
-    onSuccess: () => {
+    // WEB-UIUX-1360: echo item name + variance on successful scan
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['stocktake', selectedId] });
+      const itemName = data?.name ?? `Item #${data?.inventory_item_id ?? '?'}`;
+      const counted = data?.counted_qty ?? 0;
+      const variance = data?.variance ?? 0;
+      const varianceStr = variance > 0 ? `+${variance}` : `${variance}`;
+      const msg = `${itemName} → counted ${counted} (variance: ${varianceStr})`;
+      if (variance !== 0) {
+        toast(msg, {
+          icon: variance > 0 ? '📈' : '📉',
+          style: { borderLeft: `4px solid ${variance > 0 ? '#16a34a' : '#dc2626'}` },
+        });
+      } else {
+        toast.success(msg);
+      }
       setScanInput('');
       setManualCountedQty('');
       scanRef.current?.focus();
@@ -230,9 +250,19 @@ export function StocktakePage() {
               className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
           </div>
+          {/* WEB-UIUX-1358: optional session-level notes accepted by POST /stocktake */}
+          <div className="mt-3">
+            <textarea
+              value={newNotes}
+              onChange={(e) => setNewNotes(e.target.value)}
+              placeholder="Notes (optional)"
+              rows={2}
+              className="w-full rounded-md border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500 resize-none"
+            />
+          </div>
           <div className="mt-3 flex gap-2">
             <button
-              onClick={() => createMut.mutate({ name: newName, location: newLocation })}
+              onClick={() => createMut.mutate({ name: newName, location: newLocation, notes: newNotes || undefined })}
               disabled={!newName.trim() || createMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
@@ -349,6 +379,16 @@ export function StocktakePage() {
                     To correct a count, re-scan the item and enter the right quantity — the previous row is overwritten automatically.
                   </p>
 
+                  {/* WEB-UIUX-1372: blocking overlay while commit is in-flight */}
+                  {commitMut.isPending && (
+                    <div className="mt-4 rounded-lg bg-surface-900/70 dark:bg-black/60 px-4 py-3 flex items-center gap-3 text-white text-sm font-medium">
+                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      Committing {detailData.counts.length} count{detailData.counts.length !== 1 ? 's' : ''}…
+                    </div>
+                  )}
+
+                  {/* WEB-UIUX-1370: commit/cancel only visible to admin + manager */}
+                  {['admin', 'manager'].includes(user?.role ?? '') && (
                   <div className="mt-4 flex gap-2">
                     <button
                       onClick={async () => {
@@ -457,6 +497,7 @@ export function StocktakePage() {
                       <X className="h-4 w-4" /> Cancel
                     </button>
                   </div>
+                  )} {/* end WEB-UIUX-1370 role gate */}
                 </div>
               )}
 

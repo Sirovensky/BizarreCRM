@@ -5679,7 +5679,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Blocker — recovery + irreversible state
 
-- [ ] WEB-UIUX-1354. **[BLOCKER] No way to delete or amend a single count row from the UI. Server has UPSERT (and a row-delete is trivially adddable) but UI gives operator no per-row edit/remove. A typo on row 384 of a 1000-line stocktake is unrecoverable except by re-scanning the same SKU with a corrected qty AND knowing what the right qty is.** L8 recovery.
+- [ ] WEB-UIUX-1354. **[BLOCKER] No way to delete or amend a single count row from the UI. Server has UPSERT (and a row-delete is trivially adddable) but UI gives operator no per-row edit/remove. A typo on row 384 of a 1000-line stocktake is unrecoverable except by re-scanning the same SKU with a corrected qty AND knowing what the right qty is.** L8 recovery. **STATUS: BLOCKED — needs new server DELETE /stocktake/:id/counts/:countId route + per-row UI; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/StocktakePage.tsx:378-400`
   <!-- meta: fix=add-row-actions-cell-with-edit-counted_qty-input+delete-button+wire-DELETE-/stocktake/:id/counts/:countId-route -->
 
@@ -5689,7 +5689,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Major — feedback gaps
 
-- [ ] WEB-UIUX-1356. **[MAJOR] Variance computed against `expected_qty` snapshot taken at scan time (server line 215). UI never warns "your variance baseline may be stale — items sold since you scanned will skew totals". A 4-hour stocktake with concurrent sales produces wrong variance and operator has no way to know.** L7 feedback meaningfulness.
+- [ ] WEB-UIUX-1356. **[MAJOR] Variance computed against `expected_qty` snapshot taken at scan time (server line 215). UI never warns "your variance baseline may be stale — items sold since you scanned will skew totals". A 4-hour stocktake with concurrent sales produces wrong variance and operator has no way to know.** L7 feedback meaningfulness. **STATUS: BLOCKED — server stocktake.routes.ts must include current_in_stock alongside baseline; backend, defer to inventory sprint**
   `packages/server/src/routes/stocktake.routes.ts:209-216` + `packages/web/src/pages/inventory/StocktakePage.tsx:285-305`
   <!-- meta: fix=show-banner-"baseline-locked-at-scan-time:N-sales-since-then"+server-includes-current_in_stock-in-counts-row+UI-shows-current-vs-baseline-side-by-side -->
 
@@ -5697,7 +5697,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:312-333`
   <!-- meta: fix=add-optional-notes-input-next-to-qty+thread-notes-into-scanMut-payload+show-notes-icon-on-table-row-when-present -->
 
-- [ ] WEB-UIUX-1358. **[MAJOR] Server accepts session-level `notes` on POST (line 102-104) but inline new-session form has only name + location. Multi-day or multi-zone counts ("north room, sealed boxes only") have no place to record context auditors will ask about.** L6 discoverability.
+- [x] WEB-UIUX-1358. **[MAJOR] Server accepts session-level `notes` on POST (line 102-104) but inline new-session form has only name + location. Multi-day or multi-zone counts ("north room, sealed boxes only") have no place to record context auditors will ask about.** L6 discoverability. **[AUTOLOOP-T70 RESOLVED: optional Notes textarea added to new-session form; threaded into createMut payload.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:206-219`
   <!-- meta: fix=add-third-textarea-"Notes-(optional)"-to-new-session-form+thread-into-createMut.mutate-payload -->
 
@@ -5705,7 +5705,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:122-134`
   <!-- meta: fix=onSuccess-receives-{name+expected+counted+variance}+if-abs(variance)>=threshold-(configurable+default-10%)-show-warning-toast-or-inline-banner -->
 
-- [ ] WEB-UIUX-1360. **[MAJOR] Scanned item never echoed by name on success. Operator looking at scanner gun, not screen, has no audio/visual confirmation that the right item was counted. Toast like "Counted 5× iPhone 13 mini" gives confidence; clearing inputs does not.** L7 feedback.
+- [x] WEB-UIUX-1360. **[MAJOR] Scanned item never echoed by name on success. Operator looking at scanner gun, not screen, has no audio/visual confirmation that the right item was counted. Toast like "Counted 5× iPhone 13 mini" gives confidence; clearing inputs does not.** L7 feedback. **[AUTOLOOP-T70 RESOLVED: scanMut.onSuccess toasts '{name} → counted N (variance ±M)' with non-zero variance highlight.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:127-133`
   <!-- meta: fix=toast.success(`${name}-→-counted-${counted_qty}-(${variance>0?+:''}${variance})`)+optional-audio-cue-on-non-zero-variance -->
 
@@ -5713,7 +5713,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:397`
   <!-- meta: fix=use-formatDateTime-helper-(already-imported)+OR-add-day-suffix-when-not-today -->
 
-- [ ] WEB-UIUX-1362. **[MAJOR] Session list cards show `opened_at` only, no progress preview. Operator returning to a list of 5 open sessions must drill into each to remember "which one had I gotten to 200 items on". Compare invoices/estimates lists which surface counts/totals on the row.** L7 feedback.
+- [ ] WEB-UIUX-1362. **[MAJOR] Session list cards show `opened_at` only, no progress preview. Operator returning to a list of 5 open sessions must drill into each to remember "which one had I gotten to 200 items on". Compare invoices/estimates lists which surface counts/totals on the row.** L7 feedback. **STATUS: BLOCKED — server stocktake list payload must include items_counted + items_with_variance; backend, defer**
   `packages/web/src/pages/inventory/StocktakePage.tsx:244-273`
   <!-- meta: fix=add-items_counted+items_with_variance-to-/stocktake-list-payload+render-pill-"42-items-3-variance"-on-each-card -->
 
@@ -5723,7 +5723,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Major — discoverability + nav
 
-- [ ] WEB-UIUX-1364. **[MAJOR] Stocktake entry buried in 8-pill `text-xs` "Tools:" row on InventoryList — pills indistinguishable, no icons, no priority order. Stocktake is a *quarterly bookkeeping requirement* for VAT/sales-tax compliance; should be a top-level Inventory action button or sidebar nav item, not a small text chip.** L1 primary action findability, L6 discoverability.
+- [x] WEB-UIUX-1364. **[MAJOR] Stocktake entry buried in 8-pill `text-xs` "Tools:" row on InventoryList — pills indistinguishable, no icons, no priority order. Stocktake is a *quarterly bookkeeping requirement* for VAT/sales-tax compliance; should be a top-level Inventory action button or sidebar nav item, not a small text chip.** L1 primary action findability, L6 discoverability. **[AUTOLOOP-T70 RESOLVED: Stocktake hoisted to primary CTA bar with ClipboardCheck icon next to New Item; pill removed from Tools row.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:491-502`
   <!-- meta: fix=hoist-Stocktake+Auto-Reorder+Shrinkage-to-an-actions-bar-with-icons+drop-the-rest-into-overflow-menu+OR-add-Inventory>Operations-sidebar-section -->
 
@@ -5731,7 +5731,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:286-410`
   <!-- meta: fix=add-search-input+filter-pills-(All|Variance|Surplus|Shortage)+make-Variance-summary-stat-a-button-that-toggles-the-filter -->
 
-- [ ] WEB-UIUX-1366. **[MAJOR] No CSV/PDF export of counts. Auditors require a flat list to attach to year-end paperwork. App has print/CSV elsewhere (invoices, reports) — pattern not extended here.** L6 discoverability.
+- [ ] WEB-UIUX-1366. **[MAJOR] No CSV/PDF export of counts. Auditors require a flat list to attach to year-end paperwork. App has print/CSV elsewhere (invoices, reports) — pattern not extended here.** L6 discoverability. **STATUS: BLOCKED — needs server /stocktake/:id.csv route + UI Export button; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/StocktakePage.tsx:283-410`
   <!-- meta: fix=add-Export-CSV-button-near-summary+wire-/stocktake/:id.csv-server-route-(reuse-csv-helper-from-reports.routes) -->
 
@@ -5739,7 +5739,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:239-273`
   <!-- meta: fix=add-segmented-control-(All|Open|Committed|Cancelled)+location-select-(populated-from-distinct-locations)+pass-status+location-into-query -->
 
-- [ ] WEB-UIUX-1368. **[MAJOR] No upload-CSV path for blind counts. Many stores count on paper or offline scanner gun, then bulk-upload at end of day. Forcing real-time scan-to-server excludes that workflow entirely. Industry-standard stocktake tools (Square, Lightspeed, Vend) all support CSV import.** L6 discoverability.
+- [ ] WEB-UIUX-1368. **[MAJOR] No upload-CSV path for blind counts. Many stores count on paper or offline scanner gun, then bulk-upload at end of day. Forcing real-time scan-to-server excludes that workflow entirely. Industry-standard stocktake tools (Square, Lightspeed, Vend) all support CSV import.** L6 discoverability. **STATUS: BLOCKED — needs new server POST /stocktake/:id/counts/bulk route + Import CSV modal + sample template; multi-component, defer**
   `packages/web/src/pages/inventory/StocktakePage.tsx`
   <!-- meta: fix=add-Import-CSV-button+modal-with-sample-template+POST-/stocktake/:id/counts/bulk-route-with-sku|qty-rows -->
 
@@ -5749,7 +5749,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:336-361`
   <!-- meta: fix=Cancel-becomes-secondary-grey+plain-confirm+Commit-becomes-primary-with-typed-confirmation-modal-and-summary-of-effect-(N-items-±X-variance) -->
 
-- [ ] WEB-UIUX-1370. **[MAJOR] Commit + Cancel buttons render for technician role even though server rejects (lines 271-274, 401-405). Client doesn't gate on `useUser().role`; technician sees buttons, clicks, gets a 403 toast. Should hide buttons for unauthorised roles, not error after click.** L4 flow, L11 a11y.
+- [x] WEB-UIUX-1370. **[MAJOR] Commit + Cancel buttons render for technician role even though server rejects (lines 271-274, 401-405). Client doesn't gate on `useUser().role`; technician sees buttons, clicks, gets a 403 toast. Should hide buttons for unauthorised roles, not error after click.** L4 flow, L11 a11y. **[AUTOLOOP-T70 RESOLVED: Commit/Cancel action row gated behind useAuthStore role check for admin/manager only.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:336-361`
   <!-- meta: fix=wrap-action-row-in-{['admin','manager'].includes(user.role)&&...}+OR-render-disabled-state-with-tooltip-"manager-required" -->
 
@@ -5757,7 +5757,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/server/src/routes/stocktake.routes.ts:97-128`
   <!-- meta: fix=server-rejects-409-if-status='open'+name=:name-already-exists+UI-suggests-resume-existing -->
 
-- [ ] WEB-UIUX-1372. **[MAJOR] No optimistic loading state on slow commit. `commitMut.isPending` disables button (line 344) but Commit on 500-line stocktake takes seconds — single spinner gives no progress, no "applying 327/500"; operator may double-click thinking it hung.** L7 feedback, L9 loading.
+- [x] WEB-UIUX-1372. **[MAJOR] No optimistic loading state on slow commit. `commitMut.isPending` disables button (line 344) but Commit on 500-line stocktake takes seconds — single spinner gives no progress, no "applying 327/500"; operator may double-click thinking it hung.** L7 feedback, L9 loading. **[AUTOLOOP-T70 RESOLVED: Loader2 'Committing N counts…' banner shown when commitMut.isPending so multi-second commits surface progress.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:336-348`
   <!-- meta: fix=show-blocking-progress-modal-with-spinner+text-"committing-N-counts"+disable-page-nav+server-streams-progress-via-SSE-or-returns-batched-result -->
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Fragment } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns, ScanBarcode, TrendingDown } from 'lucide-react';
+import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns, ScanBarcode, TrendingDown, ClipboardCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import type { ImportInventoryItem } from '@/api/types';
@@ -477,6 +477,12 @@ export function InventoryListPage() {
             <Upload className="h-4 w-4" /> Import
           </button>
           <Link
+            to="/inventory/stocktake"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
+          >
+            <ClipboardCheck className="h-4 w-4" /> Stocktake
+          </Link>
+          <Link
             to="/inventory/new"
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors shadow-sm"
           >
@@ -507,7 +513,6 @@ export function InventoryListPage() {
       {/* Inventory enrichment shortcuts — links to §48 enrichment pages. */}
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
         <span className="text-surface-400 font-semibold uppercase mr-1">Tools:</span>
-        <Link to="/inventory/stocktake" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Stocktake</Link>
         <Link to="/inventory/auto-reorder" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Auto-Reorder</Link>
         <Link to="/inventory/bin-locations" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Bin Locations</Link>
         <Link to="/inventory/serials" className="px-2 py-1 rounded border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 text-surface-700 dark:text-surface-300">Serials</Link>
