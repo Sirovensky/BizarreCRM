@@ -186,6 +186,17 @@ const logoutClient = axios.create({ baseURL: API_BASE, withCredentials: true });
 function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
   if (isLoggingOut) return;
   isLoggingOut = true;
+  // Diagnostic: ticket-page kick-out reproductions show /auth/refresh 200
+  // followed ~80ms later by /auth/logout from forceLogout, but the 401 that
+  // triggers the retry-failure path isn't visible in HTTP server logs. Dump
+  // reason + stack so the actual call site + the request that retried-and-
+  // 401'd is surfaceable from the operator's browser console next repro.
+  // Removed by `git revert` once the kick-out root cause is known.
+  try {
+    const stack = new Error('forceLogout stack').stack || '';
+    // eslint-disable-next-line no-console
+    console.error('[auth] forceLogout fired', { reason, stack });
+  } catch { /* non-fatal */ }
   // Tenant access tokens now live in httpOnly cookies. Drop any legacy
   // localStorage residue, then call /auth/logout with credentials + CSRF.
   try { localStorage.removeItem('accessToken'); } catch { /* legacy cleanup only */ }
@@ -331,6 +342,10 @@ client.interceptors.response.use(
               : undefined;
           if (retryStatus === 401) {
             devWarn('Retried request still 401 after refresh; forcing logout.');
+            // Diagnostic: capture the request URL that 401'd on retry so the
+            // ticket-page kick-out repros can be traced in the browser console.
+            // eslint-disable-next-line no-console
+            console.error('[auth] retry-still-401', { url: originalRequest.url, method: originalRequest.method });
             // WEB-UIUX-750: if the failing request was a POS checkout call,
             // flag it so the POS page can show a "checkout interrupted" banner
             // after the user re-authenticates.
@@ -347,6 +362,12 @@ client.interceptors.response.use(
         }
       } catch (refreshErr) {
         devWarn('Token refresh failed, logging out:', refreshErr);
+        // Diagnostic: capture the request that triggered the failed refresh.
+        // eslint-disable-next-line no-console
+        console.error('[auth] refresh-failed', {
+          triggeredBy: { url: originalRequest.url, method: originalRequest.method },
+          err: refreshErr instanceof Error ? { name: refreshErr.name, message: refreshErr.message } : refreshErr,
+        });
         // WEB-UIUX-750: same flag on refresh failure mid-checkout.
         if (
           typeof window !== 'undefined' &&
