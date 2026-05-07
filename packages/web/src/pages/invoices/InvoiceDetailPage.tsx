@@ -48,7 +48,8 @@ export function InvoiceDetailPage() {
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   // WEB-UIUX-1278: typed-confirm gate for high-value credit notes.
   const [showCreditNoteConfirm, setShowCreditNoteConfirm] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
+  // WEB-UIUX-1531: added transaction_id field for structured reference capture on non-cash payments.
+  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '', transaction_id: '' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showCreditNote, setShowCreditNote] = useState(false);
   // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
@@ -95,6 +96,8 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-729: focus-trap + Esc for the Credit Note dialog.
   // useFocusTrap returns a ref that must be attached to the inner dialog div.
   const creditNoteDialogRef = useFocusTrap(showCreditNote);
+  // WEB-UIUX-1539: focus-trap for the Record Payment modal — mirrors credit-note pattern.
+  const paymentDialogRef = useFocusTrap(showPayment);
   // WEB-UIUX-1210: gate Credit Note + Void behind admin/manager role.
   const canVoidOrCreditNote = useHasRole(['admin', 'manager']);
   // WEB-UIUX-1218: Esc handler checks dirty state before closing credit-note modal.
@@ -129,6 +132,16 @@ export function InvoiceDetailPage() {
   const paymentMethods: any[] = pmData?.data?.data?.payment_methods || [];
   const currencySymbol = formatCurrencySymbol();
 
+  // WEB-UIUX-1537: align paymentForm.method with the first enabled payment method when
+  // paymentMethods loads, so 'cash' default doesn't silently mismatch a tenant that
+  // has disabled cash and only shows card/ACH buttons.
+  useEffect(() => {
+    if (paymentMethods.length > 0 && !paymentMethods.some((pm: any) => pm.name.toLowerCase().replace(/\s+/g, '_') === paymentForm.method)) {
+      setPaymentForm(p => ({ ...p, method: paymentMethods[0].name.toLowerCase().replace(/\s+/g, '_') }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethods.length]);
+
   const payMutation = useMutation({
     mutationFn: (d: any) => invoiceApi.recordPayment(invoiceId, d),
     onSuccess: () => {
@@ -136,7 +149,7 @@ export function InvoiceDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Payment recorded');
       setShowPayment(false);
-      setPaymentForm({ amount: '', method: 'cash', notes: '' });
+      setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
       setShowReceiptPrompt(true);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record payment'),
@@ -827,12 +840,30 @@ export function InvoiceDetailPage() {
           aria-modal="true"
           aria-labelledby="record-payment-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowPayment(false); }}
+          // WEB-UIUX-1529: dirty-check on backdrop click prevents accidental loss of
+          // a partially-entered payment; operator must confirm before data is discarded.
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (paymentForm.amount || paymentForm.notes || paymentForm.method !== 'cash') {
+              if (!window.confirm('Discard payment entry?')) return;
+            }
+            setShowPayment(false);
+            setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
+          }}
         >
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+          {/* WEB-UIUX-1539: paymentDialogRef wired here so useFocusTrap traps focus inside Payment modal. */}
+          <div ref={paymentDialogRef as React.RefObject<HTMLDivElement>} className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h2 id="record-payment-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-4">Record Payment</h2>
             <div className="space-y-4">
               <div>
+                {/* WEB-UIUX-1535: prominent primary preset button above the amount input so
+                    the cashier can one-tap the full balance without hunting for a tiny link. */}
+                <button
+                  onClick={() => setPaymentForm({ ...paymentForm, amount: Number(invoice.amount_due).toFixed(2) })}
+                  className="w-full mb-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-semibold transition-colors"
+                >
+                  Pay {formatCurrency(invoice.amount_due)} (full balance)
+                </button>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount</label>
                 <div className="relative">
                   <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">{currencySymbol}</span>
@@ -848,10 +879,6 @@ export function InvoiceDetailPage() {
                     autoFocus
                   />
                 </div>
-                <button onClick={() => setPaymentForm({ ...paymentForm, amount: Number(invoice.amount_due).toFixed(2) })}
-                  className="text-xs text-primary-600 dark:text-primary-400 hover:underline mt-1">
-                  Pay full balance ({formatCurrency(invoice.amount_due)})
-                </button>
               </div>
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Payment Method</label>
@@ -871,9 +898,22 @@ export function InvoiceDetailPage() {
                   ))}
                 </div>
               </div>
+              {/* WEB-UIUX-1531: structured transaction_id field — only shown for non-cash methods
+                  so card/ACH/etc payments capture the reference in a dedicated field. */}
+              {paymentForm.method !== 'cash' && (
+                <div>
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Reference / Transaction ID</label>
+                  <input
+                    value={paymentForm.transaction_id}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, transaction_id: e.target.value })}
+                    className="input w-full"
+                    placeholder="e.g. card auth code, check number"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Notes (optional)</label>
-                <input value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Transaction ID, check number, etc." />
+                <input value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Additional notes" />
               </div>
             </div>
             {blockchypEnabled && (
@@ -907,7 +947,9 @@ export function InvoiceDetailPage() {
 
       {/* Receipt prompt after payment */}
       {showReceiptPrompt && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowReceiptPrompt(false)}>
+        // WEB-UIUX-1527: backdrop click now fires an info toast instead of silently closing,
+        // so the cashier knows the receipt was skipped and can re-send from Payment Timeline.
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowReceiptPrompt(false); toast('Receipt skipped — re-send from Payment Timeline'); }}>
           <div className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">Send Receipt?</h3>

@@ -6,6 +6,8 @@ import { api } from '@/api/client';
 import { smsApi } from '@/api/endpoints';
 import { SmsTemplateListResponse } from '@/api/types';
 import { cn } from '@/utils/cn';
+// WEB-UIUX-1521: Focus trap for modal accessibility
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 /**
  * Bulk SMS modal — audit §51.3.
@@ -57,6 +59,8 @@ interface ConfirmResponse {
 }
 
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
+  // WEB-UIUX-1521: Always-active focus trap — modal only renders when open
+  const dialogRef = useFocusTrap(true);
   // WEB-UIUX-1121: Default to recent_purchases — most common bulk send use-case
   const [segment, setSegment] = useState<Segment>('recent_purchases');
   const [templateId, setTemplateId] = useState<number | null>(null);
@@ -174,7 +178,9 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={preview ? undefined : onClose}
     >
+      {/* WEB-UIUX-1521: dialogRef wires the focus trap to this container */}
       <div
+        ref={dialogRef}
         className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
@@ -200,13 +206,15 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               Segment
             </label>
             <div role="radiogroup" aria-label="Recipient segment" className="space-y-1">
-              {SEGMENTS.map((s) => (
+              {SEGMENTS.map((s, i) => (
                 <button
                   key={s.value}
                   type="button"
                   role="radio"
                   aria-checked={segment === s.value}
                   tabIndex={segment === s.value ? 0 : -1}
+                  // WEB-UIUX-1521: autoFocus on first button so keyboard users land inside the trap immediately
+                  autoFocus={i === 0}
                   onClick={() => {
                     setSegment(s.value);
                     setPreview(null);
@@ -263,7 +271,12 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
           {preview && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              {/* WEB-UIUX-1124: Live countdown replaces static "5 minutes" copy */}
+              {/*
+                * WEB-UIUX-1124: Live countdown replaces static "5 minutes" copy.
+                * WEB-UIUX-1523: Static "Confirmation expires in 5 minutes" was inaccurate;
+                *   the live MM:SS timer below is already truthful — no copy change needed.
+                *   (Re-preview prompt on expiry also satisfies the "wait longer" guidance.)
+                */}
               <span>
                 This will send to <strong>{preview.preview_count}</strong> recipients.
                 {countdown > 0 ? (
