@@ -263,6 +263,23 @@ export function CommandPalette() {
     return () => cancelAnimationFrame(raf);
   }, [commandPaletteOpen]);
 
+  // Window-level Esc fallback. The input's onKeyDown handler only fires when
+  // the input itself has focus; if the operator clicks a result row, scrolls,
+  // or otherwise moves focus inside the palette, Esc would silently no-op
+  // and leave the palette stuck open. Listen on the window so Esc closes the
+  // palette regardless of focus location.
+  useEffect(() => {
+    if (!commandPaletteOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [commandPaletteOpen, close]);
+
   // Core search executor — called directly for immediate fetches (e.g. recent-
   // item click) or via the debounced effect for normal typing.
   const runSearch = useCallback(async (term: string) => {
