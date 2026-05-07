@@ -32,6 +32,14 @@ const resolveCookieBaseDomain = (): string | null => {
   return '.' + parts.slice(-2).join('.');
 };
 
+// LEGAL-COOKIE-CONSENT (TODO): theme cookie is treated as a "functional /
+// user-preference" cookie under ePrivacy Directive — set in direct response
+// to the operator clicking the theme toggle, so the "explicitly requested
+// by the user" exemption applies and no banner is required for this one.
+// CCPA: not personal information; no opt-out required. When we add analytics
+// (Sentry, GA), marketing, or fingerprinting cookies a full consent banner
+// must land alongside them and the cookie set here should be filed under
+// the "necessary / preferences" category that bypasses the opt-in.
 const THEME_COOKIE = 'theme';
 
 const readThemeCookie = (): 'light' | 'dark' | 'system' | null => {

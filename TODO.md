@@ -7,6 +7,10 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## Cookie consent / privacy compliance (LEGAL-COOKIE-CONSENT)
+
+- [ ] LEGAL-COOKIE-CONSENT-1. **Add cookie consent banner before introducing analytics / marketing / fingerprinting cookies.** Today's cookies (auth: refreshToken/csrf_token; preference: theme) are exempt under ePrivacy Directive (strictly necessary + explicitly user-requested). The exemption does NOT cover Sentry session-replay, Google Analytics, ad pixels, or third-party fingerprinting. When any of those land we MUST ship a banner with categories (necessary / preferences / analytics / marketing), default-deny for non-necessary, persisted choice, easy revoke. CCPA "Do Not Sell" link if any data sale starts. See uiStore.ts `LEGAL-COOKIE-CONSENT` marker for theme-cookie reasoning.
+
 ## Web unwired controls audit (WEB-UNWIRED)
 
 - [!] WEB-UNWIRED-007. **Replace the financing CTA stub with a real provider flow.** Blocked 2026-05-06 — this needs real Affirm/Klarna merchant API credentials, webhook secrets, return/cancel URL contracts, and provider-specific checkout/session docs. The repo only has BlockChyp payment links and no financing provider config surface, so implementing this now would create an unverifiable money-flow stub.
