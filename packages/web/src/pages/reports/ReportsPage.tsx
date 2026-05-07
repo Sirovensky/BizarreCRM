@@ -115,13 +115,17 @@ function resolveDateRange(value: { from?: string; to?: string; preset?: string }
       return { from: y, to: y };
     }
     case 'last_7': {
+      // WEB-UIUX-924: subtract 6 days so the window is today + 6 prior days = 7 days inclusive.
+      // Previously subtracted 7 which produced an 8-day window.
       const d = new Date();
-      d.setDate(d.getDate() - 7);
+      d.setDate(d.getDate() - 6);
       return { from: toLocalDate(d), to: today };
     }
     case 'last_30': {
+      // WEB-UIUX-924: subtract 29 days so the window is today + 29 prior days = 30 days inclusive.
+      // Previously subtracted 30 which produced a 31-day window.
       const d = new Date();
-      d.setDate(d.getDate() - 30);
+      d.setDate(d.getDate() - 29);
       return { from: toLocalDate(d), to: today };
     }
     case 'this_month':
@@ -572,9 +576,12 @@ function TicketsTab({ from, to }: { from: string; to: string }) {
           label="Avg Value" value={formatCurrency(summary.avg_ticket_value)}
           icon={TrendingUp} color="text-amber-500" bg="bg-amber-50 dark:bg-amber-950"
         />
+        {/* WEB-UIUX-930: disclose that On-Hold / Awaiting-Customer time is excluded from
+            this figure — server uses calculateAvgActiveRepairTime which strips hold time */}
         <SummaryCard
           label="Avg Turnaround" value={summary.avg_turnaround_hours != null ? `${summary.avg_turnaround_hours}h` : 'N/A'}
           icon={Clock} color="text-purple-500" bg="bg-purple-50 dark:bg-purple-950"
+          tooltip="Active hours from create→close. On-Hold and Awaiting-Customer status time is excluded."
         />
       </div>
 
@@ -1128,12 +1135,19 @@ function InsightsTab({
 
   const { popular_models, repairs_by_month, revenue_by_model, popular_services } = data;
 
-  // Build comparison data for repairs by month (overlay current vs previous)
+  // WEB-UIUX-926: Build comparison data for repairs by month keyed on month label,
+  // not array index. Array-index pairing silently mismatches when the current and
+  // previous periods span different months (e.g. a 3-month window shifted back 3
+  // months produces different month keys at each position). A Map lookup is O(1)
+  // and gracefully returns 0 when the prior period has no bucket for a given month.
+  const prevRepairMap = prevData
+    ? new Map(prevData.repairs_by_month.map((r) => [r.month, r.count]))
+    : null;
   const comparisonRepairs = compare && prevData
-    ? repairs_by_month.map((r, i) => ({
+    ? repairs_by_month.map((r) => ({
         month: r.month,
         current: r.count,
-        previous: prevData.repairs_by_month[i]?.count ?? 0,
+        previous: prevRepairMap?.get(r.month) ?? 0,
       }))
     : null;
 
@@ -1447,13 +1461,49 @@ export function ReportsPage() {
           data.rows.map((r) => [r.period, String(r.invoices), String(r.revenue), String(r.unique_customers)]),
         );
       } else if (activeTab === 'tickets') {
+        // WEB-UIUX-928: Expanded CSV to include all visible KPIs plus byStatus and
+        // byTech breakdowns. The old export only wrote byDay (Day + Created), silently
+        // omitting 5 summary KPIs, the status breakdown, and the technician table.
+        // Three logical sections are written sequentially with a blank separator row
+        // between them so the file stays valid CSV throughout.
         const data = await getCached<TicketsData>(
           ['reports', 'tickets', fromDate, toDate],
           async () => { const res = await reportApi.tickets({ from_date: fromDate, to_date: toDate }); return res.data.data as TicketsData; },
         );
-        downloadCsv(`tickets_${dateStr}.csv`,
+        const { summary, byDay, byStatus, byTech } = data;
+        // Build a multi-section CSV. Sections share the same file but are
+        // separated by a blank row and a "--- Section ---" label row so the
+        // operator can identify each block in a spreadsheet.
+        const ticketCsvRows: string[][] = [
+          // Section 1 – summary KPIs
+          ['Total Created', 'Total Closed', 'Total Revenue', 'Avg Ticket Value', 'Avg Turnaround (hrs)'],
+          [
+            String(summary.total_created),
+            String(summary.total_closed),
+            String(summary.total_revenue),
+            String(summary.avg_ticket_value),
+            summary.avg_turnaround_hours != null ? String(summary.avg_turnaround_hours) : '',
+          ],
+          [], // blank separator
+          // Section 2 – tickets by day
+          ['--- By Day ---'],
           ['Day', 'Created'],
-          data.byDay.map((r) => [r.day, String(r.created)]),
+          ...byDay.map((r) => [r.day, String(r.created)]),
+          [], // blank separator
+          // Section 3 – by status
+          ['--- By Status ---'],
+          ['Status', 'Count'],
+          ...byStatus.map((s) => [s.status, String(s.count)]),
+          [], // blank separator
+          // Section 4 – by technician
+          ['--- By Technician ---'],
+          ['Technician', 'Assigned', 'Closed', 'Revenue'],
+          ...byTech.map((t) => [t.tech_name, String(t.ticket_count), String(t.closed_count), String(t.total_revenue)]),
+        ];
+        downloadCsv(
+          `tickets_${dateStr}.csv`,
+          ['--- Summary ---'],
+          ticketCsvRows,
         );
       } else if (activeTab === 'employees') {
         const data = await getCached<EmployeesData>(

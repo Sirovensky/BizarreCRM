@@ -1,8 +1,9 @@
 import type { ComponentType, ReactNode } from 'react';
 import { Loader2, AlertCircle, Package } from 'lucide-react';
 
-export function SummaryCard({ label, value, icon: Icon, color, bg }: {
-  label: string; value: string; icon: ComponentType<{ className?: string }>; color: string; bg: string;
+// WEB-UIUX-930: added optional tooltip prop so cards can disclose computation details
+export function SummaryCard({ label, value, icon: Icon, color, bg, tooltip }: {
+  label: string; value: string; icon: ComponentType<{ className?: string }>; color: string; bg: string; tooltip?: string;
 }) {
   return (
     <div className="card flex items-center gap-4 p-5">
@@ -10,7 +11,18 @@ export function SummaryCard({ label, value, icon: Icon, color, bg }: {
         <Icon className={`h-6 w-6 ${color}`} />
       </div>
       <div>
-        <p className="text-sm text-surface-500 dark:text-surface-400">{label}</p>
+        <p className="text-sm text-surface-500 dark:text-surface-400">
+          {label}
+          {tooltip && (
+            <span
+              title={tooltip}
+              aria-label={tooltip}
+              className="ml-1 cursor-help text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 select-none"
+            >
+              &#9432;
+            </span>
+          )}
+        </p>
         <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{value}</p>
       </div>
     </div>

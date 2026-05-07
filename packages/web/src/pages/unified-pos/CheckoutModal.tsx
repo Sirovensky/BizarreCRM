@@ -315,7 +315,18 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Signup failed'),
   });
 
-  const showUpsell = membershipEnabled && !!customer?.id && !memberStatus && !!bestTier;
+  // WEB-UIUX-864: gate upsell banner — must have a real customer (id !== 0,
+  // not walk-in), at least one configured tier returned from the API, and no
+  // existing membership.  Previously `!!customer?.id` silently passed when id
+  // was truthy but tiersForUpsell could still be an empty array from a fresh
+  // tenant with no tiers set up, causing the banner to flash incorrectly.
+  const showUpsell =
+    membershipEnabled &&
+    !!customer?.id &&
+    customer.id !== 0 &&
+    !memberStatus &&
+    !!bestTier &&
+    (tiersForUpsell?.length ?? 0) > 0;
   const bestTierColor = getOpaqueHexColor(bestTier?.color);
   const bestTierTextColor = getReadableTextColor(bestTierColor);
 

@@ -215,6 +215,8 @@ export function CustomerCreatePage() {
     }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      const firstKey = Object.keys(newErrors)[0];
+      document.getElementById(firstKey)?.focus();
       return;
     }
     for (const def of customFieldDefs) {
@@ -224,6 +226,8 @@ export function CustomerCreatePage() {
     }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
+      const firstKey = Object.keys(newErrors)[0];
+      document.getElementById(firstKey)?.focus();
       return;
     }
 

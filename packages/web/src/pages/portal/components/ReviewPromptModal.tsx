@@ -24,6 +24,8 @@ export function ReviewPromptModal({
   const { t } = usePortalI18n();
   const [rating, setRating] = useState<number>(0);
   const [hover, setHover] = useState<number>(0);
+  // WEB-UIUX-922: roving tabIndex — track which star currently owns focus in the group
+  const [focusedStar, setFocusedStar] = useState<number>(1);
   const [comment, setComment] = useState<string>('');
   const [phase, setPhase] = useState<'ask' | 'thanks' | 'google'>('ask');
   const [googleUrl, setGoogleUrl] = useState<string | null>(null);
@@ -83,10 +85,28 @@ export function ReviewPromptModal({
             <p className="text-sm text-surface-600 dark:text-surface-300 mb-4">
               {t('review.prompt')}
             </p>
+            {/* WEB-UIUX-922: radiogroup with roving tabIndex + arrow-key navigation so the
+                5 stars count as one Tab stop instead of five separate ones. Left/Right (and
+                Up/Down for parity) cycle the focused star; Space/Enter also sets the value. */}
             <div
               role="radiogroup"
               aria-label={t('review.rating_label')}
               className="flex gap-1 justify-center mb-4"
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  const next = focusedStar < 5 ? focusedStar + 1 : 1;
+                  setFocusedStar(next);
+                  setRating(next);
+                  (e.currentTarget.children[next - 1] as HTMLElement)?.focus();
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  const prev = focusedStar > 1 ? focusedStar - 1 : 5;
+                  setFocusedStar(prev);
+                  setRating(prev);
+                  (e.currentTarget.children[prev - 1] as HTMLElement)?.focus();
+                }
+              }}
             >
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
@@ -95,9 +115,11 @@ export function ReviewPromptModal({
                   role="radio"
                   aria-checked={rating === n}
                   aria-label={`${n} stars`}
+                  tabIndex={n === focusedStar ? 0 : -1}
+                  onFocus={() => setFocusedStar(n)}
                   onMouseEnter={() => setHover(n)}
                   onMouseLeave={() => setHover(0)}
-                  onClick={() => setRating(n)}
+                  onClick={() => { setRating(n); setFocusedStar(n); }}
                   className="text-3xl transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-surface-800 rounded"
                 >
                   <span className={n <= displayRating ? 'text-yellow-400' : 'text-surface-300 dark:text-surface-600'}>

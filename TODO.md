@@ -3612,7 +3612,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-859. **[MAJOR] Repair pricing tier B/C use Preview placeholders that look like real options.** Owner clicks "Per-device matrix" → 5 rows of fake iPhone pricing → nothing saves. L5, L8. **[AUTOLOOP-T40 RESOLVED: web-setup-wizard mockup tier B/C cards get "Preview only" badge + opacity-60 dim + "Not yet configurable — coming soon"; B/C inputs disabled.]**
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:236-240,370-481`
 
-- [ ] WEB-UIUX-860. **[MAJOR] Catalog empty when StepShopType skipped — no recovery path from POS.** "Mobile" → empty results → stuck. No "Load sample data" on RepairsTab. L4, L8.
+- [x] WEB-UIUX-860. **[MAJOR] Catalog empty when StepShopType skipped — no recovery path from POS.** "Mobile" → empty results → stuck. No "Load sample data" on RepairsTab. L4, L8. **[AUTOLOOP-T59 RESOLVED: empty-catalog state in RepairsTab CategoryStep now renders amber notice with /settings/general link + quick-ticket fallback button so first-time setup isn't a dead-end.]**
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:154-200`
 
 - [ ] WEB-UIUX-861. **[MAJOR · BLOCKED] Customer creation: SMS opt-in is OFF by default — breaks auto-SMS feature wizard promotes.** Every first customer has `sms_opt_in=false`. L5, L14.
@@ -3625,7 +3625,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-863. **[MAJOR] Daily nudges hardcode paths that may not exist.** Day-3 ctaHref `/settings/users` — but Settings tabs are query-string based. Day-7 sends to `/invoices` for "refund" but new shop has zero invoices. L5, L14. **[AUTOLOOP-T40 RESOLVED: DailyNudge Day-3 ctaHref → /settings?tab=users; Day-7 refund nudge gated on first_invoice_at presence (skip if zero invoices).]**
   `packages/web/src/components/onboarding/DailyNudge.tsx:37,47,55`
 
-- [ ] WEB-UIUX-864. **[MAJOR] Membership upsell shown to brand-new customers at checkout.** "Save X% with [Tier]!" banner before owner has configured tiers. L1, L14.
+- [x] WEB-UIUX-864. **[MAJOR] Membership upsell shown to brand-new customers at checkout.** "Save X% with [Tier]!" banner before owner has configured tiers. L1, L14. **[AUTOLOOP-T59 RESOLVED: showUpsell now requires customer.id!==0 AND tiersForUpsell.length>0; banner suppressed for walk-ins and tenants with no membership tiers configured.]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:194-237`
 
 - [ ] WEB-UIUX-865. **[MINOR · BLOCKED] StepDefaultStatuses (step 9) warns about auto-SMS BEFORE SMS configured (step 16).** Jargon-overload. L14.
@@ -3638,7 +3638,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-867. **[MAJOR] POS draft persistence is per-user, not per-register/till.** Two cashiers sharing login on same till clobber each other on every keystroke. L6, L11. **[AUTOLOOP-T40 RESOLVED: getRegisterPosKey() appends sessionStorage UUID per tab; each register/till session gets isolated draft key.]**
   `packages/web/src/pages/unified-pos/store.ts:64-68,273-288`
 
-- [ ] WEB-UIUX-868. **[MAJOR] Customer search: 300ms debounce + 8-result hard cap + no fuzzy phone normalization.** Operator types 7-digit phone → ≥2.1s accumulated debounce. 100 walk-ins → 8 results truncated silently. L1, L7.
+- [x] WEB-UIUX-868. **[MAJOR] Customer search: 300ms debounce + 8-result hard cap + no fuzzy phone normalization.** Operator types 7-digit phone → ≥2.1s accumulated debounce. 100 walk-ins → 8 results truncated silently. L1, L7. **[AUTOLOOP-T59 RESOLVED: debounce 300→150ms; cap 8→25; phone-digits queries normalized via stripPhone; cap-hit footer 'Showing first 25 — refine search' added.]**
   `packages/web/src/pages/unified-pos/CustomerSelector.tsx:58-77`
 
 - [ ] WEB-UIUX-869. **[MAJOR · BLOCKED] BulkSmsModal full-screen overlay — operator can't answer inbound SMS during 5-min token window.** No progress chip on enqueue, no abort mid-preview. L11, L1.
@@ -3775,16 +3775,16 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-915. **[MAJOR] Settings tab strip is 21 plain `<button>` elements — no `role="tablist"`/`role="tab"`, no arrow-key nav.** 21 Tab stops to reach active tab content. L12. **[AUTOLOOP-T43 RESOLVED: Settings tab strip gained role=tablist/tab, aria-selected/aria-controls, roving tabIndex, Left/Right arrow-key cycling, plus role=tabpanel wrapper with aria-labelledby.]**
   `packages/web/src/pages/settings/SettingsPage.tsx:2285-2313`
 
-- [ ] WEB-UIUX-916. **[MAJOR] No focus-to-first-error after validation fail.** Sighted keyboard users have no idea where first broken field is. L12, L8.
+- [x] WEB-UIUX-916. **[MAJOR] No focus-to-first-error after validation fail.** Sighted keyboard users have no idea where first broken field is. L12, L8. **[AUTOLOOP-T59 RESOLVED: validation fail now calls document.getElementById(firstErrorKey)?.focus() in both early-return blocks; uses existing id attrs (first_name/email/custom_N).]**
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:186-208`
 
 - [ ] WEB-UIUX-917. **[MINOR] Password-toggle eye buttons set `tabIndex={-1}` everywhere.** Forces blind typing with no peek-ahead. Material/GOV.UK convention is to keep in tab order. L12.
 
-- [ ] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12.
+- [ ] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12. **STATUS: BLOCKED — cross-flow Esc-policy design touching ~12 search inputs; needs documented policy first; defer to design-system sprint**
 
 - [ ] WEB-UIUX-921. **[MINOR] CustomerListPage CustomerActionsMenu lacks `role="menu"`/`menuitem`, no arrow-key nav, no Esc handler.** Header.tsx:465 + LeadPipelinePage.tsx:144 use proper pattern — propagate. L12.
 
-- [ ] WEB-UIUX-922. **[MINOR] Star-rating radiogroup no arrow keys.** 5 radios = 5 Tab stops instead of 1 group with arrows. L12.
+- [x] WEB-UIUX-922. **[MINOR] Star-rating radiogroup no arrow keys.** 5 radios = 5 Tab stops instead of 1 group with arrows. L12. **[AUTOLOOP-T59 RESOLVED: ReviewPromptModal stars gained role=radiogroup, role=radio, aria-checked, roving tabIndex, Left/Right/Up/Down arrow handler cycling through stars.]**
   `packages/web/src/pages/portal/components/ReviewPromptModal.tsx:86-108`
 
 - [ ] WEB-UIUX-923. **[MINOR] SignatureCanvas has NO keyboard alternative.** 0 keyboard handlers. Customers required to sign on portal cannot complete with keyboard alone. L12.
@@ -3792,23 +3792,23 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED22: Reports Data Accuracy
 
-- [ ] WEB-UIUX-924. **[MAJOR] Reports `last_7` is 8 days, `last_30` is 31 days — Dashboard uses correct math.** Same product, same preset name, different ranges across pages. L7, L13.
+- [x] WEB-UIUX-924. **[MAJOR] Reports `last_7` is 8 days, `last_30` is 31 days — Dashboard uses correct math.** Same product, same preset name, different ranges across pages. L7, L13. **[AUTOLOOP-T59 RESOLVED: Reports last_7/last_30 presets now subtract 6/29 days inclusive (was 7/30 = 8/31-day windows); matches Dashboard math.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:98-101`
 
 - [ ] WEB-UIUX-925. **[MAJOR] Reports `todayStr()` uses `.toISOString().slice(0,10)` (UTC) — Dashboard fixed via `localYmd()` (SCAN-1162) — Reports never adopted.** 11:55pm America/Denver → tomorrow's UTC date. L7, L13.
 
-- [ ] WEB-UIUX-926. **[MAJOR] Comparison "vs prior period" pairs by ARRAY INDEX, not month label.** Server may omit empty buckets → Apr-current shown next to Feb-previous bar. L11, L13.
+- [x] WEB-UIUX-926. **[MAJOR] Comparison "vs prior period" pairs by ARRAY INDEX, not month label.** Server may omit empty buckets → Apr-current shown next to Feb-previous bar. L11, L13. **[AUTOLOOP-T59 RESOLVED: comparisonRepairs now joins current+prior arrays by month label via Map (not array index) preventing Apr-current vs Feb-previous mismatches.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:993-1000`
 
 - [ ] WEB-UIUX-927. **[MAJOR] Chart fills "0" for missing days — no distinction between "no sales", "shop closed", "data not yet computed".** L8, L11.
 
-- [ ] WEB-UIUX-928. **[MAJOR] CSV export silently drops or includes data the operator didn't intend.** Tickets export = 2 columns (`Day, Created`) ignoring 5 KPIs + byStatus + byTech. L8, L13.
+- [x] WEB-UIUX-928. **[MAJOR] CSV export silently drops or includes data the operator didn't intend.** Tickets export = 2 columns (`Day, Created`) ignoring 5 KPIs + byStatus + byTech. L8, L13. **[AUTOLOOP-T59 RESOLVED: Tickets CSV export expanded from 2 columns to multi-section (summary KPIs + byDay + byStatus + byTech) with proper escaping.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:1274-1282`
 
 - [ ] WEB-UIUX-929. **[MAJOR] Refunds KPI tooltip: "Total refunded amount" — no period/sign disclosure, doesn't say if Net Profit subtracts refunds.** L13, L14.
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
 
-- [ ] WEB-UIUX-930. **[MINOR] Avg Turnaround Hours card never discloses if On-Hold/Awaiting-Customer time excluded.** SummaryCard lacks tooltip prop. L14.
+- [x] WEB-UIUX-930. **[MINOR] Avg Turnaround Hours card never discloses if On-Hold/Awaiting-Customer time excluded.** SummaryCard lacks tooltip prop. L14. **[AUTOLOOP-T59 RESOLVED: SummaryCard gained optional tooltip prop with ⓘ glyph + title/aria-label; Avg Turnaround now discloses On-Hold/Awaiting-Customer time excluded per server calculateAvgActiveRepairTime.]**
 
 - [ ] WEB-UIUX-931. **[MINOR] No `data_as_of` / generated_at timestamp on any Reports tab.** `staleTime: 30_000` cache opaque. L13, L11.
 

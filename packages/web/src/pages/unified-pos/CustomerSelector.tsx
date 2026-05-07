@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
+import { stripPhone } from '@/utils/phoneFormat';
 import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
 import { useUnifiedPosStore } from './store';
@@ -59,6 +60,8 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
   const [walkInLoading, setWalkInLoading] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
+  const RESULT_CAP = 25;
+
   // Debounced search
   useEffect(() => {
     if (query.length < 2) {
@@ -66,18 +69,21 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
       return;
     }
     setLoading(true);
+    // Normalize mostly-digit queries (phone numbers) by stripping non-digit chars
+    // so the server's fuzzy phone match works regardless of dashes/spaces/parens.
+    const normalizedQuery = /^\d[\d\s\-().]{2,}$/.test(query) ? stripPhone(query) : query;
     const timer = setTimeout(async () => {
       try {
-        const res = await customerApi.search(query);
+        const res = await customerApi.search(normalizedQuery);
         const data = res.data?.data;
-        setResults(Array.isArray(data) ? data.slice(0, 8) : []);
+        setResults(Array.isArray(data) ? data.slice(0, RESULT_CAP) : []);
       } catch {
         // Search failed — handled by empty results
         setResults([]);
       } finally {
         setLoading(false);
       }
-    }, 300);
+    }, 150);
     return () => clearTimeout(timer);
   }, [query]);
 
@@ -312,6 +318,11 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
               </button>
             </li>
           ))}
+          {results.length >= RESULT_CAP && (
+            <li className="px-3 py-1.5 text-center text-[11px] text-surface-400 dark:text-surface-500 border-t border-surface-100 dark:border-surface-700">
+              Showing first {RESULT_CAP} — refine search
+            </li>
+          )}
         </ul>
       )}
 

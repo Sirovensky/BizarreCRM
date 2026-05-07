@@ -180,37 +180,72 @@ function CategoryStep({ onSelect }: { onSelect: (category: string) => void }) {
     return acc;
   }, {});
 
+  // WEB-UIUX-860: detect a completely empty catalog (StepShopType was skipped
+  // or never completed).  modelsData being defined means the query has settled;
+  // models.length === 0 means no devices exist yet.
+  const catalogEmpty = modelsData !== undefined && models.length === 0;
+
   return (
-    <div className="grid grid-cols-3 gap-4 py-2" data-tutorial-target="ticket:device-template-button">
-      {CATEGORY_TILES.map(({ value, label, icon: Icon }) => {
-        const count = value === 'quick' ? null : (countByCategory[value] ?? 0);
-        const isEmpty = count === 0;
-        return (
-          <button
-            key={value}
-            onClick={() => onSelect(value)}
-            className={cn(
-              'btn btn-md !h-auto flex-col !gap-3 rounded-xl border bg-white !px-4 !py-6 text-center !whitespace-normal hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 dark:bg-surface-800',
-              isEmpty
-                ? 'border-surface-100 opacity-50 dark:border-surface-800'
-                : 'border-surface-200 hover:border-primary-400 dark:border-surface-700 dark:hover:border-primary-500',
-            )}
-          >
-            <div className="relative">
-              <Icon className={cn('h-10 w-10', isEmpty ? 'text-surface-300 dark:text-surface-600' : 'text-primary-500 dark:text-primary-400')} />
-              {count != null && count > 0 && (
-                <span className="absolute -right-3 -top-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary-100 px-1 text-[10px] font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
-                  {count}
-                </span>
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-4 py-2" data-tutorial-target="ticket:device-template-button">
+        {CATEGORY_TILES.map(({ value, label, icon: Icon }) => {
+          const count = value === 'quick' ? null : (countByCategory[value] ?? 0);
+          const isEmpty = count === 0;
+          return (
+            <button
+              key={value}
+              onClick={() => onSelect(value)}
+              className={cn(
+                'btn btn-md !h-auto flex-col !gap-3 rounded-xl border bg-white !px-4 !py-6 text-center !whitespace-normal hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 dark:bg-surface-800',
+                isEmpty
+                  ? 'border-surface-100 opacity-50 dark:border-surface-800'
+                  : 'border-surface-200 hover:border-primary-400 dark:border-surface-700 dark:hover:border-primary-500',
               )}
-            </div>
-            <span className={cn('text-sm font-medium', isEmpty ? 'text-surface-400 dark:text-surface-500' : 'text-surface-700 dark:text-surface-300')}>{label}</span>
-            {value === 'quick' && (
-              <span className="text-[11px] text-surface-400 dark:text-surface-500 -mt-2">Skip device selection</span>
-            )}
-          </button>
-        );
-      })}
+            >
+              <div className="relative">
+                <Icon className={cn('h-10 w-10', isEmpty ? 'text-surface-300 dark:text-surface-600' : 'text-primary-500 dark:text-primary-400')} />
+                {count != null && count > 0 && (
+                  <span className="absolute -right-3 -top-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary-100 px-1 text-[10px] font-bold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
+                    {count}
+                  </span>
+                )}
+              </div>
+              <span className={cn('text-sm font-medium', isEmpty ? 'text-surface-400 dark:text-surface-500' : 'text-surface-700 dark:text-surface-300')}>{label}</span>
+              {value === 'quick' && (
+                <span className="text-[11px] text-surface-400 dark:text-surface-500 -mt-2">Skip device selection</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* WEB-UIUX-860: empty catalog recovery path — shown when no device models
+          exist (shop-type setup was skipped).  Guides staff to settings rather
+          than leaving them stuck on an all-greyed-out grid with no explanation. */}
+      {catalogEmpty && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800/60 dark:bg-amber-900/20">
+          <p className="font-medium text-amber-800 dark:text-amber-300">No devices in catalog yet</p>
+          <p className="mt-0.5 text-amber-700 dark:text-amber-400">
+            Your catalog is empty — all categories are unavailable.{' '}
+            <a
+              href="/settings/general"
+              className="underline underline-offset-2 hover:opacity-80"
+              title="Go to General Settings to configure your shop type and add catalog entries"
+            >
+              Configure shop type
+            </a>
+            {' '}to add devices, or use the{' '}
+            <button
+              onClick={() => onSelect('quick')}
+              className="underline underline-offset-2 hover:opacity-80"
+              title="Skip device selection and create a ticket without a specific device"
+            >
+              Quick ticket
+            </button>
+            {' '}option above to proceed without a device.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
