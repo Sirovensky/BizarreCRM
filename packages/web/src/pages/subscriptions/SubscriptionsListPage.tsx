@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, PlayCircle, RefreshCw, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
@@ -31,29 +32,6 @@ interface Subscription {
   email: string | null;
   phone: string | null;
   blockchyp_token?: string | null;
-}
-
-interface BillingRun {
-  id: number;
-  status: 'running' | 'completed' | 'failed';
-  started_at: string;
-  finished_at: string | null;
-  total_due: number;
-  charged_count: number;
-  failed_count: number;
-  skipped_count: number;
-  error_message?: string | null;
-}
-
-interface BillingRunResponse {
-  run: BillingRun;
-  results: Array<{
-    status: 'success' | 'failed' | 'skipped';
-    subscription_id: number;
-    customer_id: number;
-    amount: number;
-    message: string;
-  }>;
 }
 
 type StatusFilter = 'all' | Exclude<SubStatus, 'cancelled'>;
@@ -109,38 +87,16 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
   return user?.role === 'admin' ? <>{children}</> : null;
 }
 
-// ─── Run Billing Button (admin-only) ─────────────────────────────────────────
-
-function RunBillingButton({
-  pending,
-  onRun,
-}: {
-  pending: boolean;
-  onRun: () => void;
-}) {
-  const user = useAuthStore((s) => s.user);
-  // Only show to admins — mirrors how other admin-only controls are gated
-  if (user?.role !== 'admin') return null;
-
-  return (
-    <button
-      onClick={onRun}
-      disabled={pending}
-      className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
-      title="Run due membership billing now"
-    >
-      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-      {pending ? 'Running billing...' : 'Run billing now'}
-    </button>
-  );
-}
+// WEB-UIUX-1061: RunBillingButton (header) was a decoy — it showed a toast
+// instead of actually triggering billing. Removed entirely; the per-row
+// "Bill now" button (admin-only) remains the manual trigger. Billing otherwise
+// runs nightly via cron — a caption near the page title now says so.
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function SubscriptionsListPage() {
   const queryClient = useQueryClient();
   const [cancellingId, setCancellingId] = useState<number | null>(null);
-  const [lastBillingRun, setLastBillingRun] = useState<BillingRunResponse | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
@@ -152,23 +108,6 @@ export function SubscriptionsListPage() {
       return (res.data as { data: Subscription[] }).data;
     },
     staleTime: 30_000,
-  });
-
-  const globalBillingMut = useMutation({
-    mutationFn: async () => {
-      const res = await membershipApi.runBillingNow();
-      return (res.data as { data: BillingRunResponse }).data;
-    },
-    onSuccess: (result) => {
-      setLastBillingRun(result);
-      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      toast.success(
-        `Billing run complete: ${result.run.charged_count} charged, ${result.run.failed_count} failed`,
-      );
-    },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Billing run failed');
-    },
   });
 
   const cancelMutation = useMutation({
@@ -208,19 +147,6 @@ export function SubscriptionsListPage() {
       if (!ok) return;
       setBillingId(sub.id);
       runBillingMut.mutate(sub.id);
-    } catch (err) {
-      toast.error(formatApiError(err));
-    }
-  }
-
-  async function handleGlobalRunBilling(): Promise<void> {
-    try {
-      const ok = await confirm(
-        'Run billing now for all due active and past-due memberships? Cards will be charged immediately, and a run result will be recorded.',
-        { title: 'Run membership billing?', confirmLabel: 'Run billing' },
-      );
-      if (!ok) return;
-      globalBillingMut.mutate();
     } catch (err) {
       toast.error(formatApiError(err));
     }
@@ -289,7 +215,8 @@ export function SubscriptionsListPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
+      {/* Header — WEB-UIUX-1061: removed decoy "Run billing now" header button;
+          billing runs nightly via cron. Per-row "Bill now" remains the manual trigger. */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Crown className="h-6 w-6 text-primary-600" />
@@ -297,31 +224,13 @@ export function SubscriptionsListPage() {
             <h1 className="text-xl font-semibold text-surface-900 dark:text-surface-100">Memberships</h1>
             {!isLoading && !isError && (
               <p className="text-sm text-surface-500 dark:text-surface-400">
-                {activeCount} active subscription{activeCount !== 1 ? 's' : ''}
+                {activeCount} active subscription{activeCount !== 1 ? 's' : ''}{' '}
+                <span className="text-surface-400 dark:text-surface-500">&middot; Billing runs nightly automatically</span>
               </p>
             )}
           </div>
         </div>
-        <RunBillingButton pending={globalBillingMut.isPending} onRun={handleGlobalRunBilling} />
       </div>
-
-      {lastBillingRun ? (
-        <div className="mb-4 rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200">
-          <div className="font-medium">
-            Last billing run: {lastBillingRun.run.charged_count} charged, {lastBillingRun.run.failed_count} failed, {lastBillingRun.run.skipped_count} skipped.
-          </div>
-          {lastBillingRun.results.length > 0 ? (
-            <div className="mt-1 text-xs text-surface-500 dark:text-surface-400">
-              {lastBillingRun.results.slice(0, 3).map((result) => result.message).join(' · ')}
-              {lastBillingRun.results.length > 3 ? ` · ${lastBillingRun.results.length - 3} more` : ''}
-            </div>
-          ) : (
-            <div className="mt-1 text-xs text-surface-500 dark:text-surface-400">
-              No memberships were due.
-            </div>
-          )}
-        </div>
-      ) : null}
 
       {!isLoading && !isError && (subs.length > 0 || filtersActive) ? (
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -374,8 +283,10 @@ export function SubscriptionsListPage() {
           <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
             {filtersActive
               ? 'Try a different search or status.'
-              : 'Enroll customers from the Memberships settings tab.'}
+              : 'Open a customer profile and tap Enroll in Membership'}
           </p>
+          {/* WEB-UIUX-1064: old copy pointed to settings tab; enrollment lives on
+              customer profile. Added /customers CTA + secondary settings link. */}
           {filtersActive ? (
             <button
               type="button"
@@ -384,7 +295,22 @@ export function SubscriptionsListPage() {
             >
               Clear filters
             </button>
-          ) : null}
+          ) : (
+            <div className="mt-4 flex items-center gap-3">
+              <Link
+                to="/customers"
+                className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              >
+                Go to Customers
+              </Link>
+              <Link
+                to="/settings/memberships"
+                className="rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+              >
+                Configure tiers
+              </Link>
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl overflow-hidden">
@@ -454,15 +380,19 @@ export function SubscriptionsListPage() {
                           </button>
                         </AdminOnly>
                       )}
+                      {/* WEB-UIUX-1062: Cancel was visible to non-admin clerks causing 403s;
+                          now gated with AdminOnly to match "Bill now" treatment. */}
                       {sub.status !== 'cancelled' && (
-                        <button
-                          onClick={() => handleCancel(sub)}
-                          disabled={cancellingId === sub.id}
-                          className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
-                        >
-                          {cancellingId === sub.id && <Loader2 className="h-3 w-3 animate-spin" />}
-                          Cancel
-                        </button>
+                        <AdminOnly>
+                          <button
+                            onClick={() => handleCancel(sub)}
+                            disabled={cancellingId === sub.id}
+                            className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                          >
+                            {cancellingId === sub.id && <Loader2 className="h-3 w-3 animate-spin" />}
+                            Cancel
+                          </button>
+                        </AdminOnly>
                       )}
                     </div>
                   </td>

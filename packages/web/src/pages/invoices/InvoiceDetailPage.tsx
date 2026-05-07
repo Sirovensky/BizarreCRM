@@ -1040,8 +1040,8 @@ export function InvoiceDetailPage() {
               Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back.
             </p>
             <div className="flex gap-3 mt-4">
-              <button onClick={() => { setShowCreditNote(false); setCreditNoteError({}); }} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
-                Cancel
+              <button onClick={() => { setShowCreditNote(false); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+                Discard
               </button>
               <button
                 onClick={handleCreditNote}

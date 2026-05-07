@@ -39,6 +39,7 @@ import {
   BookOpen,
   Smartphone,
   Repeat,
+  Crown,
   Award,
   Trophy,
   Link2,
@@ -92,7 +93,10 @@ const navSections: NavSection[] = [
       { label: 'Cash Register', path: '/cash-register', icon: DollarSign },
       { label: 'Loaners', path: '/loaners', icon: Smartphone },
       { label: 'Gift Cards', path: '/gift-cards', icon: WalletCards },
-      { label: 'Subscriptions', path: '/subscriptions', icon: Repeat },
+      // WEB-UIUX-1056 + WEB-UIUX-1063: rename "Subscriptions" → "Memberships" and
+      // switch the icon to Crown so the consumer-facing recurring-revenue surface
+      // is discoverable. Route stays /subscriptions for now (rename deferred).
+      { label: 'Memberships', path: '/subscriptions', icon: Crown },
     ],
   },
   {

@@ -1162,7 +1162,14 @@ function MembershipCard({ customerId }: { customerId: number }) {
                   Pause
                 </button>
                 <button
-                  onClick={() => cancelMut.mutate()}
+                  onClick={async () => {
+                    const ok = await confirm(
+                      'Cancel this membership? Customer loses paid remaining days unless period-end-cancel is chosen.',
+                      { title: 'Cancel membership?', confirmLabel: 'Cancel membership', danger: true },
+                    );
+                    if (!ok) return;
+                    cancelMut.mutate();
+                  }}
                   disabled={cancelMut.isPending}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
