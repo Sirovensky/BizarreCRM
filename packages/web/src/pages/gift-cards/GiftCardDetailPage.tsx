@@ -51,11 +51,12 @@ function formatBalance(amount: number): string {
   return formatCurrencyShared(dollarsFromMaybeCents(amount));
 }
 
-function txLabel(type: TxType): string {
+// WEB-UIUX-1444: 'adjustment' label now inspects amount sign — positive = Reload, negative = Adjustment
+function txLabel(type: TxType, amount?: number): string {
   switch (type) {
     case 'purchase': return 'Issued';
     case 'redemption': return 'Redeemed';
-    case 'adjustment': return 'Reload';
+    case 'adjustment': return (amount !== undefined && amount < 0) ? 'Adjustment' : 'Reload';
   }
 }
 
@@ -325,11 +326,16 @@ export function GiftCardDetailPage() {
           )}
         </dl>
 
-        {card.status !== 'used' && card.status !== 'disabled' && canReload && (
+        {/* WEB-UIUX-1442: server allows reload on any status except disabled; show button for 'used' too (secondary tone indicates topping up a depleted card) */}
+        {card.status !== 'disabled' && canReload && (
           <div className="mt-4 pt-4 border-t border-surface-100 dark:border-surface-800">
             <button
               onClick={() => setShowReloadModal(true)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border ${
+                card.status === 'used'
+                  ? 'border-surface-200 dark:border-surface-700 text-surface-400 dark:text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-800'
+                  : 'border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800'
+              }`}
             >
               <RefreshCw className="h-4 w-4" />
               Reload balance
@@ -378,7 +384,7 @@ export function GiftCardDetailPage() {
                     {pageTxs.map((tx) => (
                       <tr key={tx.id}>
                         <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{formatDate(tx.created_at)}</td>
-                        <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type)}</td>
+                        <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type, tx.amount)}</td>
                         <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{tx.notes ?? '—'}</td>
                         <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type, tx.amount)}`}>
                           {/* Fixer-WW: sign driven by tx.type so redemptions always

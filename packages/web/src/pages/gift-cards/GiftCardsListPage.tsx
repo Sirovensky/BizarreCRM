@@ -16,7 +16,8 @@ interface GiftCard {
   code: string;
   initial_balance: number;
   current_balance: number;
-  status: 'active' | 'used' | 'disabled';
+  // WEB-UIUX-1438: widened to include 'expired' status
+  status: 'active' | 'used' | 'disabled' | 'expired';
   recipient_name: string | null;
   recipient_email: string | null;
   expires_at: string | null;
@@ -70,6 +71,8 @@ function statusBadge(status: string): string {
     case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
     case 'used': return 'bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400';
     case 'disabled': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+    // WEB-UIUX-1438: amber tone for expired cards
+    case 'expired': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
     default: return 'bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400';
   }
 }
@@ -435,13 +438,16 @@ export function GiftCardsListPage() {
               Export CSV
             </button>
           )}
-          <button
-            onClick={() => setShowIssueModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
-          >
-            <Plus className="h-4 w-4" />
-            Issue gift card
-          </button>
+          {/* WEB-UIUX-1446: hide header CTA on empty state — empty-state centered button takes over */}
+          {cards.length > 0 && (
+            <button
+              onClick={() => setShowIssueModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Issue gift card
+            </button>
+          )}
         </div>
       </div>
 
@@ -466,6 +472,8 @@ export function GiftCardsListPage() {
           <option value="active">Active</option>
           <option value="used">Used</option>
           <option value="disabled">Disabled</option>
+          {/* WEB-UIUX-1438: expired filter option */}
+          <option value="expired">Expired</option>
         </select>
       </div>
 
