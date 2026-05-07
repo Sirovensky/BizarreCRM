@@ -4489,25 +4489,25 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 - [x] WEB-UIUX-1103. **[MINOR] Empty-state has no recovery affordance.** When `items.length===0` (`QcSignOffModal.tsx:216-219`), banner says "Ask an admin..." (broken anyway per WEB-UIUX-1080) but no "Restore default checklist" button — and migration 088 *seeds* 9 default items. Admin who deleted them all is stuck. L8. **[AUTOLOOP-T51 RESOLVED: migration-088 recovery note added to empty state pointing admin to DB-restore path.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:216-220`
 
-- [ ] WEB-UIUX-1104. **[MINOR] Esc closes modal silently with same destructive effect as backdrop click.** `QcSignOffModal.tsx:176-180`. Same pattern as WEB-UIUX-1087. L8.
+- [x] WEB-UIUX-1104. **[MINOR] Esc closes modal silently with same destructive effect as backdrop click.** `QcSignOffModal.tsx:176-180`. Same pattern as WEB-UIUX-1087. L8. **[AUTOLOOP-T52 RESOLVED: Esc-close already routed through safeClose dirty-guard via WEB-UIUX-1087 fix in tick 51; no further change needed.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:176-180`
 
 - [ ] WEB-UIUX-1105. **[MINOR] No "view past sign-offs" history.** Re-sign overwrites visually (only latest queried per `LIMIT 1` at `:712`), but DB keeps all rows. No UI to enumerate. Manager investigating "which sign-off captured the working state" can't reach prior rows. L4.
   `packages/server/src/routes/bench.routes.ts:711-714`
 
-- [ ] WEB-UIUX-1106. **[MINOR] "Notes" textarea has `maxLength={1000}` but no character counter.** `QcSignOffModal.tsx:317-321`. Tech typing detailed defect description silently truncated at 1000. L7.
+- [x] WEB-UIUX-1106. **[MINOR] "Notes" textarea has `maxLength={1000}` but no character counter.** `QcSignOffModal.tsx:317-321`. Tech typing detailed defect description silently truncated at 1000. L7. **[AUTOLOOP-T52 RESOLVED: notes character counter (X/1000) rendered below textarea so tech sees remaining chars before truncation.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:317-321`
 
 - [ ] WEB-UIUX-1107. **[NIT] Title icon `CheckCircle2 text-primary-500` reads as "completed" — overloaded with the dashboard's "task complete" green check.** Status before action; user expects success ICON only post-sign. L9.
   `packages/web/src/components/tickets/QcSignOffModal.tsx:200-201`
 
-- [ ] WEB-UIUX-1108. **[NIT] Photo button label `"Capture / upload photo"` — slash awkward and verbose.** `QcSignOffModal.tsx:265`. Industry copy: "Take photo" or "Add photo". L7.
+- [x] WEB-UIUX-1108. **[NIT] Photo button label `"Capture / upload photo"` — slash awkward and verbose.** `QcSignOffModal.tsx:265`. Industry copy: "Take photo" or "Add photo". L7. **[AUTOLOOP-T52 RESOLVED: photo button label changed from 'Capture / upload photo' to 'Add photo' for clarity.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:264-266`
 
 - [ ] WEB-UIUX-1109. **[NIT] "Working device photo" wording ambiguous — could mean photo OF the device working, or photo for use during work.** Cleaner: "Photo of working device". L7.
   `packages/web/src/components/tickets/QcSignOffModal.tsx:249-251`
 
-- [ ] WEB-UIUX-1110. **[NIT] `accept="image/webp"` accepted but webp not capturable from iOS Safari — slot likely useless on tablets.** Trim or document. L9.
+- [x] WEB-UIUX-1110. **[NIT] `accept="image/webp"` accepted but webp not capturable from iOS Safari — slot likely useless on tablets.** Trim or document. L9. **[AUTOLOOP-T52 RESOLVED: removed image/webp from accept list (not capturable via iOS Safari) with comment cross-referencing WEB-UIUX-1090.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:255`
 
 ### Web UI/UX Audit — Pass 16 (2026-05-05, flow walk: Send Bulk SMS — preview, confirm, dispatch, feedback)
@@ -4516,7 +4516,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
 
 #### Blocker — Feedback truthfulness, label vs body, recovery
 
-- [ ] WEB-UIUX-1111. **[BLOCKER] Success toast renders "Enqueued undefined messages" — client reads field server no longer returns.** Client typed shape: `interface ConfirmResponse { enqueued: number; segment; confirmed: true }` (`BulkSmsModal.tsx:47-51`) and toast `Enqueued ${r.enqueued} messages` (`:92`). Server payload (`inbox.routes.ts:693-703`) returns `{ attempted, sent, failed, segment, template, confirmed: true }` — note the comment block at `:619-625` explicitly documents the migration FROM `enqueued` to `attempted/sent/failed` so admin sees truthful counts. Client never updated. Result: after blasting 1,200 customers admin sees `Enqueued undefined messages` and modal closes. Cannot tell 0 sent vs 1200 sent vs 1200 failed. Worst-case dispatch (provider down, all queued to `sms_retry_queue` with `status='failed'`) reads identical to a perfect 1200/1200 success. L7, L2.
+- [x] WEB-UIUX-1111. **[BLOCKER] Success toast renders "Enqueued undefined messages" — client reads field server no longer returns.** Client typed shape: `interface ConfirmResponse { enqueued: number; segment; confirmed: true }` (`BulkSmsModal.tsx:47-51`) and toast `Enqueued ${r.enqueued} messages` (`:92`). Server payload (`inbox.routes.ts:693-703`) returns `{ attempted, sent, failed, segment, template, confirmed: true }` — note the comment block at `:619-625` explicitly documents the migration FROM `enqueued` to `attempted/sent/failed` so admin sees truthful counts. Client never updated. Result: after blasting 1,200 customers admin sees `Enqueued undefined messages` and modal closes. Cannot tell 0 sent vs 1200 sent vs 1200 failed. Worst-case dispatch (provider down, all queued to `sms_retry_queue` with `status='failed'`) reads identical to a perfect 1200/1200 success. L7, L2. **[AUTOLOOP-T52 RESOLVED: ConfirmResponse interface aligned with server (attempted/sent/failed); toast now 'Sent N of M' with failure suffix; modal stays open when failures>0.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:47-51,91-96`
   <!-- meta: fix=update-ConfirmResponse-to-{attempted,sent,failed,segment,template,confirmed}+toast=`Sent ${r.sent} of ${r.attempted}${r.failed?` (${r.failed} failed — see retry queue)`:''}`+keep-modal-open-when-failed>0 -->
 
@@ -4524,7 +4524,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-186`
   <!-- meta: fix=on-templateId-change-set-tplPreview-from-templates.find(t=>t.id===id).content+render-160char-preview+character-count-vs-160-segment-cost -->
 
-- [ ] WEB-UIUX-1113. **[BLOCKER] No recipient sample / no recipient list — pure blind dispatch.** Modal shows ONLY a count (`This will send to 1,200 recipients`, `:191-194`). Operator cannot inspect WHO. Server's `previewBulkSegment` already collects up to 500 phones (`inbox.routes.ts:420`), only the count is wired into the response. Industry baseline: Klaviyo/Attentive/Postscript show 5-10 sample recipients + opt to download CSV pre-send. For repair-shop SMS where one wrong segment = TCPA complaint, this is operator-protection minimum. L6, L8.
+- [ ] WEB-UIUX-1113. **[BLOCKER] No recipient sample / no recipient list — pure blind dispatch.** Modal shows ONLY a count (`This will send to 1,200 recipients`, `:191-194`). Operator cannot inspect WHO. Server's `previewBulkSegment` already collects up to 500 phones (`inbox.routes.ts:420`), only the count is wired into the response. Industry baseline: Klaviyo/Attentive/Postscript show 5-10 sample recipients + opt to download CSV pre-send. For repair-shop SMS where one wrong segment = TCPA complaint, this is operator-protection minimum. L6, L8. **STATUS: BLOCKED — needs server preview-payload to include first-5 sample phones; multi-component change to inbox.routes.ts; defer to bulk-sms sprint**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
   `packages/server/src/routes/inbox.routes.ts:563-571`
   <!-- meta: fix=server-include-first-5-phones-in-preview-payload+client-render-list+optional-exclude-toggle -->
@@ -4535,7 +4535,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
 
 #### Major — Hierarchy, label honesty, recovery, discoverability
 
-- [ ] WEB-UIUX-1115. **[MAJOR] Segment hint copy lies about scope — opt-in / consent filter invisible to operator.** Modal hints (`BulkSmsModal.tsx:29-33`):
+- [x] WEB-UIUX-1115. **[MAJOR] Segment hint copy lies about scope — opt-in / consent filter invisible to operator.** Modal hints (`BulkSmsModal.tsx:29-33`): **[AUTOLOOP-T52 RESOLVED: 'opted-in for marketing only' suffix appended to each segment hint; explanatory banner added above segment select.]**
   - `all_customers` → "Every customer with a mobile number"
   - `recent_purchases` → "Customers who bought in last 30 days"
   - `open_tickets` → "Customers with tickets in progress"
@@ -4547,7 +4547,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:215-222`
   <!-- meta: fix=swap-bg-red-600/hover:bg-red-700-to-bg-primary-600/hover:bg-primary-700+keep-Send-icon -->
 
-- [ ] WEB-UIUX-1117. **[MAJOR] No in-flight progress + no abort during ~10–30s dispatch.** Server loops `for (const phone of preview.phones)` SYNCHRONOUSLY awaiting each `sendSmsTenant` (`inbox.routes.ts:640-676`). At provider-typical 100-200ms per SMS, 500 recipients = 50-100s blocking response. Client only renders `Sending…` on the button (`:221`); modal frozen. No cancel button, no progress bar, no streamed counter. If admin realizes 5s in "wrong template" — too late, no abort path. Per-message inserts to `sms_retry_queue` mean partial failures persist mid-loop with no surface. L7, L8. (Note: server-side fix needed; client UX still has place for streaming via SSE / polling on a job id.)
+- [ ] WEB-UIUX-1117. **[MAJOR] No in-flight progress + no abort during ~10–30s dispatch.** Server loops `for (const phone of preview.phones)` SYNCHRONOUSLY awaiting each `sendSmsTenant` (`inbox.routes.ts:640-676`). At provider-typical 100-200ms per SMS, 500 recipients = 50-100s blocking response. Client only renders `Sending…` on the button (`:221`); modal frozen. No cancel button, no progress bar, no streamed counter. If admin realizes 5s in "wrong template" — too late, no abort path. Per-message inserts to `sms_retry_queue` mean partial failures persist mid-loop with no surface. L7, L8. (Note: server-side fix needed; client UX still has place for streaming via SSE / polling on a job id.) **STATUS: BLOCKED — needs server-side job table + SSE/polling streaming + abort flag; multi-component, defer to bulk-sms sprint**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:215-222`
   `packages/server/src/routes/inbox.routes.ts:637-704`
   <!-- meta: fix=convert-to-job-table+return-job_id-immediately+client-poll-/inbox/bulk-send/:job_id+show-progress-bar+abort-button-flips-job-state -->
@@ -4556,7 +4556,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
   `packages/web/src/pages/communications/CommunicationPage.tsx:1547-1554`
   <!-- meta: fix=label="Bulk-SMS"+aria-label="Send-bulk-SMS"+remove-title-only-affordance -->
 
-- [ ] WEB-UIUX-1119. **[MAJOR] Trigger renders only when `mainView==='messages'` — invisible from Email tab and from Marketing/Campaigns.** `CommunicationPage.tsx:1545`. Admin who lands on Email view to send blast can't find SMS bulk; must toggle tabs. Marketing > Campaigns page (`marketing/CampaignsPage.tsx`) is the obvious home for blast sends — has zero entry to BulkSmsModal. Two parallel "send to many people" surfaces (Campaigns + Bulk SMS) that don't link to each other. Same fragmentation pattern as Pass 13 refunds. L4, L8.
+- [x] WEB-UIUX-1119. **[MAJOR] Trigger renders only when `mainView==='messages'` — invisible from Email tab and from Marketing/Campaigns.** `CommunicationPage.tsx:1545`. Admin who lands on Email view to send blast can't find SMS bulk; must toggle tabs. Marketing > Campaigns page (`marketing/CampaignsPage.tsx`) is the obvious home for blast sends — has zero entry to BulkSmsModal. Two parallel "send to many people" surfaces (Campaigns + Bulk SMS) that don't link to each other. Same fragmentation pattern as Pass 13 refunds. L4, L8. **[AUTOLOOP-T52 RESOLVED: Bulk SMS button moved out of mainView==='messages' conditional so it renders across all communication views.]**
   `packages/web/src/pages/communications/CommunicationPage.tsx:1545-1563`
   `packages/web/src/pages/marketing/CampaignsPage.tsx`
   <!-- meta: fix=move-Bulk-SMS-button-out-of-mainView-conditional+add-quick-action-tile-on-CampaignsPage+OR-collapse-bulk-into-Campaigns-as-an-instant-campaign-type -->
@@ -4568,7 +4568,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
 
 #### Minor — Polish, copy, defaults
 
-- [ ] WEB-UIUX-1121. **[MINOR] Default segment is `open_tickets` — chosen as first array element, not by intent.** `BulkSmsModal.tsx:54` `useState<Segment>('open_tickets')`. Open-tickets-blast is the LEAST common bulk send (status updates are usually transactional 1:1, not blast). Most-frequent ones (recent_purchases for review nudges, all_customers for promo) are deeper in list. L1.
+- [x] WEB-UIUX-1121. **[MINOR] Default segment is `open_tickets` — chosen as first array element, not by intent.** `BulkSmsModal.tsx:54` `useState<Segment>('open_tickets')`. Open-tickets-blast is the LEAST common bulk send (status updates are usually transactional 1:1, not blast). Most-frequent ones (recent_purchases for review nudges, all_customers for promo) are deeper in list. L1. **[AUTOLOOP-T52 RESOLVED: default segment changed from 'open_tickets' (least-common) to 'recent_purchases' (most-common review-nudge use case).]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:54`
   <!-- meta: fix=default-to-recent_purchases+OR-no-default-force-explicit-pick -->
 

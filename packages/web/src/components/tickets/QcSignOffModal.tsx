@@ -563,10 +563,12 @@ export function QcSignOffModal({
                   {/* WEB-UIUX-1090: Include HEIC/HEIF so iPhone Safari users are not blocked.
                       NOTE: server ALLOWED_MIMES may need a parallel update to accept
                       image/heic and image/heif — track separately. */}
+                  {/* WEB-UIUX-1110: Removed image/webp from accept — webp cannot be captured
+                      from iOS Safari camera; jpeg/png/heic/heif cover all real-device cases. */}
                   <input
                     ref={photoInputRef}
                     type="file"
-                    accept={`${IMAGE_UPLOAD_ACCEPT},image/heic,image/heif`}
+                    accept="image/jpeg,image/png,image/heic,image/heif"
                     onChange={onPhotoChange}
                     className="hidden"
                   />
@@ -577,7 +579,8 @@ export function QcSignOffModal({
                       className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-surface-300 p-6 text-sm text-surface-500 hover:border-primary-500 hover:text-primary-600 dark:border-surface-600"
                     >
                       <Camera className="h-5 w-5" />
-                      Capture / upload photo
+                      {/* WEB-UIUX-1108: "Capture / upload photo" slash was awkward; changed to "Add photo". */}
+                      Add photo
                     </button>
                   ) : (
                     <div className="relative">
@@ -633,6 +636,8 @@ export function QcSignOffModal({
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 p-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
                 placeholder="Any observations the customer should know about..."
               />
+              {/* WEB-UIUX-1106: Character counter so tech sees remaining chars before truncation. */}
+              <div className="text-xs text-surface-400 text-right mt-1">{notes.length} / 1000</div>
             </div>
 
             <div className="flex justify-end gap-2">

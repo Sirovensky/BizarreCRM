@@ -27,10 +27,11 @@ interface BulkSmsModalProps {
 
 type Segment = 'open_tickets' | 'all_customers' | 'recent_purchases';
 
+// WEB-UIUX-1115: Append opt-in scope to every segment hint so admins know counts are filtered
 const SEGMENTS: { value: Segment; label: string; hint: string }[] = [
-  { value: 'open_tickets', label: 'Open tickets', hint: 'Customers with tickets in progress' },
-  { value: 'recent_purchases', label: 'Recent purchases', hint: 'Customers who bought in last 30 days' },
-  { value: 'all_customers', label: 'All customers', hint: 'Every customer with a mobile number' },
+  { value: 'open_tickets', label: 'Open tickets', hint: 'Customers with tickets in progress (opted-in for marketing only)' },
+  { value: 'recent_purchases', label: 'Recent purchases', hint: 'Customers who bought in last 30 days (opted-in for marketing only)' },
+  { value: 'all_customers', label: 'All customers', hint: 'Every customer with a mobile number (opted-in for marketing only)' },
 ];
 
 interface SmsTemplate {
@@ -45,14 +46,19 @@ interface PreviewResponse {
   confirmed: false;
 }
 
+// WEB-UIUX-1111: Updated to match server response shape from inbox.routes.ts:693-703
 interface ConfirmResponse {
-  enqueued: number;
+  attempted: number;
+  sent: number;
+  failed: number;
   segment: string;
+  template: string;
   confirmed: true;
 }
 
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
-  const [segment, setSegment] = useState<Segment>('open_tickets');
+  // WEB-UIUX-1121: Default to recent_purchases — most common bulk send use-case
+  const [segment, setSegment] = useState<Segment>('recent_purchases');
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
 
@@ -91,10 +97,16 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       return res.data.data;
     },
     onSuccess: (r) => {
-      toast.success(`Enqueued ${r.enqueued} messages`);
+      // WEB-UIUX-1111: Use actual server fields; keep modal open when failures occurred
+      toast.success(
+        `Sent ${r.sent} of ${r.attempted}${r.failed > 0 ? ` (${r.failed} failed — see retry queue)` : ''}`,
+      );
       setPreview(null);
       setTemplateId(null);
-      onClose();
+      if (r.failed === 0) {
+        onClose();
+      }
+      // If failed > 0 modal stays open so admin sees the count before dismissing
     },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Bulk send failed'),
   });
@@ -139,6 +151,8 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
         </div>
 
         <div className="space-y-3 p-4">
+          {/* WEB-UIUX-1115: Consent-scope banner so admins know counts are opt-in filtered */}
+          <p className="text-xs text-surface-500">Recipient counts include only customers who opted in to marketing SMS.</p>
           <div>
             <label className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300">
               Segment

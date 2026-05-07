@@ -1645,16 +1645,18 @@ export function CommunicationPage() {
               Email
             </button>
           </div>
-          {mainView === 'messages' && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setShowBulkSms(true)}
-                className="flex items-center gap-1 rounded-lg border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700"
-                title="Bulk SMS"
-              >
-                <Users className="h-3.5 w-3.5" />
-                Bulk
-              </button>
+          {/* WEB-UIUX-1119: Bulk SMS button visible across all views (not gated on messages tab).
+              Role-gate is enforced server-side (admin only). New message button remains messages-only. */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowBulkSms(true)}
+              className="flex items-center gap-1 rounded-lg border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700"
+              title="Bulk SMS"
+            >
+              <Users className="h-3.5 w-3.5" />
+              Bulk
+            </button>
+            {mainView === 'messages' && (
               <button
                 onClick={() => setShowNewMessage(true)}
                 className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700"
@@ -1662,8 +1664,8 @@ export function CommunicationPage() {
                 <Plus className="h-4 w-4" />
                 New
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {mainView === 'messages' ? (<>
