@@ -15,6 +15,7 @@ import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
 import { ticketApi, customerApi, posApi, deviceTemplateApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { confirm } from '@/stores/confirmStore';
 import { X } from 'lucide-react';
 
 // ─── DeviceTemplateNudge ──────────────────────────────────────────────────────
@@ -28,6 +29,7 @@ function DeviceTemplateNudge() {
   );
   const [searchParams] = useSearchParams();
   const tutorialActive = Boolean(searchParams.get('tutorial'));
+  const { cartItems, customer } = useUnifiedPosStore();
 
   const { data } = useQuery({
     queryKey: ['device-templates-count'],
@@ -46,6 +48,14 @@ function DeviceTemplateNudge() {
     setDismissed(true);
   };
 
+  const handleGoToTemplates = async () => {
+    if (cartItems.length > 0 || customer !== null) {
+      const ok = await confirm('Leave POS? Cart and customer entry will be lost.');
+      if (!ok) return;
+    }
+    navigate('/settings/device-templates');
+  };
+
   return (
     <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-700/50 dark:bg-amber-900/20">
       <p className="flex-1 text-sm text-amber-800 dark:text-amber-200">
@@ -53,7 +63,7 @@ function DeviceTemplateNudge() {
       </p>
       <button
         type="button"
-        onClick={() => navigate('/settings/device-templates')}
+        onClick={handleGoToTemplates}
         className="btn btn-xs bg-amber-600 !font-semibold text-white hover:bg-amber-700"
       >
         Go to templates

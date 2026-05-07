@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Printer, ExternalLink, PlusCircle, Tag, FileText, MessageSquare, Mail, AlertTriangle, Undo2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -73,6 +73,8 @@ export function SuccessScreen() {
   const {
     data: scopedToken,
     isError: photoTokenError,
+    isLoading: photoTokenLoading,
+    refetch: refetchPhotoToken,
   } = useQuery({
     queryKey: ['photo-upload-token', _ticketId, _firstDeviceId],
     queryFn: async () => {
@@ -83,6 +85,31 @@ export function SuccessScreen() {
     staleTime: 25 * 60 * 1000, // 25 min — token itself expires at 30 min
     retry: false,
   });
+
+  // WEB-UIUX-1137: track elapsed ms while photo token is still loading.
+  // After 8 s with no result, surface a "Taking too long? Retry" button.
+  const [photoTokenElapsed, setPhotoTokenElapsed] = useState(0);
+  const photoTokenIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (photoTokenLoading && !scopedToken && !photoTokenError) {
+      setPhotoTokenElapsed(0);
+      photoTokenIntervalRef.current = setInterval(() => {
+        setPhotoTokenElapsed(prev => prev + 500);
+      }, 500);
+    } else {
+      if (photoTokenIntervalRef.current) {
+        clearInterval(photoTokenIntervalRef.current);
+        photoTokenIntervalRef.current = null;
+      }
+      setPhotoTokenElapsed(0);
+    }
+    return () => {
+      if (photoTokenIntervalRef.current) {
+        clearInterval(photoTokenIntervalRef.current);
+        photoTokenIntervalRef.current = null;
+      }
+    };
+  }, [photoTokenLoading, scopedToken, photoTokenError]);
 
   if (!showSuccess) return null;
 
@@ -158,27 +185,28 @@ export function SuccessScreen() {
   // Get first device ID for QR code
   const firstDeviceId = firstDevice?.id ?? null;
 
+  // WEB-UIUX-1133: open print views in a new tab so the success screen stays
+  // rendered and the QR photo-upload token remains alive. resetAll() must NOT
+  // be called here — it would destroy the success state before the print tab
+  // even opens. resetAll() is intentionally kept ONLY in handleNewAction.
   const handlePrintLabel = () => {
     if (ticketId) {
-      const id = ticketId;
-      resetAll();
-      navigate(`/print/ticket/${id}?size=label`);
+      window.open(`/print/ticket/${ticketId}?size=label`, '_blank');
     }
   };
 
+  // WEB-UIUX-1133: same rationale as handlePrintLabel above.
   const handlePrintReceipt = () => {
     if (ticketId) {
-      const id = ticketId;
-      resetAll();
-      navigate(`/print/ticket/${id}?size=receipt80&type=receipt`);
+      window.open(`/print/ticket/${ticketId}?size=receipt80&type=receipt`, '_blank');
     }
   };
 
+  // WEB-UIUX-1133: navigate without resetAll() so the user can press Back and
+  // return to the success screen (e.g. to scan the QR or print a label).
   const handleViewTicket = () => {
     if (ticketId) {
-      const id = ticketId;
-      resetAll();
-      navigate(`/tickets/${id}`);
+      navigate(`/tickets/${ticketId}`);
     }
   };
 
@@ -272,9 +300,20 @@ export function SuccessScreen() {
                     customers. Hidden until the server-side push dispatch lands. */}
               </div>
             ) : (
-              <p className="text-center text-xs text-amber-600 dark:text-amber-400">
-                Generating secure link…
-              </p>
+              /* WEB-UIUX-1137: show inline Retry after 8 s of waiting */
+              <div className="flex flex-col items-center gap-2">
+                <p className="text-center text-xs text-amber-600 dark:text-amber-400">
+                  Generating secure link…
+                </p>
+                {photoTokenElapsed >= 8000 && (
+                  <button
+                    onClick={() => { setPhotoTokenElapsed(0); refetchPhotoToken(); }}
+                    className="text-xs font-medium text-amber-700 underline hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
+                  >
+                    Taking too long? Retry
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}

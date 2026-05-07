@@ -1187,8 +1187,10 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
             `This phone belongs to ${match[1]}. Search for them above instead.`,
             { duration: 6000 },
           );
-          // Pre-fill search with the phone number so user can find existing customer
-          setQuery(newForm.phone.trim());
+          // Pre-fill search with the phone number so user can find existing customer.
+          // WEB-UIUX-1135: use stripPhone so the query matches the format the
+          // search endpoint expects (digits only), not the formatted display value.
+          setQuery(stripPhone(newForm.phone));
           setShowNew(false);
         } else {
           toast.error(msg, { duration: 5000 });
@@ -1292,8 +1294,12 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
           {/* CROSS4: walk-in ghost button. No border/fill — signals "allowed but
               unwelcome". Skips the customer step (tickets.customer_id = NULL)
               but still proceeds through device + service + details. */}
+          {/* WEB-UIUX-1125: sentinel id=0 walk-in customer — BottomActions
+              guards accept id===0 so the Create-Ticket / Checkout flow
+              is not blocked. Previously called setCustomer(null) which
+              hit the null-guard and created a dead-end. */}
           <button
-            onClick={() => { setCustomer(null); onDone(); }}
+            onClick={() => { setCustomer({ id: 0, first_name: 'Walk-in', last_name: '', phone: null, mobile: null, email: null, organization: null }); onDone(); }}
             className="btn btn-xs w-full text-surface-500 hover:text-surface-700 dark:text-surface-500 dark:hover:text-surface-300"
           >
             Walk-in (no customer info)

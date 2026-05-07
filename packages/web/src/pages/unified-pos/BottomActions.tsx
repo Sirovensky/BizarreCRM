@@ -511,8 +511,11 @@ export function BottomActions() {
               if (requirePinTicket) { setPinAction('ticket'); return; }
               handleCreateTicketFlow();
             }}
-            disabled={!hasRepair || creatingTicket || !!sourceTicketId}
-            title={sourceTicketId ? 'Checking out existing ticket — use Checkout' : !hasRepair ? 'Add a repair to create ticket' : ''}
+            // WEB-UIUX-1129: added !customer guard — button stays disabled until
+            // a customer (or walk-in sentinel id=0) is selected, so the toast
+            // in handleCreateTicketFlow can never fire from this path.
+            disabled={!hasRepair || !customer || creatingTicket || !!sourceTicketId}
+            title={sourceTicketId ? 'Checking out existing ticket — use Checkout' : !hasRepair ? 'Add a repair to create ticket' : !customer ? 'Select a customer first' : ''}
             className={cn(
               'btn btn-lg border !px-8 !font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               hasRepair && !sourceTicketId

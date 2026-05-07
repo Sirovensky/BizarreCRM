@@ -61,6 +61,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   const [segment, setSegment] = useState<Segment>('recent_purchases');
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
+  // WEB-UIUX-1122: TCPA quiet-hours warning state
+  const [quietHoursWarning, setQuietHoursWarning] = useState<string | null>(null);
+  // WEB-UIUX-1124: Countdown timer for confirmation expiry
+  const [previewedAt, setPreviewedAt] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState<number>(300); // 5 minutes in seconds
 
   const { data: tplData } = useQuery({
     queryKey: ['sms-templates'],
@@ -79,7 +84,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       );
       return res.data.data;
     },
-    onSuccess: (p) => setPreview(p),
+    onSuccess: (p) => {
+      setPreview(p);
+      // WEB-UIUX-1124: Record when preview was received so countdown can track expiry
+      setPreviewedAt(Date.now());
+    },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to preview'),
   });
 
@@ -102,6 +111,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
         `Sent ${r.sent} of ${r.attempted}${r.failed > 0 ? ` (${r.failed} failed — see retry queue)` : ''}`,
       );
       setPreview(null);
+      setPreviewedAt(null);
       setTemplateId(null);
       if (r.failed === 0) {
         onClose();
@@ -110,6 +120,38 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
     },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Bulk send failed'),
   });
+
+  // WEB-UIUX-1122: Check TCPA quiet hours (8am–9pm) on open and whenever modal is shown
+  useEffect(() => {
+    if (!open) return;
+    const checkQuietHours = () => {
+      const now = new Date();
+      const h = now.getHours();
+      if (h < 8 || h >= 21) {
+        const hh = String(h).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        setQuietHoursWarning(`${hh}:${mm}`);
+      } else {
+        setQuietHoursWarning(null);
+      }
+    };
+    checkQuietHours();
+    const interval = setInterval(checkQuietHours, 60_000);
+    return () => clearInterval(interval);
+  }, [open]);
+
+  // WEB-UIUX-1124: Live countdown for confirmation token (5 min = 300 s)
+  useEffect(() => {
+    if (!previewedAt) return;
+    setCountdown(300);
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - previewedAt) / 1000);
+      const remaining = Math.max(0, 300 - elapsed);
+      setCountdown(remaining);
+      if (remaining === 0) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [previewedAt]);
 
   useEffect(() => {
     if (!open) return;
@@ -168,6 +210,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                   onClick={() => {
                     setSegment(s.value);
                     setPreview(null);
+                    setPreviewedAt(null);
                   }}
                   className={cn(
                     'block w-full rounded-lg border p-2 text-left text-sm transition-colors',
@@ -194,6 +237,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               onChange={(e) => {
                 setTemplateId(Number(e.target.value) || null);
                 setPreview(null);
+                setPreviewedAt(null);
               }}
               className="w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             >
@@ -206,12 +250,27 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             </select>
           </div>
 
+          {/* WEB-UIUX-1122: TCPA quiet-hours informational banner — does not block send */}
+          {quietHoursWarning && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-200">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>
+                Local time {quietHoursWarning} — TCPA quiet hours typically 21:00–08:00. Many US states restrict sending outside that window.
+              </span>
+            </div>
+          )}
+
           {preview && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              {/* WEB-UIUX-1124: Live countdown replaces static "5 minutes" copy */}
               <span>
                 This will send to <strong>{preview.preview_count}</strong> recipients.
-                Confirmation expires in 5 minutes.
+                {countdown > 0 ? (
+                  <> Confirmation expires in <strong>{String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')}</strong>.</>
+                ) : (
+                  <> <strong className="text-red-700 dark:text-red-400">Confirmation expired.</strong> Please re-preview.</>
+                )}
               </span>
             </div>
           )}
@@ -235,7 +294,8 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
           ) : (
             <button
               onClick={() => sendMut.mutate()}
-              disabled={sendMut.isPending || preview.preview_count === 0}
+              disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
+              title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
               className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               <Send className="h-3.5 w-3.5" />
