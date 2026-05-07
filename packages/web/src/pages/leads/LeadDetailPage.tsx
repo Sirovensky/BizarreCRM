@@ -718,11 +718,19 @@ export function LeadDetailPage() {
           </div>
 
           {/* Appointments */}
+          <div className="card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider flex items-center gap-2">
+                  <Calendar className="h-4 w-4" /> Appointments
+                </h3>
+                <Link
+                  to={`/leads/calendar?leadId=${lead.id}`}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-primary-700 transition-colors"
+                >
+                  <Plus className="h-3 w-3" /> Schedule
+                </Link>
+              </div>
           {appointments.length > 0 && (
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-surface-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Calendar className="h-4 w-4" /> Appointments
-              </h3>
               <div className="space-y-2">
                 {appointments.map((a: any) => {
                   const apptColor = a.status === 'cancelled' ? '#ef4444' : a.status === 'completed' ? '#22c55e' : '#3b82f6';
@@ -750,8 +758,8 @@ export function LeadDetailPage() {
                   );
                 })}
               </div>
-            </div>
           )}
+          </div>
         </div>
       </div>
 

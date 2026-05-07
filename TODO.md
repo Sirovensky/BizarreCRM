@@ -5507,7 +5507,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/api/endpoints.ts:877-878`
   <!-- meta: fix=add-Edit/Reschedule/Cancel/Mark-No-show-buttons-in-AppointmentDetailModal+wire-updateAppointment+deleteAppointment+confirm-modal-on-cancel/delete -->
 
-- [ ] WEB-UIUX-1317. **[BLOCKER] LeadDetailPage shows appointments list (`LeadDetailPage.tsx:711-745`) but has NO "Schedule Appointment" button. Staff opens lead "John Doe — Sony A7 repair quote", sees "0 appointments", and has zero affordance to book one without leaving for /leads/calendar (which then can't pre-fill the lead — see WEB-UIUX-1315). Primary CRM action invisible on the very page where intent is highest.** L1 findability, L6 discoverability.
+- [x] WEB-UIUX-1317. **[BLOCKER] LeadDetailPage shows appointments list (`LeadDetailPage.tsx:711-745`) but has NO "Schedule Appointment" button. Staff opens lead "John Doe — Sony A7 repair quote", sees "0 appointments", and has zero affordance to book one without leaving for /leads/calendar (which then can't pre-fill the lead — see WEB-UIUX-1315). Primary CRM action invisible on the very page where intent is highest.** L1 findability, L6 discoverability. **[AUTOLOOP-T68 RESOLVED: Appointments card always renders with '+ Schedule' Link to /leads/calendar?leadId={lead.id}; staff can book from any lead detail.]**
   `packages/web/src/pages/leads/LeadDetailPage.tsx:711-745`
   <!-- meta: fix=Schedule-button-in-Appointments-card-header+open-CreateAppointmentModal-pre-filled-with-lead_id+route-back-to-lead-on-success -->
 
@@ -5515,7 +5515,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:583-616,621-674`
   <!-- meta: fix=show-out-of-hours-band-collapsed-(N-before-7am,-M-after-7pm)+expand-on-click+OR-auto-expand-hours-to-cover-min/max-actual-appts -->
 
-- [ ] WEB-UIUX-1319. **[MAJOR] Server returns `warning: "Technician already has an appointment at this time"` on create (`leads.routes.ts:584-587,685-687`). Client `onSuccess` (`CalendarPage.tsx:238-244`) only toasts "Appointment created" — drops the warning field. User clicks past the local overlap warning, server detects same conflict on the authoritative full-DB scan, and the heads-up is silently discarded.** L7 feedback meaning.
+- [x] WEB-UIUX-1319. **[MAJOR] Server returns `warning: "Technician already has an appointment at this time"` on create (`leads.routes.ts:584-587,685-687`). Client `onSuccess` (`CalendarPage.tsx:238-244`) only toasts "Appointment created" — drops the warning field. User clicks past the local overlap warning, server detects same conflict on the authoritative full-DB scan, and the heads-up is silently discarded.** L7 feedback meaning. **[AUTOLOOP-T68 RESOLVED: createMutation.onSuccess reads res.data.warning; fires toast.error with warning message instead of success when present.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:236-244`
   <!-- meta: fix=onSuccess-read-data.warning+toast.error/warning(warning)-when-present+keep-success-toast-only-when-no-warning -->
 
@@ -5523,7 +5523,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:211-221,309-316`
   <!-- meta: fix=add-Repeat-select-(none/weekly/biweekly/monthly)+show-summary-"Will-create-5-appointments-(today+4-weekly)"+toast-after-success-using-recurring_ids.length+1 -->
 
-- [ ] WEB-UIUX-1321. **[MAJOR] Server supports `location_id` (`leads.routes.ts:537-547,602`); form omits it → defaults to 1 always. Multi-location shop can't book at branch B from calendar, and reports filtered by location will show zero at every branch except #1.** L3 route correctness, L4 flow.
+- [x] WEB-UIUX-1321. **[MAJOR] Server supports `location_id` (`leads.routes.ts:537-547,602`); form omits it → defaults to 1 always. Multi-location shop can't book at branch B from calendar, and reports filtered by location will show zero at every branch except #1.** L3 route correctness, L4 flow. **[AUTOLOOP-T68 RESOLVED: location_id added to form state + payload + number input field defaults to 1; ready to swap to <select> when locations API exposed.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:309-316`
   <!-- meta: fix=Location-select-in-modal+default-to-current-active-location-from-locationContext+pass-location_id-in-payload -->
 
@@ -5531,7 +5531,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:209`
   <!-- meta: fix=use-local-YYYY-MM-DD-(date.getFullYear()/getMonth()+1/getDate()-padded)+OR-toLocaleDateString('sv-SE')-which-emits-ISO-in-local-tz -->
 
-- [ ] WEB-UIUX-1323. **[MAJOR] `useState({...start_date: dateStr, ...})` initializer (`CalendarPage.tsx:211-221`) captures defaultDate ONCE on mount. Modal mounts globally because `<CreateAppointmentModal open={showCreate}>` is always rendered (`CalendarPage.tsx:881-887`); user navigates calendar to next month → opens modal → form still pre-fills the FIRST month they viewed. Off-by-N silent date error.** L7 feedback, L4 flow.
+- [x] WEB-UIUX-1323. **[MAJOR] `useState({...start_date: dateStr, ...})` initializer (`CalendarPage.tsx:211-221`) captures defaultDate ONCE on mount. Modal mounts globally because `<CreateAppointmentModal open={showCreate}>` is always rendered (`CalendarPage.tsx:881-887`); user navigates calendar to next month → opens modal → form still pre-fills the FIRST month they viewed. Off-by-N silent date error.** L7 feedback, L4 flow. **[AUTOLOOP-T68 RESOLVED: useEffect([open, defaultDate]) re-syncs start_date/end_date on each modal open so date pre-fill matches current view.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:209-221,881-887`
   <!-- meta: fix=move-form-state-init-into-useEffect-on-[open,defaultDate]+OR-conditionally-render-modal-(unmount-on-close)-so-init-runs-each-time -->
 
@@ -5539,7 +5539,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:256-271,727-733`
   <!-- meta: fix=fetch-±1-week-buffer-around-target-time-on-modal-open-(or-on-time-change)+server-side-precondition-check-already-correct,-just-surface-warning-(see-WEB-UIUX-1319) -->
 
-- [ ] WEB-UIUX-1325. **[MAJOR] Status select in CreateAppointmentModal (`CalendarPage.tsx:396-405`) lists scheduled/confirmed/completed/cancelled — missing `no-show`, even though STATUS_COLORS keys it (`line 39`) and server audit logs `appointment_no_show` events (`leads.routes.ts:734`). Combined with #1316 (no edit), once a customer is a no-show there is **no UI path** to flag it; the field stays unfilled forever, breaking attendance reports and recurrence churn analysis.** L4 flow, L6 discoverability.
+- [x] WEB-UIUX-1325. **[MAJOR] Status select in CreateAppointmentModal (`CalendarPage.tsx:396-405`) lists scheduled/confirmed/completed/cancelled — missing `no-show`, even though STATUS_COLORS keys it (`line 39`) and server audit logs `appointment_no_show` events (`leads.routes.ts:734`). Combined with #1316 (no edit), once a customer is a no-show there is **no UI path** to flag it; the field stays unfilled forever, breaking attendance reports and recurrence churn analysis.** L4 flow, L6 discoverability. **[AUTOLOOP-T68 RESOLVED: 'No-Show' option added to status select alongside scheduled/confirmed/completed/cancelled.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:396-405`
   <!-- meta: fix=add-No-show-option+also-expose-via-edit-modal-(WEB-UIUX-1316)+server-PUT-already-supports-no_show-flag -->
 
@@ -5547,7 +5547,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/tickets/TicketSidebar.tsx:289-295`
   <!-- meta: fix=replace-with-text-button-"+ Schedule"+aria-label+min-32px-hit-target+OR-keep-icon-but-add-visible-label-on-hover/focus -->
 
-- [ ] WEB-UIUX-1327. **[MAJOR] MonthView "+N more" (`CalendarPage.tsx:528-530`) is a `<p>` element, not a button. Day with 4+ appts: 4th, 5th… Nth invisible AND no path to view them — except switching to day view manually and remembering the date. Discoverability dead-end.** L6 discoverability, L8 recovery.
+- [x] WEB-UIUX-1327. **[MAJOR] MonthView "+N more" (`CalendarPage.tsx:528-530`) is a `<p>` element, not a button. Day with 4+ appts: 4th, 5th… Nth invisible AND no path to view them — except switching to day view manually and remembering the date. Discoverability dead-end.** L6 discoverability, L8 recovery. **[AUTOLOOP-T68 RESOLVED: MonthView '+N more' changed from p to button; click switches view to 'day' on that date via onDrillDown prop.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:528-530`
   <!-- meta: fix=button+onClick-switch-to-day-view-on-that-date+OR-popover-listing-all-day-appts -->
 
@@ -5555,7 +5555,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:483-538,557-617,621-674`
   <!-- meta: fix=onClick-on-empty-cell-opens-CreateAppointmentModal-with-pre-filled-date-(month)-or-date+hour-(week/day)+drag-to-select-range-for-end-time -->
 
-- [ ] WEB-UIUX-1329. **[MAJOR] Empty state (`CalendarPage.tsx:864-869`) renders BELOW the calendar grid even though grid is also rendered when 0 appts. User sees an empty grid PLUS a centered "No appointments in this period" — confusing dual layout, looks like a render bug. No CTA to create one from the empty state either.** L9 empty state, L1 findability.
+- [x] WEB-UIUX-1329. **[MAJOR] Empty state (`CalendarPage.tsx:864-869`) renders BELOW the calendar grid even though grid is also rendered when 0 appts. User sees an empty grid PLUS a centered "No appointments in this period" — confusing dual layout, looks like a render bug. No CTA to create one from the empty state either.** L9 empty state, L1 findability. **[AUTOLOOP-T68 RESOLVED: empty-state banner now only renders when viewMode!=='month'; added '+ Schedule one' CTA in the empty state.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:830-869`
   <!-- meta: fix=replace-grid-when-month-view-and-0-appts+OR-keep-grid-but-make-empty-msg-an-overlay-banner-with-"+ Schedule one"-CTA -->
 
@@ -5563,7 +5563,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:340-378`
   <!-- meta: fix=onChange-of-start-fields-set-end-=-start+60min-when-end-is-still-default-or-<=-start -->
 
-- [ ] WEB-UIUX-1331. **[MINOR] `CreateAppointmentInput` type (`api/types.ts:436-442`) lacks `title`, `status`, `customer_id`, `recurrence`, `location_id` — yet client payload sends `title` and `status`, and server accepts all five (`leads.routes.ts:537,590-603`). TS excess-property check passes via wider param shape; type drifts away from API surface. Future devs reading the type assume those fields don't exist.** L6 discoverability (for devs).
+- [x] WEB-UIUX-1331. **[MINOR] `CreateAppointmentInput` type (`api/types.ts:436-442`) lacks `title`, `status`, `customer_id`, `recurrence`, `location_id` — yet client payload sends `title` and `status`, and server accepts all five (`leads.routes.ts:537,590-603`). TS excess-property check passes via wider param shape; type drifts away from API surface. Future devs reading the type assume those fields don't exist.** L6 discoverability (for devs). **[AUTOLOOP-T68 RESOLVED: CreateAppointmentInput + UpdateAppointmentInput extended with optional title, status union, customer_id, recurrence union, location_id.]**
   `packages/web/src/api/types.ts:436-442`
   `packages/web/src/pages/leads/CalendarPage.tsx:227-234,309-316`
   <!-- meta: fix=extend-CreateAppointmentInput+UpdateAppointmentInput-to-include-title?+status?+customer_id?+recurrence?+location_id?+no_show? -->
@@ -5572,7 +5572,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/LeadDetailPage.tsx:723`
   <!-- meta: fix=apply-`a.title || 'Untitled'`-fallback-everywhere-OR-make-server-reject-empty-title-(currently-defaults-to-''-`leads.routes.ts:595`) -->
 
-- [ ] WEB-UIUX-1333. **[MINOR] No timezone display on calendar header or appt detail. Multi-location org with branches in different TZs sees "10:00 AM" with no tz suffix; manager looking at LA appt from NYC reads it as ET. Server stores TZ-tagged ISO (`toISOWithOffset` in client, raw string from server response then re-parsed in browser local TZ).** L7 feedback meaning.
+- [x] WEB-UIUX-1333. **[MINOR] No timezone display on calendar header or appt detail. Multi-location org with branches in different TZs sees "10:00 AM" with no tz suffix; manager looking at LA appt from NYC reads it as ET. Server stores TZ-tagged ISO (`toISOWithOffset` in client, raw string from server response then re-parsed in browser local TZ).** L7 feedback meaning. **[AUTOLOOP-T68 RESOLVED: tz pill (Intl.resolvedOptions().timeZone) added to calendar toolbar near Today button + appointment-detail time row.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:122-128,765-771`
   <!-- meta: fix=show-current-tz-abbrev-(e.g.-PST)-in-header+show-on-appt-detail-row+future-add-location-tz-override-when-location_id-supports-it -->
 
@@ -5580,7 +5580,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:749,801-806`
   <!-- meta: fix=Today-resets-date-only-(current-behavior-OK)+add-aria-current="date"-when-relevant+OR-click-Today-twice-toggles-to-day-view -->
 
-- [ ] WEB-UIUX-1335. **[NIT] Status badge `capitalize` class (`CalendarPage.tsx:132`) only capitalizes first letter; renders "no-show" → "No-show" (acceptable) but breaks if status ever has multi-word like "in-progress" → "In-progress" (only first letter). Pre-format display text from a label map instead.** L11 polish.
+- [x] WEB-UIUX-1335. **[NIT] Status badge `capitalize` class (`CalendarPage.tsx:132`) only capitalizes first letter; renders "no-show" → "No-show" (acceptable) but breaks if status ever has multi-word like "in-progress" → "In-progress" (only first letter). Pre-format display text from a label map instead.** L11 polish. **[AUTOLOOP-T68 RESOLVED: STATUS_LABELS map ('no-show'→'No-Show' etc) replaces capitalize class; multi-word statuses render correctly.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:132-137`
   <!-- meta: fix=STATUS_LABELS-map-(scheduled→Scheduled,no-show→No-Show)+drop-capitalize-class -->
 

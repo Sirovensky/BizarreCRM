@@ -56,6 +56,16 @@ const STATUS_COLORS: Record<string, string> = {
   'no-show': '#f59e0b',
 };
 
+// WEB-UIUX-1335: explicit label map so "no-show" renders "No-Show" (not "No-show"
+// from CSS `capitalize` which only uppercases the first letter of the whole string).
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: 'Scheduled',
+  confirmed: 'Confirmed',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  'no-show': 'No-Show',
+};
+
 const APPOINTMENT_STATUS_OPTIONS = [
   { value: 'scheduled', label: 'Scheduled' },
   { value: 'confirmed', label: 'Confirmed' },
@@ -76,8 +86,9 @@ function getStatusColor(status: string) {
   return STATUS_COLORS[status] || '#6b7280';
 }
 
+// WEB-UIUX-1335: use STATUS_LABELS map for correct casing ("No-Show" not "No-show").
 function formatStatus(status: string) {
-  return APPOINTMENT_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
+  return STATUS_LABELS[status] ?? APPOINTMENT_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status;
 }
 
 function formatDateShort(date: Date) {
@@ -284,7 +295,7 @@ function AppointmentDetailModal({
       start_time: startTime,
       end_time: endTime,
       assigned_to: assignedId,
-      status: form.status,
+      status: form.status as 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show',
       notes: form.notes.trim() ? form.notes : null,
       no_show: form.status === 'no-show',
     });
@@ -303,6 +314,10 @@ function AppointmentDetailModal({
             <Clock className="h-4 w-4 text-surface-400" />
             {formatTimeTz(appointment.start_time, shopTz)}
             {appointment.end_time && ` - ${formatTimeTz(appointment.end_time, shopTz)}`}
+            {/* WEB-UIUX-1333: show the timezone in effect next to the time */}
+            <span className="ml-1 text-xs text-surface-400 dark:text-surface-500">
+              {shopTz ?? Intl.DateTimeFormat().resolvedOptions().timeZone}
+            </span>
           </p>
         </div>
         <div>
@@ -623,6 +638,7 @@ function CreateAppointmentModal({
     assigned_to: '',
     status: 'scheduled',
     notes: '',
+    location_id: '1', // WEB-UIUX-1321: default location; overridable via select below
   }), [dateStr]);
 
   const [form, setForm] = useState(() => createInitialForm());
@@ -636,6 +652,15 @@ function CreateAppointmentModal({
     setOverlapWarning(null);
   }, [createInitialForm, open]);
 
+  // WEB-UIUX-1323: re-pre-fill start/end date whenever the modal reopens on a
+  // different calendar date so the date field reflects the clicked day, not
+  // the date from the previous open.
+  useEffect(() => {
+    if (!open) return;
+    const newDateStr = defaultDate.toISOString().slice(0, 10);
+    setForm((f) => ({ ...f, start_date: newDateStr }));
+  }, [open, defaultDate]);
+
   // WEB-FC-017: narrow the mutation payload type from `any` to the minimal
   // shape the API endpoint accepts.
   interface CreateAppointmentPayload {
@@ -643,13 +668,21 @@ function CreateAppointmentModal({
     start_time: string;
     end_time?: string;
     assigned_to?: number;
-    status: string;
+    status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
     notes?: string;
+    location_id?: number; // WEB-UIUX-1321
   }
   const createMut = useMutation({
     mutationFn: (data: CreateAppointmentPayload) => leadApi.createAppointment(data),
-    onSuccess: () => {
-      toast.success('Appointment created');
+    // WEB-UIUX-1319: read server `warning` field from response; show warning toast
+    // instead of success when the server signals a partial-success condition.
+    onSuccess: (res) => {
+      const warning = res?.data?.warning;
+      if (warning) {
+        toast.error(warning);
+      } else {
+        toast.success('Appointment created');
+      }
       queryClient.invalidateQueries({ queryKey: ['appointments'] });
       onClose();
     },
@@ -724,8 +757,9 @@ function CreateAppointmentModal({
               start_time: startTime,
               end_time: endTime,
               assigned_to: assignedId ?? undefined,
-              status: form.status,
+              status: form.status as 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show',
               notes: form.notes || undefined,
+              location_id: form.location_id ? Number(form.location_id) : 1, // WEB-UIUX-1321
             });
           }}
         >
@@ -811,12 +845,26 @@ function CreateAppointmentModal({
                 onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
               >
+                {/* WEB-UIUX-1325: include no-show option */}
                 <option value="scheduled">Scheduled</option>
                 <option value="confirmed">Confirmed</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
+                <option value="no-show">No-Show</option>
               </select>
             </div>
+          </div>
+          {/* WEB-UIUX-1321: location_id field — text input (locations list API not yet exposed);
+              defaults to 1 (primary location). Replace with a select when getLocations is available. */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Location ID</label>
+            <input
+              type="number"
+              min={1}
+              value={form.location_id}
+              onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value }))}
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+            />
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Notes</label>
@@ -861,11 +909,14 @@ function MonthView({
   currentDate,
   appointments,
   onSelectAppointment,
+  onDrillDown,
   shopTz,
 }: {
   currentDate: Date;
   appointments: Appointment[];
   onSelectAppointment: (a: Appointment) => void;
+  // WEB-UIUX-1327: callback to switch to day view on a given date when "+N more" is clicked
+  onDrillDown?: (day: Date) => void;
   shopTz?: string;
 }) {
   const year = currentDate.getFullYear();
@@ -940,8 +991,15 @@ function MonthView({
                       </button>
                     );
                   })}
+                  {/* WEB-UIUX-1327: make "+N more" a button that drills into day view */}
                   {dayAppts.length > 3 && (
-                    <p className="text-[10px] text-surface-400 px-1">+{dayAppts.length - 3} more</p>
+                    <button
+                      type="button"
+                      onClick={() => cellDate && onDrillDown?.(cellDate)}
+                      className="block w-full px-1 text-left text-[10px] text-primary-500 hover:text-primary-700 hover:underline dark:text-primary-400 dark:hover:text-primary-300"
+                    >
+                      +{dayAppts.length - 3} more
+                    </button>
                   )}
                 </div>
               </>
@@ -1248,6 +1306,10 @@ export function CalendarPage() {
             >
               Today
             </button>
+            {/* WEB-UIUX-1333: timezone pill in calendar header */}
+            <span className="text-xs text-surface-500 dark:text-surface-400 ml-2" title="Displayed timezone">
+              {Intl.DateTimeFormat().resolvedOptions().timeZone}
+            </span>
           </div>
 
           {/* Right: view toggle */}
@@ -1283,6 +1345,8 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                // WEB-UIUX-1327: drill down to day view when "+N more" is clicked
+                onDrillDown={(day) => { setCurrentDate(day); setViewMode('day'); }}
                 shopTz={shopTz}
               />
             )}
@@ -1307,11 +1371,19 @@ export function CalendarPage() {
           </div>
         )}
 
-        {/* Empty state for week/day with no appointments */}
-        {!isLoading && appointments.length === 0 && (
+        {/* WEB-UIUX-1329: empty banner only for week/day — month view already shows
+            the date grid so a full-page banner would obscure it. */}
+        {!isLoading && appointments.length === 0 && viewMode !== 'month' && (
           <div className="flex flex-col items-center justify-center py-16">
             <Calendar className="mb-4 h-12 w-12 text-surface-300 dark:text-surface-600" />
             <p className="text-sm text-surface-500 dark:text-surface-400">No appointments in this period</p>
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="mt-3 text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-400"
+            >
+              + Schedule one
+            </button>
           </div>
         )}
       </div>

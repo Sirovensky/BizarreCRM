@@ -491,6 +491,11 @@ export interface CreateAppointmentInput {
   end_time?: string;
   notes?: string;
   assigned_to?: number;
+  title?: string;
+  status?: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
+  customer_id?: number;
+  recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+  location_id?: number;
 }
 
 export interface UpdateAppointmentInput {
@@ -498,6 +503,11 @@ export interface UpdateAppointmentInput {
   end_time?: string;
   notes?: string;
   assigned_to?: number;
+  title?: string;
+  status?: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
+  customer_id?: number;
+  recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+  location_id?: number;
 }
 
 // ─── Estimates ───────────────────────────────────────────────────────────────
