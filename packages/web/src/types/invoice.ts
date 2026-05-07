@@ -95,4 +95,8 @@ export interface InvoiceDetail {
   deposit_invoices: InvoiceDepositRef[];
   // WEB-UIUX-707: credit notes issued against this invoice
   credit_notes?: InvoiceCreditNote[];
+  // WEB-UIUX-1031: populated when this invoice IS a credit note (links back to original)
+  credit_note_for?: number | null;
+  // order_id of the original invoice when credit_note_for is set (joined via inv.*)
+  credit_note_for_order_id?: string | null;
 }

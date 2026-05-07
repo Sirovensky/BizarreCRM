@@ -2028,3 +2028,53 @@ export const installmentApi = {
   cancel: (planId: number) =>
     api.post<{ success: boolean }>(`/installments/${planId}/cancel`),
 };
+
+// ==================== Refunds ====================
+// Wires the /api/v1/refunds server surface (refunds.routes.ts) that had zero
+// client callers. Covers the full state machine: pending → completed / declined,
+// store-credit balance + usage, and liability reporting.
+export const refundApi = {
+  list: (params?: {
+    page?: number;
+    pagesize?: number;
+    status?: string;
+    customer_id?: number;
+    from_date?: string;
+    to_date?: string;
+  }) => api.get('/refunds', { params }),
+
+  create: (body: {
+    invoice_id?: number | null;
+    ticket_id?: number | null;
+    customer_id: number;
+    amount: number;
+    type?: 'refund' | 'store_credit' | 'credit_note';
+    reason?: string | null;
+    method?: string | null;
+  }) =>
+    api.post<{ success: boolean; data: { id: number } }>('/refunds', body, {
+      headers: { 'X-Idempotency-Key': generateIdempotencyKey() },
+    }),
+
+  approve: (id: number) =>
+    api.patch<{ success: boolean; data: { id: number } }>(`/refunds/${id}/approve`),
+
+  decline: (id: number) =>
+    api.patch<{ success: boolean; data: { id: number } }>(`/refunds/${id}/decline`),
+
+  getCredits: (customerId: number) =>
+    api.get<{ success: boolean; data: { balance: number; transactions: unknown[] } }>(
+      `/refunds/credits/${customerId}`,
+    ),
+
+  useCredits: (customerId: number, body: { amount: number; invoice_id?: number | null }) =>
+    api.post<{ success: boolean; data: { new_balance: number } }>(
+      `/refunds/credits/${customerId}/use`,
+      body,
+    ),
+
+  getCreditsLiability: () =>
+    api.get<{ success: boolean; data: { credits: unknown[]; total: number } }>(
+      '/refunds/credits/liability',
+    ),
+};

@@ -484,6 +484,9 @@ export function CustomerDetailPage() {
       {/* Customer analytics cards */}
       <CustomerAnalyticsBar customerId={customerId} />
 
+      {/* WEB-UIUX-1023: Store Credit balance KPI tile */}
+      <StoreCreditCard customerId={customerId} />
+
       {/* Audit §49 — Photo mementos wallet (only on info tab) */}
       {activeTab === 'info' && <PhotoMementosWallet customerId={customerId} />}
 
@@ -860,6 +863,42 @@ function CustomerMergeModal({
 }
 
 // ==================== Customer Analytics Bar ====================
+
+// WEB-UIUX-1023: Store Credit KPI tile
+function StoreCreditCard({ customerId }: { customerId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['customer-credits', customerId],
+    queryFn: async () => {
+      const { refundApi } = await import('@/api/endpoints');
+      return (refundApi as any).getCredits
+        ? (refundApi as any).getCredits(customerId)
+        : Promise.resolve({ data: { data: { balance: 0 } } });
+    },
+    enabled: !!customerId,
+    staleTime: 60_000,
+  });
+
+  const balance: number = data?.data?.data?.balance ?? 0;
+
+  // Hide card when balance is 0 — clean UI for the common case
+  if (isLoading || balance === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="inline-flex rounded-xl border border-emerald-200 dark:border-emerald-700/50 bg-white dark:bg-surface-800 p-3">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/20">
+            <Wallet className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-xs text-surface-500 dark:text-surface-400">Store Credit</p>
+            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(balance)}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
   const { data, isLoading } = useQuery({
@@ -1847,7 +1886,8 @@ function InvoicesTab({ customerId }: { customerId: number }) {
       'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     partial:
       'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    refunded:
+    // WEB-UIUX-1035: server enum uses 'credit_note', not 'refunded'
+    credit_note:
       'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
     void: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
   };

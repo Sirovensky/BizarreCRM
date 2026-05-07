@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -36,6 +36,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function InvoiceDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const invoiceId = Number(id);
   const isValidId = id != null && !isNaN(invoiceId) && invoiceId > 0;
@@ -200,7 +201,35 @@ export function InvoiceDetailPage() {
       if (refundDest) msg += ` to ${refundDest}`;
       if (customerEmail) msg += `. Receipt sent to ${customerEmail}`;
       if (!refundDest && !customerEmail) msg = 'Credit note created';
-      toast.success(msg);
+
+      // WEB-UIUX-1029: server returns the full credit note invoice in
+      // _data.data.data. Extract order_id + id to show a navigable toast.
+      const returnedCN = (_data as any)?.data?.data as import('@/types/invoice').InvoiceDetail | undefined;
+      const cnOrderId = returnedCN?.order_id;
+      const cnId = returnedCN?.id;
+      if (cnOrderId && cnId) {
+        toast.custom(
+          (t) => (
+            <div
+              className={`flex items-center gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg px-4 py-3 text-sm ${t.visible ? 'opacity-100' : 'opacity-0'} transition-opacity`}
+            >
+              <span className="flex-1 text-surface-800 dark:text-surface-100">
+                Credit note <span className="font-mono font-semibold">{cnOrderId}</span> created
+              </span>
+              <button
+                onClick={() => { toast.dismiss(t.id); navigate(`/invoices/${cnId}`); }}
+                className="shrink-0 text-primary-600 dark:text-primary-400 font-medium hover:underline"
+              >
+                Open
+              </button>
+            </div>
+          ),
+          { duration: 6000 },
+        );
+      } else {
+        toast.success(msg);
+      }
+
       setShowCreditNote(false);
       setCreditNoteForm({ amount: '', reason: null, note: '' });
       setCreditNoteError({});
@@ -267,10 +296,23 @@ export function InvoiceDetailPage() {
 
   // WEB-UIUX-718: for $0 invoices with deposits/overpayments, amount_paid is
   // the refundable amount (not capped by total which is 0).
+  // WEB-UIUX-1027: subtract prior credit notes to match the server cap.
+  // Server caps at `original.total - SUM(prior credit notes)`. Client uses
+  // invoice.credit_notes (already fetched with invoice detail) to derive the
+  // same sum. This closes two failure modes:
+  //   (a) partially-paid invoice: server allows up to full total, client was
+  //       blocking at amount_paid only;
+  //   (b) partially-credited invoice: client was allowing full amount_paid
+  //       even after some credit was already issued.
+  const sumOfPriorCreditNotes = (invoice.credit_notes ?? []).reduce(
+    (acc, cn) => acc + Math.abs(Number(cn.total) || 0),
+    0,
+  );
+  const serverCapForTotal = Math.max(0, Number(invoice.total) - sumOfPriorCreditNotes);
   const maxCreditNoteAmount = Math.max(
     0,
     Number(invoice.total) > 0
-      ? Math.min(Number(invoice.amount_paid) || 0, Number(invoice.total) || 0)
+      ? Math.min(Number(invoice.amount_paid) || 0, serverCapForTotal)
       : Number(invoice.amount_paid) || 0,
   );
   const canCreateCreditNote = invoice.status !== 'void' && (Number(invoice.total) > 0 || Number(invoice.amount_paid) > 0) && maxCreditNoteAmount > 0;
@@ -400,6 +442,17 @@ export function InvoiceDetailPage() {
             <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize', STATUS_COLORS[invoice.status] || '')}>
               {invoice.status}
             </span>
+            {/* WEB-UIUX-1031: when this invoice is a credit note, link back to
+                the original invoice so operators can navigate without searching. */}
+            {invoice.credit_note_for != null && (
+              <Link
+                to={`/invoices/${invoice.credit_note_for}`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
+              >
+                <Receipt className="h-3.5 w-3.5" />
+                Credit note for {invoice.credit_note_for_order_id ?? `INV-${invoice.credit_note_for}`}
+              </Link>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {invoice.status !== 'void' && invoice.status !== 'paid' && (

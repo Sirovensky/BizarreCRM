@@ -43,10 +43,15 @@ const REASONS: ReadonlyArray<{ code: RefundReasonCode; label: string; hint: stri
   { code: 'other',                 label: 'Other',                  hint: 'Free-form reason in the note.' },
 ];
 
+const OTHER_NOTE_MIN = 5;
+
 interface RefundReasonPickerProps {
   value: RefundReasonCode | null;
   note: string;
   onChange: (reason: RefundReasonCode | null, note: string) => void;
+  /** Called whenever the picker's validity state changes. False when "Other"
+   *  is selected but the note is shorter than the required minimum. */
+  onValidityChange?: (isValid: boolean) => void;
   required?: boolean;
 }
 
@@ -54,15 +59,29 @@ export function RefundReasonPicker({
   value,
   note,
   onChange,
+  onValidityChange,
   required = true,
 }: RefundReasonPickerProps) {
   const [localReason, setLocalReason] = useState<RefundReasonCode | null>(value);
   const [localNote, setLocalNote] = useState(note);
+  /** Only show the inline error after the user has interacted with the note field. */
+  const [noteTouched, setNoteTouched] = useState(false);
+
+  const isOtherSelected = localReason === 'other';
+  const noteIsShort = localNote.trim().length < OTHER_NOTE_MIN;
+  const isValid = !isOtherSelected || !noteIsShort;
 
   useEffect(() => { setLocalReason(value); setLocalNote(note); }, [value, note]);
 
+  useEffect(() => {
+    onValidityChange?.(isValid);
+  }, [isValid, onValidityChange]);
+
   const handleReasonChange = (code: RefundReasonCode) => {
     setLocalReason(code);
+    // Reset touched state when switching reason so the error only appears
+    // after the user actively edits (or blurs) the note for this new choice.
+    if (code !== 'other') setNoteTouched(false);
     onChange(code, localNote);
   };
 
@@ -102,16 +121,27 @@ export function RefundReasonPicker({
 
       <div>
         <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-          Notes (optional)
+          Notes {isOtherSelected ? <span className="text-red-500">*</span> : '(optional)'}
         </label>
         <textarea
           value={localNote}
           onChange={(e) => handleNoteChange(e.target.value)}
-          placeholder="Free-form context to help with reporting…"
-          className="w-full rounded-md border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          onBlur={() => isOtherSelected && setNoteTouched(true)}
+          placeholder={isOtherSelected ? 'Please describe the reason…' : 'Free-form context to help with reporting…'}
+          className={`w-full rounded-md border bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
+            isOtherSelected && noteTouched && noteIsShort
+              ? 'border-red-500 dark:border-red-400'
+              : 'border-surface-300 dark:border-surface-700'
+          }`}
           rows={3}
           maxLength={500}
+          aria-describedby={isOtherSelected ? 'refund-note-hint' : undefined}
         />
+        {isOtherSelected && noteTouched && noteIsShort && (
+          <p id="refund-note-hint" className="mt-1 text-xs text-red-600 dark:text-red-400">
+            Please describe the reason ({OTHER_NOTE_MIN}+ characters required).
+          </p>
+        )}
       </div>
     </div>
   );
