@@ -37,9 +37,19 @@ export function TrialBanner() {
 
   // Keys scope dismissals to the current trial period; a future trial reset
   // will have a different trialEndsAt and the banner reappears.
+  //
+  // 3-day + urgent warnings keep the default 24h TTL — the trial state is
+  // changing daily during that window, so re-surfacing once a day is OK.
+  // The "expired" banner is permanent (Infinity TTL): once the operator has
+  // acknowledged the trial ended, nagging them every 24h forever is hostile.
+  // A future trial reset would update trialEndsAt and key the dismissal to
+  // a new value, so the banner returns naturally.
   const [warn3Dismissed, dismissWarn3] = useDismissible(`trial-warn-3day:${trialEndsAt ?? 'none'}`);
   const [warnUrgentDismissed, dismissWarnUrgent] = useDismissible(`trial-warn-urgent:${trialEndsAt ?? 'none'}`);
-  const [expiredDismissed, dismissExpired] = useDismissible(`trial-banner-expired:${trialEndsAt ?? 'none'}`);
+  const [expiredDismissed, dismissExpired] = useDismissible(
+    `trial-banner-expired:${trialEndsAt ?? 'none'}`,
+    Infinity,
+  );
 
   // Don't show banner if user is Pro and not on trial
   if (plan === 'pro' && !trialActive) return null;
@@ -48,8 +58,12 @@ export function TrialBanner() {
 
   // ── Expired ─────────────────────────────────────────────────────
   // Trial expired (trial_ends_at exists but is in the past).
-  // Dismissible: users who accept staying on Free shouldn't be nagged forever.
+  // Dismissible permanently (Infinity TTL on the useDismissible key
+  // above) — operators who accept staying on Free shouldn't be nagged
+  // forever. A future trial reset re-keys the dismissal and the banner
+  // returns naturally.
   if (trialEndsAt && !trialActive && days !== null && days <= 0) {
+    if (expiredDismissed) return null;
     return (
       <div className="relative z-0 flex items-center justify-center gap-2 bg-red-600 px-4 py-2 text-sm text-white">
         <AlertTriangle className="h-4 w-4 flex-shrink-0" />
@@ -59,6 +73,14 @@ export function TrialBanner() {
           className="btn btn-xs ml-2 bg-white/20 font-semibold text-white hover:bg-white/30"
         >
           Upgrade to Pro
+        </button>
+        <button
+          type="button"
+          onClick={dismissExpired}
+          aria-label="Dismiss trial-ended banner"
+          className="btn-icon btn-xs ml-1 !text-white hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+        >
+          <X className="h-4 w-4" />
         </button>
       </div>
     );
