@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { Sun, Moon } from 'lucide-react';
+import { useUiStore } from '@/stores/uiStore';
 
 /* --------------------------------------------------------------------------
    BizarreCRM Landing Page
@@ -34,6 +36,33 @@ function useInView(threshold = 0.12) {
   }, [threshold]);
 
   return { ref, visible };
+}
+
+/**
+ * Landing-page theme toggle. Cycles light → dark → light. Uses the same
+ * uiStore.setTheme as the logged-in app, so a visitor's choice persists
+ * into the authenticated experience and across reloads. We DON'T expose
+ * 'system' here — visitors who want OS-tracking can leave the default
+ * untouched (controlled by uiStore.getInitialTheme; currently 'light' so
+ * a dark-mode OS doesn't surprise operators).
+ */
+function ThemeToggle() {
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
+  // 'system' is treated as light here — toggle moves to 'dark'. From any
+  // other state, toggle moves to the opposite.
+  const isDark = theme === 'dark';
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-surface-300 bg-white/80 text-surface-700 transition hover:bg-fuchsia-50 hover:text-fuchsia-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-900/80 dark:text-surface-200 dark:hover:bg-surface-800 dark:hover:text-fuchsia-300 dark:focus-visible:ring-offset-surface-950"
+    >
+      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+    </button>
+  );
 }
 
 function WavyDivider({ flip = false }: { flip?: boolean }) {
@@ -262,6 +291,7 @@ export default function LandingPage() {
                 {n.label}
               </button>
             ))}
+            <ThemeToggle />
             <button type="button" className={`${outlineButton} px-5 py-2 text-sm`} onClick={() => setShowLogin(true)}>Login</button>
             <Link className={`${primaryButton} px-6 py-2.5 text-sm`} to="/signup">Get Started Free</Link>
           </div>
@@ -290,6 +320,9 @@ export default function LandingPage() {
             ))}
             <button type="button" className={`${outlineButton} mt-2 w-full`} onClick={() => { setMobileMenu(false); setShowLogin(true); }}>Login</button>
             <Link className={`${primaryButton} mt-2 w-full text-center`} to="/signup" onClick={() => setMobileMenu(false)}>Get Started Free</Link>
+            <div className="mt-2 flex justify-center">
+              <ThemeToggle />
+            </div>
           </div>
         )}
       </nav>
