@@ -21,6 +21,7 @@ const ESTIMATE_STATUSES = [
   { value: 'approved', label: 'Approved', color: '#22c55e' },
   { value: 'rejected', label: 'Rejected', color: '#ef4444' },
   { value: 'converted', label: 'Converted', color: '#8b5cf6' },
+  { value: 'converting', label: 'Converting…', color: '#f59e0b' },
 ] as const;
 
 function getStatusConfig(status: string) {
@@ -35,7 +36,10 @@ function StatusBadge({ status }: { status: string }) {
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
       style={{ backgroundColor: `${color}18`, color }}
     >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+      {status === 'converting'
+        ? <Loader2 className="h-3 w-3 animate-spin" />
+        : <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+      }
       {cfg.label}
     </span>
   );

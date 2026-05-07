@@ -126,12 +126,12 @@ function IssueModal({ onClose }: IssueModalProps) {
     },
   });
 
+  const [codeSavedConfirmed, setCodeSavedConfirmed] = useState(false);
+
   if (issuedCode) {
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-        onClick={onClose}
-        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
         role="presentation"
       >
         <div
@@ -139,7 +139,6 @@ function IssueModal({ onClose }: IssueModalProps) {
           aria-modal="true"
           aria-labelledby="gift-card-issued-title"
           className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md"
-          onClick={(e) => e.stopPropagation()}
         >
           <h2 id="gift-card-issued-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">Gift card issued</h2>
           <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
@@ -148,9 +147,19 @@ function IssueModal({ onClose }: IssueModalProps) {
           <div className="font-mono text-2xl text-center tracking-widest py-4 px-3 bg-surface-100 dark:bg-surface-800 rounded-lg text-surface-900 dark:text-surface-100 select-all mb-4">
             {issuedCode}
           </div>
+          <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={codeSavedConfirmed}
+              onChange={(e) => setCodeSavedConfirmed(e.target.checked)}
+              className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-surface-700 dark:text-surface-300">I have saved the code</span>
+          </label>
           <button
-            onClick={onClose}
-            className="w-full px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
+            onClick={() => { setCodeSavedConfirmed(false); onClose(); }}
+            disabled={!codeSavedConfirmed}
+            className="w-full px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Done
           </button>

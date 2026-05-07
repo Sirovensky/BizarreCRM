@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import * as api from './portalApi';
 import { formatDate } from '../../utils/format';
 
@@ -155,16 +156,23 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
   );
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  converting: 'Converting…',
+};
+
 function EstimateStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     sent: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
     approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
     draft: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-300',
     converted: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
+    converting: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   };
+  const label = STATUS_LABELS[status] ?? (status.charAt(0).toUpperCase() + status.slice(1));
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>
+      {status === 'converting' && <Loader2 className="h-3 w-3 animate-spin" />}
+      {label}
     </span>
   );
 }

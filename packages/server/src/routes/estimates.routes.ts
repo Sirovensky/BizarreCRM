@@ -1149,7 +1149,12 @@ router.post(
     const now = sqlNow();
     const expiresAt = sqlTimestamp(new Date(Date.now() + APPROVAL_TOKEN_TTL_MS));
 
-    // ENR-LE8: Also set sent_at for auto-follow-up tracking
+    // ENR-LE8: Always overwrite sent_at on every send so the audit trail and
+    // the Detail "Sent" field reflect the most recent delivery (v2, v3, …).
+    // COALESCE was previously used here which locked sent_at to the first send
+    // only — re-sending after edits left a stale timestamp (WEB-UIUX-970).
+    // sent_at now means "most recently sent at"; the estimates_audit table
+    // records the full history row-by-row for deeper audit needs.
     await adb.run(
       `UPDATE estimates SET
         approval_token = NULL,
@@ -1157,7 +1162,7 @@ router.post(
         approval_token_expires_at = ?,
         approval_token_used_at = NULL,
         status = ?,
-        sent_at = COALESCE(sent_at, ?),
+        sent_at = ?,
         updated_at = ?
        WHERE id = ?`,
       tokenHash, expiresAt, 'sent', now, now, id,

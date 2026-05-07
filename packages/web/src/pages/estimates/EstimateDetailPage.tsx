@@ -25,6 +25,11 @@ const STATUS_COLORS: Record<string, string> = {
   signed: '#16a34a',
   rejected: '#ef4444',
   converted: '#8b5cf6',
+  converting: '#f59e0b',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  converting: 'Converting…',
 };
 
 const ESTIMATE_ACTION_BUTTON_CLASS =
@@ -271,6 +276,8 @@ export function EstimateDetailPage() {
   const userRole = useAuthStore((s) => s.user?.role);
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState('');
+  const [editingValidUntil, setEditingValidUntil] = useState(false);
+  const [draftValidUntil, setDraftValidUntil] = useState('');
   const [showVersions, setShowVersions] = useState(false);
   const [signSession, setSignSession] = useState<EstimateSignSession | null>(null);
   // WEB-W2-019: inline line-item editing state
@@ -341,9 +348,29 @@ export function EstimateDetailPage() {
     mutationFn: () => estimateApi.convert(Number(id)),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
-      toast.success('Converted to ticket');
       const ticketId = res.data?.data?.ticket?.id;
-      if (ticketId) navigate(`/tickets/${ticketId}`);
+      toast(
+        (t) => (
+          <span className="flex items-center gap-2 text-sm">
+            Converted to ticket
+            {ticketId && (
+              <button
+                className="ml-2 rounded bg-surface-200 px-2 py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
+                onClick={() => { toast.dismiss(t.id); navigate(`/tickets/${ticketId}`); }}
+              >
+                Open ticket
+              </button>
+            )}
+            <button
+              className="rounded bg-surface-200 px-2 py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
+              onClick={() => toast.dismiss(t.id)}
+            >
+              Stay here
+            </button>
+          </span>
+        ),
+        { duration: 8000 },
+      );
     },
     onError: () => toast.error('Failed to convert'),
   });
@@ -387,7 +414,15 @@ export function EstimateDetailPage() {
   const lineItemsMut = useMutation({
     mutationFn: (items: typeof draftItems) =>
       estimateApi.update(Number(id), { line_items: items }),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      // WEB-UIUX-974: sync cache immediately from server response so the
+      // Summary card reflects recomputed totals before the refetch settles.
+      const updated = res?.data?.data;
+      if (updated) {
+        queryClient.setQueryData(['estimate', id], (old: any) =>
+          old ? { ...old, data: { ...old.data, data: updated } } : old,
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
       setEditingItems(false);
       toast.success('Line items saved');
@@ -465,8 +500,11 @@ export function EstimateDetailPage() {
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
                 style={{ backgroundColor: `${color}18`, color }}
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
-                {estimate.status}
+                {estimate.status === 'converting'
+                  ? <Loader2 className="h-3 w-3 animate-spin" />
+                  : <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+                }
+                {STATUS_LABELS[estimate.status] ?? estimate.status}
               </span>
             </div>
             <p className="text-sm text-surface-500">Created {formatDate(estimate.created_at)}</p>
@@ -507,7 +545,11 @@ export function EstimateDetailPage() {
           {(estimate.status === 'sent' || estimate.status === 'draft') && (
             <button
               onClick={async () => {
-                try { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }
+                try {
+                  const confirmed = await confirm('Mark this estimate as approved?', { confirmLabel: 'Approve' });
+                  if (confirmed) { approveMut.mutate(); }
+                  else { toast('Approval cancelled.'); }
+                }
                 catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending || isExpired}
@@ -855,18 +897,60 @@ export function EstimateDetailPage() {
                 <dt className="text-surface-500">Created</dt>
                 <dd className="text-surface-900 dark:text-surface-100">{formatDate(estimate.created_at)}</dd>
               </div>
-              {estimate.valid_until && (
-                <div className="flex justify-between">
-                  <dt className="text-surface-500">Valid Until</dt>
-                  <dd className={cn(
-                    'text-surface-900 dark:text-surface-100',
-                    estimate.valid_until && new Date(estimate.valid_until) < new Date() && 'text-red-500 dark:text-red-400',
-                  )}>
-                    {formatDate(estimate.valid_until)}
-                    {estimate.valid_until && new Date(estimate.valid_until) < new Date() && ' (expired)'}
-                  </dd>
-                </div>
-              )}
+              <div className="flex justify-between items-start">
+                <dt className="text-surface-500">Valid Until</dt>
+                <dd className="text-right">
+                  {editingValidUntil ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <input
+                        type="date"
+                        value={draftValidUntil}
+                        onChange={(e) => setDraftValidUntil(e.target.value)}
+                        className="rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-2 py-1 text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            updateMut.mutate({ valid_until: draftValidUntil || null });
+                            setEditingValidUntil(false);
+                          }}
+                          disabled={updateMut.isPending}
+                          className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                        >
+                          <Save className="h-3 w-3" /> Save
+                        </button>
+                        <button onClick={() => setEditingValidUntil(false)} className="text-xs text-surface-500 hover:text-surface-700">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      {estimate.valid_until ? (
+                        <span className={cn(
+                          'text-surface-900 dark:text-surface-100',
+                          new Date(estimate.valid_until) < new Date() && 'text-red-500 dark:text-red-400',
+                        )}>
+                          {formatDate(estimate.valid_until)}
+                          {new Date(estimate.valid_until) < new Date() && ' (expired)'}
+                        </span>
+                      ) : (
+                        <span className="italic text-surface-400 text-xs">Not set</span>
+                      )}
+                      {!estimateContentLocked && (
+                        <button
+                          onClick={() => {
+                            setDraftValidUntil(estimate.valid_until ? estimate.valid_until.slice(0, 10) : '');
+                            setEditingValidUntil(true);
+                          }}
+                          className="text-primary-600 hover:text-primary-700"
+                          title="Edit expiry date"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </dd>
+              </div>
               {estimate.sent_at && (
                 <div className="flex justify-between">
                   <dt className="text-surface-500">Sent</dt>
