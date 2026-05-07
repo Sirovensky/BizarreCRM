@@ -40,9 +40,23 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   // forwards stderr to a less-trusted sink. `err.message` remains for triage.
   // Client responses never include the stack regardless of env — that was
   // already the case and is preserved below.
-  logger.error('unhandled_error', { message: err?.message });
+  //
+  // Note on the meta-key rename: passing `{ message: ... }` as meta caused the
+  // logger's `...meta` spread (in buildEntry) to overwrite the positional
+  // first-arg `'unhandled_error'`. When `err.message` was undefined/empty,
+  // JSON.stringify dropped the merged-undefined field, producing an empty log
+  // line ({"level":"error","timestamp":...,"module":"errorHandler"}) and
+  // leaving operators with no signal about the actual crash. Use `err_message`
+  // / `err_stack` / `err_name` instead so the literal log message survives
+  // and the error fields show up as their own keys.
+  logger.error('unhandled_error', {
+    err_name: err?.name,
+    err_message: err?.message || String(err),
+    err_code: (err as { code?: unknown })?.code,
+    err_status: (err as { statusCode?: unknown })?.statusCode,
+  });
   if (process.env.NODE_ENV !== 'production') {
-    logger.error('unhandled_error_stack', { stack: err?.stack });
+    logger.error('unhandled_error_stack', { err_stack: err?.stack });
   }
 
   // @audit-fixed: Guard against headers already sent — writing a status
