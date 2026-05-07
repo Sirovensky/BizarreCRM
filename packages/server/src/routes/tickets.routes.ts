@@ -22,7 +22,7 @@ import { audit } from '../utils/audit.js';
 import { fireWebhook } from '../services/webhooks.js';
 import { checkWindowRate, recordWindowFailure, consumeWindowRate } from '../utils/rateLimiter.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
-import { allocateCounter, formatTicketOrderId, formatInvoiceOrderId } from '../utils/counters.js';
+import { allocateCounter, allocateUniqueOrderId, formatTicketOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import { createLogger } from '../utils/logger.js';
 import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
 import { computeSlaForTicket } from '../services/slaAssignment.js';
@@ -1311,7 +1311,7 @@ router.post('/', idempotent, requirePermission('tickets.create'), asyncHandler(a
   // Replaces the old SELECT MAX(...) + 1 pattern that was vulnerable to:
   //   - Android-poisoned negative order_ids permanently corrupting the counter
   //   - Two concurrent inserts reading the same MAX and colliding
-  const ticketSeq = allocateCounter(db, 'ticket_order_id');
+  const ticketSeq = allocateUniqueOrderId(db, 'ticket_order_id', 'tickets', 'order_id', 'T-');
   const orderId = formatTicketOrderId(ticketSeq);
 
   // Generate tracking token for public ticket lookup
@@ -2935,7 +2935,7 @@ router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncH
   // (older tenant DBs that haven't run migration 072 yet).
   let invoiceOrderId: string;
   try {
-    const nextSeq = allocateCounter(db, 'invoice_order_id');
+    const nextSeq = allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-');
     invoiceOrderId = formatInvoiceOrderId(nextSeq);
   } catch {
     const seqRow = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
@@ -4765,7 +4765,7 @@ router.post('/:id/duplicate', requirePermission('tickets.create'), asyncHandler(
   const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
   const statusId = defaultStatus?.id ?? 1;
 
-  const dupSeq = allocateCounter(db, 'ticket_order_id');
+  const dupSeq = allocateUniqueOrderId(db, 'ticket_order_id', 'tickets', 'order_id', 'T-');
   const orderId = formatTicketOrderId(dupSeq);
 
   const trackingToken = crypto.randomBytes(16).toString('hex');
@@ -4959,7 +4959,7 @@ router.post('/:id/clone-warranty', requirePermission('tickets.create'), asyncHan
   const statusId = defaultStatus?.id ?? 1;
 
   // I4 fix: allocate ticket order_id via the shared atomic counter.
-  const warrantySeq = allocateCounter(db, 'ticket_order_id');
+  const warrantySeq = allocateUniqueOrderId(db, 'ticket_order_id', 'tickets', 'order_id', 'T-');
   const orderId = formatTicketOrderId(warrantySeq);
 
   // Generate tracking token

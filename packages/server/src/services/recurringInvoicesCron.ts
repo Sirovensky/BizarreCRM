@@ -19,7 +19,7 @@
 
 import type Database from 'better-sqlite3';
 import { createLogger } from '../utils/logger.js';
-import { allocateCounter, formatInvoiceOrderId } from '../utils/counters.js';
+import { allocateCounter, allocateUniqueOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 
 const logger = createLogger('recurring-invoices-cron');
 
@@ -187,7 +187,7 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
       }
 
       // Create the invoice
-      const seq = allocateCounter(db, 'invoice_order_id');
+      const seq = allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-');
       const orderId = formatInvoiceOrderId(seq);
 
       // Parse line items and compute totals (cents → dollars for invoices table)

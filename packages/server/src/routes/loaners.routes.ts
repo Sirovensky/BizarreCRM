@@ -6,7 +6,7 @@ import { audit } from '../utils/audit.js';
 import { validatePaginationOffset, validateId, validatePrice, roundCents, validateTextLength } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
-import { allocateCounter, formatInvoiceOrderId } from '../utils/counters.js';
+import { allocateCounter, allocateUniqueOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
@@ -287,7 +287,7 @@ router.post('/:id/return', requirePermission('inventory.adjust'), asyncHandler(a
     } = null;
 
     if (chargeAmount > 0) {
-      const orderId = formatInvoiceOrderId(allocateCounter(db, 'invoice_order_id'));
+      const orderId = formatInvoiceOrderId(allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-'));
       const paidAmount = shouldRecordPayment ? chargeAmount : 0;
       const amountDue = roundCents(chargeAmount - paidAmount);
       const invoiceStatus = shouldRecordPayment ? 'paid' : 'unpaid';

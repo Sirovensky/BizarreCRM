@@ -16,7 +16,7 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { config } from '../config.js';
-import { allocateCounter, formatInvoiceOrderId, formatTicketOrderId } from '../utils/counters.js';
+import { allocateCounter, allocateUniqueOrderId, formatInvoiceOrderId, formatTicketOrderId } from '../utils/counters.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 // isCommissionLocked is still used for tip-only payroll lock checks below;
@@ -617,7 +617,7 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
   // (older tenant DBs that haven't run migration 072 yet).
   let orderId: string;
   try {
-    const nextSeq = allocateCounter(db, 'invoice_order_id');
+    const nextSeq = allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-');
     orderId = formatInvoiceOrderId(nextSeq);
   } catch {
     const seqRow = await adb.get<{ next_num: number }>(
@@ -1203,7 +1203,7 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
   // ---- Allocate invoice order id (atomic counter, MAX fallback) ----------
   let invoiceOrderId: string;
   try {
-    const seq = allocateCounter(db, 'invoice_order_id');
+    const seq = allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-');
     invoiceOrderId = formatInvoiceOrderId(seq);
   } catch {
     const row = await adb.get<{ next_num: number }>(
@@ -1614,8 +1614,14 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     // I4: Atomic counter allocation — single source of truth, no MAX() race.
     // Falls back to the legacy MAX query if the counters table isn't present
     // (older tenant DBs that haven't run migration 072 yet).
+    //
+    // FIX 2026-05-07: tenants restored from pre-migration-072 backups had
+    // counters.value < MAX(existing tickets.order_id), so the next allocation
+    // collided with a real row → 500 with "UNIQUE constraint failed:
+    // tickets.order_id". allocateUniqueOrderId atomically bumps the counter
+    // past the existing max in the rare drift case before incrementing.
     try {
-      const nextSeq = allocateCounter(db, 'ticket_order_id');
+      const nextSeq = allocateUniqueOrderId(db, 'ticket_order_id', 'tickets', 'order_id', 'T-');
       ticketOrderId = formatTicketOrderId(nextSeq);
     } catch {
       const ticketSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM tickets");
@@ -1939,7 +1945,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   if (!existingInvoiceId) {
     // I5: Atomic counter allocation (with fallback for pre-072 tenant DBs).
     try {
-      const nextSeq = allocateCounter(db, 'invoice_order_id');
+      const nextSeq = allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-');
       invoiceOrderId = formatInvoiceOrderId(nextSeq);
     } catch {
       const invSeq = await adb.get<AnyRow>("SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 as next_num FROM invoices");
@@ -2726,7 +2732,7 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
   // Falls back to the legacy MAX query if the counters table isn't present.
   let creditOrderId: string;
   try {
-    const nextSeq = allocateCounter(db, 'invoice_order_id');
+    const nextSeq = allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-');
     creditOrderId = generateOrderId('CRN', nextSeq);
   } catch {
     const seqRow = await adb.get<any>(

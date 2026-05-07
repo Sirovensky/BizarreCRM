@@ -12,7 +12,7 @@ import {
   toCents,
 } from '../utils/validate.js';
 import { writeCommission, reverseCommission } from '../utils/commissions.js';
-import { allocateCounter, formatInvoiceOrderId, formatCreditNoteId } from '../utils/counters.js';
+import { allocateCounter, allocateUniqueOrderId, formatInvoiceOrderId, formatCreditNoteId } from '../utils/counters.js';
 import { sendSmsTenant } from '../services/smsProvider.js';
 import { sendEmail, isEmailConfigured } from '../services/email.js';
 import { broadcast } from '../ws/server.js';
@@ -531,7 +531,7 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
 
   // I5: Atomic counter allocation (fixes MAX-based race + poisoning)
   // Counters table is the single source of truth — seeded by migration 072.
-  const nextSeq = allocateCounter(db, 'invoice_order_id');
+  const nextSeq = allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-');
   const orderId = formatInvoiceOrderId(nextSeq);
 
   // M6: Tax / discount ordering policy — we apply DISCOUNT FIRST, then TAX on the
