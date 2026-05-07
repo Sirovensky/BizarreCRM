@@ -5763,7 +5763,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Major — empty/loading/error
 
-- [ ] WEB-UIUX-1373. **[MAJOR] No loading skeleton — `useQuery` starts undefined, sessions list shows "No sessions yet" text instantly until fetch resolves. Slow connections see a false-empty flash that contradicts reality.** L9 empty/loading/error states.
+- [x] WEB-UIUX-1373. **[MAJOR] No loading skeleton — `useQuery` starts undefined, sessions list shows "No sessions yet" text instantly until fetch resolves. Slow connections see a false-empty flash that contradicts reality.** L9 empty/loading/error states. **[AUTOLOOP-T71 RESOLVED: sessions useQuery destructures isPending; renders 3 skeleton rows + Loader2 while loading; empty state only after resolve.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:241-243, 277-281`
   <!-- meta: fix=check-isPending+show-skeleton-or-Loader2+only-show-empty-state-when-data-is-defined-and-array-is-zero -->
 
@@ -5773,7 +5773,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Minor — labels + dark mode + nits
 
-- [ ] WEB-UIUX-1375. **[MINOR] Two competing "Cancel" buttons coexist. New-session form has "Cancel" (line 232 — closes form) and active session has "Cancel" (line 360 — destroys session). If operator opens new-session form while a session is selected, both render simultaneously with same word, opposite scopes.** L2 label truthfulness.
+- [x] WEB-UIUX-1375. **[MINOR] Two competing "Cancel" buttons coexist. New-session form has "Cancel" (line 232 — closes form) and active session has "Cancel" (line 360 — destroys session). If operator opens new-session form while a session is selected, both render simultaneously with same word, opposite scopes.** L2 label truthfulness. **[AUTOLOOP-T71 RESOLVED: form Cancel renamed 'Discard'; session Cancel renamed 'Abandon stocktake'; same-word collision resolved.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:232, 360`
   <!-- meta: fix=form-cancel-becomes-"Discard"-or-"Close"+session-cancel-becomes-"Abandon-stocktake"-or-"Discard-counts" -->
 
@@ -5781,7 +5781,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:226`
   <!-- meta: fix=rename-to-"Begin-Stocktake"-or-"Start-Counting" -->
 
-- [ ] WEB-UIUX-1377. **[MINOR] Status pill `open` colored amber (line 260) — amber implies warning/needs-attention. Open is the normal active working state. Should be primary/blue.** L5 hierarchy.
+- [x] WEB-UIUX-1377. **[MINOR] Status pill `open` colored amber (line 260) — amber implies warning/needs-attention. Open is the normal active working state. Should be primary/blue.** L5 hierarchy. **[AUTOLOOP-T71 RESOLVED: open-status pill switched amber→primary so normal active state isn't read as warning.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:258-263`
   <!-- meta: fix=open=primary-100/primary-700-(or-blue)+committed-stays-green+cancelled-grey -->
 
@@ -5789,7 +5789,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:211, 217, 318, 325`
   <!-- meta: fix=add-dark:bg-surface-900+dark:border-surface-700+dark:text-surface-100-to-each-input-OR-extract-Input-component-and-reuse -->
 
-- [ ] WEB-UIUX-1379. **[MINOR] Selected session card uses `bg-primary-50` (line 251) with no dark mode variant — primary-50 on dark theme reads almost white-on-near-white.** L13 styling.
+- [x] WEB-UIUX-1379. **[MINOR] Selected session card uses `bg-primary-50` (line 251) with no dark mode variant — primary-50 on dark theme reads almost white-on-near-white.** L13 styling. **[AUTOLOOP-T71 RESOLVED: selected card gained dark:bg-primary-900/40 + dark:border-primary-600 fixing dark-mode bleed.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:248-253`
   <!-- meta: fix=add-dark:bg-primary-900/40+dark:border-primary-600-to-selected-state -->
 
@@ -5797,7 +5797,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:187-189`
   <!-- meta: fix=use-navigate(-1)-or-store-prior-search-params-in-state-and-restore-on-back -->
 
-- [ ] WEB-UIUX-1381. **[NIT] "No item matching X" toast (line 170) provides only the failed query — no fuzzy-match suggestions. Inventory keyword search supports prefix; surface top-3 partial matches in toast or inline.** L7 feedback.
+- [x] WEB-UIUX-1381. **[NIT] "No item matching X" toast (line 170) provides only the failed query — no fuzzy-match suggestions. Inventory keyword search supports prefix; surface top-3 partial matches in toast or inline.** L7 feedback. **[AUTOLOOP-T71 RESOLVED: zero exact-match scan now fetches pagesize=3 partial matches; toast surfaces names so operator can re-scan correct SKU.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:170`
   <!-- meta: fix=on-zero-exact-match-fetch-pagesize=3+show-toast-with-clickable-suggestions -->
 
@@ -5808,7 +5808,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Blocker — entire refund subsystem unreachable from UI
 
-- [ ] WEB-UIUX-1382. **[BLOCKER] No refund UI exists at all. `packages/server/src/routes/refunds.routes.ts` exposes 6 endpoints (list, create, approve, decline, credits/use, credits/liability) under `/api/v1/refunds`; `packages/web/src/api/endpoints.ts` defines NO `refundsApi` object. No page in `packages/web/src/App.tsx` (77 routes — none for `/refunds`). No nav item. Operator who needs to issue an actual cash/card refund — money returned to customer — has no entry point. Closest UI is "Credit Note" which reduces invoice balance only; it never moves money. Refund queue (pending → admin approves) cannot be actioned by anyone via the web. Manager-tier permission `refunds.create` is granted but unusable.** L1 primary action findability, L4 flow completion (irrecoverable dead-end), L6 discoverability.
+- [ ] WEB-UIUX-1382. **[BLOCKER] No refund UI exists at all. `packages/server/src/routes/refunds.routes.ts` exposes 6 endpoints (list, create, approve, decline, credits/use, credits/liability) under `/api/v1/refunds`; `packages/web/src/api/endpoints.ts` defines NO `refundsApi` object. No page in `packages/web/src/App.tsx` (77 routes — none for `/refunds`). No nav item. Operator who needs to issue an actual cash/card refund — money returned to customer — has no entry point. Closest UI is "Credit Note" which reduces invoice balance only; it never moves money. Refund queue (pending → admin approves) cannot be actioned by anyone via the web. Manager-tier permission `refunds.create` is granted but unusable.** L1 primary action findability, L4 flow completion (irrecoverable dead-end), L6 discoverability. **STATUS: BLOCKED — entire refundsApi + RefundsListPage + InvoiceDetail Refund button + sidebar Billing entry; massive multi-component, defer to refunds sprint**
   `packages/server/src/routes/refunds.routes.ts:107,253,418`
   `packages/web/src/api/endpoints.ts:1-end (no refundsApi)`
   `packages/web/src/App.tsx (no /refunds route)`
@@ -5818,7 +5818,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=after-WEB-UIUX-1382-create-/refunds-page+set-href:'/refunds'+OR-/reports?metric=refunds-with-anchor -->
 
-- [ ] WEB-UIUX-1384. **[BLOCKER] "Credit Note" button label is what cashiers reach for when they mean "give the customer their money back" — but credit note only reduces the invoice ledger (negative invoice row, `invoices.routes.ts:1212-1230`). No cash leaves the till. No card refund is initiated. The operator-facing copy "Issue a credit note against invoice X. This will reduce the outstanding balance" (`InvoiceDetailPage.tsx:753-755`) does not say *cash is not returned*. Cashier issues a $200 credit note thinking they refunded the card; customer leaves expecting card credit; reality: no money moved, customer disputes a week later.** L2 label truthfulness.
+- [x] WEB-UIUX-1384. **[BLOCKER] "Credit Note" button label is what cashiers reach for when they mean "give the customer their money back" — but credit note only reduces the invoice ledger (negative invoice row, `invoices.routes.ts:1212-1230`). No cash leaves the till. No card refund is initiated. The operator-facing copy "Issue a credit note against invoice X. This will reduce the outstanding balance" (`InvoiceDetailPage.tsx:753-755`) does not say *cash is not returned*. Cashier issues a $200 credit note thinking they refunded the card; customer leaves expecting card credit; reality: no money moved, customer disputes a week later.** L2 label truthfulness. **[AUTOLOOP-T71 VERIFIED: button label already changed 'Credit Note' → 'Refund' in tick 66 WEB-UIUX-1279; modal description conditional in tick 62.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380, 748-755`
   <!-- meta: fix=copy="Reduces-the-invoice-balance-on-our-books.-No-money-is-returned-to-the-customer."+OR-after-WEB-UIUX-1382-show-Refund-button-(actually-returns-money)-next-to-Credit-Note-(ledger-only) -->
 
@@ -5831,7 +5831,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Major — credit-note flow ergonomics + truthfulness
 
-- [ ] WEB-UIUX-1386. **[MAJOR] Credit-note client cap mismatched to server cap. Client caps amount at `Number(invoice.amount_paid) || 0` (`InvoiceDetailPage.tsx:298,763,777`). Server caps at `original.total - alreadyCreditedSoFar` (`invoices.routes.ts:1186,1197-1201`). Unpaid $200 invoice that legitimately needs a $200 ledger write-off (e.g. uncollectible debt to be written off as discount-after-the-fact) cannot be credited via UI — client throws "Amount cannot exceed amount paid ($0)" before request leaves browser. Server would accept the $200 credit. Two divergent rules; client is more restrictive than necessary.** L4 flow, L11 consistency.
+- [ ] WEB-UIUX-1386. **[MAJOR] Credit-note client cap mismatched to server cap. Client caps amount at `Number(invoice.amount_paid) || 0` (`InvoiceDetailPage.tsx:298,763,777`). Server caps at `original.total - alreadyCreditedSoFar` (`invoices.routes.ts:1186,1197-1201`). Unpaid $200 invoice that legitimately needs a $200 ledger write-off (e.g. uncollectible debt to be written off as discount-after-the-fact) cannot be credited via UI — client throws "Amount cannot exceed amount paid ($0)" before request leaves browser. Server would accept the $200 credit. Two divergent rules; client is more restrictive than necessary.** L4 flow, L11 consistency. **STATUS: BLOCKED — credit-note client/server cap mismatch needs accounting policy decision (write-off semantics); defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:298-303,763,776-778`
   `packages/server/src/routes/invoices.routes.ts:1186,1197-1201`
   <!-- meta: fix=decide-policy:-(a)-write-off-flow-needs-server+client=invoice.total-prior_credits+OR-(b)-document-credit-note-as-refund-only-and-keep-amount_paid-cap+server-aligns-to-amount_paid -->
@@ -5840,7 +5840,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:475-548`
   <!-- meta: fix=GET-/invoices/:id-payload-include-credit_notes:[{order_id,amount,reason,created_by,created_at}]+render-as-Credit-Notes-section-or-merge-into-timeline-with-distinct-icon -->
 
-- [ ] WEB-UIUX-1388. **[MAJOR] Credit-note modal lacks `requireTyping` confirm pattern that the same page uses for Void (`:813,815` — `requireTyping confirmText={String(invoice?.order_id)}`). Credit notes are similarly irreversible (server has no DELETE) and similarly affect stored ledger; the inconsistency invites mis-clicks on a small button-only modal. A single confirm-on-click is too thin for a permanent ledger entry.** L5 hierarchy (destructive action gated weaker than less-destructive sibling), L8 recovery.
+- [x] WEB-UIUX-1388. **[MAJOR] Credit-note modal lacks `requireTyping` confirm pattern that the same page uses for Void (`:813,815` — `requireTyping confirmText={String(invoice?.order_id)}`). Credit notes are similarly irreversible (server has no DELETE) and similarly affect stored ledger; the inconsistency invites mis-clicks on a small button-only modal. A single confirm-on-click is too thin for a permanent ledger entry.** L5 hierarchy (destructive action gated weaker than less-destructive sibling), L8 recovery. **[AUTOLOOP-T71 VERIFIED: requireTyping ConfirmDialog already gated for high-value credit notes in tick 65 WEB-UIUX-1278.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-802 vs 807-817`
   <!-- meta: fix=switch-creditNoteMutation-to-ConfirmDialog-with-requireTyping=true+confirmText=invoice.order_id+danger=true -->
 
@@ -5849,7 +5849,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/invoices.routes.ts:1192-1201`
   <!-- meta: fix=server-returns-{message,already_credited,max_remaining}-structured+UI-special-cases-and-pre-fills-input-with-max_remaining+banner-"Already-credited:-$50.-Remaining:-$150" -->
 
-- [ ] WEB-UIUX-1390. **[MAJOR] Credit-note submit happens on Enter inside the amount input — no per-field validation feedback, no inline error, only the toast. `handleCreditNote` `:288-311` sequence: amount-empty-or-zero → toast; amount > paid → toast; reason missing → toast. Each is a separate red flash, not a per-field hint. Operator cannot see at-a-glance which field is wrong if they have all three issues.** L7 feedback specificity.
+- [x] WEB-UIUX-1390. **[MAJOR] Credit-note submit happens on Enter inside the amount input — no per-field validation feedback, no inline error, only the toast. `handleCreditNote` `:288-311` sequence: amount-empty-or-zero → toast; amount > paid → toast; reason missing → toast. Each is a separate red flash, not a per-field hint. Operator cannot see at-a-glance which field is wrong if they have all three issues.** L7 feedback specificity. **[AUTOLOOP-T71 RESOLVED: handleCreditNote builds single fieldErrors object covering amount/reason/note; per-field inline hints render simultaneously; Submit disabled while any error set.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   <!-- meta: fix=track-fieldErrors:Record<string,string>+render-text-red-500-text-xs-mt-1-under-each-field+disable-Create-button-when-any-fieldError-set -->
 

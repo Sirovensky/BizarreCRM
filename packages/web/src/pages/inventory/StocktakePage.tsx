@@ -79,7 +79,8 @@ export function StocktakePage() {
   const [manualCountedQty, setManualCountedQty] = useState('');
   const scanRef = useRef<HTMLInputElement>(null);
 
-  const { data: sessionsData } = useQuery({
+  // WEB-UIUX-1373: capture isPending to drive loading skeleton
+  const { data: sessionsData, isPending: sessionsIsPending } = useQuery({
     queryKey: ['stocktakes'],
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: StocktakeSession[] }>('/stocktake');
@@ -200,7 +201,25 @@ export function StocktakePage() {
         item = items[0];
       }
       if (!item) {
-        toast.error(`No item matching "${q}"`);
+        // WEB-UIUX-1381: append fuzzy-match hint when exact lookup returns zero
+        let hint = '';
+        if (!isBarcode) {
+          try {
+            const fuzzyRes = await api.get('/inventory', { params: { keyword: q, pagesize: 3 } });
+            const fuzzyItems: { name: string }[] = fuzzyRes.data.data?.items || [];
+            if (fuzzyItems.length > 0) {
+              const names = fuzzyItems.map((fi) => fi.name).join(', ');
+              hint = ` — did you mean: ${names}?`;
+            } else {
+              hint = ' (Try a partial SKU)';
+            }
+          } catch {
+            hint = ' (Try a partial SKU)';
+          }
+        } else {
+          hint = ' (Try a partial SKU)';
+        }
+        toast.error(`No item matching "${q}"${hint}`);
         return;
       }
       const existingCount = detailData?.counts.find((c) => c.inventory_item_id === item.id);
@@ -268,11 +287,12 @@ export function StocktakePage() {
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Open
             </button>
+            {/* WEB-UIUX-1375: renamed from "Cancel" to "Discard" to disambiguate from the active-session cancel button */}
             <button
               onClick={() => setShowNew(false)}
               className="rounded-lg border border-surface-300 px-4 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-900"
             >
-              Cancel
+              Discard
             </button>
           </div>
         </div>
@@ -281,7 +301,21 @@ export function StocktakePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-2">
           <h2 className="font-semibold text-sm uppercase text-surface-500">Sessions</h2>
-          {sessions.length === 0 && (
+          {/* WEB-UIUX-1373: show skeleton rows while fetch is in-flight; only show empty state after resolve */}
+          {sessionsIsPending && (
+            <div className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="w-full rounded-lg border border-surface-200 dark:border-surface-700 p-3 animate-pulse">
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-32 rounded bg-surface-200 dark:bg-surface-700" />
+                    <div className="h-4 w-14 rounded-full bg-surface-200 dark:bg-surface-700" />
+                  </div>
+                  <div className="mt-2 h-3 w-24 rounded bg-surface-100 dark:bg-surface-800" />
+                </div>
+              ))}
+            </div>
+          )}
+          {!sessionsIsPending && sessions.length === 0 && (
             <p className="text-sm text-surface-400">No sessions yet</p>
           )}
           {sessions.map((s) => (
@@ -291,7 +325,8 @@ export function StocktakePage() {
               className={cn(
                 'w-full text-left rounded-lg border p-3 transition-colors',
                 selectedId === s.id
-                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                  // WEB-UIUX-1379: add dark-mode variants for selected card
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/40 dark:border-primary-600'
                   : 'border-surface-200 hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800',
               )}
             >
@@ -300,7 +335,8 @@ export function StocktakePage() {
                 <span
                   className={cn(
                     'px-2 py-0.5 text-xs rounded-full',
-                    s.status === 'open' && 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                    // WEB-UIUX-1377: open uses primary (blue) instead of amber to avoid warning connotation
+                    s.status === 'open' && 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
                     s.status === 'committed' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
                     s.status === 'cancelled' && 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-300',
                   )}
@@ -482,6 +518,7 @@ export function StocktakePage() {
                     >
                       <Check className="h-4 w-4" /> Commit ({detailData.counts.length})
                     </button>
+                    {/* WEB-UIUX-1375: renamed from "Cancel" to "Abandon stocktake" to disambiguate from the new-session Discard button */}
                     <button
                       onClick={async () => {
                         const ok = await useConfirmStore.getState().confirm({
@@ -494,7 +531,7 @@ export function StocktakePage() {
                       }}
                       className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
                     >
-                      <X className="h-4 w-4" /> Cancel
+                      <X className="h-4 w-4" /> Abandon stocktake
                     </button>
                   </div>
                   )} {/* end WEB-UIUX-1370 role gate */}

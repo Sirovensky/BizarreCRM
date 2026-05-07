@@ -414,17 +414,25 @@ export function InvoiceDetailPage() {
 
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
-    if (!amount || amount < 0.01) return toast.error('Minimum credit note amount is 0.01');
-    if (amount > maxCreditNoteAmount) {
+    // WEB-UIUX-1390: collect all field errors before showing any feedback so the
+    // operator sees every problem at once instead of one toast per issue.
+    const fieldErrors: { amount?: string; reason?: string; note?: string } = {};
+    if (!amount || amount < 0.01) {
+      fieldErrors.amount = 'Minimum credit note amount is 0.01';
+    } else if (amount > maxCreditNoteAmount) {
       // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): tenant-aware currency.
-      return toast.error(
-        `Amount cannot exceed credit-note max (${formatCurrency(maxCreditNoteAmount)})`,
-      );
+      fieldErrors.amount = `Amount cannot exceed credit-note max (${formatCurrency(maxCreditNoteAmount)})`;
     }
-    if (!creditNoteForm.code) return toast.error('Select a reason');
-    if (creditNoteForm.code === 'other' && !creditNoteForm.note.trim()) {
-      return toast.error('Please enter a note when selecting "Other" as the reason');
+    if (!creditNoteForm.code) {
+      fieldErrors.reason = 'Select a reason';
+    } else if (creditNoteForm.code === 'other' && !creditNoteForm.note.trim()) {
+      fieldErrors.note = 'Please enter a note when selecting "Other" as the reason';
     }
+    if (Object.keys(fieldErrors).length > 0) {
+      setCreditNoteError(fieldErrors);
+      return;
+    }
+    setCreditNoteError({});
     // WEB-UIUX-1278: high-value credit notes (>= invoice total OR >= $500) require
     // the operator to type the invoice number to confirm — same pattern as Void.
     // Lower amounts fire immediately; the filled credit-note form itself is the
@@ -437,7 +445,7 @@ export function InvoiceDetailPage() {
     }
     creditNoteMutation.mutate({
       amount,
-      code: creditNoteForm.code,
+      code: creditNoteForm.code as RefundReasonCode,
       note: creditNoteForm.note.trim(),
     });
   };
@@ -1146,9 +1154,10 @@ export function InvoiceDetailPage() {
               </button>
               <button
                 onClick={handleCreditNote}
-                disabled={creditNoteMutation.isPending}
+                disabled={creditNoteMutation.isPending || !!(creditNoteError.amount || creditNoteError.reason || creditNoteError.note)}
                 // WEB-UIUX-1040: red ramp matches button in header — irreversible action.
                 // WEB-UIUX-1308: bg-red-600 hover:bg-red-700 (matches Void destructive treatment; verified correct).
+                // WEB-UIUX-1390: also disabled while any field-level validation error is shown.
                 className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {/* WEB-UIUX-1300: include amount in label when entered so operator can confirm before clicking */}
