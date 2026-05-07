@@ -49,13 +49,44 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   // leaving operators with no signal about the actual crash. Use `err_message`
   // / `err_stack` / `err_name` instead so the literal log message survives
   // and the error fields show up as their own keys.
+  // err.message can be a non-string (someone wrapped a SqliteError with
+  // `new Error(someObject)` — message becomes "[object Object]"). Coerce
+  // safely via JSON.stringify so the original error fields surface.
+  const rawMessage = err?.message;
+  let messageStr: string;
+  if (typeof rawMessage === 'string') {
+    messageStr = rawMessage;
+  } else if (rawMessage && typeof rawMessage === 'object') {
+    try {
+      messageStr = JSON.stringify(rawMessage);
+    } catch {
+      messageStr = String(rawMessage);
+    }
+  } else {
+    messageStr = String(err);
+  }
+
+  const errCode = (err as { code?: unknown })?.code;
+
   logger.error('unhandled_error', {
     err_name: err?.name,
-    err_message: err?.message || String(err),
-    err_code: (err as { code?: unknown })?.code,
+    err_message: messageStr,
+    err_code: errCode,
     err_status: (err as { statusCode?: unknown })?.statusCode,
+    // SQLite errors include the original SQL query / column name in the
+    // message — those carry no auth secrets / PII so logging is safe even
+    // in production. Helps diagnose schema-vs-code drift on hosts.
+    ...(typeof errCode === 'string' && errCode.startsWith('SQLITE_')
+      ? { err_sql: (err as { sql?: unknown })?.sql }
+      : {}),
   });
-  if (process.env.NODE_ENV !== 'production') {
+
+  // Stack trace: log in dev unconditionally; in production log ONLY for
+  // SqliteError (path leaked is bounded to better-sqlite3 + Node stdlib;
+  // no secrets) so operators can pinpoint the broken query without flipping
+  // the whole server to dev mode.
+  const isSqliteError = typeof errCode === 'string' && errCode.startsWith('SQLITE_');
+  if (process.env.NODE_ENV !== 'production' || isSqliteError) {
     logger.error('unhandled_error_stack', { err_stack: err?.stack });
   }
 
