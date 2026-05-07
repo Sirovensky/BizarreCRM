@@ -5245,7 +5245,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:531-570`
   <!-- meta: fix=add-search-input-(name+email)+role-chip-filter+status-filter-(clocked-in/out)+sticky-table-header -->
 
-- [ ] WEB-UIUX-1260. **[MAJOR] List has no `refetchInterval` (`EmployeeListPage.tsx:459-462`). Worker who clocks in via mobile shows "Clocked Out" on this kiosk indefinitely; pressing Clock-In hits server 400 "Already clocked in" with no hint to refresh. Common multi-device confusion.** L7 feedback, L3 route correctness.
+- [x] WEB-UIUX-1260. **[MAJOR] List has no `refetchInterval` (`EmployeeListPage.tsx:459-462`). Worker who clocks in via mobile shows "Clocked Out" on this kiosk indefinitely; pressing Clock-In hits server 400 "Already clocked in" with no hint to refresh. Common multi-device confusion.** L7 feedback, L3 route correctness. **[AUTOLOOP-T65 RESOLVED: refetchInterval:30_000 added to employees useQuery so kiosks pick up clock-in/out from other devices.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:458-466`
   <!-- meta: fix=refetchInterval:30000+also-on-window-focus-(default-on)+map-server-"Already-clocked-in"-error-to-toast-with-"Refresh"-action -->
 
@@ -5254,7 +5254,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/api/endpoints.ts:920`
   <!-- meta: fix=add-optional-notes-textarea-in-PinModal-(only-for-clock-out)+pass-through-employeeApi.clockOut(id,pin,location_id,notes) -->
 
-- [ ] WEB-UIUX-1262. **[MAJOR] Rate-limit lockout has no countdown. After 5 wrong PINs, server returns "Too many PIN attempts… Try again in 15 min" (`employees.routes.ts:329`); UI just toasts the string. No live countdown timer, no remaining-attempts indicator before lockout. Worker keeps retrying, server keeps rate-limiting, frustration spirals.** L7 feedback meaning, L8 recovery.
+- [x] WEB-UIUX-1262. **[MAJOR] Rate-limit lockout has no countdown. After 5 wrong PINs, server returns "Too many PIN attempts… Try again in 15 min" (`employees.routes.ts:329`); UI just toasts the string. No live countdown timer, no remaining-attempts indicator before lockout. Worker keeps retrying, server keeps rate-limiting, frustration spirals.** L7 feedback meaning, L8 recovery. **[AUTOLOOP-T65 RESOLVED: parseRateLimitError helper + lockedUntil mm:ss countdown + attempts-remaining display + input disable during lockout.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:478-481,492-495`
   <!-- meta: fix=parse-Retry-After-or-add-server-field-{lockedUntil}-→-render-countdown-in-modal+also-display-attempts-remaining-(N/5)-after-each-failed-attempt -->
 
@@ -5262,7 +5262,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:512-514`
   <!-- meta: fix="Manage-team,-time,-and-pay"-or-just-"Manage-team-members" -->
 
-- [ ] WEB-UIUX-1264. **[MINOR] Pay-rate edit has no effective-date or history. After raising someone's rate (`PayRateEditor.commit`), the new value applies — but commissions table has its own per-record amounts, hours don't snapshot the rate, and prior pay calculations have no audit trail visible from this UI. Manager raised John from $18 → $20 mid-week; no way to confirm which rate the current pay-period uses.** L7 feedback meaning, L4 flow completion.
+- [ ] WEB-UIUX-1264. **[MINOR] Pay-rate edit has no effective-date or history. After raising someone's rate (`PayRateEditor.commit`), the new value applies — but commissions table has its own per-record amounts, hours don't snapshot the rate, and prior pay calculations have no audit trail visible from this UI. Manager raised John from $18 → $20 mid-week; no way to confirm which rate the current pay-period uses.** L7 feedback meaning, L4 flow completion. **STATUS: BLOCKED — needs new pay_rate_history table + server CRUD + UI; multi-component, defer to payroll sprint**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:227-315`
   <!-- meta: fix=show-"Effective-from-{today}"-on-save+keep-pay_rate_history-table-and-render-last-3-changes-in-expanded-row -->
 
@@ -5270,7 +5270,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:250-258`
   <!-- meta: fix=warn-on-rate===0-with-confirm-"Set-pay-rate-to-$0.00?-Worker-will-not-accrue-hourly-pay."+also-warn-on-rate<5 -->
 
-- [ ] WEB-UIUX-1266. **[MINOR] PIN input has no show/hide toggle (`EmployeeListPage.tsx:177-189` `type="password"`). Workers can't verify input before submit; with the 5-attempt cap, every mistype costs ~20% of their attempt budget.** L8 recovery.
+- [x] WEB-UIUX-1266. **[MINOR] PIN input has no show/hide toggle (`EmployeeListPage.tsx:177-189` `type="password"`). Workers can't verify input before submit; with the 5-attempt cap, every mistype costs ~20% of their attempt budget.** L8 recovery. **[AUTOLOOP-T65 RESOLVED: PIN input gained Eye/EyeOff toggle button to switch input type between password/text; default password.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:175-190`
   <!-- meta: fix=add-eye-icon-toggle-right-side-of-input+briefly-reveal-on-press-(2s)-or-toggle-with-state -->
 
@@ -5279,7 +5279,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/employees.routes.ts:201`
   <!-- meta: fix=read-store-setting-pay_week_start_day-(0-6)+derive-monday-offset-from-it+server-and-client-must-agree -->
 
-- [ ] WEB-UIUX-1268. **[MINOR] Recent clock entries / commissions capped at 5 with no "View all" or "View timesheet" link (`EmployeeListPage.tsx:341-342`). To see anything past the last 5, user has to navigate elsewhere — unclear where. Discoverability gap.** L6 discoverability.
+- [x] WEB-UIUX-1268. **[MINOR] Recent clock entries / commissions capped at 5 with no "View all" or "View timesheet" link (`EmployeeListPage.tsx:341-342`). To see anything past the last 5, user has to navigate elsewhere — unclear where. Discoverability gap.** L6 discoverability. **[AUTOLOOP-T65 RESOLVED: View all -> Link to /team/payroll added under Recent Clock Entries + Recent Commissions lists.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:359-432`
   <!-- meta: fix=add-"View-all-(N)-→"-link-under-each-list+target-/timesheets?user_id=X-or-/team/payroll -->
 
@@ -5287,7 +5287,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:371-372`
   <!-- meta: fix="Use-the-Clock-In-button-on-the-row-header"-or-just-"No-clock-entries-yet." -->
 
-- [ ] WEB-UIUX-1270. **[NIT] No bulk close-all action for end-of-day. Manager closing the shop has to expand each row, click Clock Out, type PIN, repeat — for every still-active worker who forgot. The 16-hour auto-close (`employees.routes.ts:115`) won't fire until tomorrow.** L6 discoverability, L7 feedback.
+- [ ] WEB-UIUX-1270. **[NIT] No bulk close-all action for end-of-day. Manager closing the shop has to expand each row, click Clock Out, type PIN, repeat — for every still-active worker who forgot. The 16-hour auto-close (`employees.routes.ts:115`) won't fire until tomorrow.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs admin End-of-Day modal + bulk-clock-out endpoint with manager-PIN co-sign; multi-component, defer to time-clock sprint**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:531-570`
   <!-- meta: fix=admin-only-"End-of-Day"-button-→-confirm-modal-listing-active-workers-→-bulk-clock-out-with-manager-PIN-once -->
 
@@ -5295,7 +5295,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:172-190`
   <!-- meta: fix=add-id="pin-help"-on-a-helper-paragraph-"4-to-6-digit-PIN"+aria-describedby="pin-help"-on-input -->
 
-- [ ] WEB-UIUX-1272. **[NIT] Clocked-in indicator is a 2.5px green dot (`EmployeeListPage.tsx:643-646`) — barely visible from across a room on a kiosk display. For a glanceable status, the dot should be ~3× larger or use a pill.** L5 visual hierarchy.
+- [x] WEB-UIUX-1272. **[NIT] Clocked-in indicator is a 2.5px green dot (`EmployeeListPage.tsx:643-646`) — barely visible from across a room on a kiosk display. For a glanceable status, the dot should be ~3× larger or use a pill.** L5 visual hierarchy. **[AUTOLOOP-T65 RESOLVED: small green dot replaced with green/gray pill 'On shift'/'Off' for kiosk legibility.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:642-655`
   <!-- meta: fix=h-3-w-3-or-h-4-w-4-dot+OR-replace-with-green-pill-"On-shift"-vs-gray-pill-"Off" -->
 
@@ -5303,7 +5303,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:146-148`
   <!-- meta: fix={first_name}-{last_name}-or-{first_name}-{last_name[0]}. -->
 
-- [ ] WEB-UIUX-1274. **[NIT] Header X icon and footer Cancel/Close button do the same thing (`EmployeeListPage.tsx:149-151,195-200`). One dismiss is enough; two surface the same action twice. Footer action could become "Set PIN" / link to settings instead, recovering one slot for the dead-end case (see WEB-UIUX-1257).** L5 hierarchy.
+- [x] WEB-UIUX-1274. **[NIT] Header X icon and footer Cancel/Close button do the same thing (`EmployeeListPage.tsx:149-151,195-200`). One dismiss is enough; two surface the same action twice. Footer action could become "Set PIN" / link to settings instead, recovering one slot for the dead-end case (see WEB-UIUX-1257).** L5 hierarchy. **[AUTOLOOP-T65 RESOLVED: footer Cancel button removed; admin+no-PIN case repurposes slot for 'Set PIN' Link to /settings/users; header X retained.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:149-151,195-200`
   <!-- meta: fix=keep-header-X-only+repurpose-footer-secondary-slot-for-context-action -->
 
@@ -5316,7 +5316,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/api/endpoints.ts` (no `refundsApi`)
   <!-- meta: fix=add-RefundsListPage-/refunds+RefundDetailPage-with-Approve/Decline-buttons-(admin-only)+sidebar-link-under-Billing+endpoints.ts-refundsApi.list/get/create/approve/decline -->
 
-- [ ] WEB-UIUX-1276. **[BLOCKER] `/pos/return` (line-item return + stock restoration) is an orphan endpoint. Built `pos.routes.ts:2496` with admin-only gate, per-line quantity/reason, automatic inventory restoration via `stock_movements`, and credit-note generation — and ZERO web callers (`grep posApi.return` returns only the wrapper definition).** Manager who returns "1 of the 3 chargers from invoice INV-44" has no UI: forced to use the full-amount Credit Note modal which does NOT restore stock. Inventory shrinkage hidden, COGS skewed. L3, L4, L13 inventory integrity.
+- [ ] WEB-UIUX-1276. **[BLOCKER] `/pos/return` (line-item return + stock restoration) is an orphan endpoint. Built `pos.routes.ts:2496` with admin-only gate, per-line quantity/reason, automatic inventory restoration via `stock_movements`, and credit-note generation — and ZERO web callers (`grep posApi.return` returns only the wrapper definition).** Manager who returns "1 of the 3 chargers from invoice INV-44" has no UI: forced to use the full-amount Credit Note modal which does NOT restore stock. Inventory shrinkage hidden, COGS skewed. L3, L4, L13 inventory integrity. **STATUS: BLOCKED — needs ReturnItemsModal with line-item checkboxes + per-line qty + posApi.return wiring; multi-component, defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2492-2637`
   `packages/web/src/api/endpoints.ts:753-761` (wrapper exists, no caller)
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx` (only Credit Note path)
@@ -5327,7 +5327,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805` (modal hides this fact)
   <!-- meta: fix=server-derive-credit-tax-proportionally-(amount/total*total_tax)+credit-line-net+tax-separately+OR-explicit-toggle-Refund-tax-too-default-on+update-modal-summary-Net/Tax/Total -->
 
-- [ ] WEB-UIUX-1278. **[BLOCKER] Credit Note posts immediately on click — no confirm step, no typed confirm, no undo window. Compare Void: typed confirm + 5s undo (`InvoiceDetailPage.tsx:807-817,109-135`).** A $5,000 fat-finger credit note has the same financial impact as voiding a $5,000 invoice and zero friction to reverse. The `creditNoteMutation` fires straight from the form's Submit button. L4 destructive-action protection, L8 recovery (none).
+- [x] WEB-UIUX-1278. **[BLOCKER] Credit Note posts immediately on click — no confirm step, no typed confirm, no undo window. Compare Void: typed confirm + 5s undo (`InvoiceDetailPage.tsx:807-817,109-135`).** A $5,000 fat-finger credit note has the same financial impact as voiding a $5,000 invoice and zero friction to reverse. The `creditNoteMutation` fires straight from the form's Submit button. L4 destructive-action protection, L8 recovery (none). **[AUTOLOOP-T65 RESOLVED: ConfirmDialog with requireTyping=order_id gates high-value credit notes (amount>=invoice.total OR >=$500) mirroring Void pattern; low amounts skip extra dialog.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177,795-801`
   <!-- meta: fix=wrap-handleCreditNote-in-useUndoableAction-(same-as-void)+OR-ConfirmDialog-with-amount-display-when-amount>$500+OR-typed-confirm-with-amount-string-for-amount>=invoice.total -->
 

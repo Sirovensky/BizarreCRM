@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash, Pencil, Check, Search,
+  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash, Pencil, Check, Search, Eye, EyeOff,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
@@ -103,16 +103,68 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 // ─── PIN Entry Modal ────────────────────────────────────────────────
-function PinModal({ employee, action, onClose, onSubmit, isPending }: {
+// WEB-UIUX-1262: parse server rate-limit error to extract lockedUntil + attemptsRemaining
+function parseRateLimitError(err: unknown): { lockedUntil?: Date; attemptsRemaining?: number; message?: string } {
+  try {
+    const resp = (err as any)?.response?.data;
+    const lockedUntilStr = resp?.lockedUntil ?? resp?.locked_until;
+    const attemptsRemaining = resp?.attemptsRemaining ?? resp?.attempts_remaining;
+    const message: string | undefined = resp?.message ?? resp?.error;
+    const lockedUntil = lockedUntilStr ? new Date(lockedUntilStr) : undefined;
+    // Also try "Try again in N min" pattern from message string
+    if (!lockedUntil && message) {
+      const match = message.match(/try again in (\d+)\s*min/i);
+      if (match) {
+        const mins = parseInt(match[1], 10);
+        return { lockedUntil: new Date(Date.now() + mins * 60 * 1000), attemptsRemaining, message };
+      }
+    }
+    return { lockedUntil, attemptsRemaining, message };
+  } catch {
+    return {};
+  }
+}
+
+function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilProp, attemptsRemainingProp }: {
   employee: Employee;
   action: 'clock-in' | 'clock-out';
   onClose: () => void;
   onSubmit: (pin: string) => void;
   isPending: boolean;
+  // WEB-UIUX-1262: parent passes lockout info parsed from server rate-limit error
+  lockedUntilProp?: Date | null;
+  attemptsRemainingProp?: number | null;
 }) {
   const [pin, setPin] = useState('');
   // WEB-UIUX-1257: need current user role to show the right no-PIN guidance
   const { user: currentUser } = useAuthStore();
+  // WEB-UIUX-1262: rate-limit lockout countdown state (seeded from parent prop)
+  const [lockedUntil, setLockedUntil] = useState<Date | null>(lockedUntilProp ?? null);
+  const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(attemptsRemainingProp ?? null);
+  const [countdown, setCountdown] = useState('');
+
+  // Sync prop changes (new error from parent) into local state
+  useEffect(() => { if (lockedUntilProp) setLockedUntil(lockedUntilProp); }, [lockedUntilProp]);
+  useEffect(() => { if (attemptsRemainingProp != null) setAttemptsRemaining(attemptsRemainingProp); }, [attemptsRemainingProp]);
+
+  // WEB-UIUX-1262: live mm:ss countdown timer when locked out
+  useEffect(() => {
+    if (!lockedUntil) { setCountdown(''); return; }
+    const tick = () => {
+      const diff = lockedUntil.getTime() - Date.now();
+      if (diff <= 0) { setLockedUntil(null); setCountdown(''); return; }
+      const totalSec = Math.ceil(diff / 1000);
+      const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+      const ss = String(totalSec % 60).padStart(2, '0');
+      setCountdown(`${mm}:${ss}`);
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
+
+  // WEB-UIUX-1266: show/hide PIN toggle
+  const [showPin, setShowPin] = useState(false);
 
   // WEB-FG-012 fix: kiosk-cashiers were losing in-progress PINs when their hand
   // grazed the dim outside the inner card — backdrop-click closed the modal
@@ -183,8 +235,9 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
               </label>
               <div className="relative">
                 <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                {/* WEB-UIUX-1266: type toggles between password and text via Eye/EyeOff icon */}
                 <input
-                  type="password"
+                  type={showPin ? 'text' : 'password'}
                   inputMode="numeric"
                   maxLength={6}
                   value={pin}
@@ -197,22 +250,52 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
                   }}
                   placeholder="4-6 digit PIN"
                   autoFocus
-                  className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-4 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  disabled={!!lockedUntil}
+                  className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-10 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 disabled:opacity-50"
                 />
+                {/* WEB-UIUX-1266: show/hide toggle button */}
+                <button
+                  type="button"
+                  aria-label={showPin ? 'Hide PIN' : 'Show PIN'}
+                  onClick={() => setShowPin((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                >
+                  {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
+              {/* WEB-UIUX-1262: rate-limit lockout feedback — live countdown + attempts remaining */}
+              {lockedUntil && countdown && (
+                <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  Too many incorrect attempts. Try again in{' '}
+                  <span className="font-mono font-semibold">{countdown}</span>.
+                  {attemptsRemaining !== null && (
+                    <span className="ml-1 text-xs opacity-75">(attempts remaining: {attemptsRemaining}/5)</span>
+                  )}
+                </div>
+              )}
+              {!lockedUntil && attemptsRemaining !== null && (
+                <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                  Attempts remaining: {attemptsRemaining}/5
+                </p>
+              )}
             </>
           )}
         </div>
+        {/* WEB-UIUX-1274: header X already closes. Footer secondary slot:
+            when no PIN + admin → "Set PIN" link; otherwise no Cancel button. */}
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
-          <button type="button"
-            onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
-          >
-            {employee.has_pin ? 'Cancel' : 'Close'}
-          </button>
+          {!employee.has_pin && currentUser?.role === 'admin' ? (
+            <Link
+              to={`/settings/users?employee=${employee.id}`}
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-primary-600 hover:bg-surface-100 dark:text-primary-400 dark:hover:bg-surface-700"
+            >
+              Set PIN
+            </Link>
+          ) : null}
           <button type="button"
             onClick={() => onSubmit(pin)}
-            disabled={!employee.has_pin || pin.length < 4 || isPending}
+            disabled={!employee.has_pin || pin.length < 4 || isPending || !!lockedUntil}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               action === 'clock-in'
@@ -395,6 +478,15 @@ function EmployeeExpandedRow({
                     </span>
                   </div>
                 ))}
+                {/* WEB-UIUX-1268: view-all link below the capped list */}
+                <div className="pt-1 text-right">
+                  <Link
+                    to="/team/payroll"
+                    className="text-xs text-primary-600 hover:underline dark:text-primary-400"
+                  >
+                    View all →
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -434,6 +526,15 @@ function EmployeeExpandedRow({
                     </div>
                   </div>
                 ))}
+                {/* WEB-UIUX-1268: view-all link below the capped commissions list */}
+                <div className="pt-1 text-right">
+                  <Link
+                    to="/team/payroll"
+                    className="text-xs text-primary-600 hover:underline dark:text-primary-400"
+                  >
+                    View all →
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -465,11 +566,16 @@ export function EmployeeListPage() {
   // WEB-UIUX-1259: client-side search filter (name + email substring)
   const [searchQuery, setSearchQuery] = useState('');
   const { user: currentUser } = useAuthStore();
+  // WEB-UIUX-1262: rate-limit lockout state parsed from server error response
+  const [pinLockedUntil, setPinLockedUntil] = useState<Date | null>(null);
+  const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState<number | null>(null);
 
   // Fetch employee list
+  // WEB-UIUX-1260: refetchInterval keeps kiosks in sync with clock-in/out from other devices within 30s
   const { data: listData, isLoading } = useQuery({
     queryKey: ['employees'],
     queryFn: () => employeeApi.list(),
+    refetchInterval: 30_000,
   });
   const employees: Employee[] = (listData?.data as any)?.data ?? [];
 
@@ -506,7 +612,14 @@ export function EmployeeListPage() {
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
     },
     onError: (err: unknown) => {
-      toast.error(formatApiError(err));
+      // WEB-UIUX-1262: parse rate-limit lockout from server error
+      const { lockedUntil, attemptsRemaining, message } = parseRateLimitError(err);
+      if (lockedUntil) {
+        setPinLockedUntil(lockedUntil);
+        if (attemptsRemaining != null) setPinAttemptsRemaining(attemptsRemaining);
+      } else {
+        toast.error(message ?? formatApiError(err));
+      }
     },
   });
 
@@ -520,7 +633,14 @@ export function EmployeeListPage() {
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
     },
     onError: (err: unknown) => {
-      toast.error(formatApiError(err));
+      // WEB-UIUX-1262: parse rate-limit lockout from server error
+      const { lockedUntil, attemptsRemaining, message } = parseRateLimitError(err);
+      if (lockedUntil) {
+        setPinLockedUntil(lockedUntil);
+        if (attemptsRemaining != null) setPinAttemptsRemaining(attemptsRemaining);
+      } else {
+        toast.error(message ?? formatApiError(err));
+      }
     },
   });
 
@@ -610,7 +730,7 @@ export function EmployeeListPage() {
                     currentUser={currentUser}
                     isExpanded={expandedId === emp.id}
                     onToggle={() => setExpandedId(expandedId === emp.id ? null : emp.id)}
-                    onClockAction={(action) => setPinModal({ employee: emp, action })}
+                    onClockAction={(action) => { setPinLockedUntil(null); setPinAttemptsRemaining(null); setPinModal({ employee: emp, action }); }}
                   />
                 ))
               )}
@@ -624,9 +744,11 @@ export function EmployeeListPage() {
         <PinModal
           employee={pinModal.employee}
           action={pinModal.action}
-          onClose={() => setPinModal(null)}
+          onClose={() => { setPinModal(null); setPinLockedUntil(null); setPinAttemptsRemaining(null); }}
           onSubmit={handlePinSubmit}
           isPending={clockInMutation.isPending || clockOutMutation.isPending}
+          lockedUntilProp={pinLockedUntil}
+          attemptsRemainingProp={pinAttemptsRemaining}
         />
       )}
     </div>
@@ -696,21 +818,16 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
             {employee.role}
           </span>
         </td>
+        {/* WEB-UIUX-1272: pill badge replaces tiny dot for better kiosk legibility */}
         <td className="px-4 py-3">
-          <div className="flex items-center gap-2">
-            <span className={cn(
-              'h-2.5 w-2.5 rounded-full',
-              isClockedIn ? 'bg-green-500' : 'bg-surface-300 dark:bg-surface-600',
-            )} />
-            <span className={cn(
-              'text-sm',
-              isClockedIn
-                ? 'font-medium text-green-700 dark:text-green-400'
-                : 'text-surface-500 dark:text-surface-400',
-            )}>
-              {isClockedIn ? 'Clocked In' : 'Clocked Out'}
-            </span>
-          </div>
+          <span className={cn(
+            'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold',
+            isClockedIn
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+              : 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
+          )}>
+            {isClockedIn ? 'On shift' : 'Off'}
+          </span>
         </td>
         <td className="px-4 py-3 text-surface-700 dark:text-surface-300">
           {formatHours(weeklyHours)}

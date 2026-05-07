@@ -46,6 +46,8 @@ export function InvoiceDetailPage() {
   const voidSnapshotRef = useRef<unknown>(undefined);
   const [showPayment, setShowPayment] = useState(false);
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
+  // WEB-UIUX-1278: typed-confirm gate for high-value credit notes.
+  const [showCreditNoteConfirm, setShowCreditNoteConfirm] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showCreditNote, setShowCreditNote] = useState(false);
@@ -398,6 +400,10 @@ export function InvoiceDetailPage() {
     }
   };
 
+  // WEB-UIUX-1278: threshold above which typed-confirm is required.
+  // Triggers when amount >= invoice total OR >= $500.
+  const CREDIT_NOTE_TYPED_THRESHOLD = 500;
+
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
     if (!amount || amount < 0.01) return toast.error('Minimum credit note amount is 0.01');
@@ -411,13 +417,14 @@ export function InvoiceDetailPage() {
     if (creditNoteForm.code === 'other' && !creditNoteForm.note.trim()) {
       return toast.error('Please enter a note when selecting "Other" as the reason');
     }
-    const invoiceId = invoice.order_id;
-    const typed = window.prompt(
-      `Type the invoice number "${invoiceId}" to confirm Credit Note of ${formatCurrency(amount)}.`,
-    );
-    if (typed === null) return; // cancelled
-    if (typed.trim() !== String(invoiceId)) {
-      toast.error('Invoice number did not match. Credit note cancelled.');
+    // WEB-UIUX-1278: high-value credit notes (>= invoice total OR >= $500) require
+    // the operator to type the invoice number to confirm — same pattern as Void.
+    // Lower amounts fire immediately; the filled credit-note form itself is the
+    // confirm step (operator has already reviewed amount + reason before clicking).
+    const isHighValue =
+      amount >= Number(invoice.total) || amount >= CREDIT_NOTE_TYPED_THRESHOLD;
+    if (isHighValue) {
+      setShowCreditNoteConfirm(true);
       return;
     }
     creditNoteMutation.mutate({
@@ -1117,6 +1124,29 @@ export function InvoiceDetailPage() {
         confirmText={String(invoice?.order_id || id)}
         onConfirm={() => { setShowVoidConfirm(false); scheduleVoidInvoice(); }}
         onCancel={() => setShowVoidConfirm(false)}
+      />
+
+      {/* WEB-UIUX-1278: typed-confirm for high-value credit notes (>= invoice total or >= $500).
+          Mirrors the Void pattern: operator must type the invoice number before the mutation fires. */}
+      <ConfirmDialog
+        open={showCreditNoteConfirm}
+        title={`Issue Credit Note — ${invoice?.order_id || id}`}
+        message={`You are issuing a credit note of ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} against invoice ${invoice?.order_id || id}. This adjusts the ledger and cannot be undone.`}
+        confirmLabel="Issue Credit Note"
+        danger
+        requireTyping
+        confirmText={String(invoice?.order_id || id)}
+        onConfirm={() => {
+          setShowCreditNoteConfirm(false);
+          const amount = parseFloat(creditNoteForm.amount);
+          if (!amount || !creditNoteForm.code) return;
+          creditNoteMutation.mutate({
+            amount,
+            code: creditNoteForm.code,
+            note: creditNoteForm.note.trim(),
+          });
+        }}
+        onCancel={() => setShowCreditNoteConfirm(false)}
       />
 
       {/* WEB-W2-017: Tip-adjust modal removed — BlockChyp SDK does not expose
