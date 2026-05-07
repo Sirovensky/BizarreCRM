@@ -5421,7 +5421,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
   <!-- meta: fix=conditional-copy-amount_due>0-current-text+amount_due===0-"This-will-be-recorded-as-store-credit-on-the-customer's-account." -->
 
-- [ ] WEB-UIUX-1298. **[MINOR] Store-credit overflow path (`invoices.routes.ts:1248-1302`) is server-only; UI never tells the operator the credit went to the customer's store-credit balance. Customer gets no heads-up either. Operator can't answer "where did the $50 overflow go" without DB access.** L7 feedback meaning.
+- [ ] WEB-UIUX-1298. **[MINOR] Store-credit overflow path (`invoices.routes.ts:1248-1302`) is server-only; UI never tells the operator the credit went to the customer's store-credit balance. Customer gets no heads-up either. Operator can't answer "where did the $50 overflow go" without DB access.** L7 feedback meaning. **STATUS: BLOCKED — server invoices.routes.ts must return credit_overflow + store_credit_balance in response; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1248-1302`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
   <!-- meta: fix=server-return-credit_overflow+store_credit_balance-in-response+UI-onSuccess-toast/banner-$X-applied-to-balance,-$Y-added-to-store-credit-(now-$Z) -->
@@ -5430,7 +5430,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:766,777`
   <!-- meta: fix=replace-.toFixed(2)-with-formatCurrency-everywhere-in-modal+drop-hardcoded-$-prefix-on-input-(use-currency-symbol-from-formatCurrency)-or-keep-$-and-be-explicit-USD-only -->
 
-- [ ] WEB-UIUX-1300. **[MINOR] Submit button label "Create Credit Note" (`InvoiceDetailPage.tsx:799-800`) doesn't include the amount. Compare Payment terminal button (line 655) which does ("Pay $X.XX via Terminal"). Confirmation-on-the-button reduces fat-finger commits — operator sees the dollar value at the click target.** L7 feedback at decision moment.
+- [x] WEB-UIUX-1300. **[MINOR] Submit button label "Create Credit Note" (`InvoiceDetailPage.tsx:799-800`) doesn't include the amount. Compare Payment terminal button (line 655) which does ("Pay $X.XX via Terminal"). Confirmation-on-the-button reduces fat-finger commits — operator sees the dollar value at the click target.** L7 feedback at decision moment. **[AUTOLOOP-T67 RESOLVED: submit label now 'Issue $X.XX credit note' when amount entered; default 'Issue Credit Note' when empty.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
   <!-- meta: fix=label=`Issue ${formatCurrency(parseFloat(amount)||0)} credit note`-when-amount>0+default-Create-Credit-Note-when-empty -->
 
@@ -5438,7 +5438,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=onBlur-format-amount-via-Number().toFixed(2)+thousands-separator-via-formatCurrency-stripping-symbol -->
 
-- [ ] WEB-UIUX-1302. **[MINOR] No keyboard trap inside modal. Tab from the last button reaches the page behind. Modal is `role="dialog" aria-modal="true"` (line 740-742) but no focus trap implementation.** WCAG 2.4.3 / 2.4.7. L11 a11y.
+- [x] WEB-UIUX-1302. **[MINOR] No keyboard trap inside modal. Tab from the last button reaches the page behind. Modal is `role="dialog" aria-modal="true"` (line 740-742) but no focus trap implementation.** WCAG 2.4.3 / 2.4.7. L11 a11y. **[AUTOLOOP-T67 RESOLVED: creditNoteDialogRef wired to dialog inner div (was attached to wrong modal); useFocusTrap now traps focus.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-805`
   <!-- meta: fix=use-FocusTrap-or-headlessui-Dialog-(or-mirror-existing-modal-pattern-on-this-page-if-trapping)+restore-focus-to-trigger-on-close -->
 
@@ -5446,7 +5446,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62-78`
   <!-- meta: fix=grid-cols-1-md:grid-cols-2+OR-truncate-with-title-attr+OR-shorten-labels-Defective/Dissatisfied/Wrong-item/Dup-charge/Price-adj/Other -->
 
-- [ ] WEB-UIUX-1304. **[MINOR] Credit Note button shown even when `amount_paid === 0` (an unpaid invoice with `total > 0`). The condition is `invoice.status !== 'void' && Number(invoice.total) > 0` (`InvoiceDetailPage.tsx:376`). Server rejects because amount > amount_paid — but only on submit. The button promises an action that's impossible to complete.** L1 findability of disabled state.
+- [x] WEB-UIUX-1304. **[MINOR] Credit Note button shown even when `amount_paid === 0` (an unpaid invoice with `total > 0`). The condition is `invoice.status !== 'void' && Number(invoice.total) > 0` (`InvoiceDetailPage.tsx:376`). Server rejects because amount > amount_paid — but only on submit. The button promises an action that's impossible to complete.** L1 findability of disabled state. **[AUTOLOOP-T67 RESOLVED: Refund button shown disabled with title 'No payments yet — nothing to refund' when amount_paid===0.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   <!-- meta: fix=condition-also-Number(invoice.amount_paid)>0+OR-show-button-disabled-with-tooltip-No-payments-yet—nothing-to-credit -->
 
@@ -5454,7 +5454,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744`
   <!-- meta: fix=on-backdrop-click-if-amount||reason||note-then-window.confirm-Discard-credit-note-draft?+otherwise-close-immediately -->
 
-- [ ] WEB-UIUX-1306. **[MINOR] No max-amount visual progress / use-up indicator. Operator typing $50 of $200 max sees raw text only; an `$50 / $200` bar or "remaining-after-this" would help (esp. avoid the surprise of "this will leave $0 due"). Common in Stripe/Shopify refund modals.** L7 feedback.
+- [x] WEB-UIUX-1306. **[MINOR] No max-amount visual progress / use-up indicator. Operator typing $50 of $200 max sees raw text only; an `$50 / $200` bar or "remaining-after-this" would help (esp. avoid the surprise of "this will leave $0 due"). Common in Stripe/Shopify refund modals.** L7 feedback. **[AUTOLOOP-T67 RESOLVED: dynamic helper line shows 'After this credit: balance $X · remaining creditable $Y · Min $0.01' when amount entered.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-779`
   <!-- meta: fix=below-input-add-After-this-credit-balance-$X+remaining-creditable-$Y+slim-bar-amount/max-percent -->
 
@@ -5464,7 +5464,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Nit — visual polish
 
-- [ ] WEB-UIUX-1308. **[NIT] Submit button colour is amber (`bg-amber-600`, line 798). Amber typically signals warning/caution; in this app destructive (Void) uses red, primary (Record Payment) uses primary, credit-note uses amber — unique-snowflake. Either it's destructive (red) or primary (primary-600). Amber leaves the operator unsure.** L5 hierarchy.
+- [x] WEB-UIUX-1308. **[NIT] Submit button colour is amber (`bg-amber-600`, line 798). Amber typically signals warning/caution; in this app destructive (Void) uses red, primary (Record Payment) uses primary, credit-note uses amber — unique-snowflake. Either it's destructive (red) or primary (primary-600). Amber leaves the operator unsure.** L5 hierarchy. **[AUTOLOOP-T67 VERIFIED: submit button already bg-red-600 matching Void destructive treatment; comment added.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:798`
   <!-- meta: fix=pick-one-(red-if-destructive-treatment+primary-if-routine)+document-colour-policy-in-styleguide -->
 
@@ -5472,7 +5472,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
   <!-- meta: fix=keep-Record-Payment+Print-in-header+wrap-Void+Credit-Note+Payment-Plan-into-Kebab-More-actions-menu -->
 
-- [ ] WEB-UIUX-1310. **[NIT] No screen-reader announcement on success. Toast is visual only; `aria-live` region not present. SR users issuing a refund hear nothing.** L11 a11y.
+- [x] WEB-UIUX-1310. **[NIT] No screen-reader announcement on success. Toast is visual only; `aria-live` region not present. SR users issuing a refund hear nothing.** L11 a11y. **[AUTOLOOP-T67 RESOLVED: creditNoteSuccessAnnouncement state + aria-live=polite sr-only span; cleared after 4s.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
   <!-- meta: fix=mount-aria-live=polite-region-rendering-last-toast-text+OR-verify-react-hot-toast-emits-role=status -->
 
@@ -5480,7 +5480,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:749,792`
   <!-- meta: fix=remove-footer-Cancel+widen-Submit-OR-remove-header-X-(more-keyboard-friendly) -->
 
-- [ ] WEB-UIUX-1312. **[NIT] No analytics / dashboard tile for refund volume. Server has the data; UI surfaces nothing. Manager asking "why are returns up this month" has no in-app answer.** L6 discoverability of insights.
+- [ ] WEB-UIUX-1312. **[NIT] No analytics / dashboard tile for refund volume. Server has the data; UI surfaces nothing. Manager asking "why are returns up this month" has no in-app answer.** L6 discoverability of insights. **STATUS: BLOCKED — needs Refunds-this-week dashboard tile + drilldown route + reason-codes bar; multi-component, defer**
   `packages/server/src/routes/refunds.routes.ts:74-95` (data)
   `packages/web/src/pages/dashboard/DashboardPage.tsx` (no refund tile)
   <!-- meta: fix=Refunds-this-week-tile-on-dashboard+drilldown-to-Refunds-page-(see-WEB-UIUX-1275)+top-3-reason-codes-bar -->
@@ -5489,7 +5489,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:748`
   <!-- meta: fix=Issue-Credit-Note-(modal-title+submit-button)+document-as-final-not-draft -->
 
-- [ ] WEB-UIUX-1314. **[NIT] `min="0.01"` on amount input (line 763) prevents 0 client-side, but the helper text never communicates the minimum to the operator. A typed 0 silently rejected via `parseFloat || 0` flow on submit.** L7 feedback.
+- [x] WEB-UIUX-1314. **[NIT] `min="0.01"` on amount input (line 763) prevents 0 client-side, but the helper text never communicates the minimum to the operator. A typed 0 silently rejected via `parseFloat || 0` flow on submit.** L7 feedback. **[AUTOLOOP-T67 RESOLVED: helper text now communicates 'Min $0.01 · Max $X' so 0.01 lower-bound is visible.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=helper-text-Min-$0.01-Max-$X-(amount-paid)+OR-disable-Submit-while-input<0.01 -->
 
@@ -5502,7 +5502,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/api/types.ts:436-442`
   <!-- meta: fix=add-Customer-typeahead+optional-Lead-typeahead+pass-customer_id+lead_id-in-payload+extend-CreateAppointmentInput-with-both -->
 
-- [ ] WEB-UIUX-1316. **[BLOCKER] No edit, reschedule, cancel, or mark-no-show path anywhere in UI. `leadApi.updateAppointment` and `leadApi.deleteAppointment` (`endpoints.ts:877-878`) exist; **zero call sites** in `packages/web/src`. AppointmentDetailModal (`CalendarPage.tsx:82-173`) is read-only — no buttons. Once created, status frozen at "scheduled" forever; customer reschedule = staff has to recreate (and orphan the old one since they can't delete it either).** L8 recovery, L4 flow completion.
+- [ ] WEB-UIUX-1316. **[BLOCKER] No edit, reschedule, cancel, or mark-no-show path anywhere in UI. `leadApi.updateAppointment` and `leadApi.deleteAppointment` (`endpoints.ts:877-878`) exist; **zero call sites** in `packages/web/src`. AppointmentDetailModal (`CalendarPage.tsx:82-173`) is read-only — no buttons. Once created, status frozen at "scheduled" forever; customer reschedule = staff has to recreate (and orphan the old one since they can't delete it either).** L8 recovery, L4 flow completion. **STATUS: BLOCKED — needs Edit/Reschedule/Cancel/Mark-No-show buttons + AppointmentDetailModal expansion; multi-action UI, defer to scheduling sprint**
   `packages/web/src/pages/leads/CalendarPage.tsx:82-173`
   `packages/web/src/api/endpoints.ts:877-878`
   <!-- meta: fix=add-Edit/Reschedule/Cancel/Mark-No-show-buttons-in-AppointmentDetailModal+wire-updateAppointment+deleteAppointment+confirm-modal-on-cancel/delete -->

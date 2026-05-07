@@ -72,6 +72,8 @@ export function InvoiceDetailPage() {
     note?: string;
     _general?: string;
   }>({});
+  // WEB-UIUX-1310: aria-live announcement for credit note success — mirrors toast for SR users.
+  const [creditNoteSuccessAnnouncement, setCreditNoteSuccessAnnouncement] = useState('');
   const [emailReceiptSending, setEmailReceiptSending] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   // FA-L4: split-payment wizard lives behind a toggle so it doesn't crowd the
@@ -244,6 +246,12 @@ export function InvoiceDetailPage() {
       } else {
         toast.success(msg);
       }
+
+      // WEB-UIUX-1310: mirror success to aria-live region so SR users hear confirmation
+      // even when the modal closes before the toast is read. Clear after 4s.
+      const srMsg = cnOrderId ? `Credit note ${cnOrderId} created` : msg;
+      setCreditNoteSuccessAnnouncement(srMsg);
+      setTimeout(() => setCreditNoteSuccessAnnouncement(''), 4000);
 
       setShowCreditNote(false);
       setCreditNoteForm({ amount: '', code: null, note: '' });
@@ -451,6 +459,14 @@ export function InvoiceDetailPage() {
 
   return (
     <div>
+      {/* WEB-UIUX-1310: visually-hidden aria-live region announces credit note success to SR users. */}
+      <span
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {creditNoteSuccessAnnouncement}
+      </span>
       <Breadcrumb items={[
         { label: 'Invoices', href: '/invoices' },
         { label: invoice.order_id || `INV-${id}` },
@@ -501,8 +517,19 @@ export function InvoiceDetailPage() {
             </button>
             {/* WEB-UIUX-1210: gate behind admin/manager; hide entirely or show
                 disabled with tooltip when user lacks the required role. */}
-            {canCreateCreditNote && (
-              canVoidOrCreditNote ? (
+            {/* WEB-UIUX-1304: show disabled Refund button when no payment has been made yet
+                (amount_paid===0 means maxCreditNoteAmount===0, so canCreateCreditNote is false).
+                This gives operators a clear signal rather than silently hiding the action. */}
+            {invoice.status !== 'void' && (canCreateCreditNote || Number(invoice.amount_paid) <= 0) && (
+              !canCreateCreditNote && Number(invoice.amount_paid) <= 0 ? (
+                <button
+                  disabled
+                  title="No payments yet — nothing to refund"
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-100 dark:border-red-900/40 text-red-300 dark:text-red-700 cursor-not-allowed opacity-60"
+                >
+                  <Undo2 className="h-4 w-4" /> Refund
+                </button>
+              ) : canVoidOrCreditNote ? (
                 <button
                   onClick={() => {
                     // WEB-UIUX-877: require manager PIN for refunds above threshold.
@@ -793,7 +820,7 @@ export function InvoiceDetailPage() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowPayment(false); }}
         >
-          <div ref={creditNoteDialogRef as React.RefObject<HTMLDivElement>} className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <h2 id="record-payment-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-4">Record Payment</h2>
             <div className="space-y-4">
               <div>
@@ -952,7 +979,8 @@ export function InvoiceDetailPage() {
             setCreditNoteForm({ amount: '', code: null, note: '' });
           }}
         >
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+          {/* WEB-UIUX-1302: creditNoteDialogRef wired here so useFocusTrap traps focus inside Credit Note dialog. */}
+          <div ref={creditNoteDialogRef as React.RefObject<HTMLDivElement>} className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               {/* WEB-UIUX-1054: "Issue" is more precise — the action issues a
                   credit instrument; "Create" is too generic. */}
@@ -1068,8 +1096,21 @@ export function InvoiceDetailPage() {
                   <p id="credit-amount-error" role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">{creditNoteError.amount}</p>
                 ) : (
                   // WEB-UIUX-1036: id matches aria-describedby="credit-amount-label" on the input above.
+                  // WEB-UIUX-1306 + WEB-UIUX-1314: progress indicator — shows balance after credit,
+                  // remaining creditable amount, and min $0.01 constraint.
                   <p id="credit-amount-label" className="text-xs text-surface-400 mt-1">
-                    Max credit: {formatCurrency(maxCreditNoteAmount)}
+                    {(() => {
+                      const entered = parseFloat(creditNoteForm.amount);
+                      const hasEntered = !isNaN(entered) && entered > 0;
+                      const remaining = Math.max(0, maxCreditNoteAmount - (hasEntered ? entered : 0));
+                      const balanceAfter = Math.max(0, Number(invoice.amount_due) - (hasEntered ? entered : 0));
+                      if (hasEntered) {
+                        return (
+                          <>After this credit: balance {formatCurrency(balanceAfter)} · remaining creditable {formatCurrency(remaining)} · Min $0.01</>
+                        );
+                      }
+                      return <>Min $0.01 · Max {formatCurrency(maxCreditNoteAmount)} (after prior credits)</>;
+                    })()}
                   </p>
                 )}
               </div>
@@ -1107,9 +1148,18 @@ export function InvoiceDetailPage() {
                 onClick={handleCreditNote}
                 disabled={creditNoteMutation.isPending}
                 // WEB-UIUX-1040: red ramp matches button in header — irreversible action.
+                // WEB-UIUX-1308: bg-red-600 hover:bg-red-700 (matches Void destructive treatment; verified correct).
                 className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
-                {creditNoteMutation.isPending ? 'Issuing...' : 'Issue Credit Note'}
+                {/* WEB-UIUX-1300: include amount in label when entered so operator can confirm before clicking */}
+                {creditNoteMutation.isPending
+                  ? 'Issuing...'
+                  : (() => {
+                      const amt = parseFloat(creditNoteForm.amount);
+                      return amt > 0
+                        ? `Issue ${formatCurrency(amt)} credit note`
+                        : 'Issue Credit Note';
+                    })()}
               </button>
             </div>
           </div>
