@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Plus, Search, Loader2, AlertCircle, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
-import { formatCurrency as formatCurrencyShared, formatDate, dollarsFromMaybeCents } from '@/utils/format';
+import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, dollarsFromMaybeCents } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +40,8 @@ interface IssueFormState {
   recipient_name: string;
   recipient_email: string;
   expires_at: string;
+  // WEB-UIUX-989: server validates notes up to 1000 chars
+  notes: string;
 }
 
 const PAGE_SIZE = 50;
@@ -76,6 +78,15 @@ function isPastDateInputValue(value: string): boolean {
   return Boolean(value) && value < localDateInputValue();
 }
 
+// WEB-UIUX-997: returns true when expires_at is within 30 days from now (and not already expired)
+function isExpiringSoon(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  const exp = new Date(expiresAt).getTime();
+  const now = Date.now();
+  const msIn30Days = 30 * 24 * 60 * 60 * 1000;
+  return exp > now && exp - now <= msIn30Days;
+}
+
 // ─── Issue Modal ─────────────────────────────────────────────────────────────
 
 interface IssueModalProps {
@@ -89,6 +100,7 @@ function IssueModal({ onClose }: IssueModalProps) {
     recipient_name: '',
     recipient_email: '',
     expires_at: '',
+    notes: '', // WEB-UIUX-989
   });
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const todayDateInputValue = localDateInputValue();
@@ -112,6 +124,8 @@ function IssueModal({ onClose }: IssueModalProps) {
         recipient_name: form.recipient_name || null,
         recipient_email: form.recipient_email || null,
         expires_at: form.expires_at || null,
+        // WEB-UIUX-989: include notes (server validates ≤1000 chars)
+        notes: form.notes || null,
       });
     },
     onSuccess: (res) => {
@@ -121,7 +135,10 @@ function IssueModal({ onClose }: IssueModalProps) {
       toast.success('Gift card issued');
     },
     onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : 'Failed to issue gift card';
+      // WEB-UIUX-994: surface server-provided message (e.g. "amount exceeds $10,000")
+      const msg =
+        (err as any)?.response?.data?.message ??
+        (err instanceof Error ? err.message : 'Failed to issue gift card');
       toast.error(msg);
     },
   });
@@ -191,12 +208,15 @@ function IssueModal({ onClose }: IssueModalProps) {
 
         <div className="space-y-4">
           <div>
+            {/* WEB-UIUX-993: use tenant currency symbol instead of hard-coded "$" */}
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-              Initial value ($) <span className="text-red-500">*</span>
+              Initial value ({formatCurrencySymbol()}) <span className="text-red-500">*</span>
             </label>
+            {/* WEB-UIUX-994: max="10000" matches server $10k cap */}
             <input
               type="number"
               min="0.01"
+              max="10000"
               step="0.01"
               value={form.amount}
               onChange={(e) => update('amount', e.target.value)}
@@ -246,6 +266,21 @@ function IssueModal({ onClose }: IssueModalProps) {
                 Expiry date cannot be in the past.
               </p>
             )}
+          </div>
+          {/* WEB-UIUX-989: notes field — server validates ≤1000 chars */}
+          <div>
+            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              Notes (optional)
+            </label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => update('notes', e.target.value)}
+              maxLength={1000}
+              rows={3}
+              placeholder="Internal note about this gift card…"
+              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800 resize-none"
+            />
+            <p className="mt-0.5 text-xs text-surface-400 text-right">{form.notes.length}/1000</p>
           </div>
         </div>
 
@@ -445,8 +480,21 @@ export function GiftCardsListPage() {
                   <td className="px-4 py-3 text-surface-500 dark:text-surface-400">
                     {formatDate(card.created_at)}
                   </td>
+                  {/* WEB-UIUX-997: yellow warning icon when expiring within 30 days */}
                   <td className="px-4 py-3 text-surface-500 dark:text-surface-400">
-                    {card.expires_at ? formatDate(card.expires_at) : <span className="text-surface-400">—</span>}
+                    {card.expires_at ? (
+                      <span className="inline-flex items-center gap-1">
+                        {isExpiringSoon(card.expires_at) && (
+                          <AlertTriangle
+                            className="h-3.5 w-3.5 text-yellow-500 shrink-0"
+                            aria-label="Expiring soon"
+                          />
+                        )}
+                        {formatDate(card.expires_at)}
+                      </span>
+                    ) : (
+                      <span className="text-surface-400">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <button
