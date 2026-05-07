@@ -10,6 +10,19 @@ import { Breadcrumb } from '@/components/shared/Breadcrumb';
 // @audit-fixed: use shared timeAgo helper instead of local duplicate
 import { timeAgo } from '@/utils/format';
 
+// ─── Legal transition map (mirrors server leads.routes.ts:31-43) ──────────────
+// WEB-UIUX-1342: filter move-menu to only show targets the server will accept.
+// Keep in sync with LEGAL_LEAD_TRANSITIONS on the server whenever transitions change.
+const LEGAL_LEAD_TRANSITIONS: Record<string, readonly string[]> = {
+  'new':       ['contacted', 'scheduled', 'qualified', 'lost'],
+  'contacted': ['scheduled', 'qualified', 'proposal', 'lost'],
+  'scheduled': ['contacted', 'qualified', 'proposal', 'lost'],
+  'qualified': ['proposal', 'contacted', 'scheduled', 'lost'],
+  'proposal':  ['converted', 'qualified', 'lost'],
+  'lost':      ['new', 'contacted'],
+  'converted': ['new', 'contacted'],
+};
+
 // ─── Pipeline stage config ─────────────────────────────────────
 // FA-M25: "Lost" intentionally omitted from the kanban view. Marking a lead
 // lost requires capturing a reason (via the LostReasonModal on the lead
@@ -146,7 +159,7 @@ function LeadCard({
                 aria-label="Move to stage"
                 className="absolute right-0 bottom-full z-20 mb-1 w-36 rounded-lg border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-800"
               >
-                {PIPELINE_STAGES.filter((s) => s.key !== lead.status).map((stage) => (
+                {PIPELINE_STAGES.filter((s) => (LEGAL_LEAD_TRANSITIONS[lead.status] ?? []).includes(s.key)).map((stage) => (
                   <button
                     key={stage.key}
                     role="menuitem"

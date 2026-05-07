@@ -12,6 +12,7 @@ import { confirm } from '@/stores/confirmStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 
 const LEAD_STATUSES = [
@@ -206,7 +207,13 @@ export function LeadDetailPage() {
       const ticketId = res.data?.data?.ticket?.id || res.data?.data?.ticket_id;
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
-    onError: () => toast.error('Failed to convert'),
+    // WEB-UIUX-1338: surface server error messages instead of swallowing them;
+    // if the server signals a tier/plan limit, prepend a clear upgrade prompt.
+    onError: (err: any) => {
+      const upgradeRequired = err?.response?.data?.upgrade_required === true;
+      const base = formatApiError(err);
+      toast.error(upgradeRequired ? `Tier limit reached: ${base} — Upgrade →` : base);
+    },
   });
 
   const updateMut = useMutation({
@@ -404,26 +411,38 @@ export function LeadDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {lead.status !== 'converted' && (
-            <button
-              onClick={async () => {
-                // WEB-FM-020 (Fixer-C15 2026-04-25): wrap async click handler so a
-                // rejected promise from `confirm()` (modal teardown race, etc.) is
-                // surfaced via toast instead of silently bubbling to
-                // window.onunhandledrejection where ErrorBoundary cannot catch it.
-                try {
-                  if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) {
-                    convertMut.mutate();
+            <>
+              {/* WEB-UIUX-1344: "Mark Lost" surfaced as a 1-click secondary CTA next to Convert
+                  so the action is no longer buried 2 clicks deep in the status picker. */}
+              {lead.status !== 'lost' && (
+                <button
+                  onClick={() => setShowLostModal(true)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-red-500 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:border-red-400 dark:hover:bg-red-950/30"
+                >
+                  Mark Lost
+                </button>
+              )}
+              <button
+                onClick={async () => {
+                  // WEB-FM-020 (Fixer-C15 2026-04-25): wrap async click handler so a
+                  // rejected promise from `confirm()` (modal teardown race, etc.) is
+                  // surfaced via toast instead of silently bubbling to
+                  // window.onunhandledrejection where ErrorBoundary cannot catch it.
+                  try {
+                    if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) {
+                      convertMut.mutate();
+                    }
+                  } catch {
+                    /* user cancelled or modal closed — no toast needed */
                   }
-                } catch {
-                  /* user cancelled or modal closed — no toast needed */
-                }
-              }}
-              disabled={convertMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-            >
-              <ArrowRightLeft className="h-4 w-4" />
-              {convertMut.isPending ? 'Converting...' : 'Convert to Ticket'}
-            </button>
+                }}
+                disabled={convertMut.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+                {convertMut.isPending ? 'Converting...' : 'Convert to Ticket'}
+              </button>
+            </>
           )}
         </div>
       </div>

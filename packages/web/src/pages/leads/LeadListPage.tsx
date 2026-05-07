@@ -371,6 +371,10 @@ export function LeadListPage() {
   // WEB-W2-035: row selection for bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  // WEB-UIUX-1347: track which row's convert is in-flight so only that row is disabled
+  const [pendingConvertId, setPendingConvertId] = useState<number | null>(null);
+  // WEB-UIUX-1347: track which row's delete is in-flight so only that row is disabled
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const bulkMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -835,49 +839,68 @@ export function LeadListPage() {
                           <Eye className="h-4 w-4" />
                         </button>
                         {lead.status !== 'converted' && (
+                          // WEB-UIUX-1345: added visible label (hidden on mobile) + aria-label
+                          // WEB-UIUX-1347: disable only the converting row, not all rows
                           <button
                             type="button"
+                            aria-label="Convert lead to ticket"
                             onClick={async (e) => {
                               // WEB-FM-020 — Fixer-C28: try/catch swallows confirm-modal teardown rejection
                               e.stopPropagation();
                               try {
                                 if (await confirm('Convert this lead to a ticket?')) {
-                                  convertMut.mutate(lead.id);
+                                  setPendingConvertId(lead.id);
+                                  try {
+                                    await convertMut.mutateAsync(lead.id);
+                                  } finally {
+                                    setPendingConvertId(null);
+                                  }
                                 }
                               } catch (err) {
                                 toast.error(formatApiError(err));
                               }
                             }}
-                            disabled={convertMut.isPending}
+                            disabled={pendingConvertId === lead.id}
                             className={cn(
-                              'rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400',
+                              'inline-flex items-center gap-1 rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400',
                               INLINE_ACTION_FOCUS_CLASS,
                             )}
                             title="Convert to Ticket"
                           >
                             <ArrowRightLeft className="h-4 w-4" />
+                            <span className="hidden sm:inline">Convert</span>
                           </button>
                         )}
+                        {/* WEB-UIUX-1345: added visible label (hidden on mobile) + aria-label */}
+                        {/* WEB-UIUX-1347: disable only the deleting row, not all rows */}
                         <button
                           type="button"
+                          aria-label="Delete lead"
                           onClick={async (e) => {
                             // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal promise
                             e.stopPropagation();
                             try {
                               if (await confirm('Delete this lead?', { danger: true })) {
-                                scheduleLeadDelete(lead.id, lead.name);
+                                setPendingDeleteId(lead.id);
+                                try {
+                                  scheduleLeadDelete(lead.id, lead.name);
+                                } finally {
+                                  setPendingDeleteId(null);
+                                }
                               }
                             } catch (err) {
                               toast.error(formatApiError(err));
                             }
                           }}
+                          disabled={pendingDeleteId === lead.id}
                           className={cn(
-                            'rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400',
+                            'inline-flex items-center gap-1 rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400',
                             INLINE_ACTION_FOCUS_CLASS,
                           )}
                           title="Delete Lead"
                         >
                           <Trash2 className="h-4 w-4" />
+                          <span className="hidden sm:inline">Delete</span>
                         </button>
                       </div>
                     </td>
