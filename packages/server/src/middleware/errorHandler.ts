@@ -99,7 +99,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
       if (err && typeof err === 'object') {
         for (const k of Object.getOwnPropertyNames(err)) {
           try {
-            seen[k] = (err as Record<string, unknown>)[k];
+            seen[k] = (err as unknown as Record<string, unknown>)[k];
           } catch { /* property accessor threw — skip */ }
         }
         const proto = Object.getPrototypeOf(err);
@@ -108,7 +108,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
             if (k === 'constructor') continue;
             if (k in seen) continue;
             try {
-              const v = (err as Record<string, unknown>)[k];
+              const v = (err as unknown as Record<string, unknown>)[k];
               if (typeof v !== 'function') seen[k] = v;
             } catch { /* skip */ }
           }
