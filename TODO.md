@@ -3838,7 +3838,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-939. **[MAJOR] Catalog `partial_failure` job status falls through to "pending" badge.** Looks like in-progress job. Operator can't distinguish "still running" from "finished but skipped half". L11, L8. **[AUTOLOOP-T60 RESOLVED: partial_failure status mapped to amber 'Done with errors' badge; unknown statuses fall to neutral warning instead of pending spinner.]**
   `packages/web/src/pages/catalog/CatalogPage.tsx:27-42`
 
-- [ ] WEB-UIUX-940. **[MAJOR] Supplier-template-drift / selector-mismatch invisible to UI.** Server logs `selector mismatch` warnings — UI shows generic `error_message` text truncated. No "stale catalog" amber banner. L8, L13.
+- [x] WEB-UIUX-940. **[MAJOR] Supplier-template-drift / selector-mismatch invisible to UI.** Server logs `selector mismatch` warnings — UI shows generic `error_message` text truncated. No "stale catalog" amber banner. L8, L13. **[AUTOLOOP-T61 RESOLVED: amber banner shown when any job error_message matches /selector[ _-]mismatch/i; job row error text amber for drift, red for other errors with title tooltip.]**
   `packages/web/src/pages/catalog/CatalogPage.tsx:660-676`
 
 - [ ] WEB-UIUX-941. **[MAJOR · BLOCKED] SMS send error path swallows 429/silent-drop/invalid-number distinctions.** Generic "Failed to send message" toast. L8, L14.
@@ -3894,7 +3894,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
   <!-- meta: fix=copy=Approving-on-customer-behalf-skips-signature-capture+require-typing-INITIAL-OR-reason -->
 
-- [ ] WEB-UIUX-953. **[MAJOR] `estimateApi.send` typed `method?: 'sms' | 'email'` but server rejects `'email'` with 400.** `endpoints.ts:906` advertises both; `estimates.routes.ts:967-969` throws "Unsupported send method 'email'". TS contract is a lie — caller writing email path gets runtime error, no compile warning. L7.
+- [x] WEB-UIUX-953. **[MAJOR] `estimateApi.send` typed `method?: 'sms' | 'email'` but server rejects `'email'` with 400.** `endpoints.ts:906` advertises both; `estimates.routes.ts:967-969` throws "Unsupported send method 'email'". TS contract is a lie — caller writing email path gets runtime error, no compile warning. L7. **[AUTOLOOP-T61 RESOLVED: estimateApi.send method type narrowed to 'sms' only; TS now matches server which rejects email.]**
   `packages/web/src/api/endpoints.ts:906`
   `packages/server/src/routes/estimates.routes.ts:967-969`
   <!-- meta: fix=narrow-type-to-'sms'-only-OR-implement-email-path -->
@@ -3902,20 +3902,20 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [ ] WEB-UIUX-954. **[MAJOR] SMS body hardcoded server-side, says "Reply YES to approve" but NO inbound-SMS approve handler exists.** `estimates.routes.ts:984` builds `Hi ${first_name}, ... Reply YES to approve...`. Customer texts "YES" → goes to nowhere (smsInbox shows it as raw thread message; no parser flips estimate status). False promise. Customers expect SMS-reply approval, get silence. L7, L16.
   `packages/server/src/routes/estimates.routes.ts:984`
 
-- [ ] WEB-UIUX-955. **[MAJOR] `send` flips `status='sent'` BEFORE SMS dispatch; SMS failure surfaces toast but status stays `'sent'`.** `estimates.routes.ts:949-955` UPDATEs status='sent' first, then SMS attempt at `:980-1003` may fail. Web treats `data.sent === false` as error toast (`EstimateDetailPage:76-77`) but the estimate's status persists as 'sent' — operator/customer/audit chain says "sent" even though nothing left the building. L7, L11.
+- [ ] WEB-UIUX-955. **[MAJOR] `send` flips `status='sent'` BEFORE SMS dispatch; SMS failure surfaces toast but status stays `'sent'`.** `estimates.routes.ts:949-955` UPDATEs status='sent' first, then SMS attempt at `:980-1003` may fail. Web treats `data.sent === false` as error toast (`EstimateDetailPage:76-77`) but the estimate's status persists as 'sent' — operator/customer/audit chain says "sent" even though nothing left the building. L7, L11. **STATUS: BLOCKED — server estimates.routes.ts must defer status update until SMS dispatch confirmed; backend change, defer to estimates sprint**
   `packages/server/src/routes/estimates.routes.ts:949-1003`
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:73-83`
 
 - [ ] WEB-UIUX-956. **[MAJOR] Send confirm dialog does not show the destination phone number.** "Send this estimate to the customer via SMS?" — no `${formatPhone(estimate.customer_mobile)}`. Operator can't catch a typo'd phone before the SMS fires + counts toward Twilio cost + status flips to sent. L7, L11.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:195`
 
-- [ ] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8.
+- [ ] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8. **STATUS: BLOCKED — needs SMS infrastructure work (deferred per user 2026-05-05); fallback channel UI pairs with that sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:75-80`
 
 - [ ] WEB-UIUX-958. **[MAJOR] Convert button enabled while `status='draft'` — operator converts never-sent estimate to ticket.** `:219` gates only on `!== 'converted' && !== 'rejected'`. Customer who never saw the estimate now has a billable ticket. Should require `status IN ('approved','signed','sent')` minimum, with explicit warn for `'sent'` (not yet approved). L1, L5.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
 
-- [ ] WEB-UIUX-959. **[MAJOR] Convert button enabled while `status='sent'` (not approved) — silent conversion of unapproved estimate.** Confirm "Convert this estimate to a ticket?" gives no signal that customer hasn't approved yet. Same defect on EstimateListPage row action. L7, L1.
+- [x] WEB-UIUX-959. **[MAJOR] Convert button enabled while `status='sent'` (not approved) — silent conversion of unapproved estimate.** Confirm "Convert this estimate to a ticket?" gives no signal that customer hasn't approved yet. Same defect on EstimateListPage row action. L7, L1. **[AUTOLOOP-T61 RESOLVED: Convert button disabled unless status in approved|signed; tooltip 'Customer hasn't approved yet' on disabled state in DetailPage + ListPage.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:222`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:772`
 
@@ -3923,7 +3923,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:102`
   <!-- meta: fix=use-formatApiError(err)+err.response.data.message-fallback -->
 
-- [ ] WEB-UIUX-961. **[MAJOR] Detail header has 5 outline-style action buttons in a row + Print = 6 total — no clear primary CTA.** Send (primary border), Approve (emerald border), Convert (green border), Reject (red border), Print (surface border). All same height, same padding, all outline; emerald + green are visually near-identical. Operator scanning header can't identify highest-leverage action. Tablet (768) wraps awkwardly. L1, L11.
+- [x] WEB-UIUX-961. **[MAJOR] Detail header has 5 outline-style action buttons in a row + Print = 6 total — no clear primary CTA.** Send (primary border), Approve (emerald border), Convert (green border), Reject (red border), Print (surface border). All same height, same padding, all outline; emerald + green are visually near-identical. Operator scanning header can't identify highest-leverage action. Tablet (768) wraps awkwardly. L1, L11. **[AUTOLOOP-T61 RESOLVED: status-driven solid-fill primary CTA — Send on draft, Approve on sent, Convert on approved/signed; others stay outline-style.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-255`
   <!-- meta: fix=primary-action=solid-fill-by-status(Approve-when-sent-or-Send-when-draft-or-Convert-when-approved)+collapse-rest-into-overflow-menu -->
 
@@ -3931,21 +3931,21 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/estimates/EstimateListPage.tsx:580-608`
   <!-- meta: fix=add-Convert-Selected-button-using-estimateApi.bulkConvert -->
 
-- [ ] WEB-UIUX-963. **[MAJOR] List-page bulk-Delete uses `Promise.all` — partial failure shows "Deleted N" toast even when half failed.** `:591-595`: `Promise.all([...selectedIds].map(id => estimateApi.delete(id)))` — if 3 of 10 throw, `.all` rejects but `await` is inside try, `catch` shows generic. Even when all settle, success toast counts requested IDs not server-confirmed. L8.
+- [x] WEB-UIUX-963. **[MAJOR] List-page bulk-Delete uses `Promise.all` — partial failure shows "Deleted N" toast even when half failed.** `:591-595`: `Promise.all([...selectedIds].map(id => estimateApi.delete(id)))` — if 3 of 10 throw, `.all` rejects but `await` is inside try, `catch` shows generic. Even when all settle, success toast counts requested IDs not server-confirmed. L8. **[AUTOLOOP-T61 VERIFIED: code already uses sequential for-loop with per-item try/catch tracking deletedCount + failures[]; toast accurately reflects partial/all-fail.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:588-596`
 
 - [ ] WEB-UIUX-964. **[MAJOR] Reject confirm copy "This cannot be undone" — false. PUT `/:id` accepts arbitrary `status` change, server has no rule preventing rejected→draft.** Copy lies; operator who mis-clicks Reject reads "permanent" warning, panics, opens ticket. L7.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:237`
   <!-- meta: fix=either-enforce-server-side-rejected-as-terminal-OR-soften-copy-to-Reject-this-estimate? -->
 
-- [ ] WEB-UIUX-965. **[MAJOR] Detail h1 renders "Estimate " (trailing space) when `order_id` is null.** `:177` `<h1>Estimate {estimate.order_id}</h1>` — breadcrumb falls back to `Estimate #${id}` (`:166`) but the page title doesn't. Estimates pre-`order_id`-policy or imported rows show empty heading. L7, L9.
+- [x] WEB-UIUX-965. **[MAJOR] Detail h1 renders "Estimate " (trailing space) when `order_id` is null.** `:177` `<h1>Estimate {estimate.order_id}</h1>` — breadcrumb falls back to `Estimate #${id}` (`:166`) but the page title doesn't. Estimates pre-`order_id`-policy or imported rows show empty heading. L7, L9. **[AUTOLOOP-T61 RESOLVED: h1 fallback mirrors breadcrumb — renders 'Estimate #<id>' when order_id is null instead of trailing space.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:177`
   <!-- meta: fix=mirror-breadcrumb-fallback -->
 
 - [ ] WEB-UIUX-966. **[MAJOR] Detail page shows `Sent` date but never `approval_token_expires_at`.** SMS contains a magic-link approval URL with TTL (`APPROVAL_TOKEN_TTL_MS`); customer who delays beyond expiry hits 410, asks shop to reissue. Web detail Details card has no "Approval link expires DD MMM HH:mm" row. Operator can't see whether to resend. L8, L11.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:461-507`
 
-- [ ] WEB-UIUX-967. **[MAJOR] Inline line-item editor exposes raw `tax_amount` cell with no `tax_class_id` picker.** `EstimateDetailPage:345-350`. Modal create at `EstimateListPage:287-296` has tax-class dropdown that auto-computes. Editor forces operator to do mental math + paste cents into tax field. Inconsistent within same flow. L4, L7.
+- [ ] WEB-UIUX-967. **[MAJOR] Inline line-item editor exposes raw `tax_amount` cell with no `tax_class_id` picker.** `EstimateDetailPage:345-350`. Modal create at `EstimateListPage:287-296` has tax-class dropdown that auto-computes. Editor forces operator to do mental math + paste cents into tax field. Inconsistent within same flow. L4, L7. **STATUS: BLOCKED — inline editor needs tax_class_id picker mirroring CreateEstimateModal; multi-component refactor + auto-compute logic, defer to estimates sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:323-359`
 
 - [ ] WEB-UIUX-968. **[MAJOR] Inline line-item Save accepts empty-description rows.** Save click sends `draftItems` raw; no `filter(li => li.description.trim())`. CreateEstimateModal at `EstimateListPage:179-183` filters; editor doesn't. Server stores blank line-items. L7, L8.
@@ -4367,7 +4367,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
 
 #### Nit — visual contrast
 
-- [ ] WEB-UIUX-1077. **[NIT] Empty-state Crown icon `text-surface-300` and cancelled-status badge `bg-surface-100 text-surface-500` fail WCAG AA contrast on white.** `SubscriptionsListPage.tsx:201,47`. Same pattern flagged in earlier passes for empty states; consistency only. L not strictly usability-blocking.
+- [x] WEB-UIUX-1077. **[NIT] Empty-state Crown icon `text-surface-300` and cancelled-status badge `bg-surface-100 text-surface-500` fail WCAG AA contrast on white.** `SubscriptionsListPage.tsx:201,47`. Same pattern flagged in earlier passes for empty states; consistency only. L not strictly usability-blocking. **[AUTOLOOP-T61 RESOLVED: Crown icon text-surface-300→400; cancelled badge text-surface-500→600 for WCAG AA contrast on white.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:47,201`
   <!-- meta: fix=upgrade-to-text-surface-400-icon+text-surface-600-badge-text -->
 

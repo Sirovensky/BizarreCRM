@@ -889,6 +889,7 @@ export function EstimateListPage() {
                             <button
                               type="button"
                               // WEB-FM-020 (Fixer-C26 2026-04-25): see Send button above.
+                              // WEB-UIUX-959: gate Convert — only enabled when customer has approved/signed.
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
@@ -899,10 +900,10 @@ export function EstimateListPage() {
                                   toast.error(formatApiError(err));
                                 }
                               }}
-                              disabled={anyMutationPending}
+                              disabled={anyMutationPending || (est.status !== 'approved' && est.status !== 'signed')}
+                              title={est.status !== 'approved' && est.status !== 'signed' ? "Customer hasn't approved yet" : 'Convert to Ticket'}
                               className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                               aria-label="Convert estimate to ticket"
-                              title="Convert to Ticket"
                             >
                               <ArrowRightLeft aria-hidden="true" className="h-4 w-4" />
                             </button>

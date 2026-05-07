@@ -496,8 +496,9 @@ export function EstimateDetailPage() {
           </button>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-3">
+              {/* WEB-UIUX-965: mirror breadcrumb fallback — use #id when order_id is null to avoid "Estimate " trailing space. */}
               <h1 className="min-w-0 break-words text-2xl font-bold text-surface-900 dark:text-surface-100">
-                Estimate {estimate.order_id}
+                Estimate {estimate.order_id ?? `#${estimate.id}`}
               </h1>
               <span
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize"
@@ -527,6 +528,7 @@ export function EstimateDetailPage() {
               E-sign
             </button>
           )}
+          {/* WEB-UIUX-961: Send is the primary CTA when status=draft (solid fill); Resend stays outline when status=sent (Approve is primary then). */}
           {(estimate.status === 'draft' || estimate.status === 'sent') && (
             <button
               onClick={async () => {
@@ -538,13 +540,16 @@ export function EstimateDetailPage() {
               disabled={anyMutationPending || isExpired}
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
-                'border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+                estimate.status === 'draft'
+                  ? 'bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none'
+                  : 'border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
               )}
             >
               {sendMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {estimate.status === 'sent' ? 'Resend' : 'Send'}
             </button>
           )}
+          {/* WEB-UIUX-961: Approve is the primary CTA when status=sent (solid fill). */}
           {(estimate.status === 'sent' || estimate.status === 'draft') && (
             <button
               onClick={async () => {
@@ -559,13 +564,17 @@ export function EstimateDetailPage() {
               disabled={anyMutationPending || isExpired}
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
-                'border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+                estimate.status === 'sent'
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none'
+                  : 'border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
               )}
             >
               {approveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
               Approve
             </button>
           )}
+          {/* WEB-UIUX-959: Convert is only meaningful after the customer has approved/signed.
+              Gate it disabled for all other statuses and surface a tooltip explaining why. */}
           {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
             <button
               onClick={async () => {
@@ -620,10 +629,14 @@ export function EstimateDetailPage() {
                 }
                 catch (err) { toast.error(formatApiError(err)); }
               }}
-              disabled={anyMutationPending || isExpired}
+              disabled={anyMutationPending || isExpired || (estimate.status !== 'approved' && estimate.status !== 'signed')}
+              title={estimate.status !== 'approved' && estimate.status !== 'signed' ? "Customer hasn't approved yet" : undefined}
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
-                'border border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
+                // WEB-UIUX-961: Convert is the primary CTA when status=approved/signed (solid fill).
+                (estimate.status === 'approved' || estimate.status === 'signed')
+                  ? 'bg-green-600 text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none'
+                  : 'border border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
               )}
             >
               {convertMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRightLeft className="h-4 w-4" />}

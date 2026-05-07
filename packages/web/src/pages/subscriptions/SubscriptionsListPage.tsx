@@ -55,7 +55,7 @@ function statusBadge(status: SubStatus): string {
     case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
     case 'past_due': return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';
     case 'paused': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
-    case 'cancelled': return 'bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400';
+    case 'cancelled': return 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400';
   }
 }
 
@@ -374,7 +374,7 @@ export function SubscriptionsListPage() {
         </div>
       ) : filteredSubs.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Crown className="h-12 w-12 text-surface-300 dark:text-surface-600 mb-4" />
+          <Crown className="h-12 w-12 text-surface-400 dark:text-surface-600 mb-4" />
           <p className="text-base font-medium text-surface-600 dark:text-surface-400">
             {filtersActive ? 'No subscriptions match' : 'No active subscriptions'}
           </p>

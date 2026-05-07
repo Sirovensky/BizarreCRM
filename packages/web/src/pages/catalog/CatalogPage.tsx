@@ -703,23 +703,47 @@ export function CatalogPage() {
         </div>
       )}
 
+      {/* Selector-drift amber banner — shown when any recent job reports a selector mismatch */}
+      {jobs.some((j) => {
+        const msg = (j.error_message ?? j.error ?? '') as string;
+        return /selector[\s_-]mismatch/i.test(msg);
+      }) && (
+        <div className="mt-6 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-900/20">
+          <AlertCircle className="h-4 w-4 flex-shrink-0 text-amber-500 mt-0.5" aria-hidden="true" />
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            <span className="font-semibold">Catalog template drift detected</span> — supplier site may have changed. Review selectors before next sync.
+          </p>
+        </div>
+      )}
+
       {/* Recent jobs log */}
       {jobs.length > 0 && (
         <div className="mt-8">
           <h2 className="text-sm font-semibold text-surface-600 dark:text-surface-400 mb-2">Recent sync jobs</h2>
           <div className="card divide-y divide-surface-100 dark:divide-surface-700">
-            {jobs.slice(0, 5).map((j) => (
-              <div key={j.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                <StatusBadge status={j.status ?? 'pending'} />
-                <span className="font-medium text-surface-700 dark:text-surface-300 capitalize">{j.source}</span>
-                <span className="text-surface-400">{j.items_upserted ?? 0} items · {j.pages_done ?? 0} pages</span>
-                {j.error && <span className="text-red-500 truncate">{j.error}</span>}
-                <span className="ml-auto text-xs text-surface-400">
-                  {/* @audit-fixed: use formatDateTime helper */}
-                  {j.finished_at ? formatDateTime(j.finished_at) : j.started_at ? 'Running…' : 'Queued'}
-                </span>
-              </div>
-            ))}
+            {jobs.slice(0, 5).map((j) => {
+              const jobError = (j.error_message ?? j.error ?? '') as string;
+              const isSelectorMismatch = /selector[\s_-]mismatch/i.test(jobError);
+              return (
+                <div key={j.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                  <StatusBadge status={j.status ?? 'pending'} />
+                  <span className="font-medium text-surface-700 dark:text-surface-300 capitalize">{j.source}</span>
+                  <span className="text-surface-400">{j.items_upserted ?? 0} items · {j.pages_done ?? 0} pages</span>
+                  {jobError && (
+                    <span
+                      className={cn('truncate', isSelectorMismatch ? 'text-amber-500 dark:text-amber-400' : 'text-red-500')}
+                      title={jobError}
+                    >
+                      {jobError}
+                    </span>
+                  )}
+                  <span className="ml-auto text-xs text-surface-400">
+                    {/* @audit-fixed: use formatDateTime helper */}
+                    {j.finished_at ? formatDateTime(j.finished_at) : j.started_at ? 'Running…' : 'Queued'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

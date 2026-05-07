@@ -1126,7 +1126,8 @@ export const estimateApi = {
   convert: (id: number) => api.post(`/estimates/${id}/convert`),
   bulkConvert: (estimate_ids: number[]) => api.post('/estimates/bulk-convert', { estimate_ids }),
   delete: (id: number) => api.delete(`/estimates/${id}`),
-  send: (id: number, method?: 'sms' | 'email') => api.post(`/estimates/${id}/send`, { method: method ?? 'sms' }),
+  // WEB-UIUX-953: server rejects 'email' — narrow type to 'sms' only (TS lie correction).
+  send: (id: number, method?: 'sms') => api.post(`/estimates/${id}/send`, { method: method ?? 'sms' }),
   approve: (id: number, token?: string) => api.post(`/estimates/${id}/approve`, token ? { token } : {}),
   versions: (id: number) => api.get(`/estimates/${id}/versions`),
   versionDetail: (id: number, versionId: number) => api.get(`/estimates/${id}/versions/${versionId}`),
