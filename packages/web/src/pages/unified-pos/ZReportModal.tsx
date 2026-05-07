@@ -182,8 +182,10 @@ function ZReportBody({ report }: ZReportBodyProps) {
           Payment Breakdown
         </div>
         <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+          {/* WEB-UIUX-1186: disambiguate empty state — "No payments" alone looks
+              like a query failure; clarify it means zero transactions this shift. */}
           {report.payment_breakdown.length === 0 && (
-            <div className="text-xs text-surface-400">No payments recorded</div>
+            <div className="text-xs text-surface-400">No payments recorded during this shift (zero transactions)</div>
           )}
           {report.payment_breakdown.map((p) => (
             <ReportRow

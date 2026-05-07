@@ -76,7 +76,15 @@ export function CashDrawerWidget() {
     staleTime: 30_000,
   });
 
-  if (isLoading) return null;
+  // WEB-UIUX-1180: render a disabled placeholder while loading so the layout
+  // does not shift (returning null collapses the widget's reserved space).
+  if (isLoading) {
+    return (
+      <button disabled className="btn btn-sm border border-surface-300 bg-surface-50 text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-500 opacity-60 cursor-not-allowed">
+        Loading…
+      </button>
+    );
+  }
 
   const handleClosed = (shiftId: number) => {
     setOpenModal(null);
@@ -168,11 +176,19 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
     setError('');
     setSubmitting(true);
     try {
-      await api.post('/pos-enrich/drawer/open', {
+      // WEB-UIUX-1178: use server response to include shift id + float in toast.
+      const resp = await api.post('/pos-enrich/drawer/open', {
         opening_float_cents: parsed.cents,
         notes: notes.trim() || undefined,
       });
-      toast.success('Shift opened');
+      const openedShift = resp.data?.data;
+      if (openedShift?.id != null) {
+        toast.success(
+          `Shift #${openedShift.id} opened (float ${formatCurrency(openedShift.opening_float_cents / 100)})`
+        );
+      } else {
+        toast.success('Shift opened');
+      }
       onOpened();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to open shift';
@@ -204,11 +220,16 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
               value={amount}
               onChange={(e) => { setAmount(e.target.value); setError(''); }}
               className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
-              placeholder="200.00"
+              placeholder=""
               autoFocus
-              aria-describedby={error ? 'open-shift-error' : undefined}
+              // WEB-UIUX-1184: aria-describedby chains hint + error ids when both present.
+              aria-describedby={`open-shift-hint${error ? ' open-shift-error' : ''}`}
             />
           </label>
+          {/* WEB-UIUX-1184: always-visible hint for screen readers + sighted users */}
+          <p id="open-shift-hint" className="text-xs text-surface-400 dark:text-surface-500">
+            Enter amount in dollars and cents
+          </p>
           {error && (
             <p id="open-shift-error" role="alert" aria-live="polite" className="text-xs text-red-500">
               {error}
@@ -268,7 +289,21 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
       if (resp.data?.data) {
         qc.setQueryData(['pos-enrich', 'z-report', shift.id], resp.data.data);
       }
-      toast.success('Shift closed');
+      // WEB-UIUX-1178: use server response (shift_id + variance_cents) for a
+      // meaningful close toast rather than a generic "Shift closed" message.
+      const zReport = resp.data?.data;
+      if (zReport?.shift_id != null && zReport?.variance_cents != null) {
+        const v = zReport.variance_cents;
+        const varianceLabel =
+          v === 0
+            ? 'balanced'
+            : v > 0
+              ? `over by ${formatCents(v)}`
+              : `short by ${formatCents(Math.abs(v))}`;
+        toast.success(`Shift #${zReport.shift_id} closed — ${varianceLabel}`);
+      } else {
+        toast.success('Shift closed');
+      }
       onClosed(shift.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to close shift');
@@ -302,10 +337,16 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
               value={counted}
               onChange={(e) => setCounted(e.target.value)}
               className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
-              placeholder="0.00"
+              // WEB-UIUX-1184: empty placeholder (was "0.00") to avoid implying a default value.
+              placeholder=""
               autoFocus
+              aria-describedby="close-shift-hint"
             />
           </label>
+          {/* WEB-UIUX-1184: aria hint for the counted cash input */}
+          <p id="close-shift-hint" className="text-xs text-surface-400 dark:text-surface-500">
+            Enter amount in dollars and cents
+          </p>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400">Notes (optional)</span>
             <input

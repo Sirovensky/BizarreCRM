@@ -46,6 +46,7 @@ import {
   Clock3,
   BellRing,
   LifeBuoy,
+  Truck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -89,7 +90,7 @@ const navSections: NavSection[] = [
       { label: 'Catalog', path: '/catalog', icon: BookOpen },
       { label: 'Invoices', path: '/invoices', icon: FileText },
       { label: 'Expenses', path: '/expenses', icon: Receipt },
-      { label: 'Purchase Orders', path: '/purchase-orders', icon: Package },
+      { label: 'Purchase Orders', path: '/purchase-orders', icon: Truck },
       { label: 'Cash Register', path: '/cash-register', icon: DollarSign },
       { label: 'Loaners', path: '/loaners', icon: Smartphone },
       { label: 'Gift Cards', path: '/gift-cards', icon: WalletCards },

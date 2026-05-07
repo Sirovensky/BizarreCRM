@@ -177,6 +177,15 @@ interface PoDetailRowProps {
 function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
   const poId = po.id as number;
   const [expanded, setExpanded] = useState(false);
+  const queryClient = useQueryClient();
+
+  const markOrderedMut = useMutation({
+    mutationFn: () => inventoryApi.updatePurchaseOrder(poId, { status: 'ordered' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      toast.success('PO marked as Ordered');
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['purchase-order-detail', poId],
@@ -286,8 +295,18 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
                   {!canReceive && status === 'received' && (
                     <span className="text-xs text-green-600 dark:text-green-400 font-medium">Fully received</span>
                   )}
-                  {!canReceive && status === 'draft' && (
-                    <span className="text-xs text-surface-400">Change status to &ldquo;ordered&rdquo; before receiving.</span>
+                  {!canReceive && (status === 'draft' || status === 'pending') && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-surface-400">Change status to &ldquo;ordered&rdquo; before receiving.</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); markOrderedMut.mutate(); }}
+                        disabled={markOrderedMut.isPending}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 text-white rounded-md text-xs font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {markOrderedMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                        Mark as Ordered
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

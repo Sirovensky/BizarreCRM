@@ -4850,7 +4850,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:138-209`
   <!-- meta: fix=track-error-state-in-modal+render-inline-aria-live-error+keep-amount-value+focus-back-to-Amount-on-failure -->
 
-- [ ] WEB-UIUX-1178. **[MINOR] Toast "Shift opened" / "Shift closed" lacks shift number, time, variance — operator with multiple closes per day can't disambiguate later in the audit log.** `CashDrawerWidget.tsx:155, 237`. Should be `Shift #N opened (float $X)` and `Shift #N closed — variance $Y short/over`. L7 specificity.
+- [x] WEB-UIUX-1178. **[MINOR] Toast "Shift opened" / "Shift closed" lacks shift number, time, variance — operator with multiple closes per day can't disambiguate later in the audit log.** `CashDrawerWidget.tsx:155, 237`. Should be `Shift #N opened (float $X)` and `Shift #N closed — variance $Y short/over`. L7 specificity. **[AUTOLOOP-T56 RESOLVED: shift open/close toasts now include shift number + float/variance from server response so audit log entries are disambiguable.]**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:151-159, 230-244`
   <!-- meta: fix=use-the-server-response-(z_report-on-close-includes-shift_id+variance_cents)-and-format-rich-toast-with-shift-and-variance -->
 
@@ -4858,7 +4858,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:257-292`
   <!-- meta: fix=add-toggle-Count-by-denomination+grid-(1,5,10,20,50,100,coin-buckets)+sum-into-counted_cents+persist-breakdown-as-cash_drawer_shifts.count_breakdown_json-for-audit -->
 
-- [ ] WEB-UIUX-1180. **[MINOR] `CashDrawerWidget` `isLoading` returns `null` — entire widget vanishes for 100-300ms on POS load. The "Start Shift / Close Shift" button position is empty space then suddenly populates. Layout shift + brief illusion that no shift control exists.** `CashDrawerWidget.tsx:77`. L9 loading state.
+- [x] WEB-UIUX-1180. **[MINOR] `CashDrawerWidget` `isLoading` returns `null` — entire widget vanishes for 100-300ms on POS load. The "Start Shift / Close Shift" button position is empty space then suddenly populates. Layout shift + brief illusion that no shift control exists.** `CashDrawerWidget.tsx:77`. L9 loading state. **[AUTOLOOP-T56 RESOLVED: isLoading now renders a disabled 'Loading…' button placeholder so the layout doesn't shift on POS load.]**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:77`
   <!-- meta: fix=render-skeleton-button-(<button-disabled>Loading…</button>)-while-isLoading -->
 
@@ -4866,7 +4866,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:164-209, 246-296`
   <!-- meta: fix=mirror-ZReportModal-pattern:-role=dialog-aria-modal-true-aria-labelledby=open/close-shift-title+id-on-h3+focus-trap-or-trap-within-modal -->
 
-- [ ] WEB-UIUX-1182. **[MINOR] Z-Report "Print" injects a global `body > * { display: none }` style and removes it on unmount — but if user opens another modal mid-print (e.g. a confirm dialog from elsewhere), that modal disappears from screen too because it's also a `body > *`.** `ZReportModal.tsx:66-79`. Brittle global style hijack. Standard approach is a dedicated `@media print` stylesheet with `data-print-only` semantics on the receipt content. L9, L13 robustness.
+- [ ] WEB-UIUX-1182. **[MINOR] Z-Report "Print" injects a global `body > * { display: none }` style and removes it on unmount — but if user opens another modal mid-print (e.g. a confirm dialog from elsewhere), that modal disappears from screen too because it's also a `body > *`.** `ZReportModal.tsx:66-79`. Brittle global style hijack. Standard approach is a dedicated `@media print` stylesheet with `data-print-only` semantics on the receipt content. L9, L13 robustness. **STATUS: BLOCKED — Z-report print uses global body>* style hijack; correct fix is iframe-portal or react-to-print rewrite; multi-component, defer to print sprint**
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:66-79`
   <!-- meta: fix=use-react-to-print-or-render-receipt-into-a-portal-iframe-and-call-iframe.contentWindow.print()+remove-global-style-injection -->
 
@@ -4876,7 +4876,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:285-291`
   <!-- meta: fix=Close-Shift-as-button+small-helper-text-below-Z-report-will-open-after-close -->
 
-- [ ] WEB-UIUX-1184. **[NIT] OpenShiftModal placeholder `"200.00"` and CloseShiftModal placeholder `"0.00"` inconsistent — opener suggests a typical amount, closer suggests "type your count" but reads as "your count is zero".** `CashDrawerWidget.tsx:185, 271`. L2 label clarity.
+- [x] WEB-UIUX-1184. **[NIT] OpenShiftModal placeholder `"200.00"` and CloseShiftModal placeholder `"0.00"` inconsistent — opener suggests a typical amount, closer suggests "type your count" but reads as "your count is zero".** `CashDrawerWidget.tsx:185, 271`. L2 label clarity. **[AUTOLOOP-T56 RESOLVED: OpenShift + CloseShift placeholders cleared to empty; aria-describedby helper text 'Enter amount in dollars and cents' added in both modals.]**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:185, 271`
   <!-- meta: fix=both-empty-placeholders+add-aria-describedby-helper-text-Enter-amount-in-dollars-cents -->
 
@@ -4884,7 +4884,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:198-208`
   <!-- meta: fix=add-print-only-block-with-Cashier-signature-line+Manager-signature-line+Date-line-(visible-only-in-@media-print) -->
 
-- [ ] WEB-UIUX-1186. **[NIT] Z-report "Payment Breakdown" empty-state reads "No payments recorded" — unclear if this means no payments or query failure.** `ZReportModal.tsx:185-187`. L9.
+- [x] WEB-UIUX-1186. **[NIT] Z-report "Payment Breakdown" empty-state reads "No payments recorded" — unclear if this means no payments or query failure.** `ZReportModal.tsx:185-187`. L9. **[AUTOLOOP-T56 RESOLVED: Z-report empty-payments copy expanded to 'No payments recorded during this shift (zero transactions)' so it's distinct from query failure.]**
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:185-187`
   <!-- meta: fix=No-payments-recorded-during-this-shift-(zero-transactions) -->
 
@@ -4894,7 +4894,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
 
 #### Blocker — workflow dead-end
 
-- [ ] WEB-UIUX-1187. **[BLOCKER] No UI to advance PO status from `draft` → `pending` → `ordered`. Newly created POs are stuck — receive modal hint says "Change status to 'ordered' before receiving" but zero buttons exist on the page that call `updatePurchaseOrder` (PUT).** Server route `PUT /inventory/purchase-orders/:id` exists (`inventory.routes.ts:1546`) and the API client wraps it (`endpoints.ts:371` `updatePurchaseOrder`). But `PurchaseOrdersPage.tsx` never imports/uses it — only call sites for `inventoryApi.update*` against POs are zero (verified via grep — only literal hint string `Change status to "ordered" before receiving.` at line 272 references it). The user is told what to do but given no control to do it. End-to-end flow (create → receive) is broken. L3 route correctness, L4 flow completion, L8 recovery.
+- [x] WEB-UIUX-1187. **[BLOCKER] No UI to advance PO status from `draft` → `pending` → `ordered`. Newly created POs are stuck — receive modal hint says "Change status to 'ordered' before receiving" but zero buttons exist on the page that call `updatePurchaseOrder` (PUT).** Server route `PUT /inventory/purchase-orders/:id` exists (`inventory.routes.ts:1546`) and the API client wraps it (`endpoints.ts:371` `updatePurchaseOrder`). But `PurchaseOrdersPage.tsx` never imports/uses it — only call sites for `inventoryApi.update*` against POs are zero (verified via grep — only literal hint string `Change status to "ordered" before receiving.` at line 272 references it). The user is told what to do but given no control to do it. End-to-end flow (create → receive) is broken. L3 route correctness, L4 flow completion, L8 recovery. **[AUTOLOOP-T56 RESOLVED: PoDetailRow gained 'Mark as Ordered' button (status draft|pending) that calls updatePurchaseOrder with cache invalidation; closes the create→receive workflow gap.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:271-273`
   `packages/web/src/api/endpoints.ts:368-371` (PUT wrapper exists, never invoked)
   `packages/server/src/routes/inventory.routes.ts:1546` (server route)
@@ -4907,7 +4907,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
 
 #### Major — flow incompleteness + data loss
 
-- [ ] WEB-UIUX-1189. **[MAJOR] Receive modal captures only quantity — no field for supplier invoice #, packing slip #, lot/batch, expiration date, bin location, or actual unit cost as received.** Standard receiving workflow needs invoice number for AP matching and lot/expiry for traceability (mandatory for regulated parts). Without these the `stock_movements.notes` column is hard-coded `'Received from PO'` (server line 1503) — no audit trail of which physical shipment created the units. Cost variance: PO `cost_price` is locked at order time; if supplier raised price between order and ship, actual cost is silently lost. L4 flow completion, L11 data integrity.
+- [ ] WEB-UIUX-1189. **[MAJOR] Receive modal captures only quantity — no field for supplier invoice #, packing slip #, lot/batch, expiration date, bin location, or actual unit cost as received.** Standard receiving workflow needs invoice number for AP matching and lot/expiry for traceability (mandatory for regulated parts). Without these the `stock_movements.notes` column is hard-coded `'Received from PO'` (server line 1503) — no audit trail of which physical shipment created the units. Cost variance: PO `cost_price` is locked at order time; if supplier raised price between order and ship, actual cost is silently lost. L4 flow completion, L11 data integrity. **STATUS: BLOCKED — receive modal needs supplier_invoice_no/lot/expiry/actual_cost/bin fields + server schema additions; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:50-150`
   `packages/server/src/routes/inventory.routes.ts:1465-1526`
   <!-- meta: fix=add-optional-supplier_invoice_no+packing_slip+per-line-lot/batch/expiry/actual_cost+bin-location-fields+server-extends-stock_movements.notes-or-new-receipts-table -->
@@ -4917,7 +4917,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
   `packages/server/src/routes/inventory.routes.ts:1384`
   <!-- meta: fix=add-Expected-Delivery-date-input-to-create-form+pass-as-expected_date-in-createPurchaseOrder-payload -->
 
-- [ ] WEB-UIUX-1191. **[MAJOR] No "Send PO to Supplier" action — created PO sits in `draft` forever with no email/PDF/print path.** Procurement workflow normally: create PO → email supplier → mark `pending` (awaiting confirm) → mark `ordered` (supplier acknowledged). This UI has neither send action nor PDF render. Real-world cashier creates PO and then has to retype it into a separate email client. L4 flow completion, L6 discoverability.
+- [ ] WEB-UIUX-1191. **[MAJOR] No "Send PO to Supplier" action — created PO sits in `draft` forever with no email/PDF/print path.** Procurement workflow normally: create PO → email supplier → mark `pending` (awaiting confirm) → mark `ordered` (supplier acknowledged). This UI has neither send action nor PDF render. Real-world cashier creates PO and then has to retype it into a separate email client. L4 flow completion, L6 discoverability. **STATUS: BLOCKED — needs new server endpoint POST /purchase-orders/:id/email + PDF render via existing print pipeline; multi-component**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (entire file — no send action)
   <!-- meta: fix=add-"Send-to-Supplier"-button-on-PO-row+server-endpoint-POST-/purchase-orders/:id/email+optional-pdf-render-via-existing-print-pipeline -->
 
@@ -4926,7 +4926,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
   `packages/server/src/routes/inventory.routes.ts:1347-1378`
   <!-- meta: fix=add-status-pill-filter-row+search-input-debounced-by-PO-#-or-supplier-name+server-extends-LIST-with-q-LIKE-clause -->
 
-- [ ] WEB-UIUX-1193. **[MAJOR] No barcode-scan receive path surfaced from PO page.** Server has `POST /inventory/receive-scan` (`inventory.routes.ts:1716`) for barcode receiving — but no link from `PurchaseOrdersPage`. Operator with a hand scanner has to manually find the line item and type qty. Faster, less error-prone path is hidden. L6 discoverability, L4 flow.
+- [ ] WEB-UIUX-1193. **[MAJOR] No barcode-scan receive path surfaced from PO page.** Server has `POST /inventory/receive-scan` (`inventory.routes.ts:1716`) for barcode receiving — but no link from `PurchaseOrdersPage`. Operator with a hand scanner has to manually find the line item and type qty. Faster, less error-prone path is hidden. L6 discoverability, L4 flow. **STATUS: BLOCKED — needs scan modal + scanner-input wiring to /inventory/receive-scan + permission gates; multi-component**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (no scan entry point)
   `packages/server/src/routes/inventory.routes.ts:1713-1716`
   <!-- meta: fix=add-"Scan-to-Receive"-button-on-PoDetailRow-(canReceive)+open-modal-with-scanner-input-bound-to-receive-scan-endpoint -->
@@ -4937,7 +4937,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
 
 #### Minor — copy + hierarchy + discoverability
 
-- [ ] WEB-UIUX-1195. **[MINOR] Sidebar uses identical `Package` icon for "Inventory" AND "Purchase Orders" — adjacent rows in Operations section visually collide.** `Sidebar.tsx:76, 80`. Standard PO icon: `ClipboardList` or `Truck`. L5 hierarchy / scannability.
+- [x] WEB-UIUX-1195. **[MINOR] Sidebar uses identical `Package` icon for "Inventory" AND "Purchase Orders" — adjacent rows in Operations section visually collide.** `Sidebar.tsx:76, 80`. Standard PO icon: `ClipboardList` or `Truck`. L5 hierarchy / scannability. **[AUTOLOOP-T56 RESOLVED: Sidebar Purchase Orders icon switched from Package to Truck so it visually distinguishes from Inventory in the Operations section.]**
   `packages/web/src/components/layout/Sidebar.tsx:76, 80`
   <!-- meta: fix=swap-PO-icon-to-Truck-or-ClipboardList -->
 
