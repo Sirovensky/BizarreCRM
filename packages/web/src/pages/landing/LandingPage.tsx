@@ -67,7 +67,7 @@ function ThemeToggle() {
 
 function WavyDivider({ flip = false }: { flip?: boolean }) {
   return (
-    <div className={`overflow-hidden bg-surface-50 text-fuchsia-700/35 dark:bg-surface-950 dark:text-fuchsia-300/40 ${flip ? '-scale-y-100' : ''}`}>
+    <div className={`overflow-hidden bg-[#FBF3DB] text-fuchsia-700/35 dark:bg-surface-950 dark:text-fuchsia-300/40 ${flip ? '-scale-y-100' : ''}`}>
       <svg viewBox="0 0 1600 60" preserveAspectRatio="none" className="block h-10 w-full">
         <path
           d="M0,30 Q100,10 200,30 Q300,50 400,30 Q500,10 600,30 Q700,50 800,30 Q900,10 1000,30 Q1100,50 1200,30 Q1300,10 1400,30 Q1500,50 1600,30"
@@ -262,8 +262,8 @@ export default function LandingPage() {
   const cta = useInView();
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-surface-50 font-sans text-surface-800 antialiased dark:bg-surface-950 dark:text-surface-100">
-      <nav className={`fixed inset-x-0 top-0 z-[100] px-6 transition-all duration-300 ${scrolled ? 'border-b border-fuchsia-700/15 bg-surface-50/95 shadow-sm backdrop-blur-md dark:border-cyan-400/20 dark:bg-surface-950/90' : 'bg-transparent'}`}>
+    <div className="min-h-screen overflow-x-hidden bg-[#FBF3DB] font-sans text-surface-800 antialiased dark:bg-surface-950 dark:text-surface-100">
+      <nav className={`fixed inset-x-0 top-0 z-[100] px-6 transition-all duration-300 ${scrolled ? 'border-b border-fuchsia-700/15 bg-[#FBF3DB]/95 shadow-sm backdrop-blur-md dark:border-cyan-400/20 dark:bg-surface-950/90' : 'bg-transparent'}`}>
         <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between">
           <span
             className={`${brandText} cursor-pointer text-[28px] leading-none text-fuchsia-700 dark:text-fuchsia-300`}
@@ -307,7 +307,7 @@ export default function LandingPage() {
           </button>
         </div>
         {mobileMenu && (
-          <div id="landing-mobile-menu" className="border-t border-surface-200 bg-surface-50 px-6 pb-4 pt-2 shadow-lg dark:border-surface-800 dark:bg-surface-950 md:hidden">
+          <div id="landing-mobile-menu" className="border-t border-surface-200 bg-[#FBF3DB] px-6 pb-4 pt-2 shadow-lg dark:border-surface-800 dark:bg-surface-950 md:hidden">
             {[{ label: 'Features', id: 'features' }, { label: 'Pricing', id: 'pricing' }, { label: 'Why Switch', id: 'switch' }].map(n => (
               <button
                 type="button"
@@ -327,7 +327,7 @@ export default function LandingPage() {
         )}
       </nav>
 
-      <section className="flex min-h-screen items-center bg-surface-50 pt-20 dark:bg-surface-950">
+      <section className="flex min-h-screen items-center bg-[#FBF3DB] pt-20 dark:bg-surface-950">
         <div ref={hero.ref} className="mx-auto grid max-w-[1120px] grid-cols-1 items-center gap-10 px-6 pb-[60px] pt-10 text-center md:grid-cols-2 md:text-left">
           <div>
             <p className={reveal('mb-4 text-sm font-semibold uppercase text-fuchsia-700 dark:text-fuchsia-300', hero.visible)}>
@@ -380,7 +380,7 @@ export default function LandingPage() {
 
       <WavyDivider />
 
-      <section id="switch" className="bg-surface-50 px-6 pb-20 pt-16 dark:bg-surface-950">
+      <section id="switch" className="bg-[#FBF3DB] px-6 pb-20 pt-16 dark:bg-surface-950">
         <div ref={sw.ref} className="mx-auto flex max-w-[1120px] flex-col gap-12 md:flex-row">
           <div className="flex-1">
             <h2 className={reveal(`${displayText} mb-5 text-[clamp(36px,5vw,56px)] leading-[1.1] text-cyan-800 dark:text-cyan-300`, sw.visible)}>
@@ -465,7 +465,7 @@ export default function LandingPage() {
 
       <WavyDivider />
 
-      <section className="bg-surface-50 px-6 pb-20 pt-16 dark:bg-surface-950">
+      <section className="bg-[#FBF3DB] px-6 pb-20 pt-16 dark:bg-surface-950">
         <div ref={proof.ref} className="mx-auto max-w-[1120px]">
           <h2 className={reveal(`${displayText} mb-4 text-center text-[clamp(36px,5vw,56px)] leading-[1.1] text-fuchsia-800 dark:text-fuchsia-300`, proof.visible)}>
             Proof You Can Check Before Switching
@@ -505,7 +505,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t-2 border-fuchsia-700/15 bg-surface-50 px-6 py-8 dark:border-cyan-400/15 dark:bg-surface-950">
+      <footer className="border-t-2 border-fuchsia-700/15 bg-[#FBF3DB] px-6 py-8 dark:border-cyan-400/15 dark:bg-surface-950">
         <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className={`${brandText} text-[22px] leading-none text-fuchsia-700 dark:text-fuchsia-300`}>BIZARRECRM</span>
