@@ -678,6 +678,70 @@ function startPm2() {
   const r2 = run('pm2', ['save']);
   if (!r2.ok) warn(`pm2 save failed (exit ${r2.code}). Autostart may not survive reboot.`);
   else ok('PM2 process list saved');
+
+  // Verify apps are actually online after start. setup.bat operators were
+  // hitting a state where `pm2 start` returned 0 but the apps ended up in
+  // `stopped` state by the time setup.mjs exited (cause: wait_ready timeout
+  // races with autorestart, or a Windows-specific cmd-shim detach quirk).
+  // We poll `pm2 jlist` for up to 30 s, retry the start once if either app
+  // isn't online, then surface a clear message so the operator doesn't have
+  // to guess.
+  const POLL_INTERVAL_MS = 1500;
+  const POLL_MAX_MS = 30_000;
+  function pollOnce() {
+    const probe = capture('pm2', ['jlist']);
+    if (!probe.ok) return null;
+    try {
+      const apps = JSON.parse(probe.stdout);
+      const find = (name) => apps.find((a) => a && a.name === name);
+      return {
+        crm: find('bizarre-crm'),
+        watchdog: find('bizarre-crm-watchdog'),
+      };
+    } catch {
+      return null;
+    }
+  }
+  function isOnline(app) {
+    return !!(app && app.pm2_env && app.pm2_env.status === 'online');
+  }
+  function sleepSync(ms) {
+    spawnSync(process.execPath, ['-e', `setTimeout(()=>{}, ${ms})`], { stdio: 'ignore' });
+  }
+
+  let attempt = 0;
+  while (attempt < 2) {
+    const start = Date.now();
+    let lastSnapshot = null;
+    while (Date.now() - start < POLL_MAX_MS) {
+      lastSnapshot = pollOnce();
+      if (lastSnapshot && isOnline(lastSnapshot.crm) && isOnline(lastSnapshot.watchdog)) {
+        ok('PM2 apps verified online');
+        return;
+      }
+      sleepSync(POLL_INTERVAL_MS);
+    }
+    attempt += 1;
+    if (attempt >= 2) {
+      const crmStatus = lastSnapshot?.crm?.pm2_env?.status ?? 'missing';
+      const wdStatus = lastSnapshot?.watchdog?.pm2_env?.status ?? 'missing';
+      warn(`PM2 apps did not reach online state after retry. bizarre-crm=${crmStatus}, watchdog=${wdStatus}. Run \`pm2 logs\` to see the underlying crash.`);
+      return;
+    }
+    warn(`PM2 apps not online after ${POLL_MAX_MS / 1000}s — re-running pm2 start once.`);
+    capture('pm2', ['delete', 'bizarre-crm']);
+    capture('pm2', ['delete', 'bizarre-crm-watchdog']);
+    const retry = run('pm2', [
+      'start',
+      path.join(REPO_ROOT, 'ecosystem.config.js'),
+      '--update-env',
+      '--listen-timeout', '60000',
+    ]);
+    if (!retry.ok) {
+      warn(`pm2 start retry returned non-zero (exit ${retry.code}).`);
+    }
+    run('pm2', ['save']);
+  }
 }
 
 // ─── 11. Boot autostart registration ───────────────────────────────────────
