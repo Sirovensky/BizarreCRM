@@ -73,7 +73,12 @@
       (function () {
         try {
           var stored = localStorage.getItem('theme');
-          var theme = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
+          // Default 'light' — must match getInitialTheme() in uiStore.ts.
+          // Previous default 'system' silently flipped operators on dark-mode
+          // OS hosts into dark UI, which most counter / POS surfaces don't
+          // want. Settings → UI lets operators opt into dark; that choice
+          // persists in localStorage so this fallback only runs first-launch.
+          var theme = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'light';
           var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           var isDark = theme === 'dark' || (theme === 'system' && prefersDark);
           if (isDark) {

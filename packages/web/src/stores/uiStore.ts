@@ -23,7 +23,12 @@ const getInitialTheme = (): 'light' | 'dark' | 'system' => {
     // localStorage may throw in private mode / sandboxed iframes — fall through to default.
     console.warn('[uiStore] getInitialTheme: localStorage read failed', err);
   }
-  return 'system';
+  // Default: light. Users on a dark-mode OS were silently getting the app
+  // in dark by default ('system' previously), which most operators don't
+  // want for a POS / counter surface. Operators who want dark can flip it
+  // in Settings → UI; the choice persists in localStorage and survives
+  // reloads.
+  return 'light';
 };
 
 const applyTheme = (theme: 'light' | 'dark' | 'system') => {
