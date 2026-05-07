@@ -519,13 +519,18 @@ async function chooseDashboardMode() {
   const rl = readline.createInterface({ input, output });
   const answer = (await rl.question(
     '\n  Dashboard preference?\n' +
-    '    [E] Electron desktop app (.exe, native window, slower install)\n' +
     '    [B] Browser (lighter, accessible from any device on LAN)\n' +
-    '  Choice [E/b]: '
+    '    [E] Electron desktop app (.exe, native window, slower install)\n' +
+    '  Choice [B/e]: '
   )).trim().toLowerCase();
   rl.close();
 
-  const choice = /^b/.test(answer) ? 'browser' : 'electron';
+  // Default = browser. Electron requires an explicit "e" answer. Was the
+  // other way around — operators hitting enter to skip the prompt got
+  // electron silently and then "browser doesn't open" because electron
+  // launched in a window they didn't expect (or .exe build had failed and
+  // dashboard never opened at all).
+  const choice = /^e/.test(answer) ? 'electron' : 'browser';
 
   // 4. Persist the choice so subsequent runs skip the prompt.
   try {
@@ -1037,11 +1042,14 @@ async function launchDashboard(mode, electronBuilt) {
     electronBuilt = buildElectronApp();
   }
   startPm2();
-  await registerAutostart();
-  // Always print final PM2 state + tail recent error log so the operator
-  // sees in the same window whether apps are actually running. Previously
-  // the only signal was setup.bat closing — silent failure mode.
-  printPm2Diagnostics();
+  // Wrap registerAutostart + printPm2Diagnostics in try/catch so a hiccup
+  // in either step does NOT short-circuit launchDashboard. Operator was
+  // seeing "no browser opens" because a swallowed exception in PM2
+  // diagnostics aborted setup before the dashboard launch ran.
+  try { await registerAutostart(); }
+  catch (e) { warn(`registerAutostart failed: ${e instanceof Error ? e.message : String(e)}`); }
+  try { printPm2Diagnostics(); }
+  catch (e) { warn(`printPm2Diagnostics failed: ${e instanceof Error ? e.message : String(e)}`); }
   // Launch step now honors the dashboard choice. Electron path on Windows
   // when the build succeeded; browser otherwise.
   await launchDashboard(dashboardMode, electronBuilt);
