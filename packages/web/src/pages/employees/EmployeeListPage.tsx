@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash, Pencil, Check,
+  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash, Pencil, Check, Search,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 import { employeeApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatTime } from '@/utils/format';
+import { useAuthStore } from '@/stores/authStore';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -109,6 +111,8 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
   isPending: boolean;
 }) {
   const [pin, setPin] = useState('');
+  // WEB-UIUX-1257: need current user role to show the right no-PIN guidance
+  const { user: currentUser } = useAuthStore();
 
   // WEB-FG-012 fix: kiosk-cashiers were losing in-progress PINs when their hand
   // grazed the dim outside the inner card — backdrop-click closed the modal
@@ -133,8 +137,11 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
     >
       <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
+          {/* WEB-UIUX-1257: show "PIN Required" title when employee has no PIN to avoid dead-end confusion */}
           <h3 id="pin-modal-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
-            {action === 'clock-in' ? 'Clock In' : 'Clock Out'} - {employee.first_name}
+            {!employee.has_pin
+              ? 'PIN Required'
+              : `${action === 'clock-in' ? 'Clock In' : 'Clock Out'} — ${employee.first_name}`}
           </h3>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5 text-surface-500" />
@@ -149,13 +156,25 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
               told to set a PIN in Edit Employee first. The server is the
               source of truth; this client gate just removes the trivial
               walk-up attack. */}
+          {/* WEB-UIUX-1257: role-aware no-PIN guidance so the user is never left in a dead-end loop.
+              Admins get a direct link to the user settings page; non-admins are told to ask. */}
           {!employee.has_pin ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
               <p className="font-semibold">PIN required to clock in/out.</p>
-              <p className="mt-1">
-                {employee.first_name} {employee.last_name} has no PIN configured. Open Edit Employee
-                and set a 4–6 digit PIN before recording time.
-              </p>
+              {currentUser?.role === 'admin' ? (
+                <p className="mt-1">
+                  {employee.first_name} {employee.last_name} has no PIN set.{' '}
+                  <Link
+                    to={`/settings/users?employee=${employee.id}`}
+                    className="font-semibold underline hover:no-underline"
+                    onClick={onClose}
+                  >
+                    Set PIN now →
+                  </Link>
+                </p>
+              ) : (
+                <p className="mt-1">Ask an admin to set your PIN before recording time.</p>
+              )}
             </div>
           ) : (
             <>
@@ -171,7 +190,10 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && pin.length >= 4) onSubmit(pin);
+                    // WEB-UIUX-1253: PIN is 4–6 digits; do NOT auto-submit at length 4 because
+                    // the employee may still be typing a 5- or 6-digit PIN. Submit only on
+                    // Enter when PIN is at max length (6); the explicit Submit button covers all lengths.
+                    if (e.key === 'Enter' && pin.length === 6) onSubmit(pin);
                   }}
                   placeholder="4-6 digit PIN"
                   autoFocus
@@ -440,6 +462,9 @@ export function EmployeeListPage() {
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [pinModal, setPinModal] = useState<{ employee: Employee; action: 'clock-in' | 'clock-out' } | null>(null);
+  // WEB-UIUX-1259: client-side search filter (name + email substring)
+  const [searchQuery, setSearchQuery] = useState('');
+  const { user: currentUser } = useAuthStore();
 
   // Fetch employee list
   const { data: listData, isLoading } = useQuery({
@@ -448,14 +473,34 @@ export function EmployeeListPage() {
   });
   const employees: Employee[] = (listData?.data as any)?.data ?? [];
 
+  // WEB-UIUX-1259: filter employees client-side by name or email substring
+  const filteredEmployees = searchQuery.trim()
+    ? employees.filter((emp) => {
+        const q = searchQuery.trim().toLowerCase();
+        const fullName = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+        return fullName.includes(q) || emp.email.toLowerCase().includes(q);
+      })
+    : employees;
+
   // WEB-S6-033: is_clocked_in + weekly_hours are now included in the list
   // response — no per-row detail queries needed.
 
   // Clock in mutation
   const clockInMutation = useMutation({
     mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockIn(id, pin),
-    onSuccess: () => {
+    onSuccess: (response) => {
       toast.success('Clocked in successfully');
+      // WEB-UIUX-1255: server sends auto_closed_entry when a stale open shift was
+      // silently closed before the new clock-in. Warn the employee so they know to
+      // contact a manager to correct the previous shift's logged hours.
+      const responseData = (response?.data as any)?.data ?? (response?.data as any);
+      if (responseData?.auto_closed_entry) {
+        toast('Previous shift auto-closed after 16h — contact a manager to correct logged hours.', {
+          icon: '⚠️',
+          style: { background: '#fffbeb', color: '#92400e', border: '1px solid #f59e0b' },
+          duration: 8000,
+        });
+      }
       setPinModal(null);
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
@@ -512,6 +557,20 @@ export function EmployeeListPage() {
         </div>
       )}
 
+      {/* WEB-UIUX-1259: search bar — filters by name and email, client-side */}
+      <div className="mb-4">
+        <div className="relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400 pointer-events-none" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name or email…"
+            className="w-full rounded-lg border border-surface-300 py-2 pl-9 pr-4 text-sm dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100 dark:placeholder-surface-500"
+          />
+        </div>
+      </div>
+
       {/* Table */}
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -537,11 +596,18 @@ export function EmployeeListPage() {
                     <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">Add employees to manage time tracking and commissions.</p>
                   </td>
                 </tr>
+              ) : filteredEmployees.length === 0 && searchQuery.trim() ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-surface-500 dark:text-surface-400">
+                    No employees match <span className="font-medium">"{searchQuery}"</span>
+                  </td>
+                </tr>
               ) : (
-                employees.map((emp) => (
+                filteredEmployees.map((emp) => (
                   <EmployeeRow
                     key={emp.id}
                     employee={emp}
+                    currentUser={currentUser}
                     isExpanded={expandedId === emp.id}
                     onToggle={() => setExpandedId(expandedId === emp.id ? null : emp.id)}
                     onClockAction={(action) => setPinModal({ employee: emp, action })}
@@ -571,8 +637,9 @@ export function EmployeeListPage() {
 // WEB-S6-033 / WEB-UIUX-184: clock status + weekly hours are served by the
 // list endpoint, and the expanded panel reuses one detail payload for pay rate,
 // recent clock history, and recent commissions.
-function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
+function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockAction }: {
   employee: Employee;
+  currentUser: { id: number; role: string } | null | undefined;
   isExpanded: boolean;
   onToggle: () => void;
   onClockAction: (action: 'clock-in' | 'clock-out') => void;
@@ -649,20 +716,32 @@ function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
           {formatHours(weeklyHours)}
         </td>
         <td className="px-4 py-3">
-          <button type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClockAction(isClockedIn ? 'clock-out' : 'clock-in');
-            }}
-            className={cn(
-              'rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors',
-              isClockedIn
-                ? 'bg-red-600 hover:bg-red-700'
-                : 'bg-green-600 hover:bg-green-700',
-            )}
-          >
-            {isClockedIn ? 'Clock Out' : 'Clock In'}
-          </button>
+          {/* WEB-UIUX-1251: server only lets admins clock OTHER employees. Non-admin users
+              may only clock themselves in/out. Disable the button and show a tooltip when
+              the current user is not an admin and this row is a different employee. */}
+          {(() => {
+            const canClock = currentUser?.role === 'admin' || currentUser?.id === employee.id;
+            return (
+              <span title={canClock ? undefined : 'Only admins can clock other employees'}>
+                <button
+                  type="button"
+                  disabled={!canClock}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClockAction(isClockedIn ? 'clock-out' : 'clock-in');
+                  }}
+                  className={cn(
+                    'rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                    isClockedIn
+                      ? 'bg-red-600 hover:bg-red-700'
+                      : 'bg-green-600 hover:bg-green-700',
+                  )}
+                >
+                  {isClockedIn ? 'Clock Out' : 'Clock In'}
+                </button>
+              </span>
+            );
+          })()}
         </td>
       </tr>
       {isExpanded && (

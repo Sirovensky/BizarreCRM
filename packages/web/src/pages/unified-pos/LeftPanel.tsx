@@ -993,7 +993,8 @@ function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
           ref={triggerRef}
           type="button"
           onClick={handleOpen}
-          className="btn btn-xs !px-0 text-teal-600 dark:text-teal-400 hover:underline"
+          // WEB-UIUX-1249: bordered button style — matches Customer pill weight, reads as an action not a help-link
+          className="btn btn-xs px-1.5 py-0.5 border border-teal-300 dark:border-teal-700 text-teal-600 dark:text-teal-400 hover:bg-teal-50 dark:hover:bg-teal-900/30 rounded"
           // WEB-UIUX-1240: dynamic aria-label reflects current discount state
           aria-label={discount > 0 ? `Edit order discount: -$${discount.toFixed(2)}` : 'Add order discount'}
         >
@@ -1076,16 +1077,22 @@ function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
             value={draftReason}
             onChange={(e) => setDraftReason(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleApply()}
-            placeholder="e.g. Loyalty, damaged, etc."
+            placeholder="e.g. loyalty, bulk, employee, damaged, manager comp" // WEB-UIUX-1241: consistent lowercase, no terminal period
             className="mt-0.5 w-full rounded border border-surface-300 dark:border-surface-600 bg-transparent px-2 py-1 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-teal-500"
           />
         </label>
       )}
       <div className="flex gap-1.5 pt-0.5">
+        {/* WEB-UIUX-1247: destructive red styling when a discount is active; neutral outline when no discount (acts as Cancel) */}
         <button
           type="button"
           onClick={handleClear}
-          className="btn btn-xs flex-1 border border-surface-300 text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-700"
+          className={cn(
+            'btn btn-xs flex-1 border hover:bg-surface-50 dark:hover:bg-surface-700',
+            discount > 0
+              ? 'text-red-600 border-red-300 dark:text-red-400 dark:border-red-700'
+              : 'border-surface-300 text-surface-600 dark:border-surface-600 dark:text-surface-300',
+          )}
         >
           Clear
         </button>

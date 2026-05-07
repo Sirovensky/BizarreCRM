@@ -5162,7 +5162,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:898-906`
   <!-- meta: fix=aria-label={discount>0?`Edit order discount: -$${discount.toFixed(2)}`:'Add order discount'} -->
 
-- [ ] WEB-UIUX-1241. **[MINOR] Reason input placeholder "e.g. Loyalty, damaged, etc." mixes title-case and lowercase — implies operator should type free-form variants. Reinforces WEB-UIUX-1233 cardinality problem.** `LeftPanel.tsx:958`. L13 string normalization.
+- [x] WEB-UIUX-1241. **[MINOR] Reason input placeholder "e.g. Loyalty, damaged, etc." mixes title-case and lowercase — implies operator should type free-form variants. Reinforces WEB-UIUX-1233 cardinality problem.** `LeftPanel.tsx:958`. L13 string normalization. **[AUTOLOOP-T64 RESOLVED: reason input placeholder normalized to consistent lowercase 'e.g. loyalty, bulk, employee, damaged, manager comp'.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:957-958`
   <!-- meta: fix=after-implementing-WEB-UIUX-1233-this-becomes-a-static-chip-list+if-keeping-free-text-show-Pick-from-loyalty/bulk/employee/damaged-or-type-custom -->
 
@@ -5170,7 +5170,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:949-961`
   <!-- meta: fix=show-asterisk-whenever-requireReason+OR-show-helper-text-Reason-becomes-required-once-amount-is-entered -->
 
-- [ ] WEB-UIUX-1243. **[MINOR] `manualDiscount` validation in `pos.routes.ts:1874` allows zero but not via the same code path as the rest — `ticketData?.discount ? validatePrice(...) : 0`.** Edge: a client sending the literal string `"0.00"` (truthy) goes through validatePrice (fine), but `0` (falsy) skips. Inconsistent with `tip` handling on the same form. L13 input contract.
+- [ ] WEB-UIUX-1243. **[MINOR] `manualDiscount` validation in `pos.routes.ts:1874` allows zero but not via the same code path as the rest — `ticketData?.discount ? validatePrice(...) : 0`.** Edge: a client sending the literal string `"0.00"` (truthy) goes through validatePrice (fine), but `0` (falsy) skips. Inconsistent with `tip` handling on the same form. L13 input contract. **STATUS: BLOCKED — server pos.routes.ts manualDiscount input contract change; backend, defer to discount sprint**
   `packages/server/src/routes/pos.routes.ts:1874-1876`
   <!-- meta: fix=use-rawDiscount!=null?validatePrice(rawDiscount,'discount'):0+match-existing-tip-style -->
 
@@ -5178,7 +5178,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-981`
   <!-- meta: fix=on-resetAll-also-reset-DiscountEditor-(via-effect-listening-on-cartItems.length===0)+OR-key-the-component-on-cartId-so-it-remounts-clean -->
 
-- [ ] WEB-UIUX-1245. **[MINOR] `Math.max(manual, member)` server-side means a tiny manual discount + a tiny membership tier silently picks one — operator who deliberately wants both has no UX path. `stack_membership` server flag is exposed but no UI.** Discussed in WEB-UIUX-1228 from the silent-override angle; this is the inverse — an intentional power-user can't compose. L6 discoverability of advanced.
+- [ ] WEB-UIUX-1245. **[MINOR] `Math.max(manual, member)` server-side means a tiny manual discount + a tiny membership tier silently picks one — operator who deliberately wants both has no UX path. `stack_membership` server flag is exposed but no UI.** Discussed in WEB-UIUX-1228 from the silent-override angle; this is the inverse — an intentional power-user can't compose. L6 discoverability of advanced. **STATUS: BLOCKED — exposing stack_membership requires UI checkbox + payload thread + server membership-tier query; multi-component, defer**
   `packages/server/src/routes/pos.routes.ts:1879-1881`
   <!-- meta: fix=expose-Stack-with-membership-checkbox-in-DiscountEditor-when-customer-has-active-tier+pass-stack_membership=true-in-buildTicketPayload-when-checked -->
 
@@ -5189,7 +5189,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Nit — visual polish
 
-- [ ] WEB-UIUX-1247. **[NIT] Apply button color (teal-600) and Clear button (outline) have equal visual weight in the editor footer (`LeftPanel.tsx:963-979`) — Clear is a destructive (loses typing) but is no more conspicuous than a passive secondary.** L5 destructive distinguishability.
+- [x] WEB-UIUX-1247. **[NIT] Apply button color (teal-600) and Clear button (outline) have equal visual weight in the editor footer (`LeftPanel.tsx:963-979`) — Clear is a destructive (loses typing) but is no more conspicuous than a passive secondary.** L5 destructive distinguishability. **[AUTOLOOP-T64 RESOLVED: Clear button gains red text+border when discount>0 to signal destructive; neutral outline when discount=0 (acts as Cancel).]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:963-979`
   <!-- meta: fix=Clear-color-text-red-600-border-red-300-when-discount>0+otherwise-treat-as-passive-Cancel-with-clear-affordance-Cancel-(no-changes) -->
 
@@ -5198,7 +5198,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:444`
   <!-- meta: fix=pick-one-(green-for-money-saved-is-the-retail-convention)+update-pill+line-discount-line+CheckoutModal-summary -->
 
-- [ ] WEB-UIUX-1249. **[NIT] `Add discount` pill is rendered between Subtotal and Tax rows with smaller text and underline-on-hover — looks like a help-link, not a primary action. Operators in research often miss it.** `LeftPanel.tsx:895-919`. Compare cart-wide actions like the Customer pill which is full-width and bordered. L1 findability.
+- [x] WEB-UIUX-1249. **[NIT] `Add discount` pill is rendered between Subtotal and Tax rows with smaller text and underline-on-hover — looks like a help-link, not a primary action. Operators in research often miss it.** `LeftPanel.tsx:895-919`. Compare cart-wide actions like the Customer pill which is full-width and bordered. L1 findability. **[AUTOLOOP-T64 RESOLVED: Add discount trigger pill upgraded to bordered teal button matching Customer pill visual weight; affordance now reads as action.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:895-919`
   <!-- meta: fix=upgrade-to-bordered-button-style-(matches-DiscountEditor-open-state)+OR-add-a-Tag-icon-and-keep-text-link-but-bump-to-text-sm-with-explicit-+icon -->
 
@@ -5208,7 +5208,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 ### Web UI/UX Audit — Pass 23 (2026-05-05, flow walk: Time Clock Punch In/Out — list, PIN modal, server gates, location, recovery)
 
-- [ ] WEB-UIUX-1251. **[MAJOR] Manager sees the green Clock-In / red Clock-Out button on every employee row and clicking a peer's button hits server 403 "Can only clock yourself in/out" — page is gated to `admin|manager` (`App.tsx:520`) but server only lets admins clock others (`employees.routes.ts:311`,`412`). UI has no role-or-self gate; manager hits the dead-end.** L3 route correctness, L4 flow completion.
+- [x] WEB-UIUX-1251. **[MAJOR] Manager sees the green Clock-In / red Clock-Out button on every employee row and clicking a peer's button hits server 403 "Can only clock yourself in/out" — page is gated to `admin|manager` (`App.tsx:520`) but server only lets admins clock others (`employees.routes.ts:311`,`412`). UI has no role-or-self gate; manager hits the dead-end.** L3 route correctness, L4 flow completion. **[AUTOLOOP-T64 RESOLVED: Clock In/Out button disabled with tooltip 'Only admins can clock other employees' when currentUser.role!=='admin'  currentUser.id!==employee.id.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:660-675`
   <!-- meta: fix=hide-or-disable-clock-button-when-currentUser.role!=='admin'-AND-currentUser.id!==employee.id+show-tooltip-"Only-admins-can-clock-others" -->
 
@@ -5217,7 +5217,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/api/endpoints.ts:919-920`
   <!-- meta: fix=add-location-select-in-PinModal-when-locations.count>1+default-to-home_location_id+pass-through-mutation-and-API-client -->
 
-- [ ] WEB-UIUX-1253. **[MAJOR] Enter-key auto-submits PIN at length 4 (`EmployeeListPage.tsx:184`) but PIN is 4–6 digits. Worker with a 5- or 6-digit PIN typing fast triggers a wrong-PIN submit at digit 4, and server rate-limit is 5 attempts per 15 min (`employees.routes.ts:328`). Three accidental early-submits + two real mistypes = 15-min lockout in normal use.** L7 feedback, L8 recovery.
+- [x] WEB-UIUX-1253. **[MAJOR] Enter-key auto-submits PIN at length 4 (`EmployeeListPage.tsx:184`) but PIN is 4–6 digits. Worker with a 5- or 6-digit PIN typing fast triggers a wrong-PIN submit at digit 4, and server rate-limit is 5 attempts per 15 min (`employees.routes.ts:328`). Three accidental early-submits + two real mistypes = 15-min lockout in normal use.** L7 feedback, L8 recovery. **[AUTOLOOP-T64 RESOLVED: Enter-key auto-submit gated to length===6 (max) instead of >=4; explicit Submit always available for 4-5 digit PINs.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:183-185`
   <!-- meta: fix=remove-Enter-auto-submit-OR-debounce-300ms-after-last-keystroke-OR-only-auto-submit-when-pin.length===6-(max)+keep-explicit-Submit-button -->
 
@@ -5225,7 +5225,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:642-655,386-388`
   <!-- meta: fix=add-elapsed-counter-(now-clock_in)-next-to-status-pill+ticking-once-per-minute+also-render-in-expanded-Active-entry -->
 
-- [ ] WEB-UIUX-1255. **[MAJOR] Auto-clock-out on stale shifts is silent. Server closes >16h-old open shifts on next clock-in (`employees.routes.ts:347-364`) and tags the entry `[auto-closed on clock-in]` — UI never surfaces this. Worker who forgot to punch out yesterday loses real hours and gets no notice; only a forensic look at expanded row's notes column reveals it (and the UI doesn't even render notes).** L7 feedback meaningful, L8 recovery.
+- [x] WEB-UIUX-1255. **[MAJOR] Auto-clock-out on stale shifts is silent. Server closes >16h-old open shifts on next clock-in (`employees.routes.ts:347-364`) and tags the entry `[auto-closed on clock-in]` — UI never surfaces this. Worker who forgot to punch out yesterday loses real hours and gets no notice; only a forensic look at expanded row's notes column reveals it (and the UI doesn't even render notes).** L7 feedback meaningful, L8 recovery. **[AUTOLOOP-T64 RESOLVED: clockIn onSuccess inspects auto_closed_entry flag; warning toast 'Previous shift auto-closed after 16h — contact a manager' fires for 8s.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:469-481`
   <!-- meta: fix=clock-in-success-handler-inspect-response-for-auto_closed_entry+toast-warning-"Previous-shift-was-auto-closed-after-16h+contact-manager-to-correct"+also-show-banner-on-row -->
 
@@ -5233,7 +5233,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:484-496`
   <!-- meta: fix=onSuccess-read-data.data.total_hours-and-clock_in+toast.success(`Clocked-out-${formatHours(total_hours)}-(${formatTime(clock_in)}-→-${formatTime(now)})`)+similar-detail-on-clock-in -->
 
-- [ ] WEB-UIUX-1257. **[MAJOR] PIN-required dead-end loop. When `has_pin=false`, modal title still reads "Clock In - John" (false promise) and copy says "Open Edit Employee and set a 4–6 digit PIN" (`EmployeeListPage.tsx:165-168`) — but there's no inline link, and Edit Employee lives at `/settings/users` which most non-admins can't access. Worker reads the warning, closes modal, has no path forward.** L2 label truthfulness, L4 flow completion.
+- [x] WEB-UIUX-1257. **[MAJOR] PIN-required dead-end loop. When `has_pin=false`, modal title still reads "Clock In - John" (false promise) and copy says "Open Edit Employee and set a 4–6 digit PIN" (`EmployeeListPage.tsx:165-168`) — but there's no inline link, and Edit Employee lives at `/settings/users` which most non-admins can't access. Worker reads the warning, closes modal, has no path forward.** L2 label truthfulness, L4 flow completion. **[AUTOLOOP-T64 RESOLVED: PinModal title becomes 'PIN Required' when has_pin=false; admins see /settings/users?employee=ID Link; non-admins see 'Ask an admin' message.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:147,162-169`
   <!-- meta: fix=title="PIN-Required"-when-!has_pin+inline-link-(admin-only)-"Set-PIN-now"-→-/settings/users?employee=ID+for-non-admins-show-"Ask-an-admin-to-set-your-PIN" -->
 
@@ -5241,7 +5241,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:515-521`
   <!-- meta: fix=relabel-to-"Manage-Users-→"+ext-link-icon-OR-mount-the-Add-Employee-create-form-as-a-modal-on-this-page -->
 
-- [ ] WEB-UIUX-1259. **[MAJOR] No employee search/filter on the list. Stores with 30+ staff make a kiosk worker scroll the entire table to find their row before clocking in. No filter by clocked-in/out, no search by name, no role filter.** L1 primary-action findability, L6 discoverability.
+- [x] WEB-UIUX-1259. **[MAJOR] No employee search/filter on the list. Stores with 30+ staff make a kiosk worker scroll the entire table to find their row before clocking in. No filter by clocked-in/out, no search by name, no role filter.** L1 primary-action findability, L6 discoverability. **[AUTOLOOP-T64 RESOLVED: search input added above table filtering by name+email substring (client-side) with empty-results message.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:531-570`
   <!-- meta: fix=add-search-input-(name+email)+role-chip-filter+status-filter-(clocked-in/out)+sticky-table-header -->
 
