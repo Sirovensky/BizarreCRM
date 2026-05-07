@@ -12,6 +12,7 @@ import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
+import { useHasRole } from '@/hooks/useHasRole';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
@@ -90,7 +91,15 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-729: focus-trap + Esc for the Credit Note dialog.
   // useFocusTrap returns a ref that must be attached to the inner dialog div.
   const creditNoteDialogRef = useFocusTrap(showCreditNote);
-  useEscClose(() => setShowCreditNote(false), showCreditNote);
+  // WEB-UIUX-1210: gate Credit Note + Void behind admin/manager role.
+  const canVoidOrCreditNote = useHasRole(['admin', 'manager']);
+  // WEB-UIUX-1218: Esc handler checks dirty state before closing credit-note modal.
+  useEscClose(() => {
+    if (creditNoteForm.amount || creditNoteForm.code || creditNoteForm.note.trim()) {
+      if (!window.confirm('Discard credit note?')) return;
+    }
+    setShowCreditNote(false);
+  }, showCreditNote);
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -483,31 +492,54 @@ export function InvoiceDetailPage() {
             <button onClick={() => setShowPrintModal(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
               <Printer className="h-4 w-4" /> Print
             </button>
+            {/* WEB-UIUX-1210: gate behind admin/manager; hide entirely or show
+                disabled with tooltip when user lacks the required role. */}
             {canCreateCreditNote && (
-              <button
-                onClick={() => {
-                  // WEB-UIUX-877: require manager PIN for refunds above threshold.
-                  if (maxCreditNoteAmount > REFUND_PIN_THRESHOLD) {
-                    setShowRefundPinGate(true);
-                  } else {
-                    setShowCreditNote(true);
-                  }
-                }}
-                // WEB-UIUX-1040: switched from amber to red ramp — amber read
-                // as "soft action"; Credit Note is irreversible like Void. Icon
-                // + label still distinguish it from the Void button.
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-              >
-                <Undo2 className="h-4 w-4" /> Refund (credit note)
-              </button>
+              canVoidOrCreditNote ? (
+                <button
+                  onClick={() => {
+                    // WEB-UIUX-877: require manager PIN for refunds above threshold.
+                    if (maxCreditNoteAmount > REFUND_PIN_THRESHOLD) {
+                      setShowRefundPinGate(true);
+                    } else {
+                      setShowCreditNote(true);
+                    }
+                  }}
+                  // WEB-UIUX-1040: switched from amber to red ramp — amber read
+                  // as "soft action"; Credit Note is irreversible like Void. Icon
+                  // + label still distinguish it from the Void button.
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <Undo2 className="h-4 w-4" /> Refund (credit note)
+                </button>
+              ) : (
+                <button
+                  disabled
+                  title="Manager permission required"
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-100 dark:border-red-900/40 text-red-300 dark:text-red-700 cursor-not-allowed opacity-60"
+                >
+                  <Undo2 className="h-4 w-4" /> Refund (credit note)
+                </button>
+              )
             )}
             {/* WEB-W2-017: Tip-adjust removed — BlockChyp SDK does not expose
                 adjustTip. Re-enable when SDK ships the endpoint. Void + re-charge
                 is the current workaround per the server's NOT_SUPPORTED response. */}
+            {/* WEB-UIUX-1210: Void also gated behind admin/manager role. */}
             {invoice.status !== 'void' && (
-              <button onClick={() => setShowVoidConfirm(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                <Ban className="h-4 w-4" /> Void
-              </button>
+              canVoidOrCreditNote ? (
+                <button onClick={() => setShowVoidConfirm(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                  <Ban className="h-4 w-4" /> Void
+                </button>
+              ) : (
+                <button
+                  disabled
+                  title="Manager permission required"
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-100 dark:border-red-900/40 text-red-300 dark:text-red-700 cursor-not-allowed opacity-60"
+                >
+                  <Ban className="h-4 w-4" /> Void
+                </button>
+              )
             )}
           </div>
         </div>
@@ -919,6 +951,20 @@ export function InvoiceDetailPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {/* WEB-UIUX-1214: when amount_due is 0, every dollar of the credit note
+                becomes store credit — surface this prominently so the operator
+                knows the overflow path is active before they submit. */}
+            {Number(invoice.amount_due) <= 0 && (() => {
+              const enteredAmt = parseFloat(creditNoteForm.amount);
+              const hasAmt = !isNaN(enteredAmt) && enteredAmt > 0;
+              return (
+                <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 font-medium">
+                  {hasAmt
+                    ? `Excess of ${formatCurrency(enteredAmt)} will be issued as customer store credit`
+                    : 'This invoice is fully paid — the entire credit will be issued as customer store credit'}
+                </div>
+              );
+            })()}
             {/* WEB-UIUX-435: outcome-preview — show what will happen, not just what the action is */}
             {/* WEB-UIUX-711: store-credit overflow preview when amount > amount_due */}
             <div className="text-sm text-surface-500 dark:text-surface-400 mb-4">
@@ -952,10 +998,13 @@ export function InvoiceDetailPage() {
 
                 if (balanceDue > 0) {
                   // No amount entered yet
-                  return <p>A credit will be applied to the outstanding balance on invoice {invoice.order_id}.</p>;
+                  // WEB-UIUX-1222: copy is accurate for amount_due > 0; the else branch below
+                  // handles amount_due = 0 so "reduce the outstanding balance" is never shown falsely.
+                  return <p>Issue a credit note against invoice {invoice.order_id}. This will reduce the outstanding balance.</p>;
                 }
 
-                // Fully paid — refund goes back to original payment method
+                // Fully paid (amount_due = 0) — credit goes to store credit, not balance reduction
+                // WEB-UIUX-1222: use accurate copy when outstanding balance is already zero.
                 const payments: InvoicePayment[] = invoice.payments ?? [];
                 const latestPayment = payments
                   .filter((p) => p.method !== 'credit_note')
@@ -968,7 +1017,8 @@ export function InvoiceDetailPage() {
                 } else if (displayAmount) {
                   return <p>{displayAmount} will be refunded to the original payment method, typically within 3–5 business days.</p>;
                 }
-                return <p>The credit will be refunded to the original payment method (or as store credit if unavailable).</p>;
+                // WEB-UIUX-1222: no outstanding balance — credit goes to store credit, not balance reduction.
+                return <p>Issue a credit note against invoice {invoice.order_id}. This will be added to the customer's store credit balance.</p>;
               })()}
             </div>
             <div className="space-y-4">

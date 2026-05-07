@@ -143,6 +143,13 @@ export function RefundReasonPicker({
           maxLength={500}
           aria-describedby={isOtherSelected ? 'refund-note-hint' : undefined}
         />
+        <div className={`mt-1 text-xs text-right ${
+          localNote.length > 450
+            ? 'text-amber-600 dark:text-amber-400'
+            : 'text-surface-500 dark:text-surface-400'
+        }`}>
+          {localNote.length}/500
+        </div>
         {isOtherSelected && noteTouched && noteIsShort && (
           <p id="refund-note-hint" className="mt-1 text-xs text-red-600 dark:text-red-400">
             Please describe the reason ({OTHER_NOTE_MIN}+ characters required).

@@ -756,7 +756,7 @@ export function EstimateDetailPage() {
               {editingItems && (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => lineItemsMut.mutate(draftItems)}
+                    onClick={() => lineItemsMut.mutate(draftItems.filter(li => li.description.trim() !== ''))}
                     disabled={lineItemsMut.isPending}
                     className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
