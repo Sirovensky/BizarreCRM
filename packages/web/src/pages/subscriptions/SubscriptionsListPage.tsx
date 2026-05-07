@@ -253,8 +253,14 @@ export function SubscriptionsListPage() {
   async function handleCancel(sub: Subscription): Promise<void> {
     // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
     try {
+      // WEB-UIUX-1498: surface cancellation impact so staff know what the customer loses
+      const chargeAmt = sub.last_charge_amount ?? sub.monthly_price;
+      const chargeDate = sub.current_period_end ? formatDate(sub.current_period_end) : null;
+      const impactLine = `Customer loses ${sub.tier_name} discount + benefits today.`
+        + (chargeDate && chargeAmt != null ? ` Last charge ${chargeDate}, ${formatCurrency(chargeAmt)}.` : '')
+        + ' No refund issued — see Refund flow if needed.';
       const ok = await confirm(
-        `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership immediately?`,
+        `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership?\n\n${impactLine}`,
         { title: 'Cancel subscription?', confirmLabel: 'Cancel subscription', danger: true },
       );
       if (!ok) return;

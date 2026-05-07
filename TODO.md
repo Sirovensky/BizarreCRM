@@ -6236,7 +6236,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:998-1005`
   <!-- meta: fix=wrap-cancelMut.mutate()-in-await-confirm({title,confirmLabel:'Cancel-membership',danger:true})+match-list-page-pattern -->
 
-- [ ] WEB-UIUX-1485. **[BLOCKER] Cancel UI is immediate-only. SubscriptionsListPage hardcodes `{ immediate: true }` (`:114`); CustomerDetailPage does the same (`:905`). Server `/membership/:id/cancel` supports `immediate: false` → sets `cancel_at_period_end = 1` (`membership.routes.ts:233-234`). UI never sends that path. Customer paid for the month, gets zero remaining-period access. Industry default = end-of-period cancel. Worse: the "Cancels {date}" badge (`SubscriptionsListPage.tsx:244-249`) and "Cancels at period end" pill (`CustomerDetailPage.tsx:983-985`) are dead branches — UI displays them but no UI codepath sets the flag.** L1 truthfulness, L3 hierarchy, L8 recovery.
+- [ ] WEB-UIUX-1485. **[BLOCKER] Cancel UI is immediate-only. SubscriptionsListPage hardcodes `{ immediate: true }` (`:114`); CustomerDetailPage does the same (`:905`). Server `/membership/:id/cancel` supports `immediate: false` → sets `cancel_at_period_end = 1` (`membership.routes.ts:233-234`). UI never sends that path. Customer paid for the month, gets zero remaining-period access. Industry default = end-of-period cancel. Worse: the "Cancels {date}" badge (`SubscriptionsListPage.tsx:244-249`) and "Cancels at period end" pill (`CustomerDetailPage.tsx:983-985`) are dead branches — UI displays them but no UI codepath sets the flag.** L1 truthfulness, L3 hierarchy, L8 recovery. **STATUS: BLOCKED — duplicate of WEB-UIUX-1059 (tick 49 BLOCK); cancel-at-period-end radio multi-component, defer to memberships sprint**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-114,158-164,244-249`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911,983-985`
   <!-- meta: fix=add-radio-in-confirm-modal:Cancel-now-vs-Cancel-at-period-end+default-to-period-end+pass-immediate:false-when-selected -->
@@ -6246,7 +6246,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/portal/CustomerPortalPage.tsx (no membership panel)`
   <!-- meta: fix=add-portal-route-/portal/membership+server-route-/portal/membership/cancel-(token-auth-not-requireAdmin)+optional-survey-+-confirmation-email -->
 
-- [ ] WEB-UIUX-1487. **[BLOCKER] Duplicate `POST /:id/run-billing` route registrations on the same router (`membership.routes.ts:317` AND `:452`). Express resolves first match → second handler is dead code. The dead handler has the more useful `?force=1` override (`:460,483-491`); the live handler has none (`:344-353`). "Bill now" button hits the no-force handler — if `current_period_end` still in future, returns 409 "Subscription is not yet due" with no recourse. Manual retry of failed billing on a still-current period is impossible.** L8 recovery, L1 truthfulness.
+- [x] WEB-UIUX-1487. **[BLOCKER] Duplicate `POST /:id/run-billing` route registrations on the same router (`membership.routes.ts:317` AND `:452`). Express resolves first match → second handler is dead code. The dead handler has the more useful `?force=1` override (`:460,483-491`); the live handler has none (`:344-353`). "Bill now" button hits the no-force handler — if `current_period_end` still in future, returns 409 "Subscription is not yet due" with no recourse. Manual retry of failed billing on a still-current period is impossible.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T76 VERIFIED: only one POST /:id/run-billing handler exists at membership.routes.ts:552 (verified tick 49 WEB-UIUX-1057).]**
   `packages/server/src/routes/membership.routes.ts:317-402,452-545`
   <!-- meta: fix=delete-second-handler-OR-delete-first+keep-the-?force=1-supporting-one+add-Force-billing-checkbox-in-Bill-now-confirm -->
 
@@ -6256,7 +6256,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
   <!-- meta: fix=guard-(sub.status==='active'||sub.status==='past_due')&&sub.blockchyp_token+rename-button-to-'Retry-charge'-when-past_due -->
 
-- [ ] WEB-UIUX-1489. **[MAJOR] SubscriptionsListPage has no sidebar/nav entry. Page registered at `App.tsx:540` but no Sidebar/AppLayout link references `/subscriptions` (only `CommandPalette.tsx:72` aliases it). Admin must know the URL or hit Cmd-K. Memberships are a primary revenue surface — invisible navigation. Compare: Customers, Tickets, Inventory all have sidebar entries.** L6 discoverability, L3 hierarchy.
+- [x] WEB-UIUX-1489. **[MAJOR] SubscriptionsListPage has no sidebar/nav entry. Page registered at `App.tsx:540` but no Sidebar/AppLayout link references `/subscriptions` (only `CommandPalette.tsx:72` aliases it). Admin must know the URL or hit Cmd-K. Memberships are a primary revenue surface — invisible navigation. Compare: Customers, Tickets, Inventory all have sidebar entries.** L6 discoverability, L3 hierarchy. **[AUTOLOOP-T76 VERIFIED: Sidebar Memberships entry (Crown icon) added in tick 49 WEB-UIUX-1056.]**
   `packages/web/src/App.tsx:540` + missing sidebar entry
   <!-- meta: fix=add-Sidebar-entry-{label:'Memberships',path:'/subscriptions',icon:Crown,group:'Customers'}+gate-by-feature-flag-isMembershipsEnabled -->
 
@@ -6265,7 +6265,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:988-1018`
   <!-- meta: fix=wrap-Cancel/Pause/Resume-in-AdminOnly+OR-disable-with-tooltip-'Admin-only'-for-staff -->
 
-- [ ] WEB-UIUX-1491. **[MAJOR] `POST /:id/resume` does not check current status (`membership.routes.ts:251-258`). Calling resume on a `cancelled` row sets `status='active'` — but `customers.active_subscription_id` was nulled on immediate cancel (`:232`), never restored. Result: cs.status='active' but customer.active_subscription_id=NULL → POS won't apply membership discount, list shows row as active, customer detail shows no membership card (queries by active_subscription_id). Data inconsistency reachable via API. UI hides resume for cancelled but server is the source of truth.** L4 flow completion, L1 truthfulness.
+- [ ] WEB-UIUX-1491. **[MAJOR] `POST /:id/resume` does not check current status (`membership.routes.ts:251-258`). Calling resume on a `cancelled` row sets `status='active'` — but `customers.active_subscription_id` was nulled on immediate cancel (`:232`), never restored. Result: cs.status='active' but customer.active_subscription_id=NULL → POS won't apply membership discount, list shows row as active, customer detail shows no membership card (queries by active_subscription_id). Data inconsistency reachable via API. UI hides resume for cancelled but server is the source of truth.** L4 flow completion, L1 truthfulness. **STATUS: BLOCKED — server membership.routes.ts /:id/resume must reject cancelled-status OR restore active_subscription_id; backend, defer**
   `packages/server/src/routes/membership.routes.ts:251-258`
   <!-- meta: fix=if-status==='cancelled'-throw-AppError('Cancelled-subs-cannot-be-resumed-create-new-subscription')+OR-also-restore-active_subscription_id-on-resume -->
 
@@ -6276,7 +6276,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Minor — labels, copy, missing capture
 
-- [ ] WEB-UIUX-1494. **[MINOR] "Run billing now" header button (`SubscriptionsListPage.tsx:81-95`) is fake — clicking shows toast "Billing cron runs nightly automatically. Use server console to trigger manually." Visual button affordance, no action. Admins click expecting an action; get a "go elsewhere" message. Either remove the button or make it post `/membership/admin/run-cron-now` (route doesn't exist — would need adding) instead of dressing up a tooltip as a button.** L1 truthfulness, L7 feedback.
+- [x] WEB-UIUX-1494. **[MINOR] "Run billing now" header button (`SubscriptionsListPage.tsx:81-95`) is fake — clicking shows toast "Billing cron runs nightly automatically. Use server console to trigger manually." Visual button affordance, no action. Admins click expecting an action; get a "go elsewhere" message. Either remove the button or make it post `/membership/admin/run-cron-now` (route doesn't exist — would need adding) instead of dressing up a tooltip as a button.** L1 truthfulness, L7 feedback. **[AUTOLOOP-T76 VERIFIED: decoy 'Run billing now' button removed in tick 49 WEB-UIUX-1061.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:81-95`
   <!-- meta: fix=remove-RunBillingButton-OR-add-server-route-POST-/membership/admin/run-billing-cron+wire-button-to-call-it+show-progress-toast-with-counts -->
 
@@ -6285,7 +6285,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1003-1004`
   <!-- meta: fix=label-'Cancel-membership'-OR-'End-plan'+keep-confirm-modal-confirmLabel-'Cancel-subscription' -->
 
-- [ ] WEB-UIUX-1496. **[MINOR] Pause action takes no reason despite server `pause_reason` column + API supporting `{ reason }` body (`membership.routes.ts:241-249`, `endpoints.ts:1324-1325`). UI calls `membershipApi.pause(id)` with no body (`CustomerDetailPage.tsx:914`). Reason is exactly the kind of data ops needs to triage paused members ("vacation", "financial", "switching tier") — column will always be NULL.** L7 feedback, L1 truthfulness.
+- [ ] WEB-UIUX-1496. **[MINOR] Pause action takes no reason despite server `pause_reason` column + API supporting `{ reason }` body (`membership.routes.ts:241-249`, `endpoints.ts:1324-1325`). UI calls `membershipApi.pause(id)` with no body (`CustomerDetailPage.tsx:914`). Reason is exactly the kind of data ops needs to triage paused members ("vacation", "financial", "switching tier") — column will always be NULL.** L7 feedback, L1 truthfulness. **STATUS: BLOCKED — duplicate of WEB-UIUX-1066 (tick 50 BLOCK); pause-reason capture multi-component, defer to memberships sprint**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920`
   <!-- meta: fix=pause-opens-small-modal-with-reason-textarea-(or-preset-pills:Vacation/Financial/Other)+pass-reason-to-pause-mutation -->
 
@@ -6295,7 +6295,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=replace-confirm-with-CancelReasonModal+server-accept-reason-string+store-in-customer_subscriptions.cancel_reason+audit-payload -->
 
-- [ ] WEB-UIUX-1498. **[MINOR] Cancel confirm copy: "Cancel ... membership immediately?" (`SubscriptionsListPage.tsx:159`) — word "immediately" only meaningful relative to a cancel-at-period-end alternative the UI doesn't offer (see -1485). Even with both options added, dialog should surface impact: "Customer loses {tier_name} discount + benefits today. Last charge {date}, ${amount}. No refund issued." Currently customer has no idea what they're giving up.** L7 feedback.
+- [x] WEB-UIUX-1498. **[MINOR] Cancel confirm copy: "Cancel ... membership immediately?" (`SubscriptionsListPage.tsx:159`) — word "immediately" only meaningful relative to a cancel-at-period-end alternative the UI doesn't offer (see -1485). Even with both options added, dialog should surface impact: "Customer loses {tier_name} discount + benefits today. Last charge {date}, ${amount}. No refund issued." Currently customer has no idea what they're giving up.** L7 feedback. **[AUTOLOOP-T76 RESOLVED: cancel confirm body extended with tier name + last charge date/amount + no-refund notice via formatCurrency/formatDate.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:158-161`
   <!-- meta: fix=confirm-body-include-tier-name+last_charge_amount+current_period_end+'No-refund'-line+benefits-list -->
 
@@ -6303,7 +6303,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->
 
-- [ ] WEB-UIUX-1500. **[NIT] Subscription rows for cancelled subs disappear from list (`membership.routes.ts:283` filters `IN ('active','past_due','paused')`). No history view for admins to audit churn — "did Anya cancel last week or did her card decline?" requires reading the audit log table directly. Add a `?status=cancelled` query param + a "Show cancelled" toggle on the list page.** L9 empty/loading, L6 discoverability.
+- [ ] WEB-UIUX-1500. **[NIT] Subscription rows for cancelled subs disappear from list (`membership.routes.ts:283` filters `IN ('active','past_due','paused')`). No history view for admins to audit churn — "did Anya cancel last week or did her card decline?" requires reading the audit log table directly. Add a `?status=cancelled` query param + a "Show cancelled" toggle on the list page.** L9 empty/loading, L6 discoverability. **STATUS: BLOCKED — duplicate of WEB-UIUX-1060 (tick 49 BLOCK); cancelled-subs history view multi-component, defer**
   `packages/server/src/routes/membership.routes.ts:274-289`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:104-111`
   <!-- meta: fix=server-accept-?include=cancelled+UI-toggle-'Show-cancelled'-default-off+sort-cancelled-to-bottom -->
@@ -6312,7 +6312,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:275-284`
   <!-- meta: fix=add-X-icon-before-Cancel-text+add-Pause-button-on-list-page-(missing-entirely)-with-Pause-icon -->
 
-- [ ] WEB-UIUX-1502. **[NIT] Pause button missing entirely from SubscriptionsListPage. Customer Detail offers Pause + Cancel for active subs (`CustomerDetailPage.tsx:988-1006`); list view offers only Cancel (`:275-284`). Admin processing many "going on vacation" pauses must drill into each customer detail. List should expose pause as the lower-friction reversible alternative to cancel.** L4 flow completion, L8 recovery.
+- [x] WEB-UIUX-1502. **[NIT] Pause button missing entirely from SubscriptionsListPage. Customer Detail offers Pause + Cancel for active subs (`CustomerDetailPage.tsx:988-1006`); list view offers only Cancel (`:275-284`). Admin processing many "going on vacation" pauses must drill into each customer detail. List should expose pause as the lower-friction reversible alternative to cancel.** L4 flow completion, L8 recovery. **[AUTOLOOP-T76 VERIFIED: Pause/Resume row buttons added to SubscriptionsListPage in tick 50 WEB-UIUX-1065.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:275-284`
   <!-- meta: fix=add-Pause-button-row-action-mirror-CustomerDetailPage-pattern+pauseMut-with-reason-capture -->
 
@@ -6322,7 +6322,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 ## Deferred operational items
 
-- [ ] OPS-DEFERRED-001. **Multi-platform setup migration (`setup.bat` → `setup.mjs`) + cross-platform auto-startup adapter.**
+- [ ] OPS-DEFERRED-001. **Multi-platform setup migration (`setup.bat` → `setup.mjs`) + cross-platform auto-startup adapter.** **STATUS: BLOCKED — operational migration deferred (Phase 2 awaits Windows host smoke test); not a UI fix item**
   - [x] **Phase 0 LANDED 2026-05-05**: per-OS gateway shims (`setup.bat` + `setup.command` + `setup.sh`) verify Node v22-24 and best-effort install via winget / Homebrew / apt-dnf-yum-pacman-zypper-apk-NodeSource, falling back to opening `https://nodejs.org/en/download/` on any failure.
   - [x] **Phase 1 LANDED 2026-05-05**: `setup.mjs` is now a full cross-platform 12-step install/update flow (preflight → git pull → pm2 stop → npm install → .env → certs → build → Android APK conditional → dashboard build → pm2 start+save → autostart register → open browser). Cross-platform autostart adapter at `scripts/autostart/{index,linux,darwin,win32}.mjs` with one entrypoint and three OS-specific implementations (Linux: `pm2 startup systemd` + `pm2 save`; macOS: `pm2 startup launchd` + `pm2 save`; Windows: Task Scheduler XML via `schtasks` — NO vendored binaries, NO PowerShell scripts). Single transitional Windows-only branch in setup.mjs for the Electron-package step (electron-builder is `--win`-flagged in packages/management/package.json); goes away when [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) Phase E ships. `scripts/setup-windows.bat` retained as escape hatch + reference; no longer invoked by setup.mjs.
   - Verified: bash -n + node --check pass on all 7 setup files; partial smoke run on macOS (preflight → pm2 stop → npm install) reaches step 4 cleanly; autostart adapter exports verified via direct module import + status() call.
