@@ -4206,13 +4206,13 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 - [x] WEB-UIUX-1035. **[MAJOR] CustomerDetail invoice list status enum has `'refunded'` color branch — server invoice status enum never sets `'refunded'`.** `CustomerDetailPage.tsx:1685` includes `refunded:` color rule. Server invoice statuses: `unpaid|partial|paid|void|credit_note` (per `invoices.routes.ts:1217,1250` + assertInvoiceTransition). Dead branch; if a future migration ever sets `'refunded'`, it'll render purple but the rest of the UI doesn't know that status. L7. **[AUTOLOOP-T47 RESOLVED: dead 'refunded' branch in InvoicesTab statusColors map renamed to 'credit_note' matching real server enum.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1685`
 
-- [ ] WEB-UIUX-1036. **[MAJOR] Credit Note modal's `aria-describedby="credit-amount-label"` references a non-existent id.** `:768`. The "Max: $X (amount paid)" `<p>` hint at `:776-778` has no id. Screen reader users get a dangling describedby pointer; the hint is not announced as the input's description. L12.
+- [x] WEB-UIUX-1036. **[MAJOR] Credit Note modal's `aria-describedby="credit-amount-label"` references a non-existent id.** `:768`. The "Max: $X (amount paid)" `<p>` hint at `:776-778` has no id. Screen reader users get a dangling describedby pointer; the hint is not announced as the input's description. L12. **[AUTOLOOP-T48 RESOLVED: id=credit-amount-label added to the Max-amount hint p so the Credit Note modal aria-describedby resolves.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:768,776-778`
 
 - [ ] WEB-UIUX-1037. **[MAJOR] Credit Note modal has no recovery: no "Preview", no "Save Draft", no Undo window.** Void has 5s undo (`useUndoableAction` at `:110-135`); credit-note creation is fire-and-forget. Operator who fat-fingers $200 instead of $20 must manually issue a $180 reverse credit note and reconcile. Pattern asymmetry inside same page. L8, L16.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`
 
-- [ ] WEB-UIUX-1038. **[MAJOR] Refund-related side-effects (commission reversal, payroll lock) entirely invisible to operator.** Server emits `commission_reversal_skipped` and `commission_reversal_error` flags in approve response (`refunds.routes.ts:404-411`); even if a refund-approve UI were wired, the typical `onSuccess` toast pattern won't surface those flags. Manager approving a refund won't know whether commission was reversed or skipped due to locked payroll period. L8, L11.
+- [ ] WEB-UIUX-1038. **[MAJOR] Refund-related side-effects (commission reversal, payroll lock) entirely invisible to operator.** Server emits `commission_reversal_skipped` and `commission_reversal_error` flags in approve response (`refunds.routes.ts:404-411`); even if a refund-approve UI were wired, the typical `onSuccess` toast pattern won't surface those flags. Manager approving a refund won't know whether commission was reversed or skipped due to locked payroll period. L8, L11. **STATUS: BLOCKED — depends on WEB-UIUX-1019 (refund-approve UI) which is BLOCKED for the refunds sprint; commission-reversal flag surfacing has no host UI yet**
   `packages/server/src/routes/refunds.routes.ts:319-411`
 
 #### Minor — Polish, edge cases, label/hierarchy
@@ -4220,49 +4220,49 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 - [ ] WEB-UIUX-1039. **[MINOR] InvoiceDetail header has 5 buttons in a row (Record Payment, Payment Plan, Financing, Print, Credit Note, Void) — no clear primary CTA on a partially-paid invoice.** Same finding as WEB-UIUX-961 (estimates). Six similar-height pills crowd the header on tablet (768) and wrap. Highest-leverage action depends on status but UI doesn't reflect that. L1, L11.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
 
-- [ ] WEB-UIUX-1040. **[MINOR] Credit Note button uses amber ramp; Void uses red — color implies "amber = warning, red = danger" gradient, but Credit Note is also irreversible (no rollback path).** Operator scanning the header may treat amber as "soft action" and miss the no-undo property. L9.
+- [x] WEB-UIUX-1040. **[MINOR] Credit Note button uses amber ramp; Void uses red — color implies "amber = warning, red = danger" gradient, but Credit Note is also irreversible (no rollback path).** Operator scanning the header may treat amber as "soft action" and miss the no-undo property. L9. **[AUTOLOOP-T48 RESOLVED: Credit Note header + modal-submit buttons switched from amber to red ramp matching Void to signal irreversibility; icon/label still distinguish.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:377-388`
 
 - [ ] WEB-UIUX-1041. **[MINOR] Credit Note modal Cancel + Create buttons same width (`flex-1`) — no visual hierarchy. Create is amber-filled, Cancel is outline-neutral; sizes equal.** L9, L11.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:791-802`
 
-- [ ] WEB-UIUX-1042. **[MINOR] RefundReasonPicker hint copy uses terminal periods ("Arrived broken or malfunctioned.") — micro-inconsistency vs other dropdown labels in the app that omit terminal periods.** L9.
+- [x] WEB-UIUX-1042. **[MINOR] RefundReasonPicker hint copy uses terminal periods ("Arrived broken or malfunctioned.") — micro-inconsistency vs other dropdown labels in the app that omit terminal periods.** L9. **[AUTOLOOP-T48 RESOLVED: Stripped trailing periods from all 12 RefundReasonPicker hint strings to match dropdown-label convention.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:18-23`
 
 - [ ] WEB-UIUX-1043. **[MINOR] RefundReasonPicker "free-form context to help with reporting…" placeholder mixes purpose + audience — clearer: "What happened? (optional)".** L7.
   `packages/web/src/components/billing/RefundReasonPicker.tsx:88`
 
-- [ ] WEB-UIUX-1044. **[MINOR] RefundReasonPicker note `maxLength=500` client-side — server has no documented cap on `credit_note_note` column.** Client enforces a cap the server doesn't; if server later trims, mismatch silent. L7.
+- [x] WEB-UIUX-1044. **[MINOR] RefundReasonPicker note `maxLength=500` client-side — server has no documented cap on `credit_note_note` column.** Client enforces a cap the server doesn't; if server later trims, mismatch silent. L7. **[AUTOLOOP-T48 RESOLVED: Added JSX comment above note textarea documenting maxLength=500 rationale and noting server-side cap should be added in a future hardening pass.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:91`
 
 - [ ] WEB-UIUX-1045. **[MINOR] Credit Note modal opens with amount input autofocused but no "Full amount" preset button (Record Payment modal has one at `:618`).** Pattern asymmetry within same page. Operator refunding the full paid balance must hand-type. L4, L9.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
 
-- [ ] WEB-UIUX-1046. **[MINOR] Credit Note modal Esc-to-close wired (`:60-69`) but backdrop-click also closes (`:744`) without confirming unsaved input.** Operator who typed amount + reason + note clicks slightly off-modal → loses everything. Same surface pattern as gift-card success modal (WEB-UIUX-985) — one stray click destroys staged data. L8, L16.
+- [x] WEB-UIUX-1046. **[MINOR] Credit Note modal Esc-to-close wired (`:60-69`) but backdrop-click also closes (`:744`) without confirming unsaved input.** Operator who typed amount + reason + note clicks slightly off-modal → loses everything. Same surface pattern as gift-card success modal (WEB-UIUX-985) — one stray click destroys staged data. L8, L16. **[AUTOLOOP-T48 RESOLVED: Backdrop-click on Credit Note modal now guards against discard with window.confirm when amount/code/note dirty; Esc unchanged.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744`
 
 - [ ] WEB-UIUX-1047. **[MINOR] Z-Report (`ZReportModal.tsx:204`) shows "Refunds" total in cents, but no drill-down link to refund detail and no per-tender breakdown (cash refunds vs card refunds).** End-of-day reconciliation is summary-only. L8, L1.
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:204`
 
-- [ ] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8.
+- [ ] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8. **STATUS: BLOCKED — needs new server-side card-refund route (BlockChyp refund API call) + audit-log + 5+ files; defer to refunds sprint**
   `packages/web/src/pages/settings/BlockChypSettings.tsx`
 
 - [ ] WEB-UIUX-1049. **[MINOR] Dashboard `DashboardPage.tsx` mentions "refund" but has no widget for "pending refunds requiring approval" — admin landing page doesn't surface the queue.** Even if the approval UI existed, admin would need to remember to navigate. L1, L4.
   `packages/web/src/pages/dashboard/DashboardPage.tsx`
 
-- [ ] WEB-UIUX-1050. **[MINOR] DailyNudge component (`DailyNudge.tsx`) references refund-onboarding text but the feature it nudges users toward doesn't exist in UI.** Onboarding step points at a missing surface. L7, L4.
+- [x] WEB-UIUX-1050. **[MINOR] DailyNudge component (`DailyNudge.tsx`) references refund-onboarding text but the feature it nudges users toward doesn't exist in UI.** Onboarding step points at a missing surface. L7, L4. **[AUTOLOOP-T48 RESOLVED: Removed day7 refund nudge from DailyNudge.tsx (config + computeActiveNudge branch + variant union + patchKey union + unused RotateCcw import) with TODO ref WEB-UIUX-1019.]**
   `packages/web/src/components/onboarding/DailyNudge.tsx`
 
 - [ ] WEB-UIUX-1051. **[MINOR] Refund permission strings (`refunds.create`, `refunds.approve`, `invoices.credit_note`) never referenced in client.** `grep "refunds.create\|refunds.approve\|invoices.credit_note" packages/web/src` → empty. Permission-aware buttons (hide Credit Note if no `invoices.credit_note`) not implemented; cashier-tier users can click Credit Note then get 403 toast instead of having the button hidden. L8.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
 
-- [ ] WEB-UIUX-1052. **[NIT] `creditNoteForm` typed `reason: RefundReasonCode | null` but backend receives composed `reason: string` + `code: RefundReasonCode` — local state name "reason" actually holds the *code*.** Variable name lies about what it stores. L7.
+- [x] WEB-UIUX-1052. **[NIT] `creditNoteForm` typed `reason: RefundReasonCode | null` but backend receives composed `reason: string` + `code: RefundReasonCode` — local state name "reason" actually holds the *code*.** Variable name lies about what it stores. L7. **[AUTOLOOP-T48 RESOLVED: Renamed local creditNoteForm.reason to creditNoteForm.code (8 references) for clarity; composed payload still posts reason: <composed> to server.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:46-50`
 
 - [ ] WEB-UIUX-1053. **[NIT] Invoice list page status filter unclear — does it surface `credit_note` status invoices? When filter is empty, mixed regular + credit-note invoices appear in list with negative totals. No "Hide credit notes" toggle.** L9.
   `packages/web/src/pages/invoices/InvoiceListPage.tsx`
 
-- [ ] WEB-UIUX-1054. **[NIT] Credit Note modal title "Create Credit Note" — better: "Issue Credit Note" or "Refund / Credit Note" to align operator mental model with the dual purpose (it both refunds money and reduces balance).** L7.
+- [x] WEB-UIUX-1054. **[NIT] Credit Note modal title "Create Credit Note" — better: "Issue Credit Note" or "Refund / Credit Note" to align operator mental model with the dual purpose (it both refunds money and reduces balance).** L7. **[AUTOLOOP-T48 RESOLVED: Modal title + submit changed to "Issue Credit Note" to align operator mental model with the dual purpose.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:748`
 
 - [ ] WEB-UIUX-1055. **[NIT] Cancel button label "Cancel" is generic — when Cancel-on-modal could destroy 30s of typing, "Discard changes" or "Close without saving" is clearer.** Cross-flow finding (applies to most modals on this page). L7.

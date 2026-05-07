@@ -6,7 +6,7 @@
  * Dismissed via PATCH /onboarding/state and invalidates the cached query.
  */
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Users, Bell, RotateCcw, ArrowRight } from 'lucide-react';
+import { X, Users, Bell, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { onboardingApi, type OnboardingState } from '@/api/endpoints';
@@ -15,7 +15,8 @@ interface DailyNudgeProps {
   preloadedState: OnboardingState | null;
 }
 
-type NudgeVariant = 'day3' | 'day5' | 'day7';
+// TODO(WEB-UIUX-1019): re-add 'day7' when refund UI ships.
+type NudgeVariant = 'day3' | 'day5';
 
 interface NudgeConfig {
   variant: NudgeVariant;
@@ -24,7 +25,7 @@ interface NudgeConfig {
   body: string;
   ctaLabel: string;
   ctaHref: string;
-  patchKey: 'nudge_day3_seen' | 'nudge_day5_seen' | 'nudge_day7_seen';
+  patchKey: 'nudge_day3_seen' | 'nudge_day5_seen';
 }
 
 const NUDGE_CONFIGS: Record<NudgeVariant, NudgeConfig> = {
@@ -46,15 +47,17 @@ const NUDGE_CONFIGS: Record<NudgeVariant, NudgeConfig> = {
     ctaHref: '/settings/sms-voice',
     patchKey: 'nudge_day5_seen',
   },
-  day7: {
-    variant: 'day7',
-    icon: RotateCcw,
-    title: 'Try a refund',
-    body: 'Need to reverse a payment? Open an invoice and use the Refund action.',
-    ctaLabel: 'View Invoices',
-    ctaHref: '/invoices',
-    patchKey: 'nudge_day7_seen',
-  },
+  // TODO(WEB-UIUX-1019): Refund UI surface does not exist yet — nudge disabled until the
+  // refund approval flow is implemented. Re-enable this entry when WEB-UIUX-1019 ships.
+  // day7: {
+  //   variant: 'day7',
+  //   icon: RotateCcw,
+  //   title: 'Try a refund',
+  //   body: 'Need to reverse a payment? Open an invoice and use the Refund action.',
+  //   ctaLabel: 'View Invoices',
+  //   ctaHref: '/invoices',
+  //   patchKey: 'nudge_day7_seen',
+  // },
 };
 
 function computeActiveNudge(state: OnboardingState): NudgeConfig | null {
@@ -64,9 +67,8 @@ function computeActiveNudge(state: OnboardingState): NudgeConfig | null {
   const now = new Date();
   const daysSinceSignup = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Show highest applicable unseen nudge
-  // Day-7 refund nudge is only relevant once the shop has at least one invoice.
-  if (daysSinceSignup >= 7 && !state.nudge_day7_seen && state.first_invoice_at) return NUDGE_CONFIGS.day7;
+  // Show highest applicable unseen nudge.
+  // TODO(WEB-UIUX-1019): Day-7 refund nudge disabled — refund UI not yet implemented.
   if (daysSinceSignup >= 5 && !state.nudge_day5_seen) return NUDGE_CONFIGS.day5;
   if (daysSinceSignup >= 3 && !state.nudge_day3_seen) return NUDGE_CONFIGS.day3;
   return null;
@@ -77,7 +79,7 @@ export function DailyNudge({ preloadedState }: DailyNudgeProps) {
   const queryClient = useQueryClient();
 
   const dismissMutation = useMutation({
-    mutationFn: (key: 'nudge_day3_seen' | 'nudge_day5_seen' | 'nudge_day7_seen') =>
+    mutationFn: (key: 'nudge_day3_seen' | 'nudge_day5_seen') =>
       onboardingApi.patchState({ [key]: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['onboarding-state'] });

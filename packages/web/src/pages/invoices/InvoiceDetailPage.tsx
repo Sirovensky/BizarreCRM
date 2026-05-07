@@ -51,11 +51,15 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
   const [showRefundPinGate, setShowRefundPinGate] = useState(false);
   const REFUND_PIN_THRESHOLD = 100;
+  // WEB-UIUX-1052: renamed `reason` → `code` so the local field name matches
+  // what it actually holds (a RefundReasonCode enum value). The composed
+  // `reason` string (code + note) is still what we send to the server — see
+  // creditNoteMutation.mutationFn below.
   const [creditNoteForm, setCreditNoteForm] = useState<{
     amount: string;
-    reason: RefundReasonCode | null;
+    code: RefundReasonCode | null;
     note: string;
-  }>({ amount: '', reason: null, note: '' });
+  }>({ amount: '', code: null, note: '' });
   // WEB-UIUX-731: field-level error state for credit note form.
   // Populated from server error.response.data.fields (e.g. { amount: 'msg' })
   // or a generic fallback; cleared on any form change or successful mutation.
@@ -231,7 +235,7 @@ export function InvoiceDetailPage() {
       }
 
       setShowCreditNote(false);
-      setCreditNoteForm({ amount: '', reason: null, note: '' });
+      setCreditNoteForm({ amount: '', code: null, note: '' });
       setCreditNoteError({});
     },
     onError: (e: any) => {
@@ -394,8 +398,8 @@ export function InvoiceDetailPage() {
         `Amount cannot exceed credit-note max (${formatCurrency(maxCreditNoteAmount)})`,
       );
     }
-    if (!creditNoteForm.reason) return toast.error('Select a reason');
-    if (creditNoteForm.reason === 'other' && !creditNoteForm.note.trim()) {
+    if (!creditNoteForm.code) return toast.error('Select a reason');
+    if (creditNoteForm.code === 'other' && !creditNoteForm.note.trim()) {
       return toast.error('Please enter a note when selecting "Other" as the reason');
     }
     const invoiceId = invoice.order_id;
@@ -409,7 +413,7 @@ export function InvoiceDetailPage() {
     }
     creditNoteMutation.mutate({
       amount,
-      code: creditNoteForm.reason,
+      code: creditNoteForm.code,
       note: creditNoteForm.note.trim(),
     });
   };
@@ -489,7 +493,10 @@ export function InvoiceDetailPage() {
                     setShowCreditNote(true);
                   }
                 }}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                // WEB-UIUX-1040: switched from amber to red ramp — amber read
+                // as "soft action"; Credit Note is irreversible like Void. Icon
+                // + label still distinguish it from the Void button.
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               >
                 <Undo2 className="h-4 w-4" /> Refund (credit note)
               </button>
@@ -888,11 +895,26 @@ export function InvoiceDetailPage() {
           aria-modal="true"
           aria-labelledby="credit-note-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setShowCreditNote(false); }}
+          onClick={(e) => {
+            if (e.target !== e.currentTarget) return;
+            // WEB-UIUX-1046: only close on backdrop-click when the form is
+            // untouched. If any field is dirty, require an explicit confirm so
+            // the operator doesn't accidentally lose a partially-entered note.
+            const isDirty =
+              creditNoteForm.amount !== '' ||
+              creditNoteForm.code !== null ||
+              creditNoteForm.note.trim() !== '';
+            if (isDirty) {
+              if (!window.confirm('Discard credit-note in progress?')) return;
+            }
+            setShowCreditNote(false);
+          }}
         >
           <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
+              {/* WEB-UIUX-1054: "Issue" is more precise — the action issues a
+                  credit instrument; "Create" is too generic. */}
+              <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Issue Credit Note</h2>
               <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
@@ -985,7 +1007,8 @@ export function InvoiceDetailPage() {
                 {creditNoteError.amount ? (
                   <p id="credit-amount-error" role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">{creditNoteError.amount}</p>
                 ) : (
-                  <p className="text-xs text-surface-400 mt-1">
+                  // WEB-UIUX-1036: id matches aria-describedby="credit-amount-label" on the input above.
+                  <p id="credit-amount-label" className="text-xs text-surface-400 mt-1">
                     Max credit: {formatCurrency(maxCreditNoteAmount)}
                   </p>
                 )}
@@ -995,10 +1018,11 @@ export function InvoiceDetailPage() {
                   in reporting, while still accepting a free-form note. */}
               <div>
                 <RefundReasonPicker
-                  value={creditNoteForm.reason}
+                  value={creditNoteForm.code}
                   note={creditNoteForm.note}
                   onChange={(code, note) => {
-                    setCreditNoteForm((prev) => ({ ...prev, reason: code, note }));
+                    // WEB-UIUX-1052: update `code` field (renamed from `reason`).
+                    setCreditNoteForm((prev) => ({ ...prev, code, note }));
                     setCreditNoteError((prev) => ({ ...prev, reason: undefined, note: undefined }));
                   }}
                 />
@@ -1022,9 +1046,10 @@ export function InvoiceDetailPage() {
               <button
                 onClick={handleCreditNote}
                 disabled={creditNoteMutation.isPending}
-                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                // WEB-UIUX-1040: red ramp matches button in header — irreversible action.
+                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
-                {creditNoteMutation.isPending ? 'Creating...' : 'Create Credit Note'}
+                {creditNoteMutation.isPending ? 'Issuing...' : 'Issue Credit Note'}
               </button>
             </div>
           </div>
