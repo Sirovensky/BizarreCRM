@@ -15,7 +15,65 @@ interface UiState {
   setKeyboardShortcutsEnabled: (enabled: boolean) => void;
 }
 
+// Resolve the registrable parent domain so a theme cookie set on the marketing
+// host (`bizarrecrm.com`) is visible on every tenant subdomain
+// (`iostest.bizarrecrm.com`, etc). For dev (`localhost`) we return null and
+// skip the Domain attribute — same-origin already handles persistence.
+const resolveCookieBaseDomain = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const host = window.location.hostname;
+  if (!host || host === 'localhost' || host.endsWith('.localhost')) return null;
+  // Plain IPv4 / IPv6 — Domain attr disallowed.
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':')) return null;
+  const parts = host.split('.');
+  if (parts.length < 2) return null;
+  // Take the last two labels: tenant.bizarrecrm.com → bizarrecrm.com.
+  // The leading dot makes the cookie visible to every subdomain.
+  return '.' + parts.slice(-2).join('.');
+};
+
+const THEME_COOKIE = 'theme';
+
+const readThemeCookie = (): 'light' | 'dark' | 'system' | null => {
+  if (typeof document === 'undefined') return null;
+  const raw = document.cookie || '';
+  for (const part of raw.split(';')) {
+    const [k, v] = part.trim().split('=');
+    if (k === THEME_COOKIE) {
+      if (v === 'light' || v === 'dark' || v === 'system') return v;
+      return null;
+    }
+  }
+  return null;
+};
+
+const writeThemeCookie = (theme: 'light' | 'dark' | 'system'): void => {
+  if (typeof document === 'undefined') return;
+  const domain = resolveCookieBaseDomain();
+  // 1 year in seconds. SameSite=Lax so cross-subdomain top-level navigation
+  // (clicking a link from landing to iostest.bizarrecrm.com) still sends it.
+  const parts = [
+    `${THEME_COOKIE}=${theme}`,
+    'path=/',
+    'max-age=31536000',
+    'samesite=lax',
+  ];
+  if (domain) parts.push(`domain=${domain}`);
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    parts.push('secure');
+  }
+  try { document.cookie = parts.join('; '); }
+  catch (err) { console.warn('[uiStore] theme cookie write failed', err); }
+};
+
 const getInitialTheme = (): 'light' | 'dark' | 'system' => {
+  // Cookie wins over localStorage so a theme picked on the marketing host
+  // (bizarrecrm.com) carries over to the tenant login subdomain — the two
+  // are different localStorage origins so localStorage alone can't bridge
+  // them. The cookie is set with Domain=.bizarrecrm.com and shared across
+  // every subdomain.
+  const fromCookie = readThemeCookie();
+  if (fromCookie) return fromCookie;
   try {
     const stored = localStorage.getItem('theme');
     if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
@@ -133,6 +191,9 @@ export const useUiStore = create<UiState>((set) => ({
     set({ theme });
     applyThemeWithFade(theme);
     safeWrite('theme', theme);
+    // Mirror to a cross-subdomain cookie so a theme set on the marketing
+    // host (bizarrecrm.com) survives navigation to <slug>.bizarrecrm.com.
+    writeThemeCookie(theme);
   },
 
   setCommandPaletteOpen: (open: boolean) => set({ commandPaletteOpen: open }),

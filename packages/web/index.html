@@ -72,12 +72,32 @@
       // cold load before React mounted and re-resolved).
       (function () {
         try {
-          var stored = localStorage.getItem('theme');
+          // Cookie wins over localStorage so a theme picked on bizarrecrm.com
+          // (marketing host) carries over to <slug>.bizarrecrm.com (tenant
+          // login). The two are different localStorage origins so cookie is
+          // the only cross-subdomain channel here. Cookie is set with
+          // Domain=.bizarrecrm.com by uiStore.setTheme.
+          var cookieTheme = null;
+          try {
+            var pairs = (document.cookie || '').split(';');
+            for (var i = 0; i < pairs.length; i++) {
+              var pair = pairs[i].trim();
+              if (pair.indexOf('theme=') === 0) {
+                var v = pair.substring(6);
+                if (v === 'light' || v === 'dark' || v === 'system') {
+                  cookieTheme = v;
+                }
+                break;
+              }
+            }
+          } catch (_) { /* cookies disabled */ }
+          var stored = cookieTheme || localStorage.getItem('theme');
           // Default 'light' — must match getInitialTheme() in uiStore.ts.
           // Previous default 'system' silently flipped operators on dark-mode
           // OS hosts into dark UI, which most counter / POS surfaces don't
           // want. Settings → UI lets operators opt into dark; that choice
-          // persists in localStorage so this fallback only runs first-launch.
+          // persists in localStorage + cookie so this fallback only runs
+          // first-launch.
           var theme = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'light';
           var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
           var isDark = theme === 'dark' || (theme === 'system' && prefersDark);
