@@ -87,7 +87,45 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   // the whole server to dev mode.
   const isSqliteError = typeof errCode === 'string' && errCode.startsWith('SQLITE_');
   if (process.env.NODE_ENV !== 'production' || isSqliteError) {
-    logger.error('unhandled_error_stack', { err_stack: err?.stack });
+    // Some throw sites wrap the original SqliteError so badly that
+    // err.stack is undefined and err.message is "[object Object]". Dump
+    // every own property + the prototype chain so operators see SOMETHING
+    // identifying. better-sqlite3 errors have message/code/.../sql on the
+    // prototype — Object.getOwnPropertyNames + getOwnPropertyDescriptors
+    // surfaces them all, including non-enumerable.
+    let dumped = '';
+    try {
+      const seen: Record<string, unknown> = {};
+      if (err && typeof err === 'object') {
+        for (const k of Object.getOwnPropertyNames(err)) {
+          try {
+            seen[k] = (err as Record<string, unknown>)[k];
+          } catch { /* property accessor threw — skip */ }
+        }
+        const proto = Object.getPrototypeOf(err);
+        if (proto && proto !== Object.prototype) {
+          for (const k of Object.getOwnPropertyNames(proto)) {
+            if (k === 'constructor') continue;
+            if (k in seen) continue;
+            try {
+              const v = (err as Record<string, unknown>)[k];
+              if (typeof v !== 'function') seen[k] = v;
+            } catch { /* skip */ }
+          }
+        }
+      }
+      dumped = JSON.stringify(seen, (_k, v) => {
+        if (v instanceof Error) return { name: v.name, message: v.message, stack: v.stack };
+        return v;
+      });
+    } catch (dumpErr) {
+      dumped = `<dump-failed: ${dumpErr instanceof Error ? dumpErr.message : String(dumpErr)}>`;
+    }
+    logger.error('unhandled_error_dump', {
+      err_stack: err?.stack || '<no stack>',
+      err_dump: dumped,
+      err_constructor: err?.constructor?.name,
+    });
   }
 
   // @audit-fixed: Guard against headers already sent — writing a status
