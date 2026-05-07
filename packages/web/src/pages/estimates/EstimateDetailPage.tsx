@@ -330,6 +330,8 @@ export function EstimateDetailPage() {
     mutationFn: () => estimateApi.send(Number(id)),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      // WEB-UIUX-1480: keep list-page status badges in sync.
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
       const data = res?.data?.data || {};
       if (data.sent === false) {
         toast.error(data.warning || 'No message was sent');
@@ -344,6 +346,8 @@ export function EstimateDetailPage() {
     mutationFn: () => estimateApi.approve(Number(id)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      // WEB-UIUX-1480: keep list-page status badges in sync.
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
       toast.success('Estimate approved');
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to approve'),
@@ -353,6 +357,8 @@ export function EstimateDetailPage() {
     mutationFn: () => estimateApi.convert(Number(id)),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      // WEB-UIUX-1480: keep list-page status badges in sync.
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
       const ticketId = res.data?.data?.ticket?.id;
       toast(
         (t) => (
@@ -384,6 +390,8 @@ export function EstimateDetailPage() {
     mutationFn: (d: any) => estimateApi.update(Number(id), d),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      // WEB-UIUX-1480: keep list-page status badges in sync.
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
       setEditing(false);
       toast.success('Estimate updated');
     },

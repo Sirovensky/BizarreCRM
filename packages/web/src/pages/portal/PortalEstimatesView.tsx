@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import * as api from './portalApi';
 import { formatDate } from '../../utils/format';
 
@@ -37,7 +38,8 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
     });
     try {
       await api.approveEstimate(id);
-      // success — keep the optimistic state.
+      // WEB-UIUX-1470: toast + next-step prompt so customer knows what happens next.
+      toast.success('Estimate approved. Shop has been notified — expect a call within 24h.');
     } catch {
       // Roll back to the captured snapshot so the row reverts to its prior
       // (typically "sent") status and the Approve button reappears.
@@ -131,12 +133,13 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                 )}
 
                 {est.status === 'sent' && (
+                  // WEB-UIUX-1476: amber tone signals financial commitment; label includes total for clarity.
                   <button
                     onClick={() => handleApprove(est.id)}
                     disabled={approvingId === est.id}
-                    className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                    className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                   >
-                    {approvingId === est.id ? 'Approving...' : 'Approve Estimate'}
+                    {approvingId === est.id ? 'Approving...' : `Approve & authorize $${est.total.toFixed(2)}`}
                   </button>
                 )}
                 {est.status === 'approved' && (
