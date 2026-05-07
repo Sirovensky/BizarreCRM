@@ -744,6 +744,63 @@ function startPm2() {
   }
 }
 
+/**
+ * Print final PM2 state to the console and tail the server error log if the
+ * crm app is not online. Silent failure was the prior mode: setup.bat closed
+ * with no signal whether the supervised server was actually running.
+ */
+function printPm2Diagnostics() {
+  step('PM2 final state');
+  if (!hasCmd('pm2')) {
+    warn('pm2 not on PATH — cannot show final state.');
+    return;
+  }
+  // pm2 list output: human-readable table that operators can screenshot.
+  run('pm2', ['list']);
+
+  // Inspect status from jlist; if crm not online, tail err.log so the
+  // crash reason is in the same scrollback as the failure indication.
+  const probe = capture('pm2', ['jlist']);
+  if (!probe.ok) {
+    warn('pm2 jlist failed — cannot inspect status.');
+    return;
+  }
+  let apps;
+  try { apps = JSON.parse(probe.stdout); } catch { apps = null; }
+  if (!Array.isArray(apps)) {
+    warn('pm2 jlist output unparseable.');
+    return;
+  }
+  const crm = apps.find((a) => a && a.name === 'bizarre-crm');
+  const wd = apps.find((a) => a && a.name === 'bizarre-crm-watchdog');
+  const crmStatus = crm?.pm2_env?.status ?? 'missing';
+  const wdStatus = wd?.pm2_env?.status ?? 'missing';
+
+  if (crmStatus === 'online' && wdStatus === 'online') {
+    ok(`bizarre-crm: ${crmStatus}, bizarre-crm-watchdog: ${wdStatus}`);
+    return;
+  }
+
+  warn(`Apps not fully online — bizarre-crm=${crmStatus}, bizarre-crm-watchdog=${wdStatus}`);
+  // Tail err.log so the crash reason is visible without operator running
+  // a separate command.
+  const errLog = path.join(REPO_ROOT, 'logs/bizarre-crm.err.log');
+  if (existsSync(errLog)) {
+    console.log(c.dim(`\n--- last 60 lines of ${errLog} ---`));
+    try {
+      const data = readFileSync(errLog, 'utf8').split(/\r?\n/);
+      const tail = data.slice(Math.max(0, data.length - 60)).join('\n');
+      console.log(tail);
+    } catch (e) {
+      warn(`Could not read err log: ${e.message}`);
+    }
+    console.log(c.dim('--- end of err log ---\n'));
+  } else {
+    warn(`No err log at ${errLog} yet — app may have failed before any output.`);
+  }
+  console.log(c.dim('  Live logs: pm2 logs bizarre-crm'));
+}
+
 // ─── 11. Boot autostart registration ───────────────────────────────────────
 
 async function registerAutostart() {
@@ -981,6 +1038,10 @@ async function launchDashboard(mode, electronBuilt) {
   }
   startPm2();
   await registerAutostart();
+  // Always print final PM2 state + tail recent error log so the operator
+  // sees in the same window whether apps are actually running. Previously
+  // the only signal was setup.bat closing — silent failure mode.
+  printPm2Diagnostics();
   // Launch step now honors the dashboard choice. Electron path on Windows
   // when the build succeeded; browser otherwise.
   await launchDashboard(dashboardMode, electronBuilt);

@@ -125,4 +125,16 @@ echo  [3/3] Running universal setup script ^(setup.mjs^)...
 echo.
 :: %* forwards any flags the operator passed to setup.bat (e.g. --skip-build).
 node "%ROOT%setup.mjs" %*
-exit /b %errorlevel%
+set "SETUP_EXIT=%errorlevel%"
+
+:: Keep cmd window open so operators can read final status / warnings printed
+:: by setup.mjs. Without this pause, "setup.bat exits but no server running"
+:: is undebuggable from the operator side because every diagnostic scrolls
+:: away when the window auto-closes.
+echo.
+echo  ============================================
+echo   Setup script finished (exit %SETUP_EXIT%).
+echo   Press any key to close this window.
+echo  ============================================
+pause >nul
+exit /b %SETUP_EXIT%
