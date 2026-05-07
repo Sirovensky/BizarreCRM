@@ -130,50 +130,93 @@ function assertTask(task) {
   }
 }
 
+/**
+ * Re-throw better-sqlite3 errors as plain `Error` instances with all
+ * diagnostic fields hoisted to enumerable own properties.
+ *
+ * Why: SqliteError stores `message` as a non-enumerable getter on the
+ * prototype.  Piscina ferries thrown errors from worker → main thread via
+ * `structuredClone`, which only walks enumerable own properties.  Result:
+ * the main thread receives `{code:'SQLITE_ERROR'}` — no message, no stack,
+ * no SQL.  Operators saw `err_message:"[object Object]"` and a useless
+ * `err_dump:'{"code":"SQLITE_ERROR"}'` in production for weeks.
+ *
+ * This wrapper copies message/stack/code/sql onto a plain `Error` before
+ * re-throwing so the structured-clone path preserves them.
+ */
+function rethrowWithFullContext(err, task) {
+  if (!(err instanceof Error)) {
+    // Non-Error thrown — wrap as Error with stringified payload.
+    const wrapped = new Error(typeof err === 'string' ? err : JSON.stringify(err));
+    wrapped.code = err && typeof err === 'object' && 'code' in err ? err.code : 'E_NON_ERROR_THROW';
+    wrapped.sql = task && task.sql;
+    throw wrapped;
+  }
+  // Build a plain Error so structured-clone preserves enumerable fields.
+  const wrapped = new Error(err.message || String(err));
+  wrapped.name = err.name || 'Error';
+  wrapped.code = err.code;
+  // Stack: Error's `.stack` is enumerable across all major engines so it
+  // does survive structured-clone — but copy it explicitly so callers can
+  // rely on it.
+  if (err.stack) wrapped.stack = err.stack;
+  if (task && task.sql) wrapped.sql = task.sql;
+  // Preserve any other own props (better-sqlite3 may attach .errno, etc.)
+  for (const key of Object.getOwnPropertyNames(err)) {
+    if (key === 'name' || key === 'message' || key === 'stack' || key === 'code') continue;
+    try { wrapped[key] = err[key]; } catch { /* skip getters that throw */ }
+  }
+  throw wrapped;
+}
+
 export default function execute(task) {
   assertTask(task);
   const db = getConnection(task.dbPath);
 
-  switch (task.op) {
-    case 'get': {
-      const stmt = db.prepare(task.sql);
-      return task.params?.length ? stmt.get(...task.params) : stmt.get();
-    }
-    case 'all': {
-      const stmt = db.prepare(task.sql);
-      return task.params?.length ? stmt.all(...task.params) : stmt.all();
-    }
-    case 'run': {
-      const stmt = db.prepare(task.sql);
-      const result = task.params?.length ? stmt.run(...task.params) : stmt.run();
-      return { changes: result.changes, lastInsertRowid: Number(result.lastInsertRowid) };
-    }
-    case 'transaction': {
-      if (!task.queries?.length) return [];
-      const results = [];
-      const txn = db.transaction(() => {
-        for (const q of task.queries) {
-          const stmt = db.prepare(q.sql);
-          const result = q.params?.length ? stmt.run(...q.params) : stmt.run();
-          // Guarded UPDATE / DELETE: if expectChanges is set and the query
-          // touched fewer rows than expected (e.g. WHERE in_stock >= ? failed
-          // because stock dropped between the precheck and the transaction),
-          // throw so the better-sqlite3 transaction rolls back all prior
-          // inserts. The error is tagged so the caller can map it to a 409.
-          if (q.expectChanges && result.changes === 0) {
-            const err = new Error(q.expectChangesError || 'Guarded update failed — row no longer matches condition');
-            err.code = 'E_EXPECT_CHANGES';
-            throw err;
+  try {
+    switch (task.op) {
+      case 'get': {
+        const stmt = db.prepare(task.sql);
+        return task.params?.length ? stmt.get(...task.params) : stmt.get();
+      }
+      case 'all': {
+        const stmt = db.prepare(task.sql);
+        return task.params?.length ? stmt.all(...task.params) : stmt.all();
+      }
+      case 'run': {
+        const stmt = db.prepare(task.sql);
+        const result = task.params?.length ? stmt.run(...task.params) : stmt.run();
+        return { changes: result.changes, lastInsertRowid: Number(result.lastInsertRowid) };
+      }
+      case 'transaction': {
+        if (!task.queries?.length) return [];
+        const results = [];
+        const txn = db.transaction(() => {
+          for (const q of task.queries) {
+            const stmt = db.prepare(q.sql);
+            const result = q.params?.length ? stmt.run(...q.params) : stmt.run();
+            // Guarded UPDATE / DELETE: if expectChanges is set and the query
+            // touched fewer rows than expected (e.g. WHERE in_stock >= ? failed
+            // because stock dropped between the precheck and the transaction),
+            // throw so the better-sqlite3 transaction rolls back all prior
+            // inserts. The error is tagged so the caller can map it to a 409.
+            if (q.expectChanges && result.changes === 0) {
+              const err = new Error(q.expectChangesError || 'Guarded update failed — row no longer matches condition');
+              err.code = 'E_EXPECT_CHANGES';
+              throw err;
+            }
+            results.push({ changes: result.changes, lastInsertRowid: Number(result.lastInsertRowid) });
           }
-          results.push({ changes: result.changes, lastInsertRowid: Number(result.lastInsertRowid) });
-        }
-      });
-      txn();
-      return results;
+        });
+        txn();
+        return results;
+      }
+      default:
+        // Unreachable — assertTask already rejects unknown ops — but keep for
+        // exhaustiveness.
+        throw Object.assign(new Error(`db-worker: unknown op: ${task.op}`), { code: 'E_BAD_TASK' });
     }
-    default:
-      // Unreachable — assertTask already rejects unknown ops — but keep for
-      // exhaustiveness.
-      throw Object.assign(new Error(`db-worker: unknown op: ${task.op}`), { code: 'E_BAD_TASK' });
+  } catch (err) {
+    rethrowWithFullContext(err, task);
   }
 }
