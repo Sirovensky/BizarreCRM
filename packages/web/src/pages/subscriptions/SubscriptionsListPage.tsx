@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, Link as LinkIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
@@ -112,8 +112,11 @@ export function SubscriptionsListPage() {
 
   const cancelMutation = useMutation({
     mutationFn: (id: number) => membershipApi.cancel(id, { immediate: true }),
-    onSuccess: () => {
+    // WEB-UIUX-1070: also invalidate customer membership cache so CustomerDetailPage stays in sync
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      const sub = (data ?? []).find((s) => s.id === id);
+      if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
       toast.success('Subscription cancelled');
       setCancellingId(null);
     },
@@ -127,14 +130,79 @@ export function SubscriptionsListPage() {
   const [billingId, setBillingId] = useState<number | null>(null);
   const runBillingMut = useMutation({
     mutationFn: (id: number) => membershipApi.runBilling(id, { force: true }),
-    onSuccess: (_data, id) => {
+    // WEB-UIUX-1070: also invalidate customer membership cache; WEB-UIUX-1076: drop unused _data param
+    onSuccess: (_result, id) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      const sub = (data ?? []).find((s) => s.id === id);
+      if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
       toast.success('Billing completed successfully');
       setBillingId(null);
     },
-    onError: (err: any, _id) => {
+    onError: (err: any) => {
       toast.error(err?.response?.data?.message || 'Billing failed');
       setBillingId(null);
+    },
+  });
+
+  // WEB-UIUX-1065: pause/resume mutations
+  const [pausingId, setPausingId] = useState<number | null>(null);
+  const [resumingId, setResumingId] = useState<number | null>(null);
+  const pauseMut = useMutation({
+    mutationFn: (id: number) => membershipApi.pause(id),
+    // WEB-UIUX-1070: invalidate both query keys
+    onSuccess: (_result, id) => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      const sub = (data ?? []).find((s) => s.id === id);
+      if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
+      toast.success('Subscription paused');
+      setPausingId(null);
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err));
+      setPausingId(null);
+    },
+  });
+  const resumeMut = useMutation({
+    mutationFn: (id: number) => membershipApi.resume(id),
+    // WEB-UIUX-1070: invalidate both query keys
+    onSuccess: (_result, id) => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      const sub = (data ?? []).find((s) => s.id === id);
+      if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
+      toast.success('Subscription resumed');
+      setResumingId(null);
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err));
+      setResumingId(null);
+    },
+  });
+
+  // WEB-UIUX-1074: send-payment-link mutation for subs without blockchyp_token
+  const [paymentLinkId, setPaymentLinkId] = useState<number | null>(null);
+  const paymentLinkMut = useMutation({
+    mutationFn: (id: number) => membershipApi.createPaymentLink(id),
+    onSuccess: (res, id) => {
+      const url: string = (res.data as any)?.url ?? '';
+      toast(
+        (t) => (
+          <span>
+            Payment link ready.{' '}
+            <button
+              className="underline font-medium"
+              onClick={() => { navigator.clipboard.writeText(url); toast.dismiss(t.id); }}
+            >
+              Copy
+            </button>
+          </span>
+        ),
+        { duration: 8000 },
+      );
+      setPaymentLinkId(null);
+    },
+    onError: (err: unknown) => {
+      toast.error(formatApiError(err));
+      setPaymentLinkId(null);
     },
   });
 
@@ -147,6 +215,36 @@ export function SubscriptionsListPage() {
       if (!ok) return;
       setBillingId(sub.id);
       runBillingMut.mutate(sub.id);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  }
+
+  // WEB-UIUX-1065: pause handler
+  async function handlePause(sub: Subscription): Promise<void> {
+    try {
+      const ok = await confirm(
+        `Pause ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership?`,
+        { title: 'Pause subscription?', confirmLabel: 'Pause' },
+      );
+      if (!ok) return;
+      setPausingId(sub.id);
+      pauseMut.mutate(sub.id);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
+  }
+
+  // WEB-UIUX-1065: resume handler
+  async function handleResume(sub: Subscription): Promise<void> {
+    try {
+      const ok = await confirm(
+        `Resume ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership?`,
+        { title: 'Resume subscription?', confirmLabel: 'Resume' },
+      );
+      if (!ok) return;
+      setResumingId(sub.id);
+      resumeMut.mutate(sub.id);
     } catch (err) {
       toast.error(formatApiError(err));
     }
@@ -377,6 +475,53 @@ export function SubscriptionsListPage() {
                               ? <Loader2 className="h-3 w-3 animate-spin" />
                               : <RefreshCw className="h-3 w-3" />}
                             Bill now
+                          </button>
+                        </AdminOnly>
+                      )}
+                      {/* WEB-UIUX-1074: subs without a token get a "Send payment link" button instead */}
+                      {(sub.status === 'active' || sub.status === 'past_due') && !sub.blockchyp_token && (
+                        <AdminOnly>
+                          <button
+                            onClick={() => { setPaymentLinkId(sub.id); paymentLinkMut.mutate(sub.id); }}
+                            disabled={paymentLinkId === sub.id}
+                            className="flex items-center gap-1 text-surface-500 hover:text-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                            title="Send payment link"
+                          >
+                            {paymentLinkId === sub.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <LinkIcon className="h-3 w-3" />}
+                            Send payment link
+                          </button>
+                        </AdminOnly>
+                      )}
+                      {/* WEB-UIUX-1065: Pause button for active subs, Resume for paused subs */}
+                      {sub.status === 'active' && (
+                        <AdminOnly>
+                          <button
+                            onClick={() => handlePause(sub)}
+                            disabled={pausingId === sub.id}
+                            className="flex items-center gap-1 text-blue-500 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                            title="Pause membership"
+                          >
+                            {pausingId === sub.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <PauseCircle className="h-3 w-3" />}
+                            Pause
+                          </button>
+                        </AdminOnly>
+                      )}
+                      {sub.status === 'paused' && (
+                        <AdminOnly>
+                          <button
+                            onClick={() => handleResume(sub)}
+                            disabled={resumingId === sub.id}
+                            className="flex items-center gap-1 text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                            title="Resume membership"
+                          >
+                            {resumingId === sub.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <PlayCircle className="h-3 w-3" />}
+                            Resume
                           </button>
                         </AdminOnly>
                       )}

@@ -1067,8 +1067,10 @@ function MembershipCard({ customerId }: { customerId: number }) {
 
   const cancelMut = useMutation({
     mutationFn: () => membershipApi.cancel(memberData!.id, { immediate: true }),
+    // WEB-UIUX-1070: also invalidate SubscriptionsListPage cache
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       toast.success('Membership cancelled');
     },
     onError: (err: unknown) => toast.error(formatApiError(err)),
@@ -1076,8 +1078,10 @@ function MembershipCard({ customerId }: { customerId: number }) {
 
   const pauseMut = useMutation({
     mutationFn: (reason: string) => membershipApi.pause(memberData!.id, { reason }),
+    // WEB-UIUX-1070: also invalidate SubscriptionsListPage cache
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       toast.success('Membership paused');
     },
     onError: () => toast.error('Failed to pause'),
@@ -1085,8 +1089,10 @@ function MembershipCard({ customerId }: { customerId: number }) {
 
   const resumeMut = useMutation({
     mutationFn: () => membershipApi.resume(memberData!.id),
+    // WEB-UIUX-1070: also invalidate SubscriptionsListPage cache
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       toast.success('Membership resumed');
     },
     onError: () => toast.error('Failed to resume'),

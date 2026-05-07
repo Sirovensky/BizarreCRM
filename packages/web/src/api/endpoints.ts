@@ -1653,6 +1653,9 @@ export const membershipApi = {
     api.post(`/membership/${id}/pause`, data || {}),
   resume: (id: number) =>
     api.post(`/membership/${id}/resume`),
+  // WEB-UIUX-1074: per-subscription payment-link (wraps POST /:id/payment-link)
+  createPaymentLink: (id: number) =>
+    api.post<{ url: string }>(`/membership/${id}/payment-link`),
 
   // Payment history
   getPayments: (id: number) =>

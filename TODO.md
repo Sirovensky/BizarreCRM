@@ -4315,7 +4315,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:199-206`
   <!-- meta: fix=change-CTA-to-link-to-/customers-with-text="Open-a-customer-profile-and-tap-Enroll-in-Membership"-also-add-Configure-Tiers-secondary-link -->
 
-- [ ] WEB-UIUX-1065. **[MAJOR] No Pause/Resume on list page; admin must click into each customer.** Server `POST /:id/pause` and `/:id/resume` exist (`membership.routes.ts:241-258`). Customer-profile MembershipCard exposes both (`CustomerDetailPage.tsx:990-1017`). List page exposes only Cancel + Bill now. Admin processing 50 subs for a snowstorm closure must navigate to each profile individually. Inconsistent affordance, lost bulk recovery. L1, L4, L8.
+- [x] WEB-UIUX-1065. **[MAJOR] No Pause/Resume on list page; admin must click into each customer.** Server `POST /:id/pause` and `/:id/resume` exist (`membership.routes.ts:241-258`). Customer-profile MembershipCard exposes both (`CustomerDetailPage.tsx:990-1017`). List page exposes only Cancel + Bill now. Admin processing 50 subs for a snowstorm closure must navigate to each profile individually. Inconsistent affordance, lost bulk recovery. L1, L4, L8. **[AUTOLOOP-T50 RESOLVED: SubscriptionsListPage row gained Pause/Resume buttons (Pause when active, Resume when paused) with AdminOnly gate matching Cancel pattern; new endpoints.ts wrappers.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:257-286`
   <!-- meta: fix=add-Pause/Resume-buttons-to-row-action-cell+row-level-state+optional-bulk-pause-checkbox-selection -->
 
@@ -4323,7 +4323,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
   <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
 
-- [ ] WEB-UIUX-1067. **[MAJOR] Cancel reason not collected at all.** Industry standard (Stripe, Recurly, Chargebee, ChartMogul) prompts `cancellation_reason` on cancel for retention analytics + win-back targeting. Server has no `cancellation_reason` column on `customer_subscriptions`; UI has no field; audit log has only `{ subscription_id, immediate }` (`membership.routes.ts:237`). Lost MRR-churn signal entirely. L1, L4.
+- [ ] WEB-UIUX-1067. **[MAJOR] Cancel reason not collected at all.** Industry standard (Stripe, Recurly, Chargebee, ChartMogul) prompts `cancellation_reason` on cancel for retention analytics + win-back targeting. Server has no `cancellation_reason` column on `customer_subscriptions`; UI has no field; audit log has only `{ subscription_id, immediate }` (`membership.routes.ts:237`). Lost MRR-churn signal entirely. L1, L4. **STATUS: BLOCKED — needs schema migration (cancellation_reason+cancellation_note cols) + modal radio + audit log changes; defer to memberships sprint**
   `packages/server/src/routes/membership.routes.ts:222-239`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:155-168`
   <!-- meta: fix=add-cancellation_reason+cancellation_note-cols-via-migration+modal-radio[too-expensive|moved|switched|not-using|other]+include-in-audit -->
@@ -4332,7 +4332,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:240-286`
   <!-- meta: fix=for-status='past_due'-promote-Retry-payment-as-primary+add-days-overdue-pill+SendDunningEmail-secondary-action -->
 
-- [ ] WEB-UIUX-1070. **[MAJOR] `runBillingMut` invalidates only `['subscriptions']`; profile-page query stale.** List page invalidates `queryKey: ['subscriptions']` (`SubscriptionsListPage.tsx:131`). Customer-profile MembershipCard uses `['membership','customer',customerId]` (`CustomerDetailPage.tsx:861`). Admin opens both tabs → bills from list → profile shows old `current_period_end`. Same defect on cancel: `cancelMutation` invalidates `['subscriptions']` only (`:116`). MembershipCard `cancelMut` invalidates only `['membership','customer',customerId]` (`:907`) — list page in another tab keeps stale "active" row. Cross-surface invalidation missing. L7.
+- [x] WEB-UIUX-1070. **[MAJOR] `runBillingMut` invalidates only `['subscriptions']`; profile-page query stale.** List page invalidates `queryKey: ['subscriptions']` (`SubscriptionsListPage.tsx:131`). Customer-profile MembershipCard uses `['membership','customer',customerId]` (`CustomerDetailPage.tsx:861`). Admin opens both tabs → bills from list → profile shows old `current_period_end`. Same defect on cancel: `cancelMutation` invalidates `['subscriptions']` only (`:116`). MembershipCard `cancelMut` invalidates only `['membership','customer',customerId]` (`:907`) — list page in another tab keeps stale "active" row. Cross-surface invalidation missing. L7. **[AUTOLOOP-T50 RESOLVED: every mutation in SubscriptionsListPage + CustomerDetailPage now invalidates BOTH ['subscriptions'] and ['membership','customer',customer_id]; cross-tab stale-data fixed.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:115-124,128-139`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:894-929`
   <!-- meta: fix=after-each-mutation-invalidate-both-['subscriptions']-and-['membership','customer',customerId]+also-['membership','tiers']-after-tier-CRUD -->
@@ -4344,7 +4344,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
 
 #### Minor — feedback specificity, sub-state polish
 
-- [ ] WEB-UIUX-1072. **[MINOR] Cancel success toast is identical for immediate vs end-of-period cancel.** `toast.success('Subscription cancelled')` (`SubscriptionsListPage.tsx:117`). Once WEB-UIUX-1059 ships the radio choice, the same string lies for `immediate:false` (which doesn't cancel — it schedules cancel). L7. Trivial fix when the choice modal lands: read response `data.immediate` and switch text.
+- [ ] WEB-UIUX-1072. **[MINOR] Cancel success toast is identical for immediate vs end-of-period cancel.** `toast.success('Subscription cancelled')` (`SubscriptionsListPage.tsx:117`). Once WEB-UIUX-1059 ships the radio choice, the same string lies for `immediate:false` (which doesn't cancel — it schedules cancel). L7. Trivial fix when the choice modal lands: read response `data.immediate` and switch text. **STATUS: BLOCKED — depends on WEB-UIUX-1059 (immediate-vs-end-of-period radio modal) which is BLOCKED; trivial when 1059 ships**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:117`
   <!-- meta: fix=after-WEB-UIUX-1059-toast='Cancelled-immediately'-vs-'Will-cancel-on-{date}' -->
 
@@ -4353,7 +4353,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/api/endpoints.ts:1289-1325`
   <!-- meta: fix=add-membershipApi.getPayments(id)-wrapper+row-expand-shows-last-3-payments+full-history-modal -->
 
-- [ ] WEB-UIUX-1074. **[MINOR] Subs without `blockchyp_token` give zero recovery affordance.** `Bill now` only renders when `sub.blockchyp_token` truthy (`SubscriptionsListPage.tsx:260`). For a sub created via signup-flow without card, admin sees no hint to "Add card" or "Send payment link". Server has `POST /membership/payment-link` for exactly this case but no UI surface here. L8, L9.
+- [x] WEB-UIUX-1074. **[MINOR] Subs without `blockchyp_token` give zero recovery affordance.** `Bill now` only renders when `sub.blockchyp_token` truthy (`SubscriptionsListPage.tsx:260`). For a sub created via signup-flow without card, admin sees no hint to "Add card" or "Send payment link". Server has `POST /membership/payment-link` for exactly this case but no UI surface here. L8, L9. **[AUTOLOOP-T50 RESOLVED: SubscriptionsListPage row now renders 'Send payment link' button when !sub.blockchyp_token; calls new membershipApi.createPaymentLink(id) wrapper; toast surfaces URL with Copy action.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:259-274`
   <!-- meta: fix=when-no-blockchyp_token-render-secondary-button-Send-payment-link-calling-membershipApi.createPaymentLink+toast-with-copyable-URL -->
 
@@ -4361,7 +4361,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:175-189`
   <!-- meta: fix=add-primary-button-New-subscription-opens-modal-CustomerPicker+TierPicker+CardOnFile-or-PaymentLink -->
 
-- [ ] WEB-UIUX-1076. **[MINOR] `_data, id` unused param in `runBillingMut.onSuccess`** (`SubscriptionsListPage.tsx:130`). Cosmetic — `id` shadowed and unused. L not applicable; cleanup.
+- [x] WEB-UIUX-1076. **[MINOR] `_data, id` unused param in `runBillingMut.onSuccess`** (`SubscriptionsListPage.tsx:130`). Cosmetic — `id` shadowed and unused. L not applicable; cleanup. **[AUTOLOOP-T50 RESOLVED: dropped unused _data param from runBillingMut.onSuccess.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:130-134`
   <!-- meta: fix=destructure-only-the-args-actually-used -->
 
@@ -4377,7 +4377,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
 #### Blocker — broken contract, unwired status, missing admin surfaces
 
-- [ ] WEB-UIUX-1078. **[BLOCKER] Migration 088 promises `qc_required=true` blocks PATCH `status='complete'` until a `qc_sign_offs` row exists — no server enforcement exists.** `088_bench_timer_qc_defects.sql:22-23` states the gate; `tickets.routes.ts` has zero references to `qc_required` or `qc_sign_offs`. Admin who flips the flag (DB-only, see WEB-UIUX-1079) gets a false sense of compliance — every tech still completes tickets without sign-off. Documentation lies. L2, L8.
+- [ ] WEB-UIUX-1078. **[BLOCKER] Migration 088 promises `qc_required=true` blocks PATCH `status='complete'` until a `qc_sign_offs` row exists — no server enforcement exists.** `088_bench_timer_qc_defects.sql:22-23` states the gate; `tickets.routes.ts` has zero references to `qc_required` or `qc_sign_offs`. Admin who flips the flag (DB-only, see WEB-UIUX-1079) gets a false sense of compliance — every tech still completes tickets without sign-off. Documentation lies. L2, L8. **STATUS: BLOCKED — server policy enforcement (qc_required gate in PATCH status handler) needs route audit + integration tests; defer to QC sprint**
   `packages/server/src/db/migrations/088_bench_timer_qc_defects.sql:18-26`
   `packages/server/src/routes/tickets.routes.ts`
   <!-- meta: fix=in-tickets-PATCH-status-handler-when-qc_required==='true'-AND-target-status-is-terminal('Repaired'|'Repaired-Pending QC'|'Payment Received & Picked Up')-SELECT-1-FROM-qc_sign_offs-WHERE-ticket_id=?-LIMIT-1+throw-409-if-missing -->
@@ -4387,7 +4387,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/server/src/routes/bench.routes.ts:255-275`
   <!-- meta: fix=add-pages/settings/BenchQcSettings.tsx+settings-tab-Bench/QC+toggles-for-qc_required+bench_timer_enabled+number-input-for-labor-rate -->
 
-- [ ] WEB-UIUX-1080. **[BLOCKER] No admin UI for QC checklist CRUD — and the modal's empty-state copy points to that nonexistent page.** Server has `POST/PUT/DELETE /bench/qc-checklist` admin-gated routes (`bench.routes.ts:614-700`) with no client wrapper besides `checklist()` (read). Empty-state in modal: `"Ask an admin to add some under Settings → Bench / QC."` (`QcSignOffModal.tsx:218`) — that path doesn't exist. Tech reads guidance, admin follows guidance, both dead-end. L1, L2, L4, L8.
+- [ ] WEB-UIUX-1080. **[BLOCKER] No admin UI for QC checklist CRUD — and the modal's empty-state copy points to that nonexistent page.** Server has `POST/PUT/DELETE /bench/qc-checklist` admin-gated routes (`bench.routes.ts:614-700`) with no client wrapper besides `checklist()` (read). Empty-state in modal: `"Ask an admin to add some under Settings → Bench / QC."` (`QcSignOffModal.tsx:218`) — that path doesn't exist. Tech reads guidance, admin follows guidance, both dead-end. L1, L2, L4, L8. **STATUS: BLOCKED — needs new pages/settings/QcChecklistPage admin UI with row CRUD + drag-sort + endpoints; multi-component, defer to QC sprint**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:217-219`
   `packages/web/src/api/endpoints.ts:1366-1374`
   <!-- meta: fix=add-pages/settings/QcChecklistPage.tsx+row-CRUD+device-category-filter+drag-sort_order+wire-endpoints.bench.qc.{create,update,delete}+update-empty-state-link-to-real-route -->
@@ -4397,7 +4397,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/server/src/routes/bench.routes.ts:703-753`
   <!-- meta: fix=add-useQuery(['qc-status',ticketId])-in-TicketDetail+badge-"QC signed by {name} at {time}"+disable-button-if-already-signed-or-show-"Re-sign-(needs-manager)"+add-UNIQUE(ticket_id)-via-migration-OR-explicit-INSERT-OR-REPLACE-with-confirm -->
 
-- [ ] WEB-UIUX-1082. **[BLOCKER] Server's specific 400 messages never reach the operator — `onError` toast displays axios's generic `err.message`.** `signMut.onError` at `QcSignOffModal.tsx:170-173` does `err instanceof Error ? err.message : 'Sign-off failed'`. Axios errors expose server payload at `err.response?.data?.message`, not `err.message` (which is `"Request failed with status code 400"`). Server messages like `"QC failed: 3 checklist item(s) not passed"`, `"working_photo image is required"`, `"Storage limit (500 MB) reached. Upgrade to Pro"` all stripped. Tech who hits the 403 storage-quota path sees "Request failed with status code 403" instead of the upgrade prompt. L7, L8.
+- [x] WEB-UIUX-1082. **[BLOCKER] Server's specific 400 messages never reach the operator — `onError` toast displays axios's generic `err.message`.** `signMut.onError` at `QcSignOffModal.tsx:170-173` does `err instanceof Error ? err.message : 'Sign-off failed'`. Axios errors expose server payload at `err.response?.data?.message`, not `err.message` (which is `"Request failed with status code 400"`). Server messages like `"QC failed: 3 checklist item(s) not passed"`, `"working_photo image is required"`, `"Storage limit (500 MB) reached. Upgrade to Pro"` all stripped. Tech who hits the 403 storage-quota path sees "Request failed with status code 403" instead of the upgrade prompt. L7, L8. **[AUTOLOOP-T50 VERIFIED: QcSignOffModal.tsx onError already calls formatApiError(err) at line 373-375 (formatApiError imported at line 22); finding stale, no change needed.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:170-173`
   <!-- meta: fix=import-formatApiError-from-utils+toast.error(formatApiError(err))+also-special-case-403{upgrade_required:true}-to-show-upgrade-CTA -->
 
@@ -4407,7 +4407,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:136-174`
   <!-- meta: fix=add-row-level-pass/fail-radio+if-any-fail-replace-CTA-with-Mark-failed-routes-ticket-to-In-Progress-and-creates-defect-report-with-reason -->
 
-- [ ] WEB-UIUX-1084. **[MAJOR] `POST /bench/qc/sign-off` has no role gate — any authenticated user can sign as the tech.** `bench.routes.ts:756-772` checks only `req.user?.id`. Cashier role, viewer role, even a sandboxed customer-portal user (if added) can submit a sign-off and have `tech_user_id` recorded as theirs. Compare admin-only routes for checklist CRUD (`:618,650,693`). Industry baseline: QC sign-off requires explicit `qc.sign` permission gated to tech/manager. L8.
+- [ ] WEB-UIUX-1084. **[MAJOR] `POST /bench/qc/sign-off` has no role gate — any authenticated user can sign as the tech.** `bench.routes.ts:756-772` checks only `req.user?.id`. Cashier role, viewer role, even a sandboxed customer-portal user (if added) can submit a sign-off and have `tech_user_id` recorded as theirs. Compare admin-only routes for checklist CRUD (`:618,650,693`). Industry baseline: QC sign-off requires explicit `qc.sign` permission gated to tech/manager. L8. **STATUS: BLOCKED — server role-gate change (POST /bench/qc/sign-off requires permission(qc.sign)) needs security review of all callers; defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:756-774`
   <!-- meta: fix=add-requireRole(['tech','manager','admin'])-or-permission(qc.sign)-middleware-before-handler -->
 
