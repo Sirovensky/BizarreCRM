@@ -100,9 +100,15 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
 
   const reloadMutation = useMutation({
     mutationFn: (value: number) => giftCardApi.reload(cardId, { amount: value }),
-    onSuccess: () => {
+    onSuccess: (res, value) => {
       queryClient.invalidateQueries({ queryKey: ['gift-card', cardId] });
-      toast.success('Gift card reloaded');
+      // WEB-UIUX-1558: include reloaded amount + new balance in success toast
+      const newBalance = (res as any)?.data?.data?.new_balance;
+      if (newBalance != null) {
+        toast.success(`Reloaded ${formatCurrencyShared(value)} — new balance ${formatCurrencyShared(dollarsFromMaybeCents(newBalance))}`);
+      } else {
+        toast.success(`Reloaded ${formatCurrencyShared(value)}`);
+      }
       onClose();
     },
     onError: (err: unknown) => {

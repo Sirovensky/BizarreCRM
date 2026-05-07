@@ -882,12 +882,13 @@ export function InvoiceDetailPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Payment Method</label>
-                <div className="grid grid-cols-2 gap-2">
+                {/* WEB-UIUX-1542: flex-wrap so 5+ methods wrap gracefully without orphans */}
+                <div className="flex flex-wrap gap-2">
                   {(paymentMethods.length > 0 ? paymentMethods : [{ id: 'cash', name: 'Cash' }, { id: 'credit_card', name: 'Credit Card' }, { id: 'debit', name: 'Debit Card' }, { id: 'other', name: 'Other' }]).map((pm: any) => (
                     <button
                       key={pm.id || pm.name}
                       onClick={() => setPaymentForm({ ...paymentForm, method: pm.name.toLowerCase().replace(/\s+/g, '_') })}
-                      className={cn('px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
+                      className={cn('px-3 py-2 text-sm font-medium rounded-lg border transition-colors min-w-[6rem]',
                         paymentForm.method === pm.name.toLowerCase().replace(/\s+/g, '_')
                           ? 'bg-primary-600 text-primary-950 border-primary-600'
                           : 'border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800'
@@ -913,7 +914,8 @@ export function InvoiceDetailPage() {
               )}
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Notes (optional)</label>
-                <input value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Additional notes" />
+                {/* WEB-UIUX-1540: now that transaction_id is its own field, notes is for free-form memo text */}
+                <input value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Memo (e.g., 'invoice paid at front desk')" />
               </div>
             </div>
             {blockchypEnabled && (

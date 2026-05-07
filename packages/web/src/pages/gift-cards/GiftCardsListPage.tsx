@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check } from 'lucide-react';
+import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, dollarsFromMaybeCents } from '@/utils/format';
 // WEB-UIUX-998: CSV export for outstanding liability — PII-gated
 import { toCsvRow, CSV_BOM } from '@/utils/csv';
 import { useHasRole } from '@/hooks/useHasRole';
+// WEB-UIUX-1562: focus trap for Issue modal
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +116,9 @@ function IssueModal({ onClose }: IssueModalProps) {
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const todayDateInputValue = localDateInputValue();
   const expiresInPast = isPastDateInputValue(form.expires_at);
+  // WEB-UIUX-1562: focus trap — modal always mounted when open
+  const dialogRef = useFocusTrap(true);
+  useBodyScrollLock(true);
 
   function update(field: keyof IssueFormState, value: string): void {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -166,7 +172,9 @@ function IssueModal({ onClose }: IssueModalProps) {
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
         role="presentation"
       >
+        {/* WEB-UIUX-1562: focus trap ref on inner dialog */}
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="gift-card-issued-title"
@@ -192,13 +200,24 @@ function IssueModal({ onClose }: IssueModalProps) {
             <span className="text-sm text-surface-700 dark:text-surface-300">I have saved the code</span>
           </label>
           {/* WEB-UIUX-1004: "I've saved the code" reinforces the consequence of closing */}
-          <button
-            onClick={() => { setCodeSavedConfirmed(false); onClose(); }}
-            disabled={!codeSavedConfirmed}
-            className="w-full px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            I&apos;ve saved the code
-          </button>
+          {/* WEB-UIUX-1552: Copy code button for quick clipboard access */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(issuedCode!).then(() => toast.success('Code copied'));
+              }}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium"
+            >
+              <Copy className="h-4 w-4" /> Copy code
+            </button>
+            <button
+              onClick={() => { setCodeSavedConfirmed(false); onClose(); }}
+              disabled={!codeSavedConfirmed}
+              className="flex-1 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              I&apos;ve saved the code
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -210,7 +229,9 @@ function IssueModal({ onClose }: IssueModalProps) {
       onClick={onClose}
       role="presentation"
     >
+      {/* WEB-UIUX-1562: focus trap ref on inner dialog */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="issue-gift-card-title"
@@ -230,7 +251,24 @@ function IssueModal({ onClose }: IssueModalProps) {
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
               Initial value ({formatCurrencySymbol()}) <span className="text-red-500">*</span>
             </label>
-            {/* WEB-UIUX-994: max="10000" matches server $10k cap */}
+            {/* WEB-UIUX-1554: denomination preset buttons for common amounts */}
+            <div className="flex flex-wrap gap-2 mb-2">
+              {[25, 50, 100, 200, 500].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => update('amount', String(preset))}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
+                    form.amount === String(preset)
+                      ? 'bg-primary-600 text-primary-950 border-primary-600'
+                      : 'border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800'
+                  }`}
+                >
+                  {formatCurrencyShared(preset)}
+                </button>
+              ))}
+            </div>
+            {/* WEB-UIUX-994: max="10000" matches server $10k cap — freeform "Custom" fallback below presets */}
             <input
               type="number"
               min="0.01"
@@ -238,7 +276,7 @@ function IssueModal({ onClose }: IssueModalProps) {
               step="0.01"
               value={form.amount}
               onChange={(e) => update('amount', e.target.value)}
-              placeholder="25.00"
+              placeholder="Custom amount"
               className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
             />
           </div>
