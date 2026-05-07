@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button
 import toast from 'react-hot-toast';
 import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
@@ -552,9 +552,10 @@ export function InvoiceDetailPage() {
                   // + label still distinguish it from the Void button.
                   // WEB-UIUX-1279: relabelled entry-point button to "Refund";
                   // modal title "Issue Credit Note" stays for accounting clarity.
+                  // WEB-UIUX-1403: swapped Undo2 → ReceiptText; CreditCard had payment-card semantics.
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
-                  <Undo2 className="h-4 w-4" /> Refund
+                  <ReceiptText className="h-4 w-4" /> Refund
                 </button>
               ) : (
                 <button
@@ -562,7 +563,7 @@ export function InvoiceDetailPage() {
                   title="Manager permission required"
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-100 dark:border-red-900/40 text-red-300 dark:text-red-700 cursor-not-allowed opacity-60"
                 >
-                  <Undo2 className="h-4 w-4" /> Refund
+                  <ReceiptText className="h-4 w-4" /> Refund
                 </button>
               )
             )}
@@ -1089,9 +1090,18 @@ export function InvoiceDetailPage() {
                   <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-surface-400">{currencySymbol}</span>
                   <input
                     id="credit-amount"
-                    type="number" step="0.01" min="0.01" max={maxCreditNoteAmount}
+                    type="number" step="0.01" min="0.01"
                     value={creditNoteForm.amount}
-                    onChange={(e) => { setCreditNoteForm({ ...creditNoteForm, amount: e.target.value }); setCreditNoteError((prev) => ({ ...prev, amount: undefined })); }}
+                    // WEB-UIUX-1407: removed HTML max attribute (browser-inconsistent); clamp via onChange instead.
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!Number.isNaN(v) && v > maxCreditNoteAmount) {
+                        setCreditNoteForm({ ...creditNoteForm, amount: String(maxCreditNoteAmount) });
+                      } else {
+                        setCreditNoteForm({ ...creditNoteForm, amount: e.target.value });
+                      }
+                      setCreditNoteError((prev) => ({ ...prev, amount: undefined }));
+                    }}
                     placeholder={maxCreditNoteAmount.toFixed(2)}
                     aria-invalid={(creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)) || !!creditNoteError.amount ? true : undefined}
                     aria-describedby={creditNoteError.amount ? 'credit-amount-error' : 'credit-amount-label'}
@@ -1099,6 +1109,12 @@ export function InvoiceDetailPage() {
                     autoFocus
                   />
                 </div>
+                {/* WEB-UIUX-1407: inline red text when entered value exceeds cap (clamp in onChange handles most cases; this catches edge cases like autofill). */}
+                {!creditNoteError.amount && creditNoteForm.amount !== '' && !Number.isNaN(parseFloat(creditNoteForm.amount)) && parseFloat(creditNoteForm.amount) > maxCreditNoteAmount && (
+                  <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">
+                    Amount exceeds the maximum creditable amount ({formatCurrency(maxCreditNoteAmount)}).
+                  </p>
+                )}
                 {/* WEB-UIUX-731: field-level error for amount, replaces helper text when present */}
                 {creditNoteError.amount ? (
                   <p id="credit-amount-error" role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">{creditNoteError.amount}</p>
@@ -1127,6 +1143,7 @@ export function InvoiceDetailPage() {
                   in reporting, while still accepting a free-form note. */}
               <div>
                 <RefundReasonPicker
+                  label="Reason for credit note"
                   value={creditNoteForm.code}
                   note={creditNoteForm.note}
                   onChange={(code, note) => {
@@ -1154,10 +1171,12 @@ export function InvoiceDetailPage() {
               </button>
               <button
                 onClick={handleCreditNote}
-                disabled={creditNoteMutation.isPending || !!(creditNoteError.amount || creditNoteError.reason || creditNoteError.note)}
+                // WEB-UIUX-1407: also disable when entered amount exceeds cap (onChange clamp + this guard prevent over-cap submission).
+                disabled={creditNoteMutation.isPending || !!(creditNoteError.amount || creditNoteError.reason || creditNoteError.note) || (!Number.isNaN(parseFloat(creditNoteForm.amount)) && parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)}
                 // WEB-UIUX-1040: red ramp matches button in header — irreversible action.
                 // WEB-UIUX-1308: bg-red-600 hover:bg-red-700 (matches Void destructive treatment; verified correct).
                 // WEB-UIUX-1390: also disabled while any field-level validation error is shown.
+                // WEB-UIUX-1405: verified — already bg-red-600 hover:bg-red-700 text-white, consistent with Void's destructive treatment.
                 className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {/* WEB-UIUX-1300: include amount in label when entered so operator can confirm before clicking */}

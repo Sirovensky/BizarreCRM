@@ -55,6 +55,10 @@ interface RefundReasonPickerProps {
    *  is selected but the note is shorter than the required minimum. */
   onValidityChange?: (isValid: boolean) => void;
   required?: boolean;
+  /** Override the picker's heading label. Defaults to "Refund reason" so
+   *  existing refund flows are unaffected; credit-note contexts should pass
+   *  "Reason for credit note" to match the modal title. */
+  label?: string;
 }
 
 export function RefundReasonPicker({
@@ -63,6 +67,7 @@ export function RefundReasonPicker({
   onChange,
   onValidityChange,
   required = true,
+  label = 'Refund reason',
 }: RefundReasonPickerProps) {
   const [localReason, setLocalReason] = useState<RefundReasonCode | null>(value);
   const [localNote, setLocalNote] = useState(note);
@@ -100,7 +105,7 @@ export function RefundReasonPicker({
     <div className="space-y-3">
       <div>
         <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-          Refund reason {required ? <span className="text-red-500">*</span> : null}
+          {label} {required ? <span className="text-red-500">*</span> : null}
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {REASONS.map((r) => (

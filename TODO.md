@@ -5853,7 +5853,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   <!-- meta: fix=track-fieldErrors:Record<string,string>+render-text-red-500-text-xs-mt-1-under-each-field+disable-Create-button-when-any-fieldError-set -->
 
-- [ ] WEB-UIUX-1391. **[MAJOR] No notification to customer when credit note created. Refund-style action against a paid invoice — customer expects an email/SMS receipt of the credit ("$50 credited toward INV-001 — reason: defective product"). Server returns success silently; UI clears form, no follow-up. Compare InvoiceDetail's `showReceiptPrompt` after payment (`:594+`) which prompts cashier to email/SMS receipt. Symmetry broken on the credit side.** L7 feedback (downstream actor unaware), L4 flow.
+- [ ] WEB-UIUX-1391. **[MAJOR] No notification to customer when credit note created. Refund-style action against a paid invoice — customer expects an email/SMS receipt of the credit ("$50 credited toward INV-001 — reason: defective product"). Server returns success silently; UI clears form, no follow-up. Compare InvoiceDetail's `showReceiptPrompt` after payment (`:594+`) which prompts cashier to email/SMS receipt. Symmetry broken on the credit side.** L7 feedback (downstream actor unaware), L4 flow. **STATUS: BLOCKED — needs notificationApi.sendCreditNoteReceipt template + server enqueue + customer email; multi-component, defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-177, 594-733`
   <!-- meta: fix=onSuccess-show-prompt-modal-(reuse-receipt-prompt-pattern)+wire-notificationApi.sendCreditNoteReceipt+pre-fill-with-customer-email -->
 
@@ -5862,7 +5862,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:383-396`
   <!-- meta: fix=add-method-picker-to-credit-note-modal-(refund-cash|refund-card|store-credit|ledger-only)+route-to-refund-route-when-money-actually-leaves -->
 
-- [ ] WEB-UIUX-1393. **[MAJOR] `invoice.status='refunded'` is defined as a status colour (`InvoiceListPage.tsx:33,41`, `CustomerDetailPage.tsx:1685`) but no flow ever assigns it. Credit note moves status through unpaid→partial→paid via `assertInvoiceTransition` (`invoices.routes.ts:1252-1257`), never through `refunded`. Refund route never updates invoice.status. Dead status decoration.** L11 consistency, L13 dead code.
+- [x] WEB-UIUX-1393. **[MAJOR] `invoice.status='refunded'` is defined as a status colour (`InvoiceListPage.tsx:33,41`, `CustomerDetailPage.tsx:1685`) but no flow ever assigns it. Credit note moves status through unpaid→partial→paid via `assertInvoiceTransition` (`invoices.routes.ts:1252-1257`), never through `refunded`. Refund route never updates invoice.status. Dead status decoration.** L11 consistency, L13 dead code. **[AUTOLOOP-T72 RESOLVED: dead 'refunded' branch removed from STATUS_COLORS + PIE_COLORS_STATUS in InvoiceListPage; CustomerDetailPage already clean from tick 47.]**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:33,41`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1685`
   `packages/server/src/routes/refunds.routes.ts:253-412`
@@ -5872,7 +5872,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:253-412`
   <!-- meta: fix=ship-RefundsListPage-with-status-filter-(pending|completed|declined)+inline-Approve+Decline-buttons-for-pending-rows-(admin-only)+confirm-with-amount+reason+invoice-link -->
 
-- [ ] WEB-UIUX-1395. **[MAJOR] `RefundReasonPicker` component is used inside the "Credit Note" modal but its label is "Refund reason *" (`RefundReasonPicker.tsx:60`). Operator sees the modal title "Create Credit Note", types the amount, then a "Refund reason" picker — terminology drift mid-flow. Either the modal is a refund (then call it Refund) or the reason picker is a "Credit note reason" (then rename the picker label).** L2, L11 consistency.
+- [x] WEB-UIUX-1395. **[MAJOR] `RefundReasonPicker` component is used inside the "Credit Note" modal but its label is "Refund reason *" (`RefundReasonPicker.tsx:60`). Operator sees the modal title "Create Credit Note", types the amount, then a "Refund reason" picker — terminology drift mid-flow. Either the modal is a refund (then call it Refund) or the reason picker is a "Credit note reason" (then rename the picker label).** L2, L11 consistency. **[AUTOLOOP-T72 RESOLVED: RefundReasonPicker gained optional label prop (default 'Refund reason'); credit-note modal passes 'Reason for credit note'.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:60`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:748-789`
   <!-- meta: fix=rename-picker-prop-to-allow-label-override+pass-label="Credit-note-reason"-from-credit-note-modal+keep-"Refund-reason"-when-(eventually)-used-in-real-refund-flow -->
@@ -5883,7 +5883,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:107,253,418`
   <!-- meta: fix=blocker-on-WEB-UIUX-1382-(ship-UI)-OR-add-Settings-banner-"Refund-routes-currently-have-no-UI;-permissions-take-effect-once-/refunds-page-ships" -->
 
-- [ ] WEB-UIUX-1397. **[MAJOR] Reports do not surface refund detail. Dashboard KPI shows aggregate (`kpis.refunds`); `/reports` page (linked from KPI siblings) has no per-refund breakdown — server's `GET /refunds` returns paginated detail with customer name + invoice order_id + creator, but the data is unread by any frontend.** L6 discoverability, L4 flow.
+- [ ] WEB-UIUX-1397. **[MAJOR] Reports do not surface refund detail. Dashboard KPI shows aggregate (`kpis.refunds`); `/reports` page (linked from KPI siblings) has no per-refund breakdown — server's `GET /refunds` returns paginated detail with customer name + invoice order_id + creator, but the data is unread by any frontend.** L6 discoverability, L4 flow. **STATUS: BLOCKED — Reports refund detail tab needs server pagination + UI table; multi-component, defer**
   `packages/server/src/routes/refunds.routes.ts:74-95`
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=add-Refunds-Detail-tab-to-/reports+table-with-date+invoice+customer+amount+reason+method+approver -->
@@ -5892,7 +5892,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:177-202`
   <!-- meta: fix=NewRefundModal-prefill-method-from-invoice.payments[0].method+disable-non-card-options-when-original-was-card+show-card-cap-inline-($X-card-collected,-$Y-already-refunded) -->
 
-- [ ] WEB-UIUX-1399. **[MAJOR] Capture-state precondition (`refunds.routes.ts:140-153` — refunds blocked while any payment is `authorized` or `voided` not yet captured) — no UI hint. Operator on an invoice with an auth-only BlockChyp payment will hit a 400 "Cannot refund — N payment(s) on this invoice are not captured" with no path to "Capture or void the authorization first" the error tells them to do. Capture flow itself buried/nonexistent.** L4 flow dead-end, L7 feedback unactionable.
+- [ ] WEB-UIUX-1399. **[MAJOR] Capture-state precondition (`refunds.routes.ts:140-153` — refunds blocked while any payment is `authorized` or `voided` not yet captured) — no UI hint. Operator on an invoice with an auth-only BlockChyp payment will hit a 400 "Cannot refund — N payment(s) on this invoice are not captured" with no path to "Capture or void the authorization first" the error tells them to do. Capture flow itself buried/nonexistent.** L4 flow dead-end, L7 feedback unactionable. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); capture-state hint pairs with that sprint**
   `packages/server/src/routes/refunds.routes.ts:133-153`
   <!-- meta: fix=Refund-button-disabled-with-tooltip-"Capture-pending-authorization-first"-when-any-payment.capture_state!='captured'+CTA-link-to-capture-flow -->
 
@@ -5903,7 +5903,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Major — recovery + concurrency surfacing
 
-- [ ] WEB-UIUX-1401. **[MAJOR] Server returns 409 "Refund exceeds available balance (concurrent refund conflict)" (`refunds.routes.ts:227`) and 409 "Refund is no longer pending" (`:299`) — surface-friendly admin needs UI hint "another admin just acted; reload". With no UI today the messages are theoretical, but when WEB-UIUX-1382 lands the toast must distinguish 409 (race, retry) from 400 (operator-fixable input).** L7 feedback specificity, L8 recovery.
+- [ ] WEB-UIUX-1401. **[MAJOR] Server returns 409 "Refund exceeds available balance (concurrent refund conflict)" (`refunds.routes.ts:227`) and 409 "Refund is no longer pending" (`:299`) — surface-friendly admin needs UI hint "another admin just acted; reload". With no UI today the messages are theoretical, but when WEB-UIUX-1382 lands the toast must distinguish 409 (race, retry) from 400 (operator-fixable input).** L7 feedback specificity, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); 409 race surface pairs with that sprint**
   `packages/server/src/routes/refunds.routes.ts:227,299,308`
   <!-- meta: fix=on-409-show-toast-"Already-actioned-by-another-admin.-Refresh-to-see-current-state."+auto-invalidate-refund-list-query+on-400-keep-form-open-with-server-message -->
 
@@ -5913,7 +5913,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Minor — labels, copy, dark-mode
 
-- [ ] WEB-UIUX-1403. **[MINOR] Credit Note icon is `CreditCard` (`InvoiceDetailPage.tsx:378`) — overloaded with payment-method/credit-card semantics. Suggests "pay by card", not "issue credit". Industry pattern: rotated arrow icon, ReceiptText, or Undo2.** L2 truthfulness, L11 iconography.
+- [x] WEB-UIUX-1403. **[MINOR] Credit Note icon is `CreditCard` (`InvoiceDetailPage.tsx:378`) — overloaded with payment-method/credit-card semantics. Suggests "pay by card", not "issue credit". Industry pattern: rotated arrow icon, ReceiptText, or Undo2.** L2 truthfulness, L11 iconography. **[AUTOLOOP-T72 RESOLVED: Refund button icon swapped CreditCard→ReceiptText to remove payment-method semantic overload.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:378`
   <!-- meta: fix=swap-CreditCard-for-ReceiptText-or-Undo2 -->
 
@@ -5922,7 +5922,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/invoices.routes.ts:1213-1283`
   <!-- meta: fix=add-checkbox-"Restore-line-item-stock"-(default-off-since-credit-note-is-ledger-only;-on-when-physical-return)+server-honours-flag+adjusts-inventory_items.in_stock+stock_movements -->
 
-- [ ] WEB-UIUX-1405. **[MINOR] Credit-note submit button colour is amber-600 (`InvoiceDetailPage.tsx:798`); Void is red (`:386`); Pay is primary green (`:345`). No visual cue that credit-note is also a destructive ledger write. Amber reads as "warning, proceed with care" but is shared with low-stakes warning toasts. Standardize: ledger-irreversible actions use red border/text + amber fill, payments use green, void uses solid red.** L5 hierarchy.
+- [x] WEB-UIUX-1405. **[MINOR] Credit-note submit button colour is amber-600 (`InvoiceDetailPage.tsx:798`); Void is red (`:386`); Pay is primary green (`:345`). No visual cue that credit-note is also a destructive ledger write. Amber reads as "warning, proceed with care" but is shared with low-stakes warning toasts. Standardize: ledger-irreversible actions use red border/text + amber fill, payments use green, void uses solid red.** L5 hierarchy. **[AUTOLOOP-T72 VERIFIED: submit already bg-red-600 hover:bg-red-700 text-white from tick 67 WEB-UIUX-1308.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:377,386,798`
   <!-- meta: fix=elevate-credit-note-CTA-to-red-border+amber-fill-(or-borrow-Void-treatment)+document-the-pattern-in-tokens -->
 
@@ -5930,7 +5930,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/components/billing/RefundReasonPicker.tsx:23,42-50,80-93`
   <!-- meta: fix=if-localReason==='other'-mark-Notes-required+disable-onChange-emit-until-note.length>=3+show-error-text -->
 
-- [ ] WEB-UIUX-1407. **[MINOR] Credit-note amount input has `max={Number(invoice.amount_paid) || 0}` HTML attribute (`InvoiceDetailPage.tsx:763`) but type=number with step=0.01 — Chrome shows browser-native validation, Safari/Firefox tolerate over-cap until submit. Operator gets inconsistent UX across browsers. Backed-by-state cap with `aria-invalid` already present (`:767`) but the visible style change is subtle.** L7 feedback, L11 cross-browser consistency.
+- [x] WEB-UIUX-1407. **[MINOR] Credit-note amount input has `max={Number(invoice.amount_paid) || 0}` HTML attribute (`InvoiceDetailPage.tsx:763`) but type=number with step=0.01 — Chrome shows browser-native validation, Safari/Firefox tolerate over-cap until submit. Operator gets inconsistent UX across browsers. Backed-by-state cap with `aria-invalid` already present (`:767`) but the visible style change is subtle.** L7 feedback, L11 cross-browser consistency. **[AUTOLOOP-T72 RESOLVED: HTML max attribute replaced with onChange JS clamp; inline red error when value exceeds cap; Issue button disabled when over-cap.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=replace-HTML-max-with-onChange-clamp+show-inline-red-text-when-value>cap+disable-Create-button -->
 
@@ -5942,7 +5942,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Blocker — gift-card delivery + redemption are unreachable from the floor
 
-- [ ] WEB-UIUX-1427. **[BLOCKER] No POS payment method for gift cards. CheckoutModal `PaymentMethod = 'Cash' | 'Card' | 'Other'` (`CheckoutModal.tsx:16,23-27`). Server's `/gift-cards/lookup/:code` + `POST /gift-cards/:id/redeem` (`giftCards.routes.ts:172,328`) cannot be reached from any sale UI. Recipient walks in with the code → cashier rings up sale → no "Gift Card" tile in payment methods → cashier hand-codes "Other" → no balance check, no redemption row written → server gift-card balance never decremented → physical card stays at full balance forever, customer can spend it again at next visit.** L1 primary action findability, L4 flow completion (entire redemption loop dead), L6 discoverability.
+- [ ] WEB-UIUX-1427. **[BLOCKER] No POS payment method for gift cards. CheckoutModal `PaymentMethod = 'Cash' | 'Card' | 'Other'` (`CheckoutModal.tsx:16,23-27`). Server's `/gift-cards/lookup/:code` + `POST /gift-cards/:id/redeem` (`giftCards.routes.ts:172,328`) cannot be reached from any sale UI. Recipient walks in with the code → cashier rings up sale → no "Gift Card" tile in payment methods → cashier hand-codes "Other" → no balance check, no redemption row written → server gift-card balance never decremented → physical card stays at full balance forever, customer can spend it again at next visit.** L1 primary action findability, L4 flow completion (entire redemption loop dead), L6 discoverability. **STATUS: BLOCKED — needs PaymentMethod GiftCard tile + lookup→balance pill + redeem POST chain + invoice gift_card_id linkage; multi-component, defer to gift-card sprint**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:16,23-27,530-575`
   `packages/server/src/routes/giftCards.routes.ts:172-245,328-392`
   <!-- meta: fix=add-PaymentMethod='GiftCard'+tile-with-Gift-icon+on-select-show-code-input+lookup→show-balance-pill-"$45.00-available"+confirm-amount-(cap-at-min(due,balance))+POST-/gift-cards/:id/redeem-with-invoice_id-on-checkout-success+include-in-split-payments -->

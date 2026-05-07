@@ -28,20 +28,20 @@ const STATUS_TABS = [
   { key: 'credit_note', label: 'Credit Notes' },
 ];
 
+// WEB-UIUX-1393: removed 'refunded' — server statuses are unpaid|partial|paid|void|credit_note; no flow assigns 'refunded'
 const STATUS_COLORS: Record<string, string> = {
   unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   paid: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   void: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
-  refunded: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
+// WEB-UIUX-1393: removed 'refunded' — dead entry; server never assigns this status
 const PIE_COLORS_STATUS: Record<string, string> = {
   paid: '#22c55e',
   unpaid: '#ef4444',
   partial: '#f59e0b',
   void: '#94a3b8',
-  refunded: '#a855f7',
 };
 
 const PIE_COLORS_METHOD = ['#3b82f6', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#14b8a6', '#64748b', '#eab308'];
