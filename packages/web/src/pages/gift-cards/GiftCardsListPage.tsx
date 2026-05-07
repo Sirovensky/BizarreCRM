@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, dollarsFromMaybeCents } from '@/utils/format';
+// WEB-UIUX-998: CSV export for outstanding liability — PII-gated
+import { toCsvRow, CSV_BOM } from '@/utils/csv';
+import { useHasRole } from '@/hooks/useHasRole';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,11 +64,13 @@ function maskCode(code: string): string {
   return `****${code.slice(-4)}`;
 }
 
-function statusBadge(status: GiftCard['status']): string {
+// WEB-UIUX-1012: added default case so unknown future statuses (e.g. 'expired') never return undefined
+function statusBadge(status: string): string {
   switch (status) {
     case 'active': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
     case 'used': return 'bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400';
     case 'disabled': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+    default: return 'bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400';
   }
 }
 
@@ -158,11 +163,14 @@ function IssueModal({ onClose }: IssueModalProps) {
           className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md"
         >
           <h2 id="gift-card-issued-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">Gift card issued</h2>
-          <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
-            Save this code now — it will not be shown again.
-          </p>
-          <div className="font-mono text-2xl text-center tracking-widest py-4 px-3 bg-surface-100 dark:bg-surface-800 rounded-lg text-surface-900 dark:text-surface-100 select-all mb-4">
-            {issuedCode}
+          {/* WEB-UIUX-1016: aria-live region so screen readers announce the issued code */}
+          <div role="status" aria-live="polite">
+            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+              Save this code now — it will not be shown again.
+            </p>
+            <div className="font-mono text-2xl text-center tracking-widest py-4 px-3 bg-surface-100 dark:bg-surface-800 rounded-lg text-surface-900 dark:text-surface-100 select-all mb-4">
+              {issuedCode}
+            </div>
           </div>
           <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
             <input
@@ -173,12 +181,13 @@ function IssueModal({ onClose }: IssueModalProps) {
             />
             <span className="text-sm text-surface-700 dark:text-surface-300">I have saved the code</span>
           </label>
+          {/* WEB-UIUX-1004: "I've saved the code" reinforces the consequence of closing */}
           <button
             onClick={() => { setCodeSavedConfirmed(false); onClose(); }}
             disabled={!codeSavedConfirmed}
             className="w-full px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Done
+            I&apos;ve saved the code
           </button>
         </div>
       </div>
@@ -291,9 +300,10 @@ function IssueModal({ onClose }: IssueModalProps) {
           >
             Cancel
           </button>
+          {/* WEB-UIUX-1002: gate on parseFloat > 0 && isFinite, not just !form.amount, to reject "abc" */}
           <button
             onClick={() => issueMutation.mutate()}
-            disabled={issueMutation.isPending || !form.amount || expiresInPast}
+            disabled={issueMutation.isPending || !(parseFloat(form.amount) > 0 && Number.isFinite(parseFloat(form.amount))) || expiresInPast}
             className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
           >
             {issueMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -327,6 +337,8 @@ export function GiftCardsListPage() {
   const [page, setPage] = useState(1);
   const [showIssueModal, setShowIssueModal] = useState(false);
   const searchKeyword = debouncedKeyword.trim();
+  // WEB-UIUX-998: CSV export gated behind admin/manager role (PII-sensitive)
+  const canExport = useHasRole(['admin', 'manager']);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -371,6 +383,31 @@ export function GiftCardsListPage() {
     setPage(1);
   }
 
+  // WEB-UIUX-998: Export current page of gift cards as CSV (outstanding-liability report).
+  // PII-sensitive — only rendered when canExport is true (admin/manager).
+  function handleExportCsv(): void {
+    if (!cards.length) return;
+    const headers = ['code_last4', 'recipient', 'balance', 'expires_at', 'status', 'issued_at'];
+    const rows = cards.map((card) =>
+      toCsvRow([
+        maskCode(card.code),
+        card.recipient_name ?? card.recipient_email ?? '',
+        dollarsFromMaybeCents(card.current_balance).toFixed(2),
+        card.expires_at ?? '',
+        card.status,
+        card.created_at,
+      ])
+    );
+    const csv = CSV_BOM + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gift-cards-outstanding-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -386,13 +423,26 @@ export function GiftCardsListPage() {
             )}
           </div>
         </div>
-        <button
-          onClick={() => setShowIssueModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
-        >
-          <Plus className="h-4 w-4" />
-          Issue gift card
-        </button>
+        <div className="flex items-center gap-2">
+          {/* WEB-UIUX-998: CSV export for outstanding liability — admin/manager only */}
+          {canExport && cards.length > 0 && (
+            <button
+              onClick={handleExportCsv}
+              title="Export gift card liability as CSV"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
+          )}
+          <button
+            onClick={() => setShowIssueModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
+          >
+            <Plus className="h-4 w-4" />
+            Issue gift card
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -450,6 +500,7 @@ export function GiftCardsListPage() {
               <tr className="border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
                 <th className="text-left px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Code</th>
                 <th className="text-left px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Recipient</th>
+                {/* WEB-UIUX-1008: header right-aligned to match cell alignment */}
                 <th className="text-right px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Balance</th>
                 <th className="text-left px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Created</th>

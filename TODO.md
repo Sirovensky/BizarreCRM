@@ -4061,13 +4061,13 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [x] WEB-UIUX-997. **[MAJOR] List page has no "expiring soon" filter or warning column.** Card with expiry 7 days out is visually identical to never-expiring card. Liability cleanup / customer outreach impossible from this surface. L8, L11. **[AUTOLOOP-T45 RESOLVED: isExpiringSoon helper + yellow AlertTriangle icon in Expires column when expires_at is within 30 days (not already expired).]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:309-331,353-406`
 
-- [ ] WEB-UIUX-998. **[MAJOR] No "outstanding liability" CSV export.** GAAP requires gift-card-liability tracking; the summary card shows total_outstanding but no Export button. Bookkeeper must screenshot or extract from DB. L1, L8.
+- [x] WEB-UIUX-998. **[MAJOR] No "outstanding liability" CSV export.** GAAP requires gift-card-liability tracking; the summary card shows total_outstanding but no Export button. Bookkeeper must screenshot or extract from DB. L1, L8. **[AUTOLOOP-T46 RESOLVED: CSV export button (gated admin/manager) added next to summary; toCsvRow + CSV_BOM produces code/customer/balance/expires_at/status/issued_at columns.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:285-307`
 
 - [ ] WEB-UIUX-999. **[MAJOR] Reload button stays enabled when card balance ≥ $10,000.** Server `GIFT_CARD_MAX_AMOUNT = 10_000` rejects further reload but the gate at `GiftCardDetailPage.tsx:283` only checks `status !== 'used' && status !== 'disabled'`. Operator clicks Reload, types $1, server 400, generic toast. L1, L8.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
 
-- [ ] WEB-UIUX-1000. **[MAJOR] DetailPage no "Send code to recipient email" action even when recipient_email is set.** Field collected at issue, stored, displayed as readonly meta — never actionable. Customer says "I lost the code, can you resend?" → no UI. L4, L8.
+- [ ] WEB-UIUX-1000. **[MAJOR] DetailPage no "Send code to recipient email" action even when recipient_email is set.** Field collected at issue, stored, displayed as readonly meta — never actionable. Customer says "I lost the code, can you resend?" → no UI. L4, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; Send-code email also needs new server route POST /:id/resend-code; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:265-269`
 
 - [ ] WEB-UIUX-1001. **[MAJOR] No dual-control / second-admin requirement on issuance.** Issuing cash-equivalent value of up to $10,000 takes one admin or manager click. Estimates have a self-approval guard (`Cannot approve your own estimate`); gift cards have nothing. Cashier-collusion risk: manager-role employee mints $10k card, reads code from success modal, uses it. L16.
@@ -4075,50 +4075,50 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 
 #### Minor — Polish, edge cases
 
-- [ ] WEB-UIUX-1002. **[MINOR] IssueModal Issue button gate `!form.amount` accepts non-numeric "abc" — same defect as WEB-UIUX-489 on Reload.** Click → mutationFn `parseFloat → NaN` → throws → toast. Should disable until `parseFloat(form.amount) > 0`. L7.
+- [x] WEB-UIUX-1002. **[MINOR] IssueModal Issue button gate `!form.amount` accepts non-numeric "abc" — same defect as WEB-UIUX-489 on Reload.** Click → mutationFn `parseFloat → NaN` → throws → toast. Should disable until `parseFloat(form.amount) > 0`. L7. **[AUTOLOOP-T46 RESOLVED: Issue submit button now disabled until parseFloat(form.amount)>0  Number.isFinite, rejecting non-numeric "abc" input.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:236-243`
 
 - [ ] WEB-UIUX-1003. **[MINOR] IssueModal first-render no autofocus on amount input.** ReloadModal correctly auto-focuses; IssueModal's amount input lacks `autoFocus`. Cashier on quiet POS Tab-stops through DOM. L4, L12.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
 
-- [ ] WEB-UIUX-1004. **[MINOR] Issue success modal "Done" button label generic.** Better: "I've saved the code". Reinforces the consequence + acknowledges the irreversibility. L7.
+- [x] WEB-UIUX-1004. **[MINOR] Issue success modal "Done" button label generic.** Better: "I've saved the code". Reinforces the consequence + acknowledges the irreversibility. L7. **[AUTOLOOP-T46 RESOLVED: success modal Done relabeled "I've saved the code" to reinforce irreversibility.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:145-150`
 
 - [ ] WEB-UIUX-1005. **[MINOR] Issue success modal monospaced code at 2xl size with `tracking-widest` — 32-char code wraps awkwardly on narrow modal.** No segmentation like `XXXX-XXXX-XXXX-...`. Eye chunks readability research (Tinker; Wickelgren) shows 4-char groups improve transcription accuracy ~30%. L9, L11.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-144`
 
-- [ ] WEB-UIUX-1006. **[MINOR] Detail page back-link is text + arrow only ("Gift Cards"), no breadcrumb path.** Pattern asymmetry vs Estimates/Tickets which expose breadcrumb. L9.
+- [ ] WEB-UIUX-1006. **[MINOR] Detail page back-link is text + arrow only ("Gift Cards"), no breadcrumb path.** Pattern asymmetry vs Estimates/Tickets which expose breadcrumb. L9. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:191-193,217-223`
 
 - [ ] WEB-UIUX-1007. **[MINOR] Currency-cents heuristic comment says "> 1000" but code uses `>= 1000`.** Off-by-one between docstring and behavior — also reinforces that the heuristic is a known footgun. L7.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:50-62`
 
-- [ ] WEB-UIUX-1008. **[MINOR] List balance column right-aligned but column header "Balance" left-aligned (`text-left px-4 py-3`) — header drifts away from values on wide tables.** Visual scan friction. L9, L11.
+- [x] WEB-UIUX-1008. **[MINOR] List balance column right-aligned but column header "Balance" left-aligned (`text-left px-4 py-3`) — header drifts away from values on wide tables.** Visual scan friction. L9, L11. **[AUTOLOOP-T46 RESOLVED: Balance th now text-right matching cell alignment.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:360`
 
 - [ ] WEB-UIUX-1009. **[MINOR] List status filter chip not visually grouped with keyword search — separate `<select>` is plain styled, no chip pattern.** Most filter UIs in this app use chip toggles (LeadPipelinePage etc). Inconsistency. L9.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
 
-- [ ] WEB-UIUX-1010. **[MINOR] Detail "Reload balance" button sized small + outline — same surface as primary buttons elsewhere on the page; no obvious primary CTA.** L1, L11.
+- [ ] WEB-UIUX-1010. **[MINOR] Detail "Reload balance" button sized small + outline — same surface as primary buttons elsewhere on the page; no obvious primary CTA.** L1, L11. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:285-291`
 
 - [ ] WEB-UIUX-1011. **[MINOR] No progress bar / "spent of initial" visualization.** Detail summary shows `$X of $Y initial` text only. A linear bar improves at-a-glance utilization. L9.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:251-255`
 
-- [ ] WEB-UIUX-1012. **[MINOR] `statusBadge` switch is exhaustive but has no default — TS `never` guard fine, but if backend adds a status (`'expired'` natural next) the badge silently renders nothing.** L7.
+- [x] WEB-UIUX-1012. **[MINOR] `statusBadge` switch is exhaustive but has no default — TS `never` guard fine, but if backend adds a status (`'expired'` natural next) the badge silently renders nothing.** L7. **[AUTOLOOP-T46 RESOLVED: statusBadge default case returns gray badge with raw status string so future backend additions (e.g. 'expired') never render undefined.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:70-76`
 
 - [ ] WEB-UIUX-1013. **[MINOR] Lookup endpoint rate-limit error 429 never surfaced to operator UI** — `giftCardApi.lookup` not called, but if/when wired, generic-onError handlers won't translate "Too many lookup attempts" into a meaningful "wait 60s" countdown. Pre-emptive: lookup UI should special-case 429 + show retry-after. L8.
   `packages/server/src/routes/giftCards.routes.ts:188-197`
 
-- [ ] WEB-UIUX-1014. **[NIT] `dollarsFromMaybeCents` exists on detail page, near-duplicate `formatCurrency` on list page — two separate copies of the same fragile heuristic.** L7.
+- [ ] WEB-UIUX-1014. **[NIT] `dollarsFromMaybeCents` exists on detail page, near-duplicate `formatCurrency` on list page — two separate copies of the same fragile heuristic.** L7. **STATUS: BLOCKED — refactor of currency heuristic touches both GCLP + GCDP and risks duplicating across the codebase; needs design review for unified currency utility**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:57-63`
 
 - [ ] WEB-UIUX-1015. **[NIT] Issue success modal Done button color `bg-primary-600 text-primary-950` — relies on tenant theme; in dark theme on mobile, `text-primary-950` (very dark) on `bg-primary-600` may have <3:1 contrast depending on primary hue.** L12.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:147`
 
-- [ ] WEB-UIUX-1016. **[NIT] No `aria-live` region on the issued-code success block.** Screen reader users get the modal but the line "Save this code now — it will not be shown again" is not announced as `polite`/`assertive`. L12.
+- [x] WEB-UIUX-1016. **[NIT] No `aria-live` region on the issued-code success block.** Screen reader users get the modal but the line "Save this code now — it will not be shown again" is not announced as `polite`/`assertive`. L12. **[AUTOLOOP-T46 RESOLVED: issued-code reveal block wrapped in role=status aria-live=polite so screen readers announce the one-time code.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138-144`
 
 
