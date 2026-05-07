@@ -137,7 +137,9 @@ export function QcSignOffModal({
   const priorStatus: QcSignOffStatus | null = priorStatusData?.data?.data ?? null;
   const priorSignOff = priorStatus?.signed ? priorStatus.sign_off : null;
 
-  const itemKey = items.map((item) => item.id).join(',');
+  // WEB-UIUX-1094: Reset key is derived from item ids (not just count) so the map resets
+  // when the admin edits the checklist mid-session and ids change, not merely when count changes.
+  const itemKey = JSON.stringify(items.map((item) => item.id));
   const [outcomeMap, setOutcomeMap] = useState<Record<number, ChecklistOutcome>>({});
   useEffect(() => {
     // Start with every item unreviewed so the tech has to physically think
@@ -244,6 +246,12 @@ export function QcSignOffModal({
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    // WEB-UIUX-1099: Guard oversized photos before hitting the server.
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Photo too large (max 10MB). Try a smaller image.');
+      e.target.value = '';
+      return;
+    }
     const error = await validateImageFile(file, {
       maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
       label: `"${file.name}"`,
@@ -274,6 +282,8 @@ export function QcSignOffModal({
   const canSignOff = !!workingPhotoFile && signatureDrawn && allPassed;
   const canSubmit = hasFailures ? canRecordFailure : canSignOff;
 
+  // WEB-UIUX-1087: Guard backdrop click and Esc against silent checklist/photo/signature loss.
+  // safeClose fires a confirm dialog when any progress exists (covers WEB-UIUX-1104 implicitly).
   // Guard close when the tech has started filling in the form.
   const hasChanges =
     signatureDrawn ||
@@ -361,6 +371,8 @@ export function QcSignOffModal({
           ? `QC failure recorded; ticket rerouted to ${result.rerouteStatusName}`
           : 'QC sign-off recorded',
       );
+      // WEB-UIUX-1097: invalidate 'qc-status' becomes live once WEB-UIUX-1081 lands and a
+      // useQuery(['qc-status', …]) is registered in the tickets list / board view.
       qc.invalidateQueries({ queryKey: ['qc-status', ticketId] });
       qc.invalidateQueries({ queryKey: ['ticket', ticketId] });
       qc.invalidateQueries({ queryKey: ['ticket-history', ticketId] });
@@ -434,9 +446,15 @@ export function QcSignOffModal({
             <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
           </div>
         ) : items.length === 0 ? (
-          <p className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
-            No QC checklist items are configured for this device category. Ask an admin to add some under Settings → Bench / QC.
-          </p>
+          <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+            <p>
+              No QC checklist items are configured for this device category. Ask an admin to add some under Settings → Bench / QC.
+            </p>
+            {/* WEB-UIUX-1103: Recovery affordance — point to the migration that seeds defaults. */}
+            <p className="mt-1.5 text-xs opacity-75">
+              (Migration 088 seeds 9 default items — restore via DB if all were deleted)
+            </p>
+          </div>
         ) : (
           <>
             <div className="mb-4">
@@ -542,10 +560,13 @@ export function QcSignOffModal({
                   <p className="mb-2 text-xs font-semibold uppercase text-surface-500">
                     Working device photo
                   </p>
+                  {/* WEB-UIUX-1090: Include HEIC/HEIF so iPhone Safari users are not blocked.
+                      NOTE: server ALLOWED_MIMES may need a parallel update to accept
+                      image/heic and image/heif — track separately. */}
                   <input
                     ref={photoInputRef}
                     type="file"
-                    accept={IMAGE_UPLOAD_ACCEPT}
+                    accept={`${IMAGE_UPLOAD_ACCEPT},image/heic,image/heif`}
                     onChange={onPhotoChange}
                     className="hidden"
                   />
@@ -615,9 +636,10 @@ export function QcSignOffModal({
             </div>
 
             <div className="flex justify-end gap-2">
+              {/* WEB-UIUX-1101: Cancel is ghost/text-only so it doesn't compete visually with the primary CTA. */}
               <button
                 onClick={safeClose}
-                className="rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+                className="px-4 py-2 text-sm font-medium text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
               >
                 Cancel
               </button>

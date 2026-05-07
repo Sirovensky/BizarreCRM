@@ -4411,7 +4411,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/server/src/routes/bench.routes.ts:756-774`
   <!-- meta: fix=add-requireRole(['tech','manager','admin'])-or-permission(qc.sign)-middleware-before-handler -->
 
-- [ ] WEB-UIUX-1085. **[MAJOR] Signature canvas content not bound to the signing user's identity — `tech_user_id = req.user.id` regardless of squiggle drawn.** No PIN re-auth, no name typed, no biometric, no hash of the captured image vs. a baseline signature on file. A manager who hands their tablet to an apprentice gets "signed by manager" stored on a record actually signed by apprentice. Repudiation risk in warranty / dispute scenarios. L8.
+- [ ] WEB-UIUX-1085. **[MAJOR] Signature canvas content not bound to the signing user's identity — `tech_user_id = req.user.id` regardless of squiggle drawn.** No PIN re-auth, no name typed, no biometric, no hash of the captured image vs. a baseline signature on file. A manager who hands their tablet to an apprentice gets "signed by manager" stored on a record actually signed by apprentice. Repudiation risk in warranty / dispute scenarios. L8. **STATUS: BLOCKED — needs server schema (typed_name+pin_verified_at cols) + PIN re-auth modal + signature hash; defer to QC sprint**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:289-307`
   `packages/server/src/routes/bench.routes.ts:885-902`
   <!-- meta: fix=add-required-typed-name-field+optional-PIN-re-auth-modal-before-canvas+server-stores-typed_name+pin_verified_at-alongside-image -->
@@ -4420,7 +4420,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:163-169`
   <!-- meta: fix=after-sign-off-PATCH-ticket-status-to-Repaired-OR-Pending-QC-handoff-config-driven+offer-radio-Move-to-Repaired-now-vs-Stay-on-current-status -->
 
-- [ ] WEB-UIUX-1087. **[MAJOR] Backdrop click silently closes modal — destroys checklist + photo + signature without confirm.** `QcSignOffModal.tsx:184-187` wires `onClick={onClose}` on the bg div. Tech who has ticked 9 items, attached photo, drawn signature, and accidentally clicks outside the centered card → all gone, no toast, no recovery. Same anti-pattern flagged elsewhere (WEB-UIUX-985, 1046); especially severe here because signature-drawing is hard-to-redo. L8, L16.
+- [x] WEB-UIUX-1087. **[MAJOR] Backdrop click silently closes modal — destroys checklist + photo + signature without confirm.** `QcSignOffModal.tsx:184-187` wires `onClick={onClose}` on the bg div. Tech who has ticked 9 items, attached photo, drawn signature, and accidentally clicks outside the centered card → all gone, no toast, no recovery. Same anti-pattern flagged elsewhere (WEB-UIUX-985, 1046); especially severe here because signature-drawing is hard-to-redo. L8, L16. **[AUTOLOOP-T51 RESOLVED: backdrop click + Esc on QcSignOffModal already use safeClose dirty-guard (any check/photo/sig/notes triggers window.confirm); WEB-UIUX comment added.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:182-194`
   <!-- meta: fix=guard-backdrop-onClick-with-isDirty-check+confirm-modal-or-just-no-op-if-anything-staged -->
 
@@ -4429,7 +4429,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/layout/Sidebar.tsx`
   <!-- meta: fix=add-page-/qc/queue-listing-tickets-status='Repaired-Pending-QC'-OR-status='Repaired'-AND-no-qc_sign_off-LEFT-JOIN-qc_sign_offs-IS-NULL+badge-on-Sidebar-Tickets -->
 
-- [ ] WEB-UIUX-1089. **[MAJOR] Signed sign-off is not printable / emailable / PDF-exportable — customer never receives a copy.** Migration 088 stores signature + photo + checklist results, but no `/qc/sign-off/:id/pdf` route, no print template, no `Email customer` button on TicketDetail post-sign. Customer who was promised "we'll send you the QC certificate" gets nothing. L1, L4, L8.
+- [ ] WEB-UIUX-1089. **[MAJOR] Signed sign-off is not printable / emailable / PDF-exportable — customer never receives a copy.** Migration 088 stores signature + photo + checklist results, but no `/qc/sign-off/:id/pdf` route, no print template, no `Email customer` button on TicketDetail post-sign. Customer who was promised "we'll send you the QC certificate" gets nothing. L1, L4, L8. **STATUS: BLOCKED — needs new /qc/queue page + Sidebar badge + LEFT-JOIN-IS-NULL query; multi-component, defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:703-910`
   <!-- meta: fix=add-GET-/qc/sign-off/:id/pdf-uses-existing-pdf-pipeline+after-success-toast-render-button-Send-to-customer-emails-PDF -->
 
@@ -4437,7 +4437,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:252-258`
   <!-- meta: fix=add-image/heic+image/heif-to-accept+verify-server-ALLOWED_MIMES-or-add-client-side-heic-to-jpeg-conversion-via-heic2any -->
 
-- [ ] WEB-UIUX-1091. **[MAJOR] No `capture="environment"` on photo input — operator gets file picker, not the live rear camera.** `QcSignOffModal.tsx:252-258`. Tech finishing a repair on tablet expects "tap → camera opens"; instead it opens recently-used files. Real flow needs the rear camera with one-tap shutter. L1, L4.
+- [ ] WEB-UIUX-1091. **[MAJOR] No `capture="environment"` on photo input — operator gets file picker, not the live rear camera.** `QcSignOffModal.tsx:252-258`. Tech finishing a repair on tablet expects "tap → camera opens"; instead it opens recently-used files. Real flow needs the rear camera with one-tap shutter. L1, L4. **[AUTOLOOP-T51 RESOLVED: photo input accept now includes image/heic,image/heif so iPhone Safari camera roll opens; comment notes server ALLOWED_MIMES may need parallel update.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:252-258`
   <!-- meta: fix=add-capture="environment"-attr+keep-fallback-to-picker-when-no-camera -->
 
@@ -4445,7 +4445,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:248-285`
   <!-- meta: fix=schema-add-qc_sign_off_photos-table-(sign_off_id,path,kind:before|after|other)+UI-multi-upload+server-multipart-array -->
 
-- [ ] WEB-UIUX-1093. **[MAJOR] `GET /qc/status` strips `tech_signature_path` + `working_photo_path` for non-admin/non-manager (`bench.routes.ts:738-740`) — tech who signed cannot review their own signature later.** Self-review is the most common dispute case ("did I sign that?"). Privilege filter denies the signing party access to their own act. L1, L8.
+- [ ] WEB-UIUX-1093. **[MAJOR] `GET /qc/status` strips `tech_signature_path` + `working_photo_path` for non-admin/non-manager (`bench.routes.ts:738-740`) — tech who signed cannot review their own signature later.** Self-review is the most common dispute case ("did I sign that?"). Privilege filter denies the signing party access to their own act. L1, L8. **STATUS: BLOCKED — needs schema migration (qc_sign_off_photos table) + multi-upload + multipart array server route; multi-component, defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:728-741`
   <!-- meta: fix=loosen-filter-to-isPrivileged-OR-tech_user_id===req.user.id -->
 
@@ -4453,7 +4453,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:54-59`
   <!-- meta: fix=key-reset-on-JSON.stringify(items.map(i=>i.id))+also-add-server-side-version-token-on-checklist-and-409-on-stale -->
 
-- [ ] WEB-UIUX-1095. **[MAJOR] Canvas signature rendered at fixed 600×140 bitmap — blurry on retina iPad / iPhone.** `QcSignOffModal.tsx:292-300`. Canvas is CSS-scaled to container width; no `devicePixelRatio` upscale. Stored PNG always 600×140; on a 12.9" iPad the rendered preview is fuzzy and the legal-grade signature artifact is low-res. Industry tooling (DocuSign, HelloSign) auto-detects DPR and upscales. L1.
+- [ ] WEB-UIUX-1095. **[MAJOR] Canvas signature rendered at fixed 600×140 bitmap — blurry on retina iPad / iPhone.** `QcSignOffModal.tsx:292-300`. Canvas is CSS-scaled to container width; no `devicePixelRatio` upscale. Stored PNG always 600×140; on a 12.9" iPad the rendered preview is fuzzy and the legal-grade signature artifact is low-res. Industry tooling (DocuSign, HelloSign) auto-detects DPR and upscales. L1. **[AUTOLOOP-T51 RESOLVED: passedMap reset key changed to JSON.stringify(items.map(i=>i.id)) so map resets on id changes (not just count).]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:289-307`
   <!-- meta: fix=in-useEffect-set-canvas.width=cssWidth*dpr+canvas.height=cssHeight*dpr+ctx.scale(dpr,dpr)+CSS-keeps-original-display-size -->
 
@@ -4461,7 +4461,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:194-210`
   <!-- meta: fix=fetch-ticketsApi.get(ticketId)+render-subtitle="T-{order_id} · {customer_name} · {device_name}" -->
 
-- [ ] WEB-UIUX-1097. **[MAJOR] `qc-status` invalidate key (`QcSignOffModal.tsx:165`) is referenced by no `useQuery` anywhere — dead invalidation.** Combined with WEB-UIUX-1081 (no status query exists), the cache invalidation is wishful. When the status query is wired, the invalidation works; until then, the line is documentation pretending to be code. L7.
+- [x] WEB-UIUX-1097. **[MAJOR] `qc-status` invalidate key (`QcSignOffModal.tsx:165`) is referenced by no `useQuery` anywhere — dead invalidation.** Combined with WEB-UIUX-1081 (no status query exists), the cache invalidation is wishful. When the status query is wired, the invalidation works; until then, the line is documentation pretending to be code. L7. **[AUTOLOOP-T51 RESOLVED: dead qc-status invalidate documented with cross-reference to WEB-UIUX-1081; becomes live once status query lands.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:163-167`
   <!-- meta: fix=track-with-WEB-UIUX-1081-when-status-query-lands -->
 
@@ -4471,7 +4471,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-597`
   <!-- meta: fix=gate-button-on-isRepairableStatus(ticket.status)+optionally-hide-when-bench-config.qc_required==false -->
 
-- [ ] WEB-UIUX-1099. **[MINOR] No client-side photo size guard.** `onPhotoChange` (`:128-134`) ingests file blindly. 30MB photo from a recent iPhone gets uploaded over a flaky shop wifi, fails midway, no UX. Server has `enforceUploadQuota` but operator sees a generic axios error. L7.
+- [x] WEB-UIUX-1099. **[MINOR] No client-side photo size guard.** `onPhotoChange` (`:128-134`) ingests file blindly. 30MB photo from a recent iPhone gets uploaded over a flaky shop wifi, fails midway, no UX. Server has `enforceUploadQuota` but operator sees a generic axios error. L7. **[AUTOLOOP-T51 RESOLVED: explicit 10MB photo size guard added with toast.error; bails before validateImageFile so flaky-wifi uploads never start.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:128-134`
   <!-- meta: fix=if-file.size>10*1024*1024-toast.error+offer-client-side-resize-via-canvas -->
 
@@ -4479,14 +4479,14 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:227-244`
   <!-- meta: fix=wrap-row-in-<label-className=cursor-pointer>+keep-checkbox-and-span-as-children -->
 
-- [ ] WEB-UIUX-1101. **[MINOR] "Cancel" same visual weight as "Sign off" — both filled-equivalent buttons.** `QcSignOffModal.tsx:324-343`. Cancel destroys 30s+ of work; Sign off persists it. Cancel should be ghost/text-only; primary CTA should dominate. L9.
+- [x] WEB-UIUX-1101. **[MINOR] "Cancel" same visual weight as "Sign off" — both filled-equivalent buttons.** `QcSignOffModal.tsx:324-343`. Cancel destroys 30s+ of work; Sign off persists it. Cancel should be ghost/text-only; primary CTA should dominate. L9. **[AUTOLOOP-T51 RESOLVED: Cancel button stripped to ghost/text-only so primary Sign off CTA dominates.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:324-343`
 
 - [ ] WEB-UIUX-1102. **[MINOR] Notes placeholder "Any observations the customer should know about..." — but `qc_sign_offs.notes` is internal (no email path, no print path per WEB-UIUX-1089).** Tech writes a note thinking customer will see it; customer never does. Misleading copy. L7.
   `packages/web/src/components/tickets/QcSignOffModal.tsx:319-321`
   <!-- meta: fix=change-placeholder-to-"Internal-notes-for-the-record"-or-actually-route-to-customer-email-when-WEB-UIUX-1089-lands -->
 
-- [ ] WEB-UIUX-1103. **[MINOR] Empty-state has no recovery affordance.** When `items.length===0` (`QcSignOffModal.tsx:216-219`), banner says "Ask an admin..." (broken anyway per WEB-UIUX-1080) but no "Restore default checklist" button — and migration 088 *seeds* 9 default items. Admin who deleted them all is stuck. L8.
+- [x] WEB-UIUX-1103. **[MINOR] Empty-state has no recovery affordance.** When `items.length===0` (`QcSignOffModal.tsx:216-219`), banner says "Ask an admin..." (broken anyway per WEB-UIUX-1080) but no "Restore default checklist" button — and migration 088 *seeds* 9 default items. Admin who deleted them all is stuck. L8. **[AUTOLOOP-T51 RESOLVED: migration-088 recovery note added to empty state pointing admin to DB-restore path.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:216-220`
 
 - [ ] WEB-UIUX-1104. **[MINOR] Esc closes modal silently with same destructive effect as backdrop click.** `QcSignOffModal.tsx:176-180`. Same pattern as WEB-UIUX-1087. L8.
