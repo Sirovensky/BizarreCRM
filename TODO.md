@@ -6330,7 +6330,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   - Acceptance when fully unblocked: fresh boot on Linux/macOS/Windows brings CRM online without user login; zero `process.platform === 'win32'` branches outside the three adapter files (pending Electron-package transition); `scripts/setup-windows.bat` deleted.
   - Related: [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) Phase C-pre — `setup.mjs` also drops the Electron build/launch from this script and replaces with `vite build` of the static dashboard + open-in-browser to `https://localhost/super-admin/`. Once that lands, the only Windows-only branch in setup.mjs disappears.
 
-- [ ] OPS-DEFERRED-002. **Browser-served super-admin dashboard (deprecate Electron `packages/management/`).**
+- [ ] OPS-DEFERRED-002. **Browser-served super-admin dashboard (deprecate Electron `packages/management/`).** **STATUS: BLOCKED — operational migration deferred (4-week implementation gated on team capacity); not a UI fix item**
   - [ ] BLOCKED: planning doc complete at [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) 2026-05-05; implementation gated on team capacity (~4 weeks for one engineer). Replaces ~4500 lines of Electron main + ~89 IPC handlers + Chromium binary + per-OS code-signing pipeline with: server-side `/super-admin/api/management/*` REST routes + static SPA at `/super-admin/` + a tiny `bizarre-crm-rescue` PM2 app for the crashed-server case.
   - Pairs with `OPS-DEFERRED-001` — Phase C-pre of this plan modifies `setup.bat`/`setup.mjs` to drop Electron build/launch and open browser instead. Independent of (3)/(4) of dashboardplan can start any time; (5)/(6)/(8) gate on multi-OS setup migration.
   - Acceptance: `packages/management/` deleted, fresh `setup.mjs` opens default browser to `https://localhost/super-admin/`, phone/tablet remote management works on LAN, Rescue Agent at `http://localhost:7474/rescue` handles crashed-main-server case.
@@ -6339,7 +6339,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Blocker — feedback mismatch / wording invisibility
 
-- [ ] WEB-UIUX-1504. **[BLOCKER] Success toast literally shows `Enqueued undefined messages`. Client `BulkSmsModal.tsx:92` reads `r.enqueued` from the confirmed response, but server `inbox.routes.ts:693-703` returns `{ attempted, sent, failed, segment, template, confirmed: true }` — no `enqueued` field exists. Server changed contract (comment at `:620-625` notes the move from enqueue-only to inline dispatch with truthful counts) but client never updated. Admin sends to 12,000 customers, sees a green "Enqueued undefined messages" — no idea if 0 went through, 12,000 went through, or anything in between. Modal closes immediately after, so even the successful detail screen never shows. Update modal to read `r.sent + r.failed` and show e.g. `Sent ${r.sent} / Failed ${r.failed} of ${r.attempted}`; keep modal open if `failed > 0` so admin can act on the partial fail.** L7 feedback meaningfulness, L2 truthfulness.
+- [x] WEB-UIUX-1504. **[BLOCKER] Success toast literally shows `Enqueued undefined messages`. Client `BulkSmsModal.tsx:92` reads `r.enqueued` from the confirmed response, but server `inbox.routes.ts:693-703` returns `{ attempted, sent, failed, segment, template, confirmed: true }` — no `enqueued` field exists. Server changed contract (comment at `:620-625` notes the move from enqueue-only to inline dispatch with truthful counts) but client never updated. Admin sends to 12,000 customers, sees a green "Enqueued undefined messages" — no idea if 0 went through, 12,000 went through, or anything in between. Modal closes immediately after, so even the successful detail screen never shows. Update modal to read `r.sent + r.failed` and show e.g. `Sent ${r.sent} / Failed ${r.failed} of ${r.attempted}`; keep modal open if `failed > 0` so admin can act on the partial fail.** L7 feedback meaningfulness, L2 truthfulness. **[AUTOLOOP-T77 VERIFIED: ConfirmResponse aligned with server (attempted/sent/failed) in tick 52 WEB-UIUX-1111; toast shows 'Sent N of M', modal stays open on failures.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:91-98`
   `packages/server/src/routes/inbox.routes.ts:693-703`
   <!-- meta: fix=update-onSuccess-handler-to-read-{attempted,sent,failed}+show-failure-aware-toast+keep-modal-open-when-failed>0-with-link-to-/inbox-retry-queue -->
@@ -6350,7 +6350,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Major — usability / recovery / hierarchy
 
-- [ ] WEB-UIUX-1506. **[MAJOR] Segment hints lie about consent. `SEGMENTS` at `BulkSmsModal.tsx:29-33` describes "All customers" as "Every customer with a mobile number", "Open tickets" as "Customers with tickets in progress", "Recent purchases" as "Customers who bought in last 30 days". Server `previewBulkSegment` filters every segment by `sms_opt_in = 1 AND sms_consent_marketing = 1` (`inbox.routes.ts:396-397, 404-405, 415-416`). Admin expecting 50,000 sees preview "9,200" and thinks the count is wrong; admin running compliance review reads the hint and concludes the system blasts non-consented numbers. Hints should say "…with marketing-SMS consent" — match the actual filter.** L2 truthfulness.
+- [x] WEB-UIUX-1506. **[MAJOR] Segment hints lie about consent. `SEGMENTS` at `BulkSmsModal.tsx:29-33` describes "All customers" as "Every customer with a mobile number", "Open tickets" as "Customers with tickets in progress", "Recent purchases" as "Customers who bought in last 30 days". Server `previewBulkSegment` filters every segment by `sms_opt_in = 1 AND sms_consent_marketing = 1` (`inbox.routes.ts:396-397, 404-405, 415-416`). Admin expecting 50,000 sees preview "9,200" and thinks the count is wrong; admin running compliance review reads the hint and concludes the system blasts non-consented numbers. Hints should say "…with marketing-SMS consent" — match the actual filter.** L2 truthfulness. **[AUTOLOOP-T77 VERIFIED: 'opted-in for marketing only' suffix added to segment hints + consent banner in tick 52 WEB-UIUX-1115.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:29-33`
   `packages/server/src/routes/inbox.routes.ts:377-380,396-397,404-405,415-416`
   <!-- meta: fix=update-SEGMENTS-hints-to-mention-marketing-opt-in-+-consent;-add-tiny-help-line-"recipients-filtered-to-marketing-SMS-consent" -->
@@ -6359,7 +6359,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:117`
   <!-- meta: fix=disable-backdrop-onClose-when-preview-non-null;-or-route-backdrop-click-through-confirmation-"Discard-this-send?" -->
 
-- [ ] WEB-UIUX-1508. **[MAJOR] No "send test to me" option. Industry standard for mass-mail / mass-SMS: send a single test to the operator's own phone before the blast, to verify wording/links/variable substitution. Missing entirely from BulkSmsModal. Admin's only options are: send to 12k recipients, or don't. No middle ground.** L6 discoverability, L4 flow integrity.
+- [ ] WEB-UIUX-1508. **[MAJOR] No "send test to me" option. Industry standard for mass-mail / mass-SMS: send a single test to the operator's own phone before the blast, to verify wording/links/variable substitution. Missing entirely from BulkSmsModal. Admin's only options are: send to 12k recipients, or don't. No middle ground.** L6 discoverability, L4 flow integrity. **STATUS: BLOCKED — needs new send-test-to-me feature with quota bypass; multi-component, defer to bulk-sms sprint**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-223`
   <!-- meta: fix=add-"Send-test-to-my-number"-button-next-to-Preview;-uses-req.user.mobile-or-prompts-for-number;-doesn't-decrement-hourly-quota;-doesn't-mutate-token -->
 
@@ -6368,7 +6368,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/CommunicationPage.tsx:1846-1850`
   <!-- meta: fix=keep-modal-open-when-failed>0-with-failure-summary+route-link-to-/inbox/retry-queue-page;-OR-promote-retry-queue-to-persistent-toolbar-badge -->
 
-- [ ] WEB-UIUX-1510. **[MAJOR] Provider-not-configured surfaced only at confirm step. Server `inbox.routes.ts:626-635` checks `getSmsProvider()` and throws "SMS provider is not configured…" only after token verification, after segment-drift check. Admin builds full campaign (segment + template + Preview), reads "12,003 recipients", clicks "Send to 12,003" — gets a toast saying configure provider first. All effort wasted; banner blocks every attempt until Settings is fixed. Move provider real-or-simulated check to the preview branch (`:552-571`) and either (a) refuse preview with the same error, or (b) show a yellow "Provider not configured — sends will be queued in retry queue" banner inline before Send is enabled.** L7 feedback, L4 flow integrity, L9 error states.
+- [ ] WEB-UIUX-1510. **[MAJOR] Provider-not-configured surfaced only at confirm step. Server `inbox.routes.ts:626-635` checks `getSmsProvider()` and throws "SMS provider is not configured…" only after token verification, after segment-drift check. Admin builds full campaign (segment + template + Preview), reads "12,003 recipients", clicks "Send to 12,003" — gets a toast saying configure provider first. All effort wasted; banner blocks every attempt until Settings is fixed. Move provider real-or-simulated check to the preview branch (`:552-571`) and either (a) refuse preview with the same error, or (b) show a yellow "Provider not configured — sends will be queued in retry queue" banner inline before Send is enabled.** L7 feedback, L4 flow integrity, L9 error states. **STATUS: BLOCKED — server contract change to surface provider status in preview response; backend, defer**
   `packages/server/src/routes/inbox.routes.ts:552-571,626-635`
   <!-- meta: fix=move-isProviderRealOrSimulated-check-into-preview-branch+return-provider_status-in-preview-response;-modal-renders-warning-or-disables-Send -->
 
@@ -6377,7 +6377,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/inbox.routes.ts:602-609`
   <!-- meta: fix=on-error.response.status===409-{setPreview(null);-previewMut.mutate()};-show-banner-"Audience-changed:-was-N1-now-N2" -->
 
-- [ ] WEB-UIUX-1512. **[MAJOR] No live segment count alongside segment buttons. `BulkSmsModal.tsx:142-164` renders 3 segment buttons, each shows label + hint but no count. Admin must commit to a segment and click "Preview" to learn it's 12k vs 50. Switching segments after preview clears state (`:148-149`). Pre-fetch counts via `GET /inbox/bulk-send-segment-counts` (or extend an existing endpoint) and render `{count}` on each segment button (e.g., "Open tickets — 47", "All customers — 12,003"). Lets admin sanity-check audience size before committing.** L6 discoverability, L7 feedback.
+- [ ] WEB-UIUX-1512. **[MAJOR] No live segment count alongside segment buttons. `BulkSmsModal.tsx:142-164` renders 3 segment buttons, each shows label + hint but no count. Admin must commit to a segment and click "Preview" to learn it's 12k vs 50. Switching segments after preview clears state (`:148-149`). Pre-fetch counts via `GET /inbox/bulk-send-segment-counts` (or extend an existing endpoint) and render `{count}` on each segment button (e.g., "Open tickets — 47", "All customers — 12,003"). Lets admin sanity-check audience size before committing.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs new server endpoint /inbox/bulk-send-segment-counts; backend, defer**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:142-164`
   <!-- meta: fix=add-server-endpoint-returning-{open_tickets:N,all_customers:N,recent_purchases:N};-render-counts-as-trailing-badges-on-segment-cards;-keep-token-issuance-on-explicit-Preview -->
 
@@ -6387,7 +6387,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Minor — clarity / scale safety
 
-- [ ] WEB-UIUX-1514. **[MINOR] No countdown timer for 5-min token. Banner at `BulkSmsModal.tsx:189-196` says "Confirmation expires in 5 minutes" but no live counter. Admin gets pulled into a meeting at minute 4, returns at minute 6, clicks Send → 400 "Invalid or expired confirmation token". Should render `mm:ss` countdown derived from token issuance timestamp; switch banner to red and surface a "Re-Preview" button when expired or near (≤ 30s).** L7 feedback, L8 recovery.
+- [x] WEB-UIUX-1514. **[MINOR] No countdown timer for 5-min token. Banner at `BulkSmsModal.tsx:189-196` says "Confirmation expires in 5 minutes" but no live counter. Admin gets pulled into a meeting at minute 4, returns at minute 6, clicks Send → 400 "Invalid or expired confirmation token". Should render `mm:ss` countdown derived from token issuance timestamp; switch banner to red and surface a "Re-Preview" button when expired or near (≤ 30s).** L7 feedback, L8 recovery. **[AUTOLOOP-T77 VERIFIED: mm:ss countdown to confirmation expiry added in tick 53 WEB-UIUX-1124; Send disabled at 0:00 with re-preview prompt.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
   <!-- meta: fix=track-issuedAt=Date.now()-on-preview-success;-render-Math.max(0,300-elapsed)-as-mm:ss;-when<30s-flip-banner-color+show-Re-Preview-button -->
 
@@ -6395,7 +6395,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-196`
   <!-- meta: fix=compute-segments=Math.ceil(content.length/(hasUnicode?70:160));-render-"{segments}-segment(s)-x-{count}-recipients-=-{total}-billable-segments" -->
 
-- [ ] WEB-UIUX-1516. **[MINOR] No scheduling option in BulkSmsModal. `ScheduledSendModal.tsx` already exists in the same `components/` folder for 1:1 scheduled sends. Bulk SMS is send-now only — admin who wants to blast Tuesday 10am has to set a personal reminder and re-build the campaign. Wire a "Schedule for later" checkbox; defer to existing scheduler infra.** L6 discoverability.
+- [ ] WEB-UIUX-1516. **[MINOR] No scheduling option in BulkSmsModal. `ScheduledSendModal.tsx` already exists in the same `components/` folder for 1:1 scheduled sends. Bulk SMS is send-now only — admin who wants to blast Tuesday 10am has to set a personal reminder and re-build the campaign. Wire a "Schedule for later" checkbox; defer to existing scheduler infra.** L6 discoverability. **STATUS: BLOCKED — needs new scheduled-bulk-send endpoint integration with ScheduledSendModal infra; multi-component, defer**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:198-224`
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx`
   <!-- meta: fix=add-"Schedule-for-later"-toggle+datetime-picker;-on-confirm-route-to-scheduled-bulk-send-endpoint-instead-of-immediate-/inbox/bulk-send -->
@@ -6405,7 +6405,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:198-224`
   <!-- meta: fix=server-returns-{used,limit,resets_at_iso}-on-preview-response;-modal-renders-status-line-+-disables-Send-when-used>=limit -->
 
-- [ ] WEB-UIUX-1518. **[MINOR] No segment audit / sample list. Preview shows count only — admin cannot spot-check "is John Doe really in this segment? Did we exclude staff?". Render up to 10 sample rows (first name + last 4 digits of phone) below the recipient banner so admin can sanity-check before pulling the trigger.** L7 feedback.
+- [ ] WEB-UIUX-1518. **[MINOR] No segment audit / sample list. Preview shows count only — admin cannot spot-check "is John Doe really in this segment? Did we exclude staff?". Render up to 10 sample rows (first name + last 4 digits of phone) below the recipient banner so admin can sanity-check before pulling the trigger.** L7 feedback. **STATUS: BLOCKED — server preview must return up to 10 sample rows (first+phone_last4); backend, defer**
   `packages/server/src/routes/inbox.routes.ts:550-571`
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
   <!-- meta: fix=server-preview-returns-{preview_count,sample:[{first,phone_last4}]-up-to-10};-modal-renders-sample-list-with-"+N-more"-tail -->
@@ -6414,7 +6414,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:171-185`
   <!-- meta: fix=swap-native-<select>-for-Combobox-with-content-excerpt-as-secondary-line;-preserve-aria-labelling -->
 
-- [ ] WEB-UIUX-1520. **[MINOR] Re-Preview button missing. Once `preview` is set, footer renders Cancel + Send only (`BulkSmsModal.tsx:206-223`). No way to refresh count/token without Cancel + reopen. If admin sees 12,003 and suspects opt-ins changed, only path is to back out. Add a "Re-Preview" link button next to the recipient banner (or as a third footer button when `preview != null`).** L8 recovery.
+- [x] WEB-UIUX-1520. **[MINOR] Re-Preview button missing. Once `preview` is set, footer renders Cancel + Send only (`BulkSmsModal.tsx:206-223`). No way to refresh count/token without Cancel + reopen. If admin sees 12,003 and suspects opt-ins changed, only path is to back out. Add a "Re-Preview" link button next to the recipient banner (or as a third footer button when `preview != null`).** L8 recovery. **[AUTOLOOP-T77 RESOLVED: Re-Preview text-link button added between Cancel + Send when preview!=null; clears preview + re-triggers mutation.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-223`
   <!-- meta: fix=render-"Re-Preview"-button-when-preview-non-null;-on-click-setPreview(null)+previewMut.mutate() -->
 

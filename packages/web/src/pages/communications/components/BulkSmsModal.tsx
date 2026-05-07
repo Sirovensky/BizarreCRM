@@ -292,15 +292,24 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               {previewMut.isPending ? 'Previewing…' : 'Preview'}
             </button>
           ) : (
-            <button
-              onClick={() => sendMut.mutate()}
-              disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
-              title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
-              className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-            >
-              <Send className="h-3.5 w-3.5" />
-              {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
-            </button>
+            <>
+              <button
+                onClick={() => { setPreview(null); previewMut.mutate(); }}
+                disabled={!templateId || previewMut.isPending}
+                className="text-sm text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {previewMut.isPending ? 'Refreshing…' : 'Re-Preview'}
+              </button>
+              <button
+                onClick={() => sendMut.mutate()}
+                disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
+                title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
+                className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
+              </button>
+            </>
           )}
         </div>
       </div>
