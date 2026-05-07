@@ -1,7 +1,8 @@
+import type { ComponentType, ReactNode } from 'react';
 import { Loader2, AlertCircle, Package } from 'lucide-react';
 
 export function SummaryCard({ label, value, icon: Icon, color, bg }: {
-  label: string; value: string; icon: React.ComponentType<{ className?: string }>; color: string; bg: string;
+  label: string; value: string; icon: ComponentType<{ className?: string }>; color: string; bg: string;
 }) {
   return (
     <div className="card flex items-center gap-4 p-5">
@@ -32,6 +33,40 @@ export function ErrorState({ message }: { message: string }) {
       <p className="text-sm text-surface-500">{message}</p>
     </div>
   );
+}
+
+function getReportErrorMessage(error: unknown, fallback: string): string {
+  const apiError = error as {
+    response?: { data?: { message?: unknown; error?: unknown } };
+    message?: unknown;
+  };
+  const message =
+    apiError.response?.data?.message ??
+    apiError.response?.data?.error ??
+    apiError.message;
+
+  return typeof message === 'string' && message.trim().length > 0 ? message : fallback;
+}
+
+export function getReportQueryState<TData>({
+  data,
+  error,
+  isError,
+  isLoading,
+  fallbackError,
+}: {
+  data: TData | null | undefined;
+  error: unknown;
+  isError: boolean;
+  isLoading: boolean;
+  fallbackError: string;
+}): { status: 'loading-or-error'; view: ReactNode } | { status: 'ready'; data: TData } {
+  if (isLoading) return { status: 'loading-or-error', view: <LoadingState /> };
+  if (isError || data == null) {
+    return { status: 'loading-or-error', view: <ErrorState message={getReportErrorMessage(error, fallbackError)} /> };
+  }
+
+  return { status: 'ready', data };
 }
 
 export function EmptyState({ message }: { message: string }) {

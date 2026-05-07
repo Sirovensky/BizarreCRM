@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ShieldCheck,
   Search,
+  LogOut,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -567,6 +568,15 @@ export function TenantsListPage() {
   const showingStart = totalTenants === 0 ? 0 : (currentPage - 1) * perPage + 1;
   const showingEnd = totalTenants === 0 ? 0 : Math.min(currentPage * perPage, totalTenants);
 
+  const handleSignOut = () => {
+    // WEB-S4-042: call server logout so the audit log records the
+    // sign-out; best-effort — token is removed locally regardless.
+    superAdminApi.logout().finally(() => {
+      superAdminTokenStore.remove();
+      setIsAuthenticated(false);
+    });
+  };
+
   useEffect(() => {
     if (pagination && pagination.page !== page) {
       setPage(pagination.page);
@@ -593,7 +603,7 @@ export function TenantsListPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between gap-4">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <Building2 className="h-6 w-6 text-primary-600" />
           <div>
@@ -603,51 +613,53 @@ export function TenantsListPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isFetching && !isLoading && (
-            <Loader2 className="h-4 w-4 animate-spin text-surface-400" aria-label="Loading tenants" />
-          )}
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-            className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-          >
-            <option value="">All statuses</option>
-            <option value="active">Active</option>
-            <option value="trial">Trial</option>
-            <option value="suspended">Suspended</option>
-            <option value="deleted">Deleted</option>
-          </select>
+        <div className="flex items-center gap-2 self-start rounded-lg border border-surface-200 bg-surface-50 px-2.5 py-1.5 text-xs text-surface-500 dark:border-surface-700 dark:bg-surface-800/70 dark:text-surface-400">
+          <ShieldCheck className="h-4 w-4 text-primary-600 dark:text-primary-400" aria-hidden="true" />
+          <span className="font-medium text-surface-700 dark:text-surface-200">Super-admin session</span>
           <button
-            onClick={() => {
-              // WEB-S4-042: call server logout so the audit log records the
-              // sign-out; best-effort — token is removed locally regardless.
-              superAdminApi.logout().finally(() => {
-                superAdminTokenStore.remove();
-                setIsAuthenticated(false);
-              });
-            }}
-            className="px-3 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800"
+            type="button"
+            onClick={handleSignOut}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-medium text-surface-500 transition-colors hover:bg-white hover:text-surface-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-surface-400 dark:hover:bg-surface-700 dark:hover:text-surface-100"
           >
+            <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
             Sign out
           </button>
         </div>
       </div>
 
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="relative w-full md:max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-          <input
-            type="search"
-            aria-label="Search tenants"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tenants"
-            className="w-full rounded-lg border border-surface-200 bg-white py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-          />
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center md:max-w-2xl">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <input
+              type="search"
+              aria-label="Search tenants"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tenants"
+              className="w-full rounded-lg border border-surface-200 bg-white py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            {isFetching && !isLoading && (
+              <Loader2 className="h-4 w-4 animate-spin text-surface-400" aria-label="Loading tenants" />
+            )}
+            <select
+              aria-label="Filter tenants by status"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 sm:w-auto"
+            >
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="trial">Trial</option>
+              <option value="suspended">Suspended</option>
+              <option value="deleted">Deleted</option>
+            </select>
+          </div>
         </div>
         <label className="flex items-center gap-2 text-sm text-surface-500 dark:text-surface-400">
           Rows

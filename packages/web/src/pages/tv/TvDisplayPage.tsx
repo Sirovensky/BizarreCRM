@@ -276,7 +276,7 @@ export function TvDisplayPage() {
               onClick={() => refetch()}
               disabled={isFetching}
               aria-disabled={isFetching}
-              className="rounded-lg bg-primary-600 px-6 py-2.5 text-base font-medium text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-lg bg-primary-600 px-6 py-2.5 text-base font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isFetching ? 'Retrying…' : 'Retry now'}
             </button>

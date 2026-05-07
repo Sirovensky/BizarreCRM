@@ -10,9 +10,9 @@ import { MiscTab } from './MiscTab';
 // ─── Tab definition ─────────────────────────────────────────────────
 
 const ALL_TABS = [
-  { key: 'repairs' as const,  label: 'Repairs',  icon: Wrench,        settingKey: 'pos_show_repairs' },
-  { key: 'products' as const, label: 'Products', icon: ShoppingBag,   settingKey: 'pos_show_products' },
-  { key: 'misc' as const,     label: 'Misc',     icon: MoreHorizontal, settingKey: 'pos_show_miscellaneous' },
+  { key: 'repairs' as const,  label: 'Repairs',  icon: Wrench,        settingKey: 'pos_show_repairs', shortcut: 'F1' },
+  { key: 'products' as const, label: 'Products', icon: ShoppingBag,   settingKey: 'pos_show_products', shortcut: 'F2' },
+  { key: 'misc' as const,     label: 'Misc',     icon: MoreHorizontal, settingKey: 'pos_show_miscellaneous', shortcut: 'F3' },
 ] as const;
 
 // ─── RightPanel ─────────────────────────────────────────────────────
@@ -38,12 +38,13 @@ export function RightPanel() {
     <div className="flex h-full flex-col overflow-hidden bg-white dark:bg-surface-900">
       {/* Tab buttons */}
       <div className="flex flex-shrink-0 border-b border-surface-200 dark:border-surface-700">
-        {visibleTabs.map(({ key, label, icon: Icon }) => {
+        {visibleTabs.map(({ key, label, icon: Icon, shortcut }) => {
           const isActive = activeTab === key;
           return (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
+              aria-keyshortcuts={shortcut}
               className={cn(
                 'btn btn-md flex-1 !rounded-none',
                 isActive

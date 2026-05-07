@@ -222,6 +222,18 @@ function consumeChallenge(token: string): number | null {
   return userId;
 }
 
+function consumeChallengeEntry(
+  token: string,
+): { userId: number; tenantSlug: string | null; expires: number; pendingTotpSecret?: string } | null {
+  const entry = challenges.get(token);
+  if (!entry || entry.expires < Date.now()) {
+    challenges.delete(token);
+    return null;
+  }
+  challenges.delete(token);
+  return entry;
+}
+
 // Clean expired challenges every minute
 trackInterval(() => {
   const now = Date.now();
@@ -966,6 +978,32 @@ router.post('/login/2fa-setup', asyncHandler(async (req: Request, res: Response)
     if (recoveryEntry) recoveryEntry.pendingTotpSecret = secret;
     res.status(500).json({ success: false, message: 'Failed to generate QR code. Please try again.', data: { challengeToken: recoveryChallenge } });
   }
+}));
+
+// POST /login/2fa-cancel — Abandon a first-time TOTP setup challenge.
+router.post('/login/2fa-cancel', asyncHandler(async (req: Request, res: Response) => {
+  const db = req.db;
+  const { challengeToken } = req.body;
+
+  if (typeof challengeToken !== 'string' || challengeToken.trim().length === 0) {
+    res.status(400).json({ success: false, message: 'Challenge token required' });
+    return;
+  }
+
+  const entry = consumeChallengeEntry(challengeToken);
+  if (!entry) {
+    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' });
+    return;
+  }
+
+  audit(db, '2fa_setup_cancelled', entry.userId, req.ip || 'unknown', {
+    had_pending_secret: Boolean(entry.pendingTotpSecret),
+  });
+  logTenantAuthEvent('2fa_setup_cancelled', req, entry.userId, null, {
+    had_pending_secret: Boolean(entry.pendingTotpSecret),
+  });
+
+  res.json({ success: true, data: { cancelled: true } });
 }));
 
 // POST /login/2fa-verify — Verify TOTP code and complete login

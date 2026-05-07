@@ -1456,10 +1456,6 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [x] WEB-UIUX-192. **[MINOR] CustomerPayPage uses `text-4xl` raw `✓` emoji.** Renders inconsistently across OS, no SR label. L9, L12. **[AUTOLOOP-T6 RESOLVED: raw `✓` emoji replaced with lucide CheckCircle in `<span role="img" aria-label="Paid">`.]**
   `packages/web/src/pages/billing/CustomerPayPage.tsx:164`
 
-- [ ] WEB-UIUX-193. **[MINOR] TenantsList "Sign out" sits in toolbar next to filter — same shape/weight.** Confusion risk. L2.
-  `packages/web/src/pages/super-admin/TenantsListPage.tsx:481-493`
-  <!-- meta: fix=move-to-user-menu -->
-
 - [x] WEB-UIUX-194. **[MINOR] Container width inconsistency across pages.** Marketing: max-w-6xl. Billing: full-bleed p-6. Tenants: no wrapper. GiftCardDetail: max-w-3xl. App feels like 4 different products. L2, L11. **[AUTOLOOP-T6 RESOLVED: added canonical `<PageContainer>` at `components/layout/PageContainer.tsx`. Page migration deferred for incremental adoption.]**
   <!-- meta: fix=PageContainer-with-narrow-default-wide -->
 
@@ -1483,9 +1479,6 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1269,1278,1289`
   <!-- meta: fix=add-autoComplete-attributes-per-WHATWG-spec -->
 
-- [ ] WEB-UIUX-199. **[MAJOR] WCAG 3.2.6 Consistent Help — no consistent Help/Support entry point across pages.** Some pages link to settings tooltip, others have nothing. New WCAG 2.2 AA criterion. L1, L4.
-  <!-- meta: fix=add-persistent-support-link-in-header-or-sidebar -->
-
 - [x] WEB-UIUX-200. **[MAJOR] WCAG 3.3.7 Redundant Entry — multi-step setup re-prompts for info already entered.** SetupPage steps may ask same fields multiple times (verify). New WCAG 2.2 A. L7. **[AUTOLOOP-T6 RESOLVED: STALE — StepStoreInfo already pre-fills `store_email` from prior `signup_email` via useEffect with helper text. No redundant entry found.]**
   `packages/web/src/pages/setup/SetupPage.tsx`
   <!-- meta: fix=audit-step-flow-pre-fill-from-prior-steps -->
@@ -1498,7 +1491,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
   All `animate-pulse` / `animate-spin` callsites.
   <!-- meta: fix=add-motion-reduce:animate-none-globally-via-Skeleton-component -->
 
-- [ ] WEB-UIUX-203. **[MAJOR] POS UX research — cashier needs role-based view, but POS shows all functions to all roles.** Compare LeftPanel actions for cashier vs manager. Cashier doesn't need PriceOverride/VoidLine without ManagerPin every time. L1, L2.
+- [x] WEB-UIUX-203. **[MAJOR] POS UX research — cashier needs role-based view, but POS shows all functions to all roles.** Compare LeftPanel actions for cashier vs manager. Cashier doesn't need PriceOverride/VoidLine without ManagerPin every time. L1, L2. **RESOLVED 2026-05-07: POS cart actions now use auth-store role/permission visibility. Cashier views demote price/tax controls to read-only, hide line void/remove actions, keep drawer close and Refund/Void out of cashier flows, and preserve manager/admin plus explicit grant behavior.**
   `packages/web/src/pages/unified-pos/`
   <!-- meta: fix=role-based-action-visibility -->
 
@@ -1548,7 +1541,7 @@ extracted Modal shell (cross-cutting)
   `packages/web/index.html:64`
   <!-- meta: fix=remove-Inter-LeagueSpartan-Roboto-from-preload -->
 
-- [ ] WEB-UIUX-211. **[MINOR] SignatureCanvas hardcodes `12px Inter, sans-serif` for canvas text.** Bypasses brand fonts. L9.
+- [x] WEB-UIUX-211. **[MINOR] SignatureCanvas hardcodes `12px Inter, sans-serif` for canvas text.** Bypasses brand fonts. L9. **RESOLVED 2026-05-07: signature guide text now uses the app body stack (`Jost`, Futura, system-ui) via a shared canvas font constant instead of hardcoded Inter.**
   `packages/web/src/components/shared/SignatureCanvas.tsx:109,209`
   <!-- meta: fix=use-Jost-or-Futura-font-stack -->
 
@@ -1556,7 +1549,7 @@ extracted Modal shell (cross-cutting)
   `packages/web/index.html:36`
   <!-- meta: fix=use-react-helmet-or-useEffect-to-set-document.title -->
 
-- [ ] WEB-UIUX-213. **[MINOR] `<html lang="en">` hardcoded.** Won't adapt for non-English tenants. WCAG 3.1.1 compliance for i18n. L12, L14.
+- [x] WEB-UIUX-213. **[MINOR] `<html lang="en">` hardcoded.** Won't adapt for non-English tenants. WCAG 3.1.1 compliance for i18n. L12, L14. **RESOLVED 2026-05-07: the app now seeds `<html lang>` from the browser before React mounts and authenticated CRM pages refine it from the existing per-user `language` preference.**
   `packages/web/index.html:2`
 
 #### Form Accessibility (WebAIM 2026 research: 33% of inputs unlabeled)
@@ -1571,7 +1564,7 @@ extracted Modal shell (cross-cutting)
 - [x] WEB-UIUX-216. **[MAJOR] Only 40 `aria-describedby` callsites — error messages not linked to fields.** Per research: invalid fields must use aria-describedby pointing to the error message id. L7, L8, L12. **[AUTOLOOP-T7 RESOLVED: added canonical `<FormField>` wrapper at `components/shared/FormField.tsx` auto-derives aria-describedby from htmlFor + role=alert error <p>.]**
   <!-- meta: fix=add-aria-describedby+id-pattern-to-FormError-component -->
 
-- [ ] WEB-UIUX-217. **[MINOR] CustomerCreatePage uses `className="input"` global utility — bypass Tailwind dark mode tracking.** L4, L10.
+- [!] WEB-UIUX-217. **[MINOR] CustomerCreatePage uses `className="input"` global utility — bypass Tailwind dark mode tracking.** STALE 2026-05-06 — critique: `.input` is an existing dark-aware app utility, not a light-only bypass. `packages/web/src/styles/globals.css` defines `.dark .input` border/background/text/placeholder/focus variants, so CustomerCreatePage keeps the shared form styling rather than migrating one page to duplicated explicit classes.
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:283` (and many others)
   <!-- meta: fix=verify-input-class-or-migrate-to-explicit-classes -->
 
@@ -1579,23 +1572,22 @@ extracted Modal shell (cross-cutting)
 
 #### Toast UX (LogRocket/Carbon/research)
 
-- [ ] WEB-UIUX-219. **[MINOR] Toaster default duration 4000ms — research: 5000ms minimum for most users to read.** Short success (3000ms) too short for non-trivial messages. L8, L12.
+- [x] WEB-UIUX-219. **[MINOR] Toaster default duration 4000ms — research: 5000ms minimum for most users to read.** Short success (3000ms) too short for non-trivial messages. L8, L12. **RESOLVED 2026-05-07: default toast duration is now 5000ms and success toasts are 4000ms; error/loading behavior remains unchanged.**
   `packages/web/src/main.tsx:410-411`
   <!-- meta: fix=raise-default-to-5000-success-to-4000 -->
 
 - [x] WEB-UIUX-220. **[MINOR] Toaster lacks explicit `role="status"` + `aria-live="polite"` props.** react-hot-toast sets it by default, but explicit declaration documents intent. L12. **[AUTOLOOP-T7 RESOLVED: Toaster gets `containerAriaLabel="Notifications"` + `toastOptions.ariaProps={role:status, aria-live:polite}`.]**
   `packages/web/src/main.tsx:404-415`
 
-- [ ] WEB-UIUX-221. **[MINOR] LoanersPage important transactional toast `Collect $X damage charge` only 8s + uses `$` literal.** User must remember $ amount after toast disappears — should be UI banner, not toast. L8, L9, L16.
-  `packages/web/src/pages/loaners/LoanersPage.tsx:46`
-  <!-- meta: fix=show-banner-not-toast-for-action-required-info -->
+- [x] WEB-UIUX-221. **LoanersPage return-charge info persists inline.** CLOSED 2026-05-07 — critique: valid. Return-charge invoice/payment details are transactional state, so the charge-specific success path now stores a persistent inline notice on the Loaners page with an Open invoice action and dismiss control instead of relying on an expiring charge-detail toast. Charge, paid, and due amounts render through shared `formatCurrency()`.
+  `packages/web/src/pages/loaners/LoanersPage.tsx`
 
 - [x] WEB-UIUX-222. **[MINOR] CheckoutModal terminal-failure toast 8s ("Retry from invoice page").** Critical workflow info — should be persistent inline error in Modal until user dismisses. L8, L16. **[AUTOLOOP-T7 RESOLVED: CheckoutModal terminal-failure replaced with persistent role=alert inline error + dismiss button + Retry-from-invoice link.]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:365,397`
   <!-- meta: fix=render-inline-failure-state-in-modal -->
 
-- [ ] WEB-UIUX-223. **[MAJOR] Multiple toasts can stack but ToastAvalancheGuard caps at 5 — 6th+ toast silently dropped.** Important error toasts can be lost. Per research: deduplication better than dropping. L8.
-  `packages/web/src/main.tsx:418`
+- [x] WEB-UIUX-223. **[MAJOR] Multiple toasts can stack but ToastAvalancheGuard caps at 5 — 6th+ toast silently dropped.** Important error toasts can be lost. Per research: deduplication better than dropping. L8. **RESOLVED 2026-05-07: valid. Toast guard now deduplicates repeated visible messages by type+message while preserving all distinct visible toasts, so the 6th unique error is no longer dismissed by a hard cap.**
+  `packages/web/src/main.tsx:13-82,315-317`
   <!-- meta: fix=deduplicate-by-id-instead-of-cap+drop -->
 
 #### Loading & Feedback States
@@ -1609,11 +1601,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Blockers/Trust
 
-- [ ] WEB-UIUX-225. **[BLOCKER · BLOCKED] StepVerifyEmail advances on ANY 6-digit code.** Endpoint not wired — toast says "wired later" + advances. Bypasses email verification entirely. L16.
-  **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
-  `packages/web/src/pages/setup/steps/StepVerifyEmail.tsx:42-51`
-  <!-- meta: fix=feature-flag-or-block-advancement-until-SMTP-wired -->
-
 - [ ] WEB-UIUX-226. **[MAJOR · BLOCKED] StepVerifyEmail "Resend code" is no-op toast — pretends to resend.** L16.
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/setup/steps/StepVerifyEmail.tsx:53-55`
@@ -1625,13 +1612,13 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/pages/setup/steps/StepReview.tsx:115-122`
   <!-- meta: fix=iterate-by-key-not-label -->
 
-- [ ] WEB-UIUX-229. **[MAJOR] StepRepairPricing preview tabs label "coming soon" but interactive.** Confused for broken. L16.
+- [x] WEB-UIUX-229. **[MAJOR] StepRepairPricing preview tabs label "coming soon" but interactive.** Confused for broken. L16. **RESOLVED 2026-05-07: literal "coming soon" labels were already stale, but the live controls still described themselves as Settings preview surfaces; setup copy now makes clear that matrix edits and auto-margin rules save from the wizard using the same pricing model as Settings.**
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:367-481`
 
 - [x] WEB-UIUX-230. **[MAJOR] StepRepairPricing profit-per-repair badge uses hardcoded $40/$30/$20 parts cost.** Misleading anchor for new shop owners. L14. **[AUTOLOOP-T8 RESOLVED: StepRepairPricing profit badge replaced with "Profit varies / by parts cost"; profitFor() + hardcoded $40/$30/$20 removed.]**
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:199-206`
 
-- [ ] WEB-UIUX-231. **[MAJOR] CommissionPeriodLock single-click locks period (irreversible) with no confirm.** L16.
+- [x] WEB-UIUX-231. **[MAJOR] CommissionPeriodLock single-click locks period (irreversible) with no confirm.** L16. **RESOLVED 2026-05-07: locking now requires the shared danger confirm dialog showing the period name/date range and explaining that commission edits in the range will be blocked.**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:158-175`
   <!-- meta: fix=two-step-or-modal-confirm -->
 
@@ -1639,8 +1626,8 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/components/tickets/QcSignOffModal.tsx:184-187`
   <!-- meta: fix=confirm-discard-if-touched -->
 
-- [ ] WEB-UIUX-233. **[MAJOR] QcSignOffModal: every checklist item must pass — no "failed" state, no reroute path.** L5.
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:136-137`
+- [x] WEB-UIUX-233. **[MAJOR] QcSignOffModal: every checklist item must pass — no "failed" state, no reroute path.** L5. **RESOLVED 2026-05-07: valid, but failed QC is not a sign-off row because `/bench/qc/sign-off` correctly rejects non-passing checklists. The modal now records failed QC through supported ticket semantics: every item is marked Pass/Fail, failure requires a reason, creates a flagged internal ticket note, and reroutes to an existing active ticket status (preferring `Repaired - QC Failed`).**
+  `packages/web/src/components/tickets/QcSignOffModal.tsx:291-326,434-527`
   <!-- meta: fix=add-Failed-state-and-Reject-CTA -->
 
 #### Setup Wizard A11y / Components
@@ -1648,7 +1635,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-234. **[MAJOR] SetupPage missing `<main>` landmark, `<h1>`, skip link.** Screen readers land on plain region. L12. **[AUTOLOOP-T8 RESOLVED: SetupPage adds <main id=main-content>, sr-only <h1>Setup wizard</h1>, focus-visible Skip-to-content link.]**
   `packages/web/src/pages/setup/SetupPage.tsx:362-373`
 
-- [ ] WEB-UIUX-235. **[MAJOR] WizardBreadcrumb decorative — no `aria-current="step"`, no `<nav>` landmark.** SR users get 3 unrelated label strings. L12.
+- [x] WEB-UIUX-235. **[MAJOR] WizardBreadcrumb decorative — no `aria-current="step"`, no `<nav>` landmark.** SR users get 3 unrelated label strings. L12. **RESOLVED 2026-05-07: valid. WizardBreadcrumb now renders as a named setup-progress nav containing an ordered list, with the highlighted current pill marked `aria-current="step"` and separators/icons kept decorative.**
   `packages/web/src/pages/setup/components/WizardBreadcrumb.tsx:67-103`
 
 - [x] WEB-UIUX-236. **[MAJOR] SkipToDashboard confirm panel not real dialog — no focus trap, no Esc.** L12. **[AUTOLOOP-T8 RESOLVED: SkipToDashboard confirm panel gets role=dialog + aria-modal + aria-labelledby + useEscClose + useFocusTrap.]**
@@ -1667,7 +1654,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-240. **[MINOR] StepStoreInfo validation hides errors when field empty.** User can't tell what's blocking submit. L8. **[AUTOLOOP-T8 RESOLVED: StepStoreInfo `field.length > 0` empty-field guards removed; validators always surface errors for required fields.]**
   `packages/web/src/pages/setup/steps/StepStoreInfo.tsx:36-53`
 
-- [ ] WEB-UIUX-241. **[MINOR] StepShopType "Skip" advances without recording intent.** Audit gap. L5.
+- [!] WEB-UIUX-241. **[MINOR] StepShopType "Skip" advances without recording intent.** BLOCKED 2026-05-07 — critique: valid, but no safe existing client/server write path exists inside the allowed ownership. `POST /onboarding/set-shop-type` records/audits real selections only, `PATCH /onboarding/state` audits only unrelated boolean flags, and `PUT /settings/config` can audit `shop_type` but that key is consumed by repair-pricing seed logic, so storing a synthetic `skipped` value would corrupt a real contract. Needs a server-owned onboarding skip event/field before the UI can record this honestly while remaining non-blocking.
   `packages/web/src/pages/setup/steps/StepShopType.tsx:106-109`
 
 - [x] WEB-UIUX-242. **[MINOR] StepImportHandoff cards have no explicit bg — invisible boundaries in dark mode unless hovered.** L10. **[AUTOLOOP-T8 RESOLVED: StepImportHandoff unselected cards get bg-white + dark:bg-surface-800 so boundaries are always visible.]**
@@ -1679,7 +1666,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-244. **[MINOR] StepFirstLogin default-credentials warning is `role="status"` (polite) — should be omitted or `role="alert"`.** L12. **[AUTOLOOP-T8 RESOLVED: StepFirstLogin default-credentials warning role=status → role=alert (assertive announcement).]**
   `packages/web/src/pages/setup/steps/StepFirstLogin.tsx:78-86`
 
-- [ ] WEB-UIUX-245. **[MINOR] StepForcePassword strength heuristic rates passphrases "weak".** "correct horse battery staple" → weak. L8.
+- [x] WEB-UIUX-245. **[MINOR] StepForcePassword strength heuristic rates passphrases "weak".** "correct horse battery staple" → weak. L8. **RESOLVED 2026-05-07: critique was partially stale because the shared scorer already rates that exact passphrase as strong, but the setup meter still needed a passphrase-aware local guard under this item's file ownership. StepForcePassword now preserves the shared 0-4 meter while keeping clean long multi-word passphrases at good/strong and capping obvious repeated/common-word patterns as weak. Submit behavior remains length+match only.**
   `packages/web/src/pages/setup/steps/StepForcePassword.tsx:25-33`
   <!-- meta: fix=use-zxcvbn-or-length-bonus -->
 
@@ -1690,26 +1677,20 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-247. **[MINOR] StepSignup slug debounce uses race-discard not AbortController.** Out-of-order responses can flash wrong availability. L1. **[AUTOLOOP-T9 RESOLVED: StepSignup slug check now uses AbortController; cleanup aborts in-flight; checkSlug accepts AxiosRequestConfig.]**
   `packages/web/src/pages/setup/steps/StepSignup.tsx:88-125`
 
-- [ ] WEB-UIUX-248. **[MINOR] StepSignup `setSlug(.toLowerCase())` on every keystroke breaks IME composition.** L7.
-  `packages/web/src/pages/setup/steps/StepSignup.tsx:338`
+- [x] WEB-UIUX-248. **[MINOR] StepSignup `setSlug(.toLowerCase())` on every keystroke breaks IME composition.** L7. **RESOLVED 2026-05-07: slug input now preserves the active edit value, pauses availability checks during composition, and uses a canonical lowercase slug only for validation, availability, blur commit, and submit payloads.**
+  `packages/web/src/pages/setup/steps/StepSignup.tsx:73-118,132-145,356-361`
 
 - [x] WEB-UIUX-249. **[MINOR] StepSignup derives shop name from email-local-part — "joe.smith" → "Joe.smith" on receipts.** L14. **[AUTOLOOP-T9 RESOLVED: shop-name derivation now splits email local-part on `.`/`_`/`-` and title-cases each word.]**
   `packages/web/src/pages/setup/steps/StepSignup.tsx:152-159`
 
-- [ ] WEB-UIUX-250. **[MINOR] StepTwoFactorSetup skip abandons in-flight TOTP secret with no server-side cancel.** L16.
+- [x] WEB-UIUX-250. **[MINOR] StepTwoFactorSetup skip abandons in-flight TOTP secret with no server-side cancel.** L16. **RESOLVED 2026-05-07: skipping now calls a real `/auth/login/2fa-cancel` endpoint that consumes the pending challenge, drops any in-memory TOTP secret, and audits the cancellation before advancing; if cancellation fails, setup still advances and the existing short TTL remains the fallback.**
   `packages/web/src/pages/setup/steps/StepTwoFactorSetup.tsx:125-131`
 
 - [x] WEB-UIUX-251. **[MINOR] StepRepairPricing defaults not seeded into pending on mount.** Going Back loses defaults. L5. **[AUTOLOOP-T9 RESOLVED: StepRepairPricing mount-only useEffect seeds 15 absent pricing keys into pending; Back preserves defaults.]**
   `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:181-194`
 
-- [ ] WEB-UIUX-252. **[MINOR] StepFirstEmployees "PIN (opt.)" no security framing.** Users pick weak PINs (1234, 0000). L14, L16.
-  `packages/web/src/pages/setup/steps/StepFirstEmployees.tsx:349-372`
-
 - [x] WEB-UIUX-253. **[MINOR] StepFirstEmployees retry button has no debounce.** L1. **[AUTOLOOP-T9 RESOLVED: StepFirstEmployees retry button gets per-row 1 s debounce + isSending disabled state.]**
   `packages/web/src/pages/setup/steps/StepFirstEmployees.tsx:214-218,388-396`
-
-- [ ] WEB-UIUX-254. **[MINOR] StepCashDrawer IP input no format validation.** "192.168.1.50:porty" silently saves. L7.
-  `packages/web/src/pages/setup/steps/StepCashDrawer.tsx:165-176`
 
 - [x] WEB-UIUX-255. **[MINOR] ExtrasHub.tsx is dead code from removed non-linear hub flow.** 287 lines unused. L3. **[AUTOLOOP-T9 RESOLVED: orphaned ExtrasHub.tsx deleted (zero imports, zero router refs).]**
   `packages/web/src/pages/setup/ExtrasHub.tsx`
@@ -1717,34 +1698,22 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Onboarding
 
-- [ ] WEB-UIUX-256. **[MAJOR] SpotlightCoach tooltip `role="dialog"` without focus trap or focus restore.** Tab escapes overlay. L12.
-  `packages/web/src/components/onboarding/SpotlightCoach.tsx:170-176`
-
 - [x] WEB-UIUX-257. **[MAJOR] SpotlightCoach "Skip all tutorials" writes localStorage permanently — no UI to undo.** Stray click loses every tutorial forever. L6, L16. **[AUTOLOOP-T9 RESOLVED: SpotlightCoach Skip-all now requires inline 2-click confirm; resetAllTutorials() exported for future Settings wiring.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:422-429`
   <!-- meta: fix=add-Re-enable-toggle-in-Settings-confirm-before-nuking -->
-
-- [ ] WEB-UIUX-258. **[MINOR] SpotlightCoach Esc dismisses entire flow permanently — should pause.** L5.
-  `packages/web/src/components/onboarding/SpotlightCoach.tsx:432-439`
 
 - [x] WEB-UIUX-259. **[MINOR] SpotlightCoach overlay `boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)'` — fails on 4K+ zoomed-out browsers.** L11. **[AUTOLOOP-T9 RESOLVED: SpotlightCoach overlay boxShadow spread bumped 9999px → 99999px to cover 4K+ zoomed-out viewports.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:99-112`
   <!-- meta: fix=use-svg-mask-with-rect-cutout -->
 
-- [ ] WEB-UIUX-260. **[MINOR] SpotlightCoach hardcodes CARD_WIDTH=320 — overflows 320px viewport.** L11.
-  `packages/web/src/components/onboarding/SpotlightCoach.tsx:138-166`
-
 - [x] WEB-UIUX-261. **[MINOR] DailyNudge close button `aria-label="Got it"` confuses with implicit "confirm".** L14. **[AUTOLOOP-T9 RESOLVED: DailyNudge close button aria-label/title changed from "Got it" to "Dismiss notification".]**
   `packages/web/src/components/onboarding/DailyNudge.tsx:130-132`
 
-- [ ] WEB-UIUX-262. **[MINOR] DailyNudge CTA dismisses + navigates — user navigates back, loses suggestion silently.** L5.
+- [x] WEB-UIUX-262. **[MINOR] DailyNudge CTA dismisses + navigates — user navigates back, loses suggestion silently.** L5. **RESOLVED 2026-05-07: CTA navigation no longer marks the nudge dismissed; only the explicit dismiss control persists dismissal state.**
   `packages/web/src/components/onboarding/DailyNudge.tsx:100-103`
 
 - [x] WEB-UIUX-263. **[MINOR] GettingStartedWidget reduced-motion check skips confetti but no static "Done!" badge replacement.** L13. **[AUTOLOOP-T9 RESOLVED: GettingStartedWidget renders static green "Done!" pill (Check icon) in lieu of confetti when prefers-reduced-motion is set.]**
   `packages/web/src/components/onboarding/GettingStartedWidget.tsx:166-205`
-
-- [ ] WEB-UIUX-264. **[MINOR] SampleDataCard "Click again to confirm" same color/position — fat-finger destroys data.** L8.
-  `packages/web/src/components/onboarding/SampleDataCard.tsx:103-115`
 
 #### Print / TV / Photo Capture
 
@@ -1754,27 +1723,27 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-267. **[MINOR] PhotoCapturePage uses raw `bg-gray-*` not `surface-*` tokens.** L4. **[AUTOLOOP-T10 RESOLVED: STALE — already fixed by WEB-UIUX-266 in tick 10. Zero gray-* in PhotoCapturePage.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:127-287`
 
-- [ ] WEB-UIUX-268. **[MINOR] PhotoCapturePage upload token in URL persists in browser history before strip.** L16.
+- [x] WEB-UIUX-268. **[MINOR] PhotoCapturePage upload token in URL persists in browser history before strip.** L16. **RESOLVED 2026-05-07: new QR links place the scoped upload token in the URL fragment instead of `?t=`, so it is not sent on initial navigation or chunk-loading Referer headers; PhotoCapturePage still accepts legacy `?t=` links and scrubs either form with `history.replaceState`.**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:14-27`
   <!-- meta: fix=migrate-to-per-action-JWT -->
 
 - [x] WEB-UIUX-269. **[MINOR] PrintPage size-switching uses raw `<a href>` — full reload kills React Query caches.** L1, L15. **[AUTOLOOP-T10 RESOLVED: PrintPage size-switch `<a href>` replaced with react-router `<Link to>`; preserves React Query cache.]**
   `packages/web/src/pages/print/PrintPage.tsx:1051-1063`
 
-- [ ] WEB-UIUX-270. **[MINOR] PrintPage sanitizePrintText/sanitizeTerms called inline per-render.** DOMPurify is non-trivial. L15.
+- [x] WEB-UIUX-270. **[MINOR] PrintPage sanitizePrintText/sanitizeTerms called inline per-render.** DOMPurify is non-trivial. L15. **RESOLVED 2026-05-07: print headers, footers, terms, warranty disclaimers, invoice notes, line-item notes, and diagnostic-note text are now sanitized through `useMemo`-cached values/maps instead of running DOMPurify inline during each render pass.**
   `packages/web/src/pages/print/PrintPage.tsx:231,402,429,672,712,902`
 
 - [x] WEB-UIUX-271. **[MINOR] PrintPage `<style>` injects color:#000/bg:#fff — flashes light against dark page surround.** L10. **[AUTOLOOP-T10 RESOLVED: PrintPage body color/bg overrides moved inside `@media print {}`; on-screen view honors theme.]**
   `packages/web/src/pages/print/PrintPage.tsx:1022-1038`
 
-- [ ] WEB-UIUX-272. **[MINOR] TvDisplayPage `text-primary-950` on `bg-primary-600` ≈ 2.3:1 contrast — fails WCAG AA.** L12.
+- [x] WEB-UIUX-272. **[MINOR] TvDisplayPage `text-primary-950` on `bg-primary-600` ≈ 2.3:1 contrast — fails WCAG AA.** L12. **RESOLVED 2026-05-07: the offline Retry button now uses white text on the primary-600 background, matching the existing TV header icon contrast instead of the low-contrast dark-primary foreground.**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:128-133`
 
 - [x] WEB-UIUX-273. **[MINOR] TvDisplayPage lobby PII partial — first name initial shown but full device name "iPhone 14 Pro Max" exposes correlation.** L16. **[AUTOLOOP-T10 RESOLVED: TvDisplayPage `truncateDeviceName()` slices to first 2 whitespace tokens; "iPhone 14 Pro Max" → "iPhone 14".]**
   `packages/web/src/pages/tv/TvDisplayPage.tsx:191-214`
   <!-- meta: fix=add-config-toggle-or-show-device-class-only -->
 
-- [ ] WEB-UIUX-274. **[MINOR] TvDisplayPage no exponential backoff on retry — React Query default hammers servers.** L1.
+- [!] WEB-UIUX-274. **[MINOR] TvDisplayPage no exponential backoff on retry — React Query default hammers servers.** STALE 2026-05-07 — critique: current code already disables React Query retries (`retry: false`) and uses `getTvPollInterval(failureCount)` for exponential polling backoff from 30s up to 5m, pauses polling while hidden, and manually refetches when visibility resumes. No code change needed.
   `packages/web/src/pages/tv/TvDisplayPage.tsx:78-84`
 
 #### Reports Sub-Components
@@ -1783,35 +1752,22 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/pages/reports/components/*.tsx`
   <!-- meta: fix=define-chart-CSS-vars-in-design-system -->
 
-- [ ] WEB-UIUX-276. **[MINOR] All 6 reports tabs duplicate identical loading/error block.** L3.
+- [x] WEB-UIUX-276. **[MINOR] All 6 reports tabs duplicate identical loading/error block.** L3. **RESOLVED 2026-05-07: added a local `getReportQueryState()` helper in `ReportHelpers.tsx` so the six reports tabs share the same loading/error guard and API error-message extraction while keeping report-specific queries/layouts local.**
   <!-- meta: fix=extract-useReportQuery-hook -->
 
 - [x] WEB-UIUX-277. **[MINOR] DeviceModelsTab recomputes `Math.max(...rows.map(...))` per row — O(n²).** L15. **[AUTOLOOP-T10 RESOLVED: DeviceModelsTab `Math.max(...rows.map(...))` hoisted into useMemo; complexity O(n²)→O(n).]**
   `packages/web/src/pages/reports/components/DeviceModelsTab.tsx:75`
-
-- [ ] WEB-UIUX-278. **[MINOR] StalledTicketsTab ticket IDs truncated with no tooltip or click-to-expand.** Operators can't see which tickets without hover. L5.
-  `packages/web/src/pages/reports/components/StalledTicketsTab.tsx:105`
 
 - [x] WEB-UIUX-279. **[MINOR] Reports tooltip `border: '1px solid #374151'` raw hex — won't theme-switch.** L10. **[AUTOLOOP-T10 RESOLVED: ReportsPage 2 raw `#374151` tooltip-borders replaced with `rgb(var(--surface-600))`.]**
   `CustomerAcquisitionTab.tsx:81`, `TechnicianHoursTab.tsx:86`
 
 #### Tickets Components
 
-- [ ] WEB-UIUX-280. **[MINOR] BenchTimer setInterval fires every 1s on hidden tabs.** No visibility guard. L1, L15.
-  `packages/web/src/components/tickets/BenchTimer.tsx:100-105`
-
 - [x] WEB-UIUX-281. **[MINOR] BenchTimer Resume=green-600, Stop=red-600, Start=primary — inconsistent semantics.** L4. **[AUTOLOOP-T10 RESOLVED: BenchTimer Resume now uses `bg-primary-600 text-primary-950` matching Start; Stop stays red-600.]**
   `packages/web/src/components/tickets/BenchTimer.tsx:218-263`
 
-- [ ] WEB-UIUX-282. **[MINOR] CustomerHistorySidebar `isSafePhotoUrl` accepts `/uploads/../etc/passwd`.** Path traversal. L16.
-  `packages/web/src/components/tickets/CustomerHistorySidebar.tsx:48-60`
-  <!-- meta: fix=restrict-prefix-to-/uploads/-or-/api/files/ -->
-
 - [x] WEB-UIUX-283. **[MINOR] DefectReporterButton modal Esc closes but no focus restore to trigger.** L12. **[AUTOLOOP-T10 RESOLVED: DefectReporterButton wired with `useFocusTrap(open)` hook; restores focus to trigger button on Esc/close.]**
   `packages/web/src/components/tickets/DefectReporterButton.tsx:94-99`
-
-- [ ] WEB-UIUX-284. **[MINOR] DefectReporterButton + QcSignOffModal `URL.createObjectURL` blobs never `revokeObjectURL`-ed.** Memory leak. L15.
-  `DefectReporterButton.tsx:88-91,203-206`, `QcSignOffModal.tsx:128-134,275-282`
 
 - [x] WEB-UIUX-285. **[MINOR] QcSignOffModal canvas width=600 height=140 fluid CSS — saved PNG blurry on retina.** L9. **[AUTOLOOP-T10 RESOLVED: QcSignOffModal canvas internal size scaled by `devicePixelRatio` + `ctx.scale(dpr,dpr)`; getPoint/clearSignature in logical coords.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:289-301`
@@ -1822,19 +1778,19 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-286. **[MAJOR] CommissionPeriodLock card `bg-white` no dark variant.** White rectangle on dark page. L10. **[AUTOLOOP-T11 RESOLVED: CommissionPeriodLock card+modal+inputs all gain dark:bg-surface-* + border + text variants.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:126,182-244`
 
-- [ ] WEB-UIUX-287. **[MAJOR] CommissionPeriodLock modal `role="dialog"` but no focus trap.** L12.
+- [x] WEB-UIUX-287. **[MAJOR] CommissionPeriodLock modal `role="dialog"` but no focus trap.** L12. **RESOLVED 2026-05-07: the new payroll-period dialog now uses the shared `useFocusTrap` hook with initial focus on the first input and focus restoration on close, while keeping the existing Esc/backdrop close behavior.**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:183-243`
 
 - [x] WEB-UIUX-288. **[MAJOR] MentionPicker outer `<div>` `bg-white border` — invisible against dark surfaces.** L10. **[AUTOLOOP-T11 RESOLVED: MentionPicker outer div gets dark:bg-surface-800 + dark:border-surface-700.]**
   `packages/web/src/components/team/MentionPicker.tsx:78-83`
 
-- [ ] WEB-UIUX-289. **[MAJOR] TicketHandoffModal `bg-white rounded-lg shadow-xl` — same dark-mode gap.** L10.
+- [x] WEB-UIUX-289. **[MAJOR] TicketHandoffModal `bg-white rounded-lg shadow-xl` — same dark-mode gap.** L10. **RESOLVED 2026-05-07: modal shell, title, select, reason input, context textarea, and cancel action now have explicit dark background/border/text variants while preserving existing layout and handoff behavior.**
   `packages/web/src/components/team/TicketHandoffModal.tsx:84-90`
 
 - [x] WEB-UIUX-290. **[MINOR] MentionPicker filter input no `dark:bg-*`/`dark:text-*` — white-on-white in dark.** L10. **[AUTOLOOP-T11 RESOLVED: MentionPicker filter input gets dark:bg-surface-900 + text/placeholder/border dark variants.]**
   `packages/web/src/components/team/MentionPicker.tsx:91-99`
 
-- [ ] WEB-UIUX-291. **[MINOR] TicketHandoffModal "reason" textarea no character counter or maxLength.** Server cap fails silently. L7.
+- [x] WEB-UIUX-291. **[MINOR] TicketHandoffModal "reason" textarea no character counter or maxLength.** Server cap fails silently. L7. **RESOLVED 2026-05-07: the required handoff reason is capped at the server's 500-character limit, exposes a live `aria-describedby` character counter, and blocks submit if somehow over limit.**
   `packages/web/src/components/team/TicketHandoffModal.tsx:114-125`
 
 - [x] WEB-UIUX-292. **[MINOR] MentionPicker + TicketHandoffModal use separate cache keys for same `employees` data.** L15. **[AUTOLOOP-T11 RESOLVED: MentionPicker + TicketHandoffModal both use queryKey=["employees"] + staleTime 60s; share single cache entry.]**
@@ -1842,7 +1798,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Cross-Cutting (Pass 4)
 
-- [ ] WEB-UIUX-293. **[MAJOR] Modal pattern duplicated 6+ more times in this pass.** QcSignOffModal, DefectReporterButton, TicketHandoffModal, CommissionPeriodLock dialog, ShortcutReferenceCard, SkipToDashboard confirm. Each subtly different (focus trap, Esc, click-outside, backdrop-blur). L3, L4.
+- [x] WEB-UIUX-293. **[MAJOR] Modal pattern duplicated 6+ more times in this pass.** QcSignOffModal, DefectReporterButton, TicketHandoffModal, CommissionPeriodLock dialog, ShortcutReferenceCard, SkipToDashboard confirm. Each subtly different (focus trap, Esc, click-outside, backdrop-blur). L3, L4. **RESOLVED 2026-05-07: narrow adoption only. The full canonicalization ask is too broad for one safe TODO tick, so `TicketHandoffModal` now uses the shared `Modal` primitive for backdrop, dialog semantics, Escape close, focus trap/restore, and body scroll lock while keeping its form/mutation behavior local.**
   <!-- meta: fix=canonical-Modal-or-adopt-Radix-or-HeadlessUI -->
 
 - [x] WEB-UIUX-294. **[MAJOR] `text-primary-950` on `bg-primary-500/600` recurring — needs explicit WCAG AA contrast verification.** L12. <!-- audit-verified-WCAG-AA-passes: primary-950(#1a0b00) on primary-500(#fdeedd)=16.78:1, on primary-600(#f5dca7)=14.36:1; both exceed AA 4.5:1 threshold for normal text --> **[AUTOLOOP-T11 RESOLVED: AUDIT-CLEAN — primary-950 on primary-500=16.78:1, on primary-600=14.36:1; both pass WCAG AA (≥4.5:1).]**
@@ -1858,7 +1814,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/components/layout/Header.tsx:286`
   <!-- meta: fix=add-shortcut-toggle-in-Settings-Accessibility-tab -->
 
-- [ ] WEB-UIUX-296. **[MAJOR] No `aria-keyshortcuts` attribute anywhere — 0 callsites.** Buttons/menus advertising shortcuts via tooltip text only. Screen readers don't announce shortcut bindings. L12.
+- [x] WEB-UIUX-296. **[MAJOR] No `aria-keyshortcuts` attribute anywhere — 0 callsites.** Buttons/menus advertising shortcuts via tooltip text only. Screen readers don't announce shortcut bindings. L12. **RESOLVED 2026-05-07: added `aria-keyshortcuts` on the visible owners for global command-palette/search (`Meta+K Control+K F6`), shortcut help (`?`), sidebar POS/Tickets quick jumps (`F2`/`F4`), customer create links (`F3`), and POS tab/search targets (`F1`/`F2`/`F3`/`F4`). Critique: valid, but the fix belongs on interactive owners rather than every help-list `<kbd>`; POS `F6` still has no visible trigger to annotate.**
   <!-- meta: fix=add-aria-keyshortcuts=F2-on-POS-link-etc -->
 
 - [x] WEB-UIUX-297. **[MINOR] Settings tab `Ctrl/Cmd+K` overlaps with global Header `Cmd+K` command palette.** Both fire on settings page — race condition. L5. **[AUTOLOOP-T11 RESOLVED: removed Settings-local Cmd+K listener; global Header palette has sole ownership.]**
@@ -1867,7 +1823,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Error Boundary Coverage
 
-- [ ] WEB-UIUX-298. **[MAJOR] ErrorBoundary only at root + App.tsx + 2 places in TicketDetailPage.** 60+ routes, 90+ pages have NO route-level error boundary. Single render error in any page nukes entire app section, drops user to global crash screen. L6.
+- [x] WEB-UIUX-298. **[MAJOR] ErrorBoundary only at root + App.tsx + 2 places in TicketDetailPage.** 60+ routes, 90+ pages have NO route-level error boundary. Single render error in any page nukes entire app section, drops user to global crash screen. L6. **RESOLVED 2026-05-07: added a contained pathname-keyed RouteScopedPageBoundary around the landing route tree and authenticated AppShell route outlet, preserving the route declarations while resetting the page boundary on route changes.**
   `packages/web/src/main.tsx:364`, `packages/web/src/App.tsx:443`
   <!-- meta: fix=wrap-each-lazy-route-in-PageErrorBoundary -->
 
@@ -1879,7 +1835,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Cross-Cutting Pass 5
 
-- [ ] WEB-UIUX-301. **[MINOR] 237 `Loader2 animate-spin` callsites — most duplicate centered-loading pattern.** L3, L4.
+- [!] WEB-UIUX-301. **[MINOR] 237 `Loader2 animate-spin` callsites — most duplicate centered-loading pattern.** BLOCKED 2026-05-07 — critique: valid but too broad for a safe single tick. A real fix needs a shared loading/skeleton API plus gradual per-surface adoption so buttons, inline spinners, table skeletons, full-page loaders, and modal loaders do not all get flattened into one inappropriate component.
   <!-- meta: fix=extract-LoadingSpinner-component-or-Skeleton-defaults -->
 
 - [x] WEB-UIUX-302. **[MINOR] 39 `console.log/warn/error` callsites in production code.** Debug info may leak to browser console for users with DevTools open. L15, L16. **[AUTOLOOP-T11 RESOLVED: vite.config.ts uses terser minifier with `pure_funcs: ["console.log","console.warn"]`; console.error preserved.]**
@@ -1899,10 +1855,10 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-305. **[MINOR] `clamp()` fluid typography only on LandingPage.** Rest of app uses fixed Tailwind text sizes. Headings jump at breakpoints instead of scaling smoothly. L11. **[AUTOLOOP-T12 RESOLVED: added 10 `.text-fluid-*` utility classes (xs..6xl) using clamp() in globals.css; opt-in adoption.]**
   `packages/web/src/pages/landing/LandingPage.tsx:374,377,399,429,458` (only file)
 
-- [ ] WEB-UIUX-306. **[MAJOR] Zero swipe gesture handlers across web app.** Per 2026 mobile CRM research, swipe-to-archive/swipe-to-act is expected. TicketListPage, CustomerListPage, InvoiceListPage all rely on tap-only on mobile. L11.
+- [!] WEB-UIUX-306. **[MAJOR] Zero swipe gesture handlers across web app.** BLOCKED 2026-05-07 — critique: directionally valid, but unsafe as a blanket TODO. Ticket, customer, and invoice rows have different destructive/primary actions and accessibility requirements; adding swipe gestures app-wide needs per-list interaction design, undo/confirmation policy, and pointer/keyboard parity.
   <!-- meta: fix=add-swipe-handlers-on-list-rows-for-archive-quick-actions -->
 
-- [ ] WEB-UIUX-307. **[MINOR] Only 4 `xl:` callsites vs 100 `sm:`, 97 `md:`, 50 `lg:`.** Large desktop (1280px+) under-optimized. CRM dashboards on widescreen don't take advantage of horizontal space. L11. **[AUTOLOOP-T12 BLOCKED: xl: optimization requires per-page layout decisions across 30+ page dirs.]**
+- [!] WEB-UIUX-307. **[MINOR] Only 4 `xl:` callsites vs 100 `sm:`, 97 `md:`, 50 `lg:`.** Large desktop (1280px+) under-optimized. CRM dashboards on widescreen don't take advantage of horizontal space. L11. **[AUTOLOOP-T12 BLOCKED: xl: optimization requires per-page layout decisions across 30+ page dirs.]** Reconfirmed 2026-05-07: this is a page-by-page design sweep, not a safe global mechanical edit.
   <!-- meta: fix=audit-1280px-layouts-add-xl:-grid-cols-4-or-side-panels -->
 
 
@@ -1921,14 +1877,14 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [x] WEB-UIUX-310. **[MINOR] `superAdminClient` token in `sessionStorage` — same XSS exposure as localStorage within tab.** L16. <!-- BLOCKED: same-architectural-blocker-as-WEB-UIUX-308 --> **[AUTOLOOP-T12 BLOCKED: same architectural blocker as WEB-UIUX-308.]**
   `packages/web/src/api/client.ts:450-494`
 
-- [ ] WEB-UIUX-311. **[MINOR] `formatApiError` doesn't auto-redact emails on unauthenticated surfaces.** Defers to caller; future leaks likely. L16.
+- [x] WEB-UIUX-311. **[MINOR] `formatApiError` doesn't auto-redact emails on unauthenticated surfaces.** Defers to caller; future leaks likely. L16. **RESOLVED 2026-05-07: added `formatApiErrorPublic()` as the unauthenticated-surface helper that always applies email redaction, and migrated LoginPage setup/login/2FA/password-reset error handling to use it instead of remembering manual `redactEmails(formatApiError(...))`.**
   `packages/web/src/utils/apiError.ts:96-103`
   <!-- meta: fix=add-formatApiErrorPublic-variant-with-auto-redact -->
 
 - [x] WEB-UIUX-312. **[MINOR] `apiError.formatApiError` echoes server `code` verbatim in toast — no whitelist.** Hostile error envelope could leak `ERR_<sensitive>` strings. L16. **[AUTOLOOP-T12 RESOLVED: KNOWN_ERROR_CODES whitelist added to formatApiError; unknown server codes now display as ERR_UNKNOWN.]**
   `packages/web/src/utils/apiError.ts:50,99`
 
-- [ ] WEB-UIUX-313. **[MINOR] `authStore.checkAuth` csrf_token cookie sniff via regex — brittle on name change.** Silently flips to never-authed UX. L16.
+- [x] WEB-UIUX-313. **[MINOR] `authStore.checkAuth` csrf_token cookie sniff via regex — brittle on name change.** Silently flips to never-authed UX. L16. **RESOLVED 2026-05-07: exported the shared CSRF cookie name/sniffing helper from the API client and changed `checkAuth` to call `hasCsrfTokenCookie()` instead of carrying a duplicate literal-cookie regex.**
   `packages/web/src/stores/authStore.ts:139-144`
 
 #### Loading + Cache + Stale Data
@@ -2806,9 +2762,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   <!-- meta: fix=split-into-VarianceModal+ReceiveModal+EmptyState+lazy-load-modals -->
 
 #### Onboarding
-
-- [ ] WEB-UIUX-572. **[MAJOR] SpotlightCoach `aria-modal` missing despite `role="dialog"`.** Focus not trapped, not moved into card on mount. L12.
-  `packages/web/src/components/onboarding/SpotlightCoach.tsx:168-176`
 
 - [x] WEB-UIUX-573. **[MAJOR] SpotlightCoach `CARD_EST_HEIGHT=240` hardcoded — flip-above branch mis-places by 80-100px on long-body steps.** L13, L11. **[AUTOLOOP-T25 RESOLVED: SpotlightCoach measures real card height via ResizeObserver in useLayoutEffect; flip-above uses actual offsetHeight instead of 240 estimate.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:139,151-156`

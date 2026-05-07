@@ -296,6 +296,11 @@ function RequireRole({ roles, children }: { roles: string[]; children: React.Rea
   return <>{children}</>;
 }
 
+function RouteScopedPageBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <PageErrorBoundary key={location.pathname}>{children}</PageErrorBoundary>;
+}
+
 // WEB-FE-021 (Fixer-C12): LoadingScreen + SetupFailedScreen hoisted to
 // components/shared/LoadingScreen.tsx — see import above.
 
@@ -438,14 +443,16 @@ export default function App() {
   // separate from CRM.
   if (showLanding) {
     return (
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-          <Route path="*" element={<LandingPage />} />
-        </Routes>
-      </Suspense>
+      <RouteScopedPageBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+            <Route path="*" element={<LandingPage />} />
+          </Routes>
+        </Suspense>
+      </RouteScopedPageBoundary>
     );
   }
 
@@ -493,92 +500,92 @@ export default function App() {
                       page navigation. It reads the URL itself and renders
                       conditionally only when ?tutorial=... is present. */}
                   <SpotlightCoach />
-                  <PageErrorBoundary>
-                  <Suspense fallback={<PageLoader />}>
-                    <Routes>
-                      <Route path="/" element={<DashboardPage />} />
-                      <Route path="/tickets" element={<TicketListPage />} />
-                      <Route path="/tickets/new" element={<UnifiedPosPage />} />
-                      <Route path="/tickets/:id" element={<TicketDetailPage />} />
-                      <Route path="/customers" element={<CustomerListPage />} />
-                      <Route path="/customers/new" element={<CustomerCreatePage />} />
-                      <Route path="/customers/:id" element={<CustomerDetailPage />} />
-                      <Route path="/inventory" element={<InventoryListPage />} />
-                      <Route path="/inventory/new" element={<InventoryCreatePage />} />
-                      {/* Enrichment pages — MUST be registered before /inventory/:id
-                          so the detail-page catch-all doesn't shadow them. */}
-                      <Route path="/inventory/stocktake" element={<RequireRole roles={['admin', 'manager']}><StocktakePage /></RequireRole>} />
-                      <Route path="/inventory/bin-locations" element={<BinLocationsPage />} />
-                      <Route path="/inventory/auto-reorder" element={<AutoReorderPage />} />
-                      <Route path="/inventory/serials" element={<SerialNumbersPage />} />
-                      <Route path="/inventory/shrinkage" element={<RequireRole roles={['admin', 'manager']}><ShrinkagePage /></RequireRole>} />
-                      <Route path="/inventory/abc-analysis" element={<AbcAnalysisPage />} />
-                      <Route path="/inventory/age-report" element={<InventoryAgePage />} />
-                      <Route path="/inventory/labels" element={<MassLabelPrintPage />} />
-                      <Route path="/inventory/:id" element={<InventoryDetailPage />} />
-                      <Route path="/invoices" element={<InvoiceListPage />} />
-                      <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
-                      {/* WEB-FL-008 (Fixer-B7 2026-04-25): dead `/checkin` alias removed.
-                          No menu link, no <Link>, no navigate caller — `grep -rn "/checkin"`
-                          returned only the route declaration itself. `/pos` is the live entry. */}
-                      <Route path="/leads" element={<LeadListPage />} />
-                      <Route path="/leads/:id" element={<LeadDetailPage />} />
-                      <Route path="/calendar" element={<CalendarPage />} />
-                      <Route path="/pipeline" element={<LeadPipelinePage />} />
-                      <Route path="/estimates" element={<EstimateListPage />} />
-                      <Route path="/estimates/:id" element={<EstimateDetailPage />} />
-                      <Route path="/pos" element={<UnifiedPosPage />} />
-                      <Route path="/reports" element={<ReportsPage />} />
-                      <Route path="/reports/partner" element={<PartnerReportPage />} />
-                      <Route path="/reports/tax" element={<TaxReportPage />} />
-                      <Route path="/expenses" element={<ExpensesPage />} />
-                      <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
-                      <Route path="/cash-register" element={<CashRegisterPage />} />
-                      <Route path="/communications" element={<CommunicationPage />} />
-                      <Route path="/employees" element={<RequireRole roles={['admin', 'manager']}><EmployeeListPage /></RequireRole>} />
-                      <Route path="/settings/*" element={<RequireRole roles={['admin', 'manager']}><SettingsPage /></RequireRole>} />
-                      <Route path="/catalog" element={<CatalogPage />} />
-                      {/* Billing / Money Flow enrichment (§52). */}
-                      <Route path="/billing/payment-links" element={<PaymentLinksPage />} />
-                      <Route path="/billing/dunning" element={<RequireRole roles={['admin', 'manager']}><DunningPage /></RequireRole>} />
-                      <Route path="/billing/aging" element={<RequireRole roles={['admin', 'manager']}><AgingReportPage /></RequireRole>} />
-                      {/* Team management (§53). */}
-                      <Route path="/team/my-queue" element={<MyQueuePage />} />
-                      <Route path="/team/shifts" element={<ShiftSchedulePage />} />
-                      <Route path="/team/leaderboard" element={<TeamLeaderboardPage />} />
-                      <Route path="/team/roles" element={<RequireRole roles={['admin']}><RolesMatrixPage /></RequireRole>} />
-                      <Route path="/team/chat" element={<TeamChatPage />} />
-                      <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
-                      <Route path="/team/goals" element={<GoalsPage />} />
-                      <Route path="/team/payroll" element={<RequireRole roles={['admin', 'manager']}><PayrollPage /></RequireRole>} />
-                      {/* Gift Cards (§ orphan). */}
-                      <Route path="/gift-cards" element={<GiftCardsListPage />} />
-                      <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />
-                      {/* Memberships / Subscriptions admin list (§ orphan). */}
-                      <Route path="/subscriptions" element={<SubscriptionsListPage />} />
-                      {/* Loaner device management. */}
-                      <Route path="/loaners" element={<LoanersPage />} />
-                      {/* Automations canonical home is Settings → Automations.
-                       *  Fixer-PPP (WEB-FC-023): legacy `/automations` redirects
-                       *  there so navigation memory has one URL per feature.
-                       *  WEB-S6-019: `/automations/:id` — detail/edit page for a single rule. */}
-                      <Route path="/automations" element={<Navigate to="/settings/automations" replace />} />
-                      <Route path="/automations/:id" element={<AutomationDetailPage />} />
-                      {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
-                      <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
-                      {/* Voice calls list. */}
-                      <Route path="/voice" element={<VoiceCallsListPage />} />
-                      {/* Customer review moderation. */}
-                      <Route path="/reviews" element={<ReviewsPage />} />
-                      {/* Marketing / Growth enrichment (§54). */}
-                      <Route path="/marketing/campaigns" element={<CampaignsPage />} />
-                      <Route path="/marketing/segments" element={<SegmentsPage />} />
-                      <Route path="/marketing/nps-trend" element={<NpsTrendPage />} />
-                      <Route path="/marketing/referrals" element={<ReferralsDashboard />} />
-                      <Route path="*" element={<NotFoundPage />} />
-                    </Routes>
-                  </Suspense>
-                  </PageErrorBoundary>
+                  <RouteScopedPageBoundary>
+                    <Suspense fallback={<PageLoader />}>
+                      <Routes>
+                        <Route path="/" element={<DashboardPage />} />
+                        <Route path="/tickets" element={<TicketListPage />} />
+                        <Route path="/tickets/new" element={<UnifiedPosPage />} />
+                        <Route path="/tickets/:id" element={<TicketDetailPage />} />
+                        <Route path="/customers" element={<CustomerListPage />} />
+                        <Route path="/customers/new" element={<CustomerCreatePage />} />
+                        <Route path="/customers/:id" element={<CustomerDetailPage />} />
+                        <Route path="/inventory" element={<InventoryListPage />} />
+                        <Route path="/inventory/new" element={<InventoryCreatePage />} />
+                        {/* Enrichment pages — MUST be registered before /inventory/:id
+                            so the detail-page catch-all doesn't shadow them. */}
+                        <Route path="/inventory/stocktake" element={<RequireRole roles={['admin', 'manager']}><StocktakePage /></RequireRole>} />
+                        <Route path="/inventory/bin-locations" element={<BinLocationsPage />} />
+                        <Route path="/inventory/auto-reorder" element={<AutoReorderPage />} />
+                        <Route path="/inventory/serials" element={<SerialNumbersPage />} />
+                        <Route path="/inventory/shrinkage" element={<RequireRole roles={['admin', 'manager']}><ShrinkagePage /></RequireRole>} />
+                        <Route path="/inventory/abc-analysis" element={<AbcAnalysisPage />} />
+                        <Route path="/inventory/age-report" element={<InventoryAgePage />} />
+                        <Route path="/inventory/labels" element={<MassLabelPrintPage />} />
+                        <Route path="/inventory/:id" element={<InventoryDetailPage />} />
+                        <Route path="/invoices" element={<InvoiceListPage />} />
+                        <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+                        {/* WEB-FL-008 (Fixer-B7 2026-04-25): dead `/checkin` alias removed.
+                            No menu link, no <Link>, no navigate caller — `grep -rn "/checkin"`
+                            returned only the route declaration itself. `/pos` is the live entry. */}
+                        <Route path="/leads" element={<LeadListPage />} />
+                        <Route path="/leads/:id" element={<LeadDetailPage />} />
+                        <Route path="/calendar" element={<CalendarPage />} />
+                        <Route path="/pipeline" element={<LeadPipelinePage />} />
+                        <Route path="/estimates" element={<EstimateListPage />} />
+                        <Route path="/estimates/:id" element={<EstimateDetailPage />} />
+                        <Route path="/pos" element={<UnifiedPosPage />} />
+                        <Route path="/reports" element={<ReportsPage />} />
+                        <Route path="/reports/partner" element={<PartnerReportPage />} />
+                        <Route path="/reports/tax" element={<TaxReportPage />} />
+                        <Route path="/expenses" element={<ExpensesPage />} />
+                        <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
+                        <Route path="/cash-register" element={<CashRegisterPage />} />
+                        <Route path="/communications" element={<CommunicationPage />} />
+                        <Route path="/employees" element={<RequireRole roles={['admin', 'manager']}><EmployeeListPage /></RequireRole>} />
+                        <Route path="/settings/*" element={<RequireRole roles={['admin', 'manager']}><SettingsPage /></RequireRole>} />
+                        <Route path="/catalog" element={<CatalogPage />} />
+                        {/* Billing / Money Flow enrichment (§52). */}
+                        <Route path="/billing/payment-links" element={<PaymentLinksPage />} />
+                        <Route path="/billing/dunning" element={<RequireRole roles={['admin', 'manager']}><DunningPage /></RequireRole>} />
+                        <Route path="/billing/aging" element={<RequireRole roles={['admin', 'manager']}><AgingReportPage /></RequireRole>} />
+                        {/* Team management (§53). */}
+                        <Route path="/team/my-queue" element={<MyQueuePage />} />
+                        <Route path="/team/shifts" element={<ShiftSchedulePage />} />
+                        <Route path="/team/leaderboard" element={<TeamLeaderboardPage />} />
+                        <Route path="/team/roles" element={<RequireRole roles={['admin']}><RolesMatrixPage /></RequireRole>} />
+                        <Route path="/team/chat" element={<TeamChatPage />} />
+                        <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
+                        <Route path="/team/goals" element={<GoalsPage />} />
+                        <Route path="/team/payroll" element={<RequireRole roles={['admin', 'manager']}><PayrollPage /></RequireRole>} />
+                        {/* Gift Cards (§ orphan). */}
+                        <Route path="/gift-cards" element={<GiftCardsListPage />} />
+                        <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />
+                        {/* Memberships / Subscriptions admin list (§ orphan). */}
+                        <Route path="/subscriptions" element={<SubscriptionsListPage />} />
+                        {/* Loaner device management. */}
+                        <Route path="/loaners" element={<LoanersPage />} />
+                        {/* Automations canonical home is Settings → Automations.
+                         *  Fixer-PPP (WEB-FC-023): legacy `/automations` redirects
+                         *  there so navigation memory has one URL per feature.
+                         *  WEB-S6-019: `/automations/:id` — detail/edit page for a single rule. */}
+                        <Route path="/automations" element={<Navigate to="/settings/automations" replace />} />
+                        <Route path="/automations/:id" element={<AutomationDetailPage />} />
+                        {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
+                        <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
+                        {/* Voice calls list. */}
+                        <Route path="/voice" element={<VoiceCallsListPage />} />
+                        {/* Customer review moderation. */}
+                        <Route path="/reviews" element={<ReviewsPage />} />
+                        {/* Marketing / Growth enrichment (§54). */}
+                        <Route path="/marketing/campaigns" element={<CampaignsPage />} />
+                        <Route path="/marketing/segments" element={<SegmentsPage />} />
+                        <Route path="/marketing/nps-trend" element={<NpsTrendPage />} />
+                        <Route path="/marketing/referrals" element={<ReferralsDashboard />} />
+                        <Route path="*" element={<NotFoundPage />} />
+                      </Routes>
+                    </Suspense>
+                  </RouteScopedPageBoundary>
                 </AppShell>
               </SettingsProvider>
             </ProtectedRoute>

@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 const API_BASE = '/api/v1';
 const AUTH_REFRESH_PATH = '/auth/refresh';
 const AUTH_REFRESH_URL = `${API_BASE}${AUTH_REFRESH_PATH}`;
+export const CSRF_COOKIE_NAME = 'csrf_token';
 
 /**
  * Logout-required event — emitted when the refresh pipeline has definitively
@@ -54,8 +55,13 @@ function emitAuthReady() {
 // X-CSRF-Token on POST /auth/refresh (double-submit CSRF protection).
 function getCsrfTokenCookie(): string {
   if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  const escapedName = CSRF_COOKIE_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${escapedName}=([^;]+)`));
   return match ? decodeURIComponent(match[1]) : '';
+}
+
+export function hasCsrfTokenCookie(): boolean {
+  return getCsrfTokenCookie().length > 0;
 }
 
 // WEB-FI-001 fix: a slow upstream (DB lock, blocked event loop, hung worker)

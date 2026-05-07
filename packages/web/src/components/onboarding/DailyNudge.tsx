@@ -99,7 +99,6 @@ export function DailyNudge({ preloadedState }: DailyNudgeProps) {
   };
 
   const handleCta = () => {
-    handleDismiss();
     navigate(nudge.ctaHref);
   };
 

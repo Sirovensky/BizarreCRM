@@ -39,6 +39,10 @@ function slugToShopName(slug: string): string {
     .trim();
 }
 
+function normalizeSlug(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
   const completeLogin = useAuthStore((s) => s.completeLogin);
 
@@ -47,6 +51,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [slug, setSlug] = useState('');
+  const [isSlugComposing, setIsSlugComposing] = useState(false);
 
   const [slugStatus, setSlugStatus] = useState<SlugStatus>('idle');
   const [slugMessage, setSlugMessage] = useState('');
@@ -65,19 +70,20 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
   // so out-of-order responses never flash wrong availability.
   const slugTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const slugAbortRef = useRef<AbortController | null>(null);
+  const canonicalSlug = normalizeSlug(slug);
 
   useEffect(() => {
     if (slugTimerRef.current) clearTimeout(slugTimerRef.current);
     if (slugAbortRef.current) slugAbortRef.current.abort();
     slugAbortRef.current = null;
 
-    if (!slug) {
+    if (isSlugComposing || !canonicalSlug) {
       setSlugStatus('idle');
       setSlugMessage('');
       return;
     }
 
-    const localErr = validateShopSlug(slug);
+    const localErr = validateShopSlug(canonicalSlug);
     if (localErr) {
       setSlugStatus('invalid');
       setSlugMessage(localErr);
@@ -92,7 +98,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
 
     slugTimerRef.current = setTimeout(async () => {
       try {
-        const res = await signupApi.checkSlug(slug, { signal: ac.signal });
+        const res = await signupApi.checkSlug(canonicalSlug, { signal: ac.signal });
         const { available, reason } = res.data.data;
         setSlugStatus(available ? 'available' : 'taken');
         setSlugMessage(available ? 'Available' : reason || 'Already taken');
@@ -109,7 +115,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
       if (slugTimerRef.current) clearTimeout(slugTimerRef.current);
       ac.abort();
     };
-  }, [slug]);
+  }, [canonicalSlug, isSlugComposing]);
 
   const strength = assessSignupPassword(password);
   const nameErr = name.trim().length < 2 ? 'Enter your name' : null;
@@ -123,6 +129,19 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
     !passwordErr &&
     slugStatus === 'available';
 
+  const handleSlugBlur = (e: React.FocusEvent<HTMLInputElement>): void => {
+    setTouched((t) => ({ ...t, slug: true }));
+    if (!isSlugComposing) setSlug(normalizeSlug(e.currentTarget.value));
+  };
+
+  const handleSlugCompositionStart = (): void => {
+    setIsSlugComposing(true);
+  };
+
+  const handleSlugCompositionEnd = (): void => {
+    setIsSlugComposing(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setApiError('');
@@ -135,7 +154,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
     const lastName = firstSpace === -1 ? '' : trimmedName.slice(firstSpace + 1).trim();
 
     const cleanEmail = email.trim().toLowerCase();
-    const cleanSlug = slug.trim().toLowerCase();
+    const cleanSlug = normalizeSlug(slug);
     // Derive shop name from email's local part if non-trivial, else fall back
     // to a capitalised slug. The owner edits the canonical name in Step 4.
     const emailLocal = cleanEmail.split('@')[0];
@@ -337,8 +356,10 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
                 autoCorrect="off"
                 spellCheck={false}
                 value={slug}
-                onChange={(e) => setSlug(e.target.value.toLowerCase())}
-                onBlur={() => setTouched((t) => ({ ...t, slug: true }))}
+                onChange={(e) => setSlug(e.target.value)}
+                onCompositionStart={handleSlugCompositionStart}
+                onCompositionEnd={handleSlugCompositionEnd}
+                onBlur={handleSlugBlur}
                 disabled={submitting}
                 className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 pr-9 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-60"
                 placeholder="joes-phone-repair"

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ShieldAlert, DollarSign, Hash } from 'lucide-react';
 import { reportApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
-import { LoadingState, ErrorState, EmptyState, SummaryCard } from './ReportHelpers';
+import { EmptyState, SummaryCard, getReportQueryState } from './ReportHelpers';
 
 interface WarrantyClaimsData {
   rows: { model: string; claim_count: number; total_cost: number; avg_repair_cost: number }[];
@@ -20,15 +20,16 @@ export function WarrantyClaimsTab({ from, to }: { from: string; to: string }) {
     },
   });
 
-  if (isLoading) return <LoadingState />;
-  const errMsg: string =
-    (error as any)?.response?.data?.message ??
-    (error as any)?.response?.data?.error ??
-    (error as Error)?.message ??
-    'Failed to load warranty claims report';
-  if (isError || !data) return <ErrorState message={errMsg} />;
+  const reportState = getReportQueryState({
+    data,
+    error,
+    isError,
+    isLoading,
+    fallbackError: 'Failed to load warranty claims report',
+  });
+  if (reportState.status !== 'ready') return reportState.view;
 
-  const { rows } = data;
+  const { rows } = reportState.data;
   const totalClaims = rows.reduce((sum, r) => sum + r.claim_count, 0);
   const totalCost = rows.reduce((sum, r) => sum + r.total_cost, 0);
   const maxClaims = useMemo(() => Math.max(...rows.map((x) => x.claim_count), 1), [rows]);

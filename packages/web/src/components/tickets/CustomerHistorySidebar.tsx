@@ -42,18 +42,45 @@ function formatTicketLabel(orderId: string | number) {
 // is blocked by browsers in img, but `data:` SVG is not) directly into the
 // sidebar render. Mirror the http/https-only stance from `getIFixitUrl`.
 //
-// Server-relative paths (`/uploads/...`) are accepted because they resolve
-// to the same origin which the auth/CSP boundary already trusts; protocol-
-// relative `//evil/...` is rejected explicitly.
+// Server-relative upload/file paths are accepted because they resolve to the
+// same origin which the auth/CSP boundary already trusts; protocol-relative
+// `//evil/...` is rejected explicitly. Keep this narrow so traversal-looking
+// strings such as `/uploads/../etc/passwd` never become image candidates.
+const SAFE_PHOTO_PATH_PREFIXES = ['/uploads/', '/api/files/'] as const;
+const FALLBACK_PHOTO_URL_ORIGIN = 'http://bizarre.local';
+
+function photoUrlOrigin() {
+  return typeof window === 'undefined'
+    ? FALLBACK_PHOTO_URL_ORIGIN
+    : window.location.origin;
+}
+
+function hasUnsafePhotoPathSegments(pathname: string) {
+  if (pathname.includes('\\')) return true;
+
+  try {
+    const decodedPath = decodeURIComponent(pathname);
+    return decodedPath
+      .split('/')
+      .some((segment) => segment === '.' || segment === '..' || segment.includes('\\'));
+  } catch {
+    return true;
+  }
+}
+
 function isSafePhotoUrl(raw: unknown): raw is string {
   if (typeof raw !== 'string' || raw.length === 0) return false;
   // Reject protocol-relative form before URL parsing (it parses successfully).
   if (raw.startsWith('//')) return false;
-  // Same-origin server path — safe.
-  if (raw.startsWith('/')) return true;
+  if (hasUnsafePhotoPathSegments(raw)) return false;
+
   try {
-    const parsed = new URL(raw);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    const base = new URL(photoUrlOrigin());
+    const parsed = new URL(raw, base);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    if (parsed.origin !== base.origin) return false;
+    if (!SAFE_PHOTO_PATH_PREFIXES.some((prefix) => parsed.pathname.startsWith(prefix))) return false;
+    return !hasUnsafePhotoPathSegments(parsed.pathname);
   } catch {
     return false;
   }

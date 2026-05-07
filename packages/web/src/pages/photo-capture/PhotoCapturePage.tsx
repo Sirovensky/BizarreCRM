@@ -89,21 +89,29 @@ async function normalizeOrientation(file: File): Promise<Blob> {
 
 export function PhotoCapturePage() {
   const { ticketId, deviceId } = useParams<{ ticketId: string; deviceId: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
-  // WEB-FC-016: strip ?t from the URL immediately after reading it so the
-  // token never appears in browser history or Referer headers after the first
-  // navigation. We keep it in component state for the lifetime of the page.
+  // WEB-UIUX-268: new QR URLs carry the scoped token in the fragment
+  // (`#t=...`) so the browser never sends it to the server as part of the
+  // initial navigation or as a Referer while the lazy chunk loads. Query `?t=`
+  // remains a backward-compatible fallback for older printed QR codes and is
+  // replaced immediately after mount.
   const [token] = useState<string | null>(() => {
-    const t = searchParams.get('t');
-    return t || null;
+    const hashParams =
+      typeof window === 'undefined'
+        ? new URLSearchParams()
+        : new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return hashParams.get('t') || searchParams.get('t') || null;
   });
   useEffect(() => {
-    if (searchParams.has('t')) {
+    const hasHashToken = window.location.hash.replace(/^#/, '').split('&').some((part) => part.startsWith('t='));
+    if (searchParams.has('t') || hasHashToken) {
       // Replace the URL in-place without a new history entry
       const next = new URLSearchParams(searchParams);
       next.delete('t');
-      setSearchParams(next, { replace: true });
+      const nextSearch = next.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
+      window.history.replaceState(window.history.state, '', nextUrl);
     }
     // Run once on mount only
     // eslint-disable-next-line react-hooks/exhaustive-deps

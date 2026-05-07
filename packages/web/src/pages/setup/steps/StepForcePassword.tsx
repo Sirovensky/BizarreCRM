@@ -4,6 +4,7 @@ import { Eye, EyeOff, Loader2, Lock } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { assessSignupPassword } from '@/utils/passwordSecurity';
+import type { PasswordStrengthAssessment, PasswordStrengthScore } from '@/utils/passwordSecurity';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -21,6 +22,49 @@ import type { StepProps } from '../wizardTypes';
  * route accepts snake_case (`current_password`, `new_password`).
  */
 
+const STRENGTH_LABELS = ['Very weak', 'Weak', 'Fair', 'Good', 'Strong'] as const;
+const OBVIOUS_WEAK_WORDS = new Set([
+  'admin',
+  'bizarrecrm',
+  'changeme',
+  'letmein',
+  'login',
+  'password',
+  'qwerty',
+  'welcome',
+]);
+
+function assessForcePassword(password: string): PasswordStrengthAssessment {
+  const assessment = assessSignupPassword(password);
+  if (password.length === 0) return assessment;
+
+  const weakSuggestion = getObviousWeakSuggestion(password);
+  if (weakSuggestion) {
+    const score = Math.min(assessment.score, 1) as PasswordStrengthScore;
+    return {
+      ...assessment,
+      score,
+      label: STRENGTH_LABELS[score],
+      percent: strengthPercent(score),
+      isAcceptable: false,
+      suggestions: prependSuggestion(assessment.suggestions, weakSuggestion),
+    };
+  }
+
+  if (hasPassphraseShape(password) && assessment.score < 3 && !hasAssessmentRedFlag(assessment)) {
+    const score: PasswordStrengthScore = password.length >= 24 ? 4 : 3;
+    return {
+      ...assessment,
+      score,
+      label: STRENGTH_LABELS[score],
+      percent: strengthPercent(score),
+      isAcceptable: true,
+    };
+  }
+
+  return assessment;
+}
+
 export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
   const [pwd, setPwd] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -29,7 +73,7 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const strength = assessSignupPassword(pwd);
+  const strength = assessForcePassword(pwd);
   const mismatch = confirm.length > 0 && pwd !== confirm;
   const canSubmit =
     !submitting &&
@@ -226,3 +270,60 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
 }
 
 export default StepForcePassword;
+
+function getObviousWeakSuggestion(password: string): string | null {
+  const lower = password.toLowerCase();
+  const compact = lower.replace(/[^a-z0-9]/g, '');
+  if (compact.length >= 10) {
+    if (/^(.)\1+$/.test(compact) || uniqueCharCount(compact) <= 2) {
+      return 'Avoid repeated characters.';
+    }
+    if (/^(.{1,4})\1{2,}$/.test(compact)) {
+      return 'Avoid repeated patterns.';
+    }
+  }
+
+  const words = passwordWords(lower);
+  if (words.length >= 3) {
+    const uniqueWords = new Set(words);
+    if (uniqueWords.size === 1 || uniqueWords.size <= Math.floor(words.length / 2)) {
+      return 'Avoid repeated words.';
+    }
+    if (words.every(isObviousWeakWord)) {
+      return 'Avoid common passwords and obvious words.';
+    }
+  }
+
+  return null;
+}
+
+function hasPassphraseShape(password: string): boolean {
+  const words = passwordWords(password.toLowerCase()).filter((word) => word.length >= 3);
+  return password.length >= 20 && words.length >= 4 && new Set(words).size >= 4;
+}
+
+function hasAssessmentRedFlag(assessment: PasswordStrengthAssessment): boolean {
+  return assessment.suggestions.some((suggestion) => suggestion.startsWith('Avoid '));
+}
+
+function isObviousWeakWord(word: string): boolean {
+  if (OBVIOUS_WEAK_WORDS.has(word)) return true;
+  if (/^\d+$/.test(word) && word.length <= 8) return true;
+  return false;
+}
+
+function passwordWords(password: string): string[] {
+  return password.split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function uniqueCharCount(value: string): number {
+  return new Set(value).size;
+}
+
+function prependSuggestion(suggestions: string[], suggestion: string): string[] {
+  return [suggestion, ...suggestions.filter((existing) => existing !== suggestion)].slice(0, 3);
+}
+
+function strengthPercent(score: PasswordStrengthScore): number {
+  return Math.max(8, (score + 1) * 20);
+}

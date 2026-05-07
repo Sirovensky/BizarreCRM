@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { reportApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
-import { LoadingState, ErrorState, EmptyState, SummaryCard } from './ReportHelpers';
+import { EmptyState, SummaryCard, getReportQueryState } from './ReportHelpers';
 import { CHART_PALETTE, CHART_COLOR_PRIMARY, CHART_COLOR_SUCCESS, CHART_TOOLTIP_STYLE, CHART_AXIS_TICK_FILL } from './chartColors';
 
 const CHART_COLORS = CHART_PALETTE;
@@ -30,15 +30,16 @@ export function TechnicianHoursTab({ from, to }: { from: string; to: string }) {
     },
   });
 
-  if (isLoading) return <LoadingState />;
-  const errMsg: string =
-    (error as any)?.response?.data?.message ??
-    (error as any)?.response?.data?.error ??
-    (error as Error)?.message ??
-    'Failed to load technician hours report';
-  if (isError || !data) return <ErrorState message={errMsg} />;
+  const reportState = getReportQueryState({
+    data,
+    error,
+    isError,
+    isLoading,
+    fallbackError: 'Failed to load technician hours report',
+  });
+  if (reportState.status !== 'ready') return reportState.view;
 
-  const { rows } = data;
+  const { rows } = reportState.data;
   const totalHours = rows.reduce((sum, r) => sum + r.hours_logged, 0);
   const totalRevenue = rows.reduce((sum, r) => sum + r.total_revenue, 0);
   const totalClosed = rows.reduce((sum, r) => sum + r.tickets_closed, 0);

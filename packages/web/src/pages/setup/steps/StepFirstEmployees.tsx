@@ -48,6 +48,34 @@ interface RowError {
   pin?: string;
 }
 
+const OBVIOUS_EMPLOYEE_PINS = new Set([
+  '0000',
+  '1111',
+  '2222',
+  '3333',
+  '4444',
+  '5555',
+  '6666',
+  '7777',
+  '8888',
+  '9999',
+  '1234',
+  '4321',
+  '0123',
+  '3210',
+  '9876',
+  '2580',
+  '0852',
+  '1212',
+  '1122',
+  '1313',
+  '6969',
+  '2000',
+  '2024',
+  '2025',
+  '2026',
+]);
+
 /** Generate a stable client-only id used as the React key for each row. */
 function makeRowId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -65,6 +93,18 @@ function isEmptyRow(row: EmployeeInvite): boolean {
   return row.name.trim() === '' && row.email.trim() === '';
 }
 
+function isSequentialPin(pin: string): boolean {
+  return '0123456789'.includes(pin) || '9876543210'.includes(pin);
+}
+
+function isWeakEmployeePin(pin: string): boolean {
+  return (
+    OBVIOUS_EMPLOYEE_PINS.has(pin) ||
+    isSequentialPin(pin) ||
+    pin.slice(0, 2) === pin.slice(2)
+  );
+}
+
 /**
  * Validate one row. Returns null if the row is fully valid OR fully empty
  * (empty rows are skipped, not errored). Otherwise returns per-field errors.
@@ -76,6 +116,12 @@ function validateRow(row: EmployeeInvite): RowError | null {
   if (name.length < 2) errors.name = 'Name must be at least 2 characters.';
   const emailErr = validateEmail(row.email.trim());
   if (emailErr) errors.email = emailErr;
+  const pin = row.pin?.trim() ?? '';
+  if (pin && !/^\d{4}$/.test(pin)) {
+    errors.pin = 'Enter exactly 4 digits, or leave PIN blank.';
+  } else if (pin && isWeakEmployeePin(pin)) {
+    errors.pin = 'Choose a less obvious PIN; avoid repeats, sequences, and default values.';
+  }
   return Object.keys(errors).length > 0 ? errors : null;
 }
 
@@ -261,6 +307,12 @@ export function StepFirstEmployees({
           on the tickets list. Invitees get an email link to set their own
           password.
         </p>
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+          Employee PINs are optional, but they unlock clock-in and register
+          actions when PIN access is enabled. Use a unique 4-digit PIN for each
+          employee and avoid shared, repeated, sequential, birthday, or default
+          values like 1234 or 0000.
+        </p>
 
         <div className="mt-6 space-y-1">
           {rows.map((row, index) => {
@@ -271,6 +323,18 @@ export function StepFirstEmployees({
             const emailId = `${fieldIdPrefix}-email-${row.id}`;
             const roleId = `${fieldIdPrefix}-role-${row.id}`;
             const pinId = `${fieldIdPrefix}-pin-${row.id}`;
+            const pinHelpId = `${fieldIdPrefix}-pin-help-${row.id}`;
+            const pinErrorId = `${fieldIdPrefix}-pin-error-${row.id}`;
+            const pinValue = row.pin?.trim() ?? '';
+            const livePinError =
+              !rowError?.pin && pinValue
+                ? !/^\d{4}$/.test(pinValue)
+                  ? 'Enter exactly 4 digits, or leave PIN blank.'
+                  : isWeakEmployeePin(pinValue)
+                    ? 'Choose a less obvious PIN; avoid repeats, sequences, and default values.'
+                    : undefined
+                : undefined;
+            const pinError = rowError?.pin ?? livePinError;
             const RoleIcon =
               ROLE_OPTIONS.find((opt) => opt.value === row.role)?.Icon ?? Wrench;
             const message = messages[row.id];
@@ -375,7 +439,7 @@ export function StepFirstEmployees({
                 </div>
 
                 {/* PIN — clock-in/register access. 4-digit numeric, optional. */}
-                <div className="w-24">
+                <div className="w-40">
                   <label
                     htmlFor={pinId}
                     className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400"
@@ -388,15 +452,36 @@ export function StepFirstEmployees({
                     inputMode="numeric"
                     pattern="\d{4}"
                     maxLength={4}
-                    placeholder="0000"
+                    placeholder="4827"
                     value={row.pin ?? ''}
+                    aria-invalid={Boolean(pinError)}
+                    aria-describedby={`${pinHelpId}${pinError ? ` ${pinErrorId}` : ''}`}
                     onChange={(e) =>
                       updateRow(row.id, {
                         pin: e.target.value.replace(/\D/g, '').slice(0, 4),
                       })
                     }
-                    className="w-full rounded-lg border border-surface-300 bg-surface-50 px-2 py-2 text-center font-mono text-sm tracking-widest text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                    className={
+                      'w-full rounded-lg border bg-surface-50 px-2 py-2 text-center font-mono text-sm tracking-widest text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ' +
+                      (pinError
+                        ? 'border-red-400 dark:border-red-500'
+                        : 'border-surface-300 dark:border-surface-600')
+                    }
                   />
+                  <p
+                    id={pinHelpId}
+                    className="mt-1 text-xs leading-snug text-surface-500 dark:text-surface-400"
+                  >
+                    Unique 4 digits.
+                  </p>
+                  {pinError ? (
+                    <p
+                      id={pinErrorId}
+                      className="mt-1 text-xs text-red-600 dark:text-red-400"
+                    >
+                      {pinError}
+                    </p>
+                  ) : null}
                 </div>
 
                 {/* Status badge */}

@@ -7,14 +7,16 @@ import App from './App';
 import { ErrorBoundary, isChunkLoadError, tryReloadForChunkError } from './components/shared/PageErrorBoundary';
 import { AUTH_CLEAR_EVENT, AUTH_READY_EVENT, useAuthStore } from './stores/authStore';
 import { setupReactQueryIndexedDbPersistence } from './queryPersistence';
+import { applyDocumentLanguage, getBrowserDocumentLanguage } from './utils/documentLanguage';
 import './styles/globals.css';
 
-// D4-10: dismiss oldest visible toast when count exceeds `max`. Prevents
-// the 20+ toast stack from rapid barcode scans or network error storms.
+// D4-10: collapse duplicate visible toasts from rapid barcode scans or
+// network error storms. WEB-UIUX-223: do not cap distinct messages; dropping
+// the 6th unique toast can hide important errors.
 // Also mirrors the most-recent toast into the sr-only aria-live region so
 // screen readers announce notifications without relying on react-hot-toast's
 // DOM structure (which has no aria-live attribute).
-function ToastAvalancheGuard({ max }: { max: number }): null {
+function ToastDeduplicationGuard(): null {
   const { toasts } = useToasterStore();
 
   // WEB-UIUX-913: keyboard-dismiss for toasts. react-hot-toast renders no
@@ -66,48 +68,27 @@ function ToastAvalancheGuard({ max }: { max: number }): null {
       }
     }
 
-    if (visible.length <= max) return;
-    // Dedup by message before capping — in an error storm the same message
-    // fires N times; dismiss all-but-one duplicate first so the oldest
-    // unique error isn't the collateral victim of the overflow cut.
     const seen = new Set<string>();
-    const deduped = visible.filter((t) => {
-      const key = typeof t.message === 'string' ? t.message : String(t.id);
+    visible.forEach((t) => {
+      const key = typeof t.message === 'string' && t.message.trim()
+        ? `${t.type}:${t.message}`
+        : String(t.id);
       if (seen.has(key)) {
         toast.dismiss(t.id);
-        return false;
+        return;
       }
       seen.add(key);
-      return true;
     });
-    const overflow = deduped.length - max;
-    // Oldest first — react-hot-toast pushes new toasts to the front of the
-    // array by default, so the tail is the oldest.
-    for (let i = 0; i < overflow; i++) {
-      const victim = deduped[deduped.length - 1 - i];
-      if (victim) toast.dismiss(victim.id);
-    }
-  }, [toasts, max]);
+  }, [toasts]);
   return null;
 }
 
 // ─── App Bootstrap ────────────────────────────────────────────────
 
-// WEB-FE-010 (Fixer-OOO 2026-04-25): seed `<html lang>` from the browser's
-// preferred language so non-English-locale tenants get correct screen-reader
-// pronunciation (es-MX, fr-CA, etc.) instead of the static `lang="en"`
-// hard-coded in index.html. WCAG 3.1.1 Language of Page. When tenant-locale
-// settings ship, callers can override at runtime by setting
-// `document.documentElement.lang = '<bcp47>'`.
+// Seed `<html lang>` from the browser before React mounts. Authenticated CRM
+// pages refine this from the existing per-user `language` preference.
 if (typeof document !== 'undefined') {
-  try {
-    const nav = typeof navigator !== 'undefined' ? navigator : null;
-    const preferred = nav?.language || (nav?.languages?.[0] ?? '') || 'en';
-    // BCP-47 sanity check: allow "en", "en-US", "es-MX", "fr-CA", "zh-Hant".
-    if (/^[a-zA-Z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(preferred)) {
-      document.documentElement.lang = preferred;
-    }
-  } catch { /* non-DOM env — leave the static lang from index.html */ }
+  applyDocumentLanguage(getBrowserDocumentLanguage());
 }
 
 // WEB-FE-011 (Fixer-OOO 2026-04-25): forward uncaught render errors to a
@@ -319,21 +300,21 @@ createRoot(document.getElementById('root')!).render(
             toastOptions={{
               className: '!bg-white !text-surface-900 dark:!bg-surface-800 dark:!text-surface-100 !shadow-lg !border !border-surface-200 dark:!border-surface-700',
               // Default; overridden per-type below.
-              duration: 4000,
-              success: { duration: 3000 },
+              duration: 5000,
+              success: { duration: 4000 },
               error: { duration: 6000 },
               loading: { duration: Infinity },
               // WEB-UIUX-913: react-hot-toast's ariaProps type only allows
               // role/aria-live, not tabIndex — keyboard reachability is handled
-              // by the global Esc handler in ToastAvalancheGuard above (which
+              // by the global Esc handler in ToastDeduplicationGuard above (which
               // calls toast.dismiss() while any toast is visible). role=status
               // + aria-live=polite still drives assistive announcement.
               ariaProps: { role: 'status', 'aria-live': 'polite' },
             }}
           />
-          {/* D4-10: cap concurrent visible toasts to avoid UI avalanche from
-              rapid-fire events (barcode scan floods, network error storms). */}
-          <ToastAvalancheGuard max={5} />
+          {/* D4-10 / WEB-UIUX-223: dedupe rapid-fire toast storms without
+              dropping distinct notifications. */}
+          <ToastDeduplicationGuard />
         </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>

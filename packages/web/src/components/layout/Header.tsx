@@ -463,6 +463,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         size="sm"
         fullWidth
         className="max-w-md !justify-start gap-2 border-surface-200 bg-surface-50 text-surface-400 hover:border-surface-300 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500 dark:hover:border-surface-600 dark:hover:bg-surface-750"
+        aria-keyshortcuts="Meta+K Control+K F6"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="flex-1 text-left">Search or press {shortcutLabel}...</span>
@@ -486,6 +487,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
           className="relative hidden min-h-[44px] min-w-[44px] text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200 sm:flex md:min-h-0 md:min-w-0"
           title="Keyboard shortcuts (press ?)"
           aria-label="Keyboard shortcuts"
+          aria-keyshortcuts="?"
         >
           <HelpCircle className="h-4.5 w-4.5" />
         </Button>

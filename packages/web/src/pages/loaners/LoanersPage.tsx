@@ -3,20 +3,25 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Package, CheckCircle2, AlertCircle, X, Plus, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { loanerApi, type LoanerDevice } from '@/api/endpoints';
+import { loanerApi, type LoanerDevice, type LoanerReturnCharge } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatDate } from '@/utils/format';
+import { formatCurrency, formatDate } from '@/utils/format';
 
 // ─── Return Dialog ─────────────────────────────────────────────────────────
 
 interface ReturnDialogProps {
   device: LoanerDevice;
   onClose: () => void;
+  onChargeCreated: (notice: ReturnChargeNotice) => void;
 }
 
-function ReturnDialog({ device, onClose }: ReturnDialogProps) {
+interface ReturnChargeNotice {
+  deviceName: string;
+  charge: LoanerReturnCharge;
+}
+
+function ReturnDialog({ device, onClose, onChargeCreated }: ReturnDialogProps) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [conditionIn, setConditionIn] = useState('good');
   const [damageNotes, setDamageNotes] = useState('');
   const [chargeAmount, setChargeAmount] = useState('');
@@ -49,11 +54,8 @@ function ReturnDialog({ device, onClose }: ReturnDialogProps) {
       queryClient.invalidateQueries({ queryKey: ['loaners'] });
       const charge = response.data?.data?.return_charge;
       if (charge) {
-        const message = charge.status === 'paid'
-          ? `${device.name} returned. Payment recorded on invoice ${charge.invoice_order_id}.`
-          : `${device.name} returned. Invoice ${charge.invoice_order_id} created for return fee.`;
-        toast.success(message, { duration: 7000 });
-        navigate(`/invoices/${charge.invoice_id}`);
+        onChargeCreated({ deviceName: device.name, charge });
+        toast.success(`${device.name} marked as returned`);
       } else {
         toast.success(`${device.name} marked as returned`);
       }
@@ -402,9 +404,11 @@ function isLoanedOut(device: LoanerDevice) {
 export function LoanersPage() {
   const [returningDevice, setReturningDevice] = useState<LoanerDevice | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [returnChargeNotice, setReturnChargeNotice] = useState<ReturnChargeNotice | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<LoanerStatusFilter>('all');
   const [page, setPage] = useState(1);
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
     queryKey: ['loaners'],
@@ -511,6 +515,58 @@ export function LoanersPage() {
           <Plus className="h-4 w-4" /> Add Loaner
         </button>
       </div>
+
+      {returnChargeNotice && (
+        <div
+          role={returnChargeNotice.charge.status === 'paid' ? 'status' : 'alert'}
+          className={cn(
+            'mb-5 flex flex-col gap-3 rounded-lg border px-4 py-3 sm:flex-row sm:items-start sm:justify-between',
+            returnChargeNotice.charge.status === 'paid'
+              ? 'border-success-200 bg-success-50 text-success-900 dark:border-success-800 dark:bg-success-900/20 dark:text-success-100'
+              : 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100',
+          )}
+        >
+          <div className="flex min-w-0 gap-3">
+            {returnChargeNotice.charge.status === 'paid' ? (
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success-600 dark:text-success-300" />
+            ) : (
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">
+                {returnChargeNotice.charge.status === 'paid'
+                  ? 'Return charge payment recorded'
+                  : 'Return charge needs collection'}
+              </p>
+              <p className="mt-1 text-sm">
+                {returnChargeNotice.deviceName} has a {formatCurrency(returnChargeNotice.charge.amount)} return charge on invoice{' '}
+                <span className="font-semibold">{returnChargeNotice.charge.invoice_order_id}</span>.
+                {' '}
+                {returnChargeNotice.charge.status === 'paid'
+                  ? `${formatCurrency(returnChargeNotice.charge.amount_paid)} was recorded as collected.`
+                  : `${formatCurrency(returnChargeNotice.charge.amount_due)} remains due.`}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 sm:pl-3">
+            <button
+              type="button"
+              onClick={() => navigate(`/invoices/${returnChargeNotice.charge.invoice_id}`)}
+              className="inline-flex items-center justify-center rounded-md border border-surface-200 bg-white/80 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white dark:border-surface-700 dark:bg-surface-950/40 dark:hover:bg-surface-950/70"
+            >
+              Open invoice
+            </button>
+            <button
+              type="button"
+              onClick={() => setReturnChargeNotice(null)}
+              aria-label="Dismiss return charge notice"
+              className="rounded-md p-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {devices.length > 0 && (
         <div className="mb-5 flex flex-col gap-3 rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-900 lg:flex-row lg:items-center lg:justify-between">
@@ -653,7 +709,11 @@ export function LoanersPage() {
       )}
 
       {returningDevice && (
-        <ReturnDialog device={returningDevice} onClose={() => setReturningDevice(null)} />
+        <ReturnDialog
+          device={returningDevice}
+          onClose={() => setReturningDevice(null)}
+          onChargeCreated={setReturnChargeNotice}
+        />
       )}
       {showAddDialog && (
         <AddLoanerDialog onClose={() => setShowAddDialog(false)} />

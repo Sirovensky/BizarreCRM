@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail, HelpCircle } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
-import { formatApiError, redactEmails } from '@/utils/apiError';
+import { formatApiErrorPublic } from '@/utils/apiError';
 
 // WEB-S4-006: hCaptcha type declaration (reuses the shape from SignupPage)
 declare global {
@@ -264,7 +264,7 @@ export function LoginPage() {
           setError('Cannot reach server to verify setup link. Check your connection and try again.');
         } else {
           setErrorKind('server');
-          setError(redactEmails(formatApiError(err) || 'Failed to verify setup link.'));
+          setError(formatApiErrorPublic(err) || 'Failed to verify setup link.');
         }
         setAutoChecking(false);
       });
@@ -317,7 +317,7 @@ export function LoginPage() {
             setError('Cannot reach server. Check your connection and try again.');
           } else {
             setErrorKind('server');
-            setError(redactEmails(formatApiError(err) || 'Server error while checking setup status.'));
+            setError(formatApiErrorPublic(err) || 'Server error while checking setup status.');
           }
           // Fall through to render the login form so the user is not stuck.
           setAutoChecking(false);
@@ -429,7 +429,7 @@ export function LoginPage() {
         setError('Invalid username or password.');
       } else {
         setErrorKind('server');
-        setError(redactEmails(formatApiError(err)));
+        setError(formatApiErrorPublic(err));
       }
     } finally {
       setLoading(false);
@@ -448,7 +448,7 @@ export function LoginPage() {
       completeLogin(data.accessToken, data.refreshToken, data.user);
       navigate(fromPath, { replace: true });
     } catch (err: unknown) {
-      const msg = redactEmails(formatApiError(err) || 'Invalid code');
+      const msg = formatApiErrorPublic(err) || 'Invalid code';
       const e = err as { response?: { data?: { data?: { challengeToken?: string } } } } | undefined;
       const newToken = e?.response?.data?.data?.challengeToken;
       if (newToken) setChallengeToken(newToken);
@@ -478,7 +478,7 @@ export function LoginPage() {
       setManualSecret(setupData.secret);
       setStep('setup');
     } catch (err: unknown) {
-      setError(redactEmails(formatApiError(err) || 'Failed to set password'));
+      setError(formatApiErrorPublic(err) || 'Failed to set password');
     } finally {
       setLoading(false);
     }
@@ -530,7 +530,7 @@ export function LoginPage() {
       } else if (e.response.status === 401) {
         setRecoveryError('We could not verify that email and recovery code.');
       } else {
-        setRecoveryError(redactEmails(formatApiError(err)));
+        setRecoveryError(formatApiErrorPublic(err));
       }
     } finally {
       setRecoveryLoading(false);
@@ -636,7 +636,7 @@ export function LoginPage() {
                 setSetupPassword('');
                 window.history.replaceState(null, '', '/login');
               } catch (err: unknown) {
-                setError(formatApiError(err) || 'Setup failed');
+                setError(formatApiErrorPublic(err) || 'Setup failed');
               } finally {
                 setLoading(false);
               }
@@ -868,7 +868,7 @@ export function LoginPage() {
                                 } else if (status === 400) {
                                   setForgotError(message || 'Enter a valid email address.');
                                 } else {
-                                  setForgotError(formatApiError(err));
+                                  setForgotError(formatApiErrorPublic(err));
                                 }
                                 // Reset captcha so user can get a fresh token
                                 if (forgotCaptchaWidgetIdRef.current !== null && window.hcaptcha) {

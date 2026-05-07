@@ -13,6 +13,7 @@ interface SignatureCanvasProps {
 
 const LIGHT_PEN_COLOR = '#1e293b';
 const DARK_PEN_COLOR = '#e2e8f0';
+const SIGNATURE_GUIDE_FONT = '12px Jost, Futura, system-ui, sans-serif';
 
 /**
  * PDF3 fix: hard cap on the signature base64 payload. Writing a 500 KB
@@ -112,7 +113,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
 
       // "Sign here" text
       ctx.fillStyle = hintColor;
-      ctx.font = '12px Inter, sans-serif';
+      ctx.font = SIGNATURE_GUIDE_FONT;
       ctx.fillText('Sign here', 20, height - 12);
     }
   }, [initialValue, width, height, resolvedPenColor]);
@@ -226,7 +227,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     ctx.setLineDash([]);
     ctx.strokeStyle = resolvedPenColor;
     ctx.fillStyle = hintColor;
-    ctx.font = '12px Inter, sans-serif';
+    ctx.font = SIGNATURE_GUIDE_FONT;
     ctx.fillText('Sign here', 20, height - 12);
 
     setHasSignature(false);

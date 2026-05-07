@@ -12,6 +12,7 @@ import { computePosTotals } from './totals';
 import { useSettings } from '@/hooks/useSettings';
 import { formatCurrency } from '@/utils/format';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem } from './types';
+import { useUnifiedPosActionVisibility } from './permissions';
 
 // ─── Local payload shapes ──────────────────────────────────────────
 // WEB-FB-003 (FIXED-by-Fixer-A23 2026-04-25): replace the four `any`
@@ -280,6 +281,7 @@ function UnifiedSearchBar() {
             onFocus={() => setFocused(true)}
             onBlur={() => setTimeout(() => setFocused(false), 200)}
             placeholder="Search ticket, customer, product, or scan barcode..."
+            aria-keyshortcuts="F4"
             className={cn(
               'w-full rounded-lg border border-surface-200 dark:border-surface-700',
               'bg-white dark:bg-surface-800 pl-9 pr-3 py-2 text-sm',
@@ -524,7 +526,13 @@ function BarcodeSearch() {
 
 // ─── Cart Item Rows ─────────────────────────────────────────────────
 
-function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number }) {
+interface CartActionVisibility {
+  canEditCartPricing: boolean;
+  canAdjustLineTax: boolean;
+  canVoidCartLine: boolean;
+}
+
+function RepairRow({ item, taxRate, actions }: { item: RepairCartItem; taxRate: number; actions: CartActionVisibility }) {
   const { removeCartItem, updateCartItem } = useUnifiedPosStore();
   const partsTotal = item.parts.reduce((s, p) => s + p.quantity * p.price, 0);
   const lineTotal = item.laborPrice - item.lineDiscount + partsTotal;
@@ -597,49 +605,65 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
             </p>
           )}
         </div>
-        <input
-          type="text" inputMode="decimal" pattern="[0-9.]*"
-          data-tutorial-target="checkout:price-cell"
-          value={item.laborPrice}
-          onChange={(e) => {
-            // WEB-FH-015 (Fixer-B2 2026-04-25): the input has min="0" but
-            // that's HTML5 form-validation only — typing or pasting "-50"
-            // sets state to a negative number, which silently subtracts
-            // from the cart total (and the train-mode/free-pricing path
-            // never re-validates). Clamp at parse time.
-            const parsed = parseFloat(e.target.value);
-            const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-            updateCartItem(item.id, { laborPrice: safe } as Partial<RepairCartItem>);
-          }}
-          className="shrink-0 w-16 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
-          step="0.01"
-          min="0"
-        />
-        <button
-          onClick={toggleLaborTax}
-          aria-label={item.taxable ? 'Labor taxable — click to remove tax' : 'Labor non-taxable — click to add tax'}
-          aria-pressed={item.taxable}
-          className={cn(
-            'btn btn-xs shrink-0 w-14 !justify-end !px-1',
-            item.taxable
-              ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-              : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
-          )}
-          title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
-        >
-          {item.taxable ? formatCurrency(item.laborPrice * taxRate) : 'No tax'}
-        </button>
+        {actions.canEditCartPricing ? (
+          <input
+            type="text" inputMode="decimal" pattern="[0-9.]*"
+            data-tutorial-target="checkout:price-cell"
+            value={item.laborPrice}
+            onChange={(e) => {
+              // WEB-FH-015 (Fixer-B2 2026-04-25): the input has min="0" but
+              // that's HTML5 form-validation only — typing or pasting "-50"
+              // sets state to a negative number, which silently subtracts
+              // from the cart total (and the train-mode/free-pricing path
+              // never re-validates). Clamp at parse time.
+              const parsed = parseFloat(e.target.value);
+              const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+              updateCartItem(item.id, { laborPrice: safe } as Partial<RepairCartItem>);
+            }}
+            className="shrink-0 w-16 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
+            step="0.01"
+            min="0"
+          />
+        ) : (
+          <span className="shrink-0 w-16 px-1 py-0.5 text-right text-xs text-surface-600 dark:text-surface-300">
+            {formatCurrency(item.laborPrice)}
+          </span>
+        )}
+        {actions.canAdjustLineTax ? (
+          <button
+            onClick={toggleLaborTax}
+            aria-label={item.taxable ? 'Labor taxable — click to remove tax' : 'Labor non-taxable — click to add tax'}
+            aria-pressed={item.taxable}
+            className={cn(
+              'btn btn-xs shrink-0 w-14 !justify-end !px-1',
+              item.taxable
+                ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+            )}
+            title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
+          >
+            {item.taxable ? formatCurrency(item.laborPrice * taxRate) : 'No tax'}
+          </button>
+        ) : (
+          <span className="shrink-0 w-14 px-1 text-right text-xs text-surface-500 dark:text-surface-400">
+            {item.taxable ? formatCurrency(item.laborPrice * taxRate) : 'No tax'}
+          </span>
+        )}
         <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
           {formatCurrency(lineTotal)}
         </span>
-        <button
-          onClick={() => removeCartItem(item.id)}
-          aria-label={`Remove ${item.device.device_name || item.serviceName} from cart`}
-          className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-          title="Remove"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        {actions.canVoidCartLine ? (
+          <button
+            onClick={() => removeCartItem(item.id)}
+            aria-label={`Remove ${item.device.device_name || item.serviceName} from cart`}
+            className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+            title="Remove"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        ) : (
+          <span className="w-6 shrink-0" aria-hidden="true" />
+        )}
       </div>
       {item.parts.length > 0 && (
         <div className="mt-1 space-y-0.5">
@@ -649,20 +673,26 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
                 {p.quantity > 1 ? `${p.quantity}x ` : ''}{p.name}
               </span>
               <span className="w-14 text-right">{formatCurrency(p.quantity * p.price)}</span>
-              <button
-                onClick={() => togglePartTax(p._key)}
-                aria-label={p.taxable ? `${p.name} taxable — click to remove tax` : `${p.name} non-taxable — click to add tax`}
-                aria-pressed={p.taxable}
-                className={cn(
-                  'btn btn-xs w-14 !justify-end !px-0.5',
-                  p.taxable
-                    ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-                    : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
-                )}
-                title={p.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
-              >
-                {p.taxable ? formatCurrency(p.quantity * p.price * taxRate) : 'No tax'}
-              </button>
+              {actions.canAdjustLineTax ? (
+                <button
+                  onClick={() => togglePartTax(p._key)}
+                  aria-label={p.taxable ? `${p.name} taxable — click to remove tax` : `${p.name} non-taxable — click to add tax`}
+                  aria-pressed={p.taxable}
+                  className={cn(
+                    'btn btn-xs w-14 !justify-end !px-0.5',
+                    p.taxable
+                      ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                      : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+                  )}
+                  title={p.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
+                >
+                  {p.taxable ? formatCurrency(p.quantity * p.price * taxRate) : 'No tax'}
+                </button>
+              ) : (
+                <span className="w-14 px-0.5 text-right text-[11px] text-surface-500 dark:text-surface-400">
+                  {p.taxable ? formatCurrency(p.quantity * p.price * taxRate) : 'No tax'}
+                </span>
+              )}
               <span className="w-16" />
               <span className="w-6" />
             </div>
@@ -731,13 +761,19 @@ function RepairRow({ item, taxRate }: { item: RepairCartItem; taxRate: number })
   );
 }
 
-function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number }) {
+function ProductRow({ item, taxRate, actions }: { item: ProductCartItem; taxRate: number; actions: CartActionVisibility }) {
   const { updateProductQty, updateCartItem, removeCartItem } = useUnifiedPosStore();
 
   return (
     <div className="flex items-center gap-2 border-b border-surface-100 dark:border-surface-700/50 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
       <div className="shrink-0 flex items-center gap-1 w-20">
-        <button aria-label="Decrease quantity" onClick={() => updateProductQty(item.id, -1)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
+        <button
+          aria-label="Decrease quantity"
+          onClick={() => updateProductQty(item.id, -1)}
+          disabled={!actions.canVoidCartLine && item.quantity <= 1}
+          className="btn-icon btn-xs text-surface-400 hover:text-surface-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-surface-300"
+          title={!actions.canVoidCartLine && item.quantity <= 1 ? 'Manager can remove line' : undefined}
+        >
           <Minus className="h-3 w-3" />
         </button>
         <span className="text-xs text-surface-700 dark:text-surface-300 min-w-[16px] text-center">{item.quantity}</span>
@@ -749,52 +785,70 @@ function ProductRow({ item, taxRate }: { item: ProductCartItem; taxRate: number 
         <p className="text-sm text-surface-900 dark:text-surface-100 truncate">{item.name}</p>
         {item.sku && <p className="text-[10px] text-surface-400 truncate">{item.sku}</p>}
       </div>
-      <input
-        type="text" inputMode="decimal" pattern="[0-9.]*"
-        value={item.unitPrice}
-        onChange={(e) => {
-          // WEB-FH-015 (Fixer-B2 2026-04-25): clamp negative input — see
-          // matching laborPrice handler above.
-          const parsed = parseFloat(e.target.value);
-          const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-          updateCartItem(item.id, { unitPrice: safe } as Partial<ProductCartItem>);
-        }}
-        className="w-14 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
-        step="0.01"
-        min="0"
-      />
-      <button
-        onClick={() => updateCartItem(item.id, { taxable: !item.taxable } as Partial<ProductCartItem>)}
-        aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
-        aria-pressed={item.taxable}
-        className={cn(
-          'btn btn-xs shrink-0 w-14 !justify-end !px-1',
-          item.taxable && !item.taxInclusive
-            ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-            : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
-        )}
-        title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
-      >
-        {item.taxable && !item.taxInclusive
-          ? formatCurrency(item.quantity * item.unitPrice * taxRate)
-          : 'No tax'}
-      </button>
+      {actions.canEditCartPricing ? (
+        <input
+          type="text" inputMode="decimal" pattern="[0-9.]*"
+          value={item.unitPrice}
+          onChange={(e) => {
+            // WEB-FH-015 (Fixer-B2 2026-04-25): clamp negative input — see
+            // matching laborPrice handler above.
+            const parsed = parseFloat(e.target.value);
+            const safe = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+            updateCartItem(item.id, { unitPrice: safe } as Partial<ProductCartItem>);
+          }}
+          className="w-14 rounded border border-surface-200 dark:border-surface-700 bg-transparent px-1 py-0.5 text-right text-xs text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
+          step="0.01"
+          min="0"
+        />
+      ) : (
+        <span className="w-14 px-1 py-0.5 text-right text-xs text-surface-600 dark:text-surface-300">
+          {formatCurrency(item.unitPrice)}
+        </span>
+      )}
+      {actions.canAdjustLineTax ? (
+        <button
+          onClick={() => updateCartItem(item.id, { taxable: !item.taxable } as Partial<ProductCartItem>)}
+          aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
+          aria-pressed={item.taxable}
+          className={cn(
+            'btn btn-xs shrink-0 w-14 !justify-end !px-1',
+            item.taxable && !item.taxInclusive
+              ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+              : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+          )}
+          title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
+        >
+          {item.taxable && !item.taxInclusive
+            ? formatCurrency(item.quantity * item.unitPrice * taxRate)
+            : 'No tax'}
+        </button>
+      ) : (
+        <span className="shrink-0 w-14 px-1 text-right text-xs text-surface-500 dark:text-surface-400">
+          {item.taxable && !item.taxInclusive
+            ? formatCurrency(item.quantity * item.unitPrice * taxRate)
+            : 'No tax'}
+        </span>
+      )}
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
         {formatCurrency(item.quantity * item.unitPrice)}
       </span>
-      <button
-        onClick={() => removeCartItem(item.id)}
-        aria-label={`Remove ${item.name} from cart`}
-        className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-        title="Remove"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      {actions.canVoidCartLine ? (
+        <button
+          onClick={() => removeCartItem(item.id)}
+          aria-label={`Remove ${item.name} from cart`}
+          className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+          title="Remove"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : (
+        <span className="w-6 shrink-0" aria-hidden="true" />
+      )}
     </div>
   );
 }
 
-function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
+function MiscRow({ item, taxRate, actions }: { item: MiscCartItem; taxRate: number; actions: CartActionVisibility }) {
   const { removeCartItem, updateCartItem } = useUnifiedPosStore();
 
   return (
@@ -804,40 +858,50 @@ function MiscRow({ item, taxRate }: { item: MiscCartItem; taxRate: number }) {
       <span className="shrink-0 text-xs text-surface-500 dark:text-surface-400 w-14 text-right">
         {formatCurrency(item.unitPrice)}
       </span>
-      <button
-        onClick={() => updateCartItem(item.id, { taxable: !item.taxable } as Partial<MiscCartItem>)}
-        aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
-        aria-pressed={item.taxable}
-        className={cn(
-          'btn btn-xs shrink-0 w-14 !justify-end !px-1',
-          item.taxable
-            ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-            : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
-        )}
-        title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
-      >
-        {item.taxable ? formatCurrency(item.quantity * item.unitPrice * taxRate) : 'No tax'}
-      </button>
+      {actions.canAdjustLineTax ? (
+        <button
+          onClick={() => updateCartItem(item.id, { taxable: !item.taxable } as Partial<MiscCartItem>)}
+          aria-label={item.taxable ? `${item.name} taxable — click to remove tax` : `${item.name} non-taxable — click to add tax`}
+          aria-pressed={item.taxable}
+          className={cn(
+            'btn btn-xs shrink-0 w-14 !justify-end !px-1',
+            item.taxable
+              ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+              : 'text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800'
+          )}
+          title={item.taxable ? 'Click to make non-taxable' : 'Click to make taxable'}
+        >
+          {item.taxable ? formatCurrency(item.quantity * item.unitPrice * taxRate) : 'No tax'}
+        </button>
+      ) : (
+        <span className="shrink-0 w-14 px-1 text-right text-xs text-surface-500 dark:text-surface-400">
+          {item.taxable ? formatCurrency(item.quantity * item.unitPrice * taxRate) : 'No tax'}
+        </span>
+      )}
       <span className="shrink-0 text-sm font-medium text-surface-900 dark:text-surface-100 w-16 text-right">
         {formatCurrency(item.quantity * item.unitPrice)}
       </span>
-      <button
-        onClick={() => removeCartItem(item.id)}
-        aria-label={`Remove ${item.name} from cart`}
-        className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
-        title="Remove"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      {actions.canVoidCartLine ? (
+        <button
+          onClick={() => removeCartItem(item.id)}
+          aria-label={`Remove ${item.name} from cart`}
+          className="btn-icon btn-xs shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300"
+          title="Remove"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      ) : (
+        <span className="w-6 shrink-0" aria-hidden="true" />
+      )}
     </div>
   );
 }
 
-function CartItemRow({ item, taxRate }: { item: CartItem; taxRate: number }) {
+function CartItemRow({ item, taxRate, actions }: { item: CartItem; taxRate: number; actions: CartActionVisibility }) {
   switch (item.type) {
-    case 'repair':  return <RepairRow item={item} taxRate={taxRate} />;
-    case 'product': return <ProductRow item={item} taxRate={taxRate} />;
-    case 'misc':    return <MiscRow item={item} taxRate={taxRate} />;
+    case 'repair':  return <RepairRow item={item} taxRate={taxRate} actions={actions} />;
+    case 'product': return <ProductRow item={item} taxRate={taxRate} actions={actions} />;
+    case 'misc':    return <MiscRow item={item} taxRate={taxRate} actions={actions} />;
   }
 }
 
@@ -873,7 +937,7 @@ function useTotals(): Totals {
 // pos_show_discount_reason = '1', the Reason field is required before
 // the discount can be applied.
 
-function DiscountEditor() {
+function DiscountEditor({ canEditPricing }: { canEditPricing: boolean }) {
   const { discount, discountReason, setDiscount } = useUnifiedPosStore();
   const { getSetting } = useSettings();
   const requireReason = getSetting('pos_show_discount_reason') === '1';
@@ -903,6 +967,10 @@ function DiscountEditor() {
     setDiscount(0, '');
     setOpen(false);
   };
+
+  if (!canEditPricing) {
+    return null;
+  }
 
   if (!open) {
     return (
@@ -1000,6 +1068,7 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
   const { cartItems, customer } = useUnifiedPosStore();
   const totals = useTotals();
   const taxRate = useDefaultTaxRate();
+  const posActions = useUnifiedPosActionVisibility();
 
   // WEB-UIUX-771: fire a warning toast when the tax rate changes mid-session
   // so the cashier is not surprised by a silently-updated cart total.
@@ -1113,10 +1182,10 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
                       <span className="text-xs font-bold text-teal-600 dark:text-teal-400">{ticketLabel}</span>
                       <span className="text-[10px] text-surface-400">({items.length} device{items.length !== 1 ? 's' : ''})</span>
                     </div>
-                    {items.map((item) => <CartItemRow key={item.id} item={item} taxRate={taxRate} />)}
+                    {items.map((item) => <CartItemRow key={item.id} item={item} taxRate={taxRate} actions={posActions} />)}
                   </div>
                 ))}
-                {ungrouped.map((item) => <CartItemRow key={item.id} item={item} taxRate={taxRate} />)}
+                {ungrouped.map((item) => <CartItemRow key={item.id} item={item} taxRate={taxRate} actions={posActions} />)}
               </>
             );
           })()
@@ -1134,7 +1203,7 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
           <span>{formatCurrency(totals.subtotal)}</span>
         </div>
         {/* WEB-W1-015: cart-wide discount entry with optional reason gate */}
-        <DiscountEditor />
+        <DiscountEditor canEditPricing={posActions.canEditCartPricing} />
         {totals.discountAmount > 0 && (
           <div className="flex justify-between text-xs text-green-600 dark:text-green-400">
             <span>Discount</span>

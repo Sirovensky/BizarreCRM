@@ -58,6 +58,121 @@ const DRIVER_OPTIONS: ReadonlyArray<DriverOption> = [
   },
 ];
 
+interface NetworkAddressValidation {
+  valid: boolean;
+  message: string;
+}
+
+const IPV4_PART_PATTERN = /^\d{1,3}$/;
+const HOSTNAME_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+
+const isValidIpv4Address = (host: string): boolean => {
+  const parts = host.split('.');
+  return (
+    parts.length === 4 &&
+    parts.every((part) => {
+      if (!IPV4_PART_PATTERN.test(part)) {
+        return false;
+      }
+      const octet = Number(part);
+      return octet >= 0 && octet <= 255;
+    })
+  );
+};
+
+const isValidIpv6Address = (host: string): boolean => {
+  try {
+    return new URL(`http://[${host}]`).hostname === `[${host.toLowerCase()}]`;
+  } catch {
+    return false;
+  }
+};
+
+const isValidHostname = (host: string): boolean => {
+  if (host.length > 253 || host.includes('..')) {
+    return false;
+  }
+  const normalized = host.endsWith('.') ? host.slice(0, -1) : host;
+  return normalized
+    .split('.')
+    .every((label) => label.length > 0 && HOSTNAME_LABEL_PATTERN.test(label));
+};
+
+const isValidPort = (port: string): boolean => {
+  if (!/^\d+$/.test(port)) {
+    return false;
+  }
+  const portNumber = Number(port);
+  return portNumber >= 1 && portNumber <= 65535;
+};
+
+const parseNetworkAddress = (value: string): { host: string; port?: string; bracketed: boolean } | null => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || /\s/.test(trimmed) || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return null;
+  }
+
+  if (trimmed.startsWith('[')) {
+    const closeBracketIndex = trimmed.indexOf(']');
+    if (closeBracketIndex <= 1) {
+      return null;
+    }
+    const host = trimmed.slice(1, closeBracketIndex);
+    const suffix = trimmed.slice(closeBracketIndex + 1);
+    if (suffix.length === 0) {
+      return { host, bracketed: true };
+    }
+    if (!suffix.startsWith(':') || suffix.length === 1) {
+      return null;
+    }
+    return { host, port: suffix.slice(1), bracketed: true };
+  }
+
+  const colonCount = (trimmed.match(/:/g) ?? []).length;
+  if (colonCount === 0) {
+    return { host: trimmed, bracketed: false };
+  }
+  if (colonCount === 1) {
+    const [host, port] = trimmed.split(':');
+    if (!host || !port) {
+      return null;
+    }
+    return { host, port, bracketed: false };
+  }
+  return { host: trimmed, bracketed: false };
+};
+
+const validateNetworkAddress = (value: string): NetworkAddressValidation => {
+  const parsed = parseNetworkAddress(value);
+  if (!parsed) {
+    return {
+      valid: false,
+      message: 'Enter an IP address or hostname, optionally followed by a numeric port.',
+    };
+  }
+
+  const hostIsValid = parsed.bracketed
+    ? isValidIpv6Address(parsed.host)
+    : isValidIpv4Address(parsed.host) ||
+      isValidIpv6Address(parsed.host) ||
+      (!/^[\d.]+$/.test(parsed.host) && isValidHostname(parsed.host));
+  if (!hostIsValid) {
+    return {
+      valid: false,
+      message: 'Enter a valid drawer IP address or hostname.',
+    };
+  }
+
+  if (parsed.port !== undefined && !isValidPort(parsed.port)) {
+    return {
+      valid: false,
+      message: 'Port must be a number from 1 to 65535.',
+    };
+  }
+
+  return { valid: true, message: '' };
+};
+
 export function StepCashDrawer({
   pending,
   onUpdate,
@@ -69,7 +184,9 @@ export function StepCashDrawer({
   const [driver, setDriver] = useState<CashDrawerDriver>(initialDriver);
   const [address, setAddress] = useState<string>(pending.cash_drawer_address ?? '');
   const [testing, setTesting] = useState(false);
-  const canContinue = driver !== 'network' || address.trim().length > 0;
+  const addressValidation = validateNetworkAddress(address);
+  const shouldShowAddressError = driver === 'network' && address.trim().length > 0 && !addressValidation.valid;
+  const canContinue = driver !== 'network' || addressValidation.valid;
 
   // Push every change back to the wizard's pending bundle so the shell's
   // bulk PUT /settings/config picks it up at the end. We clear the address
@@ -77,19 +194,24 @@ export function StepCashDrawer({
   useEffect(() => {
     onUpdate({
       cash_drawer_driver: driver,
-      cash_drawer_address: driver === 'network' ? address : undefined,
+      cash_drawer_address: driver === 'network' && addressValidation.valid ? address.trim() : undefined,
     });
     // onUpdate is provided by the shell — its identity may change per render,
     // so we intentionally exclude it from deps to keep this a value-driven sync.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [driver, address]);
+  }, [driver, address, addressValidation.valid]);
 
   const handleTestPop = async () => {
+    if (driver === 'network' && !addressValidation.valid) {
+      toast.error(addressValidation.message);
+      return;
+    }
+
     setTesting(true);
     try {
       await settingsApi.testCashDrawer({
         driver,
-        address,
+        address: driver === 'network' ? address.trim() : undefined,
         printer: {
           connection: pending.receipt_printer_connection,
           address: pending.receipt_printer_address,
@@ -189,10 +311,25 @@ export function StepCashDrawer({
                         onChange={(e) => setAddress(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                         placeholder="192.168.1.50  or  192.168.1.50:8000"
-                        className="mt-1 block w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder-surface-400 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100 dark:placeholder-surface-500"
+                        aria-invalid={shouldShowAddressError}
+                        aria-describedby="cash-drawer-address-help"
+                        className={
+                          shouldShowAddressError
+                            ? 'mt-1 block w-full rounded-lg border border-error-500 bg-white px-3 py-2 text-sm text-surface-900 placeholder-surface-400 shadow-sm focus:border-error-500 focus:outline-none focus:ring-2 focus:ring-error-500/20 dark:border-error-400 dark:bg-surface-900 dark:text-surface-100 dark:placeholder-surface-500'
+                            : 'mt-1 block w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 placeholder-surface-400 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-900 dark:text-surface-100 dark:placeholder-surface-500'
+                        }
                       />
-                      <p className="mt-1 text-[11px] text-surface-500 dark:text-surface-400">
-                        LAN address of the drawer's network controller.
+                      <p
+                        id="cash-drawer-address-help"
+                        className={
+                          shouldShowAddressError
+                            ? 'mt-1 text-[11px] text-error-600 dark:text-error-400'
+                            : 'mt-1 text-[11px] text-surface-500 dark:text-surface-400'
+                        }
+                      >
+                        {shouldShowAddressError
+                          ? addressValidation.message
+                          : "LAN address of the drawer's network controller."}
                       </p>
                     </div>
                   ) : null}

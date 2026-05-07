@@ -8,7 +8,7 @@
  * notification is fired (server side).
  */
 
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, X, Loader2, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -61,23 +61,28 @@ export function DefectReporterButton({
   const dialogRef = useFocusTrap(open);
 
   // Revoke a blob URL immediately and clear the ref.
-  const revokePreview = () => {
+  const revokePreview = useCallback(() => {
     if (photoPreviewRef.current) {
       URL.revokeObjectURL(photoPreviewRef.current);
       photoPreviewRef.current = null;
     }
-  };
+  }, []);
 
   // Clean up on unmount.
-  useEffect(() => revokePreview, []);
+  useEffect(() => revokePreview, [revokePreview]);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setDefectType('doa');
     setDescription('');
     setPhotoFile(null);
     revokePreview();
     setPhotoPreview(null);
-  };
+  }, [revokePreview]);
+
+  const closeModal = useCallback(() => {
+    reset();
+    setOpen(false);
+  }, [reset]);
 
   const reportMut = useMutation({
     mutationFn: () => {
@@ -104,8 +109,7 @@ export function DefectReporterButton({
           ? `Defect logged. ${count} in last 30 days -> over threshold of ${threshold}, procurement notified.`
           : `Defect logged (${count} in last 30 days).`,
       );
-      reset();
-      setOpen(false);
+      closeModal();
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : 'Failed to report defect';
@@ -135,10 +139,10 @@ export function DefectReporterButton({
   // WEB-FX-003: Esc-to-close.
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeModal(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open]);
+  }, [closeModal, open]);
 
   return (
     <>
@@ -158,7 +162,7 @@ export function DefectReporterButton({
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setOpen(false)}
+          onClick={closeModal}
         >
           <div
             ref={dialogRef as RefObject<HTMLDivElement>}
@@ -174,7 +178,7 @@ export function DefectReporterButton({
                 Report defect
               </h3>
               <button
-                onClick={() => setOpen(false)}
+                onClick={closeModal}
                 className="rounded p-1 text-surface-400 hover:text-surface-600"
               >
                 <X className="h-4 w-4" />
@@ -258,7 +262,7 @@ export function DefectReporterButton({
 
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setOpen(false)}
+                onClick={closeModal}
                 className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
               >
                 Cancel

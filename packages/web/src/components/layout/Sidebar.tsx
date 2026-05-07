@@ -44,6 +44,7 @@ import {
   Link2,
   Clock3,
   BellRing,
+  LifeBuoy,
 } from 'lucide-react';
 
 interface NavItem {
@@ -59,6 +60,12 @@ interface NavSection {
   items: NavItem[];
   adminOnly?: boolean;
 }
+
+const SUPPORT_URL = 'https://bizarrecrm.com/support';
+const NAV_KEYSHORTCUTS: Partial<Record<string, string>> = {
+  '/pos': 'F2',
+  '/tickets': 'F4',
+};
 
 // @audit-fixed: marked the Admin section as `adminOnly`. Previously every
 // technician saw "Employees" and "Reports" in the sidebar even though both
@@ -233,6 +240,23 @@ export function Sidebar() {
 
       {/* Bottom Section */}
       <div className="shrink-0 border-t border-surface-200 p-2 dark:border-surface-800">
+        <a
+          href={SUPPORT_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="Contact BizarreCRM support (opens in a new tab)"
+          className={cn(
+            'group relative flex items-center rounded-lg px-3 py-2.5 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-50 hover:text-surface-700 focus-visible:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-200 dark:focus:ring-primary-400 dark:focus:ring-offset-surface-900',
+            sidebarCollapsed && 'justify-center px-0'
+          )}
+        >
+          <LifeBuoy className="h-5 w-5 shrink-0" />
+          {!sidebarCollapsed && <span className="ml-3 truncate">Support</span>}
+          {sidebarCollapsed && (
+            <SidebarTooltipWrapper label="Support" />
+          )}
+        </a>
+
         {/* Settings — admin + manager (server enforces /settings writes by role) */}
         {isAdminOrManager && (
           <NavLink
@@ -520,12 +544,14 @@ function SidebarSection({ section }: { section: NavSection }) {
 
 function SidebarItem({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const Icon = item.icon;
+  const keyShortcut = NAV_KEYSHORTCUTS[item.path];
 
   return (
     <li>
       <NavLink
         to={item.path}
         end={item.path === '/'}
+        aria-keyshortcuts={keyShortcut}
         className={({ isActive }) =>
           cn(
             'group relative flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',

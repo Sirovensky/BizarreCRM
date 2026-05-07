@@ -139,3 +139,14 @@ export function formatApiError(err: unknown): string {
   if (suffixParts.length === 0) return f.message;
   return `${f.message} (${suffixParts.join(' · ')})`;
 }
+
+/**
+ * Public/unauthenticated variant for login, signup, reset, and portal flows.
+ * Staff-side screens can use `formatApiError()` because showing the exact
+ * customer email a staff member just typed is often useful. Public screens
+ * should default to this helper so future callers do not have to remember to
+ * manually pipe every message through `redactEmails()`.
+ */
+export function formatApiErrorPublic(err: unknown): string {
+  return redactEmails(formatApiError(err));
+}

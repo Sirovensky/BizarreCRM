@@ -11,7 +11,7 @@
  * type=receipt shows payment info; otherwise renders as work order.
  * All receipt content is driven by the 26 receipt_cfg_* toggles in store_config.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
@@ -164,10 +164,6 @@ function sanitizeTerms(value: string | null | undefined): string {
   return stripped.replace(BIDI_CONTROL_RE, '').slice(0, TERMS_MAX_LENGTH);
 }
 
-function warrantyDisclaimer(config: PrintConfig): string {
-  return sanitizeTerms(config.warranty_disclaimer);
-}
-
 function warrantyLabel(device: PrintDevice): string {
   if (device.warranty_timeframe) return String(device.warranty_timeframe);
   const days = Number(device.warranty_days);
@@ -247,7 +243,14 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
   const storeAddress = cfgText('store_address', '');
   const storeWebsite = cfgText('store_website', '');
   const logoUrl = cfgText('receipt_logo');
-  const disclaimer = warrantyDisclaimer(config);
+  const warrantyDisclaimerText = config.warranty_disclaimer;
+  const disclaimer = useMemo(() => sanitizeTerms(warrantyDisclaimerText), [warrantyDisclaimerText]);
+  const receiptHeader = cfgText('receipt_header');
+  const receiptThermalTerms = cfgText('receipt_thermal_terms');
+  const receiptThermalFooter = cfgText('receipt_thermal_footer');
+  const safeReceiptHeader = useMemo(() => sanitizePrintText(receiptHeader), [receiptHeader]);
+  const safeReceiptThermalTerms = useMemo(() => sanitizeTerms(receiptThermalTerms), [receiptThermalTerms]);
+  const safeReceiptThermalFooter = useMemo(() => sanitizePrintText(receiptThermalFooter), [receiptThermalFooter]);
 
   const s: React.CSSProperties = { fontFamily: '"Courier New", "Courier", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", monospace', fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
   const dash: React.CSSProperties = { borderTop: '1px dashed #000', margin: '4px 0' };
@@ -274,9 +277,9 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       <div style={thick} />
 
       {/* Receipt header message (receipt_header from store_config) */}
-      {cfgText('receipt_header') && (
+      {safeReceiptHeader && (
         <>
-          <div style={{ ...center, fontSize: '0.85em', whiteSpace: 'pre-wrap' }}>{sanitizePrintText(cfgText('receipt_header'))}</div>
+          <div style={{ ...center, fontSize: '0.85em', whiteSpace: 'pre-wrap' }}>{safeReceiptHeader}</div>
           <div style={dash} />
         </>
       )}
@@ -443,11 +446,11 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       )}
 
       {/* Terms */}
-      {cfgText('receipt_thermal_terms') && (
+      {safeReceiptThermalTerms && (
         <>
           <div style={dash} />
           <div style={{ ...center, fontWeight: 'bold', fontSize: '0.85em', marginBottom: 2 }}>Terms & Conditions</div>
-          <div style={{ fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>{sanitizeTerms(cfgText('receipt_thermal_terms'))}</div>
+          <div style={{ fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>{safeReceiptThermalTerms}</div>
         </>
       )}
 
@@ -479,14 +482,14 @@ function ThermalReceipt({ ticket, config, size, isReceiptType }: {
       )}
 
       {/* Footer */}
-      {cfgText('receipt_thermal_footer') && (
+      {safeReceiptThermalFooter && (
         <>
           <div style={dash} />
-          <div style={{ ...center, fontSize: '0.85em' }}>{sanitizePrintText(cfgText('receipt_thermal_footer'))}</div>
+          <div style={{ ...center, fontSize: '0.85em' }}>{safeReceiptThermalFooter}</div>
         </>
       )}
 
-      {!cfgText('receipt_thermal_footer') && (
+      {!safeReceiptThermalFooter && (
         <>
           <div style={dash} />
           <div style={{ ...center, fontSize: '0.85em' }}>Thank you! We will call when ready.</div>
@@ -521,7 +524,20 @@ function PageReceipt({ ticket, config, isReceiptType }: {
   const invoiceFooter = cfgText('invoice_footer');
   const invoiceTerms = cfgText('invoice_terms');
   const invoicePaymentTerms = cfgText('invoice_payment_terms');
-  const disclaimer = warrantyDisclaimer(config);
+  const warrantyDisclaimerText = config.warranty_disclaimer;
+  const disclaimer = useMemo(() => sanitizeTerms(warrantyDisclaimerText), [warrantyDisclaimerText]);
+  const repairTerms = invoiceTerms || cfgText('receipt_terms');
+  const footerText = invoiceFooter || cfgText('receipt_footer');
+  const safeRepairTerms = useMemo(() => sanitizeTerms(repairTerms), [repairTerms]);
+  const safeFooterText = useMemo(() => sanitizePrintText(footerText), [footerText]);
+  const diagnosticNotes = useMemo(
+    () => notes.filter((n: PrintNote) => n.note_type === 'diagnostic'),
+    [notes],
+  );
+  const safeDiagnosticNotes = useMemo(
+    () => diagnosticNotes.map((n) => sanitizePrintText(n.content || n.note || '')),
+    [diagnosticNotes],
+  );
 
   // Shared table styles
   const cellBorder = '1px solid #999';
@@ -714,33 +730,26 @@ function PageReceipt({ ticket, config, isReceiptType }: {
       ))}
 
       {/* ═══ DIAGNOSTIC NOTES ONLY (no internal notes on work order) ═══ */}
-      {(() => {
-        const diagNotes = notes.filter((n: PrintNote) => n.note_type === 'diagnostic');
-        if (diagNotes.length === 0) return null;
-        return (
+      {diagnosticNotes.length > 0 && (
           <>
             <div style={sectionHeader}>Diagnostic Notes</div>
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 10, border: cellBorder }}>
               <tbody>
-                {diagNotes.map((n: PrintNote, i: number) => (
+                {diagnosticNotes.map((n: PrintNote, i: number) => (
                   <tr key={i}>
                     <td style={{ ...labelCell, width: 80, fontSize: 8, color: '#888' }}>
                       {n.user_first_name || 'Tech'}
                       <div style={{ fontWeight: 'normal', fontSize: 8 }}>{n.created_at ? formatDateTime(n.created_at, undefined, cfgText('timezone') || undefined) : ''}</div>
                     </td>
                     <td style={{ ...valueCell, borderRight: 'none', whiteSpace: 'pre-wrap' }}>
-                      {/* WEB-S4-033: use DOMPurify (already imported) instead of a
-                          regex strip so encoded entities, nested tags, and SVG
-                          payloads are handled correctly by the DOM parser. */}
-                      {DOMPurify.sanitize(n.content || n.note || '', { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })}
+                      {safeDiagnosticNotes[i]}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </>
-        );
-      })()}
+      )}
 
       {/* ═══ TOTALS ═══ */}
       <table style={{ width: 240, marginLeft: 'auto', borderCollapse: 'collapse', marginBottom: 10, border: cellBorder }}>
@@ -769,11 +778,11 @@ function PageReceipt({ ticket, config, isReceiptType }: {
       </table>
 
       {/* ═══ TERMS & CONDITIONS ═══ */}
-      {(invoiceTerms || cfgText('receipt_terms')) && (
+      {safeRepairTerms && (
         <>
           <div style={sectionHeader}>Repair Terms & Conditions</div>
           <div style={{ border: cellBorder, borderTop: 'none', padding: '6px 8px', fontSize: 8, color: '#444', marginBottom: 10, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-            {sanitizeTerms(invoiceTerms || cfgText('receipt_terms'))}
+            {safeRepairTerms}
           </div>
         </>
       )}
@@ -813,9 +822,9 @@ function PageReceipt({ ticket, config, isReceiptType }: {
       )}
 
       {/* ═══ FOOTER ═══ */}
-      {(invoiceFooter || cfgText('receipt_footer')) ? (
+      {safeFooterText ? (
         <div style={{ textAlign: 'center', fontSize: 9, marginTop: 12, color: '#555' }}>
-          {sanitizePrintText(invoiceFooter || cfgText('receipt_footer'))}
+          {safeFooterText}
         </div>
       ) : (
         <div style={{ textAlign: 'center', fontSize: 9, marginTop: 12, color: '#555' }}>
@@ -848,7 +857,11 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
   const invoiceFooter = cfgText('invoice_footer');
   const invoiceTerms = cfgText('invoice_terms');
   const invoicePaymentTerms = cfgText('invoice_payment_terms');
-  const disclaimer = warrantyDisclaimer(config);
+  const warrantyDisclaimerText = config.warranty_disclaimer;
+  const disclaimer = useMemo(() => sanitizeTerms(warrantyDisclaimerText), [warrantyDisclaimerText]);
+  const safeInvoiceTerms = useMemo(() => sanitizeTerms(invoiceTerms), [invoiceTerms]);
+  const footerText = invoiceFooter || cfgText('receipt_footer');
+  const safeFooterText = useMemo(() => sanitizePrintText(footerText), [footerText]);
 
   const thStyle: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', borderBottom: '2px solid #333', fontSize: 12, fontWeight: 'bold' };
   const tdStyle: React.CSSProperties = { padding: '5px 8px', borderBottom: '1px solid #ddd', fontSize: 11, verticalAlign: 'top' };
@@ -966,14 +979,14 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
       )}
 
       {/* Terms */}
-      {invoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{sanitizeTerms(invoiceTerms)}</div></div>}
+      {safeInvoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{safeInvoiceTerms}</div></div>}
       {disclaimer && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Warranty Disclaimer</div><div style={{ whiteSpace: 'pre-wrap' }}>{disclaimer}</div></div>}
 
       {cfg('receipt_cfg_signature_page') && isSafeSignature(ticket.signature) && (
         <div style={{ marginBottom: 12 }}><div style={{ fontSize: 10, marginBottom: 2 }}>Customer Signature:</div><img src={ticket.signature} alt="Signature" style={{ maxWidth: 200, height: 'auto', border: '1px solid #ccc' }} /></div>
       )}
       {cfg('receipt_cfg_barcode') && ticket.order_id && <BarcodeBlock value={ticket.order_id} width={2} />}
-      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{sanitizePrintText(invoiceFooter || cfgText('receipt_footer')) || `Thank you for choosing ${storeName}!`}</div>
+      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{safeFooterText || `Thank you for choosing ${storeName}!`}</div>
     </div>
   );
 }
@@ -998,7 +1011,17 @@ function ThermalInvoiceReceipt({ invoice, config, size }: {
   const storeAddress = cfgText('store_address', '');
   const storeWebsite = cfgText('store_website', '');
   const logoUrl = cfgText('receipt_logo');
-  const disclaimer = warrantyDisclaimer(config);
+  const warrantyDisclaimerText = config.warranty_disclaimer;
+  const disclaimer = useMemo(() => sanitizeTerms(warrantyDisclaimerText), [warrantyDisclaimerText]);
+  const receiptThermalFooter = config.receipt_thermal_footer;
+  const safeReceiptThermalFooter = useMemo(
+    () => sanitizePrintText(receiptThermalFooter),
+    [receiptThermalFooter],
+  );
+  const safeLineItemNotes = useMemo(
+    () => new Map(lineItems.map((item) => [item.id, sanitizePrintText(item.notes)])),
+    [lineItems],
+  );
 
   const s: React.CSSProperties = { fontFamily: '"Courier New", "Courier", "Lucida Console", "Liberation Mono", "DejaVu Sans Mono", monospace', fontSize: size === 'receipt58' ? 9 : 10, lineHeight: 1.3, color: '#000' };
   const dash: React.CSSProperties = { borderTop: '1px dashed #000', margin: '4px 0' };
@@ -1044,7 +1067,7 @@ function ThermalInvoiceReceipt({ invoice, config, size }: {
           </div>
           <div style={{ fontSize: '0.85em' }}>
             {item.quantity} x {money(item.unit_price)}
-            {item.notes ? ` - ${sanitizePrintText(item.notes)}` : ''}
+            {safeLineItemNotes.get(item.id) ? ` - ${safeLineItemNotes.get(item.id)}` : ''}
           </div>
         </div>
       ))}
@@ -1073,10 +1096,10 @@ function ThermalInvoiceReceipt({ invoice, config, size }: {
           <div style={{ fontSize: '0.8em', whiteSpace: 'pre-wrap' }}>{disclaimer}</div>
         </>
       )}
-      {config.receipt_thermal_footer ? (
+      {safeReceiptThermalFooter ? (
         <>
           <div style={dash} />
-          <div style={{ ...center, fontSize: '0.85em' }}>{sanitizePrintText(config.receipt_thermal_footer)}</div>
+          <div style={{ ...center, fontSize: '0.85em' }}>{safeReceiptThermalFooter}</div>
         </>
       ) : (
         <>
@@ -1104,7 +1127,16 @@ function PageInvoicePrint({ invoice, config }: { invoice: InvoiceDetail; config:
   const invoiceFooter = cfgText('invoice_footer');
   const invoiceTerms = cfgText('invoice_terms');
   const invoicePaymentTerms = cfgText('invoice_payment_terms');
-  const disclaimer = warrantyDisclaimer(config);
+  const warrantyDisclaimerText = config.warranty_disclaimer;
+  const disclaimer = useMemo(() => sanitizeTerms(warrantyDisclaimerText), [warrantyDisclaimerText]);
+  const safeInvoiceTerms = useMemo(() => sanitizeTerms(invoiceTerms), [invoiceTerms]);
+  const safeInvoiceNotes = useMemo(() => sanitizePrintText(invoice.notes), [invoice.notes]);
+  const footerText = invoiceFooter || cfgText('receipt_footer');
+  const safeFooterText = useMemo(() => sanitizePrintText(footerText), [footerText]);
+  const safeLineItemNotes = useMemo(
+    () => new Map(lineItems.map((item) => [item.id, sanitizePrintText(item.notes)])),
+    [lineItems],
+  );
 
   const thStyle: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', borderBottom: '2px solid #333', fontSize: 12, fontWeight: 'bold' };
   const tdStyle: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #ddd', fontSize: 11, verticalAlign: 'top' };
@@ -1167,7 +1199,11 @@ function PageInvoicePrint({ invoice, config }: { invoice: InvoiceDetail; config:
               <td style={tdStyle}>
                 <div style={{ fontWeight: 'bold' }}>{item.description}</div>
                 {item.item_name && <div style={{ fontSize: 10, color: '#555' }}>Item: {item.item_name}{item.sku ? ` (${item.sku})` : ''}</div>}
-                {item.notes && <div style={{ fontSize: 10, color: '#555', whiteSpace: 'pre-wrap' }}>{sanitizePrintText(item.notes)}</div>}
+                {safeLineItemNotes.get(item.id) && (
+                  <div style={{ fontSize: 10, color: '#555', whiteSpace: 'pre-wrap' }}>
+                    {safeLineItemNotes.get(item.id)}
+                  </div>
+                )}
               </td>
               <td style={tdRight}>{item.quantity}</td>
               <td style={tdRight}>{money(item.unit_price)}</td>
@@ -1201,10 +1237,10 @@ function PageInvoicePrint({ invoice, config }: { invoice: InvoiceDetail; config:
         </div>
       )}
 
-      {invoice.notes && <div style={{ marginBottom: 12, fontSize: 10, whiteSpace: 'pre-wrap' }}>{sanitizePrintText(invoice.notes)}</div>}
-      {invoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{sanitizeTerms(invoiceTerms)}</div></div>}
+      {safeInvoiceNotes && <div style={{ marginBottom: 12, fontSize: 10, whiteSpace: 'pre-wrap' }}>{safeInvoiceNotes}</div>}
+      {safeInvoiceTerms && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Terms & Conditions</div><div style={{ whiteSpace: 'pre-wrap' }}>{safeInvoiceTerms}</div></div>}
       {disclaimer && <div style={{ marginBottom: 12, fontSize: 9, color: '#555', borderTop: '1px solid #ccc', paddingTop: 8 }}><div style={{ fontWeight: 'bold', marginBottom: 2 }}>Warranty Disclaimer</div><div style={{ whiteSpace: 'pre-wrap' }}>{disclaimer}</div></div>}
-      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{sanitizePrintText(invoiceFooter || cfgText('receipt_footer')) || `Thank you for choosing ${storeName}!`}</div>
+      <div style={{ textAlign: 'center', fontSize: 10, marginTop: 16, color: '#555' }}>{safeFooterText || `Thank you for choosing ${storeName}!`}</div>
     </div>
   );
 }

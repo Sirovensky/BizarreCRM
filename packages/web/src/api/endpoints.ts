@@ -85,6 +85,8 @@ export const authApi = {
     api.post<{ success: boolean; data: { challengeToken: string; message?: string }; message?: string }>('/auth/login/set-password', { challengeToken, password }, { skipGlobal500Toast: true } as object),
   setup2fa: (challengeToken: string) =>
     api.post<{ success: boolean; data: { qr: string; secret: string; manualEntry: string; challengeToken?: string }; message?: string }>('/auth/login/2fa-setup', { challengeToken }, { skipGlobal500Toast: true } as object),
+  cancel2faSetup: (challengeToken: string) =>
+    api.post<{ success: boolean; data: { cancelled: boolean }; message?: string }>('/auth/login/2fa-cancel', { challengeToken }, { skipGlobal500Toast: true } as object),
   verify2fa: (challengeToken: string, code: string, trustDevice?: boolean) =>
     api.post<{ success: boolean; data: AuthTokens; message?: string }>('/auth/login/2fa-verify', { challengeToken, code, trustDevice }, { skipGlobal500Toast: true } as object),
   logout: () => api.post('/auth/logout'),

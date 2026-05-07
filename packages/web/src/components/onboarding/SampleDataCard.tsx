@@ -70,48 +70,106 @@ export function SampleDataCard({ state, onChanged }: SampleDataCardProps) {
     loadMutation.mutate();
   }, [loadMutation]);
 
-  const handleRemove = useCallback(() => {
-    if (!confirmingRemoval) {
-      setConfirmingRemoval(true);
-      return;
-    }
+  const handleRequestRemove = useCallback(() => {
+    setConfirmingRemoval(true);
+  }, []);
+
+  const handleCancelRemove = useCallback(() => {
+    setConfirmingRemoval(false);
+  }, []);
+
+  const handleConfirmRemove = useCallback(() => {
     removeMutation.mutate();
-  }, [confirmingRemoval, removeMutation]);
+  }, [removeMutation]);
 
   // Loaded state: show "Remove" button.
   if (state.sample_data_loaded) {
     const counts = state.sample_data_counts;
     return (
-      <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20">
+      <div
+        className={`mb-4 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+          confirmingRemoval
+            ? 'border-error-200 bg-error-50 dark:border-error-900 dark:bg-error-950/40'
+            : 'border-amber-200 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/20'
+        }`}
+      >
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-            <CheckCircle2 className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
+          <div
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+              confirmingRemoval ? 'bg-error-100 dark:bg-error-900/50' : 'bg-amber-100 dark:bg-amber-900/40'
+            }`}
+          >
+            {confirmingRemoval ? (
+              <Trash2 className="h-4.5 w-4.5 text-error-600 dark:text-error-400" />
+            ) : (
+              <CheckCircle2 className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" />
+            )}
           </div>
           <div>
-            <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-              Sample data is active
+            <p
+              className={`text-sm font-semibold ${
+                confirmingRemoval ? 'text-error-900 dark:text-error-100' : 'text-amber-900 dark:text-amber-100'
+              }`}
+            >
+              {confirmingRemoval ? 'Remove sample data?' : 'Sample data is active'}
             </p>
-            <p className="text-xs text-amber-700 dark:text-amber-300">
-              {counts
-                ? `${counts.customers} customers, ${counts.tickets} tickets, ${counts.invoices} invoices tagged [Sample].`
-                : 'Demo rows are loaded and tagged [Sample].'}
-              {' '}Remove them before real customers start arriving.
+            <p
+              className={`text-xs ${
+                confirmingRemoval ? 'text-error-700 dark:text-error-300' : 'text-amber-700 dark:text-amber-300'
+              }`}
+            >
+              {confirmingRemoval
+                ? 'This permanently deletes the demo rows tagged [Sample]. Real customer data stays untouched.'
+                : counts
+                  ? `${counts.customers} customers, ${counts.tickets} tickets, ${counts.invoices} invoices tagged [Sample].`
+                  : 'Demo rows are loaded and tagged [Sample].'}
+              {!confirmingRemoval && ' Remove them before real customers start arriving.'}
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleRemove}
-          disabled={removeMutation.isPending}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
-        >
-          {removeMutation.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Trash2 className="h-3.5 w-3.5" />
-          )}
-          {confirmingRemoval ? 'Click again to confirm' : 'Remove sample data'}
-        </button>
+        {confirmingRemoval ? (
+          <div
+            className="flex shrink-0 flex-wrap items-center justify-end gap-2"
+            role="group"
+            aria-label="Confirm sample data removal"
+          >
+            <button
+              type="button"
+              onClick={handleConfirmRemove}
+              disabled={removeMutation.isPending}
+              className="flex items-center gap-1.5 rounded-lg bg-error-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-error-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:bg-error-500 dark:hover:bg-error-400"
+            >
+              {removeMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Confirm removal
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelRemove}
+              disabled={removeMutation.isPending}
+              className="rounded-lg border border-surface-300 bg-white px-3 py-2 text-xs font-semibold text-surface-700 transition-colors hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200 dark:hover:bg-surface-800"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleRequestRemove}
+            disabled={removeMutation.isPending}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50"
+          >
+            {removeMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+            Remove sample data
+          </button>
+        )}
       </div>
     );
   }

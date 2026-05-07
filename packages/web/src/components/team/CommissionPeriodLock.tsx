@@ -14,6 +14,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen, Plus, Loader2, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { confirm } from '@/stores/confirmStore';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface PayrollPeriod {
   id: number;
@@ -31,6 +33,9 @@ export function CommissionPeriodLock() {
   const [newName, setNewName] = useState('');
   const [newStart, setNewStart] = useState('');
   const [newEnd, setNewEnd] = useState('');
+  const newPeriodDialogRef = useFocusTrap<HTMLDivElement>(showNew, {
+    initialFocusSelector: 'input',
+  });
 
   const { data } = useQuery({
     queryKey: ['team', 'payroll', 'periods'],
@@ -122,6 +127,18 @@ export function CommissionPeriodLock() {
     }
   }
 
+  async function handleLockPeriod(period: PayrollPeriod) {
+    const ok = await confirm(
+      `Lock commission period "${period.name}" (${period.start_date} to ${period.end_date})? Commission edits in this range will be blocked after locking.`,
+      {
+        title: 'Lock commission period?',
+        confirmLabel: 'Lock period',
+        danger: true,
+      },
+    );
+    if (ok) lockMut.mutate(period.id);
+  }
+
   return (
     <div className="bg-white dark:bg-surface-800 rounded-lg shadow border dark:border-surface-700 p-4">
       <div className="flex items-center justify-between mb-3">
@@ -163,7 +180,7 @@ export function CommissionPeriodLock() {
                   <button
                     className="px-2 py-1 bg-amber-600 text-white rounded text-xs inline-flex items-center hover:bg-amber-700"
                     disabled={lockMut.isPending}
-                    onClick={() => lockMut.mutate(p.id)}
+                    onClick={() => handleLockPeriod(p)}
                   >
                     {lockMut.isPending ? (
                       <Loader2 className="w-3 h-3 animate-spin mr-1" />
@@ -182,6 +199,7 @@ export function CommissionPeriodLock() {
       {showNew && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNew(false)}>
           <div
+            ref={newPeriodDialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="new-payroll-period-title"

@@ -65,41 +65,48 @@ export function WizardBreadcrumb(props: WizardBreadcrumbProps): JSX.Element {
   }
 
   return (
-    <div className="inline-flex flex-wrap items-center justify-center gap-3 rounded-full border border-surface-200 bg-white px-[18px] py-[10px] text-[13px] shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)] dark:border-surface-700 dark:bg-surface-800">
-      {resolvedPrev ? (
-        <>
-          <span className="hidden items-center gap-1 font-medium text-surface-500 sm:inline-flex dark:text-surface-400">
-            <ChevronLeft className="h-3 w-3" aria-hidden="true" />
-            {resolvedPrev}
-          </span>
-          <span
-            className="hidden text-surface-300 sm:inline dark:text-surface-600"
-            aria-hidden="true"
-          >
-            ·
-          </span>
-        </>
-      ) : null}
+    <nav aria-label="Setup wizard progress" className="inline-flex">
+      <ol className="m-0 inline-flex list-none flex-wrap items-center justify-center gap-3 rounded-full border border-surface-200 bg-white px-[18px] py-[10px] text-[13px] shadow-[0_2px_8px_-4px_rgba(0,0,0,0.08)] dark:border-surface-700 dark:bg-surface-800">
+        {resolvedPrev ? (
+          <li className="hidden items-center gap-3 sm:inline-flex">
+            <span className="inline-flex items-center gap-1 font-medium text-surface-500 dark:text-surface-400">
+              <ChevronLeft className="h-3 w-3" aria-hidden="true" />
+              {resolvedPrev}
+            </span>
+            <span
+              className="text-surface-300 dark:text-surface-600"
+              aria-hidden="true"
+            >
+              ·
+            </span>
+          </li>
+        ) : null}
 
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3.5 py-1 text-[14px] font-bold text-primary-950">
-        {resolvedCurrent}
-      </span>
-
-      {resolvedNext ? (
-        <>
+        <li className="inline-flex">
           <span
-            className="hidden text-surface-300 sm:inline dark:text-surface-600"
-            aria-hidden="true"
+            aria-current="step"
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3.5 py-1 text-[14px] font-bold text-primary-950"
           >
-            ·
+            {resolvedCurrent}
           </span>
-          <span className="hidden items-center gap-1 font-medium text-surface-500 sm:inline-flex dark:text-surface-400">
-            {resolvedNext}
-            <ChevronRight className="h-3 w-3" aria-hidden="true" />
-          </span>
-        </>
-      ) : null}
-    </div>
+        </li>
+
+        {resolvedNext ? (
+          <li className="hidden items-center gap-3 sm:inline-flex">
+            <span
+              className="text-surface-300 dark:text-surface-600"
+              aria-hidden="true"
+            >
+              ·
+            </span>
+            <span className="inline-flex items-center gap-1 font-medium text-surface-500 dark:text-surface-400">
+              {resolvedNext}
+              <ChevronRight className="h-3 w-3" aria-hidden="true" />
+            </span>
+          </li>
+        ) : null}
+      </ol>
+    </nav>
   );
 }
 

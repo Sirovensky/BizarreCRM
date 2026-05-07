@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Smartphone, Hash, DollarSign, Wrench } from 'lucide-react';
 import { reportApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
-import { LoadingState, ErrorState, EmptyState, SummaryCard } from './ReportHelpers';
+import { EmptyState, SummaryCard, getReportQueryState } from './ReportHelpers';
 
 interface DeviceModelsData {
   rows: { model: string; repair_count: number; avg_ticket_total: number; total_parts_cost: number }[];
@@ -20,15 +20,16 @@ export function DeviceModelsTab({ from, to }: { from: string; to: string }) {
     },
   });
 
-  if (isLoading) return <LoadingState />;
-  const errMsg: string =
-    (error as any)?.response?.data?.message ??
-    (error as any)?.response?.data?.error ??
-    (error as Error)?.message ??
-    'Failed to load device model report';
-  if (isError || !data) return <ErrorState message={errMsg} />;
+  const reportState = getReportQueryState({
+    data,
+    error,
+    isError,
+    isLoading,
+    fallbackError: 'Failed to load device model report',
+  });
+  if (reportState.status !== 'ready') return reportState.view;
 
-  const { rows } = data;
+  const { rows } = reportState.data;
   const totalRepairs = rows.reduce((sum, r) => sum + r.repair_count, 0);
   const totalPartsCost = rows.reduce((sum, r) => sum + r.total_parts_cost, 0);
   const maxRepairs = useMemo(() => Math.max(...rows.map((x) => x.repair_count), 1), [rows]);

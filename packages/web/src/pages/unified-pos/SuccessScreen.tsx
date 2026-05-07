@@ -6,6 +6,7 @@ import { useUnifiedPosStore } from './store';
 import { useQuery } from '@tanstack/react-query';
 import { serverInfoApi, smsApi, notificationApi, ticketApi, settingsApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
+import { useUnifiedPosActionVisibility } from './permissions';
 // FA-L4: QrReceiptCode on the POS success screen lets the customer scan the
 // receipt URL from the counter. It's a secondary channel — email/SMS remain
 // the primary delivery — but works offline for walk-up customers.
@@ -18,6 +19,7 @@ export function SuccessScreen() {
   const { showSuccess, resetAll } = useUnifiedPosStore();
   const [smsSending, setSmsSending] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
+  const { canRefundOrVoidInvoice } = useUnifiedPosActionVisibility();
 
   // Derive IDs early (before hooks) so they can be passed to enabled checks.
   // These are safe to compute unconditionally because they only read showSuccess.
@@ -194,7 +196,7 @@ export function SuccessScreen() {
   // AUDIT-WEB-002: build QR URL only when a scoped token is available.
   // Never fall back to the full staff bearer JWT.
   const qrUrl = serverUrl && ticketId && firstDeviceId && scopedToken
-    ? `${serverUrl}/photo-capture/${ticketId}/${firstDeviceId}?t=${scopedToken}`
+    ? `${serverUrl}/photo-capture/${ticketId}/${firstDeviceId}#t=${encodeURIComponent(scopedToken)}`
     : null;
 
   // ─── Ticket Created Success ────────────────────────────────────────
@@ -446,7 +448,7 @@ export function SuccessScreen() {
         {/* WEB-UIUX-613: Refund / Void — navigates to the invoice detail page
             where the existing Credit Note flow lives. Hidden when card declined
             (no successful charge to refund) and when invoiceId is unavailable. */}
-        {invoiceId && !cardDeclined && (
+        {invoiceId && !cardDeclined && canRefundOrVoidInvoice && (
           <button
             onClick={handleViewInvoice}
             className="btn btn-md border border-red-300 !px-5 text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"

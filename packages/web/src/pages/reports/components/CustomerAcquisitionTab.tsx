@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from 'recharts';
 import { reportApi } from '@/api/endpoints';
-import { LoadingState, ErrorState, EmptyState, SummaryCard } from './ReportHelpers';
+import { EmptyState, SummaryCard, getReportQueryState } from './ReportHelpers';
 import { CHART_PALETTE, CHART_TOOLTIP_STYLE, CHART_AXIS_TICK_FILL } from './chartColors';
 
 const CHART_COLORS = CHART_PALETTE;
@@ -25,15 +25,16 @@ export function CustomerAcquisitionTab({ from, to }: { from: string; to: string 
     },
   });
 
-  if (isLoading) return <LoadingState />;
-  const errMsg: string =
-    (error as any)?.response?.data?.message ??
-    (error as any)?.response?.data?.error ??
-    (error as Error)?.message ??
-    'Failed to load customer acquisition report';
-  if (isError || !data) return <ErrorState message={errMsg} />;
+  const reportState = getReportQueryState({
+    data,
+    error,
+    isError,
+    isLoading,
+    fallbackError: 'Failed to load customer acquisition report',
+  });
+  if (reportState.status !== 'ready') return reportState.view;
 
-  const { rows, monthly_totals } = data;
+  const { rows, monthly_totals } = reportState.data;
   const totalNew = monthly_totals.reduce((sum, r) => sum + r.new_customers, 0);
 
   // Aggregate by source for the source breakdown table

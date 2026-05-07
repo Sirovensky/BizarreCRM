@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Cpu, Hash, DollarSign } from 'lucide-react';
 import { reportApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
-import { LoadingState, ErrorState, EmptyState, SummaryCard } from './ReportHelpers';
+import { EmptyState, SummaryCard, getReportQueryState } from './ReportHelpers';
 
 interface PartsUsageData {
   rows: {
@@ -26,15 +26,16 @@ export function PartsUsageTab({ from, to }: { from: string; to: string }) {
     },
   });
 
-  if (isLoading) return <LoadingState />;
-  const errMsg: string =
-    (error as any)?.response?.data?.message ??
-    (error as any)?.response?.data?.error ??
-    (error as Error)?.message ??
-    'Failed to load parts usage report';
-  if (isError || !data) return <ErrorState message={errMsg} />;
+  const reportState = getReportQueryState({
+    data,
+    error,
+    isError,
+    isLoading,
+    fallbackError: 'Failed to load parts usage report',
+  });
+  if (reportState.status !== 'ready') return reportState.view;
 
-  const { rows } = data;
+  const { rows } = reportState.data;
   const totalQtyUsed = rows.reduce((sum, r) => sum + r.total_qty_used, 0);
   const totalCost = rows.reduce((sum, r) => sum + r.total_cost, 0);
 

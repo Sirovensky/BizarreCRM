@@ -46,6 +46,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
   const [enrolling, setEnrolling] = useState(true);
   const [enrollError, setEnrollError] = useState<string>('');
   const [verifying, setVerifying] = useState(false);
+  const [skipping, setSkipping] = useState(false);
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null);
   const [savedAck, setSavedAck] = useState(false);
 
@@ -122,11 +123,21 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
     }
   };
 
-  const handleSkip = () => {
-    if (onSkip) {
-      onSkip();
-    } else {
-      onNext();
+  const handleSkip = async () => {
+    if (skipping) return;
+    setSkipping(true);
+    try {
+      if (challengeToken) {
+        await authApi.cancel2faSetup(challengeToken);
+      }
+    } catch {
+      toast('2FA setup will expire shortly if it could not be cancelled now.', { icon: 'i' });
+    } finally {
+      if (onSkip) {
+        onSkip();
+      } else {
+        onNext();
+      }
     }
   };
 
@@ -339,9 +350,10 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
             <button
               type="button"
               onClick={handleSkip}
-              className="btn btn-lg text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline dark:text-surface-400 dark:hover:text-surface-200"
+              disabled={skipping || verifying}
+              className="btn btn-lg text-sm font-medium text-surface-500 hover:text-surface-800 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-200"
             >
-              Skip 2FA for now
+              {skipping ? 'Skipping 2FA…' : 'Skip 2FA for now'}
             </button>
             <p className="max-w-xs text-xs text-amber-700 sm:text-right dark:text-amber-400">
               We strongly recommend enabling 2FA before using your shop in production.

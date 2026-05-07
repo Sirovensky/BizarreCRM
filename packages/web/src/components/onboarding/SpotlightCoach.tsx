@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { cn } from '@/utils/cn';
 import {
   SPOTLIGHT_FLOWS,
@@ -31,6 +32,9 @@ import type { SpotlightStep, TutorialFlowId } from './tutorialFlows';
 const ALL_DISMISSED_KEY = 'tutorial.all.dismissed';
 const FLOW_DISMISSED_PREFIX = 'tutorial.';
 const TARGET_FIND_TIMEOUT_MS = 300;
+const CARD_MAX_WIDTH = 320;
+const CARD_EST_HEIGHT = 240;
+const CARD_PADDING = 12;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -139,14 +143,14 @@ function TooltipCard({
   // First click shows inline confirm; second click (or Enter) commits.
   const [confirmingSkipAll, setConfirmingSkipAll] = useState(false);
 
-  const CARD_WIDTH = 320;
-  const CARD_EST_HEIGHT = 240;
-  const PADDING = 12;
-
   // Measure the card's actual rendered height so flip-above positioning is
   // accurate even when step body is long (fixes ~80-100px mis-placement).
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useFocusTrap<HTMLDivElement>(true, {
+    initialFocusSelector: '[data-spotlight-primary-action]',
+  });
   const [cardHeight, setCardHeight] = useState(CARD_EST_HEIGHT);
+  const viewportWidth = window.innerWidth;
+  const cardWidth = Math.min(CARD_MAX_WIDTH, Math.max(0, viewportWidth - CARD_PADDING * 2));
 
   useLayoutEffect(() => {
     const el = cardRef.current;
@@ -168,26 +172,37 @@ function TooltipCard({
 
   if (isFallback || !targetRect) {
     // Floating fallback — bottom right
-    style = { position: 'fixed', bottom: 24, right: 24, width: CARD_WIDTH };
+    style = {
+      position: 'fixed',
+      bottom: CARD_PADDING * 2,
+      right: CARD_PADDING,
+      width: cardWidth,
+      maxWidth: `calc(100vw - ${CARD_PADDING * 2}px)`,
+    };
   } else {
     // Prefer below the target; flip above if too close to bottom
     const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
     const spaceBelow = viewportHeight - (targetRect.top + targetRect.height);
-    const showBelow = spaceBelow >= cardHeight + PADDING;
+    const showBelow = spaceBelow >= cardHeight + CARD_PADDING;
 
     const top = showBelow
-      ? targetRect.top + targetRect.height + PADDING
-      : targetRect.top - cardHeight - PADDING;
+      ? targetRect.top + targetRect.height + CARD_PADDING
+      : targetRect.top - cardHeight - CARD_PADDING;
 
     // Align left edge with target, but clamp to viewport
     const idealLeft = targetRect.left;
     const left = Math.min(
-      Math.max(PADDING, idealLeft),
-      viewportWidth - CARD_WIDTH - PADDING,
+      Math.max(CARD_PADDING, idealLeft),
+      viewportWidth - cardWidth - CARD_PADDING,
     );
 
-    style = { position: 'fixed', top, left, width: CARD_WIDTH };
+    style = {
+      position: 'fixed',
+      top,
+      left,
+      width: cardWidth,
+      maxWidth: `calc(100vw - ${CARD_PADDING * 2}px)`,
+    };
   }
 
   return (
@@ -196,6 +211,7 @@ function TooltipCard({
       className="z-[9999] rounded-2xl border border-primary-200 bg-white shadow-2xl dark:border-primary-500/40 dark:bg-surface-900"
       style={style}
       role="dialog"
+      aria-modal="true"
       aria-live="polite"
       aria-label={`Tutorial: ${step.title}`}
       data-testid={`spotlight-coach-card`}
@@ -218,6 +234,7 @@ function TooltipCard({
         <button
           type="button"
           onClick={onSkipFlow}
+          data-spotlight-primary-action
           className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200"
           title="Skip tutorial"
           aria-label="Skip tutorial"
@@ -237,9 +254,9 @@ function TooltipCard({
       </div>
 
       {/* Progress + actions */}
-      <div className="flex items-center justify-between gap-2 border-t border-surface-100 px-4 py-3 dark:border-surface-800">
+      <div className="flex flex-col gap-3 border-t border-surface-100 px-4 py-3 dark:border-surface-800 sm:flex-row sm:items-center sm:justify-between">
         {/* Dots */}
-        <div className="flex gap-1" aria-hidden="true">
+        <div className="flex shrink-0 gap-1" aria-hidden="true">
           {Array.from({ length: totalSteps }, (_, i) => (
             <span
               key={i}
@@ -256,7 +273,7 @@ function TooltipCard({
         </div>
 
         {/* Buttons — tab order: skip-step → skip-tutorial → skip-all */}
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-end gap-1">
           <button
             type="button"
             onClick={onSkipStep}
@@ -275,8 +292,8 @@ function TooltipCard({
           </button>
           {confirmingSkipAll ? (
             /* Inline confirm — requires deliberate second action */
-            <span className="flex items-center gap-1">
-              <span className="text-xs text-surface-500 dark:text-surface-400">
+            <span className="flex flex-wrap items-center justify-end gap-1">
+              <span className="w-full text-right text-xs text-surface-500 dark:text-surface-400 sm:w-auto">
                 Skip all future tutorials?
               </span>
               <button
@@ -481,15 +498,25 @@ export function SpotlightCoach() {
     })();
   }, [navigate]);
 
-  // ── Keyboard: Escape = skip flow ─────────────────────────────────────────────
+  const handlePauseFlow = useCallback(() => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('tutorial');
+    next.delete('step');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // ── Keyboard: Escape = pause flow without permanent dismissal ───────────────
   useEffect(() => {
     if (!flow || dismissed) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleSkipFlow();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        handlePauseFlow();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [flow, dismissed, handleSkipFlow]);
+  }, [flow, dismissed, handlePauseFlow]);
 
   // ── Guard: render nothing ─────────────────────────────────────────────────────
   if (!flow || !step || dismissed) return null;

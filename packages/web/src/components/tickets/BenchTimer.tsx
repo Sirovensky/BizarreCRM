@@ -109,12 +109,13 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
     elapsed_seconds: number;
     paused: boolean;
   }
-  const { data: byTicketData } = useQuery({
+  const { data: byTicketData, refetch: refetchByTicket } = useQuery({
     queryKey: ['bench-timer-by-ticket', ticketId],
     queryFn: () => benchApi.timer.byTicket(ticketId),
     enabled,
     staleTime: 10_000,
     refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
   });
   const ticketTimers: ByTicketTimer[] = byTicketData?.data?.data?.timers ?? [];
 
@@ -156,9 +157,27 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
 
     const start = Date.now();
     const anchor = currentTimer.elapsed_seconds ?? 0;
-    const interval = window.setInterval(() => {
+    let interval: number | null = null;
+    let cancelled = false;
+
+    const clearTick = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const tick = () => {
       setLocalElapsed(anchor + Math.floor((Date.now() - start) / 1000));
-    }, 1000);
+    };
+
+    const startTick = () => {
+      if (document.visibilityState !== 'visible' || interval !== null) return;
+      tick();
+      interval = window.setInterval(tick, 1000);
+    };
+
+    startTick();
 
     // WEB-FO-014 (Fixer-426B 2026-04-26): re-anchor the client-side counter on
     // visibility resume. When the laptop wakes from sleep the `start` anchor is
@@ -171,19 +190,32 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
     // refetch so the stale-anchor jump is never visible. The interval is cleared
     // immediately on wake; display stays at the pre-sleep value until the server
     // responds and this effect re-runs with the authoritative elapsed_seconds.
-    const handleVisible = () => {
+    //
+    // WEB-UIUX-280: park the interval while hidden so background tabs don't wake
+    // every second. On visible, refetch the authoritative elapsed time and restart
+    // from the wall-clock anchor as a fallback if the refetch returns unchanged.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        clearTick();
+        return;
+      }
+
       if (document.visibilityState === 'visible') {
-        // Freeze counter — clear interval so the stale anchor can't tick.
-        window.clearInterval(interval);
+        clearTick();
         setWakeRefetching(true);
-        refetch();
+        void refetch().finally(() => {
+          if (cancelled || document.visibilityState !== 'visible') return;
+          setWakeRefetching(false);
+          startTick();
+        });
       }
     };
-    document.addEventListener('visibilitychange', handleVisible);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisible);
+      cancelled = true;
+      clearTick();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [isOurs, currentTimer?.id, currentTimer?.paused, currentTimer?.elapsed_seconds, refetch]);
 
@@ -198,11 +230,50 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
     setOtherElapsed(otherActiveTimer.elapsed_seconds ?? 0);
     const start = Date.now();
     const anchor = otherActiveTimer.elapsed_seconds ?? 0;
-    const interval = window.setInterval(() => {
+    let interval: number | null = null;
+    let cancelled = false;
+
+    const clearTick = () => {
+      if (interval !== null) {
+        window.clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const tick = () => {
       setOtherElapsed(anchor + Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, [otherActiveTimer?.id, otherActiveTimer?.elapsed_seconds]);
+    };
+
+    const startTick = () => {
+      if (document.visibilityState !== 'visible' || interval !== null) return;
+      tick();
+      interval = window.setInterval(tick, 1000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        clearTick();
+        return;
+      }
+
+      if (document.visibilityState === 'visible') {
+        clearTick();
+        void refetchByTicket().finally(() => {
+          if (cancelled || document.visibilityState !== 'visible') return;
+          startTick();
+        });
+      }
+    };
+
+    startTick();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      clearTick();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [otherActiveTimer?.id, otherActiveTimer?.elapsed_seconds, refetchByTicket]);
 
   const laborCost = useMemo(() => {
     const rate = currentTimer?.labor_rate_cents ?? laborRateCents;

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
 import type { User } from '@bizarre-crm/shared';
-import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
+import { api, hasCsrfTokenCookie, LOGOUT_REQUIRED_EVENT } from '../api/client';
 
 // @audit-fixed: dispatched on every successful logout so listeners (main.tsx
 // QueryClient + planStore + WS store) can wipe per-user state. Without this,
@@ -161,8 +161,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   checkAuth: async () => {
     clearLegacyAccessToken();
-    const hasRefreshSession = typeof document !== 'undefined'
-      && /(?:^|;\s*)csrf_token=/.test(document.cookie);
+    const hasRefreshSession = hasCsrfTokenCookie();
     if (!hasRefreshSession) {
       set({ user: null, isLoading: false, isAuthenticated: false });
       return;

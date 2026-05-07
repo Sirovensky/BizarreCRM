@@ -12,6 +12,7 @@ import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { initCurrencyFromSettings } from '@/utils/format';
 import { applyPrimaryAccent } from '@/utils/themeAccent';
+import { applyDocumentLanguage, getBrowserDocumentLanguage } from '@/utils/documentLanguage';
 import { Menu, AlertTriangle, X } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
@@ -28,6 +29,11 @@ import { Button } from '@/components/shared/Button';
 interface ServerConfigPayload {
   _node_env?: string;
   store_currency?: string;
+  [key: string]: unknown;
+}
+
+interface UserPreferencesPayload {
+  language?: unknown;
   [key: string]: unknown;
 }
 
@@ -76,6 +82,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // response shape" — most common bug).
   const isDev = configData?.data?.data?._node_env !== 'production';
 
+  const { data: preferencesData } = useQuery<{ data?: { data?: UserPreferencesPayload } }>({
+    queryKey: ['settings', 'preferences', 'document-language'],
+    queryFn: () => settingsApi.getPreferences(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+  const preferredDocumentLanguage = preferencesData?.data?.data?.language;
+
   // WEB-UIUX-478: gate WebSocket activation on settings-config-env success so
   // the WS handshake never races against an auth-token overwrite from config.
   useWebSocket({ enabled: configLoaded });
@@ -86,6 +100,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (currency) initCurrencyFromSettings(currency);
     applyPrimaryAccent(configData?.data?.data?.theme_primary_color as string | undefined);
   }, [configData]);
+
+  useEffect(() => {
+    applyDocumentLanguage(
+      preferredDocumentLanguage,
+      getBrowserDocumentLanguage(),
+    );
+  }, [preferredDocumentLanguage]);
 
   // Close mobile sidebar on route change
   useEffect(() => {

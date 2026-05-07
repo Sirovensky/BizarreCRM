@@ -600,7 +600,7 @@ export function CustomerListPage() {
           <button onClick={() => setShowImportModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Upload className="h-4 w-4" /> Import
           </button>
-          <Link to="/customers/new" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors shadow-sm">
+          <Link to="/customers/new" aria-keyshortcuts="F3" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors shadow-sm">
             <Plus className="h-4 w-4" /> New Customer
           </Link>
         </div>
@@ -1064,6 +1064,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
       <div className="mt-4 flex items-center gap-3">
         <Link
           to="/customers/new"
+          aria-keyshortcuts="F3"
           className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors"
         >
           <Plus className="h-4 w-4" /> Add your first customer

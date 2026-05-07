@@ -403,7 +403,8 @@ export function StepRepairPricing({
         </h1>
         <p className="mx-auto mt-2 max-w-2xl text-sm text-surface-500 dark:text-surface-400">
           Pick how you want to price labor. Tier-by-age seeds the server pricing matrix now;
-          the per-device matrix and auto-margin controls are preview surfaces for Settings.
+          per-device matrix edits and auto-margin rules save here too, using the same live pricing
+          model available later in Settings.
         </p>
       </div>
 
