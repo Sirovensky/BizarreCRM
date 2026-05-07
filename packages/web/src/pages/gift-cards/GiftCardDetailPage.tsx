@@ -176,17 +176,18 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
           Maximum reload is {formatCurrencyShared(RELOAD_MAX_AMOUNT)}. Reloads of {formatCurrencyShared(RELOAD_CONFIRM_THRESHOLD)} or more require confirmation.
           {amountError && <span className="mt-1 block text-red-600 dark:text-red-400">{amountError}</span>}
         </p>
-        <div className="flex justify-end gap-3">
+        {/* WEB-UIUX-1447: full-width buttons on mobile, row on sm+ */}
+        <div className="flex flex-col sm:flex-row sm:justify-end gap-2 sm:gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
+            className="w-full sm:w-auto px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
           >
             Cancel
           </button>
           <button
             onClick={handleReload}
             disabled={reloadMutation.isPending || !amount}
-            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {reloadMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Reload
@@ -279,9 +280,11 @@ export function GiftCardDetailPage() {
                 <span className="font-mono text-sm text-surface-700 dark:text-surface-300">
                   {showCode ? card.code : `****${card.code.slice(-4)}`}
                 </span>
+                {/* WEB-UIUX-1451: aria-label for screen readers on eye-toggle */}
                 <button
                   onClick={() => setShowCode((v) => !v)}
                   aria-pressed={showCode}
+                  aria-label={showCode ? 'Hide code' : 'Show full code'}
                   className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
                   title={showCode ? 'Hide code' : 'Show full code'}
                 >

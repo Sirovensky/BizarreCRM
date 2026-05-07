@@ -86,11 +86,14 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
         <div className="grid grid-cols-2 gap-3">
           <SummaryCard label="Open Repairs" value={dashboard?.open_tickets ?? 0} color="blue" />
           <SummaryCard label="Total Repairs" value={dashboard?.total_tickets ?? 0} color="gray" />
-          {(dashboard?.pending_estimates ?? 0) > 0 && (
-            <button onClick={onViewEstimates} className="text-left">
-              <SummaryCard label="Pending Estimates" value={dashboard?.pending_estimates ?? 0} color="amber" />
-            </button>
-          )}
+          {/* WEB-UIUX-1465: always render Estimates card so history is accessible even when nothing is pending */}
+          <button onClick={onViewEstimates} className="text-left">
+            <SummaryCard
+              label={(dashboard?.pending_estimates ?? 0) > 0 ? 'Pending Estimates' : 'Estimates'}
+              value={dashboard?.pending_estimates ?? 0}
+              color={(dashboard?.pending_estimates ?? 0) > 0 ? 'amber' : 'gray'}
+            />
+          </button>
           {(dashboard?.outstanding_balance ?? 0) > 0 && (
             <button onClick={onViewInvoices} className="text-left">
               <SummaryCard
@@ -143,14 +146,19 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
         {/* Quick Links */}
         <div className="flex gap-3">
-          {(dashboard?.pending_estimates ?? 0) > 0 && (
-            <button
-              onClick={onViewEstimates}
-              className="flex-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors"
-            >
-              View Estimates ({dashboard?.pending_estimates})
-            </button>
-          )}
+          {/* WEB-UIUX-1465: always render Estimates CTA — primary amber when pending>0, secondary/muted when 0 so history remains accessible */}
+          <button
+            onClick={onViewEstimates}
+            className={
+              (dashboard?.pending_estimates ?? 0) > 0
+                ? 'flex-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors'
+                : 'flex-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-4 py-3 text-sm font-medium text-surface-500 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors'
+            }
+          >
+            {(dashboard?.pending_estimates ?? 0) > 0
+              ? `View Estimates (${dashboard?.pending_estimates} pending)`
+              : 'View Estimates'}
+          </button>
           {(dashboard?.outstanding_invoices ?? 0) > 0 && (
             <button
               onClick={onViewInvoices}

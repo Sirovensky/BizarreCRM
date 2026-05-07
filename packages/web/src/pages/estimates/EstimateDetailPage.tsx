@@ -277,6 +277,8 @@ export function EstimateDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const userRole = useAuthStore((s) => s.user?.role);
+  // WEB-UIUX-1463: capture current user id for self-approval guard
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState('');
   const [editingValidUntil, setEditingValidUntil] = useState(false);
@@ -561,7 +563,10 @@ export function EstimateDetailPage() {
                 }
                 catch (err) { toast.error(formatApiError(err)); }
               }}
-              disabled={anyMutationPending || isExpired}
+              // WEB-UIUX-1463: pre-disable Approve when the current user created this estimate;
+              // self-approval must be blocked at the UI level, not just surfaced as a toast.
+              disabled={anyMutationPending || isExpired || currentUserId === estimate.created_by}
+              title={currentUserId === estimate.created_by ? 'You created this estimate — another admin must approve' : undefined}
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
                 estimate.status === 'sent'

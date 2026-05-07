@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, dollarsFromMaybeCents } from '@/utils/format';
@@ -118,6 +118,13 @@ function IssueModal({ onClose }: IssueModalProps) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  // WEB-UIUX-1449: global keydown listener so Esc fires even when focus is inside an input
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const issueMutation = useMutation({
     mutationFn: () => {
       const amount = parseFloat(form.amount);
@@ -201,7 +208,6 @@ function IssueModal({ onClose }: IssueModalProps) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={onClose}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       role="presentation"
     >
       <div
@@ -532,7 +538,9 @@ export function GiftCardsListPage() {
                     {formatCurrency(card.current_balance)}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${statusBadge(card.status)}`}>
+                    {/* WEB-UIUX-1453: Check icon prefix distinguishes 'used' badge from placeholder/default tone */}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium capitalize ${statusBadge(card.status)}`}>
+                      {card.status === 'used' && <Check className="h-3 w-3" />}
                       {card.status}
                     </span>
                   </td>

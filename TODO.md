@@ -6046,7 +6046,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:300-307,345-352`
   <!-- meta: fix=hide-header-CTA-when-cards.length===0+rely-on-empty-state-CTA-only -->
 
-- [ ] WEB-UIUX-1447. **[MINOR] Reload modal Cancel + Reload buttons positioned right-aligned (`GiftCardDetailPage.tsx:136-152`) but not full-width on mobile/narrow widths — viewport <420px causes button overflow under the input padding. Add `flex-col sm:flex-row` for narrow layouts.** L11 responsive.
+- [x] WEB-UIUX-1447. **[MINOR] Reload modal Cancel + Reload buttons positioned right-aligned (`GiftCardDetailPage.tsx:136-152`) but not full-width on mobile/narrow widths — viewport <420px causes button overflow under the input padding. Add `flex-col sm:flex-row` for narrow layouts.** L11 responsive. **[AUTOLOOP-T74 RESOLVED: Reload modal button row now flex-col sm:flex-row + w-full sm:w-auto so buttons stack full-width on narrow viewports.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:136-152`
   <!-- meta: fix=flex-col-gap-2-sm:flex-row-sm:justify-end-sm:gap-3+w-full-sm:w-auto-on-each-button -->
 
@@ -6054,7 +6054,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:373-378`
   <!-- meta: fix=add-title={card.recipient_email}-attribute+optional-aria-label -->
 
-- [ ] WEB-UIUX-1449. **[MINOR] IssueModal close behaviour inconsistent with other modals: backdrop click closes (`:159`), Escape closes via `onKeyDown` on the wrapper (`:160`) — but `onKeyDown` only fires when the modal has focus, which it never gets after open (initial focus stays in body). Esc-to-dismiss therefore broken on first render. Compare ReloadModal which uses a `window.addEventListener('keydown', ...)` (`GiftCardDetailPage.tsx:107-113`) — works.** L11 a11y, L7 feedback.
+- [x] WEB-UIUX-1449. **[MINOR] IssueModal close behaviour inconsistent with other modals: backdrop click closes (`:159`), Escape closes via `onKeyDown` on the wrapper (`:160`) — but `onKeyDown` only fires when the modal has focus, which it never gets after open (initial focus stays in body). Esc-to-dismiss therefore broken on first render. Compare ReloadModal which uses a `window.addEventListener('keydown', ...)` (`GiftCardDetailPage.tsx:107-113`) — works.** L11 a11y, L7 feedback. **[AUTOLOOP-T74 RESOLVED: IssueModal Esc handler moved to useEffect window.addEventListener so dismissal works on first render.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:127-129,160-162`
   <!-- meta: fix=replace-onKeyDown-with-useEffect-window.addEventListener('keydown')→Escape→onClose+remove-from-wrapper -->
 
@@ -6062,7 +6062,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:145-150`
   <!-- meta: fix=add-secondary-"Issue-another"-button-(resets-form-keeps-modal-open)+primary-Done-stays -->
 
-- [ ] WEB-UIUX-1451. **[MINOR] Detail page eye-toggle icon button has no `aria-label` (`GiftCardDetailPage.tsx:237-243`) — only a `title` attribute. Screen readers announce the icon's accessible name as nothing. Add `aria-label={showCode ? 'Hide code' : 'Show full code'}`.** L11 a11y.
+- [x] WEB-UIUX-1451. **[MINOR] Detail page eye-toggle icon button has no `aria-label` (`GiftCardDetailPage.tsx:237-243`) — only a `title` attribute. Screen readers announce the icon's accessible name as nothing. Add `aria-label={showCode ? 'Hide code' : 'Show full code'}`.** L11 a11y. **[AUTOLOOP-T74 RESOLVED: Eye toggle gained aria-label='Hide code'/'Show full code' for screen readers.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:237-243`
   <!-- meta: fix=add-aria-label-prop-mirroring-title -->
 
@@ -6071,7 +6071,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:441-451`
   <!-- meta: fix=server-LEFT-JOIN-customers-on-GET-/:id-and-include-customer-summary+UI-render-"Customer:-<Link-to=/customers/:id>name</Link>" -->
 
-- [ ] WEB-UIUX-1453. **[NIT] Status badge for `'used'` uses surface tone (`GiftCardsListPage.tsx:73`) — visually identical to placeholder/empty state pills used elsewhere. Adds no signal that the card was actually drained vs simply inactive. Switch `'used'` to a distinct neutral with a checkmark prefix, or grey-with-strikethrough on the balance cell.** L5 hierarchy, L11 consistency.
+- [x] WEB-UIUX-1453. **[NIT] Status badge for `'used'` uses surface tone (`GiftCardsListPage.tsx:73`) — visually identical to placeholder/empty state pills used elsewhere. Adds no signal that the card was actually drained vs simply inactive. Switch `'used'` to a distinct neutral with a checkmark prefix, or grey-with-strikethrough on the balance cell.** L5 hierarchy, L11 consistency. **[AUTOLOOP-T74 RESOLVED: 'used' badge gained Check icon prefix distinguishing it from placeholder/default surface pills.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:73`
   <!-- meta: fix=used-badge-grey-with-Check-icon-h-3-w-3-prefix+OR-balance-cell-line-through-when-status=used -->
 
@@ -6080,7 +6080,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->
 
-- [ ] WEB-UIUX-1455. **[NIT] Lookup-rate-limit feedback (when WEB-UIUX-1436 lands) must distinguish "Too many lookup attempts" (429) from "Gift card not found" (404) and "Gift card is used/expired" (400). Server returns these as separate AppError messages (`giftCards.routes.ts:196,232,236,240`) — UI should branch on status code, not blindly toast `e.message`. 429 should also show a countdown until window reset (1 min from first failure).** L7 feedback meaningfulness, L8 recovery.
+- [ ] WEB-UIUX-1455. **[NIT] Lookup-rate-limit feedback (when WEB-UIUX-1436 lands) must distinguish "Too many lookup attempts" (429) from "Gift card not found" (404) and "Gift card is used/expired" (400). Server returns these as separate AppError messages (`giftCards.routes.ts:196,232,236,240`) — UI should branch on status code, not blindly toast `e.message`. 429 should also show a countdown until window reset (1 min from first failure).** L7 feedback meaningfulness, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1436 (lookup modal not yet shipped); rate-limit branching pairs with that sprint**
   `packages/server/src/routes/giftCards.routes.ts:196,232,236,240`
   <!-- meta: fix=on-Lookup-modal-mutation-error-branch-on-status:-429→banner-with-countdown;404→inline-"No-card-with-that-code";400→show-server-message-(used/expired);else→generic -->
 
@@ -6093,7 +6093,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimates.routes.ts:1034-1035,1068-1069`
   <!-- meta: fix=server-/approve-rejects-status-IN-('rejected','signed')+restore-Approve-button-on-rejected-only-if-route-allows+update-confirm-copy-to-match-actual-server-behavior -->
 
-- [ ] WEB-UIUX-1457. **[BLOCKER] `status='signed'` (set by `/public/api/v1/estimate-sign/:token` POST in `estimateSign.routes.ts:617-619`) is invisible to web. `STATUS_COLORS` in `EstimateDetailPage.tsx:16-22` and `ESTIMATE_STATUSES` in `EstimateListPage.tsx:17-24` both omit `'signed'` — falls through to grey `#6b7280` with raw `status` string label, looking identical to a `'draft'` placeholder pill. Operator opening a signed estimate has no visual cue that the customer e-signed; the legally-binding state of the estimate is rendered as "untouched draft". Same gap on portal `EstimateStatusBadge` (`PortalEstimatesView.tsx:158-169`) — but portal additionally hides `'signed'` rows via the `status IN (...)` filter (`portal.routes.ts:1382`), so the customer cannot see their own signed estimate after they sign it.** L2 truthfulness, L4 flow integrity, L11 consistency.
+- [x] WEB-UIUX-1457. **[BLOCKER] `status='signed'` (set by `/public/api/v1/estimate-sign/:token` POST in `estimateSign.routes.ts:617-619`) is invisible to web. `STATUS_COLORS` in `EstimateDetailPage.tsx:16-22` and `ESTIMATE_STATUSES` in `EstimateListPage.tsx:17-24` both omit `'signed'` — falls through to grey `#6b7280` with raw `status` string label, looking identical to a `'draft'` placeholder pill. Operator opening a signed estimate has no visual cue that the customer e-signed; the legally-binding state of the estimate is rendered as "untouched draft". Same gap on portal `EstimateStatusBadge` (`PortalEstimatesView.tsx:158-169`) — but portal additionally hides `'signed'` rows via the `status IN (...)` filter (`portal.routes.ts:1382`), so the customer cannot see their own signed estimate after they sign it.** L2 truthfulness, L4 flow integrity, L11 consistency. **[AUTOLOOP-T74 VERIFIED: 'signed' status added to STATUS_COLORS/ESTIMATE_STATUSES/PortalEstimatesView in tick 60 WEB-UIUX-946.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:16-22`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:158-169`
@@ -6105,7 +6105,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:208-211`
   <!-- meta: fix=portal-Approve-opens-confirm-sheet-with-total+terms+typed-or-checkbox-acknowledgement+optional-signature-pad+single-button-"I-Approve-$X.XX" -->
 
-- [ ] WEB-UIUX-1459. **[BLOCKER] Portal Approve doesn't enforce expiry. `valid_until` is rendered as plain text ("Valid until: Jan 5") on `PortalEstimatesView.tsx:128-130`, but Approve button shows whenever `est.status==='sent'` regardless of expiry. Server `/portal/estimates/:id/approve` (`portal.routes.ts:1437-1452`) doesn't check `valid_until` either. Customer can approve an expired estimate three months after the quote — shop is then bound to a stale price. Compare with detail page's expiry visual (`EstimateDetailPage.tsx:472`) which only renders red text but doesn't block actions.** L2 truthfulness, L4 flow integrity, L7 feedback.
+- [ ] WEB-UIUX-1459. **[BLOCKER] Portal Approve doesn't enforce expiry. `valid_until` is rendered as plain text ("Valid until: Jan 5") on `PortalEstimatesView.tsx:128-130`, but Approve button shows whenever `est.status==='sent'` regardless of expiry. Server `/portal/estimates/:id/approve` (`portal.routes.ts:1437-1452`) doesn't check `valid_until` either. Customer can approve an expired estimate three months after the quote — shop is then bound to a stale price. Compare with detail page's expiry visual (`EstimateDetailPage.tsx:472`) which only renders red text but doesn't block actions.** L2 truthfulness, L4 flow integrity, L7 feedback. **STATUS: BLOCKED — server portal.routes.ts must reject approve when valid_until expired; backend, defer to estimates sprint**
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:128-140`
   `packages/server/src/routes/portal.routes.ts:1437-1457`
   <!-- meta: fix=server-rejects-approve-when-valid_until-IS-NOT-NULL-AND-valid_until<datetime('now')+UI-replaces-Approve-with-"Estimate-expired-—-request-new-quote"+Re-quote-CTA -->
@@ -6118,7 +6118,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimateSign.routes.ts:233-352`
   <!-- meta: fix=add-estimateApi.signUrl(id,ttl_minutes)+estimateApi.signatures(id)+SignLinkModal-with-copy/SMS/QR+section-on-EstimateDetail-listing-captured-signatures+make-mobile-only-comment-obsolete -->
 
-- [ ] WEB-UIUX-1461. **[MAJOR] Send button on `EstimateDetailPage.tsx:191-205` and `EstimateListPage.tsx:737-764` confirms `'Send this estimate to the customer via SMS?'` with no preview of (a) destination phone, (b) message body, (c) channel choice. Server hardcodes the message `Hi ${first_name}, your estimate ${order_id} for $${total} is ready. Reply YES to approve or view details at your repair shop.` (`estimates.routes.ts:984`) — operator can't see what customer will receive, can't see masked recipient phone, can't catch a stale customer record. Standard SaaS pattern: confirm shows "To: ***-***-1234 — [Edit phone]" plus a collapsible "Message preview". Bonus: "Reply YES to approve" is a promise the inbound-SMS handler may not honor (no YES auto-approval handler in `sms.routes.ts` last grep) — see WEB-UIUX-1462.** L7 feedback, L1 findability.
+- [ ] WEB-UIUX-1461. **[MAJOR] Send button on `EstimateDetailPage.tsx:191-205` and `EstimateListPage.tsx:737-764` confirms `'Send this estimate to the customer via SMS?'` with no preview of (a) destination phone, (b) message body, (c) channel choice. Server hardcodes the message `Hi ${first_name}, your estimate ${order_id} for $${total} is ready. Reply YES to approve or view details at your repair shop.` (`estimates.routes.ts:984`) — operator can't see what customer will receive, can't see masked recipient phone, can't catch a stale customer record. Standard SaaS pattern: confirm shows "To: ***-***-1234 — [Edit phone]" plus a collapsible "Message preview". Bonus: "Reply YES to approve" is a promise the inbound-SMS handler may not honor (no YES auto-approval handler in `sms.routes.ts` last grep) — see WEB-UIUX-1462.** L7 feedback, L1 findability. **STATUS: BLOCKED — Send button needs full SendEstimateModal redesign with phone-mask + message preview + edit; multi-component, defer**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:193-204`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:744-763`
   `packages/server/src/routes/estimates.routes.ts:984`
@@ -6128,7 +6128,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimates.routes.ts:984`
   <!-- meta: fix=verify-no-YES-handler-then-either-(a)-replace-template-with-"View+approve:-${portalLink}"-OR-(b)-implement-inbound-YES-handler-with-1-recent-estimate-disambiguation -->
 
-- [ ] WEB-UIUX-1463. **[MAJOR] Self-approval block surfaces as runtime toast, not pre-disabled button. Server returns `403 'Cannot approve your own estimate. Another admin must approve this one.'` (`estimates.routes.ts:1138-1143`) when creator===approver; UI shows the Approve button regardless then surprises with the toast on click. Pre-disable when `req.user.id === estimate.created_by` and tooltip "You created this estimate — another admin must approve."** L1 findability, L7 feedback, L8 recovery.
+- [x] WEB-UIUX-1463. **[MAJOR] Self-approval block surfaces as runtime toast, not pre-disabled button. Server returns `403 'Cannot approve your own estimate. Another admin must approve this one.'` (`estimates.routes.ts:1138-1143`) when creator===approver; UI shows the Approve button regardless then surprises with the toast on click. Pre-disable when `req.user.id === estimate.created_by` and tooltip "You created this estimate — another admin must approve."** L1 findability, L7 feedback, L8 recovery. **[AUTOLOOP-T74 RESOLVED: Approve button pre-disabled with tooltip when currentUser.id===estimate.created_by; runtime toast no longer reachable.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:206-218`
   `packages/server/src/routes/estimates.routes.ts:1138-1143`
   <!-- meta: fix=use-useAuthStore-currentUser.id-vs-estimate.created_by+disable+tooltip+also-grey-out-on-list-row-action-button -->
@@ -6137,7 +6137,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimates.routes.ts:1021-1047`
   <!-- meta: fix=mirror-self-approve-block:-if-(req.user?.id===existing.created_by)-throw-403-OR-explicitly-document-asymmetric-policy-via-comment+changelog -->
 
-- [ ] WEB-UIUX-1465. **[MAJOR] Portal hides estimate history once nothing is pending. `PortalDashboard.tsx:89-92,146-152` only render the "Pending Estimates" card and "View Estimates" CTA when `dashboard.pending_estimates > 0`. Customer with three approved estimates and no new ones cannot reach the estimate list page from the dashboard at all (no nav link, no "All estimates" tab). Past quotes / line-item history / "what was that estimate from June for again?" inaccessible. Add a persistent "Estimates" link with a `(N total)` count when pending=0.** L4 flow, L6 discoverability.
+- [x] WEB-UIUX-1465. **[MAJOR] Portal hides estimate history once nothing is pending. `PortalDashboard.tsx:89-92,146-152` only render the "Pending Estimates" card and "View Estimates" CTA when `dashboard.pending_estimates > 0`. Customer with three approved estimates and no new ones cannot reach the estimate list page from the dashboard at all (no nav link, no "All estimates" tab). Past quotes / line-item history / "what was that estimate from June for again?" inaccessible. Add a persistent "Estimates" link with a `(N total)` count when pending=0.** L4 flow, L6 discoverability. **[AUTOLOOP-T74 RESOLVED: Portal Estimates CTA always rendered; primary+badge when pending>0, secondary+'View Estimates' when pending=0.]**
   `packages/web/src/pages/portal/PortalDashboard.tsx:89-103,144-162`
   <!-- meta: fix=always-render-Estimates-CTA-(disabled-grey-when-total=0)+badge-shows-pending-count-only-when>0+secondary-style-when-no-action-needed -->
 
