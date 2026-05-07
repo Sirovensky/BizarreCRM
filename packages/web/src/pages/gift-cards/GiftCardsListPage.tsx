@@ -271,9 +271,11 @@ function IssueModal({ onClose }: IssueModalProps) {
             {/* WEB-UIUX-994: max="10000" matches server $10k cap — freeform "Custom" fallback below presets */}
             <input
               type="number"
-              min="0.01"
+              // WEB-UIUX-1566: $0.01 gift cards make no business sense; bumped to $1 minimum
+              // and whole-dollar step to match real-world denominations.
+              min="1"
               max="10000"
-              step="0.01"
+              step="1"
               value={form.amount}
               onChange={(e) => update('amount', e.target.value)}
               placeholder="Custom amount"
@@ -301,8 +303,14 @@ function IssueModal({ onClose }: IssueModalProps) {
               value={form.recipient_email}
               onChange={(e) => update('recipient_email', e.target.value)}
               placeholder="jane@example.com"
-              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
+              // WEB-UIUX-1564: client-side regex validation so garbage emails don't slip through
+              // (server validates length only). aria-invalid surfaces inline error to AT.
+              aria-invalid={form.recipient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient_email) ? 'true' : undefined}
+              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800 aria-[invalid=true]:border-red-500"
             />
+            {form.recipient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient_email) && (
+              <p className="mt-1 text-xs text-red-600 dark:text-red-400">Enter a valid email address.</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">

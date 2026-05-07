@@ -6609,7 +6609,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:251-254`
   <!-- meta: fix=loadedTotal=initial_balance+sum(adjustment-reload-tx);-render-"of-${formatBalance(loadedTotal)}-loaded";-OR-suppress-line-when-current>initial -->
 
-- [ ] WEB-UIUX-1560. **[MINOR] `txLabel('adjustment')` hardcoded "Reload". Server uses `'adjustment'` for the reload write (`giftCards.routes.ts:423`) and that's the only adjustment write today, but if a future feature adds manual corrections / refund credits / promo bumps under the same enum, history rows mislabel. Either (a) split into `'reload'` and `'adjustment'` enums on the server, or (b) read the `notes` field for label discrimination ("Reloaded" → Reload, otherwise → Adjustment).** L2 truthfulness, L11 consistency.
+- [x] WEB-UIUX-1560. **[MINOR] `txLabel('adjustment')` hardcoded "Reload". Server uses `'adjustment'` for the reload write (`giftCards.routes.ts:423`) and that's the only adjustment write today, but if a future feature adds manual corrections / refund credits / promo bumps under the same enum, history rows mislabel. Either (a) split into `'reload'` and `'adjustment'` enums on the server, or (b) read the `notes` field for label discrimination ("Reloaded" → Reload, otherwise → Adjustment).** L2 truthfulness, L11 consistency. **[AUTOLOOP-T80 VERIFIED: txLabel sign-driven (Reload for positive, Adjustment for negative) already landed in tick 73 WEB-UIUX-1444.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:55-61`
   `packages/server/src/routes/giftCards.routes.ts:421-424`
   <!-- meta: fix=widen-tx.type-enum-to-include-'reload'+migration-to-relabel-existing-adjustments-where-notes='Reloaded' -->
@@ -6618,7 +6618,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
   <!-- meta: fix=add-autoFocus-to-amount-input;-mirror-pattern-from-ReloadModal -->
 
-- [ ] WEB-UIUX-1562. **[MINOR] Issue modal: no focus trap. `role="dialog" aria-modal="true"` set (`:164-166`), but tab past Cancel/Issue cycles into list table actions in the page below. Same on Reload modal (`GiftCardDetailPage.tsx:115-122`). Wrap inner card with `react-focus-lock` or shared modal primitive.** a11y / L12.
+- [x] WEB-UIUX-1562. **[MINOR] Issue modal: no focus trap. `role="dialog" aria-modal="true"` set (`:164-166`), but tab past Cancel/Issue cycles into list table actions in the page below. Same on Reload modal (`GiftCardDetailPage.tsx:115-122`). Wrap inner card with `react-focus-lock` or shared modal primitive.** a11y / L12. **[AUTOLOOP-T80 VERIFIED: useFocusTrap on IssueModal + ReloadModal already landed in tick 79 (duplicate audit entry).]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:163-247`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:115-155`
   <!-- meta: fix=use-shared-Modal-primitive-OR-react-focus-lock-around-inner-card;-restore-focus-to-trigger-button-on-close -->
@@ -6628,7 +6628,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:112-116`
   <!-- meta: fix=if-keyword-looks-like-code-prefix-(/^[A-F0-9]{4,}/i)-render-${prefix}****${suffix};-else-mask-fully -->
 
-- [ ] WEB-UIUX-1564. **[MINOR] Email input has no client-side validity feedback before submit. `GiftCardsListPage.tsx:208-214` is `<input type="email">` — browser silently fails the constraint check on submit but the issue button is wired via React `onClick` not `<form onSubmit>`, so native validation never runs. Server `validateTextLength(recipient_email, 200)` accepts "not-an-email" up to 200 chars. Card issued with garbage email → if WEB-UIUX-1545 ships email delivery, dispatch silently fails. Wrap inputs in `<form onSubmit>` to enable native validity OR validate with a regex before mutate.** L2 truthfulness, L7 feedback.
+- [x] WEB-UIUX-1564. **[MINOR] Email input has no client-side validity feedback before submit. `GiftCardsListPage.tsx:208-214` is `<input type="email">` — browser silently fails the constraint check on submit but the issue button is wired via React `onClick` not `<form onSubmit>`, so native validation never runs. Server `validateTextLength(recipient_email, 200)` accepts "not-an-email" up to 200 chars. Card issued with garbage email → if WEB-UIUX-1545 ships email delivery, dispatch silently fails. Wrap inputs in `<form onSubmit>` to enable native validity OR validate with a regex before mutate.** L2 truthfulness, L7 feedback. **[AUTOLOOP-T80 RESOLVED: client-side regex on recipient_email + aria-invalid + inline red error message.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:204-215`
   `packages/server/src/routes/giftCards.routes.ts:281-283`
   <!-- meta: fix=client-/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient_email)-before-mutate;-server-add-validateEmail-helper -->
@@ -6639,7 +6639,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138,171,292`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:124`
 
-- [ ] WEB-UIUX-1566. **[NIT] Initial value placeholder "25.00" with `min="0.01"` and `step="0.01"`. A $0.01 gift card is nonsense; server enforces only `validatePositiveAmount` which accepts any > 0. Bump `min="1"` and consider `step="1"` (whole-dollar) — fewer fat-finger options and matches real-world denominations.** L13 forgiveness.
+- [x] WEB-UIUX-1566. **[NIT] Initial value placeholder "25.00" with `min="0.01"` and `step="0.01"`. A $0.01 gift card is nonsense; server enforces only `validatePositiveAmount` which accepts any > 0. Bump `min="1"` and consider `step="1"` (whole-dollar) — fewer fat-finger options and matches real-world denominations.** L13 forgiveness. **[AUTOLOOP-T80 RESOLVED: amount input min raised 0.01→1 and step 0.01→1 (whole-dollar) so $0.01 fat-finger gift cards no longer issuable.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
 
 - [ ] WEB-UIUX-1567. **[NIT] List date columns lose intra-day ordering. `formatDate(card.created_at)` (`:388`) renders date only on most locale impls — issuing 5 cards on a busy day all show same date with `ORDER BY created_at DESC` driving the list. Fine for at-a-glance, but tooltip with full timestamp would help reconcile against shift logs.** L7 feedback.
@@ -21778,7 +21778,7 @@ Apply the same URL allowlist check from `catalogScraper.ts:292-305` to the `/bul
 
 ## FEATURE — Dashboard "Price list" button → spreadsheet view (web/android/iOS) — 2026-05-05
 
-- [ ] FEAT-PRICELIST-001. **[FEATURE] Dashboard "📋 Price list" button opens an Excel-like spreadsheet of every device + repair price the admin has configured, with full search.** Admin sets prices once in Settings → cashier/technician hits one button on Dashboard to see the live price grid during a customer call or in-person visit. No need to dig into Settings → Repair pricing every time. Server already exposes the data via `routes/repairPricing.routes.ts` (`/api/v1/repair-pricing/prices`) and `services/repairPricing/*`; what's missing is a fast, focused, read-mostly grid surface usable from the dashboard.
+- [ ] FEAT-PRICELIST-001. **[FEATURE] Dashboard "📋 Price list" button opens an Excel-like spreadsheet of every device + repair price the admin has configured, with full search.** Admin sets prices once in Settings → cashier/technician hits one button on Dashboard to see the live price grid during a customer call or in-person visit. No need to dig into Settings → Repair pricing every time. Server already exposes the data via `routes/repairPricing.routes.ts` (`/api/v1/repair-pricing/prices`) and `services/repairPricing/*`; what's missing is a fast, focused, read-mostly grid surface usable from the dashboard. **STATUS: BLOCKED — full feature build requires new PriceListPage (web) + PriceListActivity (Android) + PriceListView (iOS) + virtualized grid + edit + audit + CSV export; multi-platform multi-week effort, defer to feature sprint**
   **Scope:**
   1. **Dashboard button** — added in mockups already (web header, android phone top app bar, android tablet toolbar, ios iphone greeting card, ios ipad capsule). Wire to a new route/screen `/price-list` (web), `PriceListActivity` (Android), `PriceListView` (iOS).
   2. **Spreadsheet view** — virtualized grid (web: TanStack Table or AG Grid Community; Android: Compose `LazyColumn` × `LazyRow` or RecyclerView; iOS: SwiftUI `LazyVGrid`/`Table`). Columns: Brand · Model · Repair · Tier1 · Tier2 · Tier3 · Updated. Sticky header row + first column.
