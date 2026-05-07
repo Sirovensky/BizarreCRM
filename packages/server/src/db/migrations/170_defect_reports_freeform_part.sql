@@ -5,16 +5,19 @@
 -- SQLite does not support DROP NOT NULL via ALTER COLUMN, so we recreate the
 -- table using the standard shadow-copy strategy.
 --
--- IMPORTANT: trigger trg_ticket_del_enrichment_cleanup (from migration 097)
--- references parts_defect_reports. With PRAGMA legacy_alter_table=OFF (the
--- modern default since SQLite 3.25), the integrity check fires when the
--- table is dropped and the trigger now points at a missing table — the
--- migration aborts with "no such table: main.parts_defect_reports". We
--- drop the trigger before the swap and recreate it verbatim afterward.
+-- IMPORTANT: TWO triggers in migration 097 reference parts_defect_reports:
+--   - trg_ticket_del_enrichment_cleanup    (line 127 — UPDATE ... ticket_id)
+--   - trg_inventory_del_enrichment_cleanup (line 182 — DELETE FROM)
+-- With PRAGMA legacy_alter_table=OFF (the modern default since SQLite 3.25),
+-- the integrity check fires when the table is dropped and any trigger now
+-- points at a missing table — the migration aborts with "no such table:
+-- main.parts_defect_reports". We drop BOTH triggers before the swap and
+-- recreate them verbatim afterward.
 
--- 0. Drop the trigger that references parts_defect_reports. Recreated at
---    the end of this migration so the cleanup behaviour is preserved.
+-- 0. Drop the two triggers that reference parts_defect_reports. Recreated
+--    at the end of this migration so the cleanup behaviour is preserved.
 DROP TRIGGER IF EXISTS trg_ticket_del_enrichment_cleanup;
+DROP TRIGGER IF EXISTS trg_inventory_del_enrichment_cleanup;
 
 -- 0a. Idempotency: if a prior failed run of this migration left a partial
 --     parts_defect_reports_new shadow table around, drop it so the CREATE
@@ -89,4 +92,23 @@ BEGIN
   UPDATE nps_responses              SET ticket_id = NULL WHERE ticket_id = OLD.id;
   UPDATE inventory_serial_numbers   SET ticket_id = NULL WHERE ticket_id = OLD.id;
   UPDATE deposits                   SET ticket_id = NULL WHERE ticket_id = OLD.id;
+END;
+
+-- 6. Recreate trg_inventory_del_enrichment_cleanup verbatim from migration 097
+--    so soft-delete admin jobs still cascade-cleanup enrichment tables when an
+--    inventory_items row is purged. Same source-of-truth caveat as the
+--    ticket trigger above.
+CREATE TRIGGER IF NOT EXISTS trg_inventory_del_enrichment_cleanup
+AFTER DELETE ON inventory_items
+BEGIN
+  DELETE FROM parts_defect_reports         WHERE inventory_item_id = OLD.id;
+  DELETE FROM inventory_bin_assignments    WHERE inventory_item_id = OLD.id;
+  DELETE FROM inventory_serial_numbers     WHERE inventory_item_id = OLD.id;
+  DELETE FROM inventory_shrinkage          WHERE inventory_item_id = OLD.id;
+  DELETE FROM supplier_prices              WHERE inventory_item_id = OLD.id;
+  DELETE FROM supplier_returns             WHERE inventory_item_id = OLD.id;
+  DELETE FROM inventory_compatibility      WHERE inventory_item_id = OLD.id;
+  DELETE FROM inventory_lot_warranty       WHERE inventory_item_id = OLD.id;
+  DELETE FROM inventory_auto_reorder_rules WHERE inventory_item_id = OLD.id;
+  DELETE FROM stocktake_counts             WHERE inventory_item_id = OLD.id;
 END;
