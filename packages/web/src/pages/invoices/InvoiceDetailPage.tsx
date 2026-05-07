@@ -515,9 +515,11 @@ export function InvoiceDetailPage() {
                   // WEB-UIUX-1040: switched from amber to red ramp — amber read
                   // as "soft action"; Credit Note is irreversible like Void. Icon
                   // + label still distinguish it from the Void button.
+                  // WEB-UIUX-1279: relabelled entry-point button to "Refund";
+                  // modal title "Issue Credit Note" stays for accounting clarity.
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
-                  <Undo2 className="h-4 w-4" /> Refund (credit note)
+                  <Undo2 className="h-4 w-4" /> Refund
                 </button>
               ) : (
                 <button
@@ -525,7 +527,7 @@ export function InvoiceDetailPage() {
                   title="Manager permission required"
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-100 dark:border-red-900/40 text-red-300 dark:text-red-700 cursor-not-allowed opacity-60"
                 >
-                  <Undo2 className="h-4 w-4" /> Refund (credit note)
+                  <Undo2 className="h-4 w-4" /> Refund
                 </button>
               )
             )}

@@ -5333,7 +5333,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Major — labels, routing, mental model
 
-- [ ] WEB-UIUX-1279. **[MAJOR] CTA labeled "Credit Note" — operators say "process a refund". Two-second findability test fails: cashier scanning the action bar looking for refund sees Record Payment / Payment Plan / Print / Credit Note / Void. "Credit Note" is accounting-speak; "Refund" is the user mental model. Real-world POS operators (Square/Shopify field studies) hunt the word `refund` 9× more often than `credit note`.** L1 findability, L2 label truthfulness.
+- [x] WEB-UIUX-1279. **[MAJOR] CTA labeled "Credit Note" — operators say "process a refund". Two-second findability test fails: cashier scanning the action bar looking for refund sees Record Payment / Payment Plan / Print / Credit Note / Void. "Credit Note" is accounting-speak; "Refund" is the user mental model. Real-world POS operators (Square/Shopify field studies) hunt the word `refund` 9× more often than `credit note`.** L1 findability, L2 label truthfulness. **[AUTOLOOP-T66 RESOLVED: action button relabeled 'Credit Note' → 'Refund' (entry CTA matches operator mental model); modal title 'Issue Credit Note' unchanged.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   <!-- meta: fix=relabel-button-Refund-(keep-Credit-Note-as-modal-doc-name)+OR-split-into-two-CTAs-Refund-(cash-back)-vs-Issue-Credit-(store-credit) -->
 
@@ -5342,7 +5342,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/refunds.routes.ts:107-239`
   <!-- meta: fix=Refund-modal-with-radio-group-type=refund_to_original|store_credit|credit_note+route-cash/card-refunds-through-/refunds+keep-/credit-note-only-for-explicit-doc-issuance -->
 
-- [ ] WEB-UIUX-1281. **[MAJOR] No record of prior credit notes on the invoice page. Server enforces `priorCredits` aggregate (`invoices.routes.ts:1192-1202`); UI never shows them. Operator who already credited $50 against a $200 paid invoice sees identical UI to a never-credited invoice; tries to credit another $200; bounces on server reject "would exceed invoice total (already credited 50.00 of 200.00)". The Payment Timeline (`InvoiceDetailPage.tsx:475-548`) has no Credit Notes timeline.** L7 feedback meaningful, L9 missing prior-credit state.
+- [ ] WEB-UIUX-1281. **[MAJOR] No record of prior credit notes on the invoice page. Server enforces `priorCredits` aggregate (`invoices.routes.ts:1192-1202`); UI never shows them. Operator who already credited $50 against a $200 paid invoice sees identical UI to a never-credited invoice; tries to credit another $200; bounces on server reject "would exceed invoice total (already credited 50.00 of 200.00)". The Payment Timeline (`InvoiceDetailPage.tsx:475-548`) has no Credit Notes timeline.** L7 feedback meaningful, L9 missing prior-credit state. **STATUS: BLOCKED — needs Credit Notes timeline section + new useQuery for invoices.credit_note_for=:id; multi-component, defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:474-548`
   `packages/server/src/routes/invoices.routes.ts:1192-1202`
   <!-- meta: fix=add-Credit-Notes-section-OR-merge-into-Payment-Timeline-(query-invoices-where-credit_note_for=:id)+each-row-amount+date+CRN-link+update-Max-helper-amount_paid-already_credited -->
@@ -5351,7 +5351,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:298-304,763,766,776-778`
   <!-- meta: fix=server-include-credits_remaining-in-invoice-detail-payload+UI-read-it-as-the-cap+invalidate-cache-on-credit-note-success-(line-170-already-but-stale-modal-state-survives) -->
 
-- [ ] WEB-UIUX-1283. **[MAJOR] After Credit Note creation, operator gets "Credit note created" toast but no link to the new credit note. The CRN-NNNN row exists, has a printable view, but the user has to navigate to the invoice list, filter for credit notes (no filter exists — see WEB-UIUX-1287), find it. Server returns the full credit-note record (`invoices.routes.ts:1316`); UI throws it away (`InvoiceDetailPage.tsx:172`).** L7 feedback meaning, L4 no document handoff.
+- [x] WEB-UIUX-1283. **[MAJOR] After Credit Note creation, operator gets "Credit note created" toast but no link to the new credit note. The CRN-NNNN row exists, has a printable view, but the user has to navigate to the invoice list, filter for credit notes (no filter exists — see WEB-UIUX-1287), find it. Server returns the full credit-note record (`invoices.routes.ts:1316`); UI throws it away (`InvoiceDetailPage.tsx:172`).** L7 feedback meaning, L4 no document handoff. **[AUTOLOOP-T66 VERIFIED: creditNoteMutation.onSuccess already shows custom toast with Open button to /invoices/<cn_id> (resolved in tick 47 WEB-UIUX-1029).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
   <!-- meta: fix=onSuccess-toast-with-action-View-credit-note-CRN-XXXX-→-/invoices/{cnId}+OR-prompt-Print/Email-credit-note-(mirror-Receipt-prompt) -->
 
@@ -5359,7 +5359,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`
   <!-- meta: fix=after-credit-note-success-fire-CreditNoteReceiptPrompt-with-Print/SMS/Email-mirroring-payment-prompt-but-credit-note-template -->
 
-- [ ] WEB-UIUX-1285. **[MAJOR] No "Refund full balance" preset. Payment modal has "Pay full balance" quick-fill (`InvoiceDetailPage.tsx:618-621`); credit-note modal forces the operator to read `Max: $X` then type the amount. Common case (full refund) takes 8 keystrokes instead of 1.** L1 findability for common case, L7 ergonomics.
+- [x] WEB-UIUX-1285. **[MAJOR] No "Refund full balance" preset. Payment modal has "Pay full balance" quick-fill (`InvoiceDetailPage.tsx:618-621`); credit-note modal forces the operator to read `Max: $X` then type the amount. Common case (full refund) takes 8 keystrokes instead of 1.** L1 findability for common case, L7 ergonomics. **[AUTOLOOP-T66 VERIFIED: 'Refund full' preset button already present using maxCreditNoteAmount formula matching priorCredits subtraction.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:756-779`
   <!-- meta: fix=add-Refund-full-amount-($amount_paid)-button-below-the-amount-input+matches-Pay-full-balance-style -->
 
@@ -5368,7 +5368,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1162-1317`
   <!-- meta: fix=warning-banner-when-(prior_refunds+prior_credits)>0-Already-N-refund(s)-totaling-$X-against-this-invoice+Continue?-OR-block-when-resulting-total-clears-amount_paid -->
 
-- [ ] WEB-UIUX-1287. **[MAJOR] Invoice list has no `credit_note` status tab/filter. `STATUS_TABS` (`InvoiceListPage.tsx:19-26`) lists All/Unpaid/Partial/Overdue/Paid/Void — `pos.routes.ts:2597` inserts credit notes with `status='credit_note'`, `invoices.routes.ts:1217` inserts with `status='paid'`. Two paths, two statuses, neither filterable. Bookkeeper looking up "all credit notes this month" has nowhere to click.** L1 findability, L6 discoverability, L13 internal consistency.
+- [x] WEB-UIUX-1287. **[MAJOR] Invoice list has no `credit_note` status tab/filter. `STATUS_TABS` (`InvoiceListPage.tsx:19-26`) lists All/Unpaid/Partial/Overdue/Paid/Void — `pos.routes.ts:2597` inserts credit notes with `status='credit_note'`, `invoices.routes.ts:1217` inserts with `status='paid'`. Two paths, two statuses, neither filterable. Bookkeeper looking up "all credit notes this month" has nowhere to click.** L1 findability, L6 discoverability, L13 internal consistency. **[AUTOLOOP-T66 RESOLVED: 'Credit Notes' tab added to STATUS_TABS; client-side filter (credit_note_for!=null || total<0) since server doesn't accept type=credit_note status.]**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:19-26`
   `packages/server/src/routes/invoices.routes.ts:1217`
   `packages/server/src/routes/pos.routes.ts:2597`
@@ -5380,7 +5380,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/components/billing/RefundReasonPicker.tsx:23,82-92`
   <!-- meta: fix=when-localReason==='other'-make-note-required+aria-invalid+disable-Submit-until-non-empty+update-label-Notes-(required-for-Other) -->
 
-- [ ] WEB-UIUX-1289. **[MAJOR] `RefundReasonPicker` keeps internal `localReason`/`localNote` state initialised from props ONLY at mount (`useState(value)`/`useState(note)`, lines 39-40). After parent's onSuccess `setCreditNoteForm({ ..., reason: null, note: '' })` (line 174), the picker's internal state still carries the last selection until the modal unmounts. Reopening the modal in the same lifecycle silently re-applies the prior choice.** L13 controlled-component contract violated.
+- [x] WEB-UIUX-1289. **[MAJOR] `RefundReasonPicker` keeps internal `localReason`/`localNote` state initialised from props ONLY at mount (`useState(value)`/`useState(note)`, lines 39-40). After parent's onSuccess `setCreditNoteForm({ ..., reason: null, note: '' })` (line 174), the picker's internal state still carries the last selection until the modal unmounts. Reopening the modal in the same lifecycle silently re-applies the prior choice.** L13 controlled-component contract violated. **[AUTOLOOP-T66 VERIFIED: useEffect([value,note]) sync of localReason/localNote already present at line 76; controlled-component contract honored.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:39-50`
   <!-- meta: fix=remove-internal-state-(use-value/note-props-directly)+OR-useEffect-syncing-on-value/note-prop-changes -->
 
@@ -5388,7 +5388,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/components/billing/RefundReasonPicker.tsx:17-24`
   <!-- meta: fix=expand-REASONS-cancelled_service+exchange+goodwill+tax_adjustment+shipping+promo+keep-other-as-fallback+server-enum-validate-against-this-list -->
 
-- [ ] WEB-UIUX-1291. **[MAJOR] Reason composed as `${code}: ${note}` AND sent both as `reason` AND structured `code`/`note` (`InvoiceDetailPage.tsx:158-167`). Server stores all three (`invoices.routes.ts:1180-1185,1224`). Reports keying on `reason` get pre-FA-L8 free-text rows AND new "code: note" rows mixed; reports keying on `code` lose pre-FA-L8 rows entirely. No back-fill migration. Reporting cardinality is still split.** L13 reporting integrity.
+- [ ] WEB-UIUX-1291. **[MAJOR] Reason composed as `${code}: ${note}` AND sent both as `reason` AND structured `code`/`note` (`InvoiceDetailPage.tsx:158-167`). Server stores all three (`invoices.routes.ts:1180-1185,1224`). Reports keying on `reason` get pre-FA-L8 free-text rows AND new "code: note" rows mixed; reports keying on `code` lose pre-FA-L8 rows entirely. No back-fill migration. Reporting cardinality is still split.** L13 reporting integrity. **STATUS: BLOCKED — needs server migration back-fill of credit_note_code from legacy reason field; backend change, defer to data-cleanup sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-168`
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
@@ -5397,7 +5397,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=onChange-clamp-to-Math.min(parsed,amount_paid)+inline-amber-helper-when-input-exceeds-max+disable-Submit-while-out-of-bounds -->
 
-- [ ] WEB-UIUX-1293. **[MAJOR] No commission reversal on the credit-note path. `/refunds` PATCH approve calls `reverseCommission()` (`refunds.routes.ts:10`); `/invoices/:id/credit-note` does NOT. Tech who earned $40 commission on a $400 invoice that's then credit-noted keeps the $40; payroll-period lock never trips. Operator processing a returned-product credit note has no idea this is happening.** L13 ledger integrity, L7 silent side-effect.
+- [ ] WEB-UIUX-1293. **[MAJOR] No commission reversal on the credit-note path. `/refunds` PATCH approve calls `reverseCommission()` (`refunds.routes.ts:10`); `/invoices/:id/credit-note` does NOT. Tech who earned $40 commission on a $400 invoice that's then credit-noted keeps the $40; payroll-period lock never trips. Operator processing a returned-product credit note has no idea this is happening.** L13 ledger integrity, L7 silent side-effect. **STATUS: BLOCKED — server invoices.routes.ts credit-note path needs reverseCommission integration; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1162-1317` (no commission reversal)
   `packages/server/src/routes/refunds.routes.ts:10` (vs. has it)
   <!-- meta: fix=server-credit-note-route-call-reverseCommission-proportionally+OR-warn-in-modal-Credit-notes-do-not-reverse-tech-commissions+document-policy -->
@@ -5406,7 +5406,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/api/endpoints.ts:295-298`
   <!-- meta: fix=add-X-Idempotency-Key-header-(crypto.randomUUID-fallback)+wrap-credit-note-route-with-idempotent-middleware-server-side -->
 
-- [ ] WEB-UIUX-1295. **[MAJOR] Card-method routing missing. When the original payment was on a BlockChyp terminal (`processor_transaction_id` set, `InvoiceDetailPage.tsx:203-205`), the natural refund path is to send the credit BACK to the original card. UI offers no terminal-refund button; operator with a $300 card sale + customer in front of them has no way to push the refund through the terminal. They click Credit Note → ledger only. Customer leaves with no money on the card.** L1 findability, L4 flow completion.
+- [ ] WEB-UIUX-1295. **[MAJOR] Card-method routing missing. When the original payment was on a BlockChyp terminal (`processor_transaction_id` set, `InvoiceDetailPage.tsx:203-205`), the natural refund path is to send the credit BACK to the original card. UI offers no terminal-refund button; operator with a $300 card sale + customer in front of them has no way to push the refund through the terminal. They click Credit Note → ledger only. Customer leaves with no money on the card.** L1 findability, L4 flow completion. **STATUS: BLOCKED — needs new server blockchypApi.processRefund route + UI Refund-to-Card branch; multi-component, defer to terminal sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:203-205,376-380`
   <!-- meta: fix=if-cardPaymentWithTxn-add-Refund-to-Card-($amount-on-card-XXXX)-button+wire-blockchypApi.processRefund-(stub-if-not-yet-implemented)+otherwise-warn-Card-refund-not-available -->
 
@@ -5417,7 +5417,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Minor — modal copy, validation, focus
 
-- [ ] WEB-UIUX-1297. **[MINOR] Modal title "Create Credit Note" but body copy says "This will reduce the outstanding balance" (`InvoiceDetailPage.tsx:753-755`). Misleading on a fully-paid invoice — there IS no outstanding balance; the credit accumulates as store-credit overflow (`invoices.routes.ts:1259-1302`). Operator reading the description thinks "this lowers what they owe" when it actually creates store credit.** L2 label truthfulness.
+- [x] WEB-UIUX-1297. **[MINOR] Modal title "Create Credit Note" but body copy says "This will reduce the outstanding balance" (`InvoiceDetailPage.tsx:753-755`). Misleading on a fully-paid invoice — there IS no outstanding balance; the credit accumulates as store-credit overflow (`invoices.routes.ts:1259-1302`). Operator reading the description thinks "this lowers what they owe" when it actually creates store credit.** L2 label truthfulness. **[AUTOLOOP-T66 VERIFIED: conditional copy already present (resolved in tick 62 WEB-UIUX-1222) — amount_due>0 'reduces balance', =0 'adds to store credit'.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
   <!-- meta: fix=conditional-copy-amount_due>0-current-text+amount_due===0-"This-will-be-recorded-as-store-credit-on-the-customer's-account." -->
 

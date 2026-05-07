@@ -23,6 +23,9 @@ const STATUS_TABS = [
   { key: 'overdue', label: 'Overdue' },
   { key: 'paid', label: 'Paid' },
   { key: 'void', label: 'Void' },
+  // WEB-UIUX-1287: credit notes filtered client-side (credit_note_for IS NOT NULL
+  // or total < 0); server does not expose a ?status=credit_note param.
+  { key: 'credit_note', label: 'Credit Notes' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -109,6 +112,8 @@ interface InvoiceRow {
   created_at?: string | null;
   payment_method?: string | null;
   currency_code?: string | null;
+  // WEB-UIUX-1287: present on credit-note invoices
+  credit_note_for?: number | null;
 }
 
 export function InvoiceListPage() {
@@ -164,9 +169,14 @@ export function InvoiceListPage() {
     setSearchParams(p, { replace: true });
   };
 
+  // WEB-UIUX-1287: "credit_note" is a client-side-only tab key. Do not pass it
+  // to the server (no such ?status= param); fetch all and filter locally instead.
+  const isCreditNoteTab = status === 'credit_note';
+  const serverStatus = isCreditNoteTab ? undefined : (status || undefined);
+
   const { data, isLoading } = useQuery({
     queryKey: ['invoices', { page, pageSize, status, keyword, dateRange, sortBy, sortDir }],
-    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: status || undefined, keyword: keyword || undefined, sort_by: sortBy, sort_dir: sortDir, ...dateParams }),
+    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: serverStatus, keyword: keyword || undefined, sort_by: sortBy, sort_dir: sortDir, ...dateParams }),
   });
 
   const { data: statsData } = useQuery({
@@ -181,7 +191,11 @@ export function InvoiceListPage() {
   });
 
   const rawInvoices = data?.data?.data?.invoices;
-  const invoices: InvoiceRow[] = Array.isArray(rawInvoices) ? (rawInvoices as InvoiceRow[]) : [];
+  const allInvoices: InvoiceRow[] = Array.isArray(rawInvoices) ? (rawInvoices as InvoiceRow[]) : [];
+  // WEB-UIUX-1287: apply credit-note client-side predicate when tab is active.
+  const invoices: InvoiceRow[] = isCreditNoteTab
+    ? allInvoices.filter((inv) => inv.credit_note_for != null || Number(inv.total) < 0)
+    : allInvoices;
   const pagination = data?.data?.data?.pagination;
   const stats = statsData?.data?.data;
   // WEB-W2-023: overdue count now comes from the server (independent of current
