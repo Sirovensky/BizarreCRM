@@ -1465,9 +1465,52 @@ export function RepairsTab() {
   // If customer is already set (from search bar or previous selection), skip customer step
   const showCustomerStep = !customer && !customerDone;
 
+  // FIX: when the customer is removed externally (X in LeftPanel header, or
+  // resetAll from the bottom Cancel button), the local customerDone flag
+  // stayed true and trapped the user on the Category step with no customer
+  // and no way to go back. Reset customerDone whenever the store customer
+  // becomes null so the wizard re-prompts for a customer (or Cancel actually
+  // returns the user to step 0).
+  useEffect(() => {
+    if (!customer && customerDone) {
+      setCustomerDone(false);
+    }
+  }, [customer, customerDone]);
+
   const handleCustomerDone = useCallback(() => {
     setCustomerDone(true);
   }, []);
+
+  // Click handler for breadcrumb steps — jump back to a previous (already
+  // completed) step. Forward navigation via breadcrumb is intentionally
+  // blocked because each step depends on the previous one's selection
+  // (e.g. you cannot pick a Service before picking a Device).
+  const handleStepClick = useCallback((targetIndex: number) => {
+    // 0 = Customer, 1 = Category, 2 = Device, 3 = Service, 4 = Details
+    if (targetIndex === 0) {
+      // Re-enter the customer step. Don't clobber the cart, but blank the
+      // customerDone flag and let the user pick again. Keeps existing drill
+      // state so they don't lose category/device selections.
+      setCustomerDone(false);
+      return;
+    }
+    if (targetIndex === 1) {
+      setDrillState({ step: 'CATEGORY' });
+      return;
+    }
+    if (targetIndex === 2 && drillState.step !== 'CATEGORY') {
+      setDrillState({ step: 'DEVICE', category: drillState.category });
+      return;
+    }
+    if (targetIndex === 3 && (drillState.step === 'SERVICE' || drillState.step === 'DETAILS')) {
+      setDrillState({
+        step: 'SERVICE',
+        category: drillState.category,
+        deviceModelId: drillState.deviceModelId,
+        deviceName: drillState.deviceName,
+      });
+    }
+  }, [drillState, setDrillState]);
 
   const handleCategorySelect = (category: string) => {
     setDrillState({ step: 'DEVICE', category });
@@ -1551,36 +1594,47 @@ export function RepairsTab() {
                 <ArrowLeft className="h-3 w-3" />
               </button>
             )}
-            {STEP_LABELS.map((label, i) => (
-              <div key={label} className="flex items-center gap-1.5">
-                {i > 0 && (
-                  <div className={cn(
-                    'h-px w-4',
-                    i <= currentStepIndex ? 'bg-primary-400' : 'bg-surface-200 dark:bg-surface-700',
-                  )} />
-                )}
-                <div
-                  className={cn(
-                    'flex items-center gap-1',
-                    i === currentStepIndex
-                      ? 'text-primary-600 dark:text-primary-400'
-                      : i < currentStepIndex
-                        ? 'text-primary-400 dark:text-primary-500'
-                        : 'text-surface-300 dark:text-surface-600',
+            {STEP_LABELS.map((label, i) => {
+              // Past steps (i < currentStepIndex) are clickable to jump back.
+              // Current step + future steps stay non-interactive (forward
+              // navigation requires real selection on each preceding step).
+              const isPast = i < currentStepIndex;
+              const isCurrent = i === currentStepIndex;
+              return (
+                <div key={label} className="flex items-center gap-1.5">
+                  {i > 0 && (
+                    <div className={cn(
+                      'h-px w-4',
+                      i <= currentStepIndex ? 'bg-primary-400' : 'bg-surface-200 dark:bg-surface-700',
+                    )} />
                   )}
-                >
-                  <div className={cn(
-                    'h-2 w-2 rounded-full',
-                    i === currentStepIndex
-                      ? 'bg-primary-600 dark:bg-primary-400'
-                      : i < currentStepIndex
-                        ? 'bg-primary-300 dark:bg-primary-600'
-                        : 'bg-surface-300 dark:bg-surface-600',
-                  )} />
-                  <span className="text-[10px] font-medium">{label}</span>
+                  <button
+                    type="button"
+                    disabled={!isPast}
+                    onClick={() => handleStepClick(i)}
+                    className={cn(
+                      'flex items-center gap-1 rounded px-1 py-0.5 transition',
+                      isCurrent
+                        ? 'text-primary-600 dark:text-primary-400 cursor-default'
+                        : isPast
+                          ? 'text-primary-400 dark:text-primary-500 cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-300'
+                          : 'text-surface-300 dark:text-surface-600 cursor-not-allowed',
+                    )}
+                    aria-label={isPast ? `Go back to ${label}` : label}
+                  >
+                    <div className={cn(
+                      'h-2 w-2 rounded-full',
+                      isCurrent
+                        ? 'bg-primary-600 dark:bg-primary-400'
+                        : isPast
+                          ? 'bg-primary-300 dark:bg-primary-600'
+                          : 'bg-surface-300 dark:bg-surface-600',
+                    )} />
+                    <span className="text-[10px] font-medium">{label}</span>
+                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

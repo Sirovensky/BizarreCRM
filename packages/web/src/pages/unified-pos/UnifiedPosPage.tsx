@@ -10,7 +10,11 @@ import { SuccessScreen } from './SuccessScreen';
 import { UpsellPrompt } from './UpsellPrompt';
 import { InactivityTimer } from './InactivityTimer';
 import { ReturnModal } from './ReturnModal';
-import { readTrainingSessionId, startTrainingSession, TrainingModeBanner } from './TrainingModeBanner';
+// TrainingModeBanner UI removed — sandbox mode is now URL-triggered only
+// (?sandbox=1). The button on the POS surface added clutter without a clear
+// audience. Internal helpers (readTrainingSessionId / startTrainingSession)
+// remain in TrainingModeBanner.tsx for the URL flow + BottomActions checks.
+import { readTrainingSessionId, startTrainingSession } from './TrainingModeBanner';
 import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
 import { ticketApi, customerApi, posApi, deviceTemplateApi, inventoryApi } from '@/api/endpoints';
@@ -533,9 +537,6 @@ export function UnifiedPosPage() {
           </button>
         </div>
       )}
-      <div className="border-b border-surface-200 bg-white px-4 py-2 dark:border-surface-700 dark:bg-surface-900">
-        <TrainingModeBanner />
-      </div>
       {/* Barcode scan flash indicator */}
       {scanFlash && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white shadow-lg animate-pulse">
