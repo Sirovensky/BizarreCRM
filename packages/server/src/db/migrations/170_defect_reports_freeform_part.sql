@@ -4,6 +4,22 @@
 --
 -- SQLite does not support DROP NOT NULL via ALTER COLUMN, so we recreate the
 -- table using the standard shadow-copy strategy.
+--
+-- IMPORTANT: trigger trg_ticket_del_enrichment_cleanup (from migration 097)
+-- references parts_defect_reports. With PRAGMA legacy_alter_table=OFF (the
+-- modern default since SQLite 3.25), the integrity check fires when the
+-- table is dropped and the trigger now points at a missing table — the
+-- migration aborts with "no such table: main.parts_defect_reports". We
+-- drop the trigger before the swap and recreate it verbatim afterward.
+
+-- 0. Drop the trigger that references parts_defect_reports. Recreated at
+--    the end of this migration so the cleanup behaviour is preserved.
+DROP TRIGGER IF EXISTS trg_ticket_del_enrichment_cleanup;
+
+-- 0a. Idempotency: if a prior failed run of this migration left a partial
+--     parts_defect_reports_new shadow table around, drop it so the CREATE
+--     below starts from a clean slate.
+DROP TABLE IF EXISTS parts_defect_reports_new;
 
 -- 1. Shadow table with the new schema.
 CREATE TABLE IF NOT EXISTS parts_defect_reports_new (
@@ -39,3 +55,38 @@ CREATE INDEX IF NOT EXISTS idx_defect_reports_ticket
   ON parts_defect_reports(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_defect_reports_user
   ON parts_defect_reports(reported_by_user_id);
+
+-- 5. Recreate trg_ticket_del_enrichment_cleanup verbatim from migration 097
+--    so ticket deletes still cascade-cleanup enrichment tables. If this body
+--    diverges from migration 097, the source of truth becomes whichever
+--    migration last touched it; keep them in sync if 097 ever changes.
+CREATE TRIGGER IF NOT EXISTS trg_ticket_del_enrichment_cleanup
+AFTER DELETE ON tickets
+BEGIN
+  -- Hard deletes (row lifecycle ends with the ticket)
+  DELETE FROM bench_timers            WHERE ticket_id = OLD.id;
+  DELETE FROM qc_sign_offs            WHERE ticket_id = OLD.id;
+  DELETE FROM warranty_certificates   WHERE ticket_id = OLD.id;
+  DELETE FROM ticket_photos_visibility WHERE ticket_id = OLD.id;
+  DELETE FROM ticket_handoffs         WHERE ticket_id = OLD.id;
+  DELETE FROM team_mentions
+    WHERE context_type = 'ticket_note' AND context_id = OLD.id;
+
+  -- Cascade into chat messages before deleting channels so we don't leave
+  -- orphan rows in team_chat_messages. Done as two statements instead of a
+  -- subquery DELETE so the ordering is explicit to reviewers.
+  DELETE FROM team_chat_messages
+    WHERE channel_id IN (
+      SELECT id FROM team_chat_channels
+      WHERE kind = 'ticket' AND ticket_id = OLD.id
+    );
+  DELETE FROM team_chat_channels
+    WHERE kind = 'ticket' AND ticket_id = OLD.id;
+
+  -- Nullify on tables whose rows should outlive the ticket (audit / history)
+  UPDATE parts_defect_reports       SET ticket_id = NULL WHERE ticket_id = OLD.id;
+  UPDATE customer_reviews           SET ticket_id = NULL WHERE ticket_id = OLD.id;
+  UPDATE nps_responses              SET ticket_id = NULL WHERE ticket_id = OLD.id;
+  UPDATE inventory_serial_numbers   SET ticket_id = NULL WHERE ticket_id = OLD.id;
+  UPDATE deposits                   SET ticket_id = NULL WHERE ticket_id = OLD.id;
+END;
