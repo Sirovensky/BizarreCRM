@@ -4941,43 +4941,43 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
   `packages/web/src/components/layout/Sidebar.tsx:76, 80`
   <!-- meta: fix=swap-PO-icon-to-Truck-or-ClipboardList -->
 
-- [ ] WEB-UIUX-1196. **[MINOR] "Change status to 'ordered' before receiving" hint shown only for status `draft` — `pending` POs also can't receive but get no hint.** `PurchaseOrdersPage.tsx:271-273` checks `status === 'draft'` only. Allowed receivable statuses are `ordered`, `partial`, `backordered`. Pending PO row shows no inline guidance. L9 empty-state helpfulness.
+- [x] WEB-UIUX-1196. **[MINOR] "Change status to 'ordered' before receiving" hint shown only for status `draft` — `pending` POs also can't receive but get no hint.** `PurchaseOrdersPage.tsx:271-273` checks `status === 'draft'` only. Allowed receivable statuses are `ordered`, `partial`, `backordered`. Pending PO row shows no inline guidance. L9 empty-state helpfulness. **[AUTOLOOP-T57 RESOLVED: hint conditional broadened from status==='draft' to !canReceivestatus!=='received'status!=='cancelled' so pending POs also see guidance.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:268-273`
   <!-- meta: fix=show-hint-when-!canReceive&&status!=='received'&&status!=='cancelled' -->
 
-- [ ] WEB-UIUX-1197. **[MINOR] PO row click toggles expand, but PO # column is styled as a primary-color link (`text-primary-600`) — sets affordance for "click to navigate to detail page" that doesn't exist.** `PurchaseOrdersPage.tsx:181-186`. Either drop the link styling or add a real PO detail route. L2 label/affordance truthfulness.
+- [x] WEB-UIUX-1197. **[MINOR] PO row click toggles expand, but PO # column is styled as a primary-color link (`text-primary-600`) — sets affordance for "click to navigate to detail page" that doesn't exist.** `PurchaseOrdersPage.tsx:181-186`. Either drop the link styling or add a real PO detail route. L2 label/affordance truthfulness. **[AUTOLOOP-T57 RESOLVED: PO# column text-primary-600 link styling dropped since clicking only toggles expand; affordance now matches behavior.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:181-186`
   <!-- meta: fix=remove-text-primary-600-from-PO#-cell-OR-add-/purchase-orders/:id-detail-route -->
 
-- [ ] WEB-UIUX-1198. **[MINOR] Cost-price field on Create form defaults to `0` and silently submits `$0` line items.** `PurchaseOrdersPage.tsx:438-446` placeholder `"Unit cost"` but no validation that cost > 0. Server `validatePrice` allows 0 — inventory items pulled from catalog (`updateItem` at line 416-419) prefill from `inventoryItems.cost_price`, so users who pick from the dropdown are fine. But a row left at 0 silently passes. L7 feedback specificity.
+- [x] WEB-UIUX-1198. **[MINOR] Cost-price field on Create form defaults to `0` and silently submits `$0` line items.** `PurchaseOrdersPage.tsx:438-446` placeholder `"Unit cost"` but no validation that cost > 0. Server `validatePrice` allows 0 — inventory items pulled from catalog (`updateItem` at line 416-419) prefill from `inventoryItems.cost_price`, so users who pick from the dropdown are fine. But a row left at 0 silently passes. L7 feedback specificity. **[AUTOLOOP-T57 RESOLVED: create-form submit handler now confirms 'Submit with $0 line items?' when any line cost_price is 0.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:438-446`
   <!-- meta: fix=warn-on-submit-if-any-line-cost_price===0+confirm("Submit-with-$0-line-items?") -->
 
-- [ ] WEB-UIUX-1199. **[MINOR] After successful receive, toast "Stock received and updated" gives no link to verify.** `PurchaseOrdersPage.tsx:73`. User who wants to check the resulting stock movement has to go to inventory item page manually. Consider toast with action: `toast.success("Stock received", { onClick: () => navigate(`/inventory/${id}`) })`. L7 feedback meaningfulness.
+- [x] WEB-UIUX-1199. **[MINOR] After successful receive, toast "Stock received and updated" gives no link to verify.** `PurchaseOrdersPage.tsx:73`. User who wants to check the resulting stock movement has to go to inventory item page manually. Consider toast with action: `toast.success("Stock received", { onClick: () => navigate(`/inventory/${id}`) })`. L7 feedback meaningfulness. **[AUTOLOOP-T57 RESOLVED: receive success now custom toast with View Inventory action button navigating to /inventory.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:72-76`
   <!-- meta: fix=use-react-hot-toast-custom-toast-with-link-to-stock-movements-or-the-first-affected-inventory-item -->
 
-- [ ] WEB-UIUX-1200. **[MINOR] Create form Cancel button does NOT reset form state — re-opening shows stale supplier + items.** `PurchaseOrdersPage.tsx:461-463` only flips `setShowCreate(false)`, never `setNewPo({...EMPTY})`. Surprise on re-open. Compare to success path which DOES reset (line 336). L4 flow consistency.
+- [x] WEB-UIUX-1200. **[MINOR] Create form Cancel button does NOT reset form state — re-opening shows stale supplier + items.** `PurchaseOrdersPage.tsx:461-463` only flips `setShowCreate(false)`, never `setNewPo({...EMPTY})`. Surprise on re-open. Compare to success path which DOES reset (line 336). L4 flow consistency. **[AUTOLOOP-T57 RESOLVED: Cancel button on Create form now resets newPo state to clean shape; re-open shows blank form.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:461-463`
   <!-- meta: fix=cancel-handler-also-calls-setNewPo({supplier_id:'',notes:'',items:[{...EMPTY_ITEM}]}) -->
 
-- [ ] WEB-UIUX-1201. **[MINOR] Empty `—` for `supplier_name` masks data integrity issue.** `PurchaseOrdersPage.tsx:188`. Supplier is REQUIRED at PO create time (`createMut` line 321 + server line 1385). The only path to NULL `supplier_name` is supplier deletion after PO creation. Em-dash hides this — show "(Supplier removed)" so user knows the link is broken. L9 empty-state honesty.
+- [x] WEB-UIUX-1201. **[MINOR] Empty `—` for `supplier_name` masks data integrity issue.** `PurchaseOrdersPage.tsx:188`. Supplier is REQUIRED at PO create time (`createMut` line 321 + server line 1385). The only path to NULL `supplier_name` is supplier deletion after PO creation. Em-dash hides this — show "(Supplier removed)" so user knows the link is broken. L9 empty-state honesty. **[AUTOLOOP-T57 RESOLVED: empty supplier_name now renders '(Supplier removed)' so deletion-related FK orphan is visible to operator.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:187-189`
   <!-- meta: fix=supplier_name||"(Supplier-removed)"+add-FK-ON-DELETE-RESTRICT-or-soft-delete-suppliers -->
 
-- [ ] WEB-UIUX-1202. **[NIT] Receive modal's "Confirm Receive" never confirms — fires immediately. Receiving stock is irreversible (no reverse-receipt UI, see WEB-UIUX-1188); high-stakes click deserves a confirm step.** `PurchaseOrdersPage.tsx:138-145`. L4 destructive-action protection, L8 recovery.
+- [x] WEB-UIUX-1202. **[NIT] Receive modal's "Confirm Receive" never confirms — fires immediately. Receiving stock is irreversible (no reverse-receipt UI, see WEB-UIUX-1188); high-stakes click deserves a confirm step.** `PurchaseOrdersPage.tsx:138-145`. L4 destructive-action protection, L8 recovery. **[AUTOLOOP-T57 RESOLVED: receive handler wrapped in window.confirm with summary 'Receive N units of M items? This cannot be undone.' before posting.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:138-145`
   <!-- meta: fix=2-step-confirm-on-Receive-when-totalToReceive>0+show-summary-"Receive-N-units-of-M-items?-This-cannot-be-undone." -->
 
-- [ ] WEB-UIUX-1203. **[NIT] Modal close button uses literal `✕` glyph instead of `X` icon from lucide.** `PurchaseOrdersPage.tsx:92-94`. Inconsistent with other modals in app (which use `<X />` icon). L5 visual consistency.
+- [x] WEB-UIUX-1203. **[NIT] Modal close button uses literal `✕` glyph instead of `X` icon from lucide.** `PurchaseOrdersPage.tsx:92-94`. Inconsistent with other modals in app (which use `<X />` icon). L5 visual consistency. **[AUTOLOOP-T57 RESOLVED: literal ✕ glyph replaced with lucide X icon matching other modals.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:92-94`
   <!-- meta: fix=replace-✕-with-<X-className="h-4-w-4"-/>-from-lucide-react -->
 
-- [ ] WEB-UIUX-1204. **[NIT] Receive modal has no Esc-to-close handler.** Standard modal pattern: Esc dismisses. Cashier with hand on numpad can't close without mouse trip. L9, L13 keyboard support.
+- [x] WEB-UIUX-1204. **[NIT] Receive modal has no Esc-to-close handler.** Standard modal pattern: Esc dismisses. Cashier with hand on numpad can't close without mouse trip. L9, L13 keyboard support. **[AUTOLOOP-T57 VERIFIED: Esc-to-close already wired via existing useEffect keydown listener; comment added for traceability.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:84-150`
   <!-- meta: fix=useEffect-keydown-listener-on-mount+if-key=Escape+confirm-if-dirty-then-onClose -->
 
-- [ ] WEB-UIUX-1205. **[NIT] Suppliers + inventory selects in Create form have no loading state — fast users hit "New Purchase Order" and see empty `<select>` until queries land.** `PurchaseOrdersPage.tsx:299-314` (`enabled: showCreate`). For a couple-hundred-ms blip, dropdown reads "Select supplier…" with nothing to pick. L9 loading state.
+- [x] WEB-UIUX-1205. **[NIT] Suppliers + inventory selects in Create form have no loading state — fast users hit "New Purchase Order" and see empty `<select>` until queries land.** `PurchaseOrdersPage.tsx:299-314` (`enabled: showCreate`). For a couple-hundred-ms blip, dropdown reads "Select supplier…" with nothing to pick. L9 loading state. **[AUTOLOOP-T57 RESOLVED: supplier + inventory selects render disabled 'Loading…' option + opacity-60 while queries in-flight.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:299-314, 383-392, 409-429`
   <!-- meta: fix=if(suppliersLoading||inventoryLoading)-show-skeleton-or-spinner-inside-select+disable-Create-button -->
 

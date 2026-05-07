@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck } from 'lucide-react';
+import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -48,6 +49,7 @@ interface ReceiveModalProps {
 }
 
 function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveModalProps) {
+  const navigate = useNavigate();
   const [receiving, setReceiving] = useState<ReceiveItem[]>(
     items
       .filter((it) => it.quantity_ordered - (it.quantity_received || 0) > 0)
@@ -69,8 +71,23 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
       if (payload.length === 0) throw new Error('No quantities entered');
       return inventoryApi.receivePurchaseOrder(poId, { items: payload });
     },
-    onSuccess: () => {
-      toast.success('Stock received and updated');
+    onSuccess: (res: any) => {
+      const firstItemId = res?.data?.data?.items?.[0]?.inventory_item_id;
+      const inventoryPath = firstItemId ? `/inventory?highlight=${firstItemId}` : '/inventory';
+      toast.success(
+        (t) => (
+          <span className="flex items-center gap-2">
+            Stock received and updated
+            <button
+              onClick={() => { toast.dismiss(t.id); navigate(inventoryPath); }}
+              className="text-xs font-semibold underline whitespace-nowrap"
+            >
+              View inventory
+            </button>
+          </span>
+        ),
+        { duration: 6000 },
+      );
       onSuccess();
       onClose();
     },
@@ -107,8 +124,14 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
             <h2 id="receive-po-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Receive Items</h2>
             <p className="text-sm text-surface-500">{poOrderId}</p>
           </div>
-          <button onClick={closeModal} disabled={receiveMut.isPending} className="text-surface-400 hover:text-surface-600 p-1 disabled:opacity-50">
-            ✕
+          <button
+            type="button"
+            onClick={closeModal}
+            disabled={receiveMut.isPending}
+            aria-label="Close receive items modal"
+            className="text-surface-400 hover:text-surface-600 p-1 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -154,7 +177,11 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
               Cancel
             </button>
             <button
-              onClick={() => receiveMut.mutate()}
+              onClick={() => {
+                const itemCount = receiving.filter((r) => r.receive_qty > 0).length;
+                if (!window.confirm(`Receive ${totalToReceive} units across ${itemCount} item(s)? This cannot be undone.`)) return;
+                receiveMut.mutate();
+              }}
               disabled={totalToReceive === 0 || receiveMut.isPending || receiving.length === 0}
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
@@ -205,14 +232,14 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
         className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
-        <td className="px-4 py-3 font-medium text-primary-600 dark:text-primary-400">
+        <td className="px-4 py-3 font-medium text-surface-900 dark:text-surface-100">
           <div className="flex items-center gap-1.5">
             {expanded ? <ChevronUp className="h-3.5 w-3.5 text-surface-400" /> : <ChevronDown className="h-3.5 w-3.5 text-surface-400" />}
             {(po.order_id as string) || `PO-${po.id}`}
           </div>
         </td>
         <td className="px-4 py-3 text-surface-700 dark:text-surface-300">
-          {(po.supplier_name as string) || '—'}
+          {(po.supplier_name as string) || '(Supplier removed)'}
         </td>
         <td className="px-4 py-3">
           <span className={cn(
@@ -295,7 +322,7 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
                   {!canReceive && status === 'received' && (
                     <span className="text-xs text-green-600 dark:text-green-400 font-medium">Fully received</span>
                   )}
-                  {!canReceive && (status === 'draft' || status === 'pending') && (
+                  {!canReceive && status !== 'received' && status !== 'cancelled' && (
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-surface-400">Change status to &ldquo;ordered&rdquo; before receiving.</span>
                       <button
@@ -333,7 +360,7 @@ export function PurchaseOrdersPage() {
     staleTime: 30_000,
   });
 
-  const { data: suppliersData } = useQuery({
+  const { data: suppliersData, isLoading: suppliersLoading } = useQuery({
     queryKey: ['suppliers'],
     queryFn: () => inventoryApi.listSuppliers(),
     enabled: showCreate,
@@ -341,7 +368,7 @@ export function PurchaseOrdersPage() {
   });
   const suppliers: Array<{ id: number; name: string }> = suppliersData?.data?.data || [];
 
-  const { data: inventoryData } = useQuery({
+  const { data: inventoryData, isLoading: inventoryLoading } = useQuery({
     queryKey: ['inventory-items-select'],
     queryFn: () => inventoryApi.list({ pagesize: 250 }),
     enabled: showCreate,
@@ -425,10 +452,14 @@ export function PurchaseOrdersPage() {
               <select
                 id="po-supplier"
                 value={newPo.supplier_id}
+                disabled={suppliersLoading}
                 onChange={(e) => setNewPo({ ...newPo, supplier_id: e.target.value ? Number(e.target.value) : '' })}
-                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
+                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-60"
               >
-                <option value="">Select supplier…</option>
+                {suppliersLoading
+                  ? <option disabled>Loading…</option>
+                  : <option value="">Select supplier…</option>
+                }
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -453,6 +484,7 @@ export function PurchaseOrdersPage() {
                 <select
                   aria-label={`Inventory item for purchase order line ${i + 1}`}
                   value={item.inventory_item_id}
+                  disabled={inventoryLoading}
                   onChange={(e) => {
                     const invId = e.target.value ? Number(e.target.value) : ('' as const);
                     const found = typeof invId === 'number'
@@ -463,9 +495,12 @@ export function PurchaseOrdersPage() {
                       cost_price: found ? found.cost_price : item.cost_price,
                     });
                   }}
-                  className="flex-1 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
+                  className="flex-1 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-60"
                 >
-                  <option value="">Select inventory item…</option>
+                  {inventoryLoading
+                    ? <option disabled>Loading…</option>
+                    : <option value="">Select inventory item…</option>
+                  }
                   {inventoryItems.map((it) => (
                     <option key={it.id} value={it.id}>
                       {it.name}{it.sku ? ` (${it.sku})` : ''}
@@ -505,11 +540,23 @@ export function PurchaseOrdersPage() {
               + Add Item
             </button>
             <div className="ml-auto flex gap-2">
-              <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 text-sm text-surface-500">
+              <button
+                onClick={() => {
+                  setShowCreate(false);
+                  setNewPo({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
+                }}
+                className="px-3 py-1.5 text-sm text-surface-500"
+              >
                 Cancel
               </button>
               <button
-                onClick={() => createMut.mutate()}
+                onClick={() => {
+                  const hasZeroCost = newPo.items.some(
+                    (i) => typeof i.inventory_item_id === 'number' && i.inventory_item_id > 0 && i.cost_price === 0,
+                  );
+                  if (hasZeroCost && !window.confirm('Submit with $0 line items?')) return;
+                  createMut.mutate();
+                }}
                 disabled={!canSubmit || createMut.isPending}
                 aria-describedby={createDisabledReason ? 'po-create-help' : undefined}
                 className="px-4 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
