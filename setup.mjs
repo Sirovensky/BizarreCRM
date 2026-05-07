@@ -10,9 +10,12 @@
  * What this does, in order:
  *
  *   1. Preflight: Node version + repo-root markers + git availability.
- *   2. git pull (best effort — silent if not a git repo).
+ *   2. git pull --ff-only (best effort; auto-stash+drop any local drift on
+ *      tracked files first so hosts never hit pull conflicts).
  *   3. Stop running PM2 apps gracefully (no taskkill blanket).
- *   4. npm install.
+ *   4. npm ci (deterministic + read-only against package-lock.json so the
+ *      lockfile never drifts on host machines; falls back to `npm install`
+ *      once if ci fails or the lockfile is missing).
  *   5. Ensure / upgrade `.env` (domain prompt on first install).
  *   6. Generate self-signed SSL certs if missing.
  *   7. Build shared + web + server (root npm script).
@@ -180,11 +183,33 @@ function gitPull() {
     warn('git missing — skipped');
     return;
   }
-  // Reset package-lock.json so npm can resolve updates cleanly. NEVER reset
-  // .env, *.db, uploads/, certs/, data/ — those are .gitignored and contain
-  // operator data that survives upgrades.
+  // Discard any local drift on TRACKED files before pulling so `git pull`
+  // never errors out on conflicts. Hosts shouldn't be authoring code locally;
+  // anything they "changed" is either accidental (npm install rewriting the
+  // lockfile, editor scratch-saves) or recoverable from origin/main. .env,
+  // *.db, uploads/, certs/, data/ are .gitignored and untouched here.
+  //
+  // package-lock.json is the highest-frequency offender: even with `npm ci`
+  // below, an earlier setup.mjs run that used `npm install` could have left
+  // local lockfile drift. Reset it explicitly first.
   capture('git', ['checkout', '--', 'package-lock.json']);
-  const r = capture('git', ['pull', 'origin', 'main']);
+  // Stash any other tracked-file drift (no .gitignored files; -u would
+  // sweep operator data we want to preserve). `--keep-index` skipped so
+  // staged + unstaged drift both stash. We DROP the stash unconditionally
+  // after pull — host-side edits are not preserved.
+  const dirty = capture('git', ['status', '--porcelain']);
+  const hadDrift = dirty.ok && dirty.stdout.trim().length > 0;
+  if (hadDrift) {
+    warn('Local drift detected on tracked files — stashing and discarding');
+    capture('git', ['stash', 'push', '-m', `setup-mjs-pre-pull-${Date.now()}`]);
+  }
+  const r = capture('git', ['pull', '--ff-only', 'origin', 'main']);
+  if (hadDrift) {
+    // Drop the stash — we don't want host-side drift reapplied. If operator
+    // genuinely needed those edits, they should commit them on a feature
+    // branch before running setup.mjs.
+    capture('git', ['stash', 'drop']);
+  }
   if (!r.ok) {
     warn(`git pull failed (exit ${r.code}). Continuing with local code.`);
     if (r.stderr) console.log(c.dim(r.stderr.trim().split('\n').slice(0, 5).join('\n')));
@@ -255,8 +280,34 @@ function npmInstall() {
     }
   } catch { /* stamp read errors are non-fatal */ }
 
-  const r = run('npm', ['install']);
-  if (!r.ok) fatal(`npm install failed (exit ${r.code}).`);
+  // Use `npm ci` not `npm install` — ci is read-only against package-lock.json
+  // (npm install rewrites the lockfile, which is what causes the recurring
+  // pull-conflict on every release). ci also wipes node_modules first for a
+  // clean slate, eliminating "stale dep that resolved differently last time"
+  // bugs. Slightly slower on cold cache but deterministic — the right default
+  // for hosts who never author dependency changes.
+  //
+  // Falls back to `npm install` only if package-lock.json is somehow missing
+  // (fresh clone weirdness, partial backup restore). The fallback also
+  // regenerates the lockfile so subsequent runs hit the ci fast-path.
+  const lockExists = existsSync(path.join(REPO_ROOT, 'package-lock.json'));
+  const cmd = lockExists ? ['ci'] : ['install'];
+  if (!lockExists) {
+    warn('package-lock.json missing — falling back to `npm install` for this run only');
+  }
+  const r = run('npm', cmd);
+  if (!r.ok) {
+    // npm ci can fail when lockfile is out of sync with package.json (very
+    // rare; happens if a release commit forgot to commit the lockfile).
+    // Fallback to `npm install` once and warn.
+    if (lockExists) {
+      warn('npm ci failed — falling back to `npm install` (lockfile may be out of sync)');
+      const r2 = run('npm', ['install']);
+      if (!r2.ok) fatal(`npm install fallback also failed (exit ${r2.code}).`);
+    } else {
+      fatal(`npm install failed (exit ${r.code}).`);
+    }
+  }
   ok('Dependencies installed');
 
   if (needsRebuild) {
