@@ -481,9 +481,13 @@ function appointmentStatusLabel(appointment: PosAppointment, nowMs = Date.now())
   if (status !== 'scheduled' && status !== 'confirmed') return status;
   const startsAt = new Date(appointment.start_time).getTime();
   if (!Number.isFinite(startsAt)) return status;
-  const minutes = Math.ceil((startsAt - nowMs) / 60000);
-  if (minutes > 0 && minutes <= 120) return `in ${minutes}m`;
-  if (minutes <= 0 && minutes > -60) return 'due now';
+  const minutes = Math.round((startsAt - nowMs) / 60000);
+  if (minutes > 60) return `in ${Math.round(minutes / 60)}h`;
+  if (minutes > 0) return `in ${minutes}m`;
+  if (minutes === 0) return 'due now';
+  if (minutes >= -15) return 'due now';
+  if (minutes >= -120) return `${-minutes}m late`;
+  if (minutes >= -1440) return `${Math.round(-minutes / 60)}h late`;
   return status;
 }
 
@@ -2047,32 +2051,51 @@ export function UnifiedPosPage() {
             the just-held cart slots in immediately to the LEFT of the
             now-active tab — same intuition as Chrome's "duplicate to right". */}
         {[...(heldCarts.data?.data?.data ?? [])].reverse().map((row) => (
-          <button
+          // Tab is now an outer DIV (not a button) so we can nest the close
+          // X as its own button without violating the no-nested-button rule.
+          // The whole tab body still acts as a clickable area via the inner
+          // `<button>` that fills the row.
+          <div
             key={row.id}
-            type="button"
-            onClick={async () => {
-              // Persist the active tab before swapping to the held one.
-              // Two paths:
-              //   • Active has work (cart items or customer) → holdMutation
-              //     parks it as a real held cart with a meaningful label.
-              //   • Active is blank/fresh-gate → persistBlankTab() so the
-              //     empty slot stays in the strip rather than vanishing
-              //     when the recall replaces the active content. Without
-              //     this, clicking a held tab silently closed any blank
-              //     tab the cashier had spawned via `+`.
-              if (cartItems.length > 0 || customer) {
-                await holdMutation.mutateAsync();
-              } else {
-                await persistBlankTab();
-              }
-              recallMutation.mutate(row.id);
-            }}
-            className="group relative inline-flex h-9 max-w-[220px] shrink-0 items-center gap-2 rounded-t-lg bg-transparent px-3 text-xs font-semibold text-surface-700 dark:text-surface-400 hover:bg-surface-100/60 dark:hover:bg-surface-800/60 whitespace-nowrap transition-colors"
-            title={`Resume ${row.label || `cart #${row.id}`}`}
+            className="group relative inline-flex h-9 max-w-[220px] shrink-0 items-center rounded-t-lg bg-transparent text-xs font-semibold text-surface-700 dark:text-surface-400 hover:bg-surface-100/60 dark:hover:bg-surface-800/60 whitespace-nowrap transition-colors"
           >
-            <span className="grid h-3 w-3 shrink-0 place-items-center rounded-[3px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
-            <span className="truncate">#{row.id} · {row.label || (row.owner_first_name ? `${row.owner_first_name}${row.owner_last_name ? ' ' + row.owner_last_name[0] + '.' : ''}` : 'held')} (held)</span>
-          </button>
+            <button
+              type="button"
+              onClick={async () => {
+                // Persist active tab before recall. Two paths kept (work vs
+                // blank) so blank tabs don't vanish on switch.
+                if (cartItems.length > 0 || customer) {
+                  await holdMutation.mutateAsync();
+                } else {
+                  await persistBlankTab();
+                }
+                recallMutation.mutate(row.id);
+              }}
+              className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 pr-1"
+              title={`Resume ${row.label || `cart #${row.id}`}`}
+            >
+              <span className="grid h-3 w-3 shrink-0 place-items-center rounded-[3px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
+              <span className="truncate">#{row.id} · {row.label || (row.owner_first_name ? `${row.owner_first_name}${row.owner_last_name ? ' ' + row.owner_last_name[0] + '.' : ''}` : 'held')} (held)</span>
+            </button>
+            {/* Close X — discards held cart server-side. Stop propagation so
+                clicking the X doesn't ALSO recall the tab. Hover-revealed on
+                non-active tabs to keep the strip calm; visible on focus for
+                keyboard users. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`Close held cart #${row.id}? This drops the cart contents.`)) {
+                  discardHeldMutation.mutate(row.id);
+                }
+              }}
+              className="mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-surface-500 opacity-0 transition group-hover:opacity-100 focus:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-700"
+              title="Close tab"
+              aria-label={`Close held cart #${row.id}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
         ))}
         <button
           type="button"
@@ -2137,15 +2160,50 @@ export function UnifiedPosPage() {
             escape back to the customer gate without having to remember
             the POS-tab affordance. Hidden in gate (already home) and
             tender (Cart/Method esc lives in the action area). */}
-        {(mode === 'held' || mode === 'refund' || mode === 'close-shift' || mode.startsWith('repair')) && (
+        {/* Step-aware back: in repair flow we walk the wizard stack one step
+            backwards rather than nuking the draft and snapping to sale. The
+            wizard footer's Back button does the same; the topbar chevron
+            mirrors it so cashiers never lose work to the wrong button.
+            From `repair-category` (first step) Back exits to home. */}
+        {(mode === 'held' || mode === 'refund' || mode === 'close-shift' || mode.startsWith('repair')) && (() => {
+          const REPAIR_BACK: Record<string, PosMode> = {
+            'repair-category': cartItems.length > 0 ? 'sale' : 'gate',
+            'repair-device': 'repair-category',
+            'repair-issue': 'repair-device',
+            'repair-quote': 'repair-issue',
+            'repair-deposit': 'repair-quote',
+          };
+          const back = mode.startsWith('repair')
+            ? () => setMode((REPAIR_BACK[mode] ?? (cartItems.length > 0 ? 'sale' : 'gate')) as PosMode)
+            : () => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate');
+          return (
+            <button
+              type="button"
+              onClick={back}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
+              aria-label="Back"
+              title="Back (esc)"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          );
+        })()}
+        {/* Visible "Cancel intake" affordance during the repair wizard.
+            Resets the repair draft + jumps home. The chevron alone wasn't
+            obvious as an "abandon" button — this is. Hidden outside repair
+            mode so the topbar stays calm. */}
+        {mode.startsWith('repair') && (
           <button
             type="button"
-            onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
-            aria-label="Back to sale"
-            title="Back to sale (esc)"
+            onClick={() => {
+              setRepairDraft(DEFAULT_REPAIR_DRAFT);
+              setMode(cartItems.length > 0 || customer ? 'sale' : 'gate');
+            }}
+            className="hidden sm:inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-rose-500 hover:text-rose-600 dark:hover:border-rose-500/60"
+            title="Cancel repair intake"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
+            Cancel intake
           </button>
         )}
         <div className="min-w-[180px]">
@@ -2444,8 +2502,17 @@ export function UnifiedPosPage() {
           taxRate={taxState.rate}
           paidLegs={paidLegs}
           onSwapCustomer={() => {
-            setWalkInActive(false);
-            setMode('gate');
+            // If we're on a walk-in, the user expects to ATTACH a real
+            // customer (not nuke the cart and bounce home). Open the inline
+            // create form so they can capture name + phone right where they
+            // are. For a real customer attached, fall back to gate-swap so
+            // they can pick a different one (the old behavior).
+            if (walkInActive || !customer) {
+              openInlineCustomerCreate();
+              setMode('gate');
+            } else {
+              setMode('gate');
+            }
           }}
           onEditLine={setLineEditing}
           onRemoveLine={removeLineWithUndo}
@@ -2595,14 +2662,26 @@ function CustomerGate({
   onViewCalendar: () => void;
 }) {
   const nowMs = Date.now();
-  // Remaining = future-or-now appointments today. The full `appointments`
-  // list includes past slots (already-checked-in customers) so showing
-  // its raw `length` next to "no bookings left" was contradictory: 4 today
-  // but 0 upcoming. Counter now reflects what's still ahead.
-  const remainingAppointments = appointments.filter((appointment) => {
-    const startsAt = new Date(appointment.start_time).getTime();
-    return Number.isFinite(startsAt) && startsAt >= nowMs;
-  });
+  // "Remaining today" = appointments that still need cashier action today —
+  // not just future-time slots. A 10:30 AM booking that the cashier hasn't
+  // checked in yet is still "remaining" at 11:30 AM; pretending it's gone
+  // hides work. Filter rules:
+  //   • drop no-shows (already accounted for)
+  //   • drop completed/cancelled/checked-in (already actioned)
+  //   • everything else stays, regardless of whether start_time is past
+  // Sort by start_time so the soonest-overdue / next-up bubbles to the top.
+  const remainingAppointments = appointments
+    .filter((appointment) => {
+      if (appointment.no_show) return false;
+      const status = (appointment.status ?? '').toString().toLowerCase();
+      if (status === 'completed' || status === 'cancelled' || status === 'canceled' || status === 'checked_in' || status === 'no_show') return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const aMs = new Date(a.start_time).getTime();
+      const bMs = new Date(b.start_time).getTime();
+      return aMs - bMs;
+    });
   const nextAppointment = remainingAppointments[0];
   const bookingSummary = appointmentsLoading
     ? 'Booked today · loading'
