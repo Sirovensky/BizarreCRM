@@ -38,6 +38,8 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '@/api/client';
+import { repairPricingApi } from '@/api/endpoints';
+import type { RepairPricingMatrixResponse, RepairPricingMatrixPrice } from '@/api/types';
 import {
   blockchypApi,
   customerApi,
@@ -195,13 +197,38 @@ interface CompletedSale {
   completedAt: Date;
 }
 
+/**
+ * One problem selected on the Issue step. Pulls from the device's
+ * repair-pricing matrix when device_model_id is known; falls back to the
+ * service catalog when the device was free-typed (no model id, manual price).
+ *
+ * `priceCents` carries the labor in CENTS so we don't accumulate float drift
+ * when the total tally re-renders. Custom problems get a synthetic id prefix
+ * `custom:<uuid>` so toggling state still keys cleanly.
+ */
+interface SelectedProblem {
+  id: string;                       // `${repair_service_id}` or `custom:<rand>`
+  repairServiceId: number | null;   // null for custom problems
+  name: string;
+  category: string | null;          // server `repair_services.category`
+  priceCents: number;
+  isCustom: boolean;
+}
+
 interface RepairDraft {
   deviceType: string;
+  /** Optional `device_models.id` when picked from catalog. Drives the Issue
+   * step's price lookup. Null when device name was free-typed. */
+  deviceModelId: number | null;
   deviceName: string;
   imei: string;
   serial: string;
   condition: string;
   symptoms: string[];
+  /** New flow: priced repair operations from `repair_services`. Replaces the
+   * old free-form symptom-checklist on the Issue step. Multi-select, each
+   * line becomes a quote line. */
+  selectedProblems: SelectedProblem[];
   customerWords: string;
   /** Mockup Frame 05: staff-only note that never prints on the receipt.
    * Hidden by default; opens via the "+ Add internal note" link. */
@@ -230,11 +257,13 @@ const DEFAULT_REPAIR_DRAFT: RepairDraft = {
   // implicit "Phone / iPhone" pre-fill. Server accepts whatever device_type
   // string lands so the lowercase category slug ("phone") is fine.
   deviceType: '',
+  deviceModelId: null,
   deviceName: '',
   imei: '',
   serial: '',
   condition: 'Good',
   symptoms: [],
+  selectedProblems: [],
   customerWords: '',
   internalNote: '',
   internalNoteOpen: false,
@@ -679,8 +708,10 @@ function Modal({
 // which made it easy to lose your place — picking a category jumped you down
 // the page rather than to a fresh screen. Now Category and Device are two
 // separate stops, matching the iOS / Android flow + the backup web POS.
-function Stepper({ step }: { step: 'category' | 'device' | 'issue' | 'quote' | 'deposit' }) {
-  const steps: Array<{ key: typeof step; label: string }> = [
+type RepairStepKey = 'category' | 'device' | 'issue' | 'quote' | 'deposit';
+
+function Stepper({ step, onGoToStep }: { step: RepairStepKey; onGoToStep?: (target: RepairStepKey) => void }) {
+  const steps: Array<{ key: RepairStepKey; label: string }> = [
     { key: 'category', label: 'Category' },
     { key: 'device', label: 'Device' },
     { key: 'issue', label: 'Issue' },
@@ -690,24 +721,42 @@ function Stepper({ step }: { step: 'category' | 'device' | 'issue' | 'quote' | '
   const activeIndex = steps.findIndex((item) => item.key === step);
   return (
     <div className="flex items-center gap-3">
-      {steps.map((item, index) => (
-        <div key={item.key} className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span
+      {steps.map((item, index) => {
+        // Past steps clickable — jump back without losing draft. Future steps
+        // disabled (data not collected yet). Active step is its own page,
+        // re-clicking is harmless but no-op.
+        const isPast = index < activeIndex;
+        const interactive = isPast && Boolean(onGoToStep);
+        const Tag: any = interactive ? 'button' : 'div';
+        const handler = interactive ? () => onGoToStep!(item.key) : undefined;
+        return (
+          <div key={item.key} className="flex items-center gap-3">
+            <Tag
+              type={interactive ? 'button' : undefined}
+              onClick={handler}
+              disabled={interactive ? false : undefined}
               className={cn(
-                'grid h-6 w-6 place-items-center rounded-full border text-xs font-bold',
-                index < activeIndex && 'border-emerald-500 bg-emerald-500 text-white',
-                index === activeIndex && 'border-primary-500 bg-primary-500 text-on-primary',
-                index > activeIndex && 'border-surface-300 bg-surface-100 text-surface-900 dark:text-surface-500 dark:border-surface-700 dark:bg-surface-800',
+                'flex items-center gap-2 rounded-full transition',
+                interactive && 'cursor-pointer hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-950',
               )}
+              title={interactive ? `Back to ${item.label}` : undefined}
             >
-              {index < activeIndex ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
-            </span>
-            <span className="text-sm font-semibold text-surface-700 dark:text-surface-300">{item.label}</span>
+              <span
+                className={cn(
+                  'grid h-6 w-6 place-items-center rounded-full border text-xs font-bold',
+                  index < activeIndex && 'border-emerald-500 bg-emerald-500 text-white',
+                  index === activeIndex && 'border-primary-500 bg-primary-500 text-on-primary',
+                  index > activeIndex && 'border-surface-300 bg-surface-100 text-surface-900 dark:text-surface-500 dark:border-surface-700 dark:bg-surface-800',
+                )}
+              >
+                {index < activeIndex ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
+              </span>
+              <span className={cn('text-sm font-semibold', isPast ? 'text-surface-900 dark:text-surface-200 underline decoration-dotted underline-offset-4' : 'text-surface-700 dark:text-surface-300')}>{item.label}</span>
+            </Tag>
+            {index < steps.length - 1 && <div className="hidden h-px w-10 bg-surface-200 dark:bg-surface-700 sm:block" />}
           </div>
-          {index < steps.length - 1 && <div className="hidden h-px w-10 bg-surface-200 dark:bg-surface-700 sm:block" />}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1497,46 +1546,90 @@ export function UnifiedPosPage() {
   }, [cartItems.length, customer, holdMutation, mode, setCommandPaletteOpen, commandPaletteOpen, discountOpen, lineEditing, customItemOpen, pendingDiscount]);
 
   const saveRepairToCart = useCallback(() => {
-    const labor = parseMoney(repairDraft.laborPrice);
     if (!repairDraft.deviceName.trim()) {
       toast.error('Add a device name first');
       setMode('repair-device');
       return;
     }
-    if (labor <= 0) {
-      toast.error('Quote must include a labor amount');
-      setMode('repair-quote');
-      return;
+    // New flow: one cart line per selected problem. The Issue step captures
+    // the catalog of problems, the Quote step lets the cashier edit per-line
+    // pricing, the Deposit step lands them all in the cart with consistent
+    // device + condition metadata.
+    const problems = repairDraft.selectedProblems;
+    if (problems.length === 0) {
+      // Quick check-in path skips Issue/Quote — fall back to single labor line
+      // so quick walk-ins still produce a cart line.
+      const labor = parseMoney(repairDraft.laborPrice);
+      if (labor <= 0) {
+        toast.error('Quote must include at least one problem or a labor amount');
+        setMode('repair-quote');
+        return;
+      }
+      addRepair({
+        type: 'repair',
+        id: genId(),
+        device: {
+          device_type: repairDraft.deviceType,
+          device_name: repairDraft.deviceName,
+          device_model_id: repairDraft.deviceModelId,
+          imei: repairDraft.imei,
+          serial: repairDraft.serial,
+          security_code: '',
+          color: '',
+          network: '',
+          pre_conditions: [],
+          additional_notes: [
+            repairDraft.condition ? `Condition: ${repairDraft.condition}` : '',
+            repairDraft.customerWords ? `Customer: ${repairDraft.customerWords}` : '',
+            repairDraft.diagnostic,
+          ].filter(Boolean).join('\n'),
+          device_location: 'front counter',
+          warranty: false,
+          warranty_days: 90,
+        },
+        serviceName: repairDraft.serviceName || 'Repair',
+        repairServiceId: null,
+        selectedGradeId: null,
+        laborPrice: labor,
+        lineDiscount: 0,
+        parts: [],
+        taxable: false,
+        technician: repairDraft.technician || undefined,
+        turnaround: repairDraft.turnaround || undefined,
+      });
+    } else {
+      problems.forEach((problem) => {
+        addRepair({
+          type: 'repair',
+          id: genId(),
+          device: {
+            device_type: repairDraft.deviceType,
+            device_name: repairDraft.deviceName,
+            device_model_id: repairDraft.deviceModelId,
+            imei: repairDraft.imei,
+            serial: repairDraft.serial,
+            security_code: '',
+            color: '',
+            network: '',
+            pre_conditions: [repairDraft.condition].filter(Boolean),
+            additional_notes: [repairDraft.customerWords, repairDraft.diagnostic].filter(Boolean).join('\n'),
+            device_location: 'front counter',
+            warranty: false,
+            warranty_days: 90,
+          },
+          serviceName: problem.name,
+          repairServiceId: problem.repairServiceId,
+          selectedGradeId: null,
+          laborPrice: problem.priceCents / 100,
+          lineDiscount: 0,
+          parts: [],
+          taxable: false,
+          technician: repairDraft.technician || undefined,
+          turnaround: repairDraft.turnaround || undefined,
+        });
+      });
     }
-    addRepair({
-      type: 'repair',
-      id: genId(),
-      device: {
-        device_type: repairDraft.deviceType,
-        device_name: repairDraft.deviceName,
-        device_model_id: null,
-        imei: repairDraft.imei,
-        serial: repairDraft.serial,
-        security_code: '',
-        color: '',
-        network: '',
-        pre_conditions: repairDraft.symptoms,
-        additional_notes: [repairDraft.customerWords, repairDraft.diagnostic].filter(Boolean).join('\n'),
-        device_location: 'front counter',
-        warranty: false,
-        warranty_days: 90,
-      },
-      serviceName: repairDraft.serviceName || 'Repair',
-      repairServiceId: null,
-      selectedGradeId: null,
-      laborPrice: labor,
-      lineDiscount: 0,
-      parts: [],
-      taxable: false,
-      technician: repairDraft.technician || undefined,
-      turnaround: repairDraft.turnaround || undefined,
-    });
-    toast.success('Repair added to cart');
+    toast.success(problems.length > 1 ? `${problems.length} repair lines added` : 'Repair added to cart');
     setRepairDraft(DEFAULT_REPAIR_DRAFT);
     setMode('sale');
   }, [addRepair, repairDraft]);
@@ -2238,6 +2331,7 @@ export function UnifiedPosPage() {
                   setDraft={setRepairDraft}
                   onBack={() => setMode('repair-category')}
                   onContinue={() => setMode('repair-issue')}
+                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
                 />
               )}
               {mode === 'repair-issue' && (
@@ -2246,6 +2340,7 @@ export function UnifiedPosPage() {
                   setDraft={setRepairDraft}
                   onBack={() => setMode('repair-device')}
                   onContinue={() => setMode('repair-quote')}
+                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
                 />
               )}
               {mode === 'repair-quote' && (
@@ -2254,6 +2349,7 @@ export function UnifiedPosPage() {
                   setDraft={setRepairDraft}
                   onBack={() => setMode('repair-issue')}
                   onContinue={() => setMode('repair-deposit')}
+                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
                 />
               )}
               {mode === 'repair-deposit' && (
@@ -2262,6 +2358,7 @@ export function UnifiedPosPage() {
                   setDraft={setRepairDraft}
                   onBack={() => setMode('repair-quote')}
                   onSave={saveRepairToCart}
+                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
                 />
               )}
 
@@ -3525,6 +3622,8 @@ function RepairCategoryStep({ draft, setDraft, onCancel, onContinue, onQuick }: 
 }) {
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-3">
+      {/* Category is the first step — no past steps to jump to. Stepper still
+          renders so the user sees where they are in the 5-step flow. */}
       <Stepper step="category" />
       <div className="flex min-h-0 flex-1 flex-col gap-3">
         <div>
@@ -3590,11 +3689,12 @@ function RepairCategoryStep({ draft, setDraft, onCancel, onContinue, onQuick }: 
  * IMEI / serial input + scan hint live at the bottom — that's where the
  * scan gun's keyboard input naturally lands when focus isn't elsewhere.
  */
-function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
+function RepairDeviceStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
   draft: RepairDraft;
   setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
   onBack: () => void;
   onContinue: () => void;
+  onGoToStep?: (target: RepairStepKey) => void;
 }) {
   const category = draft.deviceType || 'phone';
   const [query, setQuery] = useState('');
@@ -3630,21 +3730,29 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
   const showSearch = searchEnabled;
   const categoryLabel = CATEGORY_TILES.find((t) => t.value === category)?.label ?? 'Device';
 
-  const pick = (deviceName: string) => {
-    setDraft((prev) => ({ ...prev, deviceName }));
+  // pick() captures BOTH the human-readable device name AND the catalog
+  // device_model_id when available. The Issue step needs device_model_id to
+  // pull device-scoped repair prices from `/repair-pricing/matrix`.
+  const pick = (deviceName: string, deviceModelId: number | null = null) => {
+    setDraft((prev) => ({ ...prev, deviceName, deviceModelId }));
   };
 
   return (
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-3">
-      <Stepper step="device" />
+      <Stepper step="device" onGoToStep={onGoToStep} />
       <Section className="flex min-h-0 flex-1 flex-col p-4">
         <div className="mb-3">
           <div className="font-display text-xl">{categoryLabel}</div>
-          <div className="mt-0.5 text-xs text-surface-900 dark:text-surface-500">Pick the model · or scan IMEI / type to search. Selection state highlights the chip.</div>
+          <div className="mt-0.5 text-xs text-surface-900 dark:text-surface-500">Pick a brand to filter, type to search, or scan IMEI.</div>
         </div>
 
         {shortcuts.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          // Bigger manufacturer tiles. Old chips were `text-xs px-3 py-1` — too
+          // small to read or tap. Now design-system inset-ring pattern: even
+          // grid, bold label, ring-2 active state, ring-1 resting. Matches
+          // Category step look so the brand-pick reads as the same caliber of
+          // decision (it is).
+          <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
             {shortcuts.map((mfg) => {
               const active = mfgFilter === mfg;
               return (
@@ -3656,10 +3764,10 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
                     else { setMfgFilter(mfg); setQuery(''); }
                   }}
                   className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                    'flex min-h-[48px] items-center justify-center rounded-xl bg-white px-4 py-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:shadow dark:bg-surface-800',
                     active
-                      ? 'border-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-300'
-                      : 'border-surface-200 text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:text-surface-200',
+                      ? 'ring-2 ring-inset ring-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-200'
+                      : 'ring-1 ring-inset ring-surface-300 text-surface-900 hover:ring-2 hover:ring-primary-500 dark:ring-surface-600 dark:text-surface-100 dark:hover:ring-primary-500/80',
                   )}
                 >
                   {mfg}
@@ -3698,7 +3806,7 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
                   <div className="text-sm text-surface-500">No catalog match for "{effectiveQuery}".</div>
                   <button
                     type="button"
-                    onClick={() => { pick(effectiveQuery); setQuery(''); setMfgFilter(''); }}
+                    onClick={() => { pick(effectiveQuery, null); setQuery(''); setMfgFilter(''); }}
                     className={cn(primaryButton, 'self-start')}
                   >
                     + Add "{effectiveQuery}" as new device
@@ -3707,15 +3815,26 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
               ) : (
                 searchResults.map((d) => {
                   const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
+                  const active = draft.deviceName === fullName && draft.deviceModelId === d.id;
                   return (
                     <button
                       key={d.id}
                       type="button"
-                      onClick={() => pick(fullName)}
-                      className="flex w-full items-center gap-3 border-b border-surface-100 px-3 py-2 text-left text-sm last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
+                      onClick={() => pick(fullName, d.id)}
+                      className={cn(
+                        // Stronger row affordance: bigger touch (py-3),
+                        // accent border on the LEFT when selected, brighter
+                        // hover background, animated chevron. The old row
+                        // looked like a separator — now it reads as a button.
+                        'group relative flex w-full cursor-pointer items-center gap-3 border-b-2 border-transparent px-4 py-3 text-left text-sm transition-all last:border-0',
+                        active
+                          ? 'border-l-4 border-l-primary-500 bg-primary-500/10 dark:bg-primary-500/15'
+                          : 'border-b-surface-100 hover:bg-primary-500/5 hover:border-l-4 hover:border-l-primary-400 dark:border-b-surface-800 dark:hover:bg-primary-500/10',
+                      )}
                     >
                       <span className="font-medium text-surface-900 dark:text-surface-100">{fullName}</span>
-                      <ChevronRight className="ml-auto h-4 w-4 text-surface-400" />
+                      {d.release_year && <span className="text-xs text-surface-500">· {d.release_year}</span>}
+                      <ChevronRight className="ml-auto h-4 w-4 text-surface-400 transition-transform group-hover:translate-x-0.5 group-hover:text-primary-500" />
                     </button>
                   );
                 })
@@ -3726,20 +3845,20 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
           {!showSearch && popularDevices.length > 0 && (
             <div>
               <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-surface-500">Popular</div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {popularDevices.map((d) => {
                   const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
-                  const active = draft.deviceName === fullName;
+                  const active = draft.deviceName === fullName && draft.deviceModelId === d.id;
                   return (
                     <button
                       key={d.id}
                       type="button"
-                      onClick={() => pick(fullName)}
+                      onClick={() => pick(fullName, d.id)}
                       className={cn(
-                        'rounded-full border px-3 py-1 text-xs',
+                        'rounded-full px-4 py-2 text-sm font-semibold transition',
                         active
-                          ? 'border-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-300'
-                          : 'border-surface-200 text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:text-surface-300',
+                          ? 'ring-2 ring-inset ring-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-200'
+                          : 'ring-1 ring-inset ring-surface-300 text-surface-900 hover:ring-2 hover:ring-primary-500 dark:ring-surface-600 dark:text-surface-100',
                       )}
                     >
                       {fullName}
@@ -3773,142 +3892,547 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
   );
 }
 
-function RepairIssueStep({ draft, setDraft, onBack, onContinue }: {
-  draft: RepairDraft;
-  setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
-  onBack: () => void;
-  onContinue: () => void;
-}) {
-  const toggleSymptom = (symptom: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      symptoms: prev.symptoms.includes(symptom)
-        ? prev.symptoms.filter((item) => item !== symptom)
-        : [...prev.symptoms, symptom],
-    }));
-  };
-  return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
-      <Stepper step="issue" />
-      <Section className="p-5">
-        <div className="mb-4 flex flex-wrap gap-2">
-          {CONDITIONS.map((condition) => (
-            <button
-              key={condition}
-              type="button"
-              onClick={() => setDraft((prev) => ({ ...prev, condition }))}
-              className={cn('rounded-full px-3 py-1.5 text-sm font-semibold', draft.condition === condition ? 'bg-primary-500 text-on-primary' : 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300')}
-            >
-              {condition}
-            </button>
-          ))}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-4">
-          {SYMPTOMS.map((symptom) => (
-            <button
-              key={symptom}
-              type="button"
-              onClick={() => toggleSymptom(symptom)}
-              className={cn('rounded-lg border p-4 text-left text-sm font-semibold', draft.symptoms.includes(symptom) ? 'border-primary-500 bg-primary-500/10' : 'border-surface-200 hover:border-primary-500 dark:border-surface-800')}
-            >
-              {symptom}
-            </button>
-          ))}
-        </div>
-        <label className="mt-5 block">
-          <span className="mb-1 block text-sm font-semibold">Customer's words</span>
-          <textarea className={inputClass} rows={4} value={draft.customerWords} onChange={(event) => setDraft((prev) => ({ ...prev, customerWords: event.target.value }))} placeholder="What did the customer say is happening?" />
-        </label>
-        {/* Mockup Frame 05: "+ Add internal note" link · staff-only · won't
-            print on receipt. Toggles a dashed-border textarea so the visual
-            distinction matches the mockup spec. */}
-        <button
-          type="button"
-          onClick={() => setDraft((prev) => ({ ...prev, internalNoteOpen: !prev.internalNoteOpen }))}
-          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 underline-offset-4 hover:underline dark:text-primary-500"
-        >
-          + Add internal note
-          <span className="text-surface-500 dark:text-surface-400 font-normal">· staff-only · won't print on receipt</span>
-        </button>
-        {draft.internalNoteOpen && (
-          <textarea
-            className={cn(inputClass, 'mt-2 border-dashed')}
-            rows={3}
-            value={draft.internalNote || ''}
-            onChange={(event) => setDraft((prev) => ({ ...prev, internalNote: event.target.value }))}
-            placeholder="@mention staff · #tag tickets"
-          />
-        )}
-      </Section>
-      <WizardFooter onBack={onBack} onContinue={onContinue} />
-    </div>
-  );
+// Server `repair_services.category` slug → human label + emoji used to group
+// problem tiles. Unknown categories fall through to "Other" so the screen
+// never collapses on a missing key.
+const PROBLEM_GROUP_META: Record<string, { label: string; emoji: string }> = {
+  screen:       { label: 'Screen',         emoji: '📱' },
+  battery:      { label: 'Battery',        emoji: '🔋' },
+  charging:     { label: 'Charging',       emoji: '🔌' },
+  camera:       { label: 'Camera',         emoji: '📸' },
+  audio:        { label: 'Audio',          emoji: '🔊' },
+  buttons:      { label: 'Buttons',        emoji: '🎛️' },
+  water:        { label: 'Water damage',   emoji: '💧' },
+  software:     { label: 'Software',       emoji: '💻' },
+  diagnostic:   { label: 'Diagnostic',     emoji: '🔍' },
+  data:         { label: 'Data recovery',  emoji: '💾' },
+  motherboard:  { label: 'Board',          emoji: '🧠' },
+  back_glass:   { label: 'Back glass',     emoji: '🪞' },
+  other:        { label: 'Other',          emoji: '🛠️' },
+};
+const PROBLEM_GROUP_FALLBACK = { label: 'Other', emoji: '🛠️' };
+
+function pickGroupMeta(category: string | null | undefined) {
+  if (!category) return PROBLEM_GROUP_FALLBACK;
+  return PROBLEM_GROUP_META[category] ?? { label: category.replace(/_/g, ' '), emoji: '🛠️' };
 }
 
-function RepairQuoteStep({ draft, setDraft, onBack, onContinue }: {
+function priceCentsFrom(price: RepairPricingMatrixPrice): number {
+  // labor_price is dollars (number) on the wire. Round to cents to avoid
+  // float drift in the running tally.
+  if (price.labor_price == null || !Number.isFinite(price.labor_price)) return 0;
+  return Math.round(price.labor_price * 100);
+}
+
+function RepairIssueStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
   draft: RepairDraft;
   setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
   onBack: () => void;
   onContinue: () => void;
+  onGoToStep?: (target: RepairStepKey) => void;
 }) {
+  const [problemQuery, setProblemQuery] = useState('');
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customPrice, setCustomPrice] = useState('');
+
+  const category = draft.deviceType || 'phone';
+  const deviceName = draft.deviceName.trim();
+  const hasDeviceModel = draft.deviceModelId != null;
+
+  // Pull device-scoped pricing matrix. With device_model_id known we'd ideally
+  // hit a /repair-pricing/devices/:id/services endpoint — until that ships we
+  // use the matrix endpoint with `q=<deviceName>` and pick the matching device
+  // out of the response. `category` narrows the service list to the relevant
+  // operations (screen/battery for phones, etc.).
+  const matrixQuery = useQuery({
+    queryKey: ['pos-problem-matrix', category, deviceName, draft.deviceModelId],
+    queryFn: async () => {
+      const res = await repairPricingApi.getMatrix({
+        category,
+        ...(deviceName ? { q: deviceName } : {}),
+        limit: 50,
+      });
+      return res.data.data as RepairPricingMatrixResponse;
+    },
+    staleTime: 60_000,
+  });
+
+  const matrix = matrixQuery.data;
+  const services = matrix?.services ?? [];
+  // Match the picked device. If multiple come back, prefer one whose
+  // device_model_id matches; else first row (substring match should be tight).
+  const matchedDevice = (() => {
+    const devices = matrix?.devices ?? [];
+    if (devices.length === 0) return null;
+    if (draft.deviceModelId != null) {
+      const exact = devices.find((d) => d.device_model_id === draft.deviceModelId);
+      if (exact) return exact;
+    }
+    return devices[0];
+  })();
+
+  // Build display rows. One per service. Price = device-specific labor when
+  // available, else null (rendered as "Set price"). Group by service category.
+  const filteredQ = problemQuery.trim().toLowerCase();
+  const rows = services
+    .filter((s) => (filteredQ ? s.name.toLowerCase().includes(filteredQ) : true))
+    .map((s) => {
+      const priceRow = matchedDevice?.prices.find((p) => p.repair_service_id === s.id);
+      const priceCents = priceRow ? priceCentsFrom(priceRow) : 0;
+      return {
+        serviceId: s.id,
+        name: s.name,
+        category: s.category,
+        priceCents,
+        hasDevicePrice: priceRow ? priceRow.labor_price != null : false,
+      };
+    });
+
+  const groups = rows.reduce<Record<string, typeof rows>>((acc, row) => {
+    const key = row.category ?? 'other';
+    if (!acc[key]) acc[key] = [] as typeof rows;
+    acc[key].push(row);
+    return acc;
+  }, {});
+  const groupKeys = Object.keys(groups).sort((a, b) => {
+    // Render Screen / Battery / Charging first — most-common counter ops.
+    const order = ['screen', 'battery', 'charging', 'camera', 'audio', 'buttons', 'software', 'water', 'data', 'motherboard', 'back_glass', 'diagnostic', 'other'];
+    return order.indexOf(a) - order.indexOf(b);
+  });
+
+  const isSelected = (serviceId: number) => draft.selectedProblems.some((p) => p.repairServiceId === serviceId);
+
+  const toggleProblem = (row: typeof rows[number]) => {
+    setDraft((prev) => {
+      const exists = prev.selectedProblems.find((p) => p.repairServiceId === row.serviceId);
+      if (exists) {
+        return { ...prev, selectedProblems: prev.selectedProblems.filter((p) => p.repairServiceId !== row.serviceId) };
+      }
+      const next: SelectedProblem = {
+        id: String(row.serviceId),
+        repairServiceId: row.serviceId,
+        name: row.name,
+        category: row.category,
+        priceCents: row.priceCents,
+        isCustom: false,
+      };
+      return { ...prev, selectedProblems: [...prev.selectedProblems, next] };
+    });
+  };
+
+  const addCustomProblem = () => {
+    const name = customName.trim();
+    const priceNum = Number(customPrice);
+    if (!name) return;
+    if (!Number.isFinite(priceNum) || priceNum < 0) return;
+    const id = `custom:${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+    setDraft((prev) => ({
+      ...prev,
+      selectedProblems: [
+        ...prev.selectedProblems,
+        {
+          id,
+          repairServiceId: null,
+          name,
+          category: 'other',
+          priceCents: Math.round(priceNum * 100),
+          isCustom: true,
+        },
+      ],
+    }));
+    setCustomName('');
+    setCustomPrice('');
+    setCustomOpen(false);
+  };
+
+  const totalSelectedCents = draft.selectedProblems.reduce((sum, p) => sum + p.priceCents, 0);
+  const selectedCount = draft.selectedProblems.length;
+  const canContinue = selectedCount > 0;
+
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
-      <Stepper step="quote" />
-      <Section className="p-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold">Service name</span>
-            <input className={inputClass} value={draft.serviceName} onChange={(event) => setDraft((prev) => ({ ...prev, serviceName: event.target.value }))} />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold">Labor price</span>
-            <input className={inputClass} inputMode="decimal" value={draft.laborPrice} onChange={(event) => setDraft((prev) => ({ ...prev, laborPrice: event.target.value }))} />
-          </label>
+    <div className="mx-auto flex h-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-3">
+      <Stepper step="issue" onGoToStep={onGoToStep} />
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-surface-500">What needs fixing?</div>
+            <div className="mt-0.5 text-xs text-surface-600 dark:text-surface-400">
+              Pick one or more problems. Pricing shown is for {deviceName || 'this device'}.
+              {!hasDeviceModel && ' (Custom device — prices come from default tier; tap any tile to add.)'}
+            </div>
+          </div>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold">Technician</span>
-            <select className={inputClass} value={draft.technician} onChange={(event) => setDraft((prev) => ({ ...prev, technician: event.target.value }))}>
-              <option value="">— assign later —</option>
-              {TECHNICIAN_OPTIONS_STUB.map((tech) => <option key={tech} value={tech}>{tech}</option>)}
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold">Promised turnaround</span>
-            <select className={inputClass} value={draft.turnaround} onChange={(event) => setDraft((prev) => ({ ...prev, turnaround: event.target.value }))}>
-              {TURNAROUND_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-            </select>
-          </label>
+
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+          <input
+            type="text"
+            value={problemQuery}
+            onChange={(e) => setProblemQuery(e.target.value)}
+            placeholder="Search problems · cracked screen, battery, charging port..."
+            className={cn(inputClass, 'pl-9')}
+          />
         </div>
-        <label className="mt-4 block">
-          <span className="mb-1 block text-sm font-semibold">Diagnostic notes</span>
-          <textarea className={inputClass} rows={5} value={draft.diagnostic} onChange={(event) => setDraft((prev) => ({ ...prev, diagnostic: event.target.value }))} placeholder="Short counter-safe quote summary." />
-        </label>
-        <div className="mt-4 rounded-lg border border-surface-200 p-4 dark:border-surface-800">
-          <div className="text-sm font-semibold">Quote preview</div>
-          <div className="mt-2 flex justify-between font-mono text-sm"><span>{draft.serviceName}</span><span>{formatCurrency(parseMoney(draft.laborPrice))}</span></div>
-          {(draft.technician || draft.turnaround) && (
-            <div className="mt-1 text-xs text-surface-500">
-              {draft.technician ? `Tech ${draft.technician}` : 'Tech: TBD'} · {draft.turnaround || 'Turnaround: TBD'}
+
+        {/* Scrollable problem grid. Pinned tally + footer remain visible. */}
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          {matrixQuery.isLoading && (
+            <div className="rounded-xl border border-dashed border-surface-300 p-6 text-center text-sm text-surface-500 dark:border-surface-700">
+              Loading problem catalog…
+            </div>
+          )}
+          {!matrixQuery.isLoading && rows.length === 0 && (
+            <div className="rounded-xl border border-dashed border-surface-300 p-6 text-center text-sm text-surface-500 dark:border-surface-700">
+              No catalog problems for this device. Use <span className="font-semibold">Add custom problem</span> below.
+            </div>
+          )}
+          {groupKeys.map((groupKey) => {
+            const meta = pickGroupMeta(groupKey);
+            const groupRows = groups[groupKey];
+            return (
+              <div key={groupKey} className="mb-4">
+                <div className="mb-2 flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.14em] text-surface-500">
+                  <span className="text-base leading-none">{meta.emoji}</span>
+                  {meta.label}
+                  <span className="text-surface-400">· {groupRows.length}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {groupRows.map((row) => {
+                    const active = isSelected(row.serviceId);
+                    return (
+                      <button
+                        key={row.serviceId}
+                        type="button"
+                        onClick={() => toggleProblem(row)}
+                        className={cn(
+                          'group flex min-h-[80px] flex-col items-start justify-between gap-2 rounded-xl bg-white px-4 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-800',
+                          active
+                            ? 'ring-2 ring-inset ring-primary-500 bg-primary-500/15 dark:bg-primary-500/15'
+                            : 'ring-1 ring-inset ring-surface-300 hover:ring-2 hover:ring-primary-500 dark:ring-surface-600 dark:hover:ring-primary-500/80',
+                        )}
+                      >
+                        <div className="text-sm font-semibold leading-tight text-surface-900 dark:text-surface-50">
+                          {row.name}
+                        </div>
+                        <div className="flex w-full items-center justify-between text-xs">
+                          <span className={cn('font-mono', row.hasDevicePrice ? 'text-surface-700 dark:text-surface-300' : 'text-surface-500')}>
+                            {row.hasDevicePrice ? formatCurrency(row.priceCents / 100) : 'Set price'}
+                          </span>
+                          {active && <CheckCircle2 className="h-4 w-4 text-primary-500" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Custom problem affordance — last in the list so the eye lands on
+              catalog problems first. Inline form expands so cashier doesn't
+              leave the screen to add a one-off. */}
+          <div className="mt-2 rounded-xl border-2 border-dashed border-primary-500/40 p-3">
+            {!customOpen ? (
+              <button
+                type="button"
+                onClick={() => setCustomOpen(true)}
+                className="flex w-full items-center justify-center gap-2 py-2 text-sm font-semibold text-primary-700 hover:text-primary-600 dark:text-primary-400"
+              >
+                + Add custom problem
+              </button>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-surface-600 dark:text-surface-400">Problem</span>
+                  <input
+                    className={inputClass}
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    placeholder="e.g. Sim tray replacement"
+                    autoFocus
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs text-surface-600 dark:text-surface-400">Price</span>
+                  <input
+                    className={cn(inputClass, 'w-32')}
+                    inputMode="decimal"
+                    value={customPrice}
+                    onChange={(e) => setCustomPrice(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={addCustomProblem} className={primaryButton}>Add</button>
+                  <button type="button" onClick={() => { setCustomOpen(false); setCustomName(''); setCustomPrice(''); }} className={ghostButton}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Pinned running tally — what's selected so far + total + count.
+            Sits above the wizard footer so the cashier sees their progress
+            without scrolling back up. */}
+        <div className={cn(
+          'rounded-xl border p-3 transition',
+          selectedCount > 0 ? 'border-primary-500 bg-primary-500/10 dark:bg-primary-500/15' : 'border-dashed border-surface-300 dark:border-surface-700',
+        )}>
+          {selectedCount === 0 ? (
+            <div className="text-center text-sm text-surface-500">No problems selected yet.</div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-1.5">
+                {draft.selectedProblems.map((p) => (
+                  <span key={p.id} className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-surface-900 shadow-sm dark:bg-surface-800 dark:text-surface-100">
+                    {p.name}
+                    <span className="font-mono text-surface-500">{formatCurrency(p.priceCents / 100)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDraft((prev) => ({ ...prev, selectedProblems: prev.selectedProblems.filter((x) => x.id !== p.id) }))}
+                      className="text-surface-400 hover:text-rose-500"
+                      aria-label={`Remove ${p.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-surface-500">
+                  {selectedCount} selected
+                </span>
+                <span className="font-display text-2xl text-primary-700 dark:text-primary-300">
+                  {formatCurrency(totalSelectedCents / 100)}
+                </span>
+              </div>
             </div>
           )}
         </div>
-      </Section>
-      <WizardFooter onBack={onBack} onContinue={onContinue} />
+      </div>
+      <WizardFooter
+        onBack={onBack}
+        onContinue={onContinue}
+        continueDisabled={!canContinue}
+      />
     </div>
   );
 }
 
-function RepairDepositStep({ draft, setDraft, onBack, onSave }: {
+function RepairQuoteStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
+  draft: RepairDraft;
+  setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
+  onBack: () => void;
+  onContinue: () => void;
+  onGoToStep?: (target: RepairStepKey) => void;
+}) {
+  // Inline price-edit state per problem line.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDraft, setEditingDraft] = useState('');
+
+  const updatePrice = (id: string, priceCents: number) => {
+    setDraft((prev) => ({
+      ...prev,
+      selectedProblems: prev.selectedProblems.map((p) => (p.id === id ? { ...p, priceCents } : p)),
+    }));
+  };
+
+  const removeProblem = (id: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      selectedProblems: prev.selectedProblems.filter((p) => p.id !== id),
+    }));
+  };
+
+  const subtotalCents = draft.selectedProblems.reduce((sum, p) => sum + p.priceCents, 0);
+
+  const startEdit = (id: string, currentCents: number) => {
+    setEditingId(id);
+    setEditingDraft((currentCents / 100).toFixed(2));
+  };
+
+  const commitEdit = (id: string) => {
+    const next = Number(editingDraft);
+    if (Number.isFinite(next) && next >= 0) updatePrice(id, Math.round(next * 100));
+    setEditingId(null);
+  };
+
+  return (
+    <div className="mx-auto flex h-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-3">
+      <Stepper step="quote" onGoToStep={onGoToStep} />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+        {/* Quote summary — selected problems become editable line items.
+            This is the primary content of the screen. Replaces the old
+            single-service form (which couldn't represent multi-problem
+            tickets at all). */}
+        <Section className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-surface-500">Quote</div>
+              <div className="text-sm text-surface-700 dark:text-surface-300">
+                {draft.deviceName || 'Device TBD'} · {draft.selectedProblems.length} problem{draft.selectedProblems.length === 1 ? '' : 's'}
+              </div>
+            </div>
+            <button type="button" onClick={onBack} className="text-xs font-semibold text-primary-700 underline-offset-4 hover:underline dark:text-primary-400">
+              Edit problems
+            </button>
+          </div>
+
+          {draft.selectedProblems.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-surface-300 p-6 text-center text-sm text-surface-500 dark:border-surface-700">
+              No problems on this quote. Go back to add some.
+            </div>
+          ) : (
+            <div className="divide-y divide-surface-200 dark:divide-surface-800">
+              {draft.selectedProblems.map((p) => (
+                <div key={p.id} className="flex items-center gap-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-surface-900 dark:text-surface-50">{p.name}</div>
+                    {p.category && <div className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-surface-500">{pickGroupMeta(p.category).label}{p.isCustom && ' · custom'}</div>}
+                  </div>
+                  {editingId === p.id ? (
+                    <input
+                      autoFocus
+                      type="text"
+                      inputMode="decimal"
+                      value={editingDraft}
+                      onChange={(e) => setEditingDraft(e.target.value)}
+                      onBlur={() => commitEdit(p.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { commitEdit(p.id); }
+                        if (e.key === 'Escape') { setEditingId(null); }
+                      }}
+                      className="w-28 rounded-md border border-primary-500 bg-white px-2 py-1 text-right font-mono text-sm dark:bg-surface-900"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startEdit(p.id, p.priceCents)}
+                      className="rounded-md px-2 py-1 text-right font-mono text-sm text-surface-900 hover:bg-surface-100 dark:text-surface-100 dark:hover:bg-surface-800"
+                      title="Click to edit price"
+                    >
+                      {formatCurrency(p.priceCents / 100)}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeProblem(p.id)}
+                    className="text-surface-400 hover:text-rose-500"
+                    aria-label={`Remove ${p.name}`}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-3 flex items-baseline justify-end gap-3 border-t border-surface-200 pt-3 dark:border-surface-800">
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-surface-500">Subtotal</span>
+            <span className="font-display text-3xl text-primary-700 dark:text-primary-300">{formatCurrency(subtotalCents / 100)}</span>
+          </div>
+        </Section>
+
+        {/* Diagnostic intake — condition, customer's words, internal note,
+            tech assignment, turnaround, diag summary. Moved here from the
+            old Issue step so the Issue step is purely about WHAT is being
+            repaired. */}
+        <Section className="p-4">
+          <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.14em] text-surface-500">Device condition</div>
+          <div className="mb-4 flex flex-wrap gap-2">
+            {CONDITIONS.map((condition) => (
+              <button
+                key={condition}
+                type="button"
+                onClick={() => setDraft((prev) => ({ ...prev, condition }))}
+                className={cn(
+                  'rounded-full px-4 py-1.5 text-sm font-semibold transition',
+                  draft.condition === condition
+                    ? 'ring-2 ring-inset ring-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-200'
+                    : 'ring-1 ring-inset ring-surface-300 text-surface-700 hover:ring-2 hover:ring-primary-500 dark:ring-surface-600 dark:text-surface-200',
+                )}
+              >
+                {condition}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold">Technician</span>
+              <select className={inputClass} value={draft.technician} onChange={(event) => setDraft((prev) => ({ ...prev, technician: event.target.value }))}>
+                <option value="">— assign later —</option>
+                {TECHNICIAN_OPTIONS_STUB.map((tech) => <option key={tech} value={tech}>{tech}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold">Promised turnaround</span>
+              <select className={inputClass} value={draft.turnaround} onChange={(event) => setDraft((prev) => ({ ...prev, turnaround: event.target.value }))}>
+                {TURNAROUND_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm font-semibold">Customer's words</span>
+            <textarea
+              className={inputClass}
+              rows={3}
+              value={draft.customerWords}
+              onChange={(event) => setDraft((prev) => ({ ...prev, customerWords: event.target.value }))}
+              placeholder="What did the customer say is happening?"
+            />
+          </label>
+
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm font-semibold">Diagnostic notes</span>
+            <textarea
+              className={inputClass}
+              rows={3}
+              value={draft.diagnostic}
+              onChange={(event) => setDraft((prev) => ({ ...prev, diagnostic: event.target.value }))}
+              placeholder="Short counter-safe quote summary."
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => setDraft((prev) => ({ ...prev, internalNoteOpen: !prev.internalNoteOpen }))}
+            className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 underline-offset-4 hover:underline dark:text-primary-500"
+          >
+            + Add internal note
+            <span className="text-surface-500 dark:text-surface-400 font-normal">· staff-only · won't print on receipt</span>
+          </button>
+          {draft.internalNoteOpen && (
+            <textarea
+              className={cn(inputClass, 'mt-2 border-dashed')}
+              rows={3}
+              value={draft.internalNote || ''}
+              onChange={(event) => setDraft((prev) => ({ ...prev, internalNote: event.target.value }))}
+              placeholder="@mention staff · #tag tickets"
+            />
+          )}
+        </Section>
+      </div>
+
+      <WizardFooter onBack={onBack} onContinue={onContinue} continueDisabled={draft.selectedProblems.length === 0} />
+    </div>
+  );
+}
+
+function RepairDepositStep({ draft, setDraft, onBack, onSave, onGoToStep }: {
   draft: RepairDraft;
   setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
   onBack: () => void;
   onSave: () => void;
+  onGoToStep?: (target: RepairStepKey) => void;
 }) {
   const [waiverModal, setWaiverModal] = useState(false);
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
-      <Stepper step="deposit" />
+      <Stepper step="deposit" onGoToStep={onGoToStep} />
       <Section className="p-6 text-center">
         <div className="font-mono text-xs uppercase text-surface-900 dark:text-surface-500">Suggested deposit</div>
         <div className="mt-2 font-display text-7xl text-primary-800 dark:text-primary-500">{formatCurrency(parseMoney(draft.depositAmount))}</div>
@@ -4031,11 +4555,12 @@ function WaiverCanvasModal({ onCancel, onConfirm }: { onCancel: () => void; onCo
   );
 }
 
-function WizardFooter({ onBack, onContinue, backLabel = 'Back', continueLabel = 'Continue' }: {
+function WizardFooter({ onBack, onContinue, backLabel = 'Back', continueLabel = 'Continue', continueDisabled = false }: {
   onBack: () => void;
   onContinue: () => void;
   backLabel?: string;
   continueLabel?: string;
+  continueDisabled?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-900">
@@ -4043,7 +4568,12 @@ function WizardFooter({ onBack, onContinue, backLabel = 'Back', continueLabel = 
         <ChevronLeft className="h-4 w-4" />
         {backLabel}
       </button>
-      <button type="button" onClick={onContinue} className={primaryButton}>
+      <button
+        type="button"
+        onClick={onContinue}
+        disabled={continueDisabled}
+        className={cn(primaryButton, continueDisabled && 'cursor-not-allowed opacity-50')}
+      >
         {continueLabel}
         <ChevronRight className="h-4 w-4" />
       </button>
