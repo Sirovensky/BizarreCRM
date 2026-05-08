@@ -47,7 +47,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, cpSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, cpSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -240,12 +240,39 @@ function stopRunning() {
     warn('pm2 not on PATH — nothing to stop. Will install/use PM2 in step 10.');
     return;
   }
-  // Gracefully stop each app individually. Some PM2 versions only act on
-  // the first positional arg when multiple names are passed to `pm2 stop`,
-  // silently leaving the second app running.
-  capture('pm2', ['stop', 'bizarre-crm']);
-  capture('pm2', ['stop', 'bizarre-crm-watchdog']);
-  ok('PM2 apps stopped (if running)');
+  // `pm2 stop` returns before the child actually exits (server's kill_timeout
+  // is 10s in ecosystem.config.js). If we proceed to npm ci immediately, the
+  // dying process still holds better_sqlite3.node → EPERM unlink on Windows.
+  // Use `delete` (removes app entirely + waits for SIGKILL) and then poll
+  // until the native binding is no longer file-locked before returning.
+  capture('pm2', ['delete', 'bizarre-crm']);
+  capture('pm2', ['delete', 'bizarre-crm-watchdog']);
+  // Belt-and-suspenders: wait up to 15s for the better_sqlite3 binding to be
+  // unlocked. Probe with a rename-to-self — fails with EBUSY/EPERM while the
+  // file is mmap'd into a live process, succeeds once the OS releases the
+  // handle. If the file or path doesn't exist (fresh clone), skip the probe.
+  const target = path.join(REPO_ROOT, 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+  if (existsSync(target)) {
+    const deadline = Date.now() + 15_000;
+    // Synchronous sleep using Atomics.wait on a SharedArrayBuffer — works in
+    // ESM, no child process spawn, exact 500ms blocking pause. Available since
+    // Node 12.16.
+    const sleepBuf = new Int32Array(new SharedArrayBuffer(4));
+    let unlocked = false;
+    while (Date.now() < deadline) {
+      try {
+        renameSync(target, target);
+        unlocked = true;
+        break;
+      } catch {
+        Atomics.wait(sleepBuf, 0, 0, 500);
+      }
+    }
+    if (!unlocked) {
+      warn('better_sqlite3.node still locked after 15s — npm ci may EPERM. Try: pm2 kill && taskkill /F /IM node.exe /T');
+    }
+  }
+  ok('PM2 apps stopped');
 }
 
 // ─── 4. npm install ────────────────────────────────────────────────────────
