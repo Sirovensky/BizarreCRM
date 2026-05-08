@@ -1804,6 +1804,7 @@ export function UnifiedPosPage() {
               customer={customer}
               cartItems={cartItems}
               totals={totals}
+              taxRate={taxState.rate}
               paidLegs={paidLegs}
               onSwapCustomer={() => {
                 setWalkInActive(false);
@@ -2327,7 +2328,10 @@ function SaleWorkspace({
       </div>
 
       <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
-        <button type="button" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 p-4 text-left" onClick={onCustomItem}>
+        {/* Smart-tile spans 2 columns at xl per mockup Frame 09 — it's a
+            promotional/loyalty hint, not a product, so it deserves a wider
+            footprint than the other 1-col product tiles. */}
+        <button type="button" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 p-4 text-left xl:col-span-2" onClick={onCustomItem}>
           <Star className="h-5 w-5 text-cyan-700 dark:text-[#4DB8C9]" />
           <div className="mt-3 font-semibold">Loyalty smart add</div>
           <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">Add a qualifying accessory before tender.</div>
@@ -2382,6 +2386,7 @@ function CartColumn({
   customer,
   cartItems,
   totals,
+  taxRate,
   paidLegs,
   onSwapCustomer,
   onEditLine,
@@ -2395,6 +2400,7 @@ function CartColumn({
   customer: CustomerResult | null;
   cartItems: CartItem[];
   totals: ReturnType<typeof computePosTotals>;
+  taxRate: number;
   paidLegs: PaymentLeg[];
   onSwapCustomer: () => void;
   onEditLine: (item: CartItem) => void;
@@ -2404,15 +2410,23 @@ function CartColumn({
   onTender: () => void;
 }) {
   const paid = paidLegs.reduce((sum, leg) => sum + leg.amount, 0);
+  // Mockup format: "Subtotal · 3 lines" (count) + "Tax (8.875%)" (rate %).
+  // taxRate comes in as a fraction (e.g. 0.08875); render with up to 3
+  // decimals so "8.875%" not "8.9%".
+  const lineCount = cartItems.reduce((sum, item) => sum + (item.type === 'product' || item.type === 'misc' ? item.quantity : 1), 0);
+  const taxPct = (taxRate * 100).toFixed(3).replace(/\.?0+$/, '');
   return (
     <aside className={cn('flex min-h-0 flex-col border-l border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513]', locked && 'opacity-90')}>
-      <div className="flex h-[52px] items-center justify-between border-b border-surface-200 dark:border-[#1e1c1a] px-4">
-        <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-600 dark:text-surface-300">
-          <ChevronLeft className="h-4 w-4 text-surface-900 dark:text-surface-500" />
-          <ShoppingCart className="h-4 w-4" />
-          Cart
-        </div>
-        {locked ? <Pill tone="warning"><Lock className="h-3 w-3" /> locked</Pill> : <Pill tone={awake ? 'success' : 'neutral'}>{awake ? 'awake' : 'asleep'}</Pill>}
+      {/* Mockup cart toolbar: just `‹ 🛒 CART`. Status pills (locked /
+          asleep) clutter the header on every refresh; the locked + asleep
+          states already read from the dimmed body, sleeping illustration,
+          and disabled Charge button. The locked pill is kept because
+          it's a critical "hands off — tender in flight" cue. */}
+      <div className="flex h-[44px] items-center gap-2 border-b border-surface-200 dark:border-[#1e1c1a] px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-600 dark:text-surface-300">
+        <ChevronLeft className="h-4 w-4 text-surface-900 dark:text-surface-500" />
+        <ShoppingCart className="h-4 w-4" />
+        Cart
+        {locked && <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-[#e8a33d]/15 px-2 py-0.5 text-[10px] font-semibold text-[#e8a33d]"><Lock className="h-3 w-3" /> locked</span>}
       </div>
       {!awake && (
         <div className="flex flex-1 flex-col items-center justify-center p-8 text-center opacity-60">
@@ -2474,25 +2488,56 @@ function CartColumn({
               </div>
             )}
           </div>
+          {/* Coupon row pinned above totals (mockup pattern). Renders as a
+              flat input, not a dashed CTA, so "GOLDLOYAL10 APPLIED"
+              reads as state, not a prompt. */}
+          <button type="button" onClick={onDiscount} disabled={locked} className="flex w-full items-center gap-2 border-y border-surface-200 dark:border-[#1e1c1a] bg-surface-50/60 dark:bg-[#0f0e0c] px-4 py-2.5 text-left text-sm font-semibold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]">
+            <Tag className="h-4 w-4" />
+            Coupon or discount
+          </button>
           <div className="border-t border-surface-200 dark:border-[#1e1c1a] p-4">
-            <button type="button" onClick={onDiscount} disabled={locked} className="mb-3 flex w-full items-center gap-2 rounded-lg border border-dashed border-surface-300 dark:border-[#2a2621] px-3 py-2 text-sm font-semibold text-surface-600 dark:text-surface-300 hover:border-primary-500 dark:hover:border-[#fdeed0]/40">
-              <Tag className="h-4 w-4" />
-              Coupon or discount
-            </button>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Subtotal</span><span className="font-mono">{formatCurrency(totals.subtotal)}</span></div>
-              {totals.discountAmount > 0 && <div className="flex justify-between text-emerald-700 dark:text-[#34C47E]"><span>Discount</span><span className="font-mono">-{formatCurrency(totals.discountAmount)}</span></div>}
-              <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Tax</span><span className="font-mono">{formatCurrency(totals.tax)}</span></div>
-              {paid > 0 && <div className="flex justify-between text-cyan-700 dark:text-[#4DB8C9]"><span>Paid</span><span className="font-mono">-{formatCurrency(paid)}</span></div>}
-              <div className="flex items-end justify-between border-t border-surface-200 dark:border-[#1e1c1a] pt-3">
-                <span className="font-semibold">Due now</span>
-                <span className="font-display text-4xl text-primary-700 dark:text-[#fdeed0]">{formatCurrency(Math.max(0, totals.total - paid))}</span>
+            <div className="space-y-1.5 font-mono text-[12.5px]">
+              <div className="flex justify-between">
+                <span className="text-surface-900 dark:text-surface-500">Subtotal{lineCount > 0 ? ` · ${lineCount} line${lineCount === 1 ? '' : 's'}` : ''}</span>
+                <span>{formatCurrency(totals.subtotal)}</span>
+              </div>
+              {totals.discountAmount > 0 && (
+                <div className="flex justify-between text-emerald-700 dark:text-[#34C47E]">
+                  <span>Discount</span>
+                  <span>-{formatCurrency(totals.discountAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-surface-900 dark:text-surface-500">Tax{taxPct ? ` (${taxPct}%)` : ''}</span>
+                <span>{formatCurrency(totals.tax)}</span>
+              </div>
+              {paid > 0 && (
+                <div className="flex justify-between text-cyan-700 dark:text-[#4DB8C9]">
+                  <span>Paid</span>
+                  <span>-{formatCurrency(paid)}</span>
+                </div>
+              )}
+              <div className="mt-2 flex items-end justify-between border-t border-surface-200 dark:border-[#1e1c1a] pt-3">
+                <span className="font-sans text-[10.5px] uppercase tracking-[0.12em] text-surface-500">Due now</span>
+                <span className="font-display text-4xl text-primary-700 dark:text-[#fdeed0] tabular-nums">{formatCurrency(Math.max(0, totals.total - paid))}</span>
               </div>
             </div>
-            <button type="button" onClick={onTender} disabled={locked || cartItems.length === 0} className={cn(primaryButton, 'mt-4 w-full py-3 text-base')}>
-              <CreditCard className="h-4 w-4" />
-              Charge {formatCurrency(Math.max(0, totals.total - paid))}
-            </button>
+            {/* Footer action grid: Discount + Note share a row, Charge spans
+                full width. Mirrors mockup `cart-foot` exactly. */}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={onDiscount} disabled={locked} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] px-3 py-2 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-[#fdeed0]/40 disabled:opacity-50">
+                <Tag className="h-3.5 w-3.5" /> Discount
+                <span className="ml-1 rounded border border-surface-200 dark:border-[#1e1c1a] bg-surface-50 dark:bg-[#0f0e0c] px-1.5 font-mono text-[9px] text-surface-400">⌘D</span>
+              </button>
+              <button type="button" disabled={locked} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] px-3 py-2 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-[#fdeed0]/40 disabled:opacity-50">
+                <FileText className="h-3.5 w-3.5" /> Note
+              </button>
+              <button type="button" onClick={onTender} disabled={locked || cartItems.length === 0} className={cn(primaryButton, 'col-span-2 w-full py-3 text-base')}>
+                <CreditCard className="h-4 w-4" />
+                Charge {formatCurrency(Math.max(0, totals.total - paid))}
+                <span className="ml-2 rounded border border-black/15 bg-black/5 px-1.5 font-mono text-[10px]">⌘↵</span>
+              </button>
+            </div>
           </div>
         </>
       )}
