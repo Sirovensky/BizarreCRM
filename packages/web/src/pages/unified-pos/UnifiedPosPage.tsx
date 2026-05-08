@@ -1651,13 +1651,21 @@ export function UnifiedPosPage() {
     setMode('sale');
   };
 
+  // Default landing after attaching a customer (or going walk-in) is the
+  // repair-device step — repairs are the primary thing most shops sell, and
+  // parts get added inside the repair flow. Cashier who's actually doing a
+  // pure retail sale hits "Cancel" on the wizard and lands on the catalog
+  // (`mode === 'sale'`). Skip the wizard entirely if the cart already has
+  // items (e.g. a recalled held cart) — they're past the intake stage.
+  const defaultPostGateMode = (): PosMode =>
+    cartItems.length > 0 ? 'sale' : 'repair-device';
+
   const selectCustomer = (nextCustomer: CustomerResult) => {
     setCustomer(nextCustomer);
     setWalkInActive(false);
     setCreateCustomerOpen(false);
     setGlobalSearch('');
-    setMode('sale');
-    setTimeout(() => productInputRef.current?.focus(), 0);
+    setMode(defaultPostGateMode());
   };
 
   const startWalkIn = () => {
@@ -1666,8 +1674,7 @@ export function UnifiedPosPage() {
     setCreateCustomerOpen(false);
     setCreateCustomerDraft(EMPTY_CREATE_CUSTOMER_DRAFT);
     setGlobalSearch('');
-    setMode('sale');
-    setTimeout(() => productInputRef.current?.focus(), 0);
+    setMode(defaultPostGateMode());
   };
 
   const createCustomerMutation = useMutation({
@@ -1726,11 +1733,12 @@ export function UnifiedPosPage() {
       setCreateCustomerOpen(false);
       setCreateCustomerDraft(EMPTY_CREATE_CUSTOMER_DRAFT);
       setGlobalSearch('');
-      setMode('sale');
+      // Match selectCustomer/startWalkIn: drop the freshly-created customer
+      // straight into the repair-device step rather than the catalog.
+      setMode(cartItems.length > 0 ? 'sale' : 'repair-device');
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['pos-customer-search'] });
       toast.success('Customer created');
-      setTimeout(() => productInputRef.current?.focus(), 0);
     },
     onError: (err: any) => {
       const message = err?.response?.data?.message || err?.response?.data?.error || 'Failed to create customer';
