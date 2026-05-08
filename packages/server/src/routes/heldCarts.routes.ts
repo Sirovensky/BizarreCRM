@@ -57,7 +57,17 @@ router.get(
     const user = req.user!;
     const showAll = req.query.all === '1' && isAdmin(req);
 
-    const conditions: string[] = ['hc.recalled_at IS NULL', 'hc.discarded_at IS NULL'];
+    // Held-cart 24-hour TTL (mockup spec §4 Frame 16). Carts older than 24h
+    // are hidden from the recall list — they're rarely valid (customer left,
+    // staff change, prices may have moved) and a stale snapshot can cause
+    // bad inventory holds on recall. We don't hard-delete on LIST so an
+    // admin can investigate via the showAll flag if needed; a daily janitor
+    // pass elsewhere can hard-purge ancient rows for storage hygiene.
+    const conditions: string[] = [
+      'hc.recalled_at IS NULL',
+      'hc.discarded_at IS NULL',
+      "hc.created_at > datetime('now', '-24 hours')",
+    ];
     const params: unknown[] = [];
 
     if (!showAll) {
@@ -252,6 +262,13 @@ router.post(
     if (!cart) throw new AppError('Held cart not found', 404);
     if (cart.discarded_at) throw new AppError('Cart has been discarded', 410);
     if (cart.recalled_at) throw new AppError('Cart has already been recalled', 409);
+
+    // 24h TTL — match the LIST filter so a cashier with the recall URL
+    // bookmarked / cached can't resurrect a stale cart.
+    const createdMs = Date.parse(cart.created_at + 'Z');
+    if (Number.isFinite(createdMs) && Date.now() - createdMs > 24 * 60 * 60 * 1000) {
+      throw new AppError('Cart has expired (>24h old). Start a new sale.', 410);
+    }
 
     if (cart.user_id !== user.id && !isAdmin(req)) {
       throw new AppError('Access denied', 403);
