@@ -2310,7 +2310,7 @@ function SettingsPageInner() {
 
 // ─── Import Section (with category checkboxes) ─────────────────────────────
 
-function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActive: boolean; onStarted: () => void }) {
+function ImportSection({ apiKey, isActive, importStatus, onStarted }: { apiKey: string; isActive: boolean; importStatus?: any; onStarted: () => void }) {
   const [entities, setEntities] = useState<Record<string, boolean>>({
     customers: true,
     tickets: true,
@@ -2339,6 +2339,26 @@ function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActi
     sms: { label: 'SMS Messages', desc: 'SMS conversation history' },
   };
 
+  // Live progress while the import is running. The page-level polling already
+  // refetches every 3 s, so importStatus.overall is fresh; surface it on the
+  // button so a stuck-looking "Import in Progress…" actually shows movement.
+  const overall = importStatus?.overall;
+  const checkpoints: Record<string, { step: number; total: number; status: string } | null> = importStatus?.checkpoints ?? {};
+  const importedSoFar: number = overall?.imported ?? 0;
+  const totalRecords: number = overall?.total_records ?? 0;
+  const completedEntities: number = overall?.completed_entities ?? 0;
+  const totalEntities: number = overall?.total_entities ?? 0;
+  const overallPct = totalRecords > 0
+    ? Math.min(100, Math.round((importedSoFar / totalRecords) * 100))
+    : totalEntities > 0
+      ? Math.min(100, Math.round((completedEntities / totalEntities) * 100))
+      : 0;
+  // The currently-running entity name + its inner progress, for a sub-line.
+  const runningEntity = (Object.entries(checkpoints).find(([, cp]) => cp?.status === 'running') || [null, null]) as [string | null, { step: number; total: number } | null];
+  const runningName = runningEntity[0];
+  const runningStep = runningEntity[1]?.step ?? 0;
+  const runningTotal = runningEntity[1]?.total ?? 0;
+
   return (
     <div className="card p-4">
       <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-1">Import from RepairDesk</h4>
@@ -2366,9 +2386,30 @@ function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActi
         disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
         className="btn btn-primary btn-md"
       >
-        {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-        {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
+        {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        {isActive
+          ? `Importing… ${formatNumber(importedSoFar)}${totalRecords > 0 ? ` / ${formatNumber(totalRecords)}` : ''}`
+          : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
       </button>
+      {isActive && (
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between text-xs text-surface-600 dark:text-surface-400">
+            <span>{runningName ? `Working on ${runningName}` : 'Working…'}{runningTotal > 0 ? ` · ${formatNumber(runningStep)} / ${formatNumber(runningTotal)}` : runningStep > 0 ? ` · ${formatNumber(runningStep)} processed` : ''}</span>
+            <span>{overallPct}%</span>
+          </div>
+          <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-primary-500 h-2 rounded-full transition-all"
+              style={{ width: `${overallPct}%` }}
+            />
+          </div>
+          {totalEntities > 0 && (
+            <p className="text-[11px] text-surface-400">
+              {completedEntities} of {totalEntities} categories complete
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -3042,7 +3083,7 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
       </div>
 
       {/* Standard Import */}
-      <ImportSection apiKey={apiKey} isActive={isActive} onStarted={onStarted} />
+      <ImportSection apiKey={apiKey} isActive={isActive} importStatus={importStatus} onStarted={onStarted} />
 
       {/* Reset & Reimport */}
       <div className="mt-6 rounded-lg border border-amber-300 dark:border-amber-800 bg-white dark:bg-surface-900 p-4">

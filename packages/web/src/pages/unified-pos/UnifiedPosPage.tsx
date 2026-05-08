@@ -869,41 +869,6 @@ export function UnifiedPosPage() {
     }));
   }, [customerSearch.data]);
 
-  // Recent customers strip on the gate (search empty). Sort by updated_at DESC
-  // gives "most-recently-touched" — covers tickets, sales, profile edits,
-  // which together approximate "regulars". Capped at 8 to keep the strip
-  // single-row even at narrow widths.
-  const recentCustomersQuery = useQuery({
-    queryKey: ['pos-recent-customers'],
-    queryFn: () => customerApi.list({ sort_by: 'updated_at', sort_order: 'DESC', pagesize: 8, include_stats: '1' }),
-    enabled: mode === 'gate' && globalSearch.trim().length < 2 && !createCustomerOpen,
-    staleTime: 60_000,
-  });
-
-  const recentCustomers: CustomerResult[] = useMemo(() => {
-    const payload: any = recentCustomersQuery.data?.data?.data ?? recentCustomersQuery.data?.data;
-    const raw: any[] = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.customers)
-        ? payload.customers
-        : Array.isArray(payload?.items)
-          ? payload.items
-          : [];
-    return raw.slice(0, 8).map((item) => ({
-      id: Number(item.id),
-      first_name: item.first_name ?? '',
-      last_name: item.last_name ?? '',
-      phone: item.phone ?? null,
-      mobile: item.mobile ?? null,
-      email: item.email ?? null,
-      organization: item.organization ?? null,
-      group_name: item.group_name ?? item.customer_group_name ?? null,
-      group_discount_pct: item.group_discount_pct,
-      group_discount_type: item.group_discount_type,
-      group_auto_apply: item.group_auto_apply,
-    }));
-  }, [recentCustomersQuery.data]);
-
   const todayRange = useMemo(() => {
     const today = new Date();
     const tomorrow = new Date(today);
@@ -954,8 +919,14 @@ export function UnifiedPosPage() {
     }));
   }, [appointmentsQuery.data]);
 
+  // Gate's open-tickets feed. Was "ready for pickup only"; user wants the
+  // full active queue with ready-for-pickup rows pinned to the top so the
+  // cashier can see *all* current open work in one place. Sort: ready first
+  // (sub-sorted by updated_at DESC), then everything else by updated_at DESC.
+  // Cap at 8 visible rows; "View active tickets" link still jumps to the
+  // full list.
   const readyPickupQuery = useQuery({
-    queryKey: ['pos-ready-pickup-tickets'],
+    queryKey: ['pos-open-tickets'],
     queryFn: async () => {
       const listRes = await ticketApi.list({
         status_group: 'active',
@@ -964,13 +935,17 @@ export function UnifiedPosPage() {
         sort_order: 'DESC',
       });
       const payload = listRes.data?.data;
-      const rows = Array.isArray(payload?.tickets)
+      const rows: any[] = Array.isArray(payload?.tickets)
         ? payload.tickets
         : Array.isArray(listRes.data?.tickets)
           ? listRes.data.tickets
           : [];
-      const readyRows = rows.filter((ticket: any) => isReadyPickupStatus(ticket.status_name ?? ticket.status?.name));
-      const visibleRows = readyRows.slice(0, 4);
+      // Stable partition: ready rows keep their original (updated_at DESC)
+      // order, non-ready rows follow in their original order. No second sort
+      // needed since the server already sorted.
+      const readyRows = rows.filter((t) => isReadyPickupStatus(t.status_name ?? t.status?.name));
+      const otherRows = rows.filter((t) => !isReadyPickupStatus(t.status_name ?? t.status?.name));
+      const visibleRows = [...readyRows, ...otherRows].slice(0, 8);
       const tickets = await Promise.all(
         visibleRows.map(async (row: any) => {
           try {
@@ -983,7 +958,8 @@ export function UnifiedPosPage() {
       );
 
       return {
-        total: readyRows.length,
+        total: rows.length,
+        readyTotal: readyRows.length,
         tickets,
       };
     },
@@ -993,7 +969,7 @@ export function UnifiedPosPage() {
     refetchIntervalInBackground: false,
   });
 
-  const readyPickup = readyPickupQuery.data ?? { total: 0, tickets: [] as PosPickupTicket[] };
+  const readyPickup = readyPickupQuery.data ?? { total: 0, readyTotal: 0, tickets: [] as PosPickupTicket[] };
 
   const productsQuery = useQuery({
     queryKey: ['pos-products-rewrite', productSearch, activeFilter],
@@ -2085,13 +2061,12 @@ export function UnifiedPosPage() {
                   inputRef={searchInputRef}
                   results={customerResults}
                   loading={customerSearch.isFetching}
-                  recentCustomers={recentCustomers}
-                  recentLoading={recentCustomersQuery.isLoading}
                   appointments={todaysAppointments}
                   appointmentsLoading={appointmentsQuery.isLoading}
                   onSelectAppointment={selectAppointment}
                   readyPickupTickets={readyPickup.tickets}
                   readyPickupTotal={readyPickup.total}
+                  readyTotal={readyPickup.readyTotal}
                   readyPickupLoading={readyPickupQuery.isLoading}
                   onOpenReadyPickup={openReadyPickupTicket}
                   onViewReadyPickup={() => navigate('/tickets?status_group=active')}
@@ -2342,13 +2317,12 @@ function CustomerGate({
   query,
   results,
   loading,
-  recentCustomers,
-  recentLoading,
   appointments,
   appointmentsLoading,
   onSelectAppointment,
   readyPickupTickets,
   readyPickupTotal,
+  readyTotal,
   readyPickupLoading,
   onOpenReadyPickup,
   onViewReadyPickup,
@@ -2368,13 +2342,12 @@ function CustomerGate({
   inputRef: React.RefObject<HTMLInputElement | null>;
   results: CustomerResult[];
   loading: boolean;
-  recentCustomers: CustomerResult[];
-  recentLoading: boolean;
   appointments: PosAppointment[];
   appointmentsLoading: boolean;
   onSelectAppointment: (appointment: PosAppointment) => void;
   readyPickupTickets: PosPickupTicket[];
   readyPickupTotal: number;
+  readyTotal: number;
   readyPickupLoading: boolean;
   onOpenReadyPickup: (ticket: PosPickupTicket) => void;
   onViewReadyPickup: () => void;
@@ -2494,44 +2467,18 @@ function CustomerGate({
         </section>
       )}
 
-      {/* Recent customers strip — only shown on the empty-search gate. Matches
-          the booking-strip card pattern (240-px min-width, avatar + name +
-          group pill, horizontal scroll) so the gate has one consistent rhythm
-          of "today's bookings" / "recents" / "ready for pickup" cards. */}
-      {!createCustomerOpen && query.trim().length < 2 && (recentLoading || recentCustomers.length > 0) && (
-        <section className="px-6 pb-2">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">
-              {recentLoading ? 'Recent · loading' : `Recent · ${recentCustomers.length}`}
-            </div>
-            <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
-          </div>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {recentCustomers.map((customer) => (
-              <button
-                key={customer.id}
-                type="button"
-                onClick={() => onSelectCustomer(customer)}
-                className="flex min-w-[240px] items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left dark:border-surface-700 dark:bg-surface-800 hover:border-primary-500 dark:hover:border-primary-500/40"
-              >
-                <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-[#4db8c9] font-bold text-[#002d35]">
-                  {initials(getCustomerName(customer))}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold text-surface-900 dark:text-surface-50">{getCustomerName(customer)}</div>
-                  <div className="truncate font-mono text-[11.5px] text-surface-400">{customer.phone || customer.mobile || customer.email || 'No contact saved'}</div>
-                </div>
-                {customer.group_name && <Pill tone="vip">{customer.group_name}</Pill>}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
+      {/* Open tickets feed (was Ready-for-pickup only). Cashier sees the
+          full active queue with ready-for-pickup rows pinned to the top so
+          customer-pickups land first; everything else (in-progress repairs,
+          waiting, parts ordered) follows. Section header surfaces the
+          ready-count parenthetical so the cashier can tell at a glance how
+          many are sitting on the rack. */}
       <section className="px-6 pb-6">
         <div className="mb-3 flex items-center gap-3">
           <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">
-            {readyPickupLoading ? 'Ready for pickup · loading' : `Ready for pickup · ${readyPickupTotal}`}
+            {readyPickupLoading
+              ? 'Current open tickets · loading'
+              : `Current open tickets · ${readyPickupTotal}${readyTotal > 0 ? ` · ${readyTotal} ready for pickup` : ''}`}
           </div>
           <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
           <button type="button" onClick={onViewReadyPickup} className="text-xs font-semibold text-primary-700 dark:text-primary-500 underline-offset-4 hover:underline">
@@ -2540,27 +2487,36 @@ function CustomerGate({
         </div>
         <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
           {readyPickupLoading && (
-            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading pickup tickets...</div>
+            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading open tickets…</div>
           )}
           {!readyPickupLoading && readyPickupTickets.length === 0 && (
-            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">No ready pickup tickets right now.</div>
+            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">No open tickets right now.</div>
           )}
-          {readyPickupTickets.map((ticket) => (
-            <button
-              key={ticket.id}
-              type="button"
-              onClick={() => onOpenReadyPickup(ticket)}
-              className="grid w-full grid-cols-[76px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
-            >
-              <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">✓ ready</span>
-              <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
-              <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-[#c5566d]">{ticket.customerGroup}</span> : null}</span>
-              <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
-              <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
-              <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
-              <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
-            </button>
-          ))}
+          {readyPickupTickets.map((ticket) => {
+            const isReady = isReadyPickupStatus(ticket.statusName);
+            return (
+              <button
+                key={ticket.id}
+                type="button"
+                onClick={() => onOpenReadyPickup(ticket)}
+                className="grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
+              >
+                {isReady ? (
+                  <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">✓ ready</span>
+                ) : (
+                  <span className="truncate rounded-full bg-surface-100 dark:bg-surface-700 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-surface-600 dark:text-surface-300" title={ticket.statusName}>
+                    {ticket.statusName}
+                  </span>
+                )}
+                <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
+                <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-[#c5566d]">{ticket.customerGroup}</span> : null}</span>
+                <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
+                <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
+                <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
+                <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
+              </button>
+            );
+          })}
         </div>
       </section>
     </div>

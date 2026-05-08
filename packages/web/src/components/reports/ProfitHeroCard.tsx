@@ -29,11 +29,15 @@ interface ProfitHeroData {
   period_days: number;
 }
 
+// Tinted zones — solid green/amber/red was retina-burning at full saturation
+// against the dark dashboard. Use a 10%-tint background + saturated border
+// + body-tone text so the card still reads its zone at a glance without
+// dominating the page.
 const ZONE_STYLES: Record<Zone, string> = {
-  green: 'bg-green-500 text-white border-green-600',
-  amber: 'bg-amber-400 text-black border-amber-500',
-  red: 'bg-red-500 text-white border-red-600',
-  unknown: 'bg-gray-200 text-gray-800 border-gray-300',
+  green: 'bg-green-500/10 border-green-500/40 text-green-800 dark:text-green-300',
+  amber: 'bg-amber-400/10 border-amber-500/40 text-amber-800 dark:text-amber-300',
+  red: 'bg-red-500/10 border-red-500/40 text-red-800 dark:text-red-300',
+  unknown: 'bg-surface-100 dark:bg-surface-800 border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300',
 };
 
 const ZONE_LABELS: Record<Zone, string> = {
