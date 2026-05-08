@@ -1282,8 +1282,15 @@ export function TicketListPage() {
 
       {/* Overview bar — grouped status counts + progress bar (like RepairDesk) */}
       {(() => {
-        // Identify "on hold" statuses by name pattern
-        const holdKeywords = ['hold', 'waiting', 'pending', 'transit'];
+        // Identify "on hold" statuses by name pattern. On-hold = work that's
+        // blocked on a non-shop actor: customer hasn't picked up, parts are
+        // in transit, manager hasn't approved, etc. Adding `qc passed`,
+        // `ready`, and `pickup` so the most common ready-for-pickup status
+        // names ("Repaired - QC Passed", "Ready for pickup") move out of
+        // the Open bucket where they were inflating the active-work count.
+        // Mirror this list in tickets.routes.ts (server LIKE patterns) and
+        // reports.routes.ts (status_groups summary) — same ruleset.
+        const holdKeywords = ['hold', 'waiting', 'pending', 'transit', 'qc passed', 'ready', 'pickup'];
         const isOnHold = (name: string) => holdKeywords.some(k => name.toLowerCase().includes(k));
 
         // Group statuses: open (blue), on hold (orange), closed (green), cancelled (red)

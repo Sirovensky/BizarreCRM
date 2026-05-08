@@ -142,7 +142,15 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       SELECT COUNT(*) AS n FROM appointments
       WHERE DATE(start_time) = ?
     `, today),
-    // Status group counts (matching ticket list overview bar)
+    // Status group counts (matching ticket list overview bar).
+    // On-hold bucket = anything blocked on a non-shop actor (customer hasn't
+    // picked up, parts in transit, manager hasn't approved). The original
+    // pattern set covered hold/waiting/pending/transit but missed the most
+    // common ready-for-pickup names ("Repaired - QC Passed", "Ready",
+    // "Awaiting pickup"), so post-QC tickets bled into "Open" and inflated
+    // the active-work count. Pattern list mirrored across tickets.routes.ts
+    // and the client-side TicketListPage isOnHold helper — keep all three
+    // in sync.
     adb.get<any>(`
       SELECT
         COUNT(*) AS total,
@@ -151,12 +159,18 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
                     AND LOWER(ts.name) NOT LIKE '%waiting%'
                     AND LOWER(ts.name) NOT LIKE '%pending%'
                     AND LOWER(ts.name) NOT LIKE '%transit%'
+                    AND LOWER(ts.name) NOT LIKE '%qc passed%'
+                    AND LOWER(ts.name) NOT LIKE '%ready%'
+                    AND LOWER(ts.name) NOT LIKE '%pickup%'
               THEN 1 END) AS open_count,
         COUNT(CASE WHEN ts.is_closed = 0 AND ts.is_cancelled = 0
                     AND (LOWER(ts.name) LIKE '%hold%'
                       OR LOWER(ts.name) LIKE '%waiting%'
                       OR LOWER(ts.name) LIKE '%pending%'
-                      OR LOWER(ts.name) LIKE '%transit%')
+                      OR LOWER(ts.name) LIKE '%transit%'
+                      OR LOWER(ts.name) LIKE '%qc passed%'
+                      OR LOWER(ts.name) LIKE '%ready%'
+                      OR LOWER(ts.name) LIKE '%pickup%')
               THEN 1 END) AS on_hold_count,
         COUNT(CASE WHEN ts.is_closed = 1 THEN 1 END) AS closed_count,
         COUNT(CASE WHEN ts.is_cancelled = 1 THEN 1 END) AS cancelled_count
