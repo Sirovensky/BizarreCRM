@@ -3841,23 +3841,46 @@ function HeldSalesView({ rows, loading, onRecall, onDiscard }: {
   onRecall: (id: number) => void;
   onDiscard: (id: number) => void;
 }) {
-  const filterPills = [
-    { label: 'All', count: rows.length },
-    { label: 'Mine', count: rows.length },
-    { label: 'Repair drafts', count: 0 },
-    { label: 'Pickup-ready', count: 0 },
-    { label: 'Expiring < 1h', count: 0 },
+  const [filter, setFilter] = useState<'all' | 'repair' | 'expiring'>('all');
+  // Compute counts off the rows so the pills match what the cashier will
+  // actually see after filtering. Repair drafts are detected by label tag
+  // (the holdMutation labels include "repair" / "draft" when applicable —
+  // weak signal, but the only one without a snapshot deserialize per row).
+  // Expiring uses the held-cart server's 24-hour TTL, anything older than
+  // 23 h is "Expiring < 1h".
+  const now = Date.now();
+  const expiringMs = 23 * 60 * 60 * 1000;
+  const isRepair = (row: HeldCartRow) => /repair|draft/i.test(row.label || '');
+  const isExpiring = (row: HeldCartRow) => {
+    const t = row.created_at ? new Date(row.created_at).getTime() : NaN;
+    return Number.isFinite(t) && now - t > expiringMs;
+  };
+  const counts = {
+    all: rows.length,
+    repair: rows.filter(isRepair).length,
+    expiring: rows.filter(isExpiring).length,
+  };
+  const filtered = rows.filter((row) => {
+    if (filter === 'repair') return isRepair(row);
+    if (filter === 'expiring') return isExpiring(row);
+    return true;
+  });
+  const filterPills: Array<{ id: 'all' | 'repair' | 'expiring'; label: string; count: number }> = [
+    { id: 'all', label: 'All', count: counts.all },
+    { id: 'repair', label: 'Repair drafts', count: counts.repair },
+    { id: 'expiring', label: 'Expiring < 1h', count: counts.expiring },
   ];
   return (
     <div className="px-5 py-4">
       <div className="mb-3 flex flex-wrap gap-2">
-        {filterPills.map((pill, index) => (
+        {filterPills.map((pill) => (
           <button
-            key={pill.label}
+            key={pill.id}
             type="button"
+            onClick={() => setFilter(pill.id)}
             className={cn(
               'rounded-full px-3 py-1.5 text-xs font-semibold',
-              index === 0
+              filter === pill.id
                 ? 'bg-primary-500 text-on-primary dark:bg-primary-500'
                 : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300',
             )}
@@ -3877,10 +3900,12 @@ function HeldSalesView({ rows, loading, onRecall, onDiscard }: {
         </div>
         {loading ? (
           <div className="p-6 text-sm text-surface-900 dark:text-surface-500">Loading held sales...</div>
-        ) : rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-surface-900 dark:text-surface-500">No held sales right now.</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-sm text-surface-900 dark:text-surface-500">
+            {rows.length === 0 ? 'No held sales right now.' : `No held sales match "${filterPills.find((p) => p.id === filter)?.label}".`}
+          </div>
         ) : (
-          rows.map((row) => (
+          filtered.map((row) => (
             <div key={row.id} className="grid grid-cols-[minmax(200px,1fr)_minmax(200px,1.4fr)_120px_140px_120px_120px] items-center gap-3 border-b border-surface-200 px-4 py-3 text-sm last:border-b-0 dark:border-surface-700">
               <div className="font-semibold">{row.label?.split(' · ')?.[0] || 'Held sale'}</div>
               <div className="truncate text-xs text-surface-600 dark:text-surface-300">{row.label?.split(' · ').slice(1).join(' · ') || '—'}</div>
@@ -4273,21 +4298,12 @@ function ReceiptView({ sale, onNext }: { sale: CompletedSale; onNext: () => void
     return () => { style.remove(); };
   }, []);
 
-  // SMS / Email — server-side endpoints to send the receipt aren't wired
-  // yet; fire a toast advising the cashier so the button isn't a silent
-  // no-op. Print uses native window.print(); PDF tries to open the
-  // server-rendered receipt PDF if the invoice exists.
+  // Print works today via window.print() + the print-only style above.
+  // SMS / Email / PDF require server endpoints that aren't wired yet —
+  // toast advises the cashier instead of a silent no-op.
   const handleShare = (kind: 'SMS' | 'Email' | 'Print' | 'PDF') => {
     if (kind === 'Print') {
       window.print();
-      return;
-    }
-    if (kind === 'PDF' && sale.invoiceId) {
-      window.open(`/api/v1/invoices/${sale.invoiceId}/pdf`, '_blank');
-      return;
-    }
-    if (kind === 'PDF') {
-      toast.error('PDF requires a saved invoice');
       return;
     }
     toast(`${kind} delivery is coming soon`);
