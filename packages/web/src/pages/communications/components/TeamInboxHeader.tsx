@@ -71,7 +71,7 @@ export function TeamInboxHeader({
         <InboxIcon className="h-3.5 w-3.5 text-primary-500" />
         Team Inbox
         {(unread?.unread ?? 0) > 0 && (
-          <span className="ml-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+          <span className="ml-1 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold text-on-primary">
             {unread?.unread}
           </span>
         )}

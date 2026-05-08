@@ -744,7 +744,7 @@ function NewMessageModal({ onClose, onStart }: {
           <button
             onClick={() => phoneInput.trim() && onStart(phoneInput.replace(/\D/g, ''))}
             disabled={!phoneInput.trim()}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Start Conversation
           </button>
@@ -1659,7 +1659,7 @@ export function CommunicationPage() {
             {mainView === 'messages' && (
               <button
                 onClick={() => setShowNewMessage(true)}
-                className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700"
+                className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-on-primary hover:bg-primary-700"
               >
                 <Plus className="h-4 w-4" />
                 New
@@ -1757,9 +1757,16 @@ export function CommunicationPage() {
                     onClick={() => setSelectedPhone(conv.conv_phone)}
                     className={cn(
                       'flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left transition-colors',
+                      // Unread rows get a 2px primary inset on the left as a
+                      // visual hierarchy anchor — read rows stay flush so the
+                      // unread ones pop out at a glance instead of relying on
+                      // bold text alone.
+                      hasUnread && 'shadow-[inset_2px_0_0_rgb(var(--primary-500))]',
                       selectedPhone === conv.conv_phone
                         ? 'bg-primary-50 dark:bg-primary-900/20'
-                        : 'hover:bg-surface-50 dark:hover:bg-surface-700/50',
+                        : hasUnread
+                          ? 'bg-primary-50/40 hover:bg-primary-50/70 dark:bg-primary-900/10 dark:hover:bg-primary-900/20'
+                          : 'hover:bg-surface-50 dark:hover:bg-surface-700/50',
                     )}
                   >
                     {/* Avatar with unread dot */}
@@ -1775,7 +1782,7 @@ export function CommunicationPage() {
                           : <Phone className="h-4 w-4" />}
                       </div>
                       {hasUnread && (
-                        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold text-primary-950">
+                        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold text-on-primary">
                           {conv.unread_count > 9 ? '9+' : conv.unread_count}
                         </span>
                       )}
@@ -2336,7 +2343,7 @@ export function CommunicationPage() {
                               className={cn(
                                 'max-w-[75%] rounded-2xl px-4 py-2',
                                 msg.direction === 'outbound'
-                                  ? 'bg-primary-600 text-primary-950'
+                                  ? 'bg-primary-600 text-on-primary'
                                   : 'bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100',
                               )}
                             >
@@ -2679,7 +2686,7 @@ export function CommunicationPage() {
           <div className="border-t border-surface-200 px-4 py-3 dark:border-surface-700">
             <Link
               to={`/tickets/new?customer=${threadCustomer.id}`}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-primary-950 hover:bg-primary-700 transition-colors"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-on-primary hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
               New Ticket
