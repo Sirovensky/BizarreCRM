@@ -1900,25 +1900,13 @@ export function UnifiedPosPage() {
   return (
     <div className="-m-6 mx-auto flex h-[calc(100vh-4rem-var(--dev-banner-h,0px))] min-h-[720px] w-full max-w-[1440px] flex-col overflow-hidden bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-50">
       <PosTabStripShell headerSlot={headerSlot}>
-        <button
-          type="button"
-          onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
-          className={cn(
-            // Chrome-style tab: rounded-top, distinct fill, an inset top
-            // accent bar on active to read clearly as "this is the active
-            // tab, others are switchable". Border between tabs comes from
-            // the gap, not a visible line.
-            'group relative inline-flex h-9 max-w-[260px] shrink-0 items-center gap-2 rounded-t-lg px-3 text-xs font-semibold whitespace-nowrap transition-colors',
-            !['held', 'refund', 'close-shift', 'receipt'].includes(mode)
-              ? 'bg-surface-50 dark:bg-surface-900 text-surface-900 dark:text-surface-50 shadow-[inset_0_2px_0_rgb(var(--primary-500))]'
-              : 'bg-transparent text-surface-700 dark:text-surface-400 hover:bg-surface-100/60 dark:hover:bg-surface-800/60',
-          )}
-          title={`POS · ${title}`}
-        >
-          <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
-          <span className="truncate">POS · {title}</span>
-        </button>
-        {heldCarts.data?.data?.data?.map((row) => (
+        {/* Tab order matches Chrome semantics: older tabs sit left, the
+            active tab + the `+` button hug the right edge so a new tab
+            visually opens to the RIGHT of the previously-active one.
+            Server returns held carts DESC (newest first); reverse here so
+            the just-held cart slots in immediately to the LEFT of the
+            now-active tab — same intuition as Chrome's "duplicate to right". */}
+        {[...(heldCarts.data?.data?.data ?? [])].reverse().map((row) => (
           <button
             key={row.id}
             type="button"
@@ -1940,6 +1928,24 @@ export function UnifiedPosPage() {
             <span className="truncate">#{row.id} · {row.label || (row.owner_first_name ? `${row.owner_first_name}${row.owner_last_name ? ' ' + row.owner_last_name[0] + '.' : ''}` : 'held')} (held)</span>
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
+          className={cn(
+            // Chrome-style tab: rounded-top, distinct fill, an inset top
+            // accent bar on active to read clearly as "this is the active
+            // tab, others are switchable". Border between tabs comes from
+            // the gap, not a visible line.
+            'group relative inline-flex h-9 max-w-[260px] shrink-0 items-center gap-2 rounded-t-lg px-3 text-xs font-semibold whitespace-nowrap transition-colors',
+            !['held', 'refund', 'close-shift', 'receipt'].includes(mode)
+              ? 'bg-surface-50 dark:bg-surface-900 text-surface-900 dark:text-surface-50 shadow-[inset_0_2px_0_rgb(var(--primary-500))]'
+              : 'bg-transparent text-surface-700 dark:text-surface-400 hover:bg-surface-100/60 dark:hover:bg-surface-800/60',
+          )}
+          title={`POS · ${title}`}
+        >
+          <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
+          <span className="truncate">POS · {title}</span>
+        </button>
         {/* + New tab — opens a fresh gate. If the current sale has items or
             a customer attached, auto-hold first so the work is parked rather
             than discarded. Mockup §5.1: parallel sales live as tabs and ⌘N
@@ -2153,7 +2159,10 @@ export function UnifiedPosPage() {
                 <RepairCategoryStep
                   draft={repairDraft}
                   setDraft={setRepairDraft}
-                  onCancel={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
+                  // Cancel = full reset of THIS tab back to the customer
+                  // gate. Drops draft customer, cart, repair-draft. Held
+                  // tabs stay put; only the active tab snaps home.
+                  onCancel={startNewSale}
                   onContinue={() => setMode('repair-device')}
                   onQuick={() => setMode('repair-issue')}
                 />
