@@ -174,6 +174,15 @@ client.interceptors.request.use((config) => {
   const method = config.method?.toUpperCase();
   if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
     if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
+    // Server CSRF guard (index.ts: ERR_CONTENT_TYPE) rejects state-changing
+    // requests without `application/json` or `multipart/form-data`. axios
+    // strips Content-Type on body-less DELETE/POST; force the header so
+    // body-less calls (e.g. DELETE /held-carts/:id, POST /recall) survive
+    // the guard. Multipart uploads override this themselves before send.
+    const ct = config.headers['Content-Type'] || config.headers['content-type'];
+    if (!ct) {
+      config.headers['Content-Type'] = 'application/json';
+    }
   }
   return config;
 });
