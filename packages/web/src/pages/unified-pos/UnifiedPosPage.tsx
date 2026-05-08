@@ -2094,7 +2094,7 @@ function CustomerGate({
         </section>
       ) : (
         <section className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-          <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-[#f5dca7]">
+          <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600">
             <UserPlus className="h-5 w-5" />
             Create new customer
           </button>
