@@ -2748,10 +2748,10 @@ function CustomerGate({
       const bMs = new Date(b.start_time).getTime();
       return aMs - bMs;
     });
-  const nextAppointment = remainingAppointments[0];
-  const bookingSummary = appointmentsLoading
-    ? 'Booked today · loading'
-    : `Booked today · ${appointments.length}${nextAppointment ? ` · next ${appointmentStatusLabel(nextAppointment, nowMs)}` : ''}`;
+  // nextAppointment intentionally unused after the timeline rewrite — kept
+  // here behind a void cast in case future hero variants need a "next-up"
+  // callout. The new timeline shows the top three remaining slots inline.
+  void remainingAppointments[0];
 
   return (
     <div className="flex min-h-full flex-col">
@@ -2764,54 +2764,111 @@ function CustomerGate({
           rather than crowding the gate. */}
       {!createCustomerOpen && (
         <section className="px-6 pt-5 pb-5">
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
-            {/* Hero stat block — cream-outlined card on dark surface
-                (was full cream fill; user feedback: too bright). Mono
-                uppercase eyebrow + big display headline + dark-fill pill
-                CTA. Cream accent shows in the border, the ring on the
-                count, and the pill background. */}
-            <button
-              type="button"
-              onClick={() => nextAppointment ? onSelectAppointment(nextAppointment) : onViewCalendar()}
-              className="group relative flex min-h-[200px] flex-col rounded-2xl border-2 border-[#fdeed0] bg-surface-950 p-6 text-left text-surface-50 transition hover:bg-surface-900"
-              title={nextAppointment ? 'Open next appointment' : 'View calendar'}
-            >
-              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#fdeed0]/80">
-                {appointmentsLoading ? 'Loading…' : nextAppointment ? `Next appt · ${formatTime(nextAppointment.start_time)}` : 'Next appointment'}
-              </div>
-              <div className="mt-2 font-display text-[44px] leading-[1.05] tracking-tight text-[#fdeed0]">
-                {appointmentsLoading
-                  ? '—'
-                  : nextAppointment
-                    ? appointmentCustomerName(nextAppointment)
-                    : 'All clear'}
-              </div>
-              <div className="mt-2 text-sm text-surface-300">
-                {appointmentsLoading
-                  ? ''
-                  : nextAppointment
-                    ? (appointmentNote(nextAppointment) || appointmentStatusLabel(nextAppointment, nowMs))
-                    : 'No upcoming bookings · walk-ins and pickups are ready.'}
-              </div>
-              <div className="mt-auto flex items-end justify-between pt-6">
-                <div className="text-xs text-surface-400">
-                  <span className="font-mono uppercase tracking-wider">Remaining today</span>
-                  <span className="ml-2 font-display text-lg text-[#fdeed0]">{remainingAppointments.length}</span>
-                  <span className="ml-1 text-surface-500">/ {appointments.length} total</span>
+          {/* Gate hero — three regions in one band:
+                LEFT (2fr)  — actionable appointment timeline. Today's first
+                              three remaining appointments laid out as a
+                              vertical schedule strip; tappable rows route to
+                              each. Past-due rows get a rose accent so the
+                              cashier sees what's overdue at a glance.
+                CENTER (1fr) — quick stats column (remaining-today, total-today,
+                              ready-pickup count). KPI tiles, dark fills.
+                RIGHT (auto) — primary "+ New customer" + ghost Walk-in.
+              Replaces the previous "ALL CLEAR" mega-headline that consumed
+              the whole hero with no signal when the day was busy. */}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_280px]">
+            {/* Appointment timeline */}
+            <div className="rounded-2xl border-2 border-[#fdeed0] bg-surface-950 p-5 text-surface-50">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#fdeed0]/80">
+                  {appointmentsLoading ? 'Loading…' : `Today · ${remainingAppointments.length} remaining`}
                 </div>
-                <span className="inline-flex items-center gap-2 rounded-full bg-[#fdeed0] px-4 py-2 text-sm font-semibold text-surface-950 transition group-hover:opacity-90">
-                  {nextAppointment ? 'Open appointment →' : 'View calendar →'}
-                </span>
+                <button
+                  type="button"
+                  onClick={onViewCalendar}
+                  className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#fdeed0]/70 hover:text-[#fdeed0]"
+                >
+                  Calendar →
+                </button>
               </div>
-            </button>
 
-            {/* Right column: primary CTA + ghost walk-in. Sized to match
-                the hero block height so the row reads as one band. */}
-            <div className="flex flex-col justify-center gap-2">
+              {appointmentsLoading ? (
+                <div className="space-y-2">
+                  <div className="h-12 animate-pulse rounded-lg bg-surface-900" />
+                  <div className="h-12 animate-pulse rounded-lg bg-surface-900" />
+                </div>
+              ) : remainingAppointments.length === 0 ? (
+                <div className="flex h-[152px] flex-col items-center justify-center gap-1 text-center">
+                  <div className="font-display text-2xl text-[#fdeed0]">All clear</div>
+                  <div className="text-sm text-surface-400">No upcoming bookings · walk-ins + pickups ready.</div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {remainingAppointments.slice(0, 3).map((appointment) => {
+                    const startMs = new Date(appointment.start_time).getTime();
+                    const isPast = Number.isFinite(startMs) && startMs < nowMs;
+                    return (
+                      <button
+                        key={appointment.id}
+                        type="button"
+                        onClick={() => onSelectAppointment(appointment)}
+                        className={cn(
+                          'flex w-full items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-left transition hover:bg-surface-900',
+                          isPast ? 'border-l-rose-500 bg-rose-500/5' : 'border-l-[#fdeed0] bg-surface-900/50',
+                        )}
+                      >
+                        <div className={cn('w-16 shrink-0 font-mono text-sm', isPast ? 'text-rose-400' : 'text-[#fdeed0]')}>
+                          {formatTime(appointment.start_time)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold">{appointmentCustomerName(appointment)}</div>
+                          <div className="truncate text-[11.5px] text-surface-400">
+                            {appointmentNote(appointment) || appointmentStatusLabel(appointment, nowMs)}
+                          </div>
+                        </div>
+                        <span className={cn('shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase', isPast ? 'bg-rose-500/15 text-rose-300' : 'bg-[#fdeed0]/15 text-[#fdeed0]')}>
+                          {appointmentStatusLabel(appointment, nowMs)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {remainingAppointments.length > 3 && (
+                    <button
+                      type="button"
+                      onClick={onViewCalendar}
+                      className="flex w-full items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs text-surface-400 hover:bg-surface-900 hover:text-surface-200"
+                    >
+                      + {remainingAppointments.length - 3} more · view all
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* KPI strip */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1">
+              <div className="rounded-xl bg-surface-100 dark:bg-surface-900 p-3 ring-1 ring-inset ring-surface-200 dark:ring-surface-800">
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">Remaining today</div>
+                <div className="mt-1 font-display text-3xl text-surface-900 dark:text-surface-50">{remainingAppointments.length}</div>
+                <div className="text-[11px] text-surface-500">of {appointments.length} booked</div>
+              </div>
+              <div className="rounded-xl bg-surface-100 dark:bg-surface-900 p-3 ring-1 ring-inset ring-surface-200 dark:ring-surface-800">
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">Ready for pickup</div>
+                <div className="mt-1 font-display text-3xl text-surface-900 dark:text-surface-50">{readyPickupTotal}</div>
+                <div className="text-[11px] text-surface-500">awaiting customer</div>
+              </div>
+              <div className="rounded-xl bg-surface-100 dark:bg-surface-900 p-3 ring-1 ring-inset ring-surface-200 dark:ring-surface-800">
+                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">Open tickets</div>
+                <div className="mt-1 font-display text-3xl text-surface-900 dark:text-surface-50">{readyTotal + otherTotal}</div>
+                <div className="text-[11px] text-surface-500">in shop</div>
+              </div>
+            </div>
+
+            {/* Primary actions */}
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={onNewCustomer}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary-500 dark:bg-primary-500 px-6 py-5 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary-500 dark:bg-primary-500 px-6 py-5 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600"
               >
                 + New customer
               </button>
