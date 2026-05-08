@@ -524,8 +524,41 @@ function SidebarTooltipWrapper({ label }: { label: string }) {
   );
 }
 
+// Section expand/collapse state persists per-user in localStorage so the
+// sidebar shows up the way the user left it last session — not whatever
+// default a redesign happens to ship. New sections (no entry yet) fall
+// back to expanded so they're discoverable on first appearance.
+const SIDEBAR_SECTIONS_KEY = 'sidebar:sections-expanded:v1';
+
+function readPersistedSection(title: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_SECTIONS_KEY);
+    if (!raw) return fallback;
+    const map = JSON.parse(raw) as Record<string, boolean>;
+    if (map && typeof map === 'object' && title in map) return Boolean(map[title]);
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writePersistedSection(title: string, expanded: boolean): void {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_SECTIONS_KEY);
+    const map = (raw ? JSON.parse(raw) : {}) as Record<string, boolean>;
+    map[title] = expanded;
+    localStorage.setItem(SIDEBAR_SECTIONS_KEY, JSON.stringify(map));
+  } catch {
+    // localStorage write failed — fall through; non-fatal.
+  }
+}
+
 function SidebarSection({ section }: { section: NavSection }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(() => readPersistedSection(section.title, true));
+
+  useEffect(() => {
+    writePersistedSection(section.title, expanded);
+  }, [section.title, expanded]);
 
   return (
     <div>
