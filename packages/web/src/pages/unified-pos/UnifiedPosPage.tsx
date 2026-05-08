@@ -182,6 +182,10 @@ interface RepairDraft {
   condition: string;
   symptoms: string[];
   customerWords: string;
+  /** Mockup Frame 05: staff-only note that never prints on the receipt.
+   * Hidden by default; opens via the "+ Add internal note" link. */
+  internalNote: string;
+  internalNoteOpen: boolean;
   diagnostic: string;
   serviceName: string;
   laborPrice: string;
@@ -203,6 +207,8 @@ const DEFAULT_REPAIR_DRAFT: RepairDraft = {
   condition: 'Good',
   symptoms: [],
   customerWords: '',
+  internalNote: '',
+  internalNoteOpen: false,
   diagnostic: '',
   serviceName: 'Diagnostic repair',
   laborPrice: '79.00',
@@ -271,7 +277,7 @@ const CATALOG_FILTERS = ['All', 'Phones', 'Accessories', 'Repairs', 'Trade-in', 
 const buttonBase =
   'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
 const primaryButton =
-  `${buttonBase} bg-primary-500 text-[#2b1400] shadow-sm hover:bg-primary-400 dark:bg-primary-500 dark:text-primary-950`;
+  `${buttonBase} bg-primary-500 text-on-primary shadow-sm hover:bg-primary-400 dark:bg-primary-500 dark:text-primary-950`;
 const secondaryButton =
   `${buttonBase} border border-surface-200 bg-white text-surface-800 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:bg-surface-700`;
 const ghostButton =
@@ -583,7 +589,7 @@ function Stepper({ step }: { step: 'device' | 'issue' | 'quote' | 'deposit' }) {
               className={cn(
                 'grid h-6 w-6 place-items-center rounded-full border text-xs font-bold',
                 index < activeIndex && 'border-emerald-500 bg-emerald-500 text-white',
-                index === activeIndex && 'border-primary-500 bg-primary-500 text-[#2b1400]',
+                index === activeIndex && 'border-primary-500 bg-primary-500 text-on-primary',
                 index > activeIndex && 'border-surface-300 bg-surface-100 text-surface-900 dark:text-surface-500 dark:border-surface-700 dark:bg-surface-800',
               )}
             >
@@ -603,6 +609,7 @@ export function UnifiedPosPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const setCommandPaletteOpen = useUiStore((state) => state.setCommandPaletteOpen);
+  const commandPaletteOpen = useUiStore((state) => state.commandPaletteOpen);
   const taxState = useDefaultTaxRateWithStatus();
 
   const {
@@ -1160,12 +1167,47 @@ export function UnifiedPosPage() {
 
   useEffect(() => {
     const handleKeys = (event: KeyboardEvent) => {
+      // Esc cancels the foremost modal / wizard step. Lives outside the
+      // mod-key gate because Esc never carries Cmd/Ctrl.
+      if (event.key === 'Escape') {
+        if (commandPaletteOpen) {
+          setCommandPaletteOpen(false);
+          event.preventDefault();
+          return;
+        }
+        if (discountOpen) {
+          setDiscountOpen(false);
+          event.preventDefault();
+          return;
+        }
+        if (lineEditing) {
+          setLineEditing(null);
+          event.preventDefault();
+          return;
+        }
+        if (customItemOpen) {
+          setCustomItemOpen(false);
+          event.preventDefault();
+          return;
+        }
+        if (mode.startsWith('tender')) {
+          setMode('sale');
+          event.preventDefault();
+          return;
+        }
+      }
       const mod = event.metaKey || event.ctrlKey;
       if (!mod) return;
       const key = event.key.toLowerCase();
       if (key === 'k') {
         event.preventDefault();
         setCommandPaletteOpen(true);
+      }
+      if (key === 'n' && event.shiftKey) {
+        // ⌘⇧N opens "Create new customer" inline panel on customer gate.
+        event.preventDefault();
+        if (mode === 'gate') openInlineCustomerCreate();
+        return;
       }
       if (key === 'n') {
         event.preventDefault();
@@ -1187,6 +1229,15 @@ export function UnifiedPosPage() {
         event.preventDefault();
         productInputRef.current?.focus();
       }
+      if (key === 'w') {
+        // ⌘W on customer gate triggers walk-in. Outside gate, leave the
+        // browser default (close tab) alone — overriding it would surprise
+        // users who actually want to close the tab.
+        if (mode === 'gate') {
+          event.preventDefault();
+          startWalkIn();
+        }
+      }
       if (event.key === 'Enter') {
         event.preventDefault();
         if (mode === 'sale' && cartItems.length > 0) setMode('tender-method');
@@ -1194,7 +1245,12 @@ export function UnifiedPosPage() {
     };
     window.addEventListener('keydown', handleKeys);
     return () => window.removeEventListener('keydown', handleKeys);
-  }, [cartItems.length, customer, holdMutation, mode, setCommandPaletteOpen, startNewSale]);
+    // `startWalkIn`, `openInlineCustomerCreate`, and `startNewSale` are
+    // declared further down the file; including them in deps trips a TDZ.
+    // They're effectively-stable component-scope helpers, so the latest
+    // closure will read the latest value off the next mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems.length, customer, holdMutation, mode, setCommandPaletteOpen, commandPaletteOpen, discountOpen, lineEditing, customItemOpen]);
 
   const saveRepairToCart = useCallback(() => {
     const labor = parseMoney(repairDraft.laborPrice);
@@ -1532,19 +1588,19 @@ export function UnifiedPosPage() {
                             : 'Browse the catalog or scan to start adding items';
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem-var(--dev-banner-h,0px))] min-h-[720px] flex-col overflow-hidden bg-surface-50 dark:bg-[#050403] text-surface-900 dark:text-surface-50">
-      <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#080706] px-4">
+    <div className="-m-6 flex h-[calc(100vh-4rem-var(--dev-banner-h,0px))] min-h-[720px] flex-col overflow-hidden bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-50">
+      <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 px-4">
         <button
           type="button"
           onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
           className={cn(
             'inline-flex h-7 min-w-[190px] items-center gap-2 rounded-t-lg px-3 text-xs font-semibold',
             !['held', 'refund', 'close-shift', 'receipt'].includes(mode)
-              ? 'bg-surface-100 dark:bg-[#0f0e0c] text-primary-700 dark:text-[#fdeed0]'
+              ? 'bg-surface-100 dark:bg-surface-900 text-primary-700 dark:text-primary-500'
               : 'text-surface-900 dark:text-surface-500 hover:text-surface-600 dark:text-surface-300',
           )}
         >
-          <span className="grid h-3 w-3 place-items-center rounded-[3px] bg-primary-500 dark:bg-[#fdeed0] text-[8px] font-black text-[#2b1400]">B</span>
+          <span className="grid h-3 w-3 place-items-center rounded-[3px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
           POS
         </button>
         {(customer || cartItems.length > 0) && (
@@ -1552,16 +1608,19 @@ export function UnifiedPosPage() {
             type="button"
             onClick={() => holdMutation.mutate()}
             disabled={cartItems.length === 0 && !customer}
+            aria-label="Hold current sale (⌘H)"
+            title="Hold current sale (⌘H)"
             className="inline-flex h-7 min-w-[170px] items-center gap-2 rounded-t-lg px-3 text-xs font-semibold text-surface-900 dark:text-surface-500 hover:text-surface-600 dark:text-surface-300 disabled:opacity-50"
           >
             <Pause className="h-3.5 w-3.5" />
             Hold current sale
+            <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘H</span>
           </button>
         )}
       </div>
 
       <header className={cn(
-        'flex shrink-0 items-center gap-5 border-b border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#080706] px-5',
+        'flex shrink-0 items-center gap-5 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 px-5',
         // Customer gate gets a taller bar (mockup Frame 03 makes the search the
         // primary entry point at this step). Other modes keep the compact
         // 56px bar to leave more room for main canvas content.
@@ -1582,12 +1641,12 @@ export function UnifiedPosPage() {
             onChange={(event) => (mode === 'gate' ? setGlobalSearch(event.target.value) : setProductSearch(event.target.value))}
             data-pos-customer-search={mode === 'gate' ? 'true' : undefined}
             className={cn(
-              'w-full rounded-[10px] border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] pr-24 font-semibold text-surface-900 dark:text-surface-100 placeholder:text-surface-400 dark:placeholder:text-surface-500 focus:border-primary-500 dark:focus:border-[#fdeed0] focus-visible:outline-none',
+              'w-full rounded-[10px] border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 pr-24 font-semibold text-surface-900 dark:text-surface-100 placeholder:text-surface-400 dark:placeholder:text-surface-500 focus:border-primary-500 dark:focus:border-primary-500 focus-visible:outline-none',
               mode === 'gate' ? 'h-12 pl-12 text-[15px]' : 'h-11 pl-11 text-sm',
             )}
             placeholder={mode === 'gate' ? 'Search customer · phone · email · ticket # · SKU' : 'Search items or scan'}
           />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-surface-200 dark:border-[#1e1c1a] bg-surface-100 dark:bg-[#0f0e0c] px-2 py-0.5 font-mono text-[10px] text-surface-400">⌘K</span>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-900 px-2 py-0.5 font-mono text-[10px] text-surface-400">⌘K</span>
         </div>
         {/* Status + action chips. Mockup uses chip-pills here so they read as
             secondary status, not as primary CTAs. Refund + Shift live in a
@@ -1600,41 +1659,41 @@ export function UnifiedPosPage() {
             <button
               type="button"
               onClick={() => setMode('held')}
-              className="inline-flex items-center gap-1 rounded-full border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] px-3 py-1 text-[11.5px] font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-[#fdeed0]/40"
+              className="inline-flex items-center gap-1 rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-1 text-[11.5px] font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
             >
               <History className="h-3 w-3" /> Recall
-              <span className="ml-1 rounded border border-surface-200 dark:border-[#1e1c1a] bg-surface-50 dark:bg-[#0f0e0c] px-1.5 font-mono text-[9px] text-surface-400">⌘R</span>
+              <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘R</span>
             </button>
           )}
           {mode !== 'gate' && (
             <button
               type="button"
               onClick={startNewSale}
-              className="inline-flex items-center gap-1 rounded-full border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] px-3 py-1 text-[11.5px] font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-[#fdeed0]/40"
+              className="inline-flex items-center gap-1 rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-1 text-[11.5px] font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
             >
               <Plus className="h-3 w-3" /> New sale
-              <span className="ml-1 rounded border border-surface-200 dark:border-[#1e1c1a] bg-surface-50 dark:bg-[#0f0e0c] px-1.5 font-mono text-[9px] text-surface-400">⌘N</span>
+              <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘N</span>
             </button>
           )}
           <div className="relative">
             <details className="group">
-              <summary className="inline-flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-[#fdeed0]/40 [&::-webkit-details-marker]:hidden">
+              <summary className="inline-flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40 [&::-webkit-details-marker]:hidden">
                 <span className="text-[14px] leading-none">⋯</span>
               </summary>
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] p-1 shadow-xl">
-                <button type="button" onClick={() => setMode('refund')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]">
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-1 shadow-xl">
+                <button type="button" onClick={() => setMode('refund')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
                   <RotateCcw className="h-3.5 w-3.5" /> Refund
                 </button>
-                <button type="button" onClick={() => setMode('close-shift')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]">
+                <button type="button" onClick={() => setMode('close-shift')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
                   <Lock className="h-3.5 w-3.5" /> Close shift
                 </button>
                 {mode === 'gate' && (
-                  <button type="button" onClick={startNewSale} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]">
+                  <button type="button" onClick={startNewSale} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
                     <Plus className="h-3.5 w-3.5" /> New sale (⌘N)
                   </button>
                 )}
                 {mode !== 'gate' && (
-                  <button type="button" onClick={() => setMode('held')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]">
+                  <button type="button" onClick={() => setMode('held')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
                     <History className="h-3.5 w-3.5" /> Recall held (⌘R)
                   </button>
                 )}
@@ -1649,7 +1708,7 @@ export function UnifiedPosPage() {
           <ReceiptView sale={completedSale} onNext={startNewSale} />
         ) : (
           <div className="grid h-full grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_400px]">
-            <main className="overflow-auto bg-surface-100 dark:bg-[#0f0e0c] p-0">
+            <main className="overflow-auto bg-surface-100 dark:bg-surface-900 p-0">
               {mode === 'gate' && (
                 <CustomerGate
                   query={globalSearch}
@@ -1955,12 +2014,12 @@ function CustomerGate({
       <section className="px-6 pt-5">
         <div className="mb-3 flex items-center gap-3">
           <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">{bookingSummary}</div>
-          <div className="h-px flex-1 bg-surface-100 dark:bg-[#1e1c1a]" />
-          <button type="button" onClick={onViewCalendar} className="text-xs font-semibold text-primary-700 dark:text-[#fdeed0] underline-offset-4 hover:underline">View calendar</button>
+          <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
+          <button type="button" onClick={onViewCalendar} className="text-xs font-semibold text-primary-700 dark:text-primary-500 underline-offset-4 hover:underline">View calendar</button>
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {!appointmentsLoading && appointments.length === 0 && (
-            <div className="flex min-w-[280px] items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left dark:border-[#1e1c1a] dark:bg-[#161513]">
+            <div className="flex min-w-[280px] items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left dark:border-surface-700 dark:bg-surface-800">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-bold text-surface-900 dark:text-surface-50">No bookings left</div>
                 <div className="truncate text-[11.5px] text-surface-400">Walk-ins and pickups are ready.</div>
@@ -1973,18 +2032,18 @@ function CustomerGate({
               type="button"
               onClick={() => onSelectAppointment(appointment)}
               className={cn(
-                'flex min-w-[280px] items-center gap-3 rounded-xl border bg-white dark:bg-[#161513] px-4 py-3 text-left',
-                index === 0 ? 'border-l-2 border-l-primary-500 dark:border-l-[#fdeed0] border-surface-300 dark:border-[#2a2621]' : 'border-surface-200 dark:border-[#1e1c1a]',
+                'flex min-w-[280px] items-center gap-3 rounded-xl border bg-white dark:bg-surface-800 px-4 py-3 text-left',
+                index === 0 ? 'border-l-2 border-l-primary-500 dark:border-l-[#fdeed0] border-surface-300 dark:border-surface-700' : 'border-surface-200 dark:border-surface-700',
               )}
             >
-              <div className={cn('min-w-[58px] font-display text-2xl leading-none tabular-nums', index === 0 ? 'text-primary-700 dark:text-[#fdeed0]' : 'text-surface-900 dark:text-surface-100')}>{formatTime(appointment.start_time)}</div>
+              <div className={cn('min-w-[58px] font-display text-2xl leading-none tabular-nums', index === 0 ? 'text-primary-700 dark:text-primary-500' : 'text-surface-900 dark:text-surface-100')}>{formatTime(appointment.start_time)}</div>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-bold text-surface-900 dark:text-surface-50">
                   {appointmentCustomerName(appointment)}
                 </div>
                 <div className="truncate text-[11.5px] text-surface-400">{appointmentNote(appointment)}</div>
               </div>
-              <span className={cn('rounded-full px-2 py-1 font-mono text-[10px] font-semibold', index === 0 ? 'bg-[#e8a33d]/15 text-[#e8a33d]' : 'bg-surface-100 dark:bg-[#1e1c1a] text-surface-400')}>{appointmentStatusLabel(appointment, nowMs)}</span>
+              <span className={cn('rounded-full px-2 py-1 font-mono text-[10px] font-semibold', index === 0 ? 'bg-[#e8a33d]/15 text-[#e8a33d]' : 'bg-surface-100 dark:bg-surface-700 text-surface-400')}>{appointmentStatusLabel(appointment, nowMs)}</span>
             </button>
           ))}
         </div>
@@ -2001,8 +2060,8 @@ function CustomerGate({
         />
       ) : query.trim().length >= 2 ? (
         <section className="mx-auto mt-8 w-full max-w-3xl px-6">
-          <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] shadow-2xl">
-            <div className="border-b border-surface-200 dark:border-[#1e1c1a] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">Customer matches</div>
+          <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-2xl">
+            <div className="border-b border-surface-200 dark:border-surface-700 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">Customer matches</div>
             {loading && <div className="p-5 text-sm text-surface-900 dark:text-surface-500">Searching...</div>}
             {!loading && results.length === 0 && (
               <div className="p-5 text-sm text-surface-900 dark:text-surface-500">
@@ -2014,7 +2073,7 @@ function CustomerGate({
                 key={customer.id}
                 type="button"
                 onClick={() => onSelectCustomer(customer)}
-                className="flex w-full items-center gap-3 border-b border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] p-4 text-left last:border-b-0 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]"
+                className="flex w-full items-center gap-3 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-4 text-left last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
               >
                 <div className="grid h-10 w-10 place-items-center rounded-full bg-[#4db8c9] font-bold text-[#002d35]">
                   {initials(getCustomerName(customer))}
@@ -2027,19 +2086,19 @@ function CustomerGate({
                 <ChevronRight className="h-4 w-4 text-surface-900 dark:text-surface-500" />
               </button>
             ))}
-            <div className="flex gap-2 border-t border-surface-200 dark:border-[#1e1c1a] p-3">
-              <button type="button" onClick={onNewCustomer} className="flex-1 rounded-lg bg-primary-500 dark:bg-[#fdeed0] px-4 py-2 text-sm font-bold text-[#2b1400]">Create customer</button>
-              <button type="button" onClick={onWalkIn} className="flex-1 rounded-lg border border-surface-300 dark:border-[#2a2621] px-4 py-2 text-sm font-bold text-surface-700 dark:text-surface-200">Walk-in</button>
+            <div className="flex gap-2 border-t border-surface-200 dark:border-surface-700 p-3">
+              <button type="button" onClick={onNewCustomer} className="flex-1 rounded-lg bg-primary-500 dark:bg-primary-500 px-4 py-2 text-sm font-bold text-on-primary">Create customer</button>
+              <button type="button" onClick={onWalkIn} className="flex-1 rounded-lg border border-surface-300 dark:border-surface-700 px-4 py-2 text-sm font-bold text-surface-700 dark:text-surface-200">Walk-in</button>
             </div>
           </div>
         </section>
       ) : (
         <section className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-          <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg bg-primary-500 dark:bg-[#fdeed0] px-6 py-4 text-[15px] font-bold text-[#2b1400] shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-[#f5dca7]">
+          <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-[#f5dca7]">
             <UserPlus className="h-5 w-5" />
             Create new customer
           </button>
-          <button type="button" onClick={onWalkIn} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg border border-surface-300 dark:border-[#2a2621] bg-white dark:bg-[#161513] px-6 py-4 text-[15px] font-bold text-surface-900 dark:text-surface-100 hover:border-primary-500 dark:hover:border-[#fdeed0]/40">
+          <button type="button" onClick={onWalkIn} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-4 text-[15px] font-bold text-surface-900 dark:text-surface-100 hover:border-primary-500 dark:hover:border-primary-500/40">
             <ShoppingCart className="h-5 w-5" />
             Walk-in - no profile
           </button>
@@ -2054,12 +2113,12 @@ function CustomerGate({
           <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">
             {readyPickupLoading ? 'Ready for pickup - loading' : `Ready for pickup - ${readyPickupTotal}`}
           </div>
-          <div className="h-px flex-1 bg-surface-100 dark:bg-[#1e1c1a]" />
-          <button type="button" onClick={onViewReadyPickup} className="text-xs font-semibold text-primary-700 dark:text-[#fdeed0] underline-offset-4 hover:underline">
+          <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
+          <button type="button" onClick={onViewReadyPickup} className="text-xs font-semibold text-primary-700 dark:text-primary-500 underline-offset-4 hover:underline">
             View active tickets
           </button>
         </div>
-        <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513]">
+        <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
           {readyPickupLoading && (
             <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading pickup tickets...</div>
           )}
@@ -2071,14 +2130,14 @@ function CustomerGate({
               key={ticket.id}
               type="button"
               onClick={() => onOpenReadyPickup(ticket)}
-              className="grid w-full grid-cols-[76px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-[#1e1c1a] px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]"
+              className="grid w-full grid-cols-[76px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
             >
               <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">ready</span>
               <span className="font-mono text-xs text-surface-400">{ticket.order_id}</span>
               <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}</span>
               <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
               <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
-              <span className="text-right font-mono text-xs text-primary-700 dark:text-[#fdeed0]">{formatCurrency(ticket.total)}</span>
+              <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
               <span className="text-right text-xs font-semibold text-[#4db8c9]">Open</span>
             </button>
           ))}
@@ -2109,25 +2168,25 @@ function InlineCreateCustomerPanel({
   const tileInput =
     'h-10 w-full border-0 bg-transparent p-0 text-[15px] font-semibold text-surface-900 placeholder:text-surface-400 focus-visible:outline-none dark:text-surface-50 dark:placeholder:text-surface-600';
   const fieldTile =
-    'bg-white px-4 py-3 dark:bg-[#161513]';
+    'bg-white px-4 py-3 dark:bg-surface-800';
 
   return (
     <section className="flex w-full flex-1 items-center px-6 py-6">
       <form
-        className="mx-auto w-full max-w-4xl overflow-hidden rounded-xl border border-surface-200 bg-surface-200 shadow-lg shadow-black/10 dark:border-[#1e1c1a] dark:bg-[#1e1c1a] dark:shadow-black/30"
+        className="mx-auto w-full max-w-4xl overflow-hidden rounded-xl border border-surface-200 bg-surface-200 shadow-lg shadow-black/10 dark:border-surface-700 dark:bg-surface-700 dark:shadow-black/30"
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit();
         }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-[#161513]">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-surface-800">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-500 text-[#2b1400] dark:bg-[#fdeed0]">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary-500 text-on-primary dark:bg-primary-500">
               <UserPlus className="h-5 w-5" />
             </div>
             <div className="font-display text-3xl leading-none text-surface-900 dark:text-surface-50">Create customer</div>
           </div>
-          <div className="inline-flex rounded-lg border border-surface-200 bg-surface-100 p-1 dark:border-[#2a2621] dark:bg-[#0f0e0c]">
+          <div className="inline-flex rounded-lg border border-surface-200 bg-surface-100 p-1 dark:border-surface-700 dark:bg-surface-900">
             {(['individual', 'business'] as const).map((type) => (
               <button
                 key={type}
@@ -2136,7 +2195,7 @@ function InlineCreateCustomerPanel({
                 className={cn(
                   'rounded-md px-3 py-1.5 text-xs font-bold capitalize',
                   draft.customerType === type
-                    ? 'bg-white text-surface-900 shadow-sm dark:bg-[#fdeed0] dark:text-[#2b1400]'
+                    ? 'bg-white text-surface-900 shadow-sm dark:bg-primary-500 dark:text-on-primary'
                     : 'text-surface-500 hover:text-surface-900 dark:hover:text-surface-100',
                 )}
               >
@@ -2204,9 +2263,9 @@ function InlineCreateCustomerPanel({
           </label>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-[#161513]">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-surface-800">
           <div className="flex flex-wrap gap-2">
-            <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-surface-200 px-3 text-sm font-semibold text-surface-800 dark:border-[#2a2621] dark:text-surface-100">
+            <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-surface-200 px-3 text-sm font-semibold text-surface-800 dark:border-surface-700 dark:text-surface-100">
               <input
                 type="checkbox"
                 checked={draft.smsOptIn}
@@ -2215,7 +2274,7 @@ function InlineCreateCustomerPanel({
               />
               SMS updates
             </label>
-            <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-surface-200 px-3 text-sm font-semibold text-surface-800 dark:border-[#2a2621] dark:text-surface-100">
+            <label className="inline-flex h-10 items-center gap-2 rounded-lg border border-surface-200 px-3 text-sm font-semibold text-surface-800 dark:border-surface-700 dark:text-surface-100">
               <input
                 type="checkbox"
                 checked={draft.emailOptIn}
@@ -2281,7 +2340,7 @@ function SaleWorkspace({
           belongs. Repair + Custom item live as right-aligned pills next
           to the category filters so they read as starting points, not
           floating CTAs. */}
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-surface-200 bg-white px-5 py-3 dark:border-surface-800 dark:bg-[#080706]">
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-surface-200 bg-white px-5 py-3 dark:border-surface-800 dark:bg-surface-950">
         {filterOptions.map((filter) => (
           <button
             key={filter}
@@ -2290,7 +2349,7 @@ function SaleWorkspace({
             className={cn(
               'shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold',
               activeFilter === filter
-                ? 'bg-primary-500 text-[#2b1400] dark:bg-[#fdeed0]'
+                ? 'bg-primary-500 text-on-primary dark:bg-primary-500'
                 : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300',
             )}
           >
@@ -2301,7 +2360,7 @@ function SaleWorkspace({
           <button
             type="button"
             onClick={onCustomItem}
-            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-surface-300 bg-transparent px-3 py-1.5 text-xs font-semibold text-surface-700 hover:border-primary-500 hover:text-primary-700 dark:border-surface-700 dark:text-surface-200 dark:hover:border-[#fdeed0]/40 dark:hover:text-[#fdeed0]"
+            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-surface-300 bg-transparent px-3 py-1.5 text-xs font-semibold text-surface-700 hover:border-primary-500 hover:text-primary-700 dark:border-surface-700 dark:text-surface-200 dark:hover:border-primary-500/40 dark:hover:text-[#fdeed0]"
           >
             <PackagePlus className="h-3.5 w-3.5" />
             Custom item
@@ -2318,7 +2377,7 @@ function SaleWorkspace({
             <button
               type="button"
               onClick={onTender}
-              className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3 py-1.5 text-xs font-bold text-[#2b1400] dark:bg-[#fdeed0]"
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3 py-1.5 text-xs font-bold text-on-primary dark:bg-primary-500"
             >
               <CreditCard className="h-3.5 w-3.5" />
               Charge
@@ -2362,7 +2421,11 @@ function SaleWorkspace({
                   : 'border-surface-200 bg-white hover:-translate-y-0.5 hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900',
               )}
             >
-              {inCart && <Pill tone="info" className="absolute right-3 top-3">in cart</Pill>}
+              {inCart && (
+                <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase text-emerald-700 dark:bg-[#34c47e]/15 dark:text-[#34c47e]">
+                  ✓ IN CART
+                </span>
+              )}
               <Package className="h-6 w-6 text-surface-400" />
               <div className="mt-3 line-clamp-2 min-h-10 font-semibold">{product.name}</div>
               <div className="mt-1 truncate font-mono text-xs text-surface-900 dark:text-surface-500">{product.sku || 'No SKU'}</div>
@@ -2416,13 +2479,13 @@ function CartColumn({
   const lineCount = cartItems.reduce((sum, item) => sum + (item.type === 'product' || item.type === 'misc' ? item.quantity : 1), 0);
   const taxPct = (taxRate * 100).toFixed(3).replace(/\.?0+$/, '');
   return (
-    <aside className={cn('flex min-h-0 flex-col border-l border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513]', locked && 'opacity-90')}>
+    <aside className={cn('flex min-h-0 flex-col border-l border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800', locked && 'opacity-90')}>
       {/* Mockup cart toolbar: just `‹ 🛒 CART`. Status pills (locked /
           asleep) clutter the header on every refresh; the locked + asleep
           states already read from the dimmed body, sleeping illustration,
           and disabled Charge button. The locked pill is kept because
           it's a critical "hands off — tender in flight" cue. */}
-      <div className="flex h-[44px] items-center gap-2 border-b border-surface-200 dark:border-[#1e1c1a] px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-600 dark:text-surface-300">
+      <div className="flex h-[44px] items-center gap-2 border-b border-surface-200 dark:border-surface-700 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-surface-600 dark:text-surface-300">
         <ChevronLeft className="h-4 w-4 text-surface-900 dark:text-surface-500" />
         <ShoppingCart className="h-4 w-4" />
         Cart
@@ -2430,7 +2493,7 @@ function CartColumn({
       </div>
       {!awake && (
         <div className="flex flex-1 flex-col items-center justify-center p-8 text-center opacity-60">
-          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-surface-100 dark:bg-[#0f0e0c]">
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-surface-100 dark:bg-surface-900">
             <ShoppingCart className="h-7 w-7 text-surface-900 dark:text-surface-500" />
           </div>
           <div className="mt-4 font-display text-2xl text-surface-900 dark:text-surface-100">Cart is asleep</div>
@@ -2441,7 +2504,7 @@ function CartColumn({
       )}
       {awake && (
         <>
-          <button type="button" onClick={onSwapCustomer} className="flex items-center gap-3 border-b border-surface-200 dark:border-[#1e1c1a] p-4 text-left hover:bg-surface-100 dark:hover:bg-[#0f0e0c]">
+          <button type="button" onClick={onSwapCustomer} className="flex items-center gap-3 border-b border-surface-200 dark:border-surface-700 p-4 text-left hover:bg-surface-100 dark:hover:bg-surface-900">
             <div className="grid h-11 w-11 place-items-center rounded-full bg-[#4db8c9] font-bold text-[#002d35]">
               {initials(getCustomerName(customer))}
             </div>
@@ -2453,15 +2516,15 @@ function CartColumn({
           </button>
           <div className="min-h-0 flex-1 overflow-auto p-3">
             {cartItems.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-surface-300 dark:border-[#2a2621] p-6 text-center text-sm text-surface-900 dark:text-surface-500">
+              <div className="rounded-lg border border-dashed border-surface-300 dark:border-surface-700 p-6 text-center text-sm text-surface-900 dark:text-surface-500">
                 Scan or add an item to start the cart.
               </div>
             ) : (
               <div className="space-y-2">
                 {cartItems.map((item) => (
-                  <div key={item.id} className={cn('rounded-lg border border-surface-200 dark:border-[#1e1c1a] bg-surface-100 dark:bg-[#0f0e0c] p-3', item.type === 'repair' && 'border-l-4 border-l-primary-500 dark:border-l-[#fdeed0]')}>
+                  <div key={item.id} className={cn('rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-900 p-3', item.type === 'repair' && 'border-l-4 border-l-primary-500 dark:border-l-[#fdeed0]')}>
                     <div className="flex gap-3">
-                      <div className="mt-1 grid h-8 w-8 place-items-center rounded-lg bg-surface-100 dark:bg-[#1e1c1a]">
+                      <div className="mt-1 grid h-8 w-8 place-items-center rounded-lg bg-surface-100 dark:bg-surface-700">
                         {item.type === 'repair' ? <Wrench className="h-4 w-4" /> : <Package className="h-4 w-4" />}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -2469,16 +2532,16 @@ function CartColumn({
                         <div className="mt-1 text-xs text-surface-900 dark:text-surface-500">{lineSubtitle(item)}</div>
                         {(item.type === 'product' || item.type === 'misc') && (
                           <div className="mt-2 flex items-center gap-2">
-                            <button type="button" onClick={() => onQty(item.id, -1)} disabled={locked} className="rounded border border-surface-300 dark:border-[#2a2621] p-1" aria-label="Decrease quantity"><Minus className="h-3 w-3" /></button>
+                            <button type="button" onClick={() => onQty(item.id, -1)} disabled={locked} className="rounded border border-surface-300 dark:border-surface-700 p-1" aria-label="Decrease quantity"><Minus className="h-3 w-3" /></button>
                             <span className="w-8 text-center font-mono text-xs">{item.quantity}</span>
-                            <button type="button" onClick={() => onQty(item.id, 1)} disabled={locked} className="rounded border border-surface-300 dark:border-[#2a2621] p-1" aria-label="Increase quantity"><Plus className="h-3 w-3" /></button>
+                            <button type="button" onClick={() => onQty(item.id, 1)} disabled={locked} className="rounded border border-surface-300 dark:border-surface-700 p-1" aria-label="Increase quantity"><Plus className="h-3 w-3" /></button>
                           </div>
                         )}
                       </div>
                       <div className="text-right">
                         <div className="font-display text-xl text-surface-900 dark:text-surface-100">{formatCurrency(lineAmount(item))}</div>
                         <div className="mt-2 flex justify-end gap-1">
-                          <button type="button" onClick={() => onEditLine(item)} disabled={locked} className="rounded p-1 text-surface-900 dark:text-surface-500 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]" aria-label="Edit line"><Edit3 className="h-3.5 w-3.5" /></button>
+                          <button type="button" onClick={() => onEditLine(item)} disabled={locked} className="rounded p-1 text-surface-900 dark:text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700" aria-label="Edit line"><Edit3 className="h-3.5 w-3.5" /></button>
                           <button type="button" onClick={() => onRemoveLine(item.id)} disabled={locked} className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40" aria-label="Remove line"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       </div>
@@ -2491,11 +2554,11 @@ function CartColumn({
           {/* Coupon row pinned above totals (mockup pattern). Renders as a
               flat input, not a dashed CTA, so "GOLDLOYAL10 APPLIED"
               reads as state, not a prompt. */}
-          <button type="button" onClick={onDiscount} disabled={locked} className="flex w-full items-center gap-2 border-y border-surface-200 dark:border-[#1e1c1a] bg-surface-50/60 dark:bg-[#0f0e0c] px-4 py-2.5 text-left text-sm font-semibold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-[#1e1c1a]">
+          <button type="button" onClick={onDiscount} disabled={locked} className="flex w-full items-center gap-2 border-y border-surface-200 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-900 px-4 py-2.5 text-left text-sm font-semibold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">
             <Tag className="h-4 w-4" />
             Coupon or discount
           </button>
-          <div className="border-t border-surface-200 dark:border-[#1e1c1a] p-4">
+          <div className="border-t border-surface-200 dark:border-surface-700 p-4">
             <div className="space-y-1.5 font-mono text-[12.5px]">
               <div className="flex justify-between">
                 <span className="text-surface-900 dark:text-surface-500">Subtotal{lineCount > 0 ? ` · ${lineCount} line${lineCount === 1 ? '' : 's'}` : ''}</span>
@@ -2517,19 +2580,19 @@ function CartColumn({
                   <span>-{formatCurrency(paid)}</span>
                 </div>
               )}
-              <div className="mt-2 flex items-end justify-between border-t border-surface-200 dark:border-[#1e1c1a] pt-3">
+              <div className="mt-2 flex items-end justify-between border-t border-surface-200 dark:border-surface-700 pt-3">
                 <span className="font-sans text-[10.5px] uppercase tracking-[0.12em] text-surface-500">Due now</span>
-                <span className="font-display text-4xl text-primary-700 dark:text-[#fdeed0] tabular-nums">{formatCurrency(Math.max(0, totals.total - paid))}</span>
+                <span className="font-display text-4xl text-primary-700 dark:text-primary-500 tabular-nums">{formatCurrency(Math.max(0, totals.total - paid))}</span>
               </div>
             </div>
             {/* Footer action grid: Discount + Note share a row, Charge spans
                 full width. Mirrors mockup `cart-foot` exactly. */}
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <button type="button" onClick={onDiscount} disabled={locked} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] px-3 py-2 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-[#fdeed0]/40 disabled:opacity-50">
+              <button type="button" onClick={onDiscount} disabled={locked} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40 disabled:opacity-50">
                 <Tag className="h-3.5 w-3.5" /> Discount
-                <span className="ml-1 rounded border border-surface-200 dark:border-[#1e1c1a] bg-surface-50 dark:bg-[#0f0e0c] px-1.5 font-mono text-[9px] text-surface-400">⌘D</span>
+                <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘D</span>
               </button>
-              <button type="button" disabled={locked} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-surface-200 dark:border-[#1e1c1a] bg-white dark:bg-[#161513] px-3 py-2 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-[#fdeed0]/40 disabled:opacity-50">
+              <button type="button" disabled={locked} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40 disabled:opacity-50">
                 <FileText className="h-3.5 w-3.5" /> Note
               </button>
               <button type="button" onClick={onTender} disabled={locked || cartItems.length === 0} className={cn(primaryButton, 'col-span-2 w-full py-3 text-base')}>
@@ -2608,7 +2671,7 @@ function RepairIssueStep({ draft, setDraft, onBack, onContinue }: {
               key={condition}
               type="button"
               onClick={() => setDraft((prev) => ({ ...prev, condition }))}
-              className={cn('rounded-full px-3 py-1.5 text-sm font-semibold', draft.condition === condition ? 'bg-primary-500 text-[#2b1400]' : 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300')}
+              className={cn('rounded-full px-3 py-1.5 text-sm font-semibold', draft.condition === condition ? 'bg-primary-500 text-on-primary' : 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300')}
             >
               {condition}
             </button>
@@ -2630,6 +2693,26 @@ function RepairIssueStep({ draft, setDraft, onBack, onContinue }: {
           <span className="mb-1 block text-sm font-semibold">Customer's words</span>
           <textarea className={inputClass} rows={4} value={draft.customerWords} onChange={(event) => setDraft((prev) => ({ ...prev, customerWords: event.target.value }))} placeholder="What did the customer say is happening?" />
         </label>
+        {/* Mockup Frame 05: "+ Add internal note" link · staff-only · won't
+            print on receipt. Toggles a dashed-border textarea so the visual
+            distinction matches the mockup spec. */}
+        <button
+          type="button"
+          onClick={() => setDraft((prev) => ({ ...prev, internalNoteOpen: !prev.internalNoteOpen }))}
+          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary-700 underline-offset-4 hover:underline dark:text-primary-500"
+        >
+          + Add internal note
+          <span className="text-surface-500 dark:text-surface-400 font-normal">· staff-only · won't print on receipt</span>
+        </button>
+        {draft.internalNoteOpen && (
+          <textarea
+            className={cn(inputClass, 'mt-2 border-dashed')}
+            rows={3}
+            value={draft.internalNote || ''}
+            onChange={(event) => setDraft((prev) => ({ ...prev, internalNote: event.target.value }))}
+            placeholder="@mention staff · #tag tickets"
+          />
+        )}
       </Section>
       <WizardFooter onBack={onBack} onContinue={onContinue} />
     </div>
@@ -2778,8 +2861,26 @@ function CashTenderView({ amount, setAmount, remainingCents, processing, onBack,
   onAccept: () => void;
 }) {
   const remaining = fromCents(remainingCents);
-  const quick = [remaining, Math.ceil(remaining / 5) * 5, Math.ceil(remaining / 10) * 10, Math.ceil(remaining / 20) * 20]
-    .filter((value, index, arr) => value > 0 && arr.indexOf(value) === index);
+  // Mockup Frame 13 quick-amount strip: Exact + 5 staggered presets that
+  // round up the remaining amount to common bill counts. Dedupe so $80 and
+  // $80 don't show twice when remaining = $80.00.
+  const quick: { label: string; value: number }[] = (() => {
+    const exact = remaining;
+    const presets = [
+      { label: 'Exact', value: exact },
+      { label: `$${Math.ceil(exact / 5) * 5}`, value: Math.ceil(exact / 5) * 5 },
+      { label: `$${Math.ceil(exact / 10) * 10}`, value: Math.ceil(exact / 10) * 10 },
+      { label: `$${Math.ceil(exact / 20) * 20}`, value: Math.ceil(exact / 20) * 20 },
+      { label: `$${Math.ceil(exact / 50) * 50}`, value: Math.ceil(exact / 50) * 50 },
+      { label: `$${Math.ceil(exact / 100) * 100}`, value: Math.ceil(exact / 100) * 100 },
+    ];
+    const seen = new Set<number>();
+    return presets.filter((p) => {
+      if (p.value <= 0 || seen.has(p.value)) return false;
+      seen.add(p.value);
+      return true;
+    });
+  })();
   const change = Math.max(0, parseMoney(amount) - remaining);
   return (
     <div className="mx-auto max-w-xl">
@@ -2788,17 +2889,35 @@ function CashTenderView({ amount, setAmount, remainingCents, processing, onBack,
         <div className="font-mono text-xs uppercase text-surface-900 dark:text-surface-500">Cash received</div>
         <input className="mt-2 w-full rounded-lg border border-surface-200 bg-surface-50 px-4 py-3 text-right font-display text-6xl text-cyan-700 focus:border-primary-500 focus-visible:outline-none dark:border-surface-700 dark:bg-surface-950 dark:text-[#4DB8C9]" value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" autoFocus />
         <div className="mt-4 flex flex-wrap gap-2">
-          {quick.map((value) => (
-            <button key={value} type="button" onClick={() => setAmount(value.toFixed(2))} className={secondaryButton}>{formatCurrency(value)}</button>
+          {quick.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => setAmount(preset.value.toFixed(2))}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-sm font-mono font-semibold border transition-colors',
+                parseMoney(amount).toFixed(2) === preset.value.toFixed(2)
+                  ? 'bg-primary-500 text-on-primary border-primary-500'
+                  : 'border-surface-200 bg-white text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200',
+              )}
+            >
+              {preset.label === 'Exact' ? `Exact · ${formatCurrency(preset.value)}` : preset.label}
+            </button>
           ))}
         </div>
         <div className="mt-5 rounded-lg border border-surface-200 p-4 dark:border-surface-800">
-          <div className="text-sm text-surface-900 dark:text-surface-500">Change due</div>
+          <div className="flex items-baseline justify-between">
+            <div className="text-sm text-surface-900 dark:text-surface-500">Change due</div>
+            <div className="font-mono text-[11px] text-surface-500 dark:text-surface-400">drawer auto-opens on confirm</div>
+          </div>
           <div className="font-display text-5xl text-emerald-700 dark:text-[#34C47E]">{formatCurrency(change)}</div>
         </div>
         <button type="button" onClick={onAccept} disabled={processing} className={cn(primaryButton, 'mt-5 w-full py-3 text-base')}>
-          {processing ? 'Processing...' : 'Take cash'}
+          {processing ? 'Processing...' : `Take ${formatCurrency(parseMoney(amount) || remaining)} · open drawer · print receipt`}
         </button>
+        <div className="mt-3 text-center font-mono text-[11px] text-surface-500 dark:text-surface-400">
+          Type a smaller amount to take a partial payment — remainder bounces back to method picker.
+        </div>
       </Section>
     </div>
   );
@@ -2818,22 +2937,49 @@ function CardTenderView({ method, amount, setAmount, remainingCents, processing,
 }) {
   const requiresTerminal = method === 'Card';
   const disabled = processing || (requiresTerminal && !blockchypConfigured);
+  const networkOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
   return (
     <div className="mx-auto max-w-2xl">
       <button type="button" onClick={onBack} className={ghostButton}><ChevronLeft className="h-4 w-4" /> Method picker</button>
       <Section className="mt-4 p-6 text-center">
-        {method === 'Card' ? <CreditCard className="mx-auto h-10 w-10 text-primary-700 dark:text-primary-500" /> : <Gift className="mx-auto h-10 w-10 text-primary-700 dark:text-primary-500" />}
-        <div className="mt-4 font-display text-4xl">{method === 'Card' ? 'Waiting on terminal' : method}</div>
+        {method === 'Card' ? (
+          /* Mockup Frame 14: terminal-pulse panel. Two animated rings around a
+             card icon signal "waiting for tap". CSS keyframes defined in
+             globals.css (or inline). */
+          <div className="relative mx-auto h-24 w-24">
+            <span className="absolute inset-0 rounded-full bg-cyan-500/12 animate-pulse"></span>
+            <span className="absolute inset-3 rounded-full bg-cyan-500/22"></span>
+            <CreditCard className="relative mx-auto h-10 w-10 text-primary-700 dark:text-primary-500" style={{ marginTop: '28px' }} />
+          </div>
+        ) : (
+          <Gift className="mx-auto h-10 w-10 text-primary-700 dark:text-primary-500" />
+        )}
+        <div className="mt-4 font-display text-4xl">{method === 'Card' ? 'Tap, insert, or swipe' : method}</div>
         <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">
           {method === 'Card'
-            ? (blockchypConfigured ? `${terminalName} will prompt for card and tip.` : 'Terminal is not configured.')
+            ? (blockchypConfigured ? `Customer terminal mirrors the prompt + handles tip.` : 'Terminal is not configured.')
             : 'Enter the amount to apply. Scan or validate the code before tendering.'}
         </div>
+        {method === 'Card' && blockchypConfigured && (
+          <div className="mx-auto mt-3 inline-flex items-center gap-2 rounded-full bg-surface-100 px-3 py-1 font-mono text-[11px] text-cyan-700 dark:bg-surface-800 dark:text-[#4DB8C9]">
+            <span className="text-[10px]">●</span> Terminal {terminalName} · paired
+          </div>
+        )}
         <label className="mx-auto mt-5 block max-w-sm text-left">
           <span className="mb-1 block text-sm font-semibold">{method} amount</span>
           <input className={inputClass} value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="decimal" />
+          <div className="mt-1.5 font-mono text-[11px] text-surface-500 dark:text-surface-400">Edit to take partial · remainder bounces back to method picker</div>
         </label>
         <div className="mt-4 text-sm text-surface-900 dark:text-surface-500">Remaining balance is {formatCurrency(fromCents(remainingCents))}.</div>
+        {!networkOnline && (
+          /* Mockup Frame 14: network-fallback warning surfaces when Wi-Fi
+             reconnect is in progress; cellular backup is configured at the
+             store level. */
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-left text-xs text-amber-700 dark:text-[#e8a33d]">
+            <span className="text-base">⚠️</span>
+            <span>Network in fallback (Wi-Fi reconnecting) · cellular backup ready.</span>
+          </div>
+        )}
         {terminalError && (
           <div className="mt-5 rounded-lg border border-red-300 bg-red-50 p-3 text-left text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
             {terminalError}
