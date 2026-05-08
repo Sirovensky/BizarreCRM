@@ -68,6 +68,7 @@ import type {
 type PosMode =
   | 'gate'
   | 'sale'
+  | 'repair-category'
   | 'repair-device'
   | 'repair-issue'
   | 'repair-quote'
@@ -225,8 +226,11 @@ interface RefundLineSelection {
 }
 
 const DEFAULT_REPAIR_DRAFT: RepairDraft = {
-  deviceType: 'Phone',
-  deviceName: 'iPhone',
+  // Empty by default. The Category step asks the cashier to pick first; no
+  // implicit "Phone / iPhone" pre-fill. Server accepts whatever device_type
+  // string lands so the lowercase category slug ("phone") is fine.
+  deviceType: '',
+  deviceName: '',
   imei: '',
   serial: '',
   condition: 'Good',
@@ -250,33 +254,45 @@ const DEFAULT_REPAIR_DRAFT: RepairDraft = {
 const TURNAROUND_OPTIONS = ['Same-day', '24 hours', '2-3 days', '5-7 days', 'Mail-in (10+ days)'];
 const TECHNICIAN_OPTIONS_STUB = ['Mike', 'Tasha', 'Devon', 'Priya', '— unassigned —'];
 
-const DEVICE_TYPES = [
-  { label: 'Phone', icon: Smartphone },
-  { label: 'Tablet', icon: Monitor },
-  { label: 'Laptop', icon: Monitor },
-  { label: 'Console', icon: Package },
-  { label: 'Watch', icon: Clock },
-  { label: 'Other', icon: Wrench },
+// Backup-pos parity: 9 device categories. Each tile is one screen in the
+// repair flow ("Category" step). Picking one routes to the Device step which
+// queries `/catalog/devices?category=<value>` for popular models.
+// `quick` is the escape hatch — skip the device picker entirely and intake
+// the ticket without a specific device.
+const CATEGORY_TILES: Array<{ value: string; label: string; emoji: string }> = [
+  { value: 'phone',         label: 'Mobile / Phone',  emoji: '📱' },
+  { value: 'tablet',        label: 'Tablet',          emoji: '📲' },
+  { value: 'laptop',        label: 'Laptop / Mac',    emoji: '💻' },
+  { value: 'tv',            label: 'TV',              emoji: '📺' },
+  { value: 'desktop',       label: 'Desktop',         emoji: '🖥️' },
+  { value: 'console',       label: 'Game console',    emoji: '🎮' },
+  { value: 'data_recovery', label: 'Data recovery',   emoji: '💾' },
+  { value: 'other',         label: 'Other',           emoji: '❓' },
+  { value: 'quick',         label: 'Quick check-in',  emoji: '⚡' },
 ];
 
-// Mockup Frame 04 quick-pick grid. Hand-curated 12 most-common drop-offs in
-// the typical mixed-volume shop — covers ~70% of intake without scrolling.
-// Picking one pre-fills `deviceType` + `deviceName`. Real impl will replace
-// with a per-shop "popular devices" query (last-90-day repair frequency).
-const QUICK_DEVICES: Array<{ name: string; type: string; emoji: string }> = [
-  { name: 'iPhone 15 Pro', type: 'Phone', emoji: '📱' },
-  { name: 'iPhone 15', type: 'Phone', emoji: '📱' },
-  { name: 'iPhone 14 Pro', type: 'Phone', emoji: '📱' },
-  { name: 'iPhone 14', type: 'Phone', emoji: '📱' },
-  { name: 'iPhone 13', type: 'Phone', emoji: '📱' },
-  { name: 'Galaxy S24', type: 'Phone', emoji: '📱' },
-  { name: 'Galaxy S23', type: 'Phone', emoji: '📱' },
-  { name: 'Pixel 8 Pro', type: 'Phone', emoji: '📱' },
-  { name: 'iPad Pro 12.9', type: 'Tablet', emoji: '📱' },
-  { name: 'iPad Air', type: 'Tablet', emoji: '📱' },
-  { name: 'MacBook Pro 14', type: 'Laptop', emoji: '💻' },
-  { name: 'Apple Watch S9', type: 'Watch', emoji: '⌚' },
-];
+// Per-category manufacturer chips. Mirrors backup pos so the Device step
+// surfaces a one-tap filter to narrow the popular-devices grid.
+const MANUFACTURER_SHORTCUTS: Record<string, string[]> = {
+  phone: ['Apple', 'Samsung', 'Google', 'Motorola', 'OnePlus', 'LG'],
+  tablet: ['Apple', 'Samsung', 'Lenovo', 'Microsoft'],
+  laptop: ['Apple', 'Dell', 'HP', 'Lenovo', 'Asus', 'Acer'],
+  console: ['Nintendo', 'PlayStation', 'Xbox', 'Steam'],
+  tv: ['Samsung', 'LG', 'Sony', 'TCL', 'Vizio'],
+  desktop: ['Apple', 'Dell', 'HP', 'Lenovo'],
+};
+
+const DEVICE_PLACEHOLDER: Record<string, string> = {
+  phone: 'e.g. Samsung Galaxy A15',
+  tablet: 'e.g. iPad Air 5th Gen',
+  laptop: 'e.g. Dell Latitude 5540',
+  tv: 'e.g. Samsung UN55TU7000',
+  console: 'e.g. PlayStation 5 Slim',
+  desktop: 'e.g. Dell OptiPlex 7080',
+  other: 'e.g. DJI Mavic 3',
+  data_recovery: 'e.g. WD My Passport 2TB',
+  quick: 'e.g. Samsung Galaxy A15',
+};
 
 const EMPTY_CREATE_CUSTOMER_DRAFT: CreateCustomerDraft = {
   customerType: 'individual',
@@ -658,8 +674,14 @@ function Modal({
   );
 }
 
-function Stepper({ step }: { step: 'device' | 'issue' | 'quote' | 'deposit' }) {
+// Five-step repair-intake stepper. "Category" was previously baked into the
+// "Device" step (same screen rendered the type chips + the model picker)
+// which made it easy to lose your place — picking a category jumped you down
+// the page rather than to a fresh screen. Now Category and Device are two
+// separate stops, matching the iOS / Android flow + the backup web POS.
+function Stepper({ step }: { step: 'category' | 'device' | 'issue' | 'quote' | 'deposit' }) {
   const steps: Array<{ key: typeof step; label: string }> = [
+    { key: 'category', label: 'Category' },
     { key: 'device', label: 'Device' },
     { key: 'issue', label: 'Issue' },
     { key: 'quote', label: 'Quote' },
@@ -1658,7 +1680,7 @@ export function UnifiedPosPage() {
   // (`mode === 'sale'`). Skip the wizard entirely if the cart already has
   // items (e.g. a recalled held cart) — they're past the intake stage.
   const defaultPostGateMode = (): PosMode =>
-    cartItems.length > 0 ? 'sale' : 'repair-device';
+    cartItems.length > 0 ? 'sale' : 'repair-category';
 
   const selectCustomer = (nextCustomer: CustomerResult) => {
     setCustomer(nextCustomer);
@@ -1735,7 +1757,7 @@ export function UnifiedPosPage() {
       setGlobalSearch('');
       // Match selectCustomer/startWalkIn: drop the freshly-created customer
       // straight into the repair-device step rather than the catalog.
-      setMode(cartItems.length > 0 ? 'sale' : 'repair-device');
+      setMode(cartItems.length > 0 ? 'sale' : 'repair-category');
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['pos-customer-search'] });
       toast.success('Customer created');
@@ -1855,14 +1877,16 @@ export function UnifiedPosPage() {
           ? 'Pick lines + a refund-to method · manager PIN above threshold'
           : mode === 'close-shift'
             ? 'Count the drawer · variance ≤ $5 passes · larger needs a manager note'
-            : mode === 'repair-device'
-              ? 'Step 1 of 4 · pick a device or scan its IMEI'
-              : mode === 'repair-issue'
-                ? 'Step 2 of 4 · capture symptoms + condition'
-                : mode === 'repair-quote'
-                  ? 'Step 3 of 4 · diagnostic + quote'
-                  : mode === 'repair-deposit'
-                    ? 'Step 4 of 4 · take deposit · drop-off waiver'
+            : mode === 'repair-category'
+              ? 'Step 1 of 5 · pick a device category'
+              : mode === 'repair-device'
+                ? 'Step 2 of 5 · pick the model · or scan IMEI'
+                : mode === 'repair-issue'
+                  ? 'Step 3 of 5 · capture symptoms + condition'
+                  : mode === 'repair-quote'
+                    ? 'Step 4 of 5 · diagnostic + quote'
+                    : mode === 'repair-deposit'
+                      ? 'Step 5 of 5 · take deposit · drop-off waiver'
                     : mode === 'tender-method'
                       ? `${cartLineCount} line${cartLineCount === 1 ? '' : 's'} · choose payment method`
                       : mode === 'tender-cash'
@@ -2120,16 +2144,25 @@ export function UnifiedPosPage() {
                   cartItems={cartItems}
                   onAddProduct={addProductToCart}
                   onCustomItem={() => setCustomItemOpen(true)}
-                  onStartRepair={() => setMode('repair-device')}
+                  onStartRepair={() => setMode('repair-category')}
                   onTender={() => setMode('tender-method')}
                 />
               )}
 
+              {mode === 'repair-category' && (
+                <RepairCategoryStep
+                  draft={repairDraft}
+                  setDraft={setRepairDraft}
+                  onCancel={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
+                  onContinue={() => setMode('repair-device')}
+                  onQuick={() => setMode('repair-issue')}
+                />
+              )}
               {mode === 'repair-device' && (
                 <RepairDeviceStep
                   draft={repairDraft}
                   setDraft={setRepairDraft}
-                  onCancel={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
+                  onBack={() => setMode('repair-category')}
                   onContinue={() => setMode('repair-issue')}
                 />
               )}
@@ -3295,69 +3328,262 @@ function CartColumn({
   );
 }
 
-function RepairDeviceStep({ draft, setDraft, onCancel, onContinue }: {
+/**
+ * Step 1 — Category. Big-tile grid; pick a category and route to the
+ * Device step. Quick check-in skips device entirely.
+ *
+ * Wrapper has `pt-4` so the dot-stepper doesn't kiss the topbar at the top
+ * of the page (the topbar is sticky, the step content scrolls inside it).
+ */
+function RepairCategoryStep({ draft, setDraft, onCancel, onContinue, onQuick }: {
   draft: RepairDraft;
   setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
   onCancel: () => void;
   onContinue: () => void;
+  onQuick: () => void;
 }) {
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
+      <Stepper step="category" />
+      <Section className="p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="font-display text-2xl">Pick a category</div>
+            <div className="mt-0.5 text-sm text-surface-900 dark:text-surface-500">
+              Or hit <span className="font-mono">Quick check-in</span> to log without a specific device.
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
+          {CATEGORY_TILES.map((tile) => {
+            const active = draft.deviceType === tile.value;
+            const isQuick = tile.value === 'quick';
+            return (
+              <button
+                key={tile.value}
+                type="button"
+                onClick={() => {
+                  setDraft((prev) => ({ ...prev, deviceType: tile.value, deviceName: '' }));
+                  if (isQuick) onQuick();
+                  else onContinue();
+                }}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-2 rounded-xl border bg-white px-4 py-6 text-center transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-900',
+                  active
+                    ? 'border-primary-500 bg-primary-500/10 dark:border-primary-500'
+                    : 'border-surface-200 hover:border-primary-500 dark:border-surface-800 dark:hover:border-primary-500/60',
+                  isQuick && 'border-dashed border-primary-500/50 bg-primary-500/5',
+                )}
+              >
+                <div className="text-3xl">{tile.emoji}</div>
+                <div className="text-sm font-semibold text-surface-900 dark:text-surface-100">{tile.label}</div>
+                {isQuick && (
+                  <div className="text-[10.5px] font-mono uppercase tracking-wider text-surface-500">skip device</div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+      <WizardFooter onBack={onCancel} backLabel="Cancel" onContinue={onContinue} continueLabel="Continue" />
+    </div>
+  );
+}
+
+/**
+ * Step 2 — Device. Per-category device picker:
+ *   • Manufacturer chips (one-tap filter)
+ *   • Search field (debounced, hits /catalog/devices)
+ *   • Popular grid (server-flagged)
+ *   • Free-text fallback for devices not in the catalog
+ *
+ * IMEI / serial input + scan hint live at the bottom — that's where the
+ * scan gun's keyboard input naturally lands when focus isn't elsewhere.
+ */
+function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
+  draft: RepairDraft;
+  setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  const category = draft.deviceType || 'phone';
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [otherName, setOtherName] = useState('');
+  const [mfgFilter, setMfgFilter] = useState<string>('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  const popularQuery = useQuery({
+    queryKey: ['pos-popular-devices', category],
+    queryFn: () => api.get<{ data: any[] }>(`/catalog/devices`, { params: { popular: '1', category, limit: 12 } }),
+    staleTime: 60_000,
+  });
+  const popularDevices: any[] = (popularQuery.data?.data as any)?.data ?? popularQuery.data?.data ?? [];
+
+  const effectiveQuery = mfgFilter || debouncedQuery;
+  const searchEnabled = effectiveQuery.length >= 2;
+  const isMfgFilter = !!mfgFilter;
+  const searchQuery = useQuery({
+    queryKey: ['pos-device-search', effectiveQuery, category, isMfgFilter],
+    queryFn: () => api.get<{ data: any[] }>(`/catalog/devices`, { params: { q: effectiveQuery, category, limit: isMfgFilter ? 100 : 20 } }),
+    enabled: searchEnabled,
+    staleTime: 30_000,
+  });
+  const searchResults: any[] = (searchQuery.data?.data as any)?.data ?? searchQuery.data?.data ?? [];
+
+  const shortcuts = MANUFACTURER_SHORTCUTS[category] ?? [];
+  const showSearch = searchEnabled;
+  const categoryLabel = CATEGORY_TILES.find((t) => t.value === category)?.label ?? 'Device';
+
+  const pick = (deviceName: string) => {
+    setDraft((prev) => ({ ...prev, deviceName }));
+  };
+
+  return (
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
       <Stepper step="device" />
       <Section className="p-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {DEVICE_TYPES.map(({ label, icon: Icon }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => setDraft((prev) => ({ ...prev, deviceType: label }))}
-              className={cn('rounded-lg border p-4 text-left', draft.deviceType === label ? 'border-primary-500 bg-primary-500/10' : 'border-surface-200 hover:border-primary-500 dark:border-surface-800')}
-            >
-              <Icon className="h-5 w-5" />
-              <div className="mt-3 font-semibold">{label}</div>
-            </button>
-          ))}
-        </div>
-        <div className="mt-5">
-          <div className="mb-2 flex items-center gap-3">
-            <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">Quick-pick · most-common drop-offs</div>
-            <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="font-display text-2xl">{categoryLabel}</div>
+            <div className="mt-0.5 text-sm text-surface-900 dark:text-surface-500">Pick the model · or scan IMEI / type to search.</div>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-            {QUICK_DEVICES.map((device) => {
-              const active = draft.deviceName === device.name && draft.deviceType === device.type;
+          {draft.deviceName && (
+            <Pill tone="success">{draft.deviceName}</Pill>
+          )}
+        </div>
+
+        {shortcuts.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {shortcuts.map((mfg) => {
+              const active = mfgFilter === mfg;
               return (
                 <button
-                  key={device.name}
+                  key={mfg}
                   type="button"
-                  onClick={() => setDraft((prev) => ({ ...prev, deviceType: device.type, deviceName: device.name }))}
+                  onClick={() => {
+                    if (active) setMfgFilter('');
+                    else { setMfgFilter(mfg); setQuery(''); }
+                  }}
                   className={cn(
-                    'flex flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition',
+                    'rounded-full border px-3 py-1 text-xs font-semibold transition',
                     active
-                      ? 'border-primary-500 bg-primary-500/10 text-primary-700 dark:text-primary-300'
-                      : 'border-surface-200 hover:border-primary-500 dark:border-surface-700 dark:hover:border-primary-500/40',
+                      ? 'border-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-300'
+                      : 'border-surface-200 text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:text-surface-200',
                   )}
                 >
-                  <span className="text-base">{device.emoji}</span>
-                  <span className="text-sm font-semibold">{device.name}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-surface-500">{device.type}</span>
+                  {mfg}
                 </button>
               );
             })}
           </div>
+        )}
+
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); if (e.target.value) setMfgFilter(''); }}
+            placeholder={DEVICE_PLACEHOLDER[category] ?? 'Search models'}
+            className={cn(inputClass, 'pl-9')}
+            autoFocus
+          />
         </div>
+
+        {showSearch && (
+          <div className="mb-3 max-h-72 overflow-y-auto rounded-lg border border-surface-200 dark:border-surface-700">
+            {searchResults.length === 0 && !searchQuery.isFetching ? (
+              <p className="p-3 text-sm text-surface-400">No matching devices in catalog.</p>
+            ) : (
+              searchResults.map((d) => {
+                const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => pick(fullName)}
+                    className="flex w-full items-center gap-3 border-b border-surface-100 px-3 py-2.5 text-left text-sm last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
+                  >
+                    <span className="font-medium text-surface-900 dark:text-surface-100">{fullName}</span>
+                    <ChevronRight className="ml-auto h-4 w-4 text-surface-400" />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {!showSearch && popularDevices.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-surface-500">Popular</div>
+            <div className="flex flex-wrap gap-1.5">
+              {popularDevices.map((d) => {
+                const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
+                const active = draft.deviceName === fullName;
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => pick(fullName)}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs',
+                      active
+                        ? 'border-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-300'
+                        : 'border-surface-200 text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:text-surface-300',
+                    )}
+                  >
+                    {fullName}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {!showSearch && popularDevices.length === 0 && !popularQuery.isLoading && (
+          <p className="mb-3 text-sm text-surface-500">Type to search or use the manufacturer chips above.</p>
+        )}
+
+        <div className="rounded-lg border border-dashed border-surface-300 p-3 dark:border-surface-700">
+          <div className="mb-2 text-xs font-semibold text-surface-700 dark:text-surface-300">Not in catalog? Free-text the model</div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={otherName}
+              onChange={(e) => setOtherName(e.target.value)}
+              placeholder={DEVICE_PLACEHOLDER[category] ?? 'Model name'}
+              className={cn(inputClass, 'flex-1')}
+            />
+            <button
+              type="button"
+              disabled={!otherName.trim()}
+              onClick={() => { pick(otherName.trim()); setOtherName(''); }}
+              className={cn(primaryButton, 'disabled:opacity-50 disabled:cursor-not-allowed')}
+            >
+              Use
+            </button>
+          </div>
+        </div>
+
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold">Device name</span>
-            <input className={inputClass} value={draft.deviceName} onChange={(event) => setDraft((prev) => ({ ...prev, deviceName: event.target.value }))} placeholder="iPhone 14 Pro, MacBook Air..." />
-          </label>
           <label className="block">
             <span className="mb-1 block text-sm font-semibold">IMEI or serial</span>
             <input className={inputClass} value={draft.imei} onChange={(event) => setDraft((prev) => ({ ...prev, imei: event.target.value }))} placeholder="Scan or type" />
           </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold">Confirmed device name</span>
+            <input className={inputClass} value={draft.deviceName} onChange={(event) => setDraft((prev) => ({ ...prev, deviceName: event.target.value }))} placeholder="Model picked above" />
+          </label>
         </div>
       </Section>
-      <WizardFooter onBack={onCancel} backLabel="Cancel" onContinue={onContinue} />
+      <WizardFooter onBack={onBack} backLabel="Back" onContinue={onContinue} />
     </div>
   );
 }
@@ -3377,7 +3603,7 @@ function RepairIssueStep({ draft, setDraft, onBack, onContinue }: {
     }));
   };
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
       <Stepper step="issue" />
       <Section className="p-5">
         <div className="mb-4 flex flex-wrap gap-2">
@@ -3441,7 +3667,7 @@ function RepairQuoteStep({ draft, setDraft, onBack, onContinue }: {
   onContinue: () => void;
 }) {
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
       <Stepper step="quote" />
       <Section className="p-5">
         <div className="grid gap-4 md:grid-cols-2">
@@ -3496,7 +3722,7 @@ function RepairDepositStep({ draft, setDraft, onBack, onSave }: {
 }) {
   const [waiverModal, setWaiverModal] = useState(false);
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
       <Stepper step="deposit" />
       <Section className="p-6 text-center">
         <div className="font-mono text-xs uppercase text-surface-900 dark:text-surface-500">Suggested deposit</div>
