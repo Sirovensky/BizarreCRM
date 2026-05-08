@@ -631,6 +631,12 @@ function PartsSearchModal({
       ticketApi.quickAddPart(deviceId, data),
     onSuccess: () => {
       toast.success('Part created and added');
+      // Reset the form so a re-open of the modal doesn't show stale values.
+      // Bug surface: tech bulk-adds 5 small parts, the second one inherits
+      // the first's name field and they don't notice until the receipt prints.
+      setQaName('');
+      setQaPrice('');
+      setQaQty('1');
       setShowQuickAdd(false);
       onPartAdded();
     },

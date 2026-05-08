@@ -23,11 +23,13 @@ function HeaderStatusDropdown({
   statuses,
   onSelect,
   isPending,
+  hasOpenPayments,
 }: {
   currentStatus?: TicketStatus;
   statuses: TicketStatus[];
   onSelect: (id: number) => void;
   isPending: boolean;
+  hasOpenPayments?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -82,6 +84,18 @@ function HeaderStatusDropdown({
                   }
                   if (verdict.kind === 'confirm') {
                     const ok = await confirm(verdict.reason, { title: 'Confirm status change', danger: true });
+                    if (!ok) return;
+                  }
+                  // Close-with-unpaid-balance gate. Closing or shipping a
+                  // ticket that still has an open payment balance buries the
+                  // outstanding amount — receivables go missing in dashboards
+                  // and the customer walks out without paying. Require an
+                  // explicit confirm so the cashier sees the consequence.
+                  if (s.is_closed && hasOpenPayments) {
+                    const ok = await confirm(
+                      'This ticket still has an unpaid balance. Closing it will leave the balance outstanding on receivables. Continue?',
+                      { title: 'Close with unpaid balance?', danger: true },
+                    );
                     if (!ok) return;
                   }
                   onSelect(s.id);
@@ -274,6 +288,7 @@ export function TicketActions({
             statuses={statuses}
             onSelect={onChangeStatus}
             isPending={isChangingStatus}
+            hasOpenPayments={hasOpenPayments}
           />
 
           {/* Checkout button + other actions */}
