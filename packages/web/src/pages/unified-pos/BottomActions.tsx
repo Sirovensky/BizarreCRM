@@ -426,6 +426,11 @@ export function BottomActions() {
       // Advance the ticket tutorial when a ticket is successfully saved.
       window.dispatchEvent(new CustomEvent('pos:ticket-saved'));
     } catch (err: unknown) {
+      // Consume the captured signature on failure too — without this the
+      // next retry would re-send the same signature image even if the
+      // customer is no longer present, which is a real fraud surface.
+      // Cashier must re-capture if they want to retry with a signature.
+      setSigFile(null);
       toast.error(err instanceof Error ? err.message : 'Failed to create ticket');
     } finally {
       setCreatingTicket(false);

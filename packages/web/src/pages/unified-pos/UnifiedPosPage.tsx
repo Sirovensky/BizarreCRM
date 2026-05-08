@@ -1505,7 +1505,12 @@ export function UnifiedPosPage() {
       const snapshotCustomer = customer;
       const payload = buildCheckoutPayload(useUnifiedPosStore.getState(), legs);
       const idempotencyKey = ensureIdempotencyKey();
-      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
+      // PIN gate (WEB-W1-P0): forward the verified-with-TTL flag so the
+      // server's `requirePosPinByMode` middleware accepts checkout when
+      // store_config.pos_require_pin_* is on. Without this, a cashier who
+      // already PIN'd into the session would get a 403 on charge.
+      const pinVerified = useUnifiedPosStore.getState().isPosPinVerified();
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey, pinVerified);
       const invoiceId: number | null = res.data?.data?.invoice?.id ?? res.data?.data?.invoice_id ?? null;
 
       const cardLegs = legs.filter((leg) => leg.method === 'Card');

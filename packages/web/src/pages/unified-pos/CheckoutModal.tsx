@@ -473,7 +473,13 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       // network can't double-charge — server idempotent middleware caches by
       // (user, url, key) for 5 minutes.
       const idempotencyKey = store.getState().ensureIdempotencyKey();
-      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
+      // PIN gate (WEB-W1-P0) — when `pos_require_pin_*` is enabled the
+      // server's `requirePosPinByMode` middleware refuses checkout unless
+      // the request carries `X-Pos-Pin-Verified: 1`. Read the store-side
+      // verification (with the 10-min idle TTL) and forward it as the third
+      // arg so a previously-PIN'd cashier doesn't get a 403 on submit.
+      const pinVerified = store.getState().isPosPinVerified();
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey, pinVerified);
 
       // For Card payments, run the terminal charge against the newly-created
       // invoice. The checkout creates the invoice record first; BlockChyp then
