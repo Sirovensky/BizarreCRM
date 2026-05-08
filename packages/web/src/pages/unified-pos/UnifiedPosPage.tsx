@@ -1240,6 +1240,13 @@ export function UnifiedPosPage() {
 
   const holdMutation = useMutation({
     mutationFn: async () => {
+      // Hold during tender (paidLegs already filled) is a footgun — a Cash
+      // leg is in the drawer, a Card leg already settled at the terminal,
+      // and the held snapshot wouldn't replay either. Bounce the hold
+      // attempt back to the picker; cashier must finish or cancel tender.
+      if (paidLegs.length > 0) {
+        throw new Error('Finish or cancel current payment before holding');
+      }
       const snapshot: HeldCartSnapshot = {
         customer,
         cartItems,
@@ -3634,6 +3641,28 @@ function TenderMethodView({
     { method: 'Gift card', title: 'Gift card', subtitle: 'Scan or type code', icon: Gift },
     { method: 'Store credit', title: 'Store credit', subtitle: 'Apply customer balance', icon: Star },
   ];
+
+  // Number-key shortcuts: 1-4 picks the matching method tile so the cashier
+  // can stay on the keyboard. Skip when a meta/ctrl chord is in flight (those
+  // are owned by the global handler), or when focus is in an input/textarea
+  // (rare on this view but cheap defense).
+  useEffect(() => {
+    const handle = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
+      const idx = ['1', '2', '3', '4'].indexOf(event.key);
+      if (idx === -1) return;
+      const candidate = methods[idx];
+      if (!candidate || candidate.disabled) return;
+      event.preventDefault();
+      onSelect(candidate.method);
+    };
+    window.addEventListener('keydown', handle);
+    return () => window.removeEventListener('keydown', handle);
+  }, [methods, onSelect]);
+
   return (
     <div className="mx-auto max-w-4xl">
       <button type="button" onClick={onBack} className={ghostButton}><ChevronLeft className="h-4 w-4" /> Back to cart</button>
@@ -4226,6 +4255,44 @@ function LineEditModal({ item, onClose, onSave }: {
 }
 
 function ReceiptView({ sale, onNext }: { sale: CompletedSale; onNext: () => void }) {
+  // Inject print-only CSS that hides everything outside the receipt panel.
+  // Lifted from the Z-report modal pattern — same guarantees: removed on
+  // unmount so it never leaks into other print contexts.
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.setAttribute('data-receipt-print', 'true');
+    style.textContent = `
+@media print {
+  body > * { display: none !important; }
+  [data-receipt-panel] { display: block !important; position: static !important; }
+  [data-receipt-panel] > * { display: block !important; }
+  [data-receipt-panel] .no-print { display: none !important; }
+}
+`.trim();
+    document.head.appendChild(style);
+    return () => { style.remove(); };
+  }, []);
+
+  // SMS / Email — server-side endpoints to send the receipt aren't wired
+  // yet; fire a toast advising the cashier so the button isn't a silent
+  // no-op. Print uses native window.print(); PDF tries to open the
+  // server-rendered receipt PDF if the invoice exists.
+  const handleShare = (kind: 'SMS' | 'Email' | 'Print' | 'PDF') => {
+    if (kind === 'Print') {
+      window.print();
+      return;
+    }
+    if (kind === 'PDF' && sale.invoiceId) {
+      window.open(`/api/v1/invoices/${sale.invoiceId}/pdf`, '_blank');
+      return;
+    }
+    if (kind === 'PDF') {
+      toast.error('PDF requires a saved invoice');
+      return;
+    }
+    toast(`${kind} delivery is coming soon`);
+  };
+
   return (
     <div className="h-full overflow-auto p-4">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
@@ -4237,16 +4304,21 @@ function ReceiptView({ sale, onNext }: { sale: CompletedSale; onNext: () => void
             <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">{sale.orderId} · {sale.customerName}</div>
             {sale.change > 0 && <Pill tone="success" className="mt-4">Change due {formatCurrency(sale.change)}</Pill>}
           </Section>
-          <div className="grid gap-3 sm:grid-cols-4">
-            {[
+          <div className="grid gap-3 sm:grid-cols-4 no-print">
+            {([
               ['SMS', MessageSquare],
               ['Email', Mail],
               ['Print', Printer],
               ['PDF', FileText],
-            ].map(([label, Icon]) => (
-              <button key={label as string} type="button" className="rounded-lg border border-surface-200 bg-white p-4 text-center font-semibold hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900">
+            ] as Array<[string, React.ElementType]>).map(([label, Icon]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => handleShare(label as 'SMS' | 'Email' | 'Print' | 'PDF')}
+                className="rounded-lg border border-surface-200 bg-white p-4 text-center font-semibold hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900"
+              >
                 <Icon className="mx-auto h-5 w-5 text-primary-700 dark:text-primary-500" />
-                <span className="mt-2 block">{label as string}</span>
+                <span className="mt-2 block">{label}</span>
               </button>
             ))}
           </div>
@@ -4259,12 +4331,12 @@ function ReceiptView({ sale, onNext }: { sale: CompletedSale; onNext: () => void
               </div>
             </div>
           </Section>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 no-print">
             <button type="button" onClick={onNext} className={primaryButton}>Next sale</button>
             {sale.invoiceId && <button type="button" onClick={() => window.location.assign(`/invoices/${sale.invoiceId}`)} className={secondaryButton}>Open invoice</button>}
           </div>
         </div>
-        <Section className="p-5 font-mono text-sm">
+        <Section className="p-5 font-mono text-sm" data-receipt-panel>
           <div className="text-center font-display text-3xl">BIZARRE REPAIR</div>
           <div className="mt-1 text-center text-xs text-surface-900 dark:text-surface-500">Receipt {sale.orderId}</div>
           <div className="my-4 border-t border-dashed border-surface-300 dark:border-surface-700" />
