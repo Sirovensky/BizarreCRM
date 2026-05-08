@@ -362,9 +362,24 @@ export interface PosReturnLineInput {
   reason: string;
 }
 
+/**
+ * Refund-to method for /pos/return. The server picks how the credit lands:
+ *   • `original` — detect original payment method from invoice payments and
+ *     route to cash/blockchyp/stripe automatically. Default.
+ *   • `cash` — record cash_out in cash_register, signal drawer pop. Fails if
+ *     no register session is open above the requested amount.
+ *   • `card` — process BlockChyp/Stripe refund against the original
+ *     transaction id. Fails if invoice has no captured card payment.
+ *   • `store_credit` — issue/extend the customer's store credit balance.
+ *     Requires customer_id on the invoice.
+ */
+export type PosRefundMethod = 'original' | 'cash' | 'card' | 'store_credit';
+
 export interface PosReturnInput {
   invoice_id: number;
   items: PosReturnLineInput[];
+  /** Optional; defaults to 'original' server-side. */
+  method?: PosRefundMethod;
 }
 
 export interface PosReturnableLineItem extends InvoiceLineItem {

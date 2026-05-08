@@ -475,6 +475,18 @@ function appointmentNote(appointment: PosAppointment): string {
   return assigned ? `Assigned to ${assigned}` : 'Appointment';
 }
 
+/** Human label for the resolved refund method returned by /pos/return.
+ *  Server resolves 'original' to one of cash/card/store_credit before
+ *  responding, so this just maps the four canonical values. */
+function formatRefundMethodLabel(method: string): string {
+  switch (method) {
+    case 'cash': return 'cash from drawer';
+    case 'card': return 'card · reverse charge';
+    case 'store_credit': return 'store credit';
+    default: return method;
+  }
+}
+
 function appointmentStatusLabel(appointment: PosAppointment, nowMs = Date.now()): string {
   if (appointment.no_show) return 'no-show';
   const status = appointment.status || 'scheduled';
@@ -1411,13 +1423,24 @@ export function UnifiedPosPage() {
     setMode('sale');
   }, [addMisc, addProduct, addRepair, resetAll, setCustomer, setDiscount, setMemberDiscountApplied, setMeta, setSourceTicketId]);
 
+  // recallMutation now serves two patterns:
+  //   • Server-first (default): server response drives state restore. Used
+  //     when the client doesn't have the snapshot cached (recall from
+  //     elsewhere, list-not-loaded edge cases).
+  //   • Client-first (`{ skipRestore: true }`): we already restored locally
+  //     from the cached `cart_json`; mutation just marks the row as
+  //     recalled server-side. Avoids clobbering any keystrokes the cashier
+  //     made between the click and the server reply.
   const recallMutation = useMutation({
-    mutationFn: (id: number) => api.post<{ success: boolean; data: HeldCartRow }>(`/pos/held-carts/${id}/recall`, {}, { skipGlobal500Toast: true } as object),
-    onSuccess: (res) => {
-      const row = res.data.data;
-      restoreSnapshot(JSON.parse(row.cart_json) as HeldCartSnapshot);
+    mutationFn: ({ id }: { id: number; skipRestore?: boolean }) =>
+      api.post<{ success: boolean; data: HeldCartRow }>(`/pos/held-carts/${id}/recall`, {}, { skipGlobal500Toast: true } as object),
+    onSuccess: (res, vars) => {
+      if (!vars.skipRestore) {
+        const row = res.data.data;
+        restoreSnapshot(JSON.parse(row.cart_json) as HeldCartSnapshot);
+        toast.success('Held sale restored');
+      }
       queryClient.invalidateQueries({ queryKey: ['pos-held-carts'] });
-      toast.success('Held sale restored');
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Could not recall sale'),
   });
@@ -1440,14 +1463,31 @@ export function UnifiedPosPage() {
 
   const refundInvoice = refundQuery.data?.data?.data;
   const refundMutation = useMutation({
-    mutationFn: () => posApi.return({
-      invoice_id: Number(refundInvoiceId),
-      items: refundSelections.filter((line) => line.quantity > 0),
-    }),
-    onSuccess: () => {
-      toast.success('Refund processed');
+    mutationFn: () => {
+      // Frontend now sends `method` so server picks the right execution path.
+      // 'original' lets the server detect from the invoice's payments; the
+      // cashier's UI still lets them override (cash/card/store_credit).
+      const methodMap = { original: 'original', cash: 'cash', card: 'card', store_credit: 'store_credit' } as const;
+      return posApi.return({
+        invoice_id: Number(refundInvoiceId),
+        items: refundSelections.filter((line) => line.quantity > 0),
+        method: methodMap[refundMethod],
+      });
+    },
+    onSuccess: async (res) => {
+      const data = res.data.data as any;
+      const resolved = data.refund_method as string | undefined;
+      const popDrawer = Boolean(data.pop_drawer);
+      const summary = resolved
+        ? `Refund processed · ${formatRefundMethodLabel(resolved)}`
+        : 'Refund processed';
+      toast.success(summary);
+      if (popDrawer) {
+        try { await api.post('/pos/open-drawer', { reason: 'cash-refund' }); } catch { /* drawer pop is best-effort */ }
+      }
       setRefundSelections([]);
       queryClient.invalidateQueries({ queryKey: ['pos-returnable-invoice', refundInvoiceId] });
+      queryClient.invalidateQueries({ queryKey: ['pos-register'] });
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Could not process refund'),
   });
@@ -2061,15 +2101,37 @@ export function UnifiedPosPage() {
           >
             <button
               type="button"
-              onClick={async () => {
-                // Persist active tab before recall. Two paths kept (work vs
-                // blank) so blank tabs don't vanish on switch.
-                if (cartItems.length > 0 || customer) {
-                  await holdMutation.mutateAsync();
+              onClick={() => {
+                // Instant tab switch. The held-carts LIST endpoint already
+                // returns `cart_json` so we can hydrate the picked tab from
+                // the cache synchronously — no recall round-trip, no
+                // mid-switch loading flash.
+                //
+                // Server reconciliation runs IN PARALLEL after the swap:
+                //   1. Hold the current tab (or blank-stub if empty) so it
+                //      reappears in the strip when the user comes back.
+                //   2. Fire `recall` against the picked row so it leaves
+                //      `held_carts` and stays unique.
+                //
+                // If either background mutation fails the toast surfaces
+                // the error; the visible tab swap still succeeded so the
+                // cashier isn't held up by network jitter.
+                const snapshot = (() => {
+                  try { return JSON.parse(row.cart_json) as HeldCartSnapshot; } catch { return null; }
+                })();
+                if (snapshot) {
+                  if (cartItems.length > 0 || customer) holdMutation.mutate();
+                  else void persistBlankTab();
+                  restoreSnapshot(snapshot);
+                  recallMutation.mutate({ id: row.id, skipRestore: true });
                 } else {
-                  await persistBlankTab();
+                  // Snapshot couldn't parse — fall back to server recall so
+                  // we still get the data even if the local cache row was
+                  // tampered with.
+                  if (cartItems.length > 0 || customer) holdMutation.mutate();
+                  else void persistBlankTab();
+                  recallMutation.mutate({ id: row.id });
                 }
-                recallMutation.mutate(row.id);
               }}
               className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 pr-1"
               title={`Resume ${row.label || `cart #${row.id}`}`}
@@ -2464,7 +2526,7 @@ export function UnifiedPosPage() {
                 <HeldSalesView
                   rows={heldCarts.data?.data?.data ?? []}
                   loading={heldCarts.isFetching}
-                  onRecall={(id) => recallMutation.mutate(id)}
+                  onRecall={(id) => recallMutation.mutate({ id })}
                   onDiscard={(id) => discardHeldMutation.mutate(id)}
                 />
               )}

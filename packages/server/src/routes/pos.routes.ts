@@ -30,7 +30,8 @@ import { audit } from '../utils/audit.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePosPinSale, requirePosPinByMode } from '../middleware/requirePosPin.js';
 import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
-import { verifyTenantStripePaymentIntent } from '../services/tenantStripe.js';
+import { verifyTenantStripePaymentIntent, refundTenantStripePayment } from '../services/tenantStripe.js';
+import { isBlockChypEnabled, processRefund as blockchypProcessRefund } from '../services/blockchyp.js';
 
 const logger = createLogger('pos');
 
@@ -2643,10 +2644,23 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     throw new AppError('Only admin or manager can process returns', 403);
   }
 
-  const { invoice_id, items } = req.body as {
+  // SCAN-PROD-REFUND: extend body with `method` so the cashier can pick
+  // where the credit lands. Server validates against the invoice's actual
+  // payments before executing. Default keeps behavior backwards-compatible
+  // (creates credit note + refund row, no money movement) only when caller
+  // sends nothing — but the new clients always send `method`.
+  const REFUND_METHODS = ['original', 'cash', 'card', 'store_credit'] as const;
+  type RefundMethod = typeof REFUND_METHODS[number];
+  const { invoice_id, items, method: rawMethod } = req.body as {
     invoice_id: number;
     items: { line_item_id: number; quantity: number; reason: string }[];
+    method?: string;
   };
+  const refundMethod: RefundMethod | null = (() => {
+    if (!rawMethod) return null;
+    return REFUND_METHODS.includes(rawMethod as RefundMethod) ? (rawMethod as RefundMethod) : null;
+  })();
+  if (rawMethod && !refundMethod) throw new AppError(`Invalid refund method '${rawMethod}'`, 400);
 
   // @audit-fixed: validate invoice_id is a positive integer; previously a string
   // value flowed straight to SQLite as TEXT and matched no row → 404 silently.
@@ -2768,18 +2782,172 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     `, invId, detail.line_item_id, creditNoteId, detail.quantity, detail.reason, userId);
   }
 
-  // Create refund record
+  // ──────────────────────────────────────────────────────────────────────
+  // Refund-method execution. Resolves `original` against the invoice's
+  // captured payments, then routes to one of:
+  //   • cash         → cash_register cash_out + drawer pop
+  //   • blockchyp    → processRefund() against the original txn
+  //   • stripe       → refundTenantStripePayment() against the original PI
+  //   • store_credit → upsert store_credits row for this customer
+  // The credit note + invoice line items already exist at this point, so
+  // any failure here means the credit note stays but the money path didn't
+  // execute. We surface the error so the cashier can choose another method
+  // (the credit note is the receipt-of-record either way).
+  // ──────────────────────────────────────────────────────────────────────
+  let refundExecution: {
+    method: string;
+    processor?: 'blockchyp' | 'stripe' | null;
+    processor_transaction_id?: string | null;
+    cash_register_entry_id?: number | null;
+    store_credit_id?: number | null;
+    test_mode?: boolean;
+  } | null = null;
+  let refundMethodResolved: RefundMethod | null = refundMethod;
+
+  if (refundMethod) {
+    // Resolve `original`: pick the most-recent captured payment method on
+    // this invoice. If we can't tell (no captured payments), fall back to
+    // cash so the cashier can still close the loop in person.
+    if (refundMethod === 'original') {
+      const lastPayment = await adb.get<{ method: string | null; processor: string | null }>(
+        `SELECT method, processor FROM payments
+          WHERE invoice_id = ?
+            AND COALESCE(capture_state, 'captured') = 'captured'
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        invId,
+      );
+      const m = String(lastPayment?.method ?? '').toLowerCase();
+      const p = String(lastPayment?.processor ?? '').toLowerCase();
+      if (m === 'cash') refundMethodResolved = 'cash';
+      else if (m === 'blockchyp' || p === 'blockchyp' || m === 'card' || m === 'credit' || m === 'debit') refundMethodResolved = 'card';
+      else if (m === 'stripe' || p === 'stripe') refundMethodResolved = 'card';
+      else refundMethodResolved = 'cash';
+    }
+
+    if (refundMethodResolved === 'cash') {
+      // Cash refund — record cash_out movement. The drawer-pop signal is
+      // returned in the response body so the client can call the existing
+      // /pos/open-drawer endpoint (kept separate to preserve the existing
+      // hardware integration boundary).
+      const cashOut = await adb.run(
+        `INSERT INTO cash_register (type, amount, reason, user_id, created_at, updated_at)
+         VALUES ('cash_out', ?, ?, ?, datetime('now'), datetime('now'))`,
+        creditTotal,
+        `Refund · invoice ${invoice.order_id ?? invId}`,
+        userId,
+      );
+      refundExecution = {
+        method: 'cash',
+        cash_register_entry_id: Number(cashOut.lastInsertRowid),
+      };
+    } else if (refundMethodResolved === 'card') {
+      // Find the original captured card payment. BlockChyp first (terminal-
+      // attached), Stripe second (online).
+      const blockchypPayment = await adb.get<{
+        id: number;
+        processor_transaction_id: string | null;
+        transaction_id: string | null;
+        amount: number;
+      }>(
+        `SELECT id, processor_transaction_id, transaction_id, amount
+           FROM payments
+          WHERE invoice_id = ?
+            AND LOWER(method) IN ('blockchyp','card','credit','debit')
+            AND COALESCE(capture_state, 'captured') = 'captured'
+            AND COALESCE(processor_transaction_id, transaction_id) IS NOT NULL
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        invId,
+      );
+      const blockchypTxn = blockchypPayment?.processor_transaction_id ?? blockchypPayment?.transaction_id ?? null;
+
+      const stripePayment = await adb.get<{
+        id: number;
+        processor_transaction_id: string | null;
+        transaction_id: string | null;
+        reference: string | null;
+        amount: number;
+      }>(
+        `SELECT id, processor_transaction_id, transaction_id, reference, amount
+           FROM payments
+          WHERE invoice_id = ?
+            AND (LOWER(method) = 'stripe' OR LOWER(COALESCE(processor, '')) = 'stripe')
+            AND COALESCE(capture_state, 'captured') = 'captured'
+            AND COALESCE(processor_transaction_id, transaction_id, reference) IS NOT NULL
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        invId,
+      );
+      const stripePI = stripePayment?.processor_transaction_id ?? stripePayment?.transaction_id ?? stripePayment?.reference ?? null;
+
+      if (blockchypTxn) {
+        if (!isBlockChypEnabled(req.db)) throw new AppError('BlockChyp terminal is not enabled for card refund', 400);
+        const r = await blockchypProcessRefund(req.db, creditTotal, blockchypTxn, `pos-return-${creditNoteId}`);
+        if (!r.success) throw new AppError(r.error || 'BlockChyp refund declined', 400);
+        refundExecution = {
+          method: 'card',
+          processor: 'blockchyp',
+          processor_transaction_id: r.transactionId ?? null,
+          test_mode: r.testMode,
+        };
+      } else if (stripePI) {
+        const r = await refundTenantStripePayment(req.db, stripePI, creditTotal, `pos-return-${creditNoteId}`);
+        if (!r.success) throw new AppError(r.error || 'Stripe refund failed', 400);
+        refundExecution = {
+          method: 'card',
+          processor: 'stripe',
+          processor_transaction_id: r.refundId ?? null,
+        };
+      } else {
+        throw new AppError('No captured card payment found for this invoice; pick a different refund method', 400);
+      }
+    } else if (refundMethodResolved === 'store_credit') {
+      if (!invoice.customer_id) throw new AppError('Store credit requires a customer; this invoice has none', 400);
+      // Upsert: idx_store_credits_customer_unique enforces one row per
+      // customer (mig 109). Use INSERT OR IGNORE then UPDATE for atomicity.
+      await adb.run(
+        `INSERT OR IGNORE INTO store_credits (customer_id, amount, created_at, updated_at)
+         VALUES (?, 0, datetime('now'), datetime('now'))`,
+        invoice.customer_id,
+      );
+      const updated = await adb.run(
+        `UPDATE store_credits SET amount = amount + ?, updated_at = datetime('now') WHERE customer_id = ?`,
+        creditTotal,
+        invoice.customer_id,
+      );
+      if (updated.changes === 0) throw new AppError('Could not credit customer store-credit balance', 500);
+      const row = await adb.get<{ id: number }>(`SELECT id FROM store_credits WHERE customer_id = ?`, invoice.customer_id);
+      refundExecution = {
+        method: 'store_credit',
+        store_credit_id: row?.id ?? null,
+      };
+    }
+  }
+
+  // Create refund record. Type/method/status now reflect the actual
+  // execution: a cash refund stores method='cash', a BlockChyp refund stores
+  // processor + processor_transaction_id, etc. Keeps the refunds report
+  // honest about what money moved (the prior code marked everything as a
+  // 'credit_note' regardless of method).
+  const refundType = refundMethodResolved === 'store_credit' ? 'store_credit' : (refundMethod ? 'refund' : 'credit_note');
+  const refundMethodPersist = refundExecution?.processor ?? refundMethodResolved ?? null;
   await adb.run(`
-    INSERT INTO refunds (invoice_id, customer_id, amount, type, reason, status, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 'credit_note', ?, 'completed', ?, datetime('now'), datetime('now'))
-  `, invId, invoice.customer_id, creditTotal, returnDetails.map(d => d.reason).join('; '), userId);
+    INSERT INTO refunds (invoice_id, customer_id, amount, type, reason, method, processor, processor_transaction_id, status, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, datetime('now'), datetime('now'))
+  `,
+    invId, invoice.customer_id, creditTotal,
+    refundType,
+    returnDetails.map(d => d.reason).join('; '),
+    refundMethodPersist,
+    refundExecution?.processor ?? null,
+    refundExecution?.processor_transaction_id ?? null,
+    userId,
+  );
 
   // Audit log
   try {
     await adb.run(
       'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, ?, ?, ?)',
       'pos_return', userId, ip,
-      JSON.stringify({ invoice_id: invId, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails }),
+      JSON.stringify({ invoice_id: invId, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails, refund_method: refundMethodResolved, refund_execution: refundExecution }),
     );
   } catch (err) {
     logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
@@ -2787,7 +2955,21 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
 
   const creditNote = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', creditNoteId);
 
-  res.status(201).json({ success: true, data: { credit_note: creditNote, items: returnDetails, total_credited: creditTotal } });
+  res.status(201).json({
+    success: true,
+    data: {
+      credit_note: creditNote,
+      items: returnDetails,
+      total_credited: creditTotal,
+      refund_method: refundMethodResolved,
+      // Cash refunds set `pop_drawer = true` so the client can call
+      // /pos/open-drawer immediately after success — keeps the existing
+      // hardware integration boundary intact while making the cashier
+      // workflow one-click.
+      pop_drawer: refundMethodResolved === 'cash',
+      refund_execution: refundExecution,
+    },
+  });
 }));
 
 // ==================== ENR-POS4: Cash drawer integration ====================
