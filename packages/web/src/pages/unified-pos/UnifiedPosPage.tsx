@@ -2498,10 +2498,15 @@ function CustomerGate({
   onViewCalendar: () => void;
 }) {
   const nowMs = Date.now();
-  const nextAppointment = appointments.find((appointment) => {
+  // Remaining = future-or-now appointments today. The full `appointments`
+  // list includes past slots (already-checked-in customers) so showing
+  // its raw `length` next to "no bookings left" was contradictory: 4 today
+  // but 0 upcoming. Counter now reflects what's still ahead.
+  const remainingAppointments = appointments.filter((appointment) => {
     const startsAt = new Date(appointment.start_time).getTime();
     return Number.isFinite(startsAt) && startsAt >= nowMs;
   });
+  const nextAppointment = remainingAppointments[0];
   const bookingSummary = appointmentsLoading
     ? 'Booked today · loading'
     : `Booked today · ${appointments.length}${nextAppointment ? ` · next ${appointmentStatusLabel(nextAppointment, nowMs)}` : ''}`;
@@ -2516,44 +2521,43 @@ function CustomerGate({
           schedule item; remaining bookings live under "View calendar"
           rather than crowding the gate. */}
       {!createCustomerOpen && (
-        <section className="px-6 pt-5">
+        <section className="px-6 pt-5 pb-5">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
-            {/* Hero stat block — cream surface, mono uppercase label, big
-                display numeric, bottom-right pill CTA. Mirrors the SALES
-                TODAY tile pattern from the dashboard so the POS gate
-                shares one visual rhythm. The stat is the next appointment
-                (highest-signal schedule item) with the customer name as
-                the headline; the pill links to the calendar. */}
+            {/* Hero stat block — cream-outlined card on dark surface
+                (was full cream fill; user feedback: too bright). Mono
+                uppercase eyebrow + big display headline + dark-fill pill
+                CTA. Cream accent shows in the border, the ring on the
+                count, and the pill background. */}
             <button
               type="button"
               onClick={() => nextAppointment ? onSelectAppointment(nextAppointment) : onViewCalendar()}
-              className="group relative flex min-h-[200px] flex-col rounded-2xl bg-[#fdeed0] p-6 text-left text-surface-950 shadow-sm transition hover:shadow-md"
+              className="group relative flex min-h-[200px] flex-col rounded-2xl border-2 border-[#fdeed0] bg-surface-950 p-6 text-left text-surface-50 transition hover:bg-surface-900"
               title={nextAppointment ? 'Open next appointment' : 'View calendar'}
             >
-              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-surface-950/70">
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#fdeed0]/80">
                 {appointmentsLoading ? 'Loading…' : nextAppointment ? `Next appt · ${formatTime(nextAppointment.start_time)}` : 'Next appointment'}
               </div>
-              <div className="mt-2 font-display text-[44px] leading-[1.05] tracking-tight">
+              <div className="mt-2 font-display text-[44px] leading-[1.05] tracking-tight text-[#fdeed0]">
                 {appointmentsLoading
                   ? '—'
                   : nextAppointment
                     ? appointmentCustomerName(nextAppointment)
-                    : 'No bookings left'}
+                    : 'All clear'}
               </div>
-              <div className="mt-2 text-sm text-surface-950/75">
+              <div className="mt-2 text-sm text-surface-300">
                 {appointmentsLoading
                   ? ''
                   : nextAppointment
                     ? (appointmentNote(nextAppointment) || appointmentStatusLabel(nextAppointment, nowMs))
-                    : 'Walk-ins and pickups are ready.'}
+                    : 'No upcoming bookings · walk-ins and pickups are ready.'}
               </div>
               <div className="mt-auto flex items-end justify-between pt-6">
-                <div className="text-xs text-surface-950/70">
-                  <span className="font-mono uppercase tracking-wider">Today</span>
-                  <span className="ml-2 font-display text-lg text-surface-950">{appointments.length}</span>
-                  <span className="ml-1">appt{appointments.length === 1 ? '' : 's'}</span>
+                <div className="text-xs text-surface-400">
+                  <span className="font-mono uppercase tracking-wider">Remaining today</span>
+                  <span className="ml-2 font-display text-lg text-[#fdeed0]">{remainingAppointments.length}</span>
+                  <span className="ml-1 text-surface-500">/ {appointments.length} total</span>
                 </div>
-                <span className="inline-flex items-center gap-2 rounded-full bg-surface-950 px-4 py-2 text-sm font-semibold text-[#fdeed0] shadow-sm transition group-hover:opacity-90">
+                <span className="inline-flex items-center gap-2 rounded-full bg-[#fdeed0] px-4 py-2 text-sm font-semibold text-surface-950 transition group-hover:opacity-90">
                   {nextAppointment ? 'Open appointment →' : 'View calendar →'}
                 </span>
               </div>
