@@ -3846,10 +3846,36 @@ function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, set
   processing: boolean;
   onProcess: () => void;
 }) {
+  // Pull the open shift so we can read its live expected-cash balance via
+  // the z-report endpoint. Used for the drawer-can-cover indicator on the
+  // Cash refund-method tile. Fail-quiet — refunds without an open shift
+  // (rare but possible if a manager kicks off a refund pre-shift) skip
+  // the indicator instead of blocking the flow.
+  const drawerShiftQuery = useQuery({
+    queryKey: ['pos-enrich', 'drawer-current'],
+    queryFn: async () => {
+      const res = await api.get<{ data: { id: number } | null }>('/pos-enrich/drawer/current');
+      return res.data.data;
+    },
+    staleTime: 30_000,
+  });
+  const drawerShiftId = drawerShiftQuery.data?.id ?? null;
+  const drawerZReportQuery = useQuery({
+    queryKey: ['pos-enrich', 'z-report', drawerShiftId, 'refund-cap'],
+    enabled: drawerShiftId != null,
+    queryFn: async () => {
+      const res = await api.get<{ data: { expected_cents: number } }>(`/pos-enrich/drawer/${drawerShiftId}/z-report`);
+      return res.data.data;
+    },
+    staleTime: 10_000,
+  });
+  const drawerCashOnHand = drawerZReportQuery.data ? fromCents(drawerZReportQuery.data.expected_cents) : null;
+
   const selectedTotal = selections.reduce((sum, selection) => {
     const line = invoice?.line_items?.find((item: any) => item.id === selection.line_item_id);
     return sum + (line ? Number(line.unit_price ?? line.price ?? 0) * selection.quantity : 0);
   }, 0);
+  const cashShort = refundMethod === 'cash' && drawerCashOnHand !== null && selectedTotal > drawerCashOnHand;
   const toggleLine = (line: any) => {
     setSelections((prev) => {
       if (prev.some((item) => item.line_item_id === line.id)) return prev.filter((item) => item.line_item_id !== line.id);
@@ -3915,8 +3941,18 @@ function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, set
                 );
               })}
             </div>
-            {refundMethod === 'cash' && (
+            {refundMethod === 'cash' && drawerCashOnHand === null && (
               <p className="mt-2 text-xs text-surface-500">Confirm the drawer has at least {formatCurrency(selectedTotal)} on hand before processing.</p>
+            )}
+            {refundMethod === 'cash' && drawerCashOnHand !== null && !cashShort && (
+              <p className="mt-2 text-xs text-emerald-600 dark:text-[#34c47e]">
+                ✓ Drawer covers — {formatCurrency(drawerCashOnHand)} on hand · refund {formatCurrency(selectedTotal)} leaves {formatCurrency(drawerCashOnHand - selectedTotal)}.
+              </p>
+            )}
+            {refundMethod === 'cash' && drawerCashOnHand !== null && cashShort && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+                ✗ Drawer short — {formatCurrency(drawerCashOnHand)} on hand · refund needs {formatCurrency(selectedTotal)}. Cash-in or pick a different method.
+              </p>
             )}
             {refundMethod === 'store_credit' && (
               <p className="mt-2 text-xs text-surface-500">Credit posts to the customer's file for use on a future ticket.</p>
@@ -3927,7 +3963,7 @@ function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, set
               <div className="text-sm text-surface-900 dark:text-surface-500">Refund total</div>
               <div className="font-display text-4xl">{formatCurrency(selectedTotal)}</div>
             </div>
-            <button type="button" onClick={onProcess} disabled={processing || selections.length === 0} className={dangerButton}>
+            <button type="button" onClick={onProcess} disabled={processing || selections.length === 0 || cashShort} className={dangerButton} title={cashShort ? 'Drawer cannot cover this cash refund' : undefined}>
               Process refund
             </button>
           </div>
