@@ -108,29 +108,35 @@ const WIN_CMD_SHIMS = new Set(['pm2', 'npm', 'npx']);
 
 /**
  * Resolve a command name to what spawnSync should actually invoke. On Windows,
- * .cmd shims (pm2.cmd, npm.cmd, etc.) cannot be spawned directly without
- * shell:true on older Node — but Node 22 emits DEP0190 when shell:true is
- * combined with an args array (the args get concatenated into the shell
- * command line without escaping → injection risk). The fix is to drop
- * shell:true entirely and append `.cmd` to known shims so CreateProcess
- * resolves them directly. spawnSync on Windows handles `.cmd` invocation
- * via cmd.exe internally without exposing the unescaped-args path.
+ * npm/pm2/npx are `.cmd` shims. The previous strategy (append `.cmd`, run with
+ * shell:false) broke on Node 22+: CVE-2024-27980 hardened spawn() to refuse
+ * batch files without shell:true, returning `EINVAL` and exit status `null`
+ * before the child even starts. Symptom: setup.mjs reports
+ * `FATAL npm install fallback also failed (exit null)` while no npm log is
+ * ever written.
+ *
+ * Fix: route cmd shims through shell:true (DEP0190 warning is acceptable —
+ * setup.mjs's args are static constants, no injection surface). Non-shim
+ * commands (git, schtasks, sh, node itself) still spawn directly.
  */
 function resolveExe(cmd) {
   if (IS_WIN && WIN_CMD_SHIMS.has(cmd)) return cmd + '.cmd';
   return cmd;
+}
+function needsShell(cmd) {
+  return IS_WIN && WIN_CMD_SHIMS.has(cmd);
 }
 
 /**
  * Run a command synchronously with inherited stdio (so the operator sees
  * progress). Returns { ok, code }. Never throws — callers branch on `.ok`.
  *
- * shell:false everywhere — see resolveExe() comment for the DEP0190 context.
- * Callers that legitimately need shell parsing can pass `shell: true` and
- * accept the deprecation warning (no current call site does).
+ * Windows cmd shims (npm/pm2/npx) auto-promote to shell:true to work around
+ * Node 22+ EINVAL on .cmd files. See resolveExe() above for the context.
+ * Callers can override with `opts.shell` if they need a specific behavior.
  */
 function run(cmd, args = [], opts = {}) {
-  const useShell = typeof opts.shell === 'boolean' ? opts.shell : false;
+  const useShell = typeof opts.shell === 'boolean' ? opts.shell : needsShell(cmd);
   const exe = useShell ? cmd : resolveExe(cmd);
   const r = spawnSync(exe, args, {
     cwd: opts.cwd || REPO_ROOT,
