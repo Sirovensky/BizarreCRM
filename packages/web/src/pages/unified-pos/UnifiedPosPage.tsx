@@ -2468,7 +2468,11 @@ export function UnifiedPosPage() {
                   draft={repairDraft}
                   setDraft={setRepairDraft}
                   onBack={() => setMode('repair-issue')}
-                  onContinue={() => setMode('repair-deposit')}
+                  // Primary path = save the ticket without collecting a
+                  // deposit. The deposit step is now opt-in via the ghost
+                  // sub-button: cashier explicitly chooses to charge.
+                  onContinue={saveRepairToCart}
+                  onChargeDeposit={() => setMode('repair-deposit')}
                   onGoToStep={(target) => setMode(`repair-${target}` as any)}
                 />
               )}
@@ -4361,11 +4365,18 @@ function RepairIssueStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
   );
 }
 
-function RepairQuoteStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
+function RepairQuoteStep({ draft, setDraft, onBack, onContinue, onChargeDeposit, onGoToStep }: {
   draft: RepairDraft;
   setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
   onBack: () => void;
   onContinue: () => void;
+  /** Optional opt-in path. When provided, the wizard footer renders a ghost
+   *  "Charge deposit" sub-button next to the primary save action. The
+   *  primary save creates the ticket WITHOUT taking a deposit; the ghost
+   *  button routes to the Deposit step where a deposit can be tendered.
+   *  Lets shops pick deposit-on / deposit-off per ticket without baking the
+   *  step into the wizard. */
+  onChargeDeposit?: () => void;
   onGoToStep?: (target: RepairStepKey) => void;
 }) {
   // Inline price-edit state per problem line.
@@ -4558,7 +4569,23 @@ function RepairQuoteStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
         </Section>
       </div>
 
-      <WizardFooter onBack={onBack} onContinue={onContinue} continueDisabled={draft.selectedProblems.length === 0} />
+      {/* Quote-step footer — TWO actions:
+            • Primary "Save ticket" creates the ticket without collecting a
+              deposit. This is the most-common counter path: estimate,
+              capture device, pickup later.
+            • Ghost "Charge deposit" routes through the Deposit step so the
+              cashier can tender a deposit before parking the ticket.
+          Mockup §6 wanted deposit collection to be opt-in. The wizard
+          footer accepts an optional second-action via `subActionLabel`. */}
+      <WizardFooter
+        onBack={onBack}
+        onContinue={onContinue}
+        continueLabel="Save ticket"
+        continueDisabled={draft.selectedProblems.length === 0}
+        subActionLabel={onChargeDeposit ? 'Charge deposit' : undefined}
+        onSubAction={onChargeDeposit}
+        subActionDisabled={draft.selectedProblems.length === 0}
+      />
     </div>
   );
 }
@@ -4696,28 +4723,48 @@ function WaiverCanvasModal({ onCancel, onConfirm }: { onCancel: () => void; onCo
   );
 }
 
-function WizardFooter({ onBack, onContinue, backLabel = 'Back', continueLabel = 'Continue', continueDisabled = false }: {
+function WizardFooter({ onBack, onContinue, backLabel = 'Back', continueLabel = 'Continue', continueDisabled = false, subActionLabel, onSubAction, subActionDisabled = false }: {
   onBack: () => void;
   onContinue: () => void;
   backLabel?: string;
   continueLabel?: string;
   continueDisabled?: boolean;
+  /** Optional secondary action next to the primary continue button.
+   *  Renders as a ghost-style button, sits LEFT of the primary so the
+   *  primary stays the rightmost (eye-line) target. Used for opt-in
+   *  branches like "Charge deposit" on the Quote step. */
+  subActionLabel?: string;
+  onSubAction?: () => void;
+  subActionDisabled?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-900">
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-900">
       <button type="button" onClick={onBack} className={secondaryButton}>
         <ChevronLeft className="h-4 w-4" />
         {backLabel}
       </button>
-      <button
-        type="button"
-        onClick={onContinue}
-        disabled={continueDisabled}
-        className={cn(primaryButton, continueDisabled && 'cursor-not-allowed opacity-50')}
-      >
-        {continueLabel}
-        <ChevronRight className="h-4 w-4" />
-      </button>
+      <div className="flex items-center gap-2">
+        {subActionLabel && onSubAction && (
+          <button
+            type="button"
+            onClick={onSubAction}
+            disabled={subActionDisabled}
+            className={cn(ghostButton, subActionDisabled && 'cursor-not-allowed opacity-50')}
+            title="Take a deposit before saving the ticket"
+          >
+            {subActionLabel}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={continueDisabled}
+          className={cn(primaryButton, continueDisabled && 'cursor-not-allowed opacity-50')}
+        >
+          {continueLabel}
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
