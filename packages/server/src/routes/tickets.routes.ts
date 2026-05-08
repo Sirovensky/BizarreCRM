@@ -787,13 +787,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0)');
     } else if (statusGroup === 'open') {
       // Open = non-closed, non-cancelled, AND not on-hold/waiting
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%' AND LOWER(name) NOT LIKE '%qc passed%' AND LOWER(name) NOT LIKE '%ready%' AND LOWER(name) NOT LIKE '%pickup%')");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%' AND LOWER(name) NOT LIKE '%qc passed%' AND LOWER(name) NOT LIKE '%ready%' AND LOWER(name) NOT LIKE '%pickup%' AND LOWER(name) NOT LIKE '%approval%')");
     } else if (statusGroup === 'closed') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 1)');
     } else if (statusGroup === 'cancelled') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_cancelled = 1)');
     } else if (statusGroup === 'on_hold') {
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%' OR LOWER(name) LIKE '%qc passed%' OR LOWER(name) LIKE '%ready%' OR LOWER(name) LIKE '%pickup%'))");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%' OR LOWER(name) LIKE '%qc passed%' OR LOWER(name) LIKE '%ready%' OR LOWER(name) LIKE '%pickup%' OR LOWER(name) LIKE '%approval%'))");
     }
   }
   // WEB-W1-002: suppress closed/cancelled tickets when caller passes show_closed=0.
@@ -1930,13 +1930,13 @@ router.get('/export', requirePermission('tickets.view'), asyncHandler(async (req
     if (statusGroup === 'active') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0)');
     } else if (statusGroup === 'open') {
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%' AND LOWER(name) NOT LIKE '%qc passed%' AND LOWER(name) NOT LIKE '%ready%' AND LOWER(name) NOT LIKE '%pickup%')");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%' AND LOWER(name) NOT LIKE '%qc passed%' AND LOWER(name) NOT LIKE '%ready%' AND LOWER(name) NOT LIKE '%pickup%' AND LOWER(name) NOT LIKE '%approval%')");
     } else if (statusGroup === 'closed') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 1)');
     } else if (statusGroup === 'cancelled') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_cancelled = 1)');
     } else if (statusGroup === 'on_hold') {
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%' OR LOWER(name) LIKE '%qc passed%' OR LOWER(name) LIKE '%ready%' OR LOWER(name) LIKE '%pickup%'))");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%' OR LOWER(name) LIKE '%qc passed%' OR LOWER(name) LIKE '%ready%' OR LOWER(name) LIKE '%pickup%' OR LOWER(name) LIKE '%approval%'))");
     }
   }
   if (assignedTo) {

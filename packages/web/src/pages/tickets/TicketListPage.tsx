@@ -1290,7 +1290,7 @@ export function TicketListPage() {
         // the Open bucket where they were inflating the active-work count.
         // Mirror this list in tickets.routes.ts (server LIKE patterns) and
         // reports.routes.ts (status_groups summary) — same ruleset.
-        const holdKeywords = ['hold', 'waiting', 'pending', 'transit', 'qc passed', 'ready', 'pickup'];
+        const holdKeywords = ['hold', 'waiting', 'pending', 'transit', 'qc passed', 'ready', 'pickup', 'approval'];
         const isOnHold = (name: string) => holdKeywords.some(k => name.toLowerCase().includes(k));
 
         // Group statuses: open (blue), on hold (orange), closed (green), cancelled (red)

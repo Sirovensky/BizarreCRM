@@ -162,6 +162,7 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
                     AND LOWER(ts.name) NOT LIKE '%qc passed%'
                     AND LOWER(ts.name) NOT LIKE '%ready%'
                     AND LOWER(ts.name) NOT LIKE '%pickup%'
+                    AND LOWER(ts.name) NOT LIKE '%approval%'
               THEN 1 END) AS open_count,
         COUNT(CASE WHEN ts.is_closed = 0 AND ts.is_cancelled = 0
                     AND (LOWER(ts.name) LIKE '%hold%'
@@ -170,7 +171,8 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
                       OR LOWER(ts.name) LIKE '%transit%'
                       OR LOWER(ts.name) LIKE '%qc passed%'
                       OR LOWER(ts.name) LIKE '%ready%'
-                      OR LOWER(ts.name) LIKE '%pickup%')
+                      OR LOWER(ts.name) LIKE '%pickup%'
+                      OR LOWER(ts.name) LIKE '%approval%')
               THEN 1 END) AS on_hold_count,
         COUNT(CASE WHEN ts.is_closed = 1 THEN 1 END) AS closed_count,
         COUNT(CASE WHEN ts.is_cancelled = 1 THEN 1 END) AS cancelled_count
