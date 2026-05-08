@@ -1158,7 +1158,14 @@ function MembershipCard({ customerId }: { customerId: number }) {
               <>
                 <button
                   onClick={() => {
-                    const reason = window.prompt('Reason for pausing membership (optional):') ?? '';
+                    // window.prompt returns null when the user clicks Cancel
+                    // on the native dialog. Previous `?? ''` fallback fired
+                    // the pause mutation anyway with an empty reason — a click
+                    // on the wrong button silently paused the membership.
+                    // Now abort on null; treat empty-but-OK'd string as a
+                    // valid "no reason" pause.
+                    const reason = window.prompt('Reason for pausing membership (optional):');
+                    if (reason === null) return;
                     pauseMut.mutate(reason);
                   }}
                   disabled={pauseMut.isPending}
