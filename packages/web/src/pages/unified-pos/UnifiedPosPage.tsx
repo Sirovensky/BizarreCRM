@@ -1286,6 +1286,47 @@ export function UnifiedPosPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Could not hold sale'),
   });
 
+  /**
+   * Mint a blank held-cart row so the cashier can spawn a parallel tab
+   * even when the current draft is empty. Server requires `cart_json` to
+   * be valid JSON and `total_cents` to be non-negative; an empty snapshot
+   * + 0 total satisfies both. The new tab lands as the active slot;
+   * the just-spawned blank slips into the held list as a placeholder
+   * the cashier can discard later if it never gets used.
+   */
+  const spawnBlankTab = useCallback(() => {
+    const blankSnapshot: HeldCartSnapshot = {
+      customer: null,
+      cartItems: [],
+      discount: 0,
+      discountReason: '',
+      memberDiscountApplied: false,
+      meta: {
+        assignedTo: null,
+        dueDate: '',
+        source: 'Walk-in',
+        internalNotes: '',
+        labels: '',
+        discountReason: '',
+        referralSource: '',
+      },
+      sourceTicketId: null,
+    };
+    api.post('/pos/held-carts', {
+      cart_json: JSON.stringify(blankSnapshot),
+      label: 'New sale',
+      customer_id: null,
+      total_cents: 0,
+    }, { skipGlobal500Toast: true } as object)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ['pos-held-carts'] });
+        startNewSale();
+      })
+      .catch((err: any) => {
+        toast.error(err?.response?.data?.message || 'Could not spawn new tab');
+      });
+  }, [queryClient, startNewSale]);
+
   const restoreSnapshot = useCallback((snapshot: HeldCartSnapshot) => {
     resetAll();
     setCustomer(snapshot.customer ?? null);
@@ -1946,15 +1987,27 @@ export function UnifiedPosPage() {
           <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
           <span className="truncate">POS · {title}</span>
         </button>
-        {/* + New tab — opens a fresh gate. If the current sale has items or
-            a customer attached, auto-hold first so the work is parked rather
-            than discarded. Mockup §5.1: parallel sales live as tabs and ⌘N
-            opens a new one without losing the current. */}
+        {/* + New tab — always spawns a new tab, even when the current cart
+            is empty. If the current sale has any in-flight work (items or a
+            customer attached) we auto-hold to park it; otherwise we mint a
+            placeholder held tab from the current empty draft so the cashier
+            can fan out as many parallel intake slots as they want. Mockup
+            §5.1: parallel sales are tabs; ⌘N opens a new one without
+            losing the current. */}
         <button
           type="button"
           onClick={() => {
-            if (cartItems.length > 0 || customer) holdMutation.mutate();
-            else startNewSale();
+            if (cartItems.length > 0 || customer) {
+              holdMutation.mutate();
+            } else {
+              // Empty current tab → fire a "blank tab" hold so the now-
+              // active slot becomes a held placeholder, then snap home for
+              // the new slot. The hold mutation accepts an empty cart_json
+              // (server only requires it to be valid JSON) so this is just
+              // a stub row in held_carts; the cashier can discard it later
+              // if they don't need it.
+              spawnBlankTab();
+            }
           }}
           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-t-lg text-surface-500 hover:bg-surface-100/60 dark:hover:bg-surface-800/60 dark:text-surface-400 transition-colors"
           title="New sale (⌘N)"
@@ -2543,7 +2596,7 @@ function CustomerGate({
                since it's where the day's work actually lives.
           Both share the same row layout so the eye scans cleanly across
           the boundary. */}
-      <section className="px-6 pb-6 space-y-4">
+      <section className="px-6 pb-6 space-y-3">
         <div className="flex items-center gap-3">
           <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">
             {readyPickupLoading
@@ -2556,25 +2609,28 @@ function CustomerGate({
           </button>
         </div>
 
-        {/* Ready for pickup */}
-        <div>
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#34c47e]">
-            Ready for pickup · {readyTotal}
-          </div>
-          <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
-            <div className="max-h-[22vh] overflow-y-auto">
-              {readyPickupLoading && (
-                <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading…</div>
-              )}
-              {!readyPickupLoading && readyTickets.length === 0 && (
-                <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Nothing waiting on a customer right now.</div>
-              )}
+        {/* Single combined list. Ready-for-pickup rows pinned at the top
+            under their own subheader, then In-progress rows under theirs.
+            One bordered container so the boundary feels like one list with
+            grouped sections rather than two separate cards. */}
+        <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
+          {readyPickupLoading && (
+            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading…</div>
+          )}
+          {!readyPickupLoading && readyTickets.length === 0 && otherTickets.length === 0 && (
+            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">No open tickets right now.</div>
+          )}
+          {readyTickets.length > 0 && (
+            <>
+              <div className="bg-surface-50 dark:bg-surface-900 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#34c47e] border-b border-surface-200 dark:border-surface-700">
+                Ready for pickup · {readyTotal}
+              </div>
               {readyTickets.map((ticket) => (
                 <button
                   key={ticket.id}
                   type="button"
                   onClick={() => onOpenReadyPickup(ticket)}
-                  className="grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
+                  className="grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm hover:bg-surface-100 dark:hover:bg-surface-700"
                 >
                   <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">✓ ready</span>
                   <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
@@ -2585,41 +2641,39 @@ function CustomerGate({
                   <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
                 </button>
               ))}
-            </div>
-          </div>
-        </div>
-
-        {/* In progress / everything else */}
-        <div>
-          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">
-            In progress · {otherTotal}
-          </div>
-          <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
-            {readyPickupLoading && (
-              <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading…</div>
-            )}
-            {!readyPickupLoading && otherTickets.length === 0 && (
-              <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">No in-progress tickets right now.</div>
-            )}
-            {otherTickets.map((ticket) => (
-              <button
-                key={ticket.id}
-                type="button"
-                onClick={() => onOpenReadyPickup(ticket)}
-                className="grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
-              >
-                <span className="truncate rounded-full bg-surface-100 dark:bg-surface-700 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-surface-600 dark:text-surface-300" title={ticket.statusName}>
-                  {ticket.statusName}
-                </span>
-                <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
-                <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-[#c5566d]">{ticket.customerGroup}</span> : null}</span>
-                <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
-                <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
-                <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
-                <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
-              </button>
-            ))}
-          </div>
+            </>
+          )}
+          {otherTickets.length > 0 && (
+            <>
+              <div className="bg-surface-50 dark:bg-surface-900 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500 border-b border-surface-200 dark:border-surface-700">
+                In progress · {otherTotal}
+              </div>
+              {otherTickets.map((ticket, idx) => {
+                const isLast = idx === otherTickets.length - 1;
+                return (
+                  <button
+                    key={ticket.id}
+                    type="button"
+                    onClick={() => onOpenReadyPickup(ticket)}
+                    className={cn(
+                      'grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-surface-100 dark:hover:bg-surface-700',
+                      !isLast && 'border-b border-surface-200 dark:border-surface-700',
+                    )}
+                  >
+                    <span className="truncate rounded-full bg-surface-100 dark:bg-surface-700 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-surface-600 dark:text-surface-300" title={ticket.statusName}>
+                      {ticket.statusName}
+                    </span>
+                    <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
+                    <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-[#c5566d]">{ticket.customerGroup}</span> : null}</span>
+                    <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
+                    <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
+                    <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
+                    <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
       </section>
     </div>
