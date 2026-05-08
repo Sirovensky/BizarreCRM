@@ -469,7 +469,11 @@ function AppearanceSection() {
   ];
 
   return (
-    <div className="card mt-6">
+    <div
+      id="setting-ui_theme"
+      data-setting-key="ui_theme"
+      className="card mt-6 scroll-mt-24"
+    >
       <div className="p-4 border-b border-surface-100 dark:border-surface-800">
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Appearance</h3>
         <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
@@ -506,7 +510,11 @@ function AppearanceSection() {
 
         {/* WEB-UIUX-295: WCAG 2.1.4 — single-key shortcuts (F2/F3/F4/F6/?) must be
             disableable. Toggle persists to localStorage via uiStore. */}
-        <div className="mt-6 rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800">
+        <div
+          id="setting-keyboard_shortcuts_enabled"
+          data-setting-key="keyboard_shortcuts_enabled"
+          className="mt-6 rounded-lg border border-surface-200 bg-surface-50 p-4 scroll-mt-24 dark:border-surface-700 dark:bg-surface-800"
+        >
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">
@@ -551,7 +559,7 @@ function AppearanceSection() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => navigate('/setup')}
+                  onClick={() => navigate('/setup?resume=1')}
                   className="btn btn-primary btn-sm mt-3"
                 >
                   Resume setup wizard
@@ -2073,6 +2081,15 @@ function SettingsPageInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, activeTab]);
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const targetId = decodeURIComponent(location.hash.slice(1));
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, location.hash]);
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;

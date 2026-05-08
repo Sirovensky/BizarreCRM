@@ -423,7 +423,7 @@ router.get('/setup-status', async (req, res) => {
     adb.get<any>("SELECT value FROM store_config WHERE key = 'wizard_completed'"),
     adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_imported_legacy_data'"),
   ]);
-  const completed = row?.value === 'true';
+  const completed = row?.value === true || row?.value === 1 || row?.value === '1' || row?.value === 'true';
   res.json({
     success: true,
     data: {

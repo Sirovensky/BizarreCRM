@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { settingsApi, authApi } from '@/api/endpoints';
@@ -70,8 +70,10 @@ interface SetupStatusPayload {
 
 export function SetupPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const { setTheme } = useUiStore();
+  const isExplicitResume = searchParams.get('resume') === '1';
 
   const { data: setupData, isLoading: checkingStatus } = useQuery<{
     data?: { data?: SetupStatusPayload };
@@ -220,12 +222,12 @@ export function SetupPage() {
       }
 
       // Render the StepDone screen with its non-duplicate Settings deep-link
-      // cards instead of jumping straight to /dashboard. The user navigates
-      // to /dashboard from the StepDone CTA. Skip path still goes direct.
+      // cards instead of jumping straight to the dashboard. The user navigates
+      // to the dashboard from the StepDone CTA. Skip path still goes direct.
       if (mode === 'complete') {
         setPhase('done');
       } else {
-        navigate('/dashboard', { replace: true });
+        navigate('/', { replace: true });
       }
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to save setup. Please try again.');
@@ -258,13 +260,15 @@ export function SetupPage() {
   // they leave. Without this exception the gate fires immediately after
   // setPhase('done') and the user never sees the Done UI.
   //
-  // 'skipped' is intentionally NOT in this list: when App.tsx Gate 3 forces an
-  // admin back here after a prior skip (skip_count < 3), the wizard must re-render
-  // instead of bouncing back to '/'. Otherwise Gate 3 ↔ this redirect form an
-  // infinite loop until the browser kills history API calls.
+  // Skipped setups should not reopen just because the current URL is /setup.
+  // Settings uses /setup?resume=1 for the one intentional resume path.
   if (
     phase !== 'done' &&
-    (wizardCompleted === 'true' || wizardCompleted === 'grandfathered')
+    (
+      wizardCompleted === 'true' ||
+      wizardCompleted === 'grandfathered' ||
+      (wizardCompleted === 'skipped' && !isExplicitResume)
+    )
   ) {
     return <Navigate to="/" replace />;
   }

@@ -1,6 +1,7 @@
 /**
  * settingsSearchIndex — a flat, cached index of every searchable setting
- * (label, tab, tooltip, keywords) derived from settingsMetadata.ts.
+ * (label, tab, tooltip, keywords) derived from settingsMetadata.ts plus local
+ * browser preferences that do not live in store_config.
  *
  * Why a separate file?
  *   - settingsMetadata.ts already holds the full definitions, but its helper
@@ -13,8 +14,8 @@
  *     without touching the metadata file.
  *
  * The index is deliberately shallow — it ONLY contains what the search palette
- * needs to render a result card. The authoritative source of a setting's
- * default / status / type is still settingsMetadata.
+ * needs to render a result card. The authoritative source of a store_config
+ * setting's default / status / type is still settingsMetadata.
  */
 
 import {
@@ -41,9 +42,62 @@ export interface SettingsIndexEntry {
   keywords: string[];
 }
 
+type LocalSettingEntry = Omit<SettingsIndexEntry, 'haystack'>;
+
+const LOCAL_SETTING_ENTRIES: readonly LocalSettingEntry[] = Object.freeze([
+  {
+    key: 'ui_theme',
+    label: 'Appearance Theme',
+    tab: 'store',
+    description: 'Switch this browser between Light, Dark, or System theme.',
+    status: 'live',
+    keywords: [
+      'appearance',
+      'theme',
+      'mode',
+      'dark',
+      'dark mode',
+      'dark/light',
+      'light',
+      'light mode',
+      'light/dark',
+      'night mode',
+      'day mode',
+      'system',
+      'system theme',
+      'switch',
+      'toggle',
+      'display',
+      'ui',
+      'color scheme',
+    ],
+  },
+  {
+    key: 'keyboard_shortcuts_enabled',
+    label: 'Keyboard Shortcuts',
+    tab: 'store',
+    description: 'Enable or disable single-key shortcuts for this browser.',
+    status: 'live',
+    keywords: [
+      'hotkeys',
+      'shortcuts',
+      'keyboard',
+      'f2',
+      'f3',
+      'f4',
+      'f6',
+      'assistive technology',
+      'accessibility',
+    ],
+  },
+]);
+
 /** Module-scope index built once at import time and reused on every search. */
 const INDEX: readonly SettingsIndexEntry[] = Object.freeze(
-  SETTINGS_METADATA.map(buildEntry)
+  [
+    ...SETTINGS_METADATA.map(buildEntry),
+    ...LOCAL_SETTING_ENTRIES.map(buildLocalEntry),
+  ]
 );
 
 function buildEntry(setting: SettingDef): SettingsIndexEntry {
@@ -62,6 +116,20 @@ function buildEntry(setting: SettingDef): SettingsIndexEntry {
     description: setting.tooltip,
     status: setting.status,
     keywords,
+    haystack: haystackTokens.join(' ').toLowerCase(),
+  };
+}
+
+function buildLocalEntry(entry: LocalSettingEntry): SettingsIndexEntry {
+  const haystackTokens = [
+    entry.label,
+    entry.description,
+    entry.tab,
+    entry.key,
+    ...entry.keywords,
+  ].filter((t): t is string => typeof t === 'string' && t.length > 0);
+  return {
+    ...entry,
     haystack: haystackTokens.join(' ').toLowerCase(),
   };
 }

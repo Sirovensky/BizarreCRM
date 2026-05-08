@@ -4,6 +4,7 @@ import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { isAdminOrManager } from '../utils/constants.js';
+import { searchSettings } from '../services/settingsSearch.js';
 
 const router = Router();
 
@@ -32,7 +33,7 @@ interface SearchResult {
 }
 
 // ---------------------------------------------------------------------------
-// GET /?q=term – Global search across customers, tickets, inventory, invoices
+// GET /?q=term – Global search across customers, tickets, inventory, invoices, settings
 // ---------------------------------------------------------------------------
 router.get(
   '/',
@@ -46,7 +47,7 @@ router.get(
     if (!q || q.length < 3) {
       return void res.json({
         success: true,
-        data: { customers: [], tickets: [], inventory: [], invoices: [] },
+        data: { customers: [], tickets: [], inventory: [], invoices: [], settings: [] },
       });
     }
 
@@ -107,7 +108,7 @@ router.get(
       ? [like, like, like, like, limit]
       : [like, like, like, like, userId, limit];
 
-    const [tickets, inventory, invoices] = await Promise.all([
+    const [tickets, inventory, invoices, settings] = await Promise.all([
       adb.all<SearchResult>(`
         SELECT t.id, t.order_id AS display, 'ticket' AS type,
                ts.name AS subtitle,
@@ -142,11 +143,12 @@ router.get(
         ORDER BY created_at DESC
         LIMIT ?
       `, like, limit) : Promise.resolve([] as SearchResult[]),
+      isAdmin ? searchSettings(adb, q, limit) : Promise.resolve([] as SearchResult[]),
     ]);
 
     res.json({
       success: true,
-      data: { customers, tickets, inventory, invoices },
+      data: { customers, tickets, inventory, invoices, settings },
     });
   }),
 );

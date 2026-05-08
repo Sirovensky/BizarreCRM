@@ -1,7 +1,7 @@
 /**
- * SettingsSearch — global search across all settings metadata. When the user
- * types "passcode" we filter SETTINGS_METADATA and show live matches. Clicking
- * a match jumps to the relevant tab and highlights the setting with a
+ * SettingsSearch — global search across the shared settings index. When the
+ * user types "passcode" we filter indexed settings and show live matches.
+ * Clicking a match jumps to the relevant tab and highlights the setting with a
  * temporary ring animation.
  *
  * This replaces the weaker tab-only filter in SettingsPage.tsx with a
@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Search, X, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { searchSettings, type SettingDef } from '../settingsMetadata';
+import { queryIndex, type SettingsIndexEntry } from '../settingsSearchIndex';
 
 export interface SettingsSearchProps {
   /** Called when the user picks a result. Navigate to the tab and highlight the setting. */
@@ -46,7 +46,7 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
-    return searchSettings(query).slice(0, maxResults);
+    return queryIndex(query, maxResults);
   }, [query, maxResults]);
 
   // Close on click outside
@@ -66,7 +66,7 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
   }, [results]);
 
   const pick = useCallback(
-    (result: SettingDef) => {
+    (result: SettingsIndexEntry) => {
       onNavigate(result.tab, result.key);
       // Defer highlight until after the tab switches
       window.setTimeout(() => highlightSetting(result.key), 150);
@@ -154,7 +154,7 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
                       <span className="rounded bg-surface-100 px-1.5 py-0.5 font-mono text-[10px] dark:bg-surface-800">
                         {r.tab}
                       </span>
-                      <span className="truncate">{r.tooltip}</span>
+                      <span className="truncate">{r.description}</span>
                     </div>
                   </button>
                 </li>
@@ -167,7 +167,7 @@ export function SettingsSearch({ onNavigate, initialValue = '', maxResults = 12 
   );
 }
 
-function StatusPill({ status }: { status: SettingDef['status'] }) {
+function StatusPill({ status }: { status: SettingsIndexEntry['status'] }) {
   if (status === 'live') {
     return (
       <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-500/20 dark:text-green-300">

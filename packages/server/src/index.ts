@@ -860,7 +860,10 @@ setupWebSocket(wss);
 // Redirect middleware for requests arriving via reverse proxy (x-forwarded-proto)
 // SEC-H5: Sanitize host/URL to prevent CRLF injection in Location header.
 app.use((req, res, next) => {
-  if (req.headers['x-forwarded-proto'] === 'http') {
+  const isDevHttpVisualProxy =
+    config.nodeEnv === 'development' &&
+    req.headers['x-bizarre-dev-http'] === '1';
+  if (req.headers['x-forwarded-proto'] === 'http' && !isDevHttpVisualProxy) {
     const host = sanitizeRedirectHost(req.headers.host || '');
     const safeUrl = sanitizeRedirectUrl(req.url);
     return res.redirect(301, `https://${host}${safeUrl}`);

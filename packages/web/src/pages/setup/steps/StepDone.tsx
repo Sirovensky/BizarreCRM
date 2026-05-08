@@ -24,7 +24,7 @@ interface DeepLinkCard {
  *   - Customer portal needs domain/widget decisions the dashboard can't capture.
  *   - Auto-reorder rules require per-part thresholds, a long-tail config job.
  *
- * The primary CTA navigates to /dashboard with replace:true so the user can't
+ * The primary CTA navigates to / with replace:true so the user can't
  * Back-button into the wizard. onNext() fires first so the SetupPage shell
  * flushes wizard_completed='true' on the Review→Done transition.
  */
@@ -59,7 +59,7 @@ export function StepDone({ onNext }: StepProps): JSX.Element {
     // Fire onNext first so the SetupPage shell flushes wizard_completed
     // on the Review→Done transition (idempotent if already flushed).
     onNext?.();
-    navigate('/dashboard', { replace: true });
+    navigate('/', { replace: true });
   };
 
   return (
