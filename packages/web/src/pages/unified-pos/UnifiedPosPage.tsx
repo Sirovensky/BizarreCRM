@@ -1398,6 +1398,10 @@ export function UnifiedPosPage() {
       }
       if (key === 'd') {
         event.preventDefault();
+        // Don't stack on top of an open modal — the user mashing ⌘D while a
+        // line-edit or custom-item modal is up would render two overlapping
+        // dialogs with confusing focus.
+        if (lineEditing || customItemOpen || pendingDiscount) return;
         setDiscountOpen(true);
       }
       if (key === 'b') {
@@ -1425,7 +1429,7 @@ export function UnifiedPosPage() {
     // They're effectively-stable component-scope helpers, so the latest
     // closure will read the latest value off the next mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartItems.length, customer, holdMutation, mode, setCommandPaletteOpen, commandPaletteOpen, discountOpen, lineEditing, customItemOpen]);
+  }, [cartItems.length, customer, holdMutation, mode, setCommandPaletteOpen, commandPaletteOpen, discountOpen, lineEditing, customItemOpen, pendingDiscount]);
 
   const saveRepairToCart = useCallback(() => {
     const labor = parseMoney(repairDraft.laborPrice);
@@ -1582,6 +1586,40 @@ export function UnifiedPosPage() {
    * cashier ignores the warning. Now we hard-gate by parking the action in
    * pendingDiscount state, opening PinModal, and committing only on success.
    */
+  /**
+   * Cart-row trash deletes immediately, but most accidental clicks are
+   * recoverable in <8 s. Surface the removed item in a sticky toast with an
+   * Undo action that re-adds the line via the type-specific add fn (qty,
+   * discount, parts all preserved). Toast self-dismisses after 6 s — past
+   * that the cashier can re-scan / re-add by hand.
+   */
+  const removeLineWithUndo = useCallback((id: string) => {
+    const removed = useUnifiedPosStore.getState().cartItems.find((item) => item.id === id);
+    removeCartItem(id);
+    if (!removed) return;
+    const label = lineTitle(removed);
+    toast(
+      (t) => (
+        <span className="flex items-center gap-3">
+          <span className="text-sm">Removed: <strong>{label}</strong></span>
+          <button
+            type="button"
+            className="rounded-md bg-primary-500 px-2 py-1 text-xs font-bold text-on-primary"
+            onClick={() => {
+              if (removed.type === 'product') addProduct(removed);
+              else if (removed.type === 'misc') addMisc(removed);
+              else if (removed.type === 'repair') addRepair(removed);
+              toast.dismiss(t.id);
+            }}
+          >
+            Undo
+          </button>
+        </span>
+      ),
+      { duration: 6000 },
+    );
+  }, [addMisc, addProduct, addRepair, removeCartItem]);
+
   const applyDiscount = () => {
     const amount = parseMoney(discountDraft);
     if (totals.subtotal > 0 && amount > totals.subtotal * 0.25) {
@@ -2196,7 +2234,7 @@ export function UnifiedPosPage() {
             setMode('gate');
           }}
           onEditLine={setLineEditing}
-          onRemoveLine={removeCartItem}
+          onRemoveLine={removeLineWithUndo}
           onQty={updateProductQty}
           onDiscount={() => {
             setDiscountDraft(discount ? String(discount) : '');
@@ -3822,7 +3860,7 @@ function HeldSalesView({ rows, loading, onRecall, onDiscard }: {
               <div className="font-mono text-xs text-surface-500">{formatDateTime(row.created_at)}</div>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => onRecall(row.id)} className={primaryButton}>Resume</button>
-                <button type="button" onClick={() => onDiscard(row.id)} className={cn(dangerButton, 'text-xs')}>×</button>
+                <button type="button" onClick={() => onDiscard(row.id)} aria-label="Discard held sale" title="Discard" className={cn(dangerButton, 'text-xs')}>×</button>
               </div>
             </div>
           ))
