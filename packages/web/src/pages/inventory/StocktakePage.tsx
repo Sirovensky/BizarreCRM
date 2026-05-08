@@ -223,9 +223,21 @@ export function StocktakePage() {
         return;
       }
       const existingCount = detailData?.counts.find((c) => c.inventory_item_id === item.id);
-      const counted = manualCountedQty
-        ? parseInt(manualCountedQty, 10)
-        : (existingCount ? existingCount.counted_qty + 1 : 1); // quick-scan: increment physical count by 1
+      // Validate manual count before firing the mutation. Server rejects
+      // NaN / negatives, but the toast it returns is generic; pre-validating
+      // keeps the cashier in the field with their typo highlighted.
+      let counted: number;
+      if (manualCountedQty) {
+        const parsed = parseInt(manualCountedQty, 10);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+          toast.error('Enter a non-negative whole number for the count');
+          return;
+        }
+        counted = parsed;
+      } else {
+        // quick-scan: increment physical count by 1
+        counted = existingCount ? existingCount.counted_qty + 1 : 1;
+      }
       scanMut.mutate({ inventory_item_id: item.id, counted_qty: counted });
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Lookup failed');
