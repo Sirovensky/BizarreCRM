@@ -1287,14 +1287,12 @@ export function UnifiedPosPage() {
   });
 
   /**
-   * Mint a blank held-cart row so the cashier can spawn a parallel tab
-   * even when the current draft is empty. Server requires `cart_json` to
-   * be valid JSON and `total_cents` to be non-negative; an empty snapshot
-   * + 0 total satisfies both. The new tab lands as the active slot;
-   * the just-spawned blank slips into the held list as a placeholder
-   * the cashier can discard later if it never gets used.
+   * POST a blank held-cart row server-side. Used as a placeholder so an
+   * empty active tab still has a server-backed entry when the cashier
+   * spawns or switches tabs. Returns the same promise the caller can
+   * await before continuing the switch / reset flow.
    */
-  const spawnBlankTab = useCallback(() => {
+  const persistBlankTab = useCallback(async () => {
     const blankSnapshot: HeldCartSnapshot = {
       customer: null,
       cartItems: [],
@@ -1312,20 +1310,28 @@ export function UnifiedPosPage() {
       },
       sourceTicketId: null,
     };
-    api.post('/pos/held-carts', {
-      cart_json: JSON.stringify(blankSnapshot),
-      label: 'New sale',
-      customer_id: null,
-      total_cents: 0,
-    }, { skipGlobal500Toast: true } as object)
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['pos-held-carts'] });
-        startNewSale();
-      })
-      .catch((err: any) => {
-        toast.error(err?.response?.data?.message || 'Could not spawn new tab');
-      });
-  }, [queryClient, startNewSale]);
+    try {
+      await api.post('/pos/held-carts', {
+        cart_json: JSON.stringify(blankSnapshot),
+        label: 'New sale',
+        customer_id: null,
+        total_cents: 0,
+      }, { skipGlobal500Toast: true } as object);
+      await queryClient.invalidateQueries({ queryKey: ['pos-held-carts'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Could not park empty tab');
+      throw err;
+    }
+  }, [queryClient]);
+
+  /**
+   * Mint a blank tab + reset the active slot to a fresh gate. Used by
+   * the `+` button when the active draft is empty so the cashier can
+   * fan out as many parallel intake slots as they want.
+   */
+  const spawnBlankTab = useCallback(() => {
+    persistBlankTab().then(startNewSale).catch(() => undefined);
+  }, [persistBlankTab, startNewSale]);
 
   const restoreSnapshot = useCallback((snapshot: HeldCartSnapshot) => {
     resetAll();
@@ -1952,13 +1958,19 @@ export function UnifiedPosPage() {
             key={row.id}
             type="button"
             onClick={async () => {
-              // Switching to a held tab should not blow away in-flight work
-              // on the current tab. If the current cart has items or a
-              // customer attached, auto-hold it first so the user's parallel
-              // sales stay independent — matches mockup §5.1's "tabs as
-              // independent sales" expectation.
+              // Persist the active tab before swapping to the held one.
+              // Two paths:
+              //   • Active has work (cart items or customer) → holdMutation
+              //     parks it as a real held cart with a meaningful label.
+              //   • Active is blank/fresh-gate → persistBlankTab() so the
+              //     empty slot stays in the strip rather than vanishing
+              //     when the recall replaces the active content. Without
+              //     this, clicking a held tab silently closed any blank
+              //     tab the cashier had spawned via `+`.
               if (cartItems.length > 0 || customer) {
                 await holdMutation.mutateAsync();
+              } else {
+                await persistBlankTab();
               }
               recallMutation.mutate(row.id);
             }}
@@ -2341,6 +2353,7 @@ export function UnifiedPosPage() {
           onEditLine={setLineEditing}
           onRemoveLine={removeLineWithUndo}
           onQty={updateProductQty}
+          onUpdateLine={updateCartItem}
           onDiscount={() => {
             setDiscountDraft(discount ? String(discount) : '');
             setDiscountReasonDraft(discountReason || 'cashier adjustment');
@@ -2495,43 +2508,70 @@ function CustomerGate({
 
   return (
     <div className="flex min-h-full flex-col">
-      <section className="px-6 pt-5">
-        <div className="mb-3 flex items-center gap-3">
-          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">{bookingSummary}</div>
-          <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
-          <button type="button" onClick={onViewCalendar} className="text-xs font-semibold text-primary-700 dark:text-primary-500 underline-offset-4 hover:underline">View calendar</button>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-2">
-          {!appointmentsLoading && appointments.length === 0 && (
-            <div className="flex min-w-[240px] items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left dark:border-surface-700 dark:bg-surface-800">
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-bold text-surface-900 dark:text-surface-50">No bookings left</div>
-                <div className="truncate text-[11.5px] text-surface-400">Walk-ins and pickups are ready.</div>
+      {/* Combined gate hero block (per user mock):
+            Left  — Next appointment summary + total-today line
+            Right — primary "Create new customer" CTA + ghost "Walk-in"
+          Replaces the old horizontal-scroll appointment strip + centered
+          button stack. The next appointment is the highest-signal
+          schedule item; remaining bookings live under "View calendar"
+          rather than crowding the gate. */}
+      {!createCustomerOpen && (
+        <section className="px-6 pt-5">
+          <div className="grid gap-5 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-5 md:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="flex flex-col gap-3 min-w-0">
+              {appointmentsLoading ? (
+                <div className="text-sm text-surface-500">Loading bookings…</div>
+              ) : nextAppointment ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectAppointment(nextAppointment)}
+                  className="-m-2 rounded-lg p-2 text-left hover:bg-surface-50 dark:hover:bg-surface-900"
+                  title="Open this appointment"
+                >
+                  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-500">
+                    Next appointment · {formatTime(nextAppointment.start_time)}
+                  </div>
+                  <div className="mt-1 font-display text-3xl leading-tight text-surface-900 dark:text-surface-50 truncate">
+                    {appointmentCustomerName(nextAppointment)}
+                  </div>
+                  <div className="mt-0.5 text-sm text-surface-600 dark:text-surface-400 truncate">
+                    {appointmentNote(nextAppointment) || appointmentStatusLabel(nextAppointment, nowMs)}
+                  </div>
+                </button>
+              ) : (
+                <div>
+                  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-500">Next appointment</div>
+                  <div className="mt-1 font-display text-2xl text-surface-900 dark:text-surface-50">No bookings left</div>
+                  <div className="mt-0.5 text-sm text-surface-600 dark:text-surface-400">Walk-ins and pickups are ready.</div>
+                </div>
+              )}
+              <div className="flex items-center gap-3 text-xs text-surface-600 dark:text-surface-400">
+                <span className="font-mono uppercase tracking-wider">Total appointments today</span>
+                <span className="font-display text-base text-surface-900 dark:text-surface-100">{appointments.length}</span>
+                <button type="button" onClick={onViewCalendar} className="ml-auto text-xs font-semibold text-primary-700 dark:text-primary-500 underline-offset-4 hover:underline">
+                  View calendar
+                </button>
               </div>
             </div>
-          )}
-          {appointments.map((appointment, index) => (
-            <button
-              key={appointment.id}
-              type="button"
-              onClick={() => onSelectAppointment(appointment)}
-              className={cn(
-                'flex min-w-[240px] items-center gap-3 rounded-xl border bg-white dark:bg-surface-800 px-4 py-3 text-left',
-                index === 0 ? 'border-l-2 border-l-primary-500 dark:border-l-[#fdeed0] border-surface-300 dark:border-surface-700' : 'border-surface-200 dark:border-surface-700',
-              )}
-            >
-              <div className={cn('min-w-[58px] font-display text-2xl leading-none tabular-nums', index === 0 ? 'text-primary-700 dark:text-primary-500' : 'text-surface-900 dark:text-surface-100')}>{formatTime(appointment.start_time)}</div>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-bold text-surface-900 dark:text-surface-50">
-                  {appointmentCustomerName(appointment)}
-                </div>
-                <div className="truncate text-[11.5px] text-surface-400">{appointmentNote(appointment)}</div>
-              </div>
-              <span className={cn('rounded-full px-2 py-1 font-mono text-[10px] font-semibold', index === 0 ? 'bg-[#e8a33d]/15 text-[#e8a33d]' : 'bg-surface-100 dark:bg-surface-700 text-surface-400')}>{appointmentStatusLabel(appointment, nowMs)}</span>
-            </button>
-          ))}
-        </div>
-      </section>
+            <div className="flex flex-col gap-2 self-center md:items-end">
+              <button
+                type="button"
+                onClick={onNewCustomer}
+                className="inline-flex min-w-[260px] items-center justify-center gap-2 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600"
+              >
+                + New customer
+              </button>
+              <button
+                type="button"
+                onClick={onWalkIn}
+                className="inline-flex min-w-[260px] items-center justify-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold text-surface-700 dark:text-surface-200 hover:text-primary-700 dark:hover:text-primary-400"
+              >
+                Walk-in · no profile
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {createCustomerOpen ? (
         <InlineCreateCustomerPanel
@@ -2576,18 +2616,7 @@ function CustomerGate({
             </div>
           </div>
         </section>
-      ) : (
-        <section className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center">
-          <div className="flex flex-col items-center gap-3">
-            <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600">
-              + Create new customer
-            </button>
-            <button type="button" onClick={onWalkIn} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-4 text-[15px] font-bold text-surface-900 dark:text-surface-100 hover:border-primary-500 dark:hover:border-primary-500/40">
-              Walk-in · no profile
-            </button>
-          </div>
-        </section>
-      )}
+      ) : null}
 
       {/* Two-section gate feed:
             1. Ready for pickup — capped at ~22vh (≈ 1/5 of screen) with
@@ -3207,6 +3236,81 @@ function SaleWorkspace({
   );
 }
 
+/**
+ * Inline-editable price chip for a cart row. Click the formatted price →
+ * input swap → Enter / blur to save, Esc to cancel. Updates the right
+ * field per item type:
+ *   • repair  → laborPrice (cents-int parsed from dollars float)
+ *   • product → unitPrice
+ *   • misc    → unitPrice
+ * lineAmount() pulls from these so the formatted display stays in sync.
+ */
+function CartLinePrice({ item, locked, onUpdate }: {
+  item: CartItem;
+  locked: boolean;
+  onUpdate: (id: string, updates: Partial<CartItem>) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Source-of-truth value for THIS line. Repairs render `lineAmount` which
+  // = labor − discount + parts; clicking the price puts the laborPrice
+  // alone into the input so editing it doesn't fight the parts math.
+  const editableValue = item.type === 'repair' ? item.laborPrice : item.unitPrice;
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(String(editableValue ?? 0));
+      // Defer focus to next tick so the input is mounted before select().
+      setTimeout(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }, 0);
+    }
+  }, [editing, editableValue]);
+
+  const commit = () => {
+    const next = parseMoney(draft);
+    if (Number.isFinite(next) && next >= 0) {
+      if (item.type === 'repair') onUpdate(item.id, { laborPrice: next } as Partial<CartItem>);
+      else onUpdate(item.id, { unitPrice: next } as Partial<CartItem>);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          else if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+        }}
+        className="w-24 rounded border border-primary-500 bg-white dark:bg-surface-900 px-2 py-0.5 text-right font-mono text-[14px] font-semibold text-surface-900 dark:text-surface-100 outline-none"
+        aria-label="Edit price"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={locked}
+      onClick={() => setEditing(true)}
+      title="Click to edit price"
+      className="rounded px-1 -mx-1 font-mono text-[15px] font-semibold text-surface-900 dark:text-surface-100 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+    >
+      {formatCurrency(lineAmount(item))}
+    </button>
+  );
+}
+
 function CartColumn({
   awake,
   locked,
@@ -3219,6 +3323,7 @@ function CartColumn({
   onEditLine,
   onRemoveLine,
   onQty,
+  onUpdateLine,
   onDiscount,
   onTender,
 }: {
@@ -3233,6 +3338,7 @@ function CartColumn({
   onEditLine: (item: CartItem) => void;
   onRemoveLine: (id: string) => void;
   onQty: (id: string, delta: number) => void;
+  onUpdateLine: (id: string, updates: Partial<CartItem>) => void;
   onDiscount: () => void;
   onTender: () => void;
 }) {
@@ -3311,7 +3417,7 @@ function CartColumn({
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-1.5">
-                        <div className="font-mono text-[15px] font-semibold text-surface-900 dark:text-surface-100">{formatCurrency(lineAmount(item))}</div>
+                        <CartLinePrice item={item} locked={locked} onUpdate={onUpdateLine} />
                         <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                           <button type="button" onClick={() => onEditLine(item)} disabled={locked} className="rounded p-1 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700" aria-label="Edit line"><Edit3 className="h-3 w-3" /></button>
                           <button type="button" onClick={() => onRemoveLine(item.id)} disabled={locked} className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40" aria-label="Remove line"><Trash2 className="h-3 w-3" /></button>
@@ -3509,13 +3615,13 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
   };
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
+    <div className="mx-auto flex h-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-3">
       <Stepper step="device" />
-      <Section className="p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <Section className="flex min-h-0 flex-1 flex-col p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <div className="font-display text-2xl">{categoryLabel}</div>
-            <div className="mt-0.5 text-sm text-surface-900 dark:text-surface-500">Pick the model · or scan IMEI / type to search.</div>
+            <div className="font-display text-xl">{categoryLabel}</div>
+            <div className="mt-0.5 text-xs text-surface-900 dark:text-surface-500">Pick the model · or scan IMEI / type to search.</div>
           </div>
           {draft.deviceName && (
             <Pill tone="success">{draft.deviceName}</Pill>
@@ -3560,90 +3666,91 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
           />
         </div>
 
-        {showSearch && (
-          <div className="mb-3 max-h-72 overflow-y-auto rounded-lg border border-surface-200 dark:border-surface-700">
-            {searchResults.length === 0 && !searchQuery.isFetching ? (
-              <p className="p-3 text-sm text-surface-400">No matching devices in catalog.</p>
-            ) : (
-              searchResults.map((d) => {
-                const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
-                return (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => pick(fullName)}
-                    className="flex w-full items-center gap-3 border-b border-surface-100 px-3 py-2.5 text-left text-sm last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
-                  >
-                    <span className="font-medium text-surface-900 dark:text-surface-100">{fullName}</span>
-                    <ChevronRight className="ml-auto h-4 w-4 text-surface-400" />
-                  </button>
-                );
-              })
-            )}
-          </div>
-        )}
-
-        {!showSearch && popularDevices.length > 0 && (
-          <div className="mb-3">
-            <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-surface-500">Popular</div>
-            <div className="flex flex-wrap gap-1.5">
-              {popularDevices.map((d) => {
-                const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
-                const active = draft.deviceName === fullName;
-                return (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => pick(fullName)}
-                    className={cn(
-                      'rounded-full border px-3 py-1 text-xs',
-                      active
-                        ? 'border-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-300'
-                        : 'border-surface-200 text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:text-surface-300',
-                    )}
-                  >
-                    {fullName}
-                  </button>
-                );
-              })}
+        {/* Models scroll inside this flex-1 / min-h-0 wrapper so the entire
+            step fits the viewport — header, manufacturer chips, search, and
+            footer all stay visible while the candidate list takes whatever
+            vertical space is left. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {showSearch && (
+            <div className="rounded-lg border border-surface-200 dark:border-surface-700">
+              {searchResults.length === 0 && !searchQuery.isFetching ? (
+                <p className="p-3 text-sm text-surface-400">No matching devices in catalog.</p>
+              ) : (
+                searchResults.map((d) => {
+                  const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => pick(fullName)}
+                      className="flex w-full items-center gap-3 border-b border-surface-100 px-3 py-2 text-left text-sm last:border-0 hover:bg-surface-50 dark:border-surface-800 dark:hover:bg-surface-800/50"
+                    >
+                      <span className="font-medium text-surface-900 dark:text-surface-100">{fullName}</span>
+                      <ChevronRight className="ml-auto h-4 w-4 text-surface-400" />
+                    </button>
+                  );
+                })
+              )}
             </div>
-          </div>
-        )}
+          )}
 
-        {!showSearch && popularDevices.length === 0 && !popularQuery.isLoading && (
-          <p className="mb-3 text-sm text-surface-500">Type to search or use the manufacturer chips above.</p>
-        )}
+          {!showSearch && popularDevices.length > 0 && (
+            <div>
+              <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-surface-500">Popular</div>
+              <div className="flex flex-wrap gap-1.5">
+                {popularDevices.map((d) => {
+                  const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
+                  const active = draft.deviceName === fullName;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => pick(fullName)}
+                      className={cn(
+                        'rounded-full border px-3 py-1 text-xs',
+                        active
+                          ? 'border-primary-500 bg-primary-500/15 text-primary-700 dark:text-primary-300'
+                          : 'border-surface-200 text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:text-surface-300',
+                      )}
+                    >
+                      {fullName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-        <div className="rounded-lg border border-dashed border-surface-300 p-3 dark:border-surface-700">
-          <div className="mb-2 text-xs font-semibold text-surface-700 dark:text-surface-300">Not in catalog? Free-text the model</div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={otherName}
-              onChange={(e) => setOtherName(e.target.value)}
-              placeholder={DEVICE_PLACEHOLDER[category] ?? 'Model name'}
-              className={cn(inputClass, 'flex-1')}
-            />
-            <button
-              type="button"
-              disabled={!otherName.trim()}
-              onClick={() => { pick(otherName.trim()); setOtherName(''); }}
-              className={cn(primaryButton, 'disabled:opacity-50 disabled:cursor-not-allowed')}
-            >
-              Use
-            </button>
-          </div>
+          {!showSearch && popularDevices.length === 0 && !popularQuery.isLoading && (
+            <p className="text-sm text-surface-500">Type to search or use the manufacturer chips above.</p>
+          )}
         </div>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold">IMEI or serial</span>
-            <input className={inputClass} value={draft.imei} onChange={(event) => setDraft((prev) => ({ ...prev, imei: event.target.value }))} placeholder="Scan or type" />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-semibold">Confirmed device name</span>
-            <input className={inputClass} value={draft.deviceName} onChange={(event) => setDraft((prev) => ({ ...prev, deviceName: event.target.value }))} placeholder="Model picked above" />
-          </label>
+        {/* Pinned footer: free-text + IMEI in one compact row so they're
+            always reachable without scrolling. */}
+        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto_220px]">
+          <input
+            type="text"
+            value={otherName}
+            onChange={(e) => setOtherName(e.target.value)}
+            placeholder={DEVICE_PLACEHOLDER[category] ?? 'Free-text the model'}
+            className={inputClass}
+          />
+          <button
+            type="button"
+            disabled={!otherName.trim()}
+            onClick={() => { pick(otherName.trim()); setOtherName(''); }}
+            className={cn(primaryButton, 'disabled:opacity-50 disabled:cursor-not-allowed')}
+          >
+            Use as model
+          </button>
+          <input
+            className={inputClass}
+            value={draft.imei}
+            onChange={(event) => setDraft((prev) => ({ ...prev, imei: event.target.value }))}
+            placeholder="Scan IMEI / serial"
+            aria-label="IMEI or serial"
+          />
         </div>
       </Section>
       <WizardFooter onBack={onBack} backLabel="Back" onContinue={onContinue} />
