@@ -5,7 +5,7 @@ interface TaxClass {
   id: number;
   name: string;
   rate: number;
-  is_default?: boolean;
+  is_default?: boolean | number;
 }
 
 /**
@@ -41,7 +41,7 @@ export function useDefaultTaxRateWithStatus(): { rate: number; isLoaded: boolean
   const taxClasses: TaxClass[] = Array.isArray(payload) ? payload : [];
 
   const defaultClass =
-    taxClasses.find((tc) => tc.is_default) ?? taxClasses[0] ?? null;
+    taxClasses.find((tc) => Number(tc.is_default) === 1) ?? taxClasses[0] ?? null;
 
   return {
     rate: defaultClass ? defaultClass.rate / 100 : 0,

@@ -13,6 +13,7 @@ import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatPhone, formatDate } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
+import { normalizeListSearchKeyword } from '@/utils/listSearch';
 
 // WEB-FK-004 / FIXED-by-Fixer-A12 2026-04-25 — normalize lead.source to a
 // canonical channel set so attribution roll-ups aren't fragmented by
@@ -85,6 +86,7 @@ const LEAD_STATUSES = [
   { value: 'lost', label: 'Lost', color: '#ef4444' },
 ] as const;
 const LEAD_STATUS_FILTERS = [{ value: '', label: 'All' }, ...LEAD_STATUSES] as const;
+const VALID_LEAD_STATUS_FILTERS: ReadonlySet<string> = new Set(LEAD_STATUS_FILTERS.map((status) => status.value));
 
 const SERVICE_TYPE_LABELS: Record<number, string> = {
   1: 'Mail In',
@@ -360,9 +362,11 @@ export function LeadListPage() {
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('leads_pagesize') || '25');
   const keyword = searchParams.get('keyword') || '';
-  const statusFilter = searchParams.get('status') || '';
+  const rawStatusFilter = searchParams.get('status') || '';
+  const statusFilter = VALID_LEAD_STATUS_FILTERS.has(rawStatusFilter) ? rawStatusFilter : '';
   const sortBy = (searchParams.get('sort_by') || 'created_at') as string;
   const sortOrder = ((searchParams.get('sort_order') || 'DESC').toUpperCase()) as 'ASC' | 'DESC';
+  const serverKeyword = normalizeListSearchKeyword(keyword);
 
   const [searchInput, setSearchInput] = useState(keyword);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -382,13 +386,24 @@ export function LeadListPage() {
     debounceRef.current = setTimeout(() => {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
-        if (searchInput) next.set('keyword', searchInput); else next.delete('keyword');
+        const trimmed = searchInput.trim();
+        if (trimmed) next.set('keyword', trimmed); else next.delete('keyword');
         next.set('page', '1');
         return next;
       });
     }, 400);
     return () => clearTimeout(debounceRef.current);
   }, [searchInput, setSearchParams]);
+
+  useEffect(() => {
+    if (!rawStatusFilter || VALID_LEAD_STATUS_FILTERS.has(rawStatusFilter)) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('status');
+      next.set('page', '1');
+      return next;
+    }, { replace: true });
+  }, [rawStatusFilter, setSearchParams]);
 
   // Clear selection when page/filters change
   useEffect(() => { setSelectedIds(new Set()); }, [page, keyword, statusFilter, sortBy, sortOrder]);
@@ -433,7 +448,7 @@ export function LeadListPage() {
   const leadParams = {
     page,
     pagesize: pageSize,
-    ...(keyword ? { keyword } : {}),
+    ...(serverKeyword ? { keyword: serverKeyword } : {}),
     ...(statusFilter ? { status: statusFilter } : {}),
     sort_by: sortBy,
     sort_order: sortOrder,

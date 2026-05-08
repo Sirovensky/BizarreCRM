@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, Link as LinkIcon } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, Link as LinkIcon, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
@@ -35,6 +35,7 @@ interface Subscription {
 }
 
 type StatusFilter = 'all' | Exclude<SubStatus, 'cancelled'>;
+type CancelMode = 'period_end' | 'immediate';
 
 const PAGE_SIZE = 10;
 const STATUS_FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
@@ -97,6 +98,8 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
 export function SubscriptionsListPage() {
   const queryClient = useQueryClient();
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [cancelDialogSub, setCancelDialogSub] = useState<Subscription | null>(null);
+  const [cancelMode, setCancelMode] = useState<CancelMode>('period_end');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
@@ -111,14 +114,20 @@ export function SubscriptionsListPage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: number) => membershipApi.cancel(id, { immediate: true }),
+    mutationFn: ({ sub, immediate }: { sub: Subscription; immediate: boolean }) =>
+      membershipApi.cancel(sub.id, { immediate }),
     // WEB-UIUX-1070: also invalidate customer membership cache so CustomerDetailPage stays in sync
-    onSuccess: (_data, id) => {
+    onSuccess: (res, { sub, immediate }) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      const sub = (data ?? []).find((s) => s.id === id);
-      if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
-      toast.success('Subscription cancelled');
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
+      const serverImmediate = ((res.data as { data?: { immediate?: boolean } })?.data?.immediate ?? immediate) === true;
+      toast.success(
+        serverImmediate
+          ? 'Subscription cancelled immediately'
+          : `Cancellation scheduled for ${sub.current_period_end ? formatDate(sub.current_period_end) : 'period end'}`,
+      );
       setCancellingId(null);
+      setCancelDialogSub(null);
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err));
@@ -148,9 +157,10 @@ export function SubscriptionsListPage() {
   const [pausingId, setPausingId] = useState<number | null>(null);
   const [resumingId, setResumingId] = useState<number | null>(null);
   const pauseMut = useMutation({
-    mutationFn: (id: number) => membershipApi.pause(id),
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      membershipApi.pause(id, reason ? { reason } : undefined),
     // WEB-UIUX-1070: invalidate both query keys
-    onSuccess: (_result, id) => {
+    onSuccess: (_result, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       const sub = (data ?? []).find((s) => s.id === id);
       if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
@@ -181,9 +191,15 @@ export function SubscriptionsListPage() {
   // WEB-UIUX-1074: send-payment-link mutation for subs without blockchyp_token
   const [paymentLinkId, setPaymentLinkId] = useState<number | null>(null);
   const paymentLinkMut = useMutation({
-    mutationFn: (id: number) => membershipApi.createPaymentLink(id),
-    onSuccess: (res, id) => {
-      const url: string = (res.data as any)?.url ?? '';
+    mutationFn: (sub: Subscription) =>
+      membershipApi.createPaymentLink({ tier_id: sub.tier_id, customer_id: sub.customer_id }),
+    onSuccess: (res) => {
+      const url: string = (res.data as { data?: { linkUrl?: string } })?.data?.linkUrl ?? '';
+      if (!url) {
+        toast.error('Payment link was not returned');
+        setPaymentLinkId(null);
+        return;
+      }
       toast(
         (t) => (
           <span>
@@ -228,8 +244,10 @@ export function SubscriptionsListPage() {
         { title: 'Pause subscription?', confirmLabel: 'Pause' },
       );
       if (!ok) return;
+      const reasonInput = window.prompt('Reason for pausing this membership (optional):') ?? '';
+      const reason = reasonInput.trim();
       setPausingId(sub.id);
-      pauseMut.mutate(sub.id);
+      pauseMut.mutate({ id: sub.id, reason: reason || undefined });
     } catch (err) {
       toast.error(formatApiError(err));
     }
@@ -250,25 +268,9 @@ export function SubscriptionsListPage() {
     }
   }
 
-  async function handleCancel(sub: Subscription): Promise<void> {
-    // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
-    try {
-      // WEB-UIUX-1498: surface cancellation impact so staff know what the customer loses
-      const chargeAmt = sub.last_charge_amount ?? sub.monthly_price;
-      const chargeDate = sub.current_period_end ? formatDate(sub.current_period_end) : null;
-      const impactLine = `Customer loses ${sub.tier_name} discount + benefits today.`
-        + (chargeDate && chargeAmt != null ? ` Last charge ${chargeDate}, ${formatCurrency(chargeAmt)}.` : '')
-        + ' No refund issued — see Refund flow if needed.';
-      const ok = await confirm(
-        `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership?\n\n${impactLine}`,
-        { title: 'Cancel subscription?', confirmLabel: 'Cancel subscription', danger: true },
-      );
-      if (!ok) return;
-      setCancellingId(sub.id);
-      cancelMutation.mutate(sub.id);
-    } catch (err) {
-      toast.error(formatApiError(err));
-    }
+  function handleCancel(sub: Subscription): void {
+    setCancelMode('period_end');
+    setCancelDialogSub(sub);
   }
 
   const subs = data ?? [];
@@ -317,6 +319,13 @@ export function SubscriptionsListPage() {
     setPage(1);
   }
 
+  const cancelPeriodEndLabel = cancelDialogSub?.current_period_end
+    ? formatDate(cancelDialogSub.current_period_end)
+    : 'the current period end';
+  const cancelChargeAmt = cancelDialogSub
+    ? cancelDialogSub.last_charge_amount ?? cancelDialogSub.monthly_price
+    : null;
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header — WEB-UIUX-1061: removed decoy "Run billing now" header button;
@@ -334,6 +343,13 @@ export function SubscriptionsListPage() {
             )}
           </div>
         </div>
+        <Link
+          to="/customers"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700"
+        >
+          <UserPlus className="h-4 w-4" />
+          Enroll customer
+        </Link>
       </div>
 
       {!isLoading && !isError && (subs.length > 0 || filtersActive) ? (
@@ -488,7 +504,7 @@ export function SubscriptionsListPage() {
                       {(sub.status === 'active' || sub.status === 'past_due') && !sub.blockchyp_token && (
                         <AdminOnly>
                           <button
-                            onClick={() => { setPaymentLinkId(sub.id); paymentLinkMut.mutate(sub.id); }}
+                            onClick={() => { setPaymentLinkId(sub.id); paymentLinkMut.mutate(sub); }}
                             disabled={paymentLinkId === sub.id}
                             className="flex items-center gap-1 text-surface-500 hover:text-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
                             title="Send payment link"
@@ -579,6 +595,117 @@ export function SubscriptionsListPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {cancelDialogSub && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="presentation"
+          onClick={() => { if (!cancelMutation.isPending) setCancelDialogSub(null); }}
+        >
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscription-cancel-title"
+            className="w-full max-w-lg rounded-xl border border-surface-200 bg-white p-5 shadow-xl dark:border-surface-700 dark:bg-surface-900"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              setCancellingId(cancelDialogSub.id);
+              cancelMutation.mutate({ sub: cancelDialogSub, immediate: cancelMode === 'immediate' });
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-red-50 p-2 text-red-600 dark:bg-red-900/30 dark:text-red-300">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 id="subscription-cancel-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">
+                  Cancel membership
+                </h2>
+                <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+                  {cancelDialogSub.first_name} {cancelDialogSub.last_name} is on {cancelDialogSub.tier_name}
+                  {cancelChargeAmt != null ? ` at ${formatCurrency(cancelChargeAmt)}/mo` : ''}.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <label
+                className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
+                  cancelMode === 'period_end'
+                    ? 'border-primary-400 bg-primary-50 dark:border-primary-500/70 dark:bg-primary-900/20'
+                    : 'border-surface-200 dark:border-surface-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="subscription-cancel-mode"
+                  value="period_end"
+                  checked={cancelMode === 'period_end'}
+                  onChange={() => setCancelMode('period_end')}
+                  className="mt-1 h-4 w-4 border-surface-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-surface-900 dark:text-surface-100">
+                    Cancel at period end
+                  </span>
+                  <span className="mt-0.5 block text-xs text-surface-500 dark:text-surface-400">
+                    Keep benefits until {cancelPeriodEndLabel}. No refund is issued automatically.
+                  </span>
+                </span>
+              </label>
+
+              <label
+                className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
+                  cancelMode === 'immediate'
+                    ? 'border-red-400 bg-red-50 dark:border-red-500/70 dark:bg-red-900/20'
+                    : 'border-surface-200 dark:border-surface-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="subscription-cancel-mode"
+                  value="immediate"
+                  checked={cancelMode === 'immediate'}
+                  onChange={() => setCancelMode('immediate')}
+                  className="mt-1 h-4 w-4 border-surface-300 text-red-600 focus:ring-red-500"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-surface-900 dark:text-surface-100">
+                    Cancel immediately
+                  </span>
+                  <span className="mt-0.5 block text-xs text-surface-500 dark:text-surface-400">
+                    Stop discounts and membership benefits today. Use Refunds separately if money is owed back.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelDialogSub(null)}
+                disabled={cancelMutation.isPending}
+                className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+              >
+                Keep membership
+              </button>
+              <button
+                type="submit"
+                disabled={cancelMutation.isPending}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                  cancelMode === 'immediate'
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                }`}
+              >
+                {cancelMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {cancelMode === 'immediate' ? 'Cancel immediately' : 'Schedule cancel'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

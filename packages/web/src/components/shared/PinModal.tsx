@@ -8,7 +8,10 @@ const FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), [tabi
 
 interface PinModalProps {
   title?: string;
-  onSuccess: () => void;
+  description?: string;
+  submitLabel?: string;
+  verifyPin?: (pin: string) => Promise<unknown>;
+  onSuccess: (pin: string) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -56,7 +59,14 @@ function clearPersistedLockout(): void {
   catch { /* ignore */ }
 }
 
-export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel }: PinModalProps) {
+export function PinModal({
+  title = 'Enter PIN to continue',
+  description,
+  submitLabel = 'Verify',
+  verifyPin = (pin: string) => authApi.verifyPin(pin),
+  onSuccess,
+  onCancel,
+}: PinModalProps) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [verifying, setVerifying] = useState(false);
@@ -157,11 +167,11 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
     setError('');
 
     try {
-      await authApi.verifyPin(pin);
+      await verifyPin(pin);
       // SCAN-1168: on success, reset persisted counters so the next gated
       // action doesn't inherit a stale failCount on this tab.
       clearPersistedLockout();
-      onSuccess();
+      await onSuccess(pin);
     } catch {
       const newCount = failCount + 1;
       setFailCount(newCount);
@@ -214,6 +224,9 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          {description && (
+            <p className="text-sm text-surface-500 dark:text-surface-400">{description}</p>
+          )}
           {/* SCAN-1163: stop browser password managers (Chrome, 1Password,
               Bitwarden) from offering to save the clock-in PIN as a credential
               for the app origin — a 4-6 digit kiosk PIN is explicitly NOT a
@@ -268,7 +281,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
               fullWidth
               leadingIcon={verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
             >
-              Verify
+              {submitLabel}
             </Button>
           </div>
         </form>

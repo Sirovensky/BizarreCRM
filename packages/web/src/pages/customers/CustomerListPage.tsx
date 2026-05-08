@@ -44,6 +44,7 @@ import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
 import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
+import { normalizeListSearchKeyword } from '@/utils/listSearch';
 import type { Customer } from '@bizarre-crm/shared';
 
 const DEVICE_NAME_REGEX = /\b(laptop|phone|iphone|ipad|samsung|dell|hp|macbook|lenovo|asus|acer|surface|pixel|galaxy|chromebook|thinkpad|tablet|kindle|airpod|watch|drone|xbox|playstation|nintendo|switch|console)\b/i;
@@ -60,6 +61,8 @@ export function CustomerListPage() {
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('customers_pagesize') || '25');
   const keyword = searchParams.get('keyword') || '';
+  const serverKeyword = normalizeListSearchKeyword(keyword);
+  const todayDate = new Date().toISOString().slice(0, 10);
 
   const [searchInput, setSearchInput] = useState(keyword);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -75,6 +78,7 @@ export function CustomerListPage() {
   const [fromDate, setFromDate] = useState(searchParams.get('from_date') || '');
   const [toDate, setToDate] = useState(searchParams.get('to_date') || '');
   const [hasOpenTickets, setHasOpenTickets] = useState(searchParams.get('has_open_tickets') || '');
+  const fromDateMax = toDate && toDate < todayDate ? toDate : todayDate;
 
   // Import modal
   const [showImportModal, setShowImportModal] = useState(false);
@@ -89,6 +93,12 @@ export function CustomerListPage() {
   const [showTagInput, setShowTagInput] = useState(false);
   const [tagValue, setTagValue] = useState('');
 
+  useEffect(() => {
+    setSelected(new Set());
+    setShowTagInput(false);
+    setTagValue('');
+  }, [searchParams]);
+
   // Debounced search (skip on mount to avoid resetting page to 1)
   const prevKeywordRef = useRef(searchInput);
   useEffect(() => {
@@ -96,8 +106,9 @@ export function CustomerListPage() {
     prevKeywordRef.current = searchInput;
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams);
-      if (searchInput) {
-        params.set('keyword', searchInput);
+      const trimmed = searchInput.trim();
+      if (trimmed) {
+        params.set('keyword', trimmed);
       } else {
         params.delete('keyword');
       }
@@ -109,9 +120,16 @@ export function CustomerListPage() {
 
   const applyFilters = () => {
     const p = new URLSearchParams(searchParams);
+    let nextFrom = fromDate > todayDate ? todayDate : fromDate;
+    let nextTo = toDate > todayDate ? todayDate : toDate;
+    if (nextFrom && nextTo && nextFrom > nextTo) {
+      [nextFrom, nextTo] = [nextTo, nextFrom];
+    }
+    if (nextFrom !== fromDate) setFromDate(nextFrom);
+    if (nextTo !== toDate) setToDate(nextTo);
     if (groupId) p.set('group_id', groupId); else p.delete('group_id');
-    if (fromDate) p.set('from_date', fromDate); else p.delete('from_date');
-    if (toDate) p.set('to_date', toDate); else p.delete('to_date');
+    if (nextFrom) p.set('from_date', nextFrom); else p.delete('from_date');
+    if (nextTo) p.set('to_date', nextTo); else p.delete('to_date');
     if (hasOpenTickets) p.set('has_open_tickets', hasOpenTickets); else p.delete('has_open_tickets');
     p.set('page', '1');
     setSearchParams(p, { replace: true });
@@ -153,7 +171,7 @@ export function CustomerListPage() {
   // Fetch customers with stats
   const { data, isLoading, isError } = useQuery({
     queryKey: ['customers', {
-      page, pageSize, keyword,
+      page, pageSize, keyword: serverKeyword,
       sort_by: serverSortBy, sort_order: sortOrder,
       include_stats: '1',
       group_id: searchParams.get('group_id') || undefined,
@@ -164,7 +182,7 @@ export function CustomerListPage() {
     queryFn: () =>
       customerApi.list({
         page, pagesize: pageSize,
-        keyword: keyword || undefined,
+        keyword: serverKeyword || undefined,
         sort_by: serverSortBy, sort_order: sortOrder,
         include_stats: '1',
         group_id: searchParams.get('group_id') ? parseInt(searchParams.get('group_id')!) : undefined,
@@ -325,7 +343,7 @@ export function CustomerListPage() {
         const res = await customerApi.list({
           page: exportPage,
           pagesize: exportPageSize,
-          keyword: keyword || undefined,
+          keyword: serverKeyword || undefined,
           sort_by: serverSortBy,
           sort_order: sortOrder,
           group_id: searchParams.get('group_id') ? parseInt(searchParams.get('group_id')!) : undefined,
@@ -643,12 +661,12 @@ export function CustomerListPage() {
           </div>
           <div>
             <label htmlFor="clist-filter-from" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created From</label>
-            <input id="clist-filter-from" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+            <input id="clist-filter-from" type="date" value={fromDate} max={fromDateMax} onChange={e => setFromDate(e.target.value)}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
             <label htmlFor="clist-filter-to" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created To</label>
-            <input id="clist-filter-to" type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+            <input id="clist-filter-to" type="date" value={toDate} min={fromDate || undefined} max={todayDate} onChange={e => setToDate(e.target.value)}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>

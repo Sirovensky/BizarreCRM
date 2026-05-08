@@ -17,6 +17,10 @@ interface ZReport {
   shift_id: number;
   opened_at: string;
   closed_at: string;
+  shift_duration_minutes: number | null;
+  cashier: ZReportActor | null;
+  manager: ZReportActor | null;
+  station: ZReportStationContext;
   opening_float_cents: number;
   expected_cents: number;
   counted_cents: number;
@@ -28,6 +32,18 @@ interface ZReport {
     net_cents: number;
     transaction_count: number;
   };
+}
+
+interface ZReportActor {
+  id: number;
+  name: string;
+  role: string | null;
+}
+
+interface ZReportStationContext {
+  id: number | null;
+  name: string | null;
+  unavailable_reason?: string;
 }
 
 interface ZReportResponse {
@@ -47,6 +63,20 @@ interface ZReportModalProps {
 function formatSignedCents(cents: number): string {
   if (!Number.isFinite(cents)) return formatCents(0);
   return formatCents(cents);
+}
+
+function formatActor(actor: ZReportActor | null, fallback: string): string {
+  if (!actor) return fallback;
+  return actor.role ? `${actor.name} (${actor.role})` : actor.name;
+}
+
+function formatDuration(minutes: number | null): string {
+  if (minutes === null || !Number.isFinite(minutes)) return 'Unavailable';
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) return `${mins} min`;
+  if (mins === 0) return `${hours} hr${hours === 1 ? '' : 's'}`;
+  return `${hours} hr${hours === 1 ? '' : 's'} ${mins} min`;
 }
 
 export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
@@ -154,6 +184,18 @@ function ZReportBody({ report }: ZReportBodyProps) {
       <div className="space-y-1 text-xs text-surface-500 dark:text-surface-400">
         <div>Opened: {formatDateTime(report.opened_at)}</div>
         <div>Closed: {formatDateTime(report.closed_at)}</div>
+      </div>
+
+      <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+        <ReportRow label="Cashier" value={formatActor(report.cashier, 'Unavailable')} />
+        <ReportRow label="Manager" value={formatActor(report.manager, 'Not closed yet')} />
+        <ReportRow label="Duration" value={formatDuration(report.shift_duration_minutes)} />
+        <ReportRow label="Station" value={report.station.name ?? 'Not captured'} />
+        {!report.station.name && report.station.unavailable_reason && (
+          <div className="pt-1 text-[11px] leading-snug text-surface-500 dark:text-surface-400">
+            {report.station.unavailable_reason}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">

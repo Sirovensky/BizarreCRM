@@ -110,6 +110,29 @@ interface StoreConfigRow {
   value: string | null;
 }
 
+interface ZReportActorRow {
+  id: number;
+  username: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  role: string | null;
+}
+
+interface ZReportActor {
+  id: number;
+  name: string;
+  role: string | null;
+}
+
+interface ZReportStationContext {
+  id: number | null;
+  name: string | null;
+  unavailable_reason?: string;
+}
+
+const Z_REPORT_STATION_UNAVAILABLE_REASON =
+  'cash_drawer_shifts does not store workstation_id or station_id, so the source station cannot be reported yet.';
+
 // ────────────────────────────────────────────────────────────────────────────
 // 1. TODAY'S TOP 5 QUICK-ADD TILES (audit §43.1)
 // ────────────────────────────────────────────────────────────────────────────
@@ -339,7 +362,14 @@ router.post(
       shift.opening_float_cents,
     );
     const varianceCents = countedCents - expectedCents;
-    const zReport = await buildZReport(adb, shift, closedAt, countedCents, expectedCents, varianceCents);
+    const zReport = await buildZReport(
+      adb,
+      { ...shift, closed_by_user_id: req.user!.id },
+      closedAt,
+      countedCents,
+      expectedCents,
+      varianceCents,
+    );
     const zReportJson = JSON.stringify(zReport);
 
     const db = req.db;
@@ -392,6 +422,10 @@ interface ZReport {
   shift_id: number;
   opened_at: string;
   closed_at: string;
+  shift_duration_minutes: number | null;
+  cashier: ZReportActor | null;
+  manager: ZReportActor | null;
+  station: ZReportStationContext;
   opening_float_cents: number;
   expected_cents: number;
   counted_cents: number;
@@ -402,6 +436,56 @@ interface ZReport {
     refund_cents: number;
     net_cents: number;
     transaction_count: number;
+  };
+}
+
+function zReportActorName(row: ZReportActorRow): string {
+  const fullName = `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim();
+  return fullName || row.username || `User #${row.id}`;
+}
+
+async function getZReportActor(adb: AsyncDb, userId: number | null): Promise<ZReportActor | null> {
+  if (!userId) return null;
+
+  const row = await adb.get<ZReportActorRow>(
+    `SELECT id, username, first_name, last_name, role FROM users WHERE id = ?`,
+    userId,
+  );
+
+  if (!row) return { id: userId, name: `User #${userId}`, role: null };
+
+  return {
+    id: row.id,
+    name: zReportActorName(row),
+    role: row.role ?? null,
+  };
+}
+
+function computeShiftDurationMinutes(openedAt: string, closedAt: string): number | null {
+  const openedMs = Date.parse(openedAt);
+  const closedMs = Date.parse(closedAt);
+  if (!Number.isFinite(openedMs) || !Number.isFinite(closedMs) || closedMs < openedMs) {
+    return null;
+  }
+  return Math.round((closedMs - openedMs) / 60_000);
+}
+
+async function addZReportContext(adb: AsyncDb, report: ZReport, shift: DrawerShiftRow): Promise<ZReport> {
+  const [cashier, manager] = await Promise.all([
+    getZReportActor(adb, shift.opened_by_user_id),
+    getZReportActor(adb, shift.closed_by_user_id),
+  ]);
+
+  return {
+    ...report,
+    shift_duration_minutes: computeShiftDurationMinutes(report.opened_at, report.closed_at),
+    cashier,
+    manager,
+    station: {
+      id: null,
+      name: null,
+      unavailable_reason: Z_REPORT_STATION_UNAVAILABLE_REASON,
+    },
   };
 }
 
@@ -445,10 +529,18 @@ async function buildZReport(
     closedAt,
   );
 
-  return {
+  const report: ZReport = {
     shift_id: shift.id,
     opened_at: shift.opened_at,
     closed_at: closedAt,
+    shift_duration_minutes: null,
+    cashier: null,
+    manager: null,
+    station: {
+      id: null,
+      name: null,
+      unavailable_reason: Z_REPORT_STATION_UNAVAILABLE_REASON,
+    },
     opening_float_cents: shift.opening_float_cents,
     expected_cents: expectedCents,
     counted_cents: countedCents,
@@ -456,6 +548,8 @@ async function buildZReport(
     payment_breakdown: breakdown,
     totals: totalsRow ?? { gross_cents: 0, refund_cents: 0, net_cents: 0, transaction_count: 0 },
   };
+
+  return addZReportContext(adb, report, shift);
 }
 
 router.get(
@@ -475,7 +569,7 @@ router.get(
     if (shift.z_report_json) {
       try {
         const cached = JSON.parse(shift.z_report_json) as ZReport;
-        res.json({ success: true, data: cached });
+        res.json({ success: true, data: await addZReportContext(adb, cached, shift) });
         return;
       } catch {
         logger.warn('z-report cache parse failed — rebuilding', { shift_id: shiftId });

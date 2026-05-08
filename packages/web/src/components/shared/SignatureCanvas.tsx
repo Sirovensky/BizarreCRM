@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useId } from 'react';
 import { Eraser } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -14,6 +14,7 @@ interface SignatureCanvasProps {
 const LIGHT_PEN_COLOR = '#1e293b';
 const DARK_PEN_COLOR = '#e2e8f0';
 const SIGNATURE_GUIDE_FONT = '12px Jost, Futura, system-ui, sans-serif';
+const TYPED_SIGNATURE_FONT_FAMILY = '"Segoe Script", "Brush Script MT", cursive';
 
 /**
  * PDF3 fix: hard cap on the signature base64 payload. Writing a 500 KB
@@ -36,6 +37,27 @@ function getGuideColors() {
   };
 }
 
+function drawSignatureGuide(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  penColor: string,
+) {
+  ctx.clearRect(0, 0, width, height);
+  const { baselineColor, hintColor } = getGuideColors();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = baselineColor;
+  ctx.beginPath();
+  ctx.moveTo(20, height - 30);
+  ctx.lineTo(width - 20, height - 30);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = penColor;
+  ctx.fillStyle = hintColor;
+  ctx.font = SIGNATURE_GUIDE_FONT;
+  ctx.fillText('Sign here', 20, height - 12);
+}
+
 function computePenColor(explicit?: string): string {
   if (explicit) return explicit;
   const cssVar = (typeof getComputedStyle !== 'undefined'
@@ -43,6 +65,17 @@ function computePenColor(explicit?: string): string {
     : '');
   if (cssVar) return cssVar;
   return isDarkMode() ? DARK_PEN_COLOR : LIGHT_PEN_COLOR;
+}
+
+function canvasSignatureDataUrl(canvas: HTMLCanvasElement): string | null {
+  let dataUrl = canvas.toDataURL('image/png');
+  if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+  }
+  if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+  }
+  return dataUrl.length > SIGNATURE_MAX_BYTES ? null : dataUrl;
 }
 
 const STROKE_THRESHOLD = 2; // px — minimum movement before a stroke is committed
@@ -73,8 +106,10 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     };
   }, [penColor]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const typedSignatureId = useId();
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialValue);
+  const [typedSignature, setTypedSignature] = useState('');
   // WEB-UIUX-462: track pending stroke start position so we only commit the
   // stroke once the pointer has moved beyond STROKE_THRESHOLD pixels. A bare
   // tap on the "Sign here" hint area otherwise immediately marks a stroke.
@@ -97,24 +132,13 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     // unexpected image loads.
     if (initialValue && typeof initialValue === 'string' && initialValue.startsWith('data:image/')) {
       const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0);
+      img.onload = () => {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0);
+      };
       img.src = initialValue;
     } else {
-      // Draw baseline with theme-aware colors
-      const { baselineColor, hintColor } = getGuideColors();
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = baselineColor;
-      ctx.beginPath();
-      ctx.moveTo(20, height - 30);
-      ctx.lineTo(width - 20, height - 30);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.strokeStyle = resolvedPenColor;
-
-      // "Sign here" text
-      ctx.fillStyle = hintColor;
-      ctx.font = SIGNATURE_GUIDE_FONT;
-      ctx.fillText('Sign here', 20, height - 12);
+      drawSignatureGuide(ctx, width, height, resolvedPenColor);
     }
   }, [initialValue, width, height, resolvedPenColor]);
 
@@ -188,16 +212,8 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     if (!isDrawing) return;
     setIsDrawing(false);
     if (!canvasRef.current) return;
-    // Start at full-quality PNG; if that blows the size cap, fall back to
-    // progressively lower-quality JPEG, then reject outright.
-    let dataUrl = canvasRef.current.toDataURL('image/png');
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
-      dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.7);
-    }
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
-      dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.4);
-    }
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+    const dataUrl = canvasSignatureDataUrl(canvasRef.current);
+    if (!dataUrl) {
       toast.error('Signature is too large to save. Please try a simpler signature.');
       // SCAN-1118: previously `hasSignature` stayed `true` after a size-cap
       // rejection — ink on screen with nothing actually saved, so the "Save"
@@ -209,27 +225,42 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     onSave(dataUrl);
   }, [isDrawing, onSave]);
 
+  const applyTypedSignature = useCallback(() => {
+    const canvas = canvasRef.current;
+    const text = typedSignature.trim();
+    if (!canvas || !text) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    drawSignatureGuide(ctx, width, height, resolvedPenColor);
+    ctx.fillStyle = resolvedPenColor;
+    ctx.textBaseline = 'alphabetic';
+    const maxTextWidth = width - 40;
+    let fontSize = Math.min(36, Math.max(22, Math.floor(height * 0.28)));
+    do {
+      ctx.font = fontSize + 'px ' + TYPED_SIGNATURE_FONT_FAMILY;
+      fontSize -= 2;
+    } while (ctx.measureText(text).width > maxTextWidth && fontSize >= 18);
+    ctx.fillText(text, 20, height - 40, maxTextWidth);
+
+    const dataUrl = canvasSignatureDataUrl(canvas);
+    if (!dataUrl) {
+      toast.error('Signature is too large to save. Please try a shorter typed signature.');
+      clearRef.current();
+      return;
+    }
+    setHasSignature(true);
+    onSave(dataUrl);
+  }, [height, onSave, resolvedPenColor, typedSignature, width]);
+
   const clear = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawSignatureGuide(ctx, width, height, resolvedPenColor);
 
-    // Redraw baseline with theme-aware colors
-    const { baselineColor, hintColor } = getGuideColors();
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = baselineColor;
-    ctx.beginPath();
-    ctx.moveTo(20, height - 30);
-    ctx.lineTo(width - 20, height - 30);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.strokeStyle = resolvedPenColor;
-    ctx.fillStyle = hintColor;
-    ctx.font = SIGNATURE_GUIDE_FONT;
-    ctx.fillText('Sign here', 20, height - 12);
-
+    setTypedSignature('');
     setHasSignature(false);
     onSave('');
   }, [height, width, onSave, resolvedPenColor]);
@@ -318,6 +349,31 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
           onMouseUp={endDraw}
           onMouseLeave={endDraw}
         />
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <label htmlFor={typedSignatureId} className="sr-only">Typed signature</label>
+        <input
+          id={typedSignatureId}
+          type="text"
+          value={typedSignature}
+          onChange={(e) => setTypedSignature(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              applyTypedSignature();
+            }
+          }}
+          className="min-h-[36px] min-w-0 flex-1 rounded-md border border-surface-300 bg-white px-3 py-1.5 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+          placeholder="Typed signature"
+        />
+        <button
+          type="button"
+          onClick={applyTypedSignature}
+          disabled={!typedSignature.trim()}
+          className="btn btn-xs btn-secondary whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+        >
+          Use typed signature
+        </button>
       </div>
       {hasSignature && (
         <button type="button" onClick={clear} className="btn btn-xs btn-ghost gap-1 text-surface-500 hover:text-red-500">

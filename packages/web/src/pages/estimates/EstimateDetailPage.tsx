@@ -11,7 +11,7 @@ import type { EstimateSignature, EstimateSignPublicSummary } from '@/api/endpoin
 import { confirm, useConfirmStore } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatPhone } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
@@ -383,7 +383,7 @@ export function EstimateDetailPage() {
         { duration: 8000 },
       );
     },
-    onError: () => toast.error('Failed to convert'),
+    onError: (err: any) => toast.error(formatApiError(err) || 'Failed to convert'),
   });
 
   const updateMut = useMutation({
@@ -494,6 +494,8 @@ export function EstimateDetailPage() {
   const canStartSigning =
     canManageSigning &&
     !estimateContentLocked;
+  const destinationPhone = estimate.customer_mobile || estimate.customer_phone || '';
+  const formattedDestinationPhone = destinationPhone ? formatPhone(destinationPhone) : '';
 
   return (
     <div>
@@ -543,7 +545,9 @@ export function EstimateDetailPage() {
             <button
               onClick={async () => {
                 try {
-                  const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
+                  const action = estimate.status === 'sent' ? 'Resend' : 'Send';
+                  const target = formattedDestinationPhone ? ` to ${formattedDestinationPhone}` : ' to the customer';
+                  const msg = `${action} this estimate${target} via SMS?`;
                   if (await confirm(msg)) sendMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
@@ -661,7 +665,7 @@ export function EstimateDetailPage() {
             <button
               onClick={async () => {
                 try {
-                  if (await confirm('Mark this estimate as rejected? This cannot be undone.', { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true }))
+                  if (await confirm('Reject this estimate? It will leave the active approval flow, but it is not permanently deleted.', { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true }))
                     rejectMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
@@ -985,6 +989,12 @@ export function EstimateDetailPage() {
                 <div className="flex justify-between">
                   <dt className="text-surface-500">Sent</dt>
                   <dd className="text-surface-900 dark:text-surface-100">{formatDate(estimate.sent_at)}</dd>
+                </div>
+              )}
+              {estimate.approval_token_expires_at && (
+                <div className="flex justify-between">
+                  <dt className="text-surface-500">Approval Link Expires</dt>
+                  <dd className="text-right text-surface-900 dark:text-surface-100">{formatDateTime(estimate.approval_token_expires_at)}</dd>
                 </div>
               )}
               {estimate.approved_at && (

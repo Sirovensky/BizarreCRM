@@ -6,11 +6,12 @@
 import { useState } from 'react';
 import { FileText, Download } from 'lucide-react';
 import { reportApi } from '@/api/endpoints';
+import { toLocalDateString } from '@/utils/format';
 
 export function TaxReportPage() {
   const thisYear = new Date().getFullYear();
   const [from, setFrom] = useState(`${thisYear}-01-01`);
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [to, setTo] = useState(toLocalDateString(new Date()));
   const [jurisdiction, setJurisdiction] = useState('default');
 
   const [jurisdictionError, setJurisdictionError] = useState<string | null>(null);

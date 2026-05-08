@@ -5,7 +5,7 @@ import { posApi, blockchypApi, settingsApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, generateIdempotencyKey } from '@/utils/format';
 import { useUnifiedPosStore } from './store';
 import { useSettings } from '@/hooks/useSettings';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,6 +25,7 @@ function CashModal({ type, onClose }: CashModalProps) {
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const idempotencyKeyRef = useRef(generateIdempotencyKey('pos-cash'));
   // WEB-UIUX-1169: invalidate drawer-current + cash-register after cash-in/out.
   const queryClient = useQueryClient();
 
@@ -48,7 +49,7 @@ function CashModal({ type, onClose }: CashModalProps) {
     setSubmitting(true);
     try {
       const fn = type === 'in' ? posApi.cashIn : posApi.cashOut;
-      await fn({ amount: num, reason: reason.trim() || undefined });
+      await fn({ amount: num, reason: reason.trim() || undefined, idempotency_key: idempotencyKeyRef.current });
       // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): hardcoded `$` + `toFixed(2)`
       // → tenant-aware currency formatter.
       toast.success(`Cash ${type === 'in' ? 'in' : 'out'}: ${formatCurrency(num)}`);
@@ -57,6 +58,7 @@ function CashModal({ type, onClose }: CashModalProps) {
       queryClient.invalidateQueries({ queryKey: ['cash-register'] });
       onClose();
     } catch (err: unknown) {
+      idempotencyKeyRef.current = generateIdempotencyKey('pos-cash');
       toast.error(err instanceof Error ? err.message : `Cash ${type} failed`);
     } finally {
       setSubmitting(false);

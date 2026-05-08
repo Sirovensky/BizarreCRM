@@ -22,6 +22,49 @@ interface QuickSmsModalProps {
   toPhone?: string;
 }
 
+const GSM7_BASIC_CHARS = new Set(
+  Array.from("@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà"),
+);
+const GSM7_EXTENSION_CHARS = new Set(Array.from('^{}\\[~]|€'));
+
+function getSmsSegmentInfo(text: string): {
+  encoding: 'gsm7' | 'unicode';
+  units: number;
+  singleLimit: number;
+  segmentLimit: number;
+  segments: number;
+} {
+  let gsmUnits = 0;
+  for (const char of Array.from(text)) {
+    if (GSM7_BASIC_CHARS.has(char)) {
+      gsmUnits += 1;
+    } else if (GSM7_EXTENSION_CHARS.has(char)) {
+      gsmUnits += 2;
+    } else {
+      const units = Array.from(text).length;
+      const singleLimit = 70;
+      const segmentLimit = units > singleLimit ? 67 : singleLimit;
+      return {
+        encoding: 'unicode',
+        units,
+        singleLimit,
+        segmentLimit,
+        segments: units === 0 ? 0 : Math.ceil(units / segmentLimit),
+      };
+    }
+  }
+
+  const singleLimit = 160;
+  const segmentLimit = gsmUnits > singleLimit ? 153 : singleLimit;
+  return {
+    encoding: 'gsm7',
+    units: gsmUnits,
+    singleLimit,
+    segmentLimit,
+    segments: gsmUnits === 0 ? 0 : Math.ceil(gsmUnits / segmentLimit),
+  };
+}
+
 export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: QuickSmsModalProps) {
   const phone = toPhone || customer.phone || customer.mobile || '';
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -32,7 +75,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   // below; we just don't need to track which template was picked once
   // the text has been pasted.
   const [showTemplates, setShowTemplates] = useState(false);
-  const MAX_CHARS = 160;
+  const segmentInfo = getSmsSegmentInfo(message);
 
   // Focus trap + focus restore (SCAN-1164 / WEB-UIUX-23)
   useEffect(() => {
@@ -223,8 +266,17 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
             />
             <div className="flex items-center justify-between mt-1">
               <p className="text-xs text-surface-400">Reply STOP to opt out</p>
-              <p className={cn('text-xs font-mono', message.length > MAX_CHARS ? 'text-amber-500' : 'text-surface-400')}>
-                {message.length}/{MAX_CHARS}{message.length > MAX_CHARS && ` (${Math.ceil(message.length / MAX_CHARS)} msgs)`}
+              <p
+                className={cn(
+                  'text-xs font-mono',
+                  segmentInfo.segments > 1 ? 'text-amber-500' : 'text-surface-400',
+                )}
+                title={segmentInfo.encoding === 'unicode'
+                  ? 'Unicode SMS: 70 characters for one message, 67 per multipart segment.'
+                  : 'GSM-7 SMS: 160 characters for one message, 153 per multipart segment.'}
+              >
+                {segmentInfo.units}/{segmentInfo.singleLimit}
+                {segmentInfo.segments > 1 && ` (${segmentInfo.segments} msgs @ ${segmentInfo.segmentLimit}/segment)`}
               </p>
             </div>
           </div>

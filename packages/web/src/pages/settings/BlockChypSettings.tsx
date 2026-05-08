@@ -14,6 +14,7 @@ interface BlockChypFormState {
   blockchyp_bearer_token: string;
   blockchyp_signing_key: string;
   blockchyp_terminal_name: string;
+  blockchyp_terminal_ip: string;
   blockchyp_test_mode: string;
   blockchyp_tc_enabled: string;
   blockchyp_tc_content: string;
@@ -33,6 +34,7 @@ const DEFAULTS: BlockChypFormState = {
   blockchyp_bearer_token: '',
   blockchyp_signing_key: '',
   blockchyp_terminal_name: 'Front Counter',
+  blockchyp_terminal_ip: '',
   blockchyp_test_mode: 'false',
   blockchyp_tc_enabled: 'true',
   blockchyp_tc_content: 'I authorize this repair shop to perform diagnostic and repair services on my device. I understand that the shop is not responsible for any data loss. I agree to pay for all parts and labor required to complete the repair.',
@@ -109,13 +111,25 @@ const SECRET_KEYS: ReadonlyArray<keyof BlockChypFormState> = [
   'blockchyp_signing_key',
 ];
 
+type TestTone = 'success' | 'warning' | 'error';
+
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?::(?:[1-9]\d{0,4}))?$/;
+
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const responseMessage =
+    (err as { response?: { data?: { message?: string; data?: { message?: string } } } })?.response?.data?.data?.message ||
+    (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+  if (responseMessage) return responseMessage;
+  return err instanceof Error ? err.message : fallback;
+}
+
 export function BlockChypSettings() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<BlockChypFormState>(DEFAULTS);
   // Snapshot of the last server-loaded state. Compared against `form` to
   // determine which keys are dirty on Save.
   const [baseline, setBaseline] = useState<BlockChypFormState>(DEFAULTS);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ tone: TestTone; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
   // WEB-UIUX-148: secrets arrive redacted as '' from the server, so the
   // disabled check `!apiKey || !bearer || !signingKey` always blocks the button
@@ -198,19 +212,54 @@ export function BlockChypSettings() {
   };
 
   const handleTestConnection = async () => {
+    const typedCredsComplete =
+      form.blockchyp_api_key.trim().length > 0 &&
+      form.blockchyp_bearer_token.trim().length > 0 &&
+      form.blockchyp_signing_key.trim().length > 0;
+    const terminalIp = form.blockchyp_terminal_ip.trim();
+    if (terminalIp && !IPV4_RE.test(terminalIp)) {
+      setTestResult({ tone: 'error', message: 'Enter a valid terminal IPv4 address, optionally with a port.' });
+      return;
+    }
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await blockchypApi.testConnection(form.blockchyp_terminal_name);
-      const data = res.data?.data;
-      if (data?.success) {
-        setTestResult({ success: true, message: `Connected: ${data.terminalName}${data.firmwareVersion ? ` (firmware ${data.firmwareVersion})` : ''}` });
+      if (typedCredsComplete) {
+        const res = await settingsApi.testBlockChypHardware({
+          api_key: form.blockchyp_api_key,
+          bearer_token: form.blockchyp_bearer_token,
+          signing_key: form.blockchyp_signing_key,
+          terminal_name: form.blockchyp_terminal_name,
+          terminal_ip: terminalIp,
+          test_mode: form.blockchyp_test_mode === 'true',
+        });
+        const data = res.data?.data as {
+          message?: string;
+          gateway?: { terminalName?: string; firmwareVersion?: string };
+          lan?: { attempted: boolean; success: boolean };
+        } | undefined;
+        const gateway = data?.gateway;
+        const base = data?.message || 'BlockChyp terminal verified.';
+        const suffix = gateway?.terminalName
+          ? ` (${gateway.terminalName}${gateway.firmwareVersion ? `, firmware ${gateway.firmwareVersion}` : ''})`
+          : '';
+        setTestResult({
+          tone: data?.lan?.attempted === false ? 'warning' : 'success',
+          message: `${base}${suffix}`,
+        });
       } else {
-        setTestResult({ success: false, message: data?.error || 'Connection failed' });
+        const res = await blockchypApi.testConnection(form.blockchyp_terminal_name, terminalIp);
+        const data = res.data?.data;
+        if (data?.verificationStatus === 'gateway_only') {
+          setTestResult({ tone: 'warning', message: data.message || 'BlockChyp gateway ping succeeded, but local terminal reachability was not verified.' });
+        } else if (data?.success) {
+          setTestResult({ tone: 'success', message: data.message || `Connected: ${data.terminalName}${data.firmwareVersion ? ` (firmware ${data.firmwareVersion})` : ''}` });
+        } else {
+          setTestResult({ tone: 'error', message: data?.message || data?.error || 'Connection failed' });
+        }
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Connection test failed';
-      setTestResult({ success: false, message });
+      setTestResult({ tone: 'error', message: apiErrorMessage(err, 'Connection test failed') });
     } finally {
       setTesting(false);
     }
@@ -221,6 +270,12 @@ export function BlockChypSettings() {
   };
 
   const enabled = form.blockchyp_enabled === 'true';
+  const typedCredsComplete =
+    form.blockchyp_api_key.trim().length > 0 &&
+    form.blockchyp_bearer_token.trim().length > 0 &&
+    form.blockchyp_signing_key.trim().length > 0;
+  const canTestConnection = hasStoredCreds || typedCredsComplete;
+  const terminalIpValid = form.blockchyp_terminal_ip.trim().length === 0 || IPV4_RE.test(form.blockchyp_terminal_ip.trim());
 
   return (
     <div className="space-y-6">
@@ -282,6 +337,22 @@ export function BlockChypSettings() {
               />
               <p className="text-xs text-surface-500 mt-1">The name assigned to your terminal in the BlockChyp dashboard</p>
             </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Terminal IP</label>
+              <input
+                type="text"
+                value={form.blockchyp_terminal_ip}
+                onChange={(e) => update('blockchyp_terminal_ip', e.target.value)}
+                placeholder="192.168.1.42"
+                aria-invalid={!terminalIpValid || undefined}
+                className={`w-full rounded-lg border bg-surface-50 px-3 py-2 text-sm dark:bg-surface-800 ${terminalIpValid ? 'border-surface-300 dark:border-surface-600' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20'}`}
+              />
+              <p className={`text-xs mt-1 ${terminalIpValid ? 'text-surface-500' : 'text-red-500'}`}>
+                {terminalIpValid
+                  ? 'Optional, but needed to verify local hardware reachability. Add :port if your terminal does not use 8443.'
+                  : 'Use a basic IPv4 address like 192.168.1.42, optionally with a port.'}
+              </p>
+            </div>
 
             <Toggle
               checked={form.blockchyp_test_mode === 'true'}
@@ -294,15 +365,16 @@ export function BlockChypSettings() {
             <div className="flex items-center gap-3">
               <button
                 onClick={handleTestConnection}
-                disabled={testing || (!hasStoredCreds && (!form.blockchyp_api_key || !form.blockchyp_bearer_token || !form.blockchyp_signing_key))}
+                disabled={testing || !canTestConnection || !terminalIpValid}
                 className="btn btn-secondary btn-sm border border-surface-300 bg-surface-50 dark:border-surface-600 dark:bg-surface-700 dark:hover:bg-surface-600"
+                title={!canTestConnection ? 'Enter credentials or save enabled BlockChyp credentials first' : undefined}
               >
                 {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
                 Test Connection
               </button>
               {testResult && (
-                <div className={`flex items-center gap-2 text-sm ${testResult.success ? 'text-green-600' : 'text-red-500'}`}>
-                  {testResult.success ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                <div className={`flex items-center gap-2 text-sm ${testResult.tone === 'success' ? 'text-green-600' : testResult.tone === 'warning' ? 'text-amber-600' : 'text-red-500'}`}>
+                  {testResult.tone === 'success' ? <Check className="h-4 w-4" /> : testResult.tone === 'warning' ? <WifiOff className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
                   {testResult.message}
                 </div>
               )}

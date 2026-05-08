@@ -12,7 +12,7 @@ import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
-import { useHasRole } from '@/hooks/useHasRole';
+import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
@@ -32,8 +32,49 @@ const STATUS_COLORS: Record<string, string> = {
   unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   paid: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  refunded: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   void: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
 };
+
+type PaymentType = 'payment' | 'deposit';
+
+type PaymentFormState = {
+  amount: string;
+  method: string;
+  notes: string;
+  transaction_id: string;
+  payment_type: PaymentType;
+};
+
+type ReceiptPaymentContext = {
+  amount: number;
+  method: string;
+  paymentType: PaymentType;
+  balanceDue: number;
+  orderId: string;
+};
+
+const ELEVATED_INVOICE_ROLES = new Set(['admin', 'manager', 'owner']);
+
+function createEmptyPaymentForm(): PaymentFormState {
+  return { amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' };
+}
+
+function hasInvoicePermission(
+  user: { role?: string; permissions?: Record<string, boolean> | null } | null | undefined,
+  permission: string,
+): boolean {
+  return !!user && (ELEVATED_INVOICE_ROLES.has(user.role ?? '') || user.permissions?.[permission] === true);
+}
+
+function isPaymentFormDirty(form: PaymentFormState): boolean {
+  return !!(
+    form.amount ||
+    form.notes.trim() ||
+    form.transaction_id.trim() ||
+    form.payment_type !== 'payment'
+  );
+}
 
 export function InvoiceDetailPage() {
   const { id } = useParams();
@@ -49,7 +90,8 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-1278: typed-confirm gate for high-value credit notes.
   const [showCreditNoteConfirm, setShowCreditNoteConfirm] = useState(false);
   // WEB-UIUX-1531: added transaction_id field for structured reference capture on non-cash payments.
-  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '', transaction_id: '' });
+  const [paymentForm, setPaymentForm] = useState<PaymentFormState>(() => createEmptyPaymentForm());
+  const [lastReceiptPayment, setLastReceiptPayment] = useState<ReceiptPaymentContext | null>(null);
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showCreditNote, setShowCreditNote] = useState(false);
   // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
@@ -87,19 +129,24 @@ export function InvoiceDetailPage() {
     if (!showPayment) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
+      if (isPaymentFormDirty(paymentForm)) {
+        if (!window.confirm('Discard payment entry?')) return;
+      }
       setShowPayment(false);
+      setPaymentForm(createEmptyPaymentForm());
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showPayment]);
+  }, [paymentForm, showPayment]);
 
   // WEB-UIUX-729: focus-trap + Esc for the Credit Note dialog.
   // useFocusTrap returns a ref that must be attached to the inner dialog div.
   const creditNoteDialogRef = useFocusTrap(showCreditNote);
   // WEB-UIUX-1539: focus-trap for the Record Payment modal — mirrors credit-note pattern.
   const paymentDialogRef = useFocusTrap(showPayment);
-  // WEB-UIUX-1210: gate Credit Note + Void behind admin/manager role.
-  const canVoidOrCreditNote = useHasRole(['admin', 'manager']);
+  const user = useAuthStore((s) => s.user);
+  const canIssueCreditNote = hasInvoicePermission(user, 'invoices.credit_note');
+  const canVoidInvoice = hasInvoicePermission(user, 'invoices.void');
   // WEB-UIUX-1218: Esc handler checks dirty state before closing credit-note modal.
   useEscClose(() => {
     if (creditNoteForm.amount || creditNoteForm.code || creditNoteForm.note.trim()) {
@@ -132,6 +179,32 @@ export function InvoiceDetailPage() {
   const paymentMethods: any[] = pmData?.data?.data?.payment_methods || [];
   const currencySymbol = formatCurrencySymbol();
 
+  const getPaymentMethodLabel = (method: string) => {
+    const configuredMethod = paymentMethods.find(
+      (pm: any) => pm.name?.toLowerCase().replace(/\s+/g, '_') === method,
+    );
+    return configuredMethod?.name ?? method.replace(/_/g, ' ');
+  };
+
+  const buildReceiptSmsMessage = (receipt: ReceiptPaymentContext) => {
+    const methodLabel = getPaymentMethodLabel(receipt.method).toLowerCase();
+    const paymentTypeLabel = receipt.paymentType === 'deposit' ? ' deposit' : '';
+    const balanceText = receipt.balanceDue > 0.004
+      ? `Balance remaining: ${formatCurrency(receipt.balanceDue)}.`
+      : 'Paid in full.';
+    return `Received ${formatCurrency(receipt.amount)} ${methodLabel}${paymentTypeLabel} on ${receipt.orderId}. ${balanceText} Thank you for your business!`;
+  };
+
+  const invalidateInvoiceDetailCaches = (nextInvoice?: Partial<InvoiceDetail>) => {
+    queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+    queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+    const customerId = nextInvoice?.customer_id ?? invoice?.customer_id;
+    if (customerId) {
+      queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
+    }
+  };
+
   // WEB-UIUX-1537: align paymentForm.method with the first enabled payment method when
   // paymentMethods loads, so 'cash' default doesn't silently mismatch a tenant that
   // has disabled cash and only shows card/ACH buttons.
@@ -144,12 +217,23 @@ export function InvoiceDetailPage() {
 
   const payMutation = useMutation({
     mutationFn: (d: any) => invoiceApi.recordPayment(invoiceId, d),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    onSuccess: (res, variables) => {
+      const updatedInvoice = res?.data?.data as InvoiceDetail | undefined;
+      const paidAmount = Number(variables?.amount) || 0;
+      const balanceDue = Number.isFinite(Number(updatedInvoice?.amount_due))
+        ? Number(updatedInvoice?.amount_due)
+        : Math.max(0, (Number(invoice?.amount_due) || 0) - paidAmount);
+      invalidateInvoiceDetailCaches(updatedInvoice);
+      setLastReceiptPayment({
+        amount: paidAmount,
+        method: variables?.method || 'cash',
+        paymentType: variables?.payment_type === 'deposit' ? 'deposit' : 'payment',
+        balanceDue,
+        orderId: updatedInvoice?.order_id || invoice?.order_id || `INV-${id}`,
+      });
       toast.success('Payment recorded');
       setShowPayment(false);
-      setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
+      setPaymentForm(createEmptyPaymentForm());
       setShowReceiptPrompt(true);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record payment'),
@@ -161,8 +245,7 @@ export function InvoiceDetailPage() {
   const voidUndo = useUndoableAction<void>(
     async () => {
       await invoiceApi.void(invoiceId);
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      invalidateInvoiceDetailCaches();
     },
     {
       timeoutMs: 5000,
@@ -179,8 +262,7 @@ export function InvoiceDetailPage() {
         if (voidSnapshotRef.current !== undefined) {
           queryClient.setQueryData(['invoice', id], voidSnapshotRef.current);
         }
-        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
-        queryClient.invalidateQueries({ queryKey: ['invoices'] });
+        invalidateInvoiceDetailCaches();
       },
     },
   );
@@ -218,8 +300,7 @@ export function InvoiceDetailPage() {
       });
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      invalidateInvoiceDetailCaches();
       // WEB-UIUX-431: build an informative refund destination message when
       // card info is available so operators can relay it to the customer.
       const cardPayment = invoice?.payments?.find(
@@ -227,10 +308,11 @@ export function InvoiceDetailPage() {
       );
       const refundDest = cardPayment?.method_detail ?? null;
       const customerEmail = invoice?.customer_email ?? null;
-      let msg = `Refund of ${formatCurrency(variables.amount)} issued`;
+      const formattedCreditAmount = formatCurrency(variables.amount);
+      let msg = `Refund of ${formattedCreditAmount} issued`;
       if (refundDest) msg += ` to ${refundDest}`;
       if (customerEmail) msg += `. Receipt sent to ${customerEmail}`;
-      if (!refundDest && !customerEmail) msg = 'Credit note created';
+      if (!refundDest && !customerEmail) msg = `Credit note created for ${formattedCreditAmount}`;
 
       // WEB-UIUX-1029: server returns the full credit note invoice in
       // _data.data.data. Extract order_id + id to show a navigable toast.
@@ -244,7 +326,7 @@ export function InvoiceDetailPage() {
               className={`flex items-center gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg px-4 py-3 text-sm ${t.visible ? 'opacity-100' : 'opacity-0'} transition-opacity`}
             >
               <span className="flex-1 text-surface-800 dark:text-surface-100">
-                Credit note <span className="font-mono font-semibold">{cnOrderId}</span> created
+                Credit note <span className="font-mono font-semibold">{cnOrderId}</span> created for {formattedCreditAmount}
               </span>
               <button
                 onClick={() => { toast.dismiss(t.id); navigate(`/invoices/${cnId}`); }}
@@ -262,7 +344,7 @@ export function InvoiceDetailPage() {
 
       // WEB-UIUX-1310: mirror success to aria-live region so SR users hear confirmation
       // even when the modal closes before the toast is read. Clear after 4s.
-      const srMsg = cnOrderId ? `Credit note ${cnOrderId} created` : msg;
+      const srMsg = cnOrderId ? `Credit note ${cnOrderId} created for ${formattedCreditAmount}` : msg;
       setCreditNoteSuccessAnnouncement(srMsg);
       setTimeout(() => setCreditNoteSuccessAnnouncement(''), 4000);
 
@@ -352,6 +434,8 @@ export function InvoiceDetailPage() {
       : Number(invoice.amount_paid) || 0,
   );
   const canCreateCreditNote = invoice.status !== 'void' && (Number(invoice.total) > 0 || Number(invoice.amount_paid) > 0) && maxCreditNoteAmount > 0;
+  const receiptBalanceDue = lastReceiptPayment?.balanceDue ?? (Number(invoice.amount_due) || 0);
+  const isPartialReceipt = receiptBalanceDue > 0.004;
 
   const handlePay = async () => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return toast.error('Enter a valid amount');
@@ -374,7 +458,11 @@ export function InvoiceDetailPage() {
       );
       if (!proceed) return;
     }
-    payMutation.mutate(paymentForm);
+    payMutation.mutate({
+      ...paymentForm,
+      amount: enteredAmount,
+      customer_id: invoice.customer_id,
+    });
   };
 
   const handleTerminalPay = async () => {
@@ -394,7 +482,7 @@ export function InvoiceDetailPage() {
           { duration: 8000 },
         );
         // Refresh invoice in case server already wrote a payment row before timeout.
-        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+        invalidateInvoiceDetailCaches();
         return;
       }
       if (result?.success) {
@@ -406,8 +494,15 @@ export function InvoiceDetailPage() {
         } else {
           toast.success(`Payment approved${result.cardType ? ` — ${result.cardType} ending ${result.last4}` : ''}`);
         }
-        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
-        queryClient.invalidateQueries({ queryKey: ['invoices'] });
+        const paidAmount = Number(result.amount) || Number(invoice.amount_due) || 0;
+        setLastReceiptPayment({
+          amount: paidAmount,
+          method: result.cardType ? result.cardType.toLowerCase().replace(/\s+/g, '_') : 'card',
+          paymentType: 'payment',
+          balanceDue: Math.max(0, (Number(invoice.amount_due) || 0) - paidAmount),
+          orderId: invoice.order_id || `INV-${id}`,
+        });
+        invalidateInvoiceDetailCaches();
         setShowPayment(false);
         setShowReceiptPrompt(true);
       } else {
@@ -471,6 +566,7 @@ export function InvoiceDetailPage() {
       await notificationApi.sendReceipt({ invoice_id: invoiceId, email });
       toast.success('Receipt emailed to ' + email);
       setShowReceiptPrompt(false);
+      setLastReceiptPayment(null);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Failed to email receipt');
     } finally {
@@ -536,8 +632,8 @@ export function InvoiceDetailPage() {
             <button onClick={() => setShowPrintModal(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
               <Printer className="h-4 w-4" /> Print
             </button>
-            {/* WEB-UIUX-1210: gate behind admin/manager; hide entirely or show
-                disabled with tooltip when user lacks the required role. */}
+            {/* WEB-UIUX-706: mirror the server's invoices.credit_note permission
+                so non-granted users don't click into a guaranteed 403. */}
             {/* WEB-UIUX-1304: show disabled Refund button when no payment has been made yet
                 (amount_paid===0 means maxCreditNoteAmount===0, so canCreateCreditNote is false).
                 This gives operators a clear signal rather than silently hiding the action. */}
@@ -550,7 +646,7 @@ export function InvoiceDetailPage() {
                 >
                   <Undo2 className="h-4 w-4" /> Refund
                 </button>
-              ) : canVoidOrCreditNote ? (
+              ) : canIssueCreditNote ? (
                 <button
                   onClick={() => {
                     // WEB-UIUX-877: require manager PIN for refunds above threshold.
@@ -573,7 +669,7 @@ export function InvoiceDetailPage() {
               ) : (
                 <button
                   disabled
-                  title="Manager permission required"
+                  title="Credit-note permission required"
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-100 dark:border-red-900/40 text-red-300 dark:text-red-700 cursor-not-allowed opacity-60"
                 >
                   <ReceiptText className="h-4 w-4" /> Refund
@@ -583,16 +679,16 @@ export function InvoiceDetailPage() {
             {/* WEB-W2-017: Tip-adjust removed — BlockChyp SDK does not expose
                 adjustTip. Re-enable when SDK ships the endpoint. Void + re-charge
                 is the current workaround per the server's NOT_SUPPORTED response. */}
-            {/* WEB-UIUX-1210: Void also gated behind admin/manager role. */}
+            {/* Void mirrors the server's invoices.void permission. */}
             {invoice.status !== 'void' && (
-              canVoidOrCreditNote ? (
+              canVoidInvoice ? (
                 <button onClick={() => setShowVoidConfirm(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                   <Ban className="h-4 w-4" /> Void
                 </button>
               ) : (
                 <button
                   disabled
-                  title="Manager permission required"
+                  title="Void permission required"
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-100 dark:border-red-900/40 text-red-300 dark:text-red-700 cursor-not-allowed opacity-60"
                 >
                   <Ban className="h-4 w-4" /> Void
@@ -844,11 +940,11 @@ export function InvoiceDetailPage() {
           // a partially-entered payment; operator must confirm before data is discarded.
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
-            if (paymentForm.amount || paymentForm.notes || paymentForm.method !== 'cash') {
+            if (isPaymentFormDirty(paymentForm)) {
               if (!window.confirm('Discard payment entry?')) return;
             }
             setShowPayment(false);
-            setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
+            setPaymentForm(createEmptyPaymentForm());
           }}
         >
           {/* WEB-UIUX-1539: paymentDialogRef wired here so useFocusTrap traps focus inside Payment modal. */}
@@ -878,6 +974,28 @@ export function InvoiceDetailPage() {
                     className="input w-full pl-12"
                     autoFocus
                   />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Payment Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['payment', 'Payment'],
+                    ['deposit', 'Deposit'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setPaymentForm({ ...paymentForm, payment_type: value })}
+                      className={cn('px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
+                        paymentForm.payment_type === value
+                          ? 'bg-primary-600 text-primary-950 border-primary-600'
+                          : 'border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div>
@@ -951,19 +1069,24 @@ export function InvoiceDetailPage() {
       {showReceiptPrompt && (
         // WEB-UIUX-1527: backdrop click now fires an info toast instead of silently closing,
         // so the cashier knows the receipt was skipped and can re-send from Payment Timeline.
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowReceiptPrompt(false); toast('Receipt skipped — re-send from Payment Timeline'); }}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowReceiptPrompt(false); setLastReceiptPayment(null); toast('Receipt skipped — re-send from Payment Timeline'); }}>
           <div className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">Send Receipt?</h3>
-              <button aria-label="Close" onClick={() => setShowReceiptPrompt(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+              <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">{isPartialReceipt ? 'Send Partial Receipt?' : 'Send Receipt?'}</h3>
+              <button aria-label="Close" onClick={() => { setShowReceiptPrompt(false); setLastReceiptPayment(null); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">Payment recorded successfully. How would you like to send the receipt?</p>
+            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+              {isPartialReceipt
+                ? `Payment recorded. Balance remaining: ${formatCurrency(receiptBalanceDue)}.`
+                : 'Payment recorded successfully. How would you like to send the receipt?'}
+            </p>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
                   setShowReceiptPrompt(false);
+                  setLastReceiptPayment(null);
                   setShowPrintModal(true);
                 }}
                 className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
@@ -976,11 +1099,14 @@ export function InvoiceDetailPage() {
                   onClick={() => {
                     const phone = invoice.customer_phone;
                     if (!phone) return;
-                    const msg = `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Thank you for your business!`;
+                    const msg = lastReceiptPayment
+                      ? buildReceiptSmsMessage(lastReceiptPayment)
+                      : `Receipt for invoice ${invoice.order_id || id}. Balance remaining: ${formatCurrency(Number(invoice.amount_due) || 0)}. Thank you for your business!`;
                     smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: invoiceId })
                       .then(() => toast.success('Receipt sent via SMS'))
                       .catch(() => toast.error('Failed to send SMS'));
                     setShowReceiptPrompt(false);
+                    setLastReceiptPayment(null);
                   }}
                   className="flex items-center gap-2 rounded-lg border border-green-200 dark:border-green-800 px-4 py-2.5 text-sm font-medium text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
                 >
@@ -999,7 +1125,7 @@ export function InvoiceDetailPage() {
                 </button>
               )}
               <button
-                onClick={() => setShowReceiptPrompt(false)}
+                onClick={() => { setShowReceiptPrompt(false); setLastReceiptPayment(null); }}
                 className="text-sm text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 py-1 transition-colors"
               >
                 Skip
@@ -1010,7 +1136,7 @@ export function InvoiceDetailPage() {
       )}
 
       {/* Credit Note Modal */}
-      {showCreditNote && canCreateCreditNote && (
+      {showCreditNote && canCreateCreditNote && canIssueCreditNote && (
         <div
           role="dialog"
           aria-modal="true"

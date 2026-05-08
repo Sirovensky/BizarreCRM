@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X } from 'lucide-react';
+import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, Search, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { inventoryApi } from '@/api/endpoints';
@@ -12,9 +12,12 @@ const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   ordered: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   partial: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  backordered: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
   received: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   cancelled: 'bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-400',
 };
+
+const PO_STATUS_OPTIONS = ['draft', 'pending', 'ordered', 'partial', 'backordered', 'received', 'cancelled'];
 
 interface PoLineItem {
   inventory_item_id: number | '';
@@ -59,7 +62,7 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
         sku: it.sku,
         quantity_ordered: it.quantity_ordered,
         quantity_received: it.quantity_received || 0,
-        receive_qty: it.quantity_ordered - (it.quantity_received || 0),
+        receive_qty: 0,
       })),
   );
 
@@ -348,15 +351,25 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
 export function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [newPo, setNewPo] = useState<NewPoForm>({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
 
   // WEB-W3-003: receive modal state
   const [receiveModal, setReceiveModal] = useState<{ po: Record<string, unknown>; items: any[] } | null>(null);
+  const poSearch = searchInput.trim();
+  const poListParams = {
+    page,
+    pagesize: 25,
+    status: statusFilter || undefined,
+    q: poSearch || undefined,
+  };
+  const hasListFilters = Boolean(poSearch || statusFilter);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['purchase-orders', page],
-    queryFn: () => inventoryApi.listPurchaseOrders({ page, pagesize: 25 }),
+    queryKey: ['purchase-orders', page, statusFilter, poSearch],
+    queryFn: () => inventoryApi.listPurchaseOrders(poListParams),
     staleTime: 30_000,
   });
 
@@ -573,6 +586,49 @@ export function PurchaseOrdersPage() {
         </div>
       )}
 
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative flex-1 sm:max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => {
+              setSearchInput(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search PO # or supplier..."
+            className="w-full rounded-lg border border-surface-200 bg-white py-2 pl-10 pr-9 text-sm text-surface-900 placeholder:text-surface-400 transition-colors focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchInput('');
+                setPage(1);
+              }}
+              aria-label="Clear purchase order search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+        <select
+          aria-label="Filter purchase orders by status"
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className="rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 transition-colors focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+        >
+          <option value="">All statuses</option>
+          {PO_STATUS_OPTIONS.map((status) => (
+            <option key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</option>
+          ))}
+        </select>
+      </div>
+
       {/* List — WEB-W3-010: rows are expandable for line-item view */}
       <div className="card overflow-x-auto">
         <table className="w-full text-sm text-left">
@@ -597,9 +653,13 @@ export function PurchaseOrdersPage() {
               <tr>
                 <td colSpan={6} className="text-center py-12">
                   <Package className="h-12 w-12 text-surface-300 dark:text-surface-600 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-surface-500 dark:text-surface-400">No purchase orders yet</p>
+                  <p className="text-sm font-medium text-surface-500 dark:text-surface-400">
+                    {hasListFilters ? 'No purchase orders match your filters' : 'No purchase orders yet'}
+                  </p>
                   <p className="mt-1 text-xs text-surface-400 dark:text-surface-500">
-                    Create a purchase order to track parts and supplies from your suppliers.
+                    {hasListFilters
+                      ? 'Try another PO #, supplier, or status.'
+                      : 'Create a purchase order to track parts and supplies from your suppliers.'}
                   </p>
                 </td>
               </tr>

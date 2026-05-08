@@ -37,6 +37,11 @@ interface UserPreferencesPayload {
   [key: string]: unknown;
 }
 
+function dragEventHasFiles(event: DragEvent): boolean {
+  const types = event.dataTransfer?.types;
+  return !!types && Array.from(types).includes('Files');
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen, keyboardShortcutsEnabled } = useUiStore();
   const [devBannerDismissed, dismissDevBanner] = useDismissible('dev-banner');
@@ -112,6 +117,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMobileSidebarOpen(false);
   }, [location.pathname, setMobileSidebarOpen]);
+
+  useEffect(() => {
+    function preventFileDropNavigation(event: DragEvent) {
+      if (!dragEventHasFiles(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    }
+
+    window.addEventListener('dragover', preventFileDropNavigation);
+    window.addEventListener('drop', preventFileDropNavigation);
+    return () => {
+      window.removeEventListener('dragover', preventFileDropNavigation);
+      window.removeEventListener('drop', preventFileDropNavigation);
+    };
+  }, []);
 
   function isTypingInField(): boolean {
     const target = document.activeElement as HTMLElement | null;
@@ -209,15 +231,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         style={{ '--dev-banner-h': (isDev && !devBannerDismissed) ? '28px' : '0px' } as React.CSSProperties}
       >
-        <ImpersonationBanner />
+        {/* Banner stack, high to low: impersonation, offline, realtime, dev, trial. */}
+        <div className="relative z-[30]">
+          <ImpersonationBanner />
+        </div>
         {/* WEB-FO-004: global offline indicator. Renders nothing while
             navigator.onLine is true; flips to a high-visibility amber bar
             the moment the browser fires an `offline` event. */}
-        <OfflineBanner />
+        <div className="relative z-[25]">
+          <OfflineBanner />
+        </div>
         {/* WEB-UIUX-841: WebSocket offline indicator. Renders when the WS
             has exhausted MAX_RECONNECT_ATTEMPTS; provides a Reconnect button
             that resets the attempt counter via the auth-ready event. */}
-        <WsOfflineBanner />
+        <div className="relative z-[24]">
+          <WsOfflineBanner />
+        </div>
         <Header
           hamburgerButton={
             <Button
@@ -233,7 +262,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           }
         />
         {isDev && !devBannerDismissed && (
-          <div className="relative z-0 flex items-center justify-center gap-2 bg-red-600 px-4 py-1.5 text-xs font-semibold text-white">
+          <div className="relative z-[22] flex items-center justify-center gap-2 bg-red-600 px-4 py-1.5 text-xs font-semibold text-white">
             <AlertTriangle className="h-3.5 w-3.5" />
             <span>DEVELOPMENT MODE — NOT SECURE FOR PRODUCTION</span>
             <button
@@ -246,7 +275,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         )}
-        <TrialBanner />
+        <div className="relative z-[20]">
+          <TrialBanner />
+        </div>
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus-visible:outline-none">
           <div className="p-6 h-full">
             {children}

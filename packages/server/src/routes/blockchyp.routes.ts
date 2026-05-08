@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import net from 'net';
 import { config } from '../config.js';
 import {
   isBlockChypEnabled,
@@ -44,6 +45,33 @@ function invoiceStatus(total: number, paid: number): string {
   return 'partial';
 }
 
+function parseHostPort(value: string, defaultPort: number): { host: string; port: number } {
+  const trimmed = value.trim();
+  const [host, rawPort] = trimmed.includes(':') ? trimmed.split(':', 2) : [trimmed, undefined];
+  const port = rawPort ? Number(rawPort) : defaultPort;
+  if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new AppError('Invalid terminal IP or port', 400);
+  }
+  return { host, port };
+}
+
+function connectTcp(host: string, port: number, timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const finish = (err?: Error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      err ? reject(err) : resolve();
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish());
+    socket.once('timeout', () => finish(new Error(`Timed out connecting to ${host}:${port}`)));
+    socket.once('error', (err) => finish(err));
+  });
+}
+
 interface IdempotencyRow {
   id: number;
   invoice_id: number;
@@ -64,7 +92,7 @@ router.post('/test-connection', asyncHandler(async (req: Request, res: Response)
     throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   }
 
-  const { terminalName } = req.body;
+  const { terminalName, terminalIp } = req.body as { terminalName?: string; terminalIp?: string };
 
   // Refresh client in case credentials just changed
   refreshClient();
@@ -74,7 +102,49 @@ router.post('/test-connection', asyncHandler(async (req: Request, res: Response)
   }
 
   const result = await testConnection(db, terminalName);
-  res.json({ success: result.success, data: result });
+  const cfg = getBlockChypConfig(db);
+  const terminalIpToTest = String(terminalIp || cfg.terminalIp || '').trim();
+  const lan: { attempted: boolean; success: boolean; host?: string; port?: number; error?: string } = {
+    attempted: false,
+    success: false,
+  };
+
+  if (terminalIpToTest) {
+    const { host, port } = parseHostPort(terminalIpToTest, 8443);
+    lan.attempted = true;
+    lan.host = host;
+    lan.port = port;
+    try {
+      await connectTcp(host, port, 3_000);
+      lan.success = true;
+    } catch (err) {
+      lan.error = err instanceof Error ? err.message : 'LAN reachability failed';
+    }
+  }
+
+  const success = result.success && (!lan.attempted || lan.success);
+  const verificationStatus = result.success && lan.attempted && lan.success
+    ? 'verified'
+    : result.success && !lan.attempted
+      ? 'gateway_only'
+      : 'failed';
+  const message = verificationStatus === 'verified'
+    ? 'BlockChyp terminal verified.'
+    : verificationStatus === 'gateway_only'
+      ? 'BlockChyp gateway ping succeeded, but no terminal IP is saved so local hardware reachability was not verified.'
+      : result.error || lan.error || 'BlockChyp terminal test failed.';
+
+  res.status(success || verificationStatus === 'gateway_only' ? 200 : 502).json({
+    success,
+    data: {
+      ...result,
+      success,
+      lan,
+      verificationStatus,
+      message,
+    },
+    ...(success ? {} : { message }),
+  });
 }));
 
 // ─── Capture pre-ticket signature (before ticket exists) ────────────

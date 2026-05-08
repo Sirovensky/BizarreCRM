@@ -1503,11 +1503,11 @@ router.delete('/suppliers/:id', requirePermission('inventory.delete'), async (re
 // SCAN-1076: PO status is a bounded domain enum — reject out-of-range values
 // up front so the query doesn't waste an indexed lookup on impossible inputs
 // and the API contract is self-documenting.
-const PO_STATUS_ALLOWLIST = new Set(['draft', 'ordered', 'partial', 'received', 'cancelled']);
+const PO_STATUS_ALLOWLIST = new Set(['draft', 'pending', 'ordered', 'partial', 'backordered', 'received', 'cancelled']);
 
 router.get('/purchase-orders/list', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { page = '1', pagesize = '20', status } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', status, q } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
   const ps = Math.min(100, parseInt(pagesize, 10) || 20);
   const offset = (p - 1) * ps;
@@ -1520,9 +1520,20 @@ router.get('/purchase-orders/list', async (req, res) => {
     }
     where += ' AND po.status = ?'; params.push(status);
   }
+  const search = q?.trim();
+  if (search) {
+    const term = `%${escapeLike(search)}%`;
+    where += " AND (po.order_id LIKE ? ESCAPE '\\' OR ('PO-' || po.id) LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\')";
+    params.push(term, term, term);
+  }
 
   const [totalRow, orders] = await Promise.all([
-    adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM purchase_orders po ${where}`, ...params),
+    adb.get<{ c: number }>(`
+      SELECT COUNT(*) as c
+      FROM purchase_orders po
+      LEFT JOIN suppliers s ON s.id = po.supplier_id
+      ${where}
+    `, ...params),
     adb.all(`
       SELECT po.*, s.name as supplier_name, u.first_name || ' ' || u.last_name as created_by_name
       FROM purchase_orders po

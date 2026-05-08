@@ -265,9 +265,14 @@ export function toLocalDateString(date: Date | string | number, timeZone?: strin
 // ─── Relative time ──────────────────────────────────────────────────────────
 
 export function timeAgo(iso: string): string {
-  // Ensure UTC interpretation -- server stores without Z suffix
-  const ts = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
-  const diff = Date.now() - new Date(ts).getTime();
+  // Ensure UTC interpretation for server timestamps that omit a zone, while
+  // preserving explicit offsets such as `2026-04-30T10:00:00-05:00`.
+  const normalized = iso.trim();
+  const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  const ts = hasExplicitZone ? normalized : normalized + 'Z';
+  const parsed = new Date(ts).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const diff = Date.now() - parsed;
   if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
@@ -277,7 +282,7 @@ export function timeAgo(iso: string): string {
   if (days < 7) return `${days}d ago`;
   const weeks = Math.floor(days / 7);
   if (weeks < 5) return `${weeks}w ago`;
-  return formatDate(iso);
+  return formatDate(ts);
 }
 
 // ─── Phone ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { ShieldAlert, X } from 'lucide-react';
+import { superAdminTokenStore } from '@/api/client';
+import { superAdminApi } from '@/api/endpoints';
 
 export const IMPERSONATION_KEY = 'impersonation_session';
 
@@ -8,9 +11,38 @@ export interface ImpersonationSession {
   tenant_slug: string;
   tenant_name?: string;
   started_at?: string;
+  jti?: string;
 }
 
 const IMPERSONATION_CHANGED_EVENT = 'bizarre-crm:impersonation-changed';
+const TENANT_SLUG_RE = /^[a-z0-9-]{1,64}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface ImpersonationTokenClaims {
+  tenantSlug: string;
+  jti: string;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice((b64.length + 3) % 4);
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function readImpersonationTokenClaims(token: string): ImpersonationTokenClaims | null {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return null;
+  if (payload.type !== 'access' || payload.impersonated !== true) return null;
+  if (typeof payload.tenantSlug !== 'string' || !TENANT_SLUG_RE.test(payload.tenantSlug)) return null;
+  if (typeof payload.jti !== 'string' || !UUID_RE.test(payload.jti)) return null;
+  return { tenantSlug: payload.tenantSlug, jti: payload.jti };
+}
 
 export function setImpersonationSession(session: ImpersonationSession): void {
   sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(session));
@@ -30,11 +62,13 @@ export function getImpersonationSession(): ImpersonationSession | null {
     if (typeof parsed !== 'object' || parsed === null) return null;
     const obj = parsed as Record<string, unknown>;
     if (typeof obj.tenant_slug !== 'string' || obj.tenant_slug.length === 0) return null;
-    if (!/^[a-z0-9-]{1,64}$/.test(obj.tenant_slug)) return null;
+    if (!TENANT_SLUG_RE.test(obj.tenant_slug)) return null;
+    const jti = typeof obj.jti === 'string' && UUID_RE.test(obj.jti) ? obj.jti : undefined;
     return {
       tenant_slug: obj.tenant_slug,
       tenant_name: typeof obj.tenant_name === 'string' ? obj.tenant_name : undefined,
       started_at: typeof obj.started_at === 'string' ? obj.started_at : undefined,
+      jti,
     };
   } catch {
     return null;
@@ -43,6 +77,7 @@ export function getImpersonationSession(): ImpersonationSession | null {
 
 export function ImpersonationBanner() {
   const [session, setSession] = useState<ImpersonationSession | null>(null);
+  const [ending, setEnding] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -77,7 +112,24 @@ export function ImpersonationBanner() {
 
   if (!session) return null;
 
-  function handleExit() {
+  async function handleExit() {
+    if (!session || ending) return;
+    if (session.jti && superAdminTokenStore.get()) {
+      setEnding(true);
+      try {
+        await superAdminApi.endImpersonation(session.tenant_slug, session.jti);
+        toast.success('Impersonation ended');
+      } catch (err) {
+        const message =
+          err && typeof err === 'object' && 'response' in err
+            ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+            : undefined;
+        toast.error(message ?? 'Could not end impersonation. Try again before leaving the session.');
+        setEnding(false);
+        return;
+      }
+      setEnding(false);
+    }
     clearImpersonationSession();
     navigate('/super-admin/tenants');
   }
@@ -102,9 +154,10 @@ export function ImpersonationBanner() {
       <button
         type="button"
         onClick={handleExit}
+        disabled={ending}
         aria-label="Exit impersonation"
         title="Exit impersonation and return to super-admin"
-        className="ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-amber-500 hover:bg-amber-600 transition-colors p-0.5"
+        className="ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-amber-500 hover:bg-amber-600 transition-colors p-0.5 disabled:cursor-wait disabled:opacity-60"
       >
         <X className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       </button>

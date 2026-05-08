@@ -42,8 +42,14 @@ interface SmsTemplate {
   content: string;
 }
 
+interface PreviewRecipientSample {
+  name: string;
+  phone_last4: string;
+}
+
 interface PreviewResponse {
   preview_count: number;
+  recipient_sample?: PreviewRecipientSample[];
   confirmation_token: string;
   confirmed: false;
 }
@@ -56,6 +62,36 @@ interface ConfirmResponse {
   segment: string;
   template: string;
   confirmed: true;
+}
+
+interface SmsBillingPreview {
+  characterCount: number;
+  encoding: 'GSM-7' | 'Unicode';
+  segmentsPerMessage: number;
+}
+
+const numberFormatter = new Intl.NumberFormat();
+
+function formatNumber(value: number): string {
+  return numberFormatter.format(value);
+}
+
+function estimateSmsBilling(body: string): SmsBillingPreview {
+  const characterCount = body.length;
+  const usesUnicodeEncoding = /[^\x0A\x0D\x20-\x7E]/.test(body);
+  const singleSegmentLimit = usesUnicodeEncoding ? 70 : 160;
+  const concatenatedSegmentLimit = usesUnicodeEncoding ? 67 : 153;
+
+  return {
+    characterCount,
+    encoding: usesUnicodeEncoding ? 'Unicode' : 'GSM-7',
+    segmentsPerMessage:
+      characterCount === 0
+        ? 0
+        : characterCount <= singleSegmentLimit
+          ? 1
+          : Math.ceil(characterCount / concatenatedSegmentLimit),
+  };
 }
 
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
@@ -78,6 +114,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   });
   const tplPayload = tplData?.data as SmsTemplateListResponse | undefined;
   const templates: SmsTemplate[] = tplPayload?.data?.templates ?? [];
+  const selectedTemplate = templates.find((t) => t.id === templateId) ?? null;
+  const billingPreview = estimateSmsBilling(selectedTemplate?.content ?? '');
+  const billableSegments = preview
+    ? billingPreview.segmentsPerMessage * preview.preview_count
+    : null;
 
   const previewMut = useMutation({
     mutationFn: async () => {
@@ -122,7 +163,24 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       }
       // If failed > 0 modal stays open so admin sees the count before dismissing
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Bulk send failed'),
+    onError: (e: any) => {
+      const status = e?.response?.status;
+      const message = e?.response?.data?.error || 'Bulk send failed';
+
+      if (status === 409) {
+        setPreview(null);
+        setPreviewedAt(null);
+        toast.error(message);
+        previewMut.mutate(undefined, {
+          onSuccess: (freshPreview) => {
+            toast.success(`Audience refreshed: ${formatNumber(freshPreview.preview_count)} recipients`);
+          },
+        });
+        return;
+      }
+
+      toast.error(message);
+    },
   });
 
   // WEB-UIUX-1122: Check TCPA quiet hours (8am–9pm) on open and whenever modal is shown
@@ -181,7 +239,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       {/* WEB-UIUX-1521: dialogRef wires the focus trap to this container */}
       <div
         ref={dialogRef}
-        className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
@@ -256,6 +314,22 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                 </option>
               ))}
             </select>
+            {selectedTemplate && (
+              <div className="mt-1 rounded-lg bg-surface-50 px-2 py-1.5 text-[11px] text-surface-600 dark:bg-surface-700/50 dark:text-surface-300">
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  <span>{formatNumber(billingPreview.characterCount)} chars</span>
+                  <span>{billingPreview.encoding}</span>
+                  <span>
+                    {formatNumber(billingPreview.segmentsPerMessage)} SMS segment{billingPreview.segmentsPerMessage === 1 ? '' : 's'}/message
+                  </span>
+                </div>
+                {billableSegments !== null && (
+                  <div className="mt-1 font-medium text-surface-800 dark:text-surface-100">
+                    {formatNumber(billableSegments)} estimated billable SMS segment{billableSegments === 1 ? '' : 's'}; provider pricing unavailable.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* WEB-UIUX-1122: TCPA quiet-hours informational banner — does not block send */}
@@ -269,23 +343,45 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
           )}
 
           {preview && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              {/*
-                * WEB-UIUX-1124: Live countdown replaces static "5 minutes" copy.
-                * WEB-UIUX-1523: Static "Confirmation expires in 5 minutes" was inaccurate;
-                *   the live MM:SS timer below is already truthful — no copy change needed.
-                *   (Re-preview prompt on expiry also satisfies the "wait longer" guidance.)
-                */}
-              <span>
-                This will send to <strong>{preview.preview_count}</strong> recipients.
-                {countdown > 0 ? (
-                  <> Confirmation expires in <strong>{String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')}</strong>.</>
-                ) : (
-                  <> <strong className="text-red-700 dark:text-red-400">Confirmation expired.</strong> Please re-preview.</>
-                )}
-              </span>
-            </div>
+            <>
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                {/*
+                  * WEB-UIUX-1124: Live countdown replaces static "5 minutes" copy.
+                  * WEB-UIUX-1523: Static "Confirmation expires in 5 minutes" was inaccurate;
+                  *   the live MM:SS timer below is already truthful — no copy change needed.
+                  *   (Re-preview prompt on expiry also satisfies the "wait longer" guidance.)
+                  */}
+                <span>
+                  This will send to <strong>{formatNumber(preview.preview_count)}</strong> recipients.
+                  {countdown > 0 ? (
+                    <> Confirmation expires in <strong>{String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')}</strong>.</>
+                  ) : (
+                    <> <strong className="text-red-700 dark:text-red-400">Confirmation expired.</strong> Please re-preview.</>
+                  )}
+                </span>
+              </div>
+              {preview.recipient_sample && preview.recipient_sample.length > 0 && (
+                <div className="rounded-lg border border-surface-200 bg-surface-50 p-2 dark:border-surface-700 dark:bg-surface-700/40">
+                  <div className="mb-1 text-[11px] font-semibold uppercase text-surface-500 dark:text-surface-400">
+                    Sample recipients
+                  </div>
+                  <div className="space-y-1">
+                    {preview.recipient_sample.map((recipient, index) => (
+                      <div
+                        key={`${recipient.phone_last4}-${index}`}
+                        className="flex items-center justify-between gap-2 text-xs text-surface-700 dark:text-surface-200"
+                      >
+                        <span className="truncate">{recipient.name}</span>
+                        <span className="shrink-0 font-mono text-surface-500 dark:text-surface-400">
+                          ending {recipient.phone_last4}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -320,7 +416,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                 className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 <Send className="h-3.5 w-3.5" />
-                {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
+                {sendMut.isPending ? 'Sending…' : `Send to ${formatNumber(preview.preview_count)}`}
               </button>
             </>
           )}

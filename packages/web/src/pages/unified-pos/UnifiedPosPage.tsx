@@ -273,6 +273,8 @@ const SYMPTOMS = [
 const CONDITIONS = ['Excellent', 'Good', 'Fair', 'Rough', 'Liquid damage'];
 
 const CATALOG_FILTERS = ['All', 'Phones', 'Accessories', 'Repairs', 'Trade-in', 'Gift cards'];
+const SCANNER_MAX_CHAR_INTERVAL_MS = 50;
+const SCANNER_BUFFER_IDLE_MS = 200;
 
 const buttonBase =
   'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
@@ -1006,7 +1008,18 @@ export function UnifiedPosPage() {
 
   useEffect(() => {
     const handleScanner = (event: KeyboardEvent) => {
-      if (processing || lineEditing || discountOpen || customItemOpen) return;
+      const modalOpen = Boolean(document.querySelector('[aria-modal="true"], [role="dialog"]'));
+      if (
+        processing ||
+        lineEditing ||
+        discountOpen ||
+        customItemOpen ||
+        createCustomerOpen ||
+        terminalError ||
+        completedSale ||
+        (mode !== 'gate' && mode !== 'sale') ||
+        modalOpen
+      ) return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
@@ -1016,12 +1029,12 @@ export function UnifiedPosPage() {
       lastKeyTimeRef.current = now;
 
       if (event.key === 'Enter' && scanBufferRef.current.length >= 4) {
+        event.preventDefault();
         const code = scanBufferRef.current;
         scanBufferRef.current = '';
         if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
-        setScanFlash(true);
         if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
-        scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1000);
+        setScanFlash(false);
 
         const lookup = /^\d{8,}$/.test(code)
           ? inventoryApi.lookupBarcode(code).then((res) => res.data?.data)
@@ -1030,6 +1043,8 @@ export function UnifiedPosPage() {
           .then((found: ProductSearchItem | null | undefined) => {
             if (found) {
               addProductToCart(found);
+              setScanFlash(true);
+              scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1000);
               toast.success(`Scanned ${found.name}`);
             } else {
               setCustomName(code);
@@ -1042,11 +1057,11 @@ export function UnifiedPosPage() {
       }
 
       if (event.key.length === 1) {
-        scanBufferRef.current = sinceLast > 100 ? event.key : scanBufferRef.current + event.key;
+        scanBufferRef.current = sinceLast > SCANNER_MAX_CHAR_INTERVAL_MS ? event.key : scanBufferRef.current + event.key;
         if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
         scanTimerRef.current = setTimeout(() => {
           scanBufferRef.current = '';
-        }, 200);
+        }, SCANNER_BUFFER_IDLE_MS);
       }
     };
     window.addEventListener('keydown', handleScanner);
@@ -1055,7 +1070,7 @@ export function UnifiedPosPage() {
       if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
       if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
     };
-  }, [addProductToCart, customItemOpen, discountOpen, lineEditing, processing]);
+  }, [addProductToCart, completedSale, createCustomerOpen, customItemOpen, discountOpen, lineEditing, mode, processing, terminalError]);
 
   const startNewSale = useCallback(() => {
     setCompletedSale(null);
@@ -1357,6 +1372,10 @@ export function UnifiedPosPage() {
       clearDraft();
       setPaidLegs([]);
       setMode('receipt');
+      void queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
+      void queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['pos-products-rewrite'] });
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       toast.success('Sale complete');
     } catch (err: any) {
@@ -1364,7 +1383,7 @@ export function UnifiedPosPage() {
     } finally {
       setProcessing(false);
     }
-  }, [paidLegs, totals, blockchypConfigured, cartItems, customer, ensureIdempotencyKey, clearDraft]);
+  }, [paidLegs, totals, blockchypConfigured, cartItems, customer, ensureIdempotencyKey, clearDraft, queryClient]);
 
   const acceptTender = useCallback((method: TenderMethod) => {
     const amount = parseMoney(amountEntry || fromCents(remainingCents).toFixed(2));

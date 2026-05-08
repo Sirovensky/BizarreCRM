@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useSettings } from '@/hooks/useSettings';
-import { formatTime } from '@/utils/format';
+import { toLocalDateString } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -626,7 +626,7 @@ function CreateAppointmentModal({
   existingAppointments: Appointment[];
 }) {
   const queryClient = useQueryClient();
-  const dateStr = defaultDate.toISOString().slice(0, 10);
+  const dateStr = toLocalDateString(defaultDate);
 
   const createInitialForm = useCallback(() => ({
     title: '',
@@ -657,7 +657,7 @@ function CreateAppointmentModal({
   // the date from the previous open.
   useEffect(() => {
     if (!open) return;
-    const newDateStr = defaultDate.toISOString().slice(0, 10);
+    const newDateStr = toLocalDateString(defaultDate);
     setForm((f) => ({ ...f, start_date: newDateStr }));
   }, [open, defaultDate]);
 

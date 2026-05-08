@@ -565,6 +565,10 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         ...res.data.data,
         mode: 'checkout',
       });
+      void queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
+      void queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['pos-products-rewrite'] });
       // Advance the checkout tutorial when payment is completed.
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       onClose();

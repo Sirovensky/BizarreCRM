@@ -1250,6 +1250,8 @@ function PageInvoicePrint({ invoice, config }: { invoice: InvoiceDetail; config:
 function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintConfig }) {
   const customer: PrintCustomer = ticket.customer || {};
   const devices: PrintDevice[] = ticket.devices || [];
+  const visibleDevices = devices.slice(0, 2);
+  const hiddenDeviceCount = Math.max(0, devices.length - visibleDevices.length);
   const storeName = config?.store_name || 'Repair Shop';
   // WEB-FJ-005 (Fixer-A5 2026-04-25): honor a `receipt_cfg_redact_phone_label`
   // store-config toggle so the 2-inch device label can drop the customer
@@ -1274,9 +1276,12 @@ function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintCon
       </div>
       <div style={{ borderTop: '1px dashed #000', margin: '2px 0' }} />
       <div>
-        {devices.slice(0, 2).map((d: PrintDevice, i: number) => (
+        {visibleDevices.map((d: PrintDevice, i: number) => (
           <div key={i} style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
         ))}
+        {hiddenDeviceCount > 0 && (
+          <div style={{ fontSize: 8, color: '#444' }}>+{hiddenDeviceCount} more device{hiddenDeviceCount === 1 ? '' : 's'}</div>
+        )}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         <div>{storeName}</div>

@@ -35,7 +35,7 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
  *   - Idaho State Tax Commission — Repair Shops
  */
 
-const DEFAULT_GOODS_RATE = '8.25';
+const EMPTY_GOODS_RATE = '';
 // Most states don't tax labor — default 0% and the owner explicitly raises
 // it if they're in NY/HI/SD/NM/WV. Wrong default would silently overcharge
 // every customer until someone notices.
@@ -54,8 +54,8 @@ const CATEGORIES: ReadonlyArray<CategoryRow> = [
     key: 'tax_default_parts',
     label: 'Parts & physical goods',
     description: 'Screens, batteries, charge ports, accessories, cases, cables — anything tangible the customer takes home.',
-    defaultRate: DEFAULT_GOODS_RATE,
-    hint: 'Taxable in nearly every US sales-tax state.',
+    defaultRate: 'Enter local rate',
+    hint: 'Taxable in nearly every US sales-tax state. Leave blank if you have not chosen a local default yet.',
   },
   {
     key: 'tax_default_services',
@@ -81,11 +81,12 @@ export function StepTax({
 }: StepProps): JSX.Element {
   // Fold any legacy `tax_default_accessories` value into the goods/parts seed
   // — both buckets historically held the same rate, so we prefer the parts
-  // value if present, otherwise the accessories value, otherwise the default.
+  // value if present, otherwise the accessories value. Do not guess a goods
+  // rate: tax varies by jurisdiction and setup has no trusted local lookup.
   const initialParts =
     pending.tax_default_parts ??
     pending.tax_default_accessories ??
-    DEFAULT_GOODS_RATE;
+    EMPTY_GOODS_RATE;
   const initialServices = pending.tax_default_services ?? DEFAULT_LABOR_RATE;
 
   const [parts, setParts] = useState<string>(initialParts);
@@ -105,7 +106,8 @@ export function StepTax({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parts, services]);
 
-  const allValid = isValidRate(parts) && isValidRate(services);
+  const partsValid = parts.trim() === '' || isValidRate(parts);
+  const allValid = partsValid && isValidRate(services);
 
   const handleSkip = () => {
     if (onSkip) {

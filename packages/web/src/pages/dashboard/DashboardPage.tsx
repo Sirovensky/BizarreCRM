@@ -2390,13 +2390,14 @@ function AdminOrManagerDashboard() {
 
           case 'kpi-cards': {
             if (!showFinancials) return null;
+            const kpiPeriod = from === to ? formatDate(from) : `${formatDate(from)} to ${formatDate(to)}`;
             const allKpiCards = [
               { label: 'Total Sales', value: kpis?.total_sales ?? 0, tooltip: 'Sum of all payments in period', href: '/reports' },
               { label: 'Tax', value: kpis?.tax ?? 0, tooltip: 'Tax collected on invoices', href: '/reports' },
               { label: 'Discounts', value: kpis?.discounts ?? 0, tooltip: 'Total discounts applied', href: '/invoices' },
               { label: 'COGS', value: kpis?.cogs ?? 0, tooltip: 'Cost of goods sold (parts cost)', href: '/inventory' },
-              { label: 'Net Profit', value: kpis?.net_profit ?? 0, tooltip: 'Sales minus COGS and discounts', href: '/reports' },
-              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: 'Total refunded amount', href: undefined },
+              { label: 'Net Profit', value: kpis?.net_profit ?? 0, tooltip: `Sales minus COGS and discounts for ${kpiPeriod}. Refunds are shown separately.`, href: '/reports' },
+              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: `Refund payments for ${kpiPeriod}, shown as a positive total. Net Profit does not subtract this KPI.`, href: undefined },
               { label: 'Expenses', value: kpis?.expenses ?? 0, tooltip: 'Business expenses in period', href: '/expenses' },
               { label: 'Receivables', value: kpis?.receivables ?? 0, tooltip: 'Outstanding unpaid invoice amounts', href: '/invoices?status=unpaid' },
             ];

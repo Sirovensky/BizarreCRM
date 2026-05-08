@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle, Ban, CheckCircle2, Bell, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
@@ -15,6 +15,7 @@ import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
+import { normalizeListSearchKeyword } from '@/utils/listSearch';
 
 const STATUS_TABS = [
   { key: '', label: 'All' },
@@ -52,6 +53,8 @@ const DATE_TABS = [
   { key: '30', label: '30 Days' },
   { key: '', label: 'All' },
 ];
+const VALID_INVOICE_STATUSES: ReadonlySet<string> = new Set(STATUS_TABS.map((status) => status.key));
+const VALID_INVOICE_DATE_RANGES: ReadonlySet<string> = new Set(DATE_TABS.map((range) => range.key));
 
 function getDateRange(key: string): { from_date?: string; to_date?: string } {
   if (!key) return {};
@@ -121,11 +124,14 @@ export function InvoiceListPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const status = searchParams.get('status') || '';
-  const dateRange = searchParams.get('date_range') || '';
+  const rawStatus = searchParams.get('status') || '';
+  const status = VALID_INVOICE_STATUSES.has(rawStatus) ? rawStatus : '';
+  const rawDateRange = searchParams.get('date_range') || '';
+  const dateRange = VALID_INVOICE_DATE_RANGES.has(rawDateRange) ? rawDateRange : '';
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('invoices_pagesize') || '25');
   const keyword = searchParams.get('keyword') || '';
+  const serverKeyword = normalizeListSearchKeyword(keyword);
   const [searchInput, setSearchInput] = useState(keyword);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -160,7 +166,15 @@ export function InvoiceListPage() {
   const handleSearch = (val: string) => {
     setSearchInput(val);
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setParam('keyword', val), 300);
+    timerRef.current = setTimeout(() => setParam('keyword', val.trim()), 300);
+  };
+
+  const clearFilters = () => {
+    const p = new URLSearchParams(searchParams);
+    ['status', 'date_range', 'keyword'].forEach((key) => p.delete(key));
+    p.set('page', '1');
+    setSearchInput('');
+    setSearchParams(p, { replace: true });
   };
 
   const setPage = (n: number) => {
@@ -174,18 +188,35 @@ export function InvoiceListPage() {
   const isCreditNoteTab = status === 'credit_note';
   const serverStatus = isCreditNoteTab ? undefined : (status || undefined);
 
+  useEffect(() => {
+    if (
+      (!rawStatus || VALID_INVOICE_STATUSES.has(rawStatus)) &&
+      (!rawDateRange || VALID_INVOICE_DATE_RANGES.has(rawDateRange))
+    ) return;
+
+    const p = new URLSearchParams(searchParams);
+    if (rawStatus && !VALID_INVOICE_STATUSES.has(rawStatus)) p.delete('status');
+    if (rawDateRange && !VALID_INVOICE_DATE_RANGES.has(rawDateRange)) p.delete('date_range');
+    p.set('page', '1');
+    setSearchParams(p, { replace: true });
+  }, [rawStatus, rawDateRange, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page, pageSize, status, dateRange, keyword, sortBy, sortDir]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', { page, pageSize, status, keyword, dateRange, sortBy, sortDir }],
-    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: serverStatus, keyword: keyword || undefined, sort_by: sortBy, sort_dir: sortDir, ...dateParams }),
+    queryKey: ['invoices', { page, pageSize, status, keyword: serverKeyword, dateRange, sortBy, sortDir }],
+    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: serverStatus, keyword: serverKeyword || undefined, sort_by: sortBy, sort_dir: sortDir, ...dateParams }),
   });
 
   const { data: statsData } = useQuery({
     // WEB-W2-022: include active filters in both cache key and the API call so
     // stats KPIs reflect the same subset as the current list view.
-    queryKey: ['invoice-stats', { status, dateRange, keyword }],
+    queryKey: ['invoice-stats', { status, dateRange, keyword: serverKeyword }],
     queryFn: () => invoiceApi.stats({
       status: status || undefined,
-      keyword: keyword || undefined,
+      keyword: serverKeyword || undefined,
       ...dateParams,
     }),
   });
@@ -441,6 +472,15 @@ export function InvoiceListPage() {
           <div className="flex flex-col items-center justify-center py-20">
             <FileText className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
             <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No invoices found</h2>
+            {(keyword || status || dateRange) && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
           <>

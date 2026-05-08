@@ -12,7 +12,8 @@
  * and UI copy decoupled; if UX ever standardises on one term, only the
  * REASONS labels (below) or the file name need updating — not both.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ClipboardEvent } from 'react';
+import toast from 'react-hot-toast';
 
 export type RefundReasonCode =
   | 'defective'
@@ -20,6 +21,11 @@ export type RefundReasonCode =
   | 'wrong_item'
   | 'duplicate_charge'
   | 'price_adjustment'
+  | 'cancelled_service'
+  | 'exchange_return'
+  | 'tax_adjustment'
+  | 'shipping_issue'
+  | 'loyalty_promo'
   | 'failed_repair'
   | 'lost_data'
   | 'extended_delay'
@@ -35,17 +41,24 @@ const REASONS: ReadonlyArray<{ code: RefundReasonCode; label: string; hint: stri
   { code: 'dissatisfaction',       label: 'Customer dissatisfied',  hint: 'Changed mind, unhappy with result' },
   { code: 'wrong_item',            label: 'Wrong item',             hint: 'Received/ordered the wrong SKU' },
   { code: 'duplicate_charge',      label: 'Duplicate charge',       hint: 'Billed twice by mistake' },
-  { code: 'price_adjustment',      label: 'Price adjustment',       hint: 'Retroactive discount / price match' },
+  { code: 'price_adjustment',      label: 'Price adjustment',       hint: 'Price match or sale adjustment' },
+  { code: 'cancelled_service',     label: 'Cancelled service',      hint: 'Appointment or work order cancelled before completion' },
+  { code: 'exchange_return',       label: 'Returned for exchange',  hint: 'Replacement or store credit instead of cash back' },
+  { code: 'tax_adjustment',        label: 'Tax adjustment',         hint: 'Tax exemption or rate correction' },
+  { code: 'shipping_issue',        label: 'Shipping issue',         hint: 'Late, lost, or damaged shipment' },
+  { code: 'loyalty_promo',         label: 'Loyalty / promo',        hint: 'Retroactive loyalty reward or promo discount' },
   { code: 'failed_repair',         label: 'Failed repair',          hint: 'Service repair did not resolve the issue' },
   { code: 'lost_data',             label: 'Lost data',              hint: 'Customer data lost during service' },
   { code: 'extended_delay',        label: 'Extended delay',         hint: 'Service took significantly longer than quoted' },
-  { code: 'goodwill_gesture',      label: 'Goodwill gesture',       hint: 'Discretionary credit to preserve customer relationship' },
+  { code: 'goodwill_gesture',      label: 'Manager comp / goodwill', hint: 'Discretionary credit to preserve customer relationship' },
   { code: 'chargeback_prevention', label: 'Chargeback prevention',  hint: 'Pre-emptive refund to avoid a payment dispute' },
   { code: 'warranty_invocation',   label: 'Warranty invocation',    hint: 'Refund issued under product or service warranty' },
   { code: 'other',                 label: 'Other',                  hint: 'Free-form reason in the note' },
 ];
 
 const OTHER_NOTE_MIN = 5;
+const NOTE_MAX = 500;
+const NOTE_WARN_AT = 450;
 
 interface RefundReasonPickerProps {
   value: RefundReasonCode | null;
@@ -97,6 +110,14 @@ export function RefundReasonPicker({
     onChange(localReason, next);
   };
 
+  const handleNotePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    const selectionLength = e.currentTarget.selectionEnd - e.currentTarget.selectionStart;
+    if (localNote.length - selectionLength + pasted.length > NOTE_MAX) {
+      toast.error(`Notes are limited to ${NOTE_MAX} characters; extra pasted text was trimmed.`);
+    }
+  };
+
   // WEB-FE-016 (Fixer-B5 2026-04-25): swap raw `text-gray-*`/`border-gray-*`
   // for surface-* tokens with `dark:` pairs so the refund picker is readable
   // in dark mode and stays aligned with the Zinc neutral ramp the rest of the
@@ -137,6 +158,7 @@ export function RefundReasonPicker({
         <textarea
           value={localNote}
           onChange={(e) => handleNoteChange(e.target.value)}
+          onPaste={handleNotePaste}
           onBlur={() => isOtherSelected && setNoteTouched(true)}
           placeholder={isOtherSelected ? 'Please describe the reason…' : 'Free-form context to help with reporting…'}
           className={`w-full rounded-md border bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
@@ -145,15 +167,15 @@ export function RefundReasonPicker({
               : 'border-surface-300 dark:border-surface-700'
           }`}
           rows={3}
-          maxLength={500}
+          maxLength={NOTE_MAX}
           aria-describedby={isOtherSelected ? 'refund-note-hint' : undefined}
         />
         <div className={`mt-1 text-xs text-right ${
-          localNote.length > 450
+          localNote.length > NOTE_WARN_AT
             ? 'text-amber-600 dark:text-amber-400'
             : 'text-surface-500 dark:text-surface-400'
         }`}>
-          {localNote.length}/500
+          {localNote.length}/{NOTE_MAX}
         </div>
         {isOtherSelected && noteTouched && noteIsShort && (
           <p id="refund-note-hint" className="mt-1 text-xs text-red-600 dark:text-red-400">

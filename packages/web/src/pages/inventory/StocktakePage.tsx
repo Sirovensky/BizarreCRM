@@ -165,7 +165,10 @@ export function StocktakePage() {
       toast.success(`Committed: ${data.items_adjusted} items adjusted`);
       queryClient.invalidateQueries({ queryKey: ['stocktakes'] });
       queryClient.invalidateQueries({ queryKey: ['stocktake', selectedId] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
       queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-products-rewrite'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Commit failed'),
   });
@@ -191,7 +194,7 @@ export function StocktakePage() {
     // silently wins over the true UPC hit.
     const isBarcode = /^\d{8,}$/.test(q);
     try {
-      let item: { id: number; name: string } | undefined;
+      let item: { id: number; name: string; in_stock?: number } | undefined;
       if (isBarcode) {
         const res = await inventoryApi.lookupBarcode(q);
         item = res.data?.data ?? undefined;
@@ -223,9 +226,28 @@ export function StocktakePage() {
         return;
       }
       const existingCount = detailData?.counts.find((c) => c.inventory_item_id === item.id);
-      const counted = manualCountedQty
-        ? parseInt(manualCountedQty, 10)
-        : (existingCount ? existingCount.counted_qty + 1 : 1); // quick-scan: increment physical count by 1
+      const quantityText = manualCountedQty.trim();
+      let counted: number;
+      if (quantityText) {
+        counted = Number(quantityText);
+        if (!Number.isInteger(counted) || counted < 0) {
+          toast.error('Enter a whole quantity of 0 or more');
+          return;
+        }
+      } else if (existingCount) {
+        toast.success(
+          `${item.name} is already counted at ${existingCount.counted_qty}. Enter Qty to replace it.`,
+        );
+        setScanInput('');
+        setManualCountedQty('');
+        scanRef.current?.focus();
+        return;
+      } else if (typeof item.in_stock === 'number') {
+        counted = item.in_stock;
+      } else {
+        toast.error('Enter Qty before recording this item');
+        return;
+      }
       scanMut.mutate({ inventory_item_id: item.id, counted_qty: counted });
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Lookup failed');
@@ -399,8 +421,10 @@ export function StocktakePage() {
                     <input
                       value={manualCountedQty}
                       onChange={(e) => setManualCountedQty(e.target.value)}
-                      placeholder="Qty (blank = +1)"
+                      placeholder="Qty (blank = confirm)"
                       type="number"
+                      min={0}
+                      step={1}
                       className="w-32 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
                     />
                     <button
@@ -412,7 +436,7 @@ export function StocktakePage() {
                   </form>
 
                   <p className="mt-3 text-xs text-surface-500 dark:text-surface-400">
-                    To correct a count, re-scan the item and enter the right quantity — the previous row is overwritten automatically.
+                    Blank Qty confirms current stock for a new item. Re-scanning an already-counted item leaves it unchanged; enter Qty to replace the count.
                   </p>
 
                   {/* WEB-UIUX-1372: blocking overlay while commit is in-flight */}

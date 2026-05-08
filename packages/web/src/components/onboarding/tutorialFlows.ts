@@ -13,6 +13,8 @@
 import type { NavigateFunction } from 'react-router-dom';
 import { onboardingApi } from '@/api/endpoints';
 
+const ALL_DISMISSED_KEY = 'tutorial.all.dismissed';
+
 export interface SpotlightStep {
   key: string;
   title: string;
@@ -217,8 +219,8 @@ export function firstStepKey(flowId: TutorialFlowId): string {
  * button in SpotlightCoach (behind a confirm dialog) and can be reused by any
  * other surface.
  *
- * 1. Sets `localStorage['tutorial.all.dismissed'] = '1'`.
- * 2. Calls `onboardingApi.patchState({ checklist_dismissed: true })`.
+ * 1. Calls `onboardingApi.patchState({ checklist_dismissed: true })`.
+ * 2. Sets `localStorage['tutorial.all.dismissed'] = '1'`.
  * 3. Clears tutorial URL params and navigates to `/`.
  *
  * HOW TO RESET TUTORIALS (DevTools workaround until a Settings UI lands):
@@ -231,17 +233,22 @@ export function firstStepKey(flowId: TutorialFlowId): string {
  */
 export async function dismissAllTutorials(navigate: NavigateFunction): Promise<void> {
   try {
-    localStorage.setItem('tutorial.all.dismissed', '1');
+    await onboardingApi.patchState({ checklist_dismissed: true });
   } catch (err) {
-    // storage unavailable — still proceed (server flag below is the source of truth).
-    console.warn('[tutorialFlows] dismiss localStorage write failed', err);
+    try {
+      localStorage.removeItem(ALL_DISMISSED_KEY);
+    } catch {
+      // storage unavailable — server failure is the actionable error.
+    }
+    console.warn('[tutorialFlows] patchState(checklist_dismissed) failed', err);
+    throw err;
   }
 
   try {
-    await onboardingApi.patchState({ checklist_dismissed: true });
+    localStorage.setItem(ALL_DISMISSED_KEY, '1');
   } catch (err) {
-    // non-fatal — local flag still set, retry on next dismiss attempt.
-    console.warn('[tutorialFlows] patchState(checklist_dismissed) failed', err);
+    // storage unavailable — server flag above is the source of truth.
+    console.warn('[tutorialFlows] dismiss localStorage write failed', err);
   }
 
   navigate('/', { replace: true });

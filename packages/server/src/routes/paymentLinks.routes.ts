@@ -147,13 +147,15 @@ authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
   // FK existence checks — guarantee the link points to a real invoice/customer
   // so we don't create an orphan row that breaks the admin list view.
   let invoiceIdClean: number | null = null;
+  let invoiceCustomerId: number | null = null;
   if (invoice_id !== undefined && invoice_id !== null) {
     invoiceIdClean = validateIntegerQuantity(invoice_id, 'invoice_id');
-    const inv = await adb.get<{ id: number; amount_due: number; status: string }>(
-      'SELECT id, amount_due, status FROM invoices WHERE id = ?',
+    const inv = await adb.get<{ id: number; amount_due: number; status: string; customer_id: number | null }>(
+      'SELECT id, amount_due, status, customer_id FROM invoices WHERE id = ?',
       invoiceIdClean,
     );
     if (!inv) throw new AppError('Invoice not found', 404);
+    invoiceCustomerId = inv.customer_id == null ? null : Number(inv.customer_id);
     if (inv.status === 'void' || inv.status === 'paid') {
       throw new AppError(`Cannot create payment link for a ${inv.status} invoice`, 400);
     }
@@ -165,6 +167,18 @@ authedRouter.post('/', asyncHandler(async (req: Request, res: Response) => {
   let customerIdClean: number | null = null;
   if (customer_id !== undefined && customer_id !== null) {
     customerIdClean = validateIntegerQuantity(customer_id, 'customer_id');
+  }
+  if (invoiceIdClean !== null) {
+    if (invoiceCustomerId !== null) {
+      if (customerIdClean !== null && customerIdClean !== invoiceCustomerId) {
+        throw new AppError('Invoice customer does not match customer_id', 400);
+      }
+      customerIdClean = invoiceCustomerId;
+    } else if (customerIdClean !== null) {
+      throw new AppError('Invoice is not assigned to a customer', 400);
+    }
+  }
+  if (customerIdClean !== null) {
     const cust = await adb.get('SELECT id FROM customers WHERE id = ?', customerIdClean);
     if (!cust) throw new AppError('Customer not found', 404);
   }

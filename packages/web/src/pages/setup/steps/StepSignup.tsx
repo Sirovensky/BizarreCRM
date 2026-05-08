@@ -304,9 +304,9 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
-              className="absolute inset-y-0 right-2 flex items-center text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
-              tabIndex={-1}
+              className="absolute inset-y-0 right-2 flex items-center rounded-md text-surface-500 hover:text-surface-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 dark:hover:text-surface-300"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>

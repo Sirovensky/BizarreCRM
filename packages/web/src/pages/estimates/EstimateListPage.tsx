@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { estimateApi, customerApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatPhone } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 
 // ─── Status config ───────────────────────────────────────────────
@@ -55,6 +55,12 @@ type BulkDeleteFailure = {
   error: unknown;
 };
 
+type BulkConvertResult = {
+  estimate_id: number;
+  ticket_id?: number;
+  error?: string;
+};
+
 function formatEstimateLabel(id: number, estimate?: { order_id?: string | null }) {
   return estimate?.order_id || `EST-${String(id).padStart(4, '0')}`;
 }
@@ -64,6 +70,19 @@ function formatBulkDeleteFailures(failures: BulkDeleteFailure[]) {
   const details = visibleFailures.map((failure) => `${failure.label}: ${formatApiError(failure.error)}`);
   const remaining = failures.length - visibleFailures.length;
   return `${details.join('; ')}${remaining > 0 ? `; ${remaining} more failed` : ''}`;
+}
+
+function formatBulkConvertFailures(failures: BulkConvertResult[], labelById: Map<number, string>) {
+  const visibleFailures = failures.slice(0, 3);
+  const details = visibleFailures.map((failure) => (
+    `${labelById.get(failure.estimate_id) || formatEstimateLabel(failure.estimate_id)}: ${failure.error || 'Unknown error'}`
+  ));
+  const remaining = failures.length - visibleFailures.length;
+  return `${details.join('; ')}${remaining > 0 ? `; ${remaining} more failed` : ''}`;
+}
+
+function isBulkConvertibleStatus(status: string) {
+  return status === 'approved' || status === 'signed';
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────
@@ -420,6 +439,7 @@ export function EstimateListPage() {
   // WEB-W2-033: bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkConverting, setIsBulkConverting] = useState(false);
   const toggleSelectAll = (checked: boolean) => {
     setSelectedIds(checked ? new Set(estimates.map((e: any) => e.id)) : new Set());
   };
@@ -527,7 +547,7 @@ export function EstimateListPage() {
   // Shared gate so Send/Convert/Delete/Reject row buttons can't fire in parallel
   // and race the convert->navigate transition (SCAN-984b).
   const anyMutationPending =
-    sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending || isBulkDeleting;
+    sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending || isBulkDeleting || isBulkConverting;
 
   const handleBulkDelete = useCallback(async () => {
     if (anyMutationPending || selectedIds.size === 0) return;
@@ -620,6 +640,83 @@ export function EstimateListPage() {
     }
   }, [anyMutationPending, estimates, queryClient, selectedIds]);
 
+  const handleBulkConvert = useCallback(async () => {
+    if (anyMutationPending || selectedIds.size === 0) return;
+
+    const selectedEstimates = estimates.filter((e) => selectedIds.has(e.id));
+    const convertibleEstimates = selectedEstimates.filter((e) => isBulkConvertibleStatus(e.status));
+    const skippedEstimates = selectedEstimates.filter((e) => !isBulkConvertibleStatus(e.status));
+    const ids = convertibleEstimates.map((e) => e.id);
+    const total = ids.length;
+    const skippedCount = skippedEstimates.length;
+    const labelById = new Map(
+      estimates.map((estimate) => [estimate.id, formatEstimateLabel(estimate.id, estimate)]),
+    );
+
+    if (total === 0) {
+      toast.error('Only approved or signed estimates can be bulk converted.');
+      return;
+    }
+
+    const confirmMessage = skippedCount > 0
+      ? `${skippedCount} selected estimate${skippedCount !== 1 ? 's' : ''} skipped because only approved or signed estimates can be converted. Convert ${total} estimate${total !== 1 ? 's' : ''}?`
+      : `Convert ${total} approved/signed estimate${total !== 1 ? 's' : ''} to ticket${total !== 1 ? 's' : ''}?`;
+
+    try {
+      if (!await confirm(confirmMessage, { confirmLabel: 'Convert' })) {
+        return;
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
+      return;
+    }
+
+    const loadingToastId = toast.loading(`Converting ${total} estimate${total !== 1 ? 's' : ''}...`);
+    setIsBulkConverting(true);
+
+    try {
+      const res = await estimateApi.bulkConvert(ids);
+      const data = res?.data?.data || {};
+      const results: BulkConvertResult[] = Array.isArray(data.results) ? data.results : [];
+      const successCount = Number(data.success_count ?? results.filter((r) => !r.error).length);
+      const failures = results.filter((r) => r.error);
+
+      await queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      setSelectedIds(new Set([
+        ...skippedEstimates.map((e) => e.id),
+        ...failures.map((failure) => failure.estimate_id),
+      ]));
+      toast.dismiss(loadingToastId);
+
+      if (skippedCount > 0) {
+        toast.error(
+          `${skippedCount} selected estimate${skippedCount !== 1 ? 's' : ''} skipped — not approved or signed.`,
+          { duration: 6000 },
+        );
+      }
+
+      if (failures.length === 0) {
+        toast.success(`Converted ${successCount} estimate${successCount !== 1 ? 's' : ''}`);
+      } else if (successCount > 0) {
+        toast.success(`Converted ${successCount} of ${total} estimate${total !== 1 ? 's' : ''}`);
+        toast.error(
+          `Failed to convert ${failures.length} estimate${failures.length !== 1 ? 's' : ''}; failed rows remain selected. ${formatBulkConvertFailures(failures, labelById)}`,
+          { duration: 10000 },
+        );
+      } else {
+        toast.error(
+          `No estimates were converted; failed rows remain selected. ${formatBulkConvertFailures(failures, labelById)}`,
+          { duration: 10000 },
+        );
+      }
+    } catch (err) {
+      toast.dismiss(loadingToastId);
+      toast.error(formatApiError(err));
+    } finally {
+      setIsBulkConverting(false);
+    }
+  }, [anyMutationPending, estimates, queryClient, selectedIds]);
+
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -705,6 +802,17 @@ export function EstimateListPage() {
                       </span>
                       <button
                         type="button"
+                        onClick={handleBulkConvert}
+                        disabled={anyMutationPending}
+                        className="flex items-center gap-1 text-green-600 hover:text-green-700 font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {isBulkConverting
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <ArrowRightLeft className="h-3.5 w-3.5" />}
+                        {isBulkConverting ? 'Converting...' : 'Convert selected'}
+                      </button>
+                      <button
+                        type="button"
                         onClick={handleBulkDelete}
                         disabled={anyMutationPending}
                         className="flex items-center gap-1 text-red-600 hover:text-red-700 font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
@@ -717,7 +825,7 @@ export function EstimateListPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedIds(new Set())}
-                        disabled={isBulkDeleting}
+                        disabled={isBulkDeleting || isBulkConverting}
                         aria-label="Clear estimate selection"
                         className="text-surface-400 hover:text-surface-600 ml-auto disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
                       >
@@ -734,7 +842,7 @@ export function EstimateListPage() {
                     type="checkbox"
                     checked={estimates.length > 0 && selectedIds.size === estimates.length}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
-                    disabled={isBulkDeleting}
+                    disabled={isBulkDeleting || isBulkConverting}
                     className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </th>
@@ -786,6 +894,8 @@ export function EstimateListPage() {
               ) : (
                 estimates.map((est) => {
                   const isExpired = est.valid_until && new Date(est.valid_until) < new Date();
+                  const destinationPhone = est.customer_mobile || est.customer_phone || '';
+                  const formattedDestinationPhone = destinationPhone ? formatPhone(destinationPhone) : '';
                   return (
                     <tr
                       key={est.id}
@@ -797,7 +907,7 @@ export function EstimateListPage() {
                           type="checkbox"
                           checked={selectedIds.has(est.id)}
                           onChange={() => toggleSelect(est.id)}
-                          disabled={isBulkDeleting}
+                          disabled={isBulkDeleting || isBulkConverting}
                           className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </td>
@@ -867,7 +977,9 @@ export function EstimateListPage() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
+                                  const action = est.status === 'sent' ? 'Resend' : 'Send';
+                                  const target = formattedDestinationPhone ? ` to ${formattedDestinationPhone}` : ' to the customer';
+                                  if (await confirm(`${action} this estimate${target} via SMS?`)) {
                                     sendMut.mutate(est.id);
                                   }
                                 } catch (err) {

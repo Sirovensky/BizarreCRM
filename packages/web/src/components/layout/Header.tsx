@@ -25,13 +25,12 @@ import {
   Package,
   MessageSquare,
   Info,
-  X,
-  Loader2,
   HelpCircle,
   ScrollText,
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
 import { Button } from '@/components/shared/Button';
+import { PinModal } from '@/components/shared/PinModal';
 // WEB-FAE-001 (partial): adopt the previously-orphan `PermissionBoundary`
 // component for the Settings dropdown entry so at least one ad-hoc role
 // literal is funneled through the shared gate. Other ad-hoc sites still
@@ -709,16 +708,17 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
       {/* Switch User PIN Modal */}
       {showSwitchUser && (
-        <SwitchUserModal
-          onSuccess={async (pin: string) => {
-            try {
-              await switchUser(pin);
-              toast.success('Switched user');
-              setShowSwitchUser(false);
-              navigate('/');
-            } catch (err: unknown) {
-              throw err; // re-throw so modal shows error
-            }
+        <PinModal
+          title="Switch User"
+          description="Enter the PIN of the user to switch to."
+          submitLabel="Switch"
+          verifyPin={async (pin: string) => {
+            await switchUser(pin);
+          }}
+          onSuccess={() => {
+            toast.success('Switched user');
+            setShowSwitchUser(false);
+            navigate('/');
           }}
           onCancel={() => setShowSwitchUser(false)}
         />
@@ -816,155 +816,3 @@ const NotificationItem = memo(function NotificationItem({
     </button>
   );
 });
-
-// WEB-UIUX-474: mirror PinModal's 5-attempt lockout + data-lpignore here.
-// We cannot reuse <PinModal> directly because PinModal calls authApi.verifyPin
-// internally and returns no pin value; SwitchUserModal must pass the raw PIN
-// to switchUser() externally. Duplicating only the lockout state (not the
-// full component) is the minimal, safe fix.
-const SWITCH_MAX_ATTEMPTS = 5;
-const SWITCH_LOCKOUT_SECONDS = 60;
-
-function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => Promise<void>; onCancel: () => void }) {
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [failCount, setFailCount] = useState(0);
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
-  const [lockCountdown, setLockCountdown] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
-
-  const isLocked = lockedUntil !== null && Date.now() < lockedUntil;
-
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  // Esc closes the dialog. The page-wide Esc handler elsewhere in this file
-  // targets dropdown menus only; without this listener the modal would only
-  // close via the X / Cancel buttons.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
-  // Countdown timer while locked out — matches PinModal pattern.
-  useEffect(() => {
-    if (!lockedUntil) return;
-    const tick = () => {
-      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
-      if (remaining <= 0) {
-        setLockedUntil(null);
-        setLockCountdown(0);
-        setError('');
-        setFailCount(0);
-        inputRef.current?.focus();
-      } else {
-        setLockCountdown(remaining);
-      }
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [lockedUntil]);
-
-  // WEB-UIUX-445: move focus to Cancel when lockout activates so the user
-  // has a reachable, actionable target (PIN input becomes disabled).
-  useEffect(() => {
-    if (isLocked) cancelButtonRef.current?.focus();
-  }, [isLocked]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pin.trim() || loading || isLocked) return;
-    setLoading(true);
-    setError('');
-    try {
-      await onSuccess(pin);
-    } catch (err) {
-      // Underlying error already mapped to a UI banner; log so the actual cause
-      // (network vs auth vs server) is visible in console / Sentry.
-      console.warn('[SwitchUserModal] PIN switch failed', err);
-      const newCount = failCount + 1;
-      setFailCount(newCount);
-      if (newCount >= SWITCH_MAX_ATTEMPTS) {
-        const lockTs = Date.now() + SWITCH_LOCKOUT_SECONDS * 1000;
-        setLockedUntil(lockTs);
-        setError(`Too many attempts. Please wait ${SWITCH_LOCKOUT_SECONDS}s.`);
-      } else {
-        setError(`Invalid PIN (${SWITCH_MAX_ATTEMPTS - newCount} attempts remaining)`);
-      }
-      setPin('');
-      inputRef.current?.focus();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onCancel}
-      role="presentation"
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="switch-user-title"
-        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <div className="flex items-center gap-2">
-            <ArrowLeftRight className="h-4 w-4 text-surface-500" />
-            <h2 id="switch-user-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
-          </div>
-          <Button aria-label="Close" onClick={onCancel} variant="ghost" size="sm" iconOnly className="min-h-[44px] min-w-[44px] text-surface-400 md:min-h-0 md:min-w-0">
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <p className="text-sm text-surface-500 dark:text-surface-400">Enter the PIN of the user to switch to.</p>
-          {/* SCAN-1163: data-lpignore + autoComplete="off" + data-form-type="other"
-              prevent password managers from offering to save the switch PIN. */}
-          <input
-            ref={inputRef}
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
-            value={pin}
-            disabled={isLocked}
-            autoComplete="off"
-            data-lpignore="true"
-            data-form-type="other"
-            onChange={(e) => { if (!isLocked) { setPin(e.target.value.replace(/\D/g, '')); setError(''); } }}
-            placeholder={isLocked ? `Wait ${lockCountdown}s` : 'PIN'}
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-primary-600 focus-visible:outline-none focus:ring-1 focus:ring-primary-600 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
-          />
-          {isLocked && (
-            <p role="alert" aria-live="polite" className="text-center text-sm text-amber-600 dark:text-amber-400">
-              Locked. Press Cancel to close.
-            </p>
-          )}
-          {error && !isLocked && <p className="text-center text-sm text-red-500">{error}</p>}
-          <div className="flex gap-3">
-            <Button ref={cancelButtonRef} type="button" onClick={onCancel} variant="secondary" size="sm" fullWidth>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!pin.trim() || loading || isLocked}
-              variant="primary"
-              size="sm"
-              fullWidth
-              leadingIcon={loading ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
-            >
-              Switch
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}

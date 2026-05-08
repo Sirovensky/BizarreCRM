@@ -623,6 +623,29 @@ router.patch('/:id/decline', requirePermission('refunds.approve'), asyncHandler(
   res.json({ success: true, data: { id } });
 }));
 
+// GET /credits/liability — All customers with outstanding store credit (§40.4 reconciliation).
+// Returns total liability + per-customer breakdown. Admin / manager only.
+// Keep this literal route above /credits/:customerId so Express does not parse
+// "liability" as a customer id.
+router.get('/credits/liability', asyncHandler(async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+  const adb: AsyncDb = req.asyncDb;
+  const [rows, totalRow] = await Promise.all([
+    adb.all(`
+      SELECT sc.customer_id, c.first_name, c.last_name, sc.amount, sc.updated_at
+      FROM store_credits sc
+      LEFT JOIN customers c ON c.id = sc.customer_id
+      WHERE sc.amount > 0
+      ORDER BY sc.amount DESC
+    `),
+    adb.get<{ total: number }>('SELECT COALESCE(SUM(amount), 0) AS total FROM store_credits WHERE amount > 0'),
+  ]);
+  res.json({ success: true, data: { credits: rows, total: totalRow?.total ?? 0 } });
+}));
+
 // GET /credits/:customerId — Get customer store credit balance + history
 // Tenant isolation: req.asyncDb is already scoped to the active tenant DB — SC2 verified.
 router.get('/credits/:customerId', asyncHandler(async (req, res) => {
@@ -711,27 +734,6 @@ router.post('/credits/:customerId/use', requirePermission('invoices.record_payme
   });
 
   res.json({ success: true, data: { new_balance: newBalance } });
-}));
-
-// GET /credits/liability — All customers with outstanding store credit (§40.4 reconciliation).
-// Returns total liability + per-customer breakdown. Admin / manager only.
-router.get('/credits/liability', asyncHandler(async (req, res) => {
-  const role = req.user?.role;
-  if (role !== 'admin' && role !== 'manager') {
-    throw new AppError('Admin or manager role required', 403);
-  }
-  const adb: AsyncDb = req.asyncDb;
-  const [rows, totalRow] = await Promise.all([
-    adb.all(`
-      SELECT sc.customer_id, c.first_name, c.last_name, sc.amount, sc.updated_at
-      FROM store_credits sc
-      LEFT JOIN customers c ON c.id = sc.customer_id
-      WHERE sc.amount > 0
-      ORDER BY sc.amount DESC
-    `),
-    adb.get<{ total: number }>('SELECT COALESCE(SUM(amount), 0) AS total FROM store_credits WHERE amount > 0'),
-  ]);
-  res.json({ success: true, data: { credits: rows, total: totalRow?.total ?? 0 } });
 }));
 
 export default router;

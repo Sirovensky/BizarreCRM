@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2, X, Save, Zap, AlertCircle, ChevronDown, ChevronUp, FlaskConical } from 'lucide-react';
@@ -68,6 +68,53 @@ const TEMPLATE_VARS = [
   { key: '{invoice_id}', desc: 'Invoice ID' },
   { key: '{invoice_total}', desc: 'Invoice total' },
 ];
+
+const TEMPLATE_VAR_KEYS = new Set(TEMPLATE_VARS.map((v) => v.key));
+const TEMPLATE_TOKEN_RE = /\{[A-Za-z0-9_]+\}/g;
+const TEMPLATE_FIELDS_BY_ACTION: Record<string, string[]> = {
+  send_sms: ['to', 'template'],
+  send_email: ['subject', 'body'],
+  add_note: ['content'],
+  create_notification: ['message'],
+};
+
+function findUnknownTemplateTokens(actionType: string, config: Record<string, unknown>): string[] {
+  const fields = TEMPLATE_FIELDS_BY_ACTION[actionType] ?? [];
+  const unknown = new Set<string>();
+  for (const field of fields) {
+    const value = config[field];
+    if (typeof value !== 'string') continue;
+    const tokens = value.match(TEMPLATE_TOKEN_RE) ?? [];
+    for (const token of tokens) {
+      if (!TEMPLATE_VAR_KEYS.has(token)) unknown.add(token);
+    }
+  }
+  return Array.from(unknown).sort();
+}
+
+function unknownTokenMessage(actionType: string, config: Record<string, unknown>): string | null {
+  const tokens = findUnknownTemplateTokens(actionType, config);
+  if (tokens.length === 0) return null;
+  return `Unknown template variable${tokens.length === 1 ? '' : 's'}: ${tokens.join(', ')}`;
+}
+
+function cleanAutomationConfig(config: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(config).filter(([, v]) => v !== undefined && v !== ''),
+  );
+}
+
+function stableConfigKey(config: Record<string, unknown>): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(cleanAutomationConfig(config)).sort(([a], [b]) => a.localeCompare(b)),
+    ),
+  );
+}
+
+function triggerKey(triggerType: string, config: Record<string, unknown>): string {
+  return `${triggerType}:${stableConfigKey(config)}`;
+}
 
 export function triggerLabel(type: string): string {
   return TRIGGER_TYPES.find((t) => t.value === type)?.label ?? type;
@@ -195,6 +242,7 @@ function ActionConfigForm({
             />
           </div>
           <TemplateVarHints />
+          <TemplateTokenWarning actionType={actionType} config={config} />
         </div>
       );
 
@@ -223,6 +271,7 @@ function ActionConfigForm({
             />
           </div>
           <TemplateVarHints />
+          <TemplateTokenWarning actionType={actionType} config={config} />
         </div>
       );
 
@@ -287,6 +336,7 @@ function ActionConfigForm({
             />
           </div>
           <TemplateVarHints />
+          <TemplateTokenWarning actionType={actionType} config={config} />
         </div>
       );
 
@@ -302,6 +352,7 @@ function ActionConfigForm({
             className="w-full px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
           />
           <TemplateVarHints />
+          <TemplateTokenWarning actionType={actionType} config={config} />
         </div>
       );
 
@@ -328,6 +379,16 @@ function TemplateVarHints() {
         ))}
       </div>
     </div>
+  );
+}
+
+function TemplateTokenWarning({ actionType, config }: { actionType: string; config: Record<string, unknown> }) {
+  const message = unknownTokenMessage(actionType, config);
+  if (!message) return null;
+  return (
+    <p className="text-xs text-red-600 dark:text-red-400">
+      {message}. Use only the available variables above.
+    </p>
   );
 }
 
@@ -374,12 +435,16 @@ export function AutomationModal({
       return;
     }
     // Strip empty values from configs
-    const cleanTrigger = Object.fromEntries(
-      Object.entries(triggerConfig).filter(([, v]) => v !== undefined && v !== '')
-    );
-    const cleanAction = Object.fromEntries(
-      Object.entries(actionConfig).filter(([, v]) => v !== undefined && v !== '')
-    );
+    const cleanTrigger = cleanAutomationConfig(triggerConfig);
+    const cleanAction = cleanAutomationConfig(actionConfig);
+    const unknownTokens = findUnknownTemplateTokens(actionType, cleanAction);
+    if (unknownTokens.length > 0) {
+      toast.error(
+        `Unknown template variable${unknownTokens.length === 1 ? '' : 's'}: ${unknownTokens.join(', ')}. Use the available variables listed below.`,
+        { duration: 7000 },
+      );
+      return;
+    }
     // WEB-FK-005: client-side loop detection. The dangerous shape is
     // trigger=ticket_status_changed paired with action=change_status — every
     // status flip the rule does fires the rule again. Reject when the
@@ -655,13 +720,27 @@ export function AutomationsTab() {
     if (ok) deleteMut.mutate(rule.id);
   }
 
-  function handleSave(data: {
+  async function handleSave(data: {
     name: string;
     trigger_type: string;
     trigger_config: Record<string, unknown>;
     action_type: string;
     action_config: Record<string, unknown>;
   }) {
+    const duplicate = rules.find((rule) =>
+      rule.id !== editingRule?.id &&
+      triggerKey(rule.trigger_type, rule.trigger_config) === triggerKey(data.trigger_type, data.trigger_config)
+    );
+    if (duplicate) {
+      const ok = await confirm(
+        `"${duplicate.name}" already uses this trigger. Both rules can fire for the same event if they are active.`,
+        {
+          title: 'Duplicate automation trigger',
+          confirmLabel: editingRule ? 'Update anyway' : 'Create anyway',
+        },
+      );
+      if (!ok) return;
+    }
     if (editingRule) {
       updateMut.mutate({ id: editingRule.id, data });
     } else {
@@ -672,6 +751,19 @@ export function AutomationsTab() {
   const statusList = statuses ?? [];
   const userList = users ?? [];
   const rules = automations ?? [];
+  const duplicateTriggerKeys = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const rule of rules) {
+      if (!rule.is_active) continue;
+      const key = triggerKey(rule.trigger_type, rule.trigger_config);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([key]) => key),
+    );
+  }, [rules]);
 
   if (isLoading) {
     return (
@@ -730,6 +822,7 @@ export function AutomationsTab() {
         <div className="space-y-2">
           {rules.map((rule) => {
             const isExpanded = expandedId === rule.id;
+            const hasDuplicateTrigger = duplicateTriggerKeys.has(triggerKey(rule.trigger_type, rule.trigger_config));
             return (
               <div key={rule.id} className="card">
                 {/* Rule summary row */}
@@ -762,6 +855,14 @@ export function AutomationsTab() {
                       {!rule.is_active && (
                         <span className="text-[10px] uppercase font-semibold bg-surface-200 dark:bg-surface-700 text-surface-500 rounded px-1.5 py-0.5">
                           Disabled
+                        </span>
+                      )}
+                      {hasDuplicateTrigger && (
+                        <span
+                          title="Another active automation uses this same trigger and can fire for the same event."
+                          className="text-[10px] uppercase font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 rounded px-1.5 py-0.5"
+                        >
+                          Duplicate trigger
                         </span>
                       )}
                     </div>

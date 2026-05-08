@@ -2,13 +2,16 @@ import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from './portalApi';
-import { formatDate } from '../../utils/format';
+import { usePortalI18n } from './i18n';
+import { formatCurrency, formatDate } from '../../utils/format';
 
 interface PortalEstimatesViewProps {
   onBack: () => void;
 }
 
 export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
+  const { locale } = usePortalI18n();
+  const currency = 'USD'; // portal session does not expose store currency at list level; USD fallback
   const [estimates, setEstimates] = useState<api.EstimateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingId, setApprovingId] = useState<number | null>(null);
@@ -101,7 +104,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                   <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">{est.order_id}</span>
                   <EstimateStatusBadge status={est.status} />
                 </div>
-                <div className="text-xs text-surface-400 dark:text-surface-500">{formatDate(est.created_at)}</div>
+                <div className="text-xs text-surface-400 dark:text-surface-500">{formatDate(est.created_at, locale)}</div>
               </div>
 
               {est.line_items.length > 0 && (
@@ -112,7 +115,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                         <tr key={i} className={i > 0 ? 'border-t border-surface-50 dark:border-surface-700' : ''}>
                           <td className="px-4 py-2 text-surface-700 dark:text-surface-300">{item.description}</td>
                           <td className="px-4 py-2 text-right text-surface-500 dark:text-surface-400">x{item.quantity}</td>
-                          <td className="px-4 py-2 text-right text-surface-700 dark:text-surface-300">${item.total.toFixed(2)}</td>
+                          <td className="px-4 py-2 text-right text-surface-700 dark:text-surface-300">{formatCurrency(item.total, currency, locale)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -121,15 +124,33 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
               )}
 
               <div className="p-4">
-                <div className="flex justify-between text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">
-                  <span>Total</span>
-                  <span>${est.total.toFixed(2)}</span>
+                <div className="space-y-1 text-sm mb-3">
+                  <div className="flex justify-between text-surface-500 dark:text-surface-400">
+                    <span>Subtotal</span>
+                    <span>{formatCurrency(est.subtotal, currency, locale)}</span>
+                  </div>
+                  {est.discount > 0 && (
+                    <div className="flex justify-between text-green-600 dark:text-green-400">
+                      <span>Discount</span>
+                      <span>-{formatCurrency(est.discount, currency, locale)}</span>
+                    </div>
+                  )}
+                  {est.tax > 0 && (
+                    <div className="flex justify-between text-surface-500 dark:text-surface-400">
+                      <span>Tax</span>
+                      <span>{formatCurrency(est.tax, currency, locale)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold text-surface-900 dark:text-surface-100 pt-1 border-t border-surface-200 dark:border-surface-800">
+                    <span>Total</span>
+                    <span>{formatCurrency(est.total, currency, locale)}</span>
+                  </div>
                 </div>
                 {est.notes && (
                   <p className="text-xs text-surface-500 dark:text-surface-400 mb-3">{est.notes}</p>
                 )}
                 {est.valid_until && (
-                  <p className="text-xs text-surface-400 dark:text-surface-500 mb-3">Valid until: {formatDate(est.valid_until)}</p>
+                  <p className="text-xs text-surface-400 dark:text-surface-500 mb-3">Valid until: {formatDate(est.valid_until, locale)}</p>
                 )}
 
                 {est.status === 'sent' && (
@@ -139,7 +160,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                     disabled={approvingId === est.id}
                     className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                   >
-                    {approvingId === est.id ? 'Approving...' : `Approve & authorize $${est.total.toFixed(2)}`}
+                    {approvingId === est.id ? 'Approving...' : `Approve & authorize ${formatCurrency(est.total, currency, locale)}`}
                   </button>
                 )}
                 {est.status === 'approved' && (
@@ -147,7 +168,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
-                    Approved{est.approved_at ? ` on ${formatDate(est.approved_at)}` : ''}
+                    Approved{est.approved_at ? ` on ${formatDate(est.approved_at, locale)}` : ''}
                   </div>
                 )}
               </div>

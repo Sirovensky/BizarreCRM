@@ -4884,3 +4884,351 @@ Reason: completed items left in TODO.md across multiple sessions; bulk-relocated
 - [x] WEB-UIUX-549 / WEB-UIUX-608. **GiftCardDetailPage reload modal keyboard and amount validation completed.** CLOSED 2026-05-07 — critique: WEB-UIUX-549 was stale as written because ReloadModal already had `useFocusTrap`/`useBodyScrollLock` from WEB-UIUX-557, but it still drifted from the shared modal pattern by keeping a hand-rolled window Escape listener and attaching dialog semantics to the backdrop. WEB-UIUX-608 was valid in effect, though the old code guarded submit before the mutation; the button still used truthiness, so invalid truthy drafts stayed clickable. Moved Escape handling to `useEscClose`, attached the focus trap/ref/ARIA dialog semantics to the inner dialog card, and replaced `parseFloat`/`!amount` checks with one `Number(...)` validator that disables and blocks invalid, non-positive, non-finite, and over-limit reloads with inline `aria-invalid` feedback. Verification: `npm run typecheck --workspace=packages/web` and focused `git diff --check` passed.
 - [x] WEB-UIUX-551 / WEB-UIUX-556. **GiftCardDetailPage code reveal and balance focus refresh completed.** CLOSED 2026-05-07 — critique: 551 was valid for the client shoulder-surf slice, though server-side reveal audit/rate-limit remains part of the broader plaintext-code policy tracked elsewhere; 556 was valid because the app's global React Query focus refetch default is false. Added a 30s auto-hide plus blur/visibility-change hiding for the full-code toggle, and opted the gift-card detail query into `refetchOnWindowFocus: true` so tab-back refreshes shared balance state. Verification: `npm run typecheck --workspace=packages/web` and focused `git diff --check` passed.
 - [x] WEB-UIUX-553. **GiftCardDetailPage ReloadModal parseFloat/min finding stale.** CLOSED-AS-STALE 2026-05-07 — critique: WEB-UIUX-549/608 already replaced `parseFloat` with `validateReloadAmount(Number(...))`, disabled invalid/non-positive drafts via `canSubmit`, set `aria-invalid`, and returned before mutation. No duplicate validation was added. Verification: focused inspection plus `npm run typecheck --workspace=packages/web` and focused `git diff --check` passed.
+
+### TODO sweep — orchestrated subagent batch (2026-05-08)
+
+- [x] WEB-UIUX-451. **[MINOR · BLOCKED] QuickSmsModal `MAX_CHARS=160` hardcoded — Twilio SMS-segment is 153 for concatenated multi-part GSM-7.** Counter shows "(2 msgs)" at 161 instead of 154. L14, L4. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/shared/QuickSmsModal.tsx:34,190-192`
+
+- [x] WEB-UIUX-575. **[MAJOR usability] SpotlightCoach "Skip step" sits next to "Skip tutorial" with similar styling — destructive vs non-destructive indistinguishable.** L14, L2. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/onboarding/SpotlightCoach.tsx:234-241,408-410`
+  <!-- meta: fix=rename-to-Next-or-Mark-as-done-different-color-from-Skip-tutorial -->
+
+- [x] WEB-UIUX-577. **[MINOR] SpotlightCoach `TARGET_FIND_TIMEOUT_MS=300` linear retry — partial-render races show nothing for 300ms then snap.** L1, L12. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/onboarding/SpotlightCoach.tsx:33,322-345`
+  <!-- meta: fix=use-MutationObserver-on-document.body -->
+
+- [x] WEB-UIUX-579. **[MINOR] tutorialFlows `dismissAllTutorials` writes localStorage BEFORE API call.** API failure leaves local flag sticky. L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/onboarding/tutorialFlows.ts:223-239`
+
+- [x] WEB-UIUX-591. **[MINOR] ImpersonationBanner + OfflineBanner + TrialBanner z-index inconsistency.** Stacking order undefined. L9. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  <!-- meta: fix=define-banner-stack-impersonation-z-30-offline-z-25-trial-z-20 -->
+
+- [x] WEB-UIUX-610. **[MINOR] GiftCardDetailPage masked code `****1234` cramped — no separator like `**** **** **** 1234`.** L9. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:235`
+
+- [x] WEB-UIUX-662. **[MAJOR] CustomerListPage / TicketListPage / LeadListPage search sends raw input, NO phone/email normalization.** Searching `(555) 123-4567` won't match stored `5551234567`. CSR daily friction. L7, L1. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-664. **[MAJOR] Cross-page selection invisible.** Page 1 select 25 → page 2 → "50 selected" badge but page 2 checkboxes unchecked. Mystery state. L11. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-669. **[MINOR] Invoice empty state: just icon + "No invoices found" — no "clear filters" CTA.** L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceListPage.tsx:426-430`
+
+- [x] WEB-UIUX-671. **[MINOR] Native `<input type="date">` for from/to has no max/min — future date `2099-01-01` allowed silently.** L7. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/customers/CustomerListPage.tsx:636-642`
+
+- [x] WEB-UIUX-673. **[MINOR] Old/invalid status param in URL silently passed to server.** "No items match" with no flag that filter value is invalid. L8, L14. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-685. **[MINOR] LabelLayout silently truncates devices to first 2 — multi-device tickets lose 3rd+ device on bench label.** No "+N more". L13. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/print/PrintPage.tsx:936-938`
+
+- [x] WEB-UIUX-688. **[MINOR] SuccessScreen `resetAll()` called BEFORE print navigation — print page fails, cart already wiped.** L4. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/unified-pos/SuccessScreen.tsx:144-148`
+
+- [x] WEB-UIUX-690. **[BLOCKER] No unknown-token detection on template bodies.** Save accepts any `{...}` token, dryRun success toast slices first 60 chars. L7, L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/settings/AutomationsTab.tsx:182-189`
+
+- [x] WEB-UIUX-694. **[MAJOR] No duplicate-rule detection — two rules sharing `(trigger_type, trigger_config)` both fire silently.** Dry-run shows single rule only. L3, L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/settings/AutomationsTab.tsx`
+
+- [x] WEB-UIUX-696. **[MAJOR] ScheduledSendModal naive about DST — March 9 03:00 EDT-edge case ambiguous.** Zoneless `<input type="datetime-local">`, no UTC display, no impossible-time rejection. L7, L14. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/communications/components/ScheduledSendModal.tsx:27-83`
+
+- [x] WEB-UIUX-706. **[BLOCKER] Credit Note button has no `requirePermission('invoices.credit_note')` gate.** Server checks perm; client renders button to all roles. Junior staff click → 403 → generic toast "Failed to create credit note". L12, L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
+  <!-- meta: fix=wrap-button-in-PermissionBoundary+invoices.credit_note -->
+
+- [x] WEB-UIUX-715. **[MAJOR] Credit Note submit invalidates `['invoices']` but not `['invoice-stats']` — donut chart on list page stays stale.** `creditNoteMutation.onSuccess` line 169-171 misses the stats key used by `InvoiceListPage:175`. Operator returns to list, status distribution still shows old paid count. L15. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-171`
+
+- [x] WEB-UIUX-717. **[MAJOR] Credit Note backdrop click dismisses with no unsaved-changes guard.** Operator types $147 + reason + 480-char note, accidentally clicks backdrop, all lost. No `beforeunload`-style confirm. Same defect on Payment Modal. L8, L7. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744,597`
+  <!-- meta: fix=guard-on-isDirty -->
+
+- [x] WEB-UIUX-719. **[MAJOR] Credit Note primary submit is `bg-amber-600` — cautionary but not destructive.** Pattern elsewhere: amber=warn, red=destructive (Void uses red border + red text). Credit Note moves money out — deserves at least red-tinted variant or explicit warning iconography. L9, L1. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
+
+- [x] WEB-UIUX-724. **[MINOR] Credit Note "Max: $X (amount paid)" hint duplicates `max=` attr but uses raw `$` not `formatCurrency`.** Inconsistent currency rendering inside same dialog. L9, L14. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:776-778`
+
+- [x] WEB-UIUX-726. **[MINOR] RefundReasonPicker note `maxLength=500` silently truncates paste — no count, no warning.** Operator pasting 800-char dispute log doesn't know last 300 chars dropped. L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/billing/RefundReasonPicker.tsx:85-92`
+  <!-- meta: fix=add-X/500-counter+toast-on-truncate -->
+
+- [x] WEB-UIUX-728. **[MINOR] Credit Note success toast "Credit note created" omits issued amount + credit-note number.** Cannot confirm "I refunded $X, credit note CN-NNNN". Compare payment toast which says nothing about amount either — pattern flaw. L8, L14. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
+
+- [x] WEB-UIUX-730. **[MINOR] Credit Note Esc-to-close handler shared with Payment Modal — logical race if both somehow open Esc closes Credit Note only.** Brittle. L13. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:60-69`
+
+- [x] WEB-UIUX-754. **[BLOCKER] No global drag-drop guard — zero `addEventListener('drop'` outside specific handlers.** Drag PDF/photo onto any non-handler region → browser navigates to file://, app unloads, all unsaved forms lost. L7, L4. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/main.tsx`
+  <!-- meta: fix=window-addEventListener-dragover-drop-preventDefault -->
+
+- [x] WEB-UIUX-789. **[MINOR] `timeAgo()` appends `Z` only if no `Z`/`+` — `2026-04-30T10:00:00-05:00Z` malformed.** Mixed-format timestamps produce wrong "ago" labels. L14. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/utils/format.ts:154-168`
+
+- [x] WEB-UIUX-792. **[MAJOR] POS global scan handler bails on Enter only checks 2 modals (CheckoutModal, SuccessScreen).** DeviceTemplateNudge, UpsellPrompt, PinModal etc. don't block. Phantom line items added to next sale. L5, L11. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:138-144`
+
+- [x] WEB-UIUX-794. **[MAJOR] POS detection threshold `100ms/char` too lenient for fast typists (40+ wpm = ~75ms/char).** Fast-typed `1234⏎` qualifies as scan, silently adds wrong product. L1, L7. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:190-198`
+
+- [x] WEB-UIUX-796. **[MAJOR] Two scans 200ms apart: second aborts first's API call. First scan's product NEVER added.** No queue, no toast-on-loss. L11, L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:160-163`
+
+- [x] WEB-UIUX-800. **[MINOR] Scan flash "Scan detected!" set BEFORE API call.** 404/500 still shows green flash + concurrent red toast. L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:157-158`
+
+- [x] WEB-UIUX-813. **[BLOCKER] Impersonation indistinguishable from real login at logout time.** SA walks away mid-session, token expires (15min), bounces to /login (tenant login) → next person at kiosk logs in as REAL tenant admin, looks normal. L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/super-admin/TenantsListPage.tsx:185-211`
+
+- [x] WEB-UIUX-815. **[BLOCKER] Banner trusts localStorage without verifying token claims.** Stale marker + fresh login on same browser → "Impersonating acme-co" while user is logged in as themselves at acme-co. L16, L11. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/ImpersonationBanner.tsx:26-43,50-85`
+
+- [x] WEB-UIUX-817. **[MAJOR] Guard reads `payload.tenantSlug` (camelCase) but rest of codebase uses `tenant_slug` (snake_case) — guard likely silently no-op.** L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/stores/authStore.ts:241-249`
+
+- [x] WEB-UIUX-819. **[MAJOR] `jti` returned from /impersonate never persisted client-side.** `endImpersonation` API exists but unreachable — leaked token can't be revoked from UI. Only TTL expiry. L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/super-admin/TenantsListPage.tsx:179-212`
+
+- [x] WEB-UIUX-887. **[BLOCKER] POS sale never invalidates inventory cache.** `CheckoutModal.onSuccess` invalidates `['membership',...]` only. Other tabs show pre-sale stock indefinitely. L6, L11, L13. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/unified-pos/CheckoutModal.tsx:228-230`
+
+- [x] WEB-UIUX-889. **[BLOCKER] Stocktake commit doesn't invalidate inventory cache.** Toast says "Committed: N items adjusted" but inventory list shows pre-stocktake numbers. L6, L13. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/inventory/StocktakePage.tsx:141-145`
+
+- [x] WEB-UIUX-898. **[MAJOR] BulkSmsModal trigger has NO client-side role gate.** Cashier sees Bulk button, opens modal, picks segment+template, sees recipient count (PII leak), only then 403. L12, L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/communications/CommunicationPage.tsx:1546-1554`
+
+- [x] WEB-UIUX-900. **[MAJOR] SwitchUser in Header bypasses shared PinModal — NO failCount, NO lockout, NO sessionStorage persistence.** Walk-up brute force at network round-trip rate. L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/layout/Header.tsx:642-728`
+
+- [x] WEB-UIUX-904. **[MAJOR] Logout shows NO global toast / cross-tab confirmation.** Sibling tabs flip silently. L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-906. **[MINOR] AuditLogsTab `formatDetails` JSON in `title=` tooltip exposes hashed PINs/IPs/PII on hover.** Screen-share/screenshot leak. L12, L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/settings/AuditLogsTab.tsx:60-70,161`
+
+- [x] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16. **STATUS: BLOCKED — already fixed: Sidebar.tsx auth-cleared listener sweeps recent_views + recent_views:* keys** **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/stores/authStore.ts:185-200`
+
+- [x] WEB-UIUX-908. **[MINOR] `pos-store-u*` keys never swept.** Fired employee's pending cart sits forever in localStorage with customer name + items. L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/shared/PinModal.tsx:23-55`
+
+- [x] WEB-UIUX-910. **[MINOR] AuditLogsTab cannot export / search-by-user from UI.** During incident, admin can't filter by user_id. No export. L1, L13. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-917. **[MINOR] Password-toggle eye buttons set `tabIndex={-1}` everywhere.** Forces blind typing with no peek-ahead. Material/GOV.UK convention is to keep in tab order. L12. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-923. **[MINOR] SignatureCanvas has NO keyboard alternative.** 0 keyboard handlers. Customers required to sign on portal cannot complete with keyboard alone. L12. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/components/shared/SignatureCanvas.tsx`
+
+- [x] WEB-UIUX-925. **[MAJOR] Reports `todayStr()` uses `.toISOString().slice(0,10)` (UTC) — Dashboard fixed via `localYmd()` (SCAN-1162) — Reports never adopted.** 11:55pm America/Denver → tomorrow's UTC date. L7, L13. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-927. **[MAJOR] Chart fills "0" for missing days — no distinction between "no sales", "shop closed", "data not yet computed".** L8, L11. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-929. **[MAJOR] Refunds KPI tooltip: "Total refunded amount" — no period/sign disclosure, doesn't say if Net Profit subtracts refunds.** L13, L14. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
+
+- [x] WEB-UIUX-934. **[MINOR] `formatCurrency` swallows NaN as `$0.00`.** Server returns object → `$0.00` silently. Indistinguishable from real zero. L8, L13. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/utils/format.ts:55-57`
+
+- [x] WEB-UIUX-941. **[MAJOR · BLOCKED] SMS send error path swallows 429/silent-drop/invalid-number distinctions.** Generic "Failed to send message" toast. L8, L14. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-942. **[MAJOR · BLOCKED] No path from operator-facing 401 (invalid SMS provider key) to settings page that fixes it.** Generic toast. CheckoutModal pattern (`Terminal not configured — go to Settings → Payments`) missing for SMS. L4, L8. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+
+- [x] WEB-UIUX-949. **[BLOCKER] No web UI for `GET /api/v1/estimates/:id/signatures`.** Admin endpoint at `estimateSign.routes.ts:319-353` lists captured signatures (signer_name, IP, UA, signed_at). Web detail page never fetches it; admin reviewing a "signed" estimate sees `approved_at` date but no name, no audit trail. Mobile captures signatures the desktop staff cannot review without DB query. L8, L11. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/server/src/routes/estimateSign.routes.ts:313-353`
+  <!-- meta: fix=add-Signatures-card-on-EstimateDetailPage-sidebar-when-status===signed -->
+
+- [x] WEB-UIUX-951. **[MAJOR] Self-approval check is server-side only — Approve button does NOT pre-disable when `created_by === currentUser.id`.** `estimates.routes.ts:1138-1143` rejects with 403 "Cannot approve your own estimate. Another admin must approve this one." — UI lets the operator click, then surfaces server's message via toast. Should disable button + tooltip "needs another admin to approve" up-front. L8, L1. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:206-218`
+
+- [x] WEB-UIUX-956. **[MAJOR] Send confirm dialog does not show the destination phone number.** "Send this estimate to the customer via SMS?" — no `${formatPhone(estimate.customer_mobile)}`. Operator can't catch a typo'd phone before the SMS fires + counts toward Twilio cost + status flips to sent. L7, L11. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:195`
+
+- [x] WEB-UIUX-958. **[MAJOR] Convert button enabled while `status='draft'` — operator converts never-sent estimate to ticket.** `:219` gates only on `!== 'converted' && !== 'rejected'`. Customer who never saw the estimate now has a billable ticket. Should require `status IN ('approved','signed','sent')` minimum, with explicit warn for `'sent'` (not yet approved). L1, L5. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
+
+- [x] WEB-UIUX-960. **[MAJOR] Convert mutation `onError: () => toast.error('Failed to convert')` swallows server's specific 409/400/403 messages.** `estimates.routes.ts:739-740,809,748` returns "Already converted", "Estimate was cancelled", "Estimate is already being converted. Try again in a moment.", "Plan limit reached". Web replaces all with generic "Failed to convert". Operator hits tier limit, gets useless toast. L8, L7. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:102`
+  <!-- meta: fix=use-formatApiError(err)+err.response.data.message-fallback -->
+
+- [x] WEB-UIUX-962. **[MAJOR] List-page bulk action bar exposes only Delete — `bulkConvert` API + client wrapper exist unused.** `endpoints.ts:904` declares `bulkConvert(estimate_ids[])`, server `estimates.routes.ts:325-489` implements it (admin-only, tier-limit, idempotency, 100-id cap). `EstimateListPage.tsx:580-608` bulk bar has only Delete-selected. Operator approving 30 estimates after a quote-batch must click Convert one row at a time. L8, L3. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/estimates/EstimateListPage.tsx:580-608`
+  <!-- meta: fix=add-Convert-Selected-button-using-estimateApi.bulkConvert -->
+
+- [x] WEB-UIUX-964. **[MAJOR] Reject confirm copy "This cannot be undone" — false. PUT `/:id` accepts arbitrary `status` change, server has no rule preventing rejected→draft.** Copy lies; operator who mis-clicks Reject reads "permanent" warning, panics, opens ticket. L7. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:237`
+  <!-- meta: fix=either-enforce-server-side-rejected-as-terminal-OR-soften-copy-to-Reject-this-estimate? -->
+
+- [x] WEB-UIUX-966. **[MAJOR] Detail page shows `Sent` date but never `approval_token_expires_at`.** SMS contains a magic-link approval URL with TTL (`APPROVAL_TOKEN_TTL_MS`); customer who delays beyond expiry hits 410, asks shop to reissue. Web detail Details card has no "Approval link expires DD MMM HH:mm" row. Operator can't see whether to resend. L8, L11. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:461-507`
+
+- [x] WEB-UIUX-1528. **[MAJOR] SMS receipt body lies on partial payment. `:704` builds `Receipt for Invoice #${invoice.order_id}: Total ${formatCurrency(invoice.total)}. Thank you for your business!` — uses `invoice.total` (the headline), not the payment amount or remaining balance. Customer pays $50 deposit on a $500 invoice, gets SMS "Total $500.00. Thank you for your business!" → reads like the whole invoice is paid; customer assumes job is done, won't pay the rest. Body must include payment_amount + balance_due + method (e.g., "Received $50.00 cash on INV-1234. Balance remaining: $450.00.").** L2 truthfulness, L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:700-714`
+  <!-- meta: fix=template="Received-${formatCurrency(paid)}-${method}-on-${order_id}.${amount_due>0?`-Balance:-${formatCurrency(amount_due)}.`:`-Paid-in-full.`}-Thanks!" -->
+
+- [x] WEB-UIUX-1532. **[MAJOR] No deposit / payment-type toggle. Server distinguishes `payment_type` ∈ {payment, deposit} (`invoices.routes.ts:750-758`). Client never exposes it; every record posts as `payment` (default). Shops that take a 30% deposit on a custom build use this UI for the deposit, then again for the balance — but reporting that splits revenue accrual vs deferred-revenue can't tell them apart. Either expose a `Deposit` checkbox in the modal, or default `payment_type='deposit'` when invoice has zero prior payments and `amount_due == total` and the entered amount is < total.** L6 discoverability, L11 consistency. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:43,101,225-242`
+  `packages/server/src/routes/invoices.routes.ts:750,754-758`
+  <!-- meta: fix=add-payment_type-toggle-or-derive-from-(amount<total&&amount_paid===0);-pass-through-on-mutate -->
+
+- [x] WEB-UIUX-1538. **[MINOR] Customer cache not invalidated after payment. `InvoiceDetailPage.tsx:96-98` invalidates `['invoice', id]` and `['invoices']` on success but not `['customer', invoice.customer_id]`. Customer profile page renders a "Lifetime Value" + "Outstanding Balance" pair that the server updates via `recordCustomerInteraction` (`:822`) — values become stale until the user manually navigates away and back, or the staleTime expires. Add `['customer', invoice.customer_id]` to the invalidation list.** L11 consistency, L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:94-105`
+  `packages/server/src/routes/invoices.routes.ts:820-823`
+  <!-- meta: fix=add-queryClient.invalidateQueries({queryKey:['customer',invoice.customer_id]});-also-on-credit-note-success-+-void -->
+
+- [x] WEB-UIUX-1541. **[NIT] Receipt prompt header "Send Receipt?" doesn't acknowledge partial payment. `:680`. If the just-recorded payment leaves `invoice.amount_due > 0`, the prompt should say "Send Partial Receipt?" with the remaining balance shown beneath, so the cashier deliberately picks SMS / Email / Skip with full context (the partial-vs-full distinction is critical when WEB-UIUX-1528 is fixed and the SMS body is honest).** L2 truthfulness, L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:679-685`
+
+- [x] WEB-UIUX-1545. **[BLOCKER] `recipient_email` is collected, validated, persisted — never delivered. Issue modal asks for "Recipient email (optional)" with placeholder "jane@example.com" (`GiftCardsListPage.tsx:204-215`). Server `validateTextLength(recipient_email, 200)` then INSERTs (`giftCards.routes.ts:281-300`). Zero `email`/`sms`/`notify`/`sendgrid`/`twilio` references anywhere in the route. Customer pays $100 to gift to Jane, types Jane's email, hits Issue → Jane gets nothing. Cashier never warned. The whole "send a gift" mental model the field implies does not exist. Either (a) wire post-issue email (Mailgun/SendGrid client used elsewhere in repo) with the code rendered in the body, or (b) drop the recipient_email field and rename the modal to "Issue gift card (cashier hands code to customer)".** L2 truthfulness, L4 flow completion, L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:204-215`
+  `packages/server/src/routes/giftCards.routes.ts:253-323`
+  <!-- meta: fix=after-INSERT-success-call-mailer.send({to:recipient_email,template:'gift-card-issued',vars:{recipient_name,code,initial_balance,expires_at,sender:tenant.name}});-add-Settings-toggle-"send-gift-on-issue" -->
+
+- [x] WEB-UIUX-1548. **[MAJOR] Past expiry dates accepted on issue; immediately-expired card is silent. `<input type="date">` at `GiftCardsListPage.tsx:220-225` has no `min={today}` attribute. Server `validateIsoDate` (`validate.ts:169-195`) checks ISO format only — does NOT reject past dates. Cashier mis-types "2025" instead of "2026" → card issued with `expires_at=2025-05-05` → next redemption attempt errors "Gift card expired". No client warning, no server reject, no `expires_at < created_at` constraint at INSERT. Add `min` on the input + a server-side `if (expires_at && new Date(expires_at) <= new Date()) throw 400`.** L2 truthfulness, L4 flow integrity. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:220-225`
+  `packages/server/src/routes/giftCards.routes.ts:287-289`
+  `packages/server/src/utils/validate.ts:169-195`
+  <!-- meta: fix=client-min={new Date().toISOString().slice(0,10)};-server-rejects-expires_at<=now()-with-"Expiry-must-be-in-the-future" -->
+
+- [x] WEB-UIUX-1550. **[MAJOR] Lookup-by-code UI does not exist. Server has rate-limited `GET /gift-cards/lookup/:code` (`giftCards.routes.ts:172`) and client wires `giftCardApi.lookup` (`endpoints.ts:1274`) but no page calls it. List `keyword` search hits `gc.code LIKE` (`:113`), but list rows display `maskCode` (`****XXXX`) — cashier cannot see if their typed prefix matches. Customer hands physical card "C7E2-4F11-..." and cashier has no quick lookup form. Add a "Look up code" input above the list table (or a /gift-cards/lookup route) that hits the lookup endpoint and routes to detail on hit.** L4 flow completion, L6 discoverability. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:309-331`
+  `packages/server/src/routes/giftCards.routes.ts:172`
+  <!-- meta: fix=add-LookupBar-component-above-filters-with-code-input+Enter→navigate(`/gift-cards/${data.id}`);-error-toast-on-404 -->
+
+- [x] WEB-UIUX-1551. **[MAJOR] Cents/dollars heuristic silently mangles legitimate large balances. `formatCurrency` at `GiftCardsListPage.tsx:57-63` and identical in `GiftCardDetailPage.tsx:41-43` treats integer values >= 1000 as cents. `GIFT_CARD_MAX_AMOUNT = 10_000` (`giftCards.routes.ts:29`) — corporate gifting ($1,000 / $5,000 / $10,000 cards) is an explicit allowed range. A $1,000 card with `current_balance = 1000` (dollars) falls into the heuristic and renders as `$10.00`. Comment at `:51-53` admits "no real-world gift-card balance reaches $1000 in float-dollars outside corporate gifting" — but corporate gifting is exactly the workflow this product enables. Heuristic should die: pin server to one representation (dollars OR cents), update SELECT, drop the if-branch.** L2 truthfulness, L10 trust. **[AUTOLOOP-T79 RESOLVED: Copy code button added next to Done on issued-code success view; backdrop has no onClick on success branch.]** **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:46-63`
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-53`
+  `packages/server/src/routes/giftCards.routes.ts:29,297-300`
+  <!-- meta: fix=pick-one-representation-(recommend-cents-everywhere-since-rest-of-POS-is-migrating-to-cents);-update-INSERT-to-multiply-by-100;-formatCurrency-collapses-to-formatCurrencyShared(n/100) -->
+
+- [x] WEB-UIUX-1552. **[MAJOR] Issued-code reveal modal closes on backdrop click — code lost in <100ms reflex. Modal root `GiftCardsListPage.tsx:125-130` is `<div ... onClick={onClose}>`. Cashier reads code aloud, clicks anywhere outside the inner card to dismiss → modal closes → list refetches → row shows masked `****XXXX`. Code is recoverable via detail Eye toggle (until WEB-UIUX-1544 lands), but cashier doesn't know that. While the reveal screen is up, backdrop click should be inert; only Done/X/Esc dismisses. Pair with a "Copy code" button next to Done so the friction of code capture isn't a single visual scan.** L8 recovery, L13 forgiveness. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:123-153`
+  <!-- meta: fix=removed-onClick=onClose-on-issuedCode-screen;-add-Copy-button-(navigator.clipboard.writeText(code)+toast)-+-Print-button -->
+
+- [x] WEB-UIUX-1554. **[MAJOR] Issue modal: no denomination presets. `GiftCardsListPage.tsx:182-190` is a single freeform `type="number"` input. Most retail flows are $25/$50/$100/$200/$500. Cashier types every time → typo risk on a financial entry. Render preset buttons above the input, plus a "Custom" toggle that falls back to the freeform input.** L1 hierarchy, L6 discoverability. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-191`
+  <!-- meta: fix=presets=[25,50,100,200,500];-render-grid-of-buttons-that-setForm({amount:String(v)});-keep-input-as-Custom-fallback -->
+
+- [x] WEB-UIUX-1557. **[MINOR] Client doesn't enforce `GIFT_CARD_MAX_AMOUNT`. Issue input has `min="0.01"` but no `max` (`GiftCardsListPage.tsx:184`). User types $50,000 → submit → server 400 "Gift card amount cannot exceed $10,000" → toast shows, but admin spent time filling in recipient + email. Mirror server cap: `max="10000"` + helper text "Up to $10,000".** L7 feedback. **[AUTOLOOP-T79 RESOLVED: reloadMut.onSuccess now reads res.data.data.new_balance and toasts 'Reloaded $X — new balance $Y'.]** **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
+  `packages/server/src/routes/giftCards.routes.ts:29,262-264`
+  <!-- meta: fix=add-max="10000"+helper-"Maximum-$10,000-per-card";-disable-Submit-when-amount>10000 -->
+
+- [x] WEB-UIUX-1558. **[MINOR] Detail page reload toast lacks the new balance. `GiftCardDetailPage.tsx:96-100` toasts "Gift card reloaded". Server response includes `new_balance` (`giftCards.routes.ts:437`) but client ignores it. Should toast "Reloaded $25 — new balance $150.00".** L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-104`
+  <!-- meta: fix=onSuccess(res)→toast.success(`Reloaded ${formatCurrency(amount)} — new balance ${formatCurrency(res.data.data.new_balance)}`) -->
+
+- [x] WEB-UIUX-1559. **[MINOR] "of $X initial" line is meaningless after reload. `GiftCardDetailPage.tsx:252-253` shows "$current of $initial initial". Reload a $50 card 3× by $25 → balance $125, "of $50.00 initial" is jarring. Replace with "Loaded total $X" (initial + sum of reloads) computed from transactions, or drop the line when `initial_balance < current_balance`.** L11 consistency. **[AUTOLOOP-T79 RESOLVED: useFocusTrap + useBodyScrollLock added to IssueModal inner dialog div; ReloadModal already had useFocusTrap from earlier fix.]** **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:251-254`
+  <!-- meta: fix=loadedTotal=initial_balance+sum(adjustment-reload-tx);-render-"of-${formatBalance(loadedTotal)}-loaded";-OR-suppress-line-when-current>initial -->
+
+- [x] WEB-UIUX-1561. **[MINOR] Issue modal: no autofocus on amount field on open. `GiftCardsListPage.tsx:182-190` lacks `autoFocus`. Reload modal has it (`GiftCardDetailPage.tsx:133`). Inconsistent. Cashier opening Issue modal must click into the amount field before typing.** L11 consistency, a11y. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
+  <!-- meta: fix=add-autoFocus-to-amount-input;-mirror-pattern-from-ReloadModal -->
+
+- [x] WEB-UIUX-1563. **[MINOR] List `keyword` search matches `gc.code LIKE` but display masks the code. `giftCards.routes.ts:113-115` does `code LIKE %keyword%`, but row renders `****XXXX`. Cashier searching for "C7E2" can't visually confirm the match. Either (a) only search by recipient_name when keyword is short (< full-code length), or (b) when keyword matches a code prefix, reveal the matched chars in the row (e.g., `C7E2****`).** L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:65-68,370-372`
+  `packages/server/src/routes/giftCards.routes.ts:112-116`
+  <!-- meta: fix=if-keyword-looks-like-code-prefix-(/^[A-F0-9]{4,}/i)-render-${prefix}****${suffix};-else-mask-fully -->
+
+- [x] WEB-UIUX-1565. **[NIT] Title-case mismatch. List header "Gift Cards" (`:292`), modal title "Issue gift card" (`:171`), success modal "Gift card issued" (`:138`), Reload modal "Reload gift card" (`GiftCardDetailPage.tsx:124`). Three different cases for the same noun. Standardize on sentence case ("Issue gift card" / "Gift card issued" / "Gift cards") or Title Case — pick one.** L11 consistency. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138,171,292`
+  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:124`
+
+- [x] WEB-UIUX-1567. **[NIT] List date columns lose intra-day ordering. `formatDate(card.created_at)` (`:388`) renders date only on most locale impls — issuing 5 cards on a busy day all show same date with `ORDER BY created_at DESC` driving the list. Fine for at-a-glance, but tooltip with full timestamp would help reconcile against shift logs.** L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the orchestrated TODO batch.**
+  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:387-389`
+
+### TODO sweep — orchestrated subagent batch 2 (2026-05-08)
+
+- [x] WEB-UIUX-758. **[MAJOR] HEIC blind spot — PhotoCapturePage uses `file.type.startsWith('image/')` so HEIC accepted but Chrome/Firefox 404 thumbnails.** L7, L11. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:60-70`
+
+- [x] WEB-UIUX-1059. **[BLOCKER] Cancel hardcodes `immediate: true` everywhere in UI; server's `cancel_at_period_end` path unreachable.** `SubscriptionsListPage.tsx:114` and `CustomerDetailPage.tsx:905` both pass `{ immediate: true }`. Server `membership.routes.ts:229-235` supports both modes — column `cancel_at_period_end` exists, list-page row even renders "Cancels {date}" (`SubscriptionsListPage.tsx:245-249`) for that state — but no UI surface ever sets it. Customer who cancels mid-cycle loses paid remaining days; refunds aren't auto-issued either. Stripe/Recurly default = end-of-period; immediate is the override. We've inverted the safer default. L2, L1, L4. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124`
+  `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
+  <!-- meta: fix=replace-confirm-with-modal-radio[end-of-period(default)|cancel-now]+pass-immediate-from-radio -->
+
+- [x] WEB-UIUX-1066. **[MAJOR] Pause endpoint accepts `reason` but UI never sends one.** Server: `req.body.reason || null` written to `pause_reason` column (`membership.routes.ts:246-247`). UI: `pauseMut.mutate()` with no payload (`CustomerDetailPage.tsx:914`, `:991`). Column always NULL. List page even reads `sub.pause_reason` shape (line 33) but renders nothing. Lost telemetry for "why paused" → no win-back categorisation. L1, L4. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
+  <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
+
+- [x] WEB-UIUX-1075. **[MINOR] Subscription list missing primary "Add subscription / Enroll customer" action.** Page is the recurring-revenue dashboard yet has no entry-point to enrolment workflow — admin must remember "go to a customer profile". Industry baseline: Stripe Dashboard → Subscriptions → Create subscription opens customer-picker first. L1, L8. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:175-189`
+  <!-- meta: fix=add-primary-button-New-subscription-opens-modal-CustomerPicker+TierPicker+CardOnFile-or-PaymentLink -->
+
+- [x] WEB-UIUX-1113. **[BLOCKER] No recipient sample / no recipient list — pure blind dispatch.** Modal shows ONLY a count (`This will send to 1,200 recipients`, `:191-194`). Operator cannot inspect WHO. Server's `previewBulkSegment` already collects up to 500 phones (`inbox.routes.ts:420`), only the count is wired into the response. Industry baseline: Klaviyo/Attentive/Postscript show 5-10 sample recipients + opt to download CSV pre-send. For repair-shop SMS where one wrong segment = TCPA complaint, this is operator-protection minimum. L6, L8. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
+  `packages/server/src/routes/inbox.routes.ts:563-571`
+  <!-- meta: fix=server-include-first-5-phones-in-preview-payload+client-render-list+optional-exclude-toggle -->
+
+- [x] WEB-UIUX-1164. **[MAJOR] `CashModal` in `BottomActions.tsx` (in-shift POS Cash In/Out) does NOT pass `idempotency_key`, while the IDENTICAL `CashRegisterPage.tsx` flow does.** `BottomActions.tsx:37-56` calls `posApi.cashIn({ amount, reason })` with no key. `CashRegisterPage.tsx:51-86` mints `idemKeyRef` and passes `idempotency_key`. Server endpoint accepts the key but doesn't enforce it (`pos.routes.ts:203-217` lacks `idempotent` middleware on cash-in/out). Stalled-network double-click on POS bottom-actions ⇒ duplicate `cash_register` row + duplicate audit, drawer balance off. L7 (silent corruption, no feedback), L8 (no recovery once duplicate posted). **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/unified-pos/BottomActions.tsx:23-115`
+  `packages/server/src/routes/pos.routes.ts:203-232`
+  <!-- meta: fix=add-idempotency_key=crypto.randomUUID()-mint-on-modal-open+pass-on-call+wire-idempotent-middleware-to-/pos/cash-in-/pos/cash-out-routes-(same-as-/pos/transaction:253) -->
+
+- [x] WEB-UIUX-1188. **[BLOCKER] Receive modal pre-fills `receive_qty` with FULL remaining quantity for every line — operator who clicks "Confirm Receive" without re-counting silently posts the entire ordered amount as received, even if half the box is missing.** `PurchaseOrdersPage.tsx:60` defaults each line to `it.quantity_ordered - (it.quantity_received || 0)`. Server commits the count straight to `inventory_items.in_stock` and writes a `stock_movements` row marked `'purchase'`. There is NO undo path — receiving stock cannot be reversed from any UI in the app (no "reverse receipt" / "void shipment" button anywhere — searched). One careless click → permanent inventory ghost units → cycle counts will surface them weeks later. Industry standard for receiving UX defaults the count box to **0** (force the human to type physical count). L2 truthful default, L8 recovery (none), L4 destructive default. Severity: blocker because the optimistic default is a silent data-corruption vector, not a visual annoyance. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:51-62, 64-80`
+  `packages/server/src/routes/inventory.routes.ts:1465-1526` (no reverse endpoint)
+  <!-- meta: fix=default-receive_qty=0+placeholder=`max ${remaining}`+optionally-show-"Receive All-Remaining"-quick-action-button -->
+
+- [x] WEB-UIUX-1192. **[MAJOR] PO list has no search and no status filter.** `PurchaseOrdersPage.tsx:293-297` calls `listPurchaseOrders({ page, pagesize: 25 })` with no `status` or `q` param. Server LIST endpoint accepts `status` (`inventory.routes.ts:1356-1361`) but no `q` (search by PO #, supplier name). At 25 rows/page a shop with 500 POs/yr scrolls 20 pages to find one. L6 discoverability. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:286, 293-297, 363-374`
+  `packages/server/src/routes/inventory.routes.ts:1347-1378`
+  <!-- meta: fix=add-status-pill-filter-row+search-input-debounced-by-PO-#-or-supplier-name+server-extends-LIST-with-q-LIKE-clause -->
+
+- [x] WEB-UIUX-1290. **[MAJOR] Reason picker missing the most-frequent retail reasons. REASONS array has 6 abstract codes (`RefundReasonPicker.tsx:17-24`); real-world refund logs cluster around: "Cancelled service / appointment", "Returned for exchange (no money back)", "Manager comp / goodwill", "Tax adjustment", "Shipping issue", "Loyalty / promo retroactive". Operators forced into Other + free-text → cardinality explodes, reports useless.** L13 reporting integrity. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/components/billing/RefundReasonPicker.tsx:17-24`
+  <!-- meta: fix=expand-REASONS-cancelled_service+exchange+goodwill+tax_adjustment+shipping+promo+keep-other-as-fallback+server-enum-validate-against-this-list -->
+
+- [x] WEB-UIUX-1322. **[MAJOR] `defaultDate` initializer uses `toISOString().slice(0, 10)` (`CalendarPage.tsx:209`) — UTC date, not local. PST user clicking "+New Appointment" at 5pm on Dec 31 gets the form pre-filled with **Jan 1**. Same off-by-one fires for any non-UTC user at edge hours. Bookings land on wrong day if user submits without re-checking date.** L3 route correctness, L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/leads/CalendarPage.tsx:209`
+  <!-- meta: fix=use-local-YYYY-MM-DD-(date.getFullYear()/getMonth()+1/getDate()-padded)+OR-toLocaleDateString('sv-SE')-which-emits-ISO-in-local-tz -->
+
+- [x] WEB-UIUX-1361. **[MAJOR] Counts table timestamp uses `toLocaleTimeString()` only — no date. A 3-day stocktake shows "10:24 AM" for both Mon and Wed counts, indistinguishable.** L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/inventory/StocktakePage.tsx:397`
+  <!-- meta: fix=use-formatDateTime-helper-(already-imported)+OR-add-day-suffix-when-not-today -->
+
+- [x] WEB-UIUX-1482. **[NIT] Portal `EstimateSummary.line_items[].discount` (`portalApi.ts:155`) is always `0` — server `portal.routes.ts:1421-1428` hardcodes `discount: 0` even when the estimate has a header-level discount. Customer sees Total = subtotal+tax with no Discount line, then questions "where did the discount go?". Render header-level discount above Total (server already returns `discount` on the summary `:1414`).** L7 feedback, L2 truthfulness. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/portal/PortalEstimatesView.tsx:120-125`
+  `packages/server/src/routes/portal.routes.ts:1421-1428`
+  <!-- meta: fix=portal-renders-Subtotal+Discount-(if>0)+Tax+Total-block-instead-of-just-Total -->
+
+- [x] WEB-UIUX-1485. **[BLOCKER] Cancel UI is immediate-only. SubscriptionsListPage hardcodes `{ immediate: true }` (`:114`); CustomerDetailPage does the same (`:905`). Server `/membership/:id/cancel` supports `immediate: false` → sets `cancel_at_period_end = 1` (`membership.routes.ts:233-234`). UI never sends that path. Customer paid for the month, gets zero remaining-period access. Industry default = end-of-period cancel. Worse: the "Cancels {date}" badge (`SubscriptionsListPage.tsx:244-249`) and "Cancels at period end" pill (`CustomerDetailPage.tsx:983-985`) are dead branches — UI displays them but no UI codepath sets the flag.** L1 truthfulness, L3 hierarchy, L8 recovery. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-114,158-164,244-249`
+  `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911,983-985`
+  <!-- meta: fix=add-radio-in-confirm-modal:Cancel-now-vs-Cancel-at-period-end+default-to-period-end+pass-immediate:false-when-selected -->
+
+- [x] WEB-UIUX-1507. **[MAJOR] Backdrop click after preview destroys 5-min token + segment + template. Modal root `BulkSmsModal.tsx:117` is `<div onClick={onClose}>`. After admin spends time picking segment, clicks Preview, reads "12,003 recipients", and accidentally clicks outside the inner card while reaching for Send → onClose fires, all state resets (preview cleared by re-open via `setPreview(null)` patterns at `:148, :175`). On reopen, admin must wait again for preview, get fresh token. No "are you sure?" guard. For destructive bulk ops, backdrop click should NOT close once preview is materialized.** L8 recovery, L5 hierarchy. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:117`
+  <!-- meta: fix=disable-backdrop-onClose-when-preview-non-null;-or-route-backdrop-click-through-confirmation-"Discard-this-send?" -->
+
+- [x] WEB-UIUX-1510. **[MAJOR] Provider-not-configured surfaced only at confirm step. Server `inbox.routes.ts:626-635` checks `getSmsProvider()` and throws "SMS provider is not configured…" only after token verification, after segment-drift check. Admin builds full campaign (segment + template + Preview), reads "12,003 recipients", clicks "Send to 12,003" — gets a toast saying configure provider first. All effort wasted; banner blocks every attempt until Settings is fixed. Move provider real-or-simulated check to the preview branch (`:552-571`) and either (a) refuse preview with the same error, or (b) show a yellow "Provider not configured — sends will be queued in retry queue" banner inline before Send is enabled.** L7 feedback, L4 flow integrity, L9 error states. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/server/src/routes/inbox.routes.ts:552-571,626-635`
+  <!-- meta: fix=move-isProviderRealOrSimulated-check-into-preview-branch+return-provider_status-in-preview-response;-modal-renders-warning-or-disables-Send -->
+
+- [x] WEB-UIUX-1511. **[MAJOR] 409 segment-drift leaves stale preview state in modal. Server returns 409 with `Segment changed since preview — re-preview to continue` (`inbox.routes.ts:602-609`). Modal `onError` at `BulkSmsModal.tsx:97` toasts the message but does NOT clear `preview` state. So admin clicks "Send to 12,003" again → server checks token vs latest segment hash → same 409 → same toast → infinite loop. Admin must Cancel + reopen. On 409 specifically, set `preview = null` and auto-call `previewMut.mutate()` to issue a fresh token+count, then prompt "Audience changed; new count = N. Send?". L8 recovery, L7 feedback.**  **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:78-98`
+  `packages/server/src/routes/inbox.routes.ts:602-609`
+  <!-- meta: fix=on-error.response.status===409-{setPreview(null);-previewMut.mutate()};-show-banner-"Audience-changed:-was-N1-now-N2" -->
+
+- [x] WEB-UIUX-1515. **[MINOR] No SMS character / segment / cost preview. Twilio bills per 160-char SMS segment (70 chars for unicode). A 200-char promo template × 12k recipients = 24k billable segments, not 12k. Modal never surfaces this. Add character count under template, segments-per-message, total billable segments = `segments_per_msg * recipient_count`, and (if pricing known) estimated cost.** L6 discoverability, L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-196`
+  <!-- meta: fix=compute-segments=Math.ceil(content.length/(hasUnicode?70:160));-render-"{segments}-segment(s)-x-{count}-recipients-=-{total}-billable-segments" -->
+
+- [x] WEB-UIUX-1518. **[MINOR] No segment audit / sample list. Preview shows count only — admin cannot spot-check "is John Doe really in this segment? Did we exclude staff?". Render up to 10 sample rows (first name + last 4 digits of phone) below the recipient banner so admin can sanity-check before pulling the trigger.** L7 feedback. **CLOSED 2026-05-08: fixed or verified stale in the second orchestrated TODO batch.**
+  `packages/server/src/routes/inbox.routes.ts:550-571`
+  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
+  <!-- meta: fix=server-preview-returns-{preview_count,sample:[{first,phone_last4}]-up-to-10};-modal-renders-sample-list-with-"+N-more"-tail -->
+
+- [x] BUGHUNT-20260507-094. **[P2] Payment links can bind one customer to another customer's invoice.** CLOSED 2026-05-08: server now rejects mismatched submitted customer IDs and normalizes omitted customer IDs to the invoice owner when present.
+  `packages/server/src/routes/paymentLinks.routes.ts`
+
+- [x] BUGHUNT-20260507-095. **[P2] Store-credit liability endpoint is shadowed by the customer-id route.** CLOSED 2026-05-08: `/refunds/credits/liability` now registers before `/refunds/credits/:customerId`.
+  `packages/server/src/routes/refunds.routes.ts`
+
+- [x] BUGHUNT-20260507-096. **[P1] Membership "Send payment link" posts to a route that does not exist.** CLOSED 2026-05-08: subscription payment-link action now calls the existing `/membership/payment-link` contract with `tier_id` and `customer_id`.
+  `packages/web/src/api/endpoints.ts`

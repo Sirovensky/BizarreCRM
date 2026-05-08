@@ -223,7 +223,7 @@ router.get('/register', asyncHandler(async (req, res) => {
 }));
 
 // POST /pos/cash-in
-router.post('/cash-in', asyncHandler(async (req, res) => {
+router.post('/cash-in', idempotent, asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -239,7 +239,7 @@ router.post('/cash-in', asyncHandler(async (req, res) => {
 }));
 
 // POST /pos/cash-out
-router.post('/cash-out', asyncHandler(async (req, res) => {
+router.post('/cash-out', idempotent, asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -2310,9 +2310,9 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
 
     txQueries.push({
       sql: `
-        INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
+        INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason, total_tax, total,
                               amount_paid, amount_due, status, created_by, created_at, updated_at)
-        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       params: [
         invoiceOrderId,
@@ -2320,6 +2320,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         ...invoiceTicketIdParams,
         roundedSubtotal,
         discount,
+        ticketData?.discount_reason ?? null,
         roundedTax,
         invoiceTotal,
         isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
