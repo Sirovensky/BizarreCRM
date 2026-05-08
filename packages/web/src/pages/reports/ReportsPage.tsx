@@ -457,17 +457,27 @@ function SalesTab({
           <>
             {/* Revenue Line Chart — clickable dots navigate to invoices filtered by date */}
             {(() => {
-              // Fill in gaps with $0 for all grouping modes
               const rawChartData = (() => {
-                const revenueMap = new Map(rows.map(r => [r.period, r.revenue]));
-                const result: { period: string; revenue: number; rawFrom: string; rawTo: string }[] = [];
+                const rowMap = new Map(rows.map(r => [r.period, r]));
+                const result: { period: string; revenue: number | null; rawDate: string; rawFrom: string; rawTo: string; hasData: boolean }[] = [];
                 const current = new Date(from + 'T00:00:00');
                 const end = new Date(to + 'T00:00:00');
+                const addPoint = (key: string, label: string, rawFrom: string, rawTo: string) => {
+                  const row = rowMap.get(key);
+                  result.push({
+                    period: label,
+                    revenue: row ? row.revenue : null,
+                    rawDate: key,
+                    rawFrom,
+                    rawTo,
+                    hasData: !!row,
+                  });
+                };
 
                 if (groupBy === 'day') {
                   while (current <= end) {
                     const key = toLocalDate(current);
-                    result.push({ period: formatDate(key), revenue: revenueMap.get(key) || 0, rawFrom: key, rawTo: key });
+                    addPoint(key, formatDate(key), key, key);
                     current.setDate(current.getDate() + 1);
                   }
                 } else if (groupBy === 'week') {
@@ -482,21 +492,21 @@ function SalesTab({
                     const rawFrom = key < from ? from : key;
                     const rawTo = weekTo > to ? to : weekTo;
                     const label = `${formatDate(rawFrom)} – ${formatDate(rawTo)}`;
-                    result.push({ period: label, revenue: revenueMap.get(key) || 0, rawFrom, rawTo });
+                    addPoint(key, label, rawFrom, rawTo);
                     current.setDate(current.getDate() + 7);
                   }
                 } else {
                   // month — generate each month in range
                   current.setDate(1);
                   while (current <= end) {
-                    const key = current.toISOString().slice(0, 7); // YYYY-MM
+                    const key = toLocalDate(current).slice(0, 7); // YYYY-MM
                     const monthStart = `${key}-01`;
                     const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
                     const monthTo = toLocalDate(monthEnd);
                     const rawFrom = monthStart < from ? from : monthStart;
                     const rawTo = monthTo > to ? to : monthTo;
                     const label = current.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                    result.push({ period: label, revenue: revenueMap.get(key) || 0, rawFrom, rawTo });
+                    addPoint(key, label, rawFrom, rawTo);
                     current.setMonth(current.getMonth() + 1);
                   }
                 }
@@ -504,29 +514,46 @@ function SalesTab({
               })();
 
               const handleChartClick = (data: any) => {
-                const payload = data?.activePayload?.[0]?.payload;
-                if (payload?.rawFrom && payload?.rawTo) {
+                const point = data?.activePayload?.[0]?.payload;
+                if (point?.hasData && point?.rawFrom && point?.rawTo) {
                   const params = new URLSearchParams({
-                    from_date: payload.rawFrom,
-                    to_date: payload.rawTo,
+                    from_date: point.rawFrom,
+                    to_date: point.rawTo,
                   });
                   navigate(`/invoices?${params.toString()}`);
                 }
               };
 
               return (
-                <div className="p-4" style={{ height: 260 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={rawChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
-                      <XAxis dataKey="period" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
-                      {/* @audit-fixed: chart axis was hardcoded "$" — now uses formatCurrency to honor store currency */}
-                      <YAxis tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
-                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: number) => [formatCurrency(value), 'Revenue']} labelFormatter={(label: string) => `${label} (click to view invoices)`} />
-                      <Line type="monotone" dataKey="revenue" stroke={CHART_COLOR_PRIMARY} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6, style: { cursor: 'pointer' } }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <>
+                  <div className="p-4" style={{ height: 260 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={rawChartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-surface-200 dark:text-surface-700" />
+                        <XAxis dataKey="period" tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} />
+                        {/* @audit-fixed: chart axis was hardcoded "$" — now uses formatCurrency to honor store currency */}
+                        <YAxis tick={{ fontSize: 11, fill: REPORT_CHART_AXIS_TICK_FILL }} tickFormatter={(v: number) => formatCurrency(v)} />
+                        <Tooltip
+                          contentStyle={CHART_TOOLTIP_STYLE}
+                          filterNull={false}
+                          formatter={(value: any, _name: any, item: any) => [
+                            item?.payload?.hasData ? formatCurrency(value) : 'Missing report row',
+                            'Revenue',
+                          ]}
+                          labelFormatter={(label: string, payload: any[]) =>
+                            payload?.[0]?.payload?.hasData
+                              ? `${label} (click to view invoices)`
+                              : `${label} (not returned by report API)`
+                          }
+                        />
+                        <Line type="monotone" dataKey="revenue" stroke={CHART_COLOR_PRIMARY} strokeWidth={2} connectNulls={false} dot={{ r: 3 }} activeDot={{ r: 6, style: { cursor: 'pointer' } }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="px-4 pb-3 text-xs text-surface-500 dark:text-surface-400">
+                    Gaps mark periods the report API did not return. Returned periods with $0 revenue still render as $0 points.
+                  </p>
+                </>
               );
             })()}
             <div className="overflow-x-auto max-h-96 overflow-y-auto">

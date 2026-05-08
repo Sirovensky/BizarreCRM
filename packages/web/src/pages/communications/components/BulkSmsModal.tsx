@@ -46,6 +46,11 @@ interface SmsTemplate {
   content: string;
 }
 
+interface PreviewRecipientSample {
+  name: string;
+  phone_last4: string;
+}
+
 interface PreviewResponse {
   preview_count: number;
   // BUGHUNT-2026-05-10-40: TCPA evidence — count of phone-having customers
@@ -53,6 +58,7 @@ interface PreviewResponse {
   // off. Field MUST be present; Send is refused when it's missing so a
   // future server regression that drops the filter never reaches confirm.
   excluded_optout_count?: number;
+  recipient_sample?: PreviewRecipientSample[];
   confirmation_token: string;
   confirmed: false;
   // WEB-UIUX-1113: server ships up to 5 masked sample phones so the operator
@@ -100,6 +106,36 @@ interface JobProgress {
   status: 'pending' | 'running' | 'completed' | 'aborted' | 'failed';
   abort_requested: number;
   last_error: string | null;
+}
+
+interface SmsBillingPreview {
+  characterCount: number;
+  encoding: 'GSM-7' | 'Unicode';
+  segmentsPerMessage: number;
+}
+
+const numberFormatter = new Intl.NumberFormat();
+
+function formatNumber(value: number): string {
+  return numberFormatter.format(value);
+}
+
+function estimateSmsBilling(body: string): SmsBillingPreview {
+  const characterCount = body.length;
+  const usesUnicodeEncoding = /[^\x0A\x0D\x20-\x7E]/.test(body);
+  const singleSegmentLimit = usesUnicodeEncoding ? 70 : 160;
+  const concatenatedSegmentLimit = usesUnicodeEncoding ? 67 : 153;
+
+  return {
+    characterCount,
+    encoding: usesUnicodeEncoding ? 'Unicode' : 'GSM-7',
+    segmentsPerMessage:
+      characterCount === 0
+        ? 0
+        : characterCount <= singleSegmentLimit
+          ? 1
+          : Math.ceil(characterCount / concatenatedSegmentLimit),
+  };
 }
 
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
@@ -151,6 +187,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   });
   const tplPayload = tplData?.data as SmsTemplateListResponse | undefined;
   const templates: SmsTemplate[] = tplPayload?.data?.templates ?? [];
+  const selectedTemplate = templates.find((t) => t.id === templateId) ?? null;
+  const billingPreview = estimateSmsBilling(selectedTemplate?.content ?? '');
+  const billableSegments = preview
+    ? billingPreview.segmentsPerMessage * preview.preview_count
+    : null;
 
   // WEB-UIUX-1512: pre-fetch per-segment counts so segment buttons can
   // label their reach before the admin commits to one. Server endpoint
@@ -468,7 +509,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       {/* WEB-UIUX-1521: dialogRef wires the focus trap to this container */}
       <div
         ref={dialogRef}
-        className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
@@ -645,26 +686,24 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             </select>
             {/* WEB-UIUX-1112: render the resolved template body + segment math
                 so the admin sees the exact text + cost before blasting. */}
-            {(() => {
-              if (!templateId) return null;
-              const tpl = templates.find((t) => t.id === templateId);
-              if (!tpl) return null;
-              const body = tpl.content || '';
-              const chars = body.length;
-              // GSM-7 single-segment = 160 chars; multi-segment = 153 each.
-              // Unicode (emoji) would be 70/67 but we under-count here — server
-              // is the source of truth on cost; this is a guidance heuristic.
-              const segments = chars === 0 ? 0 : chars <= 160 ? 1 : Math.ceil(chars / 153);
-              return (
-                <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-900/40">
-                  <div className="mb-1 flex items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-surface-500">
-                    <span>Body preview</span>
-                    <span>{chars} chars · {segments} segment{segments === 1 ? '' : 's'}/recipient</span>
-                  </div>
-                  <pre className="whitespace-pre-wrap break-words font-sans text-sm text-surface-800 dark:text-surface-200">{body || <span className="italic text-surface-400">No body set on this template.</span>}</pre>
+            {selectedTemplate && (
+              <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-900/40">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-surface-500">
+                  <span>Body preview</span>
+                  <span className="flex flex-wrap gap-x-2">
+                    <span>{formatNumber(billingPreview.characterCount)} chars</span>
+                    <span>{billingPreview.encoding}</span>
+                    <span>{formatNumber(billingPreview.segmentsPerMessage)} segment{billingPreview.segmentsPerMessage === 1 ? '' : 's'}/recipient</span>
+                  </span>
                 </div>
-              );
-            })()}
+                <pre className="whitespace-pre-wrap break-words font-sans text-sm text-surface-800 dark:text-surface-200">{selectedTemplate.content || <span className="italic text-surface-400">No body set on this template.</span>}</pre>
+                {billableSegments !== null && (
+                  <div className="mt-1 text-[11px] font-medium text-surface-800 dark:text-surface-100">
+                    {formatNumber(billableSegments)} estimated billable SMS segment{billableSegments === 1 ? '' : 's'}; provider pricing unavailable.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* WEB-UIUX-1122: TCPA quiet-hours informational banner — does not block send */}
@@ -678,17 +717,42 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
           )}
 
           {preview && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              <span>
-                This will send to <strong>{preview.preview_count}</strong> recipients.
-                {countdown > 0 ? (
-                  <> Confirmation expires in <strong>{String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')}</strong>.</>
-                ) : (
-                  <> <strong className="text-red-700 dark:text-red-400">Confirmation expired.</strong> Please re-preview.</>
-                )}
-              </span>
-            </div>
+            <>
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                {/* WEB-UIUX-1124/1523: live MM:SS countdown for the confirmation
+                    window. Re-preview prompt on expiry replaces the old static
+                    "5 minutes" copy. */}
+                <span>
+                  This will send to <strong>{formatNumber(preview.preview_count)}</strong> recipients.
+                  {countdown > 0 ? (
+                    <> Confirmation expires in <strong>{String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')}</strong>.</>
+                  ) : (
+                    <> <strong className="text-red-700 dark:text-red-400">Confirmation expired.</strong> Please re-preview.</>
+                  )}
+                </span>
+              </div>
+              {preview.recipient_sample && preview.recipient_sample.length > 0 && (
+                <div className="rounded-lg border border-surface-200 bg-surface-50 p-2 dark:border-surface-700 dark:bg-surface-700/40">
+                  <div className="mb-1 text-[11px] font-semibold uppercase text-surface-500 dark:text-surface-400">
+                    Sample recipients
+                  </div>
+                  <div className="space-y-1">
+                    {preview.recipient_sample.map((recipient, index) => (
+                      <div
+                        key={`${recipient.phone_last4}-${index}`}
+                        className="flex items-center justify-between gap-2 text-xs text-surface-700 dark:text-surface-200"
+                      >
+                        <span className="truncate">{recipient.name}</span>
+                        <span className="shrink-0 font-mono text-surface-500 dark:text-surface-400">
+                          ending {recipient.phone_last4}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
           {/* BUGHUNT-2026-05-10-40: explicit TCPA-filter evidence. When the
               server didn't return the field, the Send button below is

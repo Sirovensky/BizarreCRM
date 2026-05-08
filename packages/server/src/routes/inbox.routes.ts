@@ -47,6 +47,7 @@ import { ERROR_CODES } from '../utils/errorCodes.js';
 import {
   sendSmsTenant,
   getSmsProvider,
+  getProviderForDb,
   isProviderRealOrSimulated,
 } from '../services/smsProvider.js';
 
@@ -64,6 +65,11 @@ const INBOX_BULK_SEND_WINDOW_MS = 60 * 60 * 1000;        // 1h window
 const INBOX_SENTIMENT_CATEGORY = 'inbox_sentiment';
 const INBOX_SENTIMENT_MAX = 60;                          // 60 classifications per user
 const INBOX_SENTIMENT_WINDOW_MS = 60_000;                // per minute
+
+const BULK_SMS_PROVIDER_NOT_CONFIGURED_MESSAGE =
+  'SMS provider is not configured — bulk send refused. ' +
+  'Configure a real provider (Twilio, Telnyx, Bandwidth, Plivo, Vonage) ' +
+  'in Settings before attempting a bulk send.';
 
 function guardInboxRate(
   req: Request,
@@ -368,6 +374,48 @@ const BULK_SEGMENTS: readonly BulkSegment[] = [
   'recent_purchases',
 ];
 
+interface BulkPreviewRow {
+  phone: string;
+  first_name: string | null;
+  last_name: string | null;
+}
+
+interface BulkPreviewRecipientSample {
+  name: string;
+  phone_last4: string;
+}
+
+function buildBulkRecipientSample(rows: BulkPreviewRow[]): BulkPreviewRecipientSample[] {
+  const sample: BulkPreviewRecipientSample[] = [];
+  const seenPhones = new Set<string>();
+
+  for (const row of rows) {
+    const normalized = normalizePhone(row.phone);
+    if (!normalized || seenPhones.has(normalized)) continue;
+
+    seenPhones.add(normalized);
+    const digits = normalized.replace(/\D/g, '');
+    const name = `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || 'Customer';
+
+    sample.push({
+      name,
+      phone_last4: digits.slice(-4) || '----',
+    });
+
+    if (sample.length >= 10) break;
+  }
+
+  return sample;
+}
+
+function assertBulkSmsProviderConfigured(db: any, tenantSlug?: string | null): void {
+  const provider = getProviderForDb(db, tenantSlug);
+  const providerStatus = isProviderRealOrSimulated(provider);
+  if (!providerStatus.real) {
+    throw new AppError(BULK_SMS_PROVIDER_NOT_CONFIGURED_MESSAGE, 400);
+  }
+}
+
 /**
  * Preview the size of a segment without sending anything. Returns a
  * confirmation token the caller must submit with the actual send request
@@ -381,8 +429,8 @@ const BULK_SEGMENTS: readonly BulkSegment[] = [
 async function previewBulkSegment(
   adb: AsyncDb,
   segment: BulkSegment,
-): Promise<{ count: number; phones: string[]; phonesHash: string; excluded_optout_count: number }> {
-  let rows: { phone: string }[] = [];
+): Promise<{ count: number; phones: string[]; phonesHash: string; excluded_optout_count: number; recipientSample: BulkPreviewRecipientSample[] }> {
+  let rows: BulkPreviewRow[] = [];
   // BUGHUNT-2026-05-10-40: surface excluded-by-opt-out count separately so the
   // client can render explicit "we filtered N out for TCPA" evidence instead
   // of trusting the server filter ran. Same WHERE shape as the main query
@@ -391,8 +439,8 @@ async function previewBulkSegment(
   let excluded: { c: number } | undefined;
   switch (segment) {
     case 'open_tickets':
-      rows = await adb.all<{ phone: string }>(
-        `SELECT DISTINCT c.mobile AS phone
+      rows = await adb.all<BulkPreviewRow>(
+        `SELECT c.mobile AS phone, MIN(c.first_name) AS first_name, MIN(c.last_name) AS last_name
            FROM customers c
            JOIN tickets t ON t.customer_id = c.id
            JOIN ticket_statuses s ON s.id = t.status_id
@@ -400,7 +448,8 @@ async function previewBulkSegment(
             AND t.is_deleted = 0
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND COALESCE(c.sms_opt_in, 0) = 1
-            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
+            AND COALESCE(c.sms_consent_marketing, 0) = 1
+          GROUP BY c.mobile`,
       );
       excluded = await adb.get<{ c: number }>(
         `SELECT COUNT(DISTINCT c.id) AS c
@@ -414,11 +463,12 @@ async function previewBulkSegment(
       );
       break;
     case 'all_customers':
-      rows = await adb.all<{ phone: string }>(
-        `SELECT DISTINCT mobile AS phone FROM customers
+      rows = await adb.all<BulkPreviewRow>(
+        `SELECT mobile AS phone, MIN(first_name) AS first_name, MIN(last_name) AS last_name FROM customers
           WHERE mobile IS NOT NULL AND mobile <> ''
             AND COALESCE(sms_opt_in, 0) = 1
-            AND COALESCE(sms_consent_marketing, 0) = 1`,
+            AND COALESCE(sms_consent_marketing, 0) = 1
+          GROUP BY mobile`,
       );
       excluded = await adb.get<{ c: number }>(
         `SELECT COUNT(*) AS c FROM customers
@@ -427,14 +477,15 @@ async function previewBulkSegment(
       );
       break;
     case 'recent_purchases':
-      rows = await adb.all<{ phone: string }>(
-        `SELECT DISTINCT c.mobile AS phone
+      rows = await adb.all<BulkPreviewRow>(
+        `SELECT c.mobile AS phone, MIN(c.first_name) AS first_name, MIN(c.last_name) AS last_name
            FROM customers c
            JOIN invoices i ON i.customer_id = c.id
           WHERE i.created_at >= datetime('now','-30 days')
             AND c.mobile IS NOT NULL AND c.mobile <> ''
             AND COALESCE(c.sms_opt_in, 0) = 1
-            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
+            AND COALESCE(c.sms_consent_marketing, 0) = 1
+          GROUP BY c.mobile`,
       );
       excluded = await adb.get<{ c: number }>(
         `SELECT COUNT(DISTINCT c.id) AS c
@@ -447,6 +498,7 @@ async function previewBulkSegment(
       break;
   }
   const phones = rows.map((r) => normalizePhone(r.phone)).filter(Boolean) as string[];
+  const recipientSample = buildBulkRecipientSample(rows);
   // SCAN-602: compute a stable hash of the consented phone list so step-2 can
   // detect segment drift between preview and send.
   const phonesHash = crypto
@@ -459,6 +511,7 @@ async function previewBulkSegment(
     phones,
     phonesHash,
     excluded_optout_count: Number(excluded?.c ?? 0),
+    recipientSample,
   };
 }
 
@@ -710,6 +763,7 @@ router.post(
     requireAdmin(req);
     const db = req.db;
     const adb = req.asyncDb;
+    const tenantSlug = (req as any).tenantSlug || null;
 
     const segment = validateEnum(
       (req.body ?? {}).segment,
@@ -776,6 +830,7 @@ router.post(
           // unconsented phones out") instead of trusting the server filter
           // ran. Client refuses Send when this field is missing.
           excluded_optout_count: preview.excluded_optout_count,
+          recipient_sample: preview.recipientSample,
           confirmation_token: freshToken,
           confirmed: false,
           sample_phones: samplePhones,

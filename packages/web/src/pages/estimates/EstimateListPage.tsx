@@ -55,6 +55,12 @@ type BulkDeleteFailure = {
   error: unknown;
 };
 
+type BulkConvertResult = {
+  estimate_id: number;
+  ticket_id?: number;
+  error?: string;
+};
+
 function formatEstimateLabel(id: number, estimate?: { order_id?: string | null }) {
   return estimate?.order_id || `EST-${String(id).padStart(4, '0')}`;
 }
@@ -64,6 +70,19 @@ function formatBulkDeleteFailures(failures: BulkDeleteFailure[]) {
   const details = visibleFailures.map((failure) => `${failure.label}: ${formatApiError(failure.error)}`);
   const remaining = failures.length - visibleFailures.length;
   return `${details.join('; ')}${remaining > 0 ? `; ${remaining} more failed` : ''}`;
+}
+
+function formatBulkConvertFailures(failures: BulkConvertResult[], labelById: Map<number, string>) {
+  const visibleFailures = failures.slice(0, 3);
+  const details = visibleFailures.map((failure) => (
+    `${labelById.get(failure.estimate_id) || formatEstimateLabel(failure.estimate_id)}: ${failure.error || 'Unknown error'}`
+  ));
+  const remaining = failures.length - visibleFailures.length;
+  return `${details.join('; ')}${remaining > 0 ? `; ${remaining} more failed` : ''}`;
+}
+
+function isBulkConvertibleStatus(status: string) {
+  return status === 'approved' || status === 'signed';
 }
 
 // ─── Skeleton ────────────────────────────────────────────────────
@@ -823,7 +842,7 @@ export function EstimateListPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedIds(new Set())}
-                        disabled={isBulkDeleting}
+                        disabled={isBulkDeleting || bulkConvertMut.isPending}
                         aria-label="Clear estimate selection"
                         className="text-surface-400 hover:text-surface-600 ml-auto disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
                       >
@@ -840,7 +859,7 @@ export function EstimateListPage() {
                     type="checkbox"
                     checked={estimates.length > 0 && selectedIds.size === estimates.length}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
-                    disabled={isBulkDeleting}
+                    disabled={isBulkDeleting || bulkConvertMut.isPending}
                     className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </th>
@@ -920,6 +939,8 @@ export function EstimateListPage() {
               ) : (
                 estimates.map((est) => {
                   const isExpired = est.valid_until && new Date(est.valid_until) < new Date();
+                  const destinationPhone = est.customer_mobile || est.customer_phone || '';
+                  const formattedDestinationPhone = destinationPhone ? formatPhone(destinationPhone) : '';
                   return (
                     <tr
                       key={est.id}
@@ -931,7 +952,7 @@ export function EstimateListPage() {
                           type="checkbox"
                           checked={selectedIds.has(est.id)}
                           onChange={() => toggleSelect(est.id)}
-                          disabled={isBulkDeleting}
+                          disabled={isBulkDeleting || bulkConvertMut.isPending}
                           className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </td>

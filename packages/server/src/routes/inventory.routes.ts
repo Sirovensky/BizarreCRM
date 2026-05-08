@@ -1563,7 +1563,7 @@ router.delete('/suppliers/:id', requirePermission('inventory.delete'), asyncHand
 // SCAN-1076: PO status is a bounded domain enum — reject out-of-range values
 // up front so the query doesn't waste an indexed lookup on impossible inputs
 // and the API contract is self-documenting.
-const PO_STATUS_ALLOWLIST = new Set(['draft', 'ordered', 'partial', 'received', 'cancelled']);
+const PO_STATUS_ALLOWLIST = new Set(['draft', 'pending', 'ordered', 'partial', 'backordered', 'received', 'cancelled']);
 
 router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
@@ -1581,17 +1581,23 @@ router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
     where += ' AND po.status = ?'; params.push(status);
   }
   // WEB-UIUX-1192: keyword search across PO number + supplier name.
-  // LIKE wildcards in the user input are escaped so an admin can't smuggle
-  // a "%" and match everything.
-  if (q && q.trim()) {
-    const escaped = q.trim().replace(/[\\%_]/g, (m) => '\\' + m);
-    const like = `%${escaped}%`;
-    where += " AND (po.order_id LIKE ? ESCAPE '\\\\' OR s.name LIKE ? ESCAPE '\\\\')";
-    params.push(like, like);
+  // LIKE wildcards in the user input are escaped via escapeLike so an
+  // admin can't smuggle a "%" and match everything. Also match the
+  // synthesized PO-<id> form since the UI displays that, not the raw id.
+  const search = q?.trim();
+  if (search) {
+    const term = `%${escapeLike(search)}%`;
+    where += " AND (po.order_id LIKE ? ESCAPE '\\' OR ('PO-' || po.id) LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\')";
+    params.push(term, term, term);
   }
 
   const [totalRow, orders] = await Promise.all([
-    adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM purchase_orders po ${where}`, ...params),
+    adb.get<{ c: number }>(`
+      SELECT COUNT(*) as c
+      FROM purchase_orders po
+      LEFT JOIN suppliers s ON s.id = po.supplier_id
+      ${where}
+    `, ...params),
     adb.all(`
       SELECT po.*,
              s.name as supplier_name,

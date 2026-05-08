@@ -166,6 +166,7 @@ export function PhotoCapturePage() {
       const error = await validateImageFile(file, {
         maxBytes: PRE_RESIZE_MAX_BYTES,
         label: `"${file.name}"`,
+        sniff: true,
       });
       if (error) {
         toast.error(error);

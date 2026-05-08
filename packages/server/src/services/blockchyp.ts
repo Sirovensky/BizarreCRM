@@ -49,6 +49,7 @@ interface BlockChypConfig {
   bearerToken: string;
   signingKey: string;
   terminalName: string;
+  terminalIp: string;
   testMode: boolean;
   tcEnabled: boolean;
   tcContent: string;
@@ -69,6 +70,7 @@ export function getBlockChypConfig(db: Database.Database): BlockChypConfig {
     bearerToken: getConfigValue(db, 'blockchyp_bearer_token') || '',
     signingKey: getConfigValue(db, 'blockchyp_signing_key') || '',
     terminalName: getConfigValue(db, 'blockchyp_terminal_name') || 'Front Counter',
+    terminalIp: getConfigValue(db, 'blockchyp_terminal_ip') || '',
     testMode: getConfigValue(db, 'blockchyp_test_mode') === 'true',
     tcEnabled: getConfigValue(db, 'blockchyp_tc_enabled') === 'true',
     tcContent: getConfigValue(db, 'blockchyp_tc_content') || 'I authorize this repair shop to perform diagnostic and repair services on my device.',

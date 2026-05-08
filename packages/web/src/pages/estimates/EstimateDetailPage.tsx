@@ -11,7 +11,7 @@ import type { EstimateSignature, EstimateSignPublicSummary } from '@/api/endpoin
 import { confirm, useConfirmStore } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
-import { formatCurrency, formatDate, formatPhone } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatPhone } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
@@ -455,10 +455,9 @@ export function EstimateDetailPage() {
       );
     },
     // WEB-UIUX-960: surface the server's specific message (Already converted,
-    // Estimate was cancelled, Plan limit reached, etc.) instead of swallowing it
-    // with a generic 'Failed to convert'.
-    onError: (err: { response?: { data?: { message?: string } } }) =>
-      toast.error(err?.response?.data?.message || 'Failed to convert'),
+    // Estimate was cancelled, Plan limit reached, etc.) via formatApiError
+    // instead of swallowing it with a generic 'Failed to convert'.
+    onError: (err: any) => toast.error(formatApiError(err) || 'Failed to convert'),
   });
 
   const updateMut = useMutation({
@@ -600,6 +599,8 @@ export function EstimateDetailPage() {
   const canStartSigning =
     canManageSigning &&
     !estimateContentLocked;
+  const destinationPhone = estimate.customer_mobile || estimate.customer_phone || '';
+  const formattedDestinationPhone = destinationPhone ? formatPhone(destinationPhone) : '';
 
   return (
     <div data-estimate-print-root>
@@ -1222,7 +1223,7 @@ export function EstimateDetailPage() {
                   <div className="flex justify-between">
                     <dt className="text-surface-500">Approval link {expired ? 'expired' : 'expires'}</dt>
                     <dd className={expired ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}>
-                      {exp.toLocaleString()}
+                      {formatDateTime(estimate.approval_token_expires_at)}
                     </dd>
                   </div>
                 );

@@ -6,7 +6,7 @@
  */
 import { useMemo, useRef, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCircle, Loader2 } from 'lucide-react';
+import { Bell, CalendarClock, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
@@ -44,13 +44,20 @@ export function AgingReportPage() {
   // Track which individual row is currently sending so we can show a spinner
   const [sendingId, setSendingId] = useState<number | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['aging-report'],
     queryFn: async () => {
       const res = await api.get('/dunning/invoices/aging');
       return res.data.data as AgingResponse;
     },
   });
+  const asOfText = dataUpdatedAt > 0
+    ? new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZoneName: 'short',
+    }).format(new Date(dataUpdatedAt))
+    : 'loading current totals';
 
   const filteredInvoices = useMemo(() => {
     if (!data) return [];
@@ -129,15 +136,28 @@ export function AgingReportPage() {
 
   return (
     <div className="p-6 space-y-6 text-surface-900 dark:text-surface-100">
-      <div className="flex items-baseline justify-between gap-4 flex-wrap">
-        <h1 className="text-2xl font-semibold text-surface-900 dark:text-surface-100">Aging Report</h1>
-        {/* WEB-UIUX-932: surface "as of when" so the operator can prove the
-            buckets match the close-of-day snapshot. Server currently
-            computes buckets at request time; we display request-time and
-            tag the as-of timestamp on every printout / screenshot. */}
-        <div className="text-xs text-surface-500 dark:text-surface-400">
-          As of <span className="font-mono">{new Date().toLocaleString()}</span>
+      {/* WEB-UIUX-932: surface "as of when" so the operator can prove the
+          buckets match the close-of-day snapshot. asOfText uses the
+          React Query dataUpdatedAt so refresh-time is accurate, not
+          screenshot-time. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-surface-900 dark:text-surface-100">Aging Report</h1>
+          <p className="mt-1 flex items-center gap-1.5 text-sm text-surface-500 dark:text-surface-400">
+            <CalendarClock className="h-4 w-4 shrink-0" aria-hidden="true" />
+            As of {asOfText}
+          </p>
         </div>
+        <button
+          type="button"
+          onClick={() => { void refetch(); }}
+          disabled={isFetching}
+          className="inline-flex items-center justify-center gap-2 rounded-md border border-surface-200 bg-white px-3 py-2 text-sm font-medium text-surface-700 transition hover:bg-surface-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200 dark:hover:bg-surface-800 dark:focus:ring-offset-surface-900"
+          title="Refresh aging totals"
+        >
+          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} aria-hidden="true" />
+          Refresh
+        </button>
       </div>
 
       {!isLoading && data && data.invoices.length === 0 && (

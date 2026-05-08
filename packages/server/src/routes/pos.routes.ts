@@ -267,7 +267,7 @@ router.get('/register', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncH
 }));
 
 // POST /pos/cash-in
-router.post('/cash-in', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
+router.post('/cash-in', requirePermission(PERMISSIONS.POS_CASH_REGISTER), idempotent, asyncHandler(async (req, res) => {
   guardPosFinancialRate(req, 'pos_drawer');
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
@@ -284,7 +284,7 @@ router.post('/cash-in', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncH
 }));
 
 // POST /pos/cash-out
-router.post('/cash-out', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
+router.post('/cash-out', requirePermission(PERMISSIONS.POS_CASH_REGISTER), idempotent, asyncHandler(async (req, res) => {
   guardPosFinancialRate(req, 'pos_drawer');
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;

@@ -11,6 +11,8 @@ let _quotaToastShown = false;
 // quota (typically 5–10 MB total, shared across the whole app). 100 KB is
 // ~50 pages of text — well above any realistic hand-typed form value.
 const DRAFT_MAX_BYTES = 100_000;
+const DRAFT_WRITE_FAILURE_MESSAGE =
+  'Draft could not be saved in this browser. Keep this page open or copy your text before leaving.';
 
 // WEB-FI-013/014 fix: every draft key is namespaced under this prefix so
 // (a) we can wipe ALL drafts in one sweep on `auth-cleared` (logout, force-
@@ -121,6 +123,12 @@ export interface DraftStatus {
    */
   oversize?: boolean;
   /**
+   * True when the last localStorage write failed, usually because browser
+   * storage is full or disabled. The in-memory value is still present while
+   * the current page stays open, but the draft may not survive a reload.
+   */
+  writeFailed?: boolean;
+  /**
    * Timestamp of the last successful localStorage write, or null if no
    * successful write has occurred in the current mount (e.g. value is empty,
    * never crossed a debounce boundary yet, or every write attempt overflowed).
@@ -142,6 +150,9 @@ export interface DraftStatus {
  *                        `<textarea>` (or equivalent rich-text constraint).
  *                        A `console.warn` is also emitted so engineers see the
  *                        drop in DevTools when testing large-paste scenarios.
+ * - `status.writeFailed` — true when the most recent localStorage write threw
+ *                        (quota exceeded / storage disabled). The hook also
+ *                        shows a visible toast once per failure period.
  * - `status.lastSavedAt` — wall-clock time of the last successful write.
  *
  * The `key` is the caller's per-form/per-record identifier (e.g.
@@ -156,8 +167,10 @@ export function useDraft(
   const [value, setValue] = useState('');
   const [hasDraft, setHasDraft] = useState(false);
   const [oversize, setOversize] = useState<boolean | undefined>(undefined);
+  const [writeFailed, setWriteFailed] = useState<boolean | undefined>(undefined);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const writeFailureToastShownRef = useRef(false);
   // Cache the resolved scoped key so the debounced timer + clearDraft do not
   // re-derive it on every fire (and so a mid-flight logout/login race can't
   // accidentally write under the new user's prefix — the timer captured the
@@ -197,6 +210,8 @@ export function useDraft(
     const saved = localStorage.getItem(scopedKey);
     // Reset oversize/lastSavedAt on key change — they belong to the previous key.
     setOversize(undefined);
+    setWriteFailed(undefined);
+    writeFailureToastShownRef.current = false;
     setLastSavedAt(null);
     if (saved) {
       setValue(saved);
@@ -248,7 +263,11 @@ export function useDraft(
     if (!value) {
       // If empty, remove the draft
       localStorage.removeItem(currentKey);
-      if (mountedRef.current) setHasDraft(false);
+      if (mountedRef.current) {
+        setHasDraft(false);
+        setWriteFailed(undefined);
+        writeFailureToastShownRef.current = false;
+      }
       // WEB-FO-021: nothing to flush on unload anymore for this instance.
       if (pendingRef.current) {
         pendingDrafts.delete(pendingRef.current);
@@ -294,6 +313,8 @@ export function useDraft(
         if (mountedRef.current) {
           setHasDraft(false);
           setOversize(true);
+          setWriteFailed(false);
+          writeFailureToastShownRef.current = false;
           // lastSavedAt intentionally left unchanged — it still reflects the
           // last moment the draft was successfully stored so the caller can
           // show "last saved at <time>, current content too large to save".
@@ -305,23 +326,34 @@ export function useDraft(
         if (mountedRef.current) {
           setHasDraft(true);
           setOversize(false);
+          setWriteFailed(false);
+          writeFailureToastShownRef.current = false;
           setLastSavedAt(new Date());
         }
       } catch (err) {
-        // QuotaExceededError or storage disabled — best-effort fallback.
+        // WEB-UIUX-846: QuotaExceededError or storage disabled must not be
+        // silent. The in-memory value remains editable, but persistence failed.
         console.warn('[useDraft] failed to persist draft', err);
-        if (mountedRef.current) setHasDraft(false);
-        // WEB-UIUX-846: surface to the operator so a kiosk with saturated
-        // localStorage doesn't silently lose draft data on submit.
-        const isQuota =
-          (err instanceof Error && /quota/i.test(err.name)) ||
-          (typeof err === 'object' && err !== null && /quota/i.test((err as { name?: string }).name ?? ''));
-        if (isQuota && !_quotaToastShown) {
-          _quotaToastShown = true;
-          toast.error(
-            'Browser storage is full — drafts cannot be saved. Clear browser data or sign out and back in.',
-            { duration: 8000, id: 'usedraft-quota' },
-          );
+        if (mountedRef.current) {
+          setHasDraft(false);
+          setWriteFailed(true);
+          // WEB-UIUX-846: surface to the operator so a kiosk with saturated
+          // localStorage doesn't silently lose draft data on submit. Quota
+          // errors get a specific, actionable message; other write failures
+          // fall back to the generic notice.
+          const isQuota =
+            (err instanceof Error && /quota/i.test(err.name)) ||
+            (typeof err === 'object' && err !== null && /quota/i.test((err as { name?: string }).name ?? ''));
+          if (isQuota && !_quotaToastShown) {
+            _quotaToastShown = true;
+            toast.error(
+              'Browser storage is full — drafts cannot be saved. Clear browser data or sign out and back in.',
+              { duration: 8000, id: 'usedraft-quota' },
+            );
+          } else if (!writeFailureToastShownRef.current) {
+            toast.error(DRAFT_WRITE_FAILURE_MESSAGE);
+            writeFailureToastShownRef.current = true;
+          }
         }
       }
     }, debounceMs);
@@ -336,12 +368,15 @@ export function useDraft(
     setValue('');
     setHasDraft(false);
     setOversize(undefined);
+    setWriteFailed(undefined);
+    writeFailureToastShownRef.current = false;
     setLastSavedAt(null);
   }, []);
 
   const status: DraftStatus = {
     saved: hasDraft,
     ...(oversize !== undefined && { oversize }),
+    ...(writeFailed !== undefined && { writeFailed }),
     lastSavedAt,
   };
 

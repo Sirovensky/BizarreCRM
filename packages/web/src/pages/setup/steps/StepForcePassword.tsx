@@ -170,9 +170,9 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
             <button
               type="button"
               onClick={() => setShowPwd((v) => !v)}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-surface-500 hover:text-surface-700 dark:hover:text-surface-200"
+              className="absolute inset-y-0 right-0 flex items-center rounded-md px-3 text-surface-500 hover:text-surface-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 dark:hover:text-surface-200"
               aria-label={showPwd ? 'Hide password' : 'Show password'}
-              tabIndex={-1}
+              aria-pressed={showPwd}
             >
               {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
@@ -217,9 +217,9 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
             <button
               type="button"
               onClick={() => setShowConfirm((v) => !v)}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-surface-500 hover:text-surface-700 dark:hover:text-surface-200"
+              className="absolute inset-y-0 right-0 flex items-center rounded-md px-3 text-surface-500 hover:text-surface-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 dark:hover:text-surface-200"
               aria-label={showConfirm ? 'Hide password' : 'Show password'}
-              tabIndex={-1}
+              aria-pressed={showConfirm}
             >
               {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react';
+import { useRef, useEffect, useState, useCallback, useId } from 'react';
 import { Eraser, Type } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -14,6 +14,7 @@ interface SignatureCanvasProps {
 const LIGHT_PEN_COLOR = '#1e293b';
 const DARK_PEN_COLOR = '#e2e8f0';
 const SIGNATURE_GUIDE_FONT = '12px Jost, Futura, system-ui, sans-serif';
+const TYPED_SIGNATURE_FONT_FAMILY = '"Segoe Script", "Brush Script MT", cursive';
 
 /**
  * PDF3 fix: hard cap on the signature base64 payload. Writing a 500 KB
@@ -36,6 +37,27 @@ function getGuideColors() {
   };
 }
 
+function drawSignatureGuide(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  penColor: string,
+) {
+  ctx.clearRect(0, 0, width, height);
+  const { baselineColor, hintColor } = getGuideColors();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = baselineColor;
+  ctx.beginPath();
+  ctx.moveTo(20, height - 30);
+  ctx.lineTo(width - 20, height - 30);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = penColor;
+  ctx.fillStyle = hintColor;
+  ctx.font = SIGNATURE_GUIDE_FONT;
+  ctx.fillText('Sign here', 20, height - 12);
+}
+
 function computePenColor(explicit?: string): string {
   if (explicit) return explicit;
   const cssVar = (typeof getComputedStyle !== 'undefined'
@@ -43,6 +65,17 @@ function computePenColor(explicit?: string): string {
     : '');
   if (cssVar) return cssVar;
   return isDarkMode() ? DARK_PEN_COLOR : LIGHT_PEN_COLOR;
+}
+
+function canvasSignatureDataUrl(canvas: HTMLCanvasElement): string | null {
+  let dataUrl = canvas.toDataURL('image/png');
+  if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+  }
+  if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+    dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+  }
+  return dataUrl.length > SIGNATURE_MAX_BYTES ? null : dataUrl;
 }
 
 const STROKE_THRESHOLD = 2; // px — minimum movement before a stroke is committed
@@ -73,8 +106,10 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     };
   }, [penColor]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const typedSignatureId = useId();
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialValue);
+  const [typedSignature, setTypedSignature] = useState('');
   // WEB-UIUX-462: track pending stroke start position so we only commit the
   // stroke once the pointer has moved beyond STROKE_THRESHOLD pixels. A bare
   // tap on the "Sign here" hint area otherwise immediately marks a stroke.
@@ -97,24 +132,13 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     // unexpected image loads.
     if (initialValue && typeof initialValue === 'string' && initialValue.startsWith('data:image/')) {
       const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0);
+      img.onload = () => {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0);
+      };
       img.src = initialValue;
     } else {
-      // Draw baseline with theme-aware colors
-      const { baselineColor, hintColor } = getGuideColors();
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = baselineColor;
-      ctx.beginPath();
-      ctx.moveTo(20, height - 30);
-      ctx.lineTo(width - 20, height - 30);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.strokeStyle = resolvedPenColor;
-
-      // "Sign here" text
-      ctx.fillStyle = hintColor;
-      ctx.font = SIGNATURE_GUIDE_FONT;
-      ctx.fillText('Sign here', 20, height - 12);
+      drawSignatureGuide(ctx, width, height, resolvedPenColor);
     }
   }, [initialValue, width, height, resolvedPenColor]);
 
@@ -188,16 +212,8 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     if (!isDrawing) return;
     setIsDrawing(false);
     if (!canvasRef.current) return;
-    // Start at full-quality PNG; if that blows the size cap, fall back to
-    // progressively lower-quality JPEG, then reject outright.
-    let dataUrl = canvasRef.current.toDataURL('image/png');
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
-      dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.7);
-    }
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
-      dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.4);
-    }
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+    const dataUrl = canvasSignatureDataUrl(canvasRef.current);
+    if (!dataUrl) {
       toast.error('Signature is too large to save. Please try a simpler signature.');
       // SCAN-1118: previously `hasSignature` stayed `true` after a size-cap
       // rejection — ink on screen with nothing actually saved, so the "Save"
@@ -209,27 +225,42 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     onSave(dataUrl);
   }, [isDrawing, onSave]);
 
+  const applyTypedSignature = useCallback(() => {
+    const canvas = canvasRef.current;
+    const text = typedSignature.trim();
+    if (!canvas || !text) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    drawSignatureGuide(ctx, width, height, resolvedPenColor);
+    ctx.fillStyle = resolvedPenColor;
+    ctx.textBaseline = 'alphabetic';
+    const maxTextWidth = width - 40;
+    let fontSize = Math.min(36, Math.max(22, Math.floor(height * 0.28)));
+    do {
+      ctx.font = fontSize + 'px ' + TYPED_SIGNATURE_FONT_FAMILY;
+      fontSize -= 2;
+    } while (ctx.measureText(text).width > maxTextWidth && fontSize >= 18);
+    ctx.fillText(text, 20, height - 40, maxTextWidth);
+
+    const dataUrl = canvasSignatureDataUrl(canvas);
+    if (!dataUrl) {
+      toast.error('Signature is too large to save. Please try a shorter typed signature.');
+      clearRef.current();
+      return;
+    }
+    setHasSignature(true);
+    onSave(dataUrl);
+  }, [height, onSave, resolvedPenColor, typedSignature, width]);
+
   const clear = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawSignatureGuide(ctx, width, height, resolvedPenColor);
 
-    // Redraw baseline with theme-aware colors
-    const { baselineColor, hintColor } = getGuideColors();
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = baselineColor;
-    ctx.beginPath();
-    ctx.moveTo(20, height - 30);
-    ctx.lineTo(width - 20, height - 30);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.strokeStyle = resolvedPenColor;
-    ctx.fillStyle = hintColor;
-    ctx.font = SIGNATURE_GUIDE_FONT;
-    ctx.fillText('Sign here', 20, height - 12);
-
+    setTypedSignature('');
     setHasSignature(false);
     onSave('');
   }, [height, width, onSave, resolvedPenColor]);
@@ -303,45 +334,6 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     };
   }, [getPos, endDraw]);
 
-  // WEB-UIUX-923: keyboard-only signing alternative. Customers using a
-  // keyboard (or screen reader) can't draw a stroke; let them type their
-  // legal name and we render it onto the canvas in an italic script font as
-  // a typed signature. The captured dataUrl flows through the same onSave
-  // pipeline as a drawn signature.
-  const [typedName, setTypedName] = useState('');
-  const applyTypedSignature = useCallback(() => {
-    const canvas = canvasRef.current;
-    const trimmed = typedName.trim();
-    if (!canvas || !trimmed) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = resolvedPenColor;
-    // Pick the largest font size that fits the inner width; fall back to a
-    // hard floor so an absurdly long name still renders something legible.
-    const innerW = width - 40;
-    const innerH = height - 30;
-    let fontSize = Math.min(48, Math.floor(innerH * 0.75));
-    ctx.font = `italic ${fontSize}px "Brush Script MT", "Snell Roundhand", cursive`;
-    while (fontSize > 14 && ctx.measureText(trimmed).width > innerW) {
-      fontSize -= 2;
-      ctx.font = `italic ${fontSize}px "Brush Script MT", "Snell Roundhand", cursive`;
-    }
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(trimmed, 20, height - 20);
-    setHasSignature(true);
-    let dataUrl = canvas.toDataURL('image/png');
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
-      dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-    }
-    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
-      toast.error('Signature is too large to save. Please try a shorter name.');
-      clearRef.current();
-      return;
-    }
-    onSave(dataUrl);
-  }, [typedName, resolvedPenColor, width, height, onSave]);
-
   return (
     <div className="space-y-2">
       <div className="relative rounded-lg border-2 border-dashed border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 overflow-hidden"
@@ -359,27 +351,27 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
         />
       </div>
       {/* WEB-UIUX-923: typed-signature keyboard alternative. */}
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center" style={{ maxWidth: width }}>
-        <label className="sr-only" htmlFor="typed-signature-input">Type your full name to sign</label>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center" style={{ maxWidth: width }}>
+        <label htmlFor={typedSignatureId} className="sr-only">Type your full name to sign</label>
         <input
-          id="typed-signature-input"
+          id={typedSignatureId}
           type="text"
-          value={typedName}
-          onChange={(e) => setTypedName(e.target.value)}
+          value={typedSignature}
+          onChange={(e) => setTypedSignature(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && typedName.trim()) {
+            if (e.key === 'Enter' && typedSignature.trim()) {
               e.preventDefault();
               applyTypedSignature();
             }
           }}
           placeholder="Or type your full name to sign"
           autoComplete="name"
-          className="flex-1 rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+          className="min-h-[36px] min-w-0 flex-1 rounded-md border border-surface-300 bg-white px-3 py-1.5 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
         />
         <button
           type="button"
           onClick={applyTypedSignature}
-          disabled={!typedName.trim()}
+          disabled={!typedSignature.trim()}
           className="inline-flex items-center justify-center gap-1 rounded border border-surface-300 bg-surface-50 px-2 py-1 text-xs font-medium text-surface-700 hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
         >
           <Type aria-hidden="true" className="h-3 w-3" /> Use typed signature

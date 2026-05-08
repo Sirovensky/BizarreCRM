@@ -9,6 +9,8 @@ export const IMAGE_UPLOAD_ACCEPT = [...IMAGE_UPLOAD_MIME_TYPES, 'image/heic', 'i
 export const IMAGE_UPLOAD_FORMAT_LABEL = 'JPEG, PNG, WebP, or GIF';
 export const IMAGE_UPLOAD_FORMAT_ERROR =
   `Use ${IMAGE_UPLOAD_FORMAT_LABEL}. HEIC/HEIF, TIFF, and DNG/RAW are not supported yet; convert to JPEG before uploading.`;
+const HEIC_HEIF_FORMAT_ERROR =
+  'HEIC/HEIF photos are not supported in Chrome or Firefox previews yet. Convert to JPEG before uploading.';
 
 // Receipt uploads additionally allow PDF documents.
 export const RECEIPT_UPLOAD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'] as const;
@@ -60,6 +62,8 @@ const MIME_LABELS: Record<ImageUploadMimeType, string> = {
   'image/webp': 'WebP',
   'image/gif': 'GIF',
 };
+const HEIC_HEIF_MIME_TYPES = new Set(['image/heic', 'image/heif', 'image/heic-sequence', 'image/heif-sequence']);
+const HEIC_HEIF_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'mif1', 'msf1']);
 
 export function formatUploadSize(bytes: number): string {
   if (bytes % (1024 * 1024) === 0) return `${bytes / (1024 * 1024)} MB`;
@@ -69,6 +73,25 @@ export function formatUploadSize(bytes: number): string {
 
 export function isSupportedImageMime(mime: string | undefined | null): mime is ImageUploadMimeType {
   return IMAGE_UPLOAD_MIME_TYPES.includes((mime || '').trim().toLowerCase() as ImageUploadMimeType);
+}
+
+function isHeicHeifMime(mime: string | undefined | null): boolean {
+  return HEIC_HEIF_MIME_TYPES.has((mime || '').trim().toLowerCase());
+}
+
+function readAscii(bytes: Uint8Array, start: number): string {
+  return String.fromCharCode(bytes[start] ?? 0, bytes[start + 1] ?? 0, bytes[start + 2] ?? 0, bytes[start + 3] ?? 0);
+}
+
+async function sniffHeicHeif(file: File): Promise<boolean> {
+  const head = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  if (head.length < 12 || readAscii(head, 4) !== 'ftyp') return false;
+
+  if (HEIC_HEIF_BRANDS.has(readAscii(head, 8))) return true;
+  for (let offset = 16; offset + 4 <= head.length; offset += 4) {
+    if (HEIC_HEIF_BRANDS.has(readAscii(head, offset))) return true;
+  }
+  return false;
 }
 
 export async function sniffImageMime(file: File): Promise<ImageUploadMimeType | null> {
@@ -132,12 +155,14 @@ export async function maybeConvertHeicToJpeg(file: File): Promise<File> {
 export async function validateImageFile(file: File, options: ValidateImageFileOptions): Promise<string | null> {
   const label = options.label || file.name || 'Image';
   const declaredMime = file.type.trim().toLowerCase();
+  if (isHeicHeifMime(declaredMime)) return `${label}: ${HEIC_HEIF_FORMAT_ERROR}`;
   if (!isSupportedImageMime(declaredMime)) return `${label}: ${IMAGE_UPLOAD_FORMAT_ERROR}`;
   if (file.size <= 0) return `${label}: image is empty`;
   if (file.size > options.maxBytes) {
     return `${label}: image exceeds the ${formatUploadSize(options.maxBytes)} size limit`;
   }
   if (options.sniff) {
+    if (await sniffHeicHeif(file)) return `${label}: ${HEIC_HEIF_FORMAT_ERROR}`;
     const sniffed = await sniffImageMime(file);
     if (!sniffed || sniffed !== declaredMime) {
       const declared = MIME_LABELS[declaredMime];

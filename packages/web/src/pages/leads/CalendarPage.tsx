@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { leadApi, settingsApi, customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useSettings } from '@/hooks/useSettings';
-import { formatTime } from '@/utils/format';
+import { toLocalDateString } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -668,13 +668,7 @@ function CreateAppointmentModal({
   // WEB-UIUX-1322: use the local date components, not toISOString(), so a
   // user clicking "+New Appointment" at 5pm Dec 31 PST gets Dec 31, not
   // Jan 1 (UTC). Off-by-one would otherwise fire at every edge hour.
-  const toLocalDateStr = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-  const dateStr = toLocalDateStr(defaultDate);
+  const dateStr = toLocalDateString(defaultDate);
 
   const createInitialForm = useCallback(() => {
     // WEB-UIUX-1328: honor click-to-create slot hour. Clamp to 0..23 and
@@ -725,7 +719,7 @@ function CreateAppointmentModal({
   useEffect(() => {
     if (!open) return;
     // WEB-UIUX-1322: local-date components, not UTC.
-    const newDateStr = toLocalDateStr(defaultDate);
+    const newDateStr = toLocalDateString(defaultDate);
     setForm((f) => ({ ...f, start_date: newDateStr }));
   }, [open, defaultDate]);
 

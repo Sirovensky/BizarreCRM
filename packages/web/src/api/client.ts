@@ -73,6 +73,11 @@ export function hasCsrfTokenCookie(): boolean {
 // override via `client.post(url, body, { timeout: 60_000 })`.
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+// WEB-UIUX-936: physical BlockChyp terminal interactions can wait on the
+// customer for the SDK's 120s terminal window, then let the server reconcile
+// the outcome. Keep the global 30s guard, but let terminal flows opt in.
+export const PAYMENT_TERMINAL_REQUEST_TIMEOUT_MS = 150_000;
+
 const client = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },

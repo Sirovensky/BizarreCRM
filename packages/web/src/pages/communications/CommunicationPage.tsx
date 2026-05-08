@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi, emailApi } from '@/api/endpoints';
 import type { SmsFollowupReminder } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { useAuthStore } from '@/stores/authStore';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
 import {
   formatPhone,
@@ -79,7 +80,7 @@ interface SmsMessage {
   to_number: string;
   conv_phone: string;
   message: string;
-  status: 'sent' | 'delivered' | 'failed' | 'queued' | 'sending' | 'scheduled';
+  status: 'sent' | 'delivered' | 'failed' | 'queued' | 'sending' | 'scheduled' | 'simulated';
   direction: 'inbound' | 'outbound';
   provider: string;
   entity_type?: string;
@@ -93,6 +94,12 @@ interface SmsMessage {
   delivered_at?: string;
   error?: string;
   created_at: string;
+}
+
+interface SmsSendMeta {
+  provider?: string;
+  simulated?: boolean;
+  delivered?: boolean;
 }
 
 interface CallLog {
@@ -137,6 +144,96 @@ interface ApiEnvelope<T> { success?: boolean; data?: T; message?: string }
 type AxiosLike<T> = { data: ApiEnvelope<T> } | undefined | null;
 function unwrap<T>(res: AxiosLike<T>): T | undefined {
   return res?.data?.data;
+}
+
+function smsApiError(err: unknown): { status?: number; message: string } {
+  const e = err as {
+    response?: {
+      status?: number;
+      data?: {
+        message?: unknown;
+        error?: unknown;
+        data?: { message?: unknown; error?: unknown };
+      };
+    };
+    message?: unknown;
+  } | null;
+  const data = e?.response?.data;
+  const raw =
+    data?.message ??
+    data?.error ??
+    data?.data?.message ??
+    data?.data?.error ??
+    e?.message;
+  return {
+    status: e?.response?.status,
+    message: typeof raw === 'string' && raw.trim() ? raw.trim() : 'Failed to send message',
+  };
+}
+
+function smsSendResult(res: unknown): { status?: string; error?: string; meta?: SmsSendMeta } {
+  const payload = (res as { data?: ApiEnvelope<Partial<SmsMessage>> & { meta?: SmsSendMeta } } | null)?.data;
+  const msg = payload?.data;
+  return {
+    status: typeof msg?.status === 'string' ? msg.status : undefined,
+    error: typeof msg?.error === 'string' ? msg.error : undefined,
+    meta: payload?.meta,
+  };
+}
+
+function isKnownSmsProviderConfigIssue(status: number | undefined, message: string): boolean {
+  const m = message.toLowerCase();
+  return status === 401 || [
+    'http 401',
+    'unauthorized',
+    'authentication',
+    'invalid auth',
+    'auth token',
+    'invalid api key',
+    'api key',
+    'credential',
+    'not configured',
+    'provider config',
+    'account sid',
+  ].some((needle) => m.includes(needle));
+}
+
+function showSmsProviderSettingsToast(detail: string) {
+  toast.error((t) => (
+    <span className="block text-sm">
+      SMS provider needs attention.
+      <span className="mt-1 block text-xs opacity-80">{truncate(detail, 120)}</span>
+      <Link
+        to="/settings/sms-voice"
+        onClick={() => toast.dismiss(t.id)}
+        className="mt-1 inline-flex font-medium text-primary-600 underline dark:text-primary-400"
+      >
+        Open SMS settings
+      </Link>
+    </span>
+  ), { duration: 10000 });
+}
+
+function showSmsSendError(err: unknown) {
+  const { status, message } = smsApiError(err);
+  if (isKnownSmsProviderConfigIssue(status, message)) {
+    showSmsProviderSettingsToast(message);
+    return;
+  }
+  if (status === 429) {
+    toast.error(message || 'SMS rate limit reached. Try again later.');
+    return;
+  }
+  toast.error(message || 'Failed to send message');
+}
+
+function showSmsDeliveryFailure(result: { status?: string; error?: string; meta?: SmsSendMeta }) {
+  const detail = result.error || (result.meta?.provider ? `${result.meta.provider} did not accept the SMS` : 'Provider did not accept the SMS');
+  if (isKnownSmsProviderConfigIssue(undefined, detail)) {
+    showSmsProviderSettingsToast(detail);
+    return;
+  }
+  toast.error(`SMS not sent: ${truncate(detail, 120)}`, { duration: 8000 });
 }
 
 interface CommCustomerSummary {
@@ -231,6 +328,46 @@ function truncate(text: string, len: number) {
   return text.length > len ? text.slice(0, len) + '...' : text;
 }
 
+function toLocalDateTimeInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function parseLocalDateTimeInput(value: string): { date: Date; normalized: boolean } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d);
+  const hour = Number(h);
+  const minute = Number(mi);
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+  const normalized =
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day ||
+    date.getHours() !== hour ||
+    date.getMinutes() !== minute;
+  return Number.isNaN(date.getTime()) ? null : { date, normalized };
+}
+
+function scheduledSendPreview(value: string): { date?: Date; local?: string; utc?: string; error?: string } {
+  const parsed = parseLocalDateTimeInput(value);
+  if (!parsed) return { error: 'Enter a valid local date and time.' };
+  if (parsed.normalized) {
+    return { error: 'That local time does not exist because of daylight saving time. Pick another time.' };
+  }
+  if (parsed.date.getTime() <= Date.now()) {
+    return { error: 'Scheduled time must be in the future.' };
+  }
+  return {
+    date: parsed.date,
+    local: parsed.date.toLocaleString(),
+    utc: `${parsed.date.toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+  };
+}
+
 // ─── Status icon for message delivery (ENR-SMS8: detailed tooltip) ──
 function StatusIcon({ status, className, deliveredAt, error }: {
   status: string;
@@ -245,6 +382,7 @@ function StatusIcon({ status, className, deliveredAt, error }: {
     queued: 'Queued',
     sending: 'Sending',
     scheduled: 'Scheduled',
+    simulated: 'Simulated',
   };
 
   const label = statusLabels[status] || status;
@@ -271,6 +409,8 @@ function StatusIcon({ status, className, deliveredAt, error }: {
       return wrap(<Clock className={cn('h-3 w-3 text-blue-300/50', className)} />);
     case 'scheduled':
       return wrap(<CalendarClock className={cn('h-3 w-3 text-amber-400', className)} />);
+    case 'simulated':
+      return wrap(<Info className={cn('h-3 w-3 text-surface-400', className)} />);
     default:
       return null;
   }
@@ -288,6 +428,8 @@ function ConvStatusIcon({ status }: { status?: string }) {
       return <AlertCircle className="h-3 w-3 text-red-500" />;
     case 'scheduled':
       return <CalendarClock className="h-3 w-3 text-amber-500" />;
+    case 'simulated':
+      return <Info className="h-3 w-3 text-surface-400" />;
     default:
       return null;
   }
@@ -1452,7 +1594,7 @@ export function CommunicationPage() {
   // invalidate the wrong thread's cache.
   const sendMutation = useMutation({
     mutationFn: (data: { to: string; message: string; send_at?: string }) => smsApi.send(data),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       clearSmsDraft();
       setScheduledAt('');
       setShowSchedulePicker(false);
@@ -1462,30 +1604,23 @@ export function CommunicationPage() {
       }
       queryClient.invalidateQueries({ queryKey: ['sms-messages', variables.to] });
       queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
-      toast.success(variables.send_at ? 'Message scheduled' : 'Message sent');
-    },
-    onError: (err: unknown) => {
-      // WEB-UIUX-941: differentiate 429 rate-limit, invalid-number 400, and
-      // operator-config 401 from generic failure so the cashier gets an
-      // actionable next step. Falls back to the server message, then a
-      // generic toast. UIUX-942 partner: 401 invalid SMS provider key
-      // points the operator at Settings → SMS.
-      const e = err as { response?: { status?: number; data?: { message?: string; code?: string } } } | undefined;
-      const status = e?.response?.status;
-      const code = e?.response?.data?.code;
-      const serverMsg = e?.response?.data?.message;
-      if (status === 429) {
-        toast.error('SMS rate limit hit. Wait a moment and retry.', { duration: 6000 });
-      } else if (status === 400 && (code === 'invalid_number' || /invalid.*number|not a valid/i.test(serverMsg ?? ''))) {
-        toast.error('Invalid phone number. Check the format and try again.', { duration: 6000 });
-      } else if (status === 401) {
-        toast.error('SMS provider not configured — open Settings → SMS to fix.', { duration: 8000 });
-      } else if (code === 'silent_drop' || /silent.*drop|carrier.*reject/i.test(serverMsg ?? '')) {
-        toast.error('Carrier silently dropped the message. Try email or call instead.', { duration: 6000 });
-      } else {
-        toast.error(serverMsg || 'Failed to send message');
+      if (variables.send_at) {
+        toast.success('Message scheduled');
+        return;
       }
+
+      const result = smsSendResult(data);
+      if (result.status === 'failed' || result.meta?.delivered === false) {
+        showSmsDeliveryFailure(result);
+        return;
+      }
+      if (result.status === 'simulated' || result.meta?.simulated) {
+        toast('SMS simulated in console provider', { duration: 5000 });
+        return;
+      }
+      toast.success('Message sent');
     },
+    onError: showSmsSendError,
   });
 
   // Auto-scroll to bottom when messages change
@@ -1578,7 +1713,12 @@ export function CommunicationPage() {
       payload.media = [{ url: attachedMedia.url, contentType: attachedMedia.contentType }];
     }
     if (scheduledAt) {
-      payload.send_at = new Date(scheduledAt).toISOString();
+      const schedule = scheduledSendPreview(scheduledAt);
+      if (schedule.error || !schedule.date) {
+        toast.error(schedule.error || 'Enter a valid scheduled time.');
+        return;
+      }
+      payload.send_at = schedule.date.toISOString();
     }
     sendMutation.mutate(payload, {
       onSuccess: () => setAttachedMedia(null),
@@ -1624,6 +1764,7 @@ export function CommunicationPage() {
   // Character count helpers
   const charCount = composeText.length;
   const segmentCount = charCount <= 160 ? 1 : Math.ceil(charCount / 153);
+  const schedulePreview = scheduledAt ? scheduledSendPreview(scheduledAt) : null;
 
   return (
     <div className="flex overflow-hidden -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
@@ -2607,7 +2748,7 @@ export function CommunicationPage() {
                         ? 'border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
                         : 'border-surface-300 text-surface-500 hover:bg-surface-100 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700',
                     )}
-                    title={scheduledAt ? `Scheduled: ${new Date(scheduledAt).toLocaleString()}` : 'Schedule message (Alt+click for presets)'}
+                    title={scheduledAt ? `Scheduled: ${schedulePreview?.error ?? schedulePreview?.local ?? scheduledAt}` : 'Schedule message (Alt+click for presets)'}
                   >
                     <CalendarClock className="h-4 w-4" />
                   </button>
@@ -2619,21 +2760,33 @@ export function CommunicationPage() {
                       <input
                         type="datetime-local"
                         value={scheduledAt}
-                        min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                        min={toLocalDateTimeInput(new Date(Date.now() + 60000))}
                         onChange={(e) => setScheduledAt(e.target.value)}
                         className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                       {scheduledAt && (
-                        <div className="mt-2 flex items-center justify-between">
-                          <span className="text-xs text-amber-600 dark:text-amber-400">
-                            {new Date(scheduledAt).toLocaleString()}
-                          </span>
-                          <button
-                            onClick={() => { setScheduledAt(''); setShowSchedulePicker(false); }}
-                            className="text-xs text-red-500 hover:text-red-700"
-                          >
-                            Clear
-                          </button>
+                        <div className="mt-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className={cn(
+                              'text-xs',
+                              schedulePreview?.error
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-amber-600 dark:text-amber-400',
+                            )}>
+                              {schedulePreview?.error ?? schedulePreview?.local}
+                            </span>
+                            <button
+                              onClick={() => { setScheduledAt(''); setShowSchedulePicker(false); }}
+                              className="text-xs text-red-500 hover:text-red-700"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                          {!schedulePreview?.error && schedulePreview?.utc && (
+                            <p className="mt-1 text-[11px] text-surface-400 dark:text-surface-500">
+                              UTC: {schedulePreview.utc}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2643,14 +2796,14 @@ export function CommunicationPage() {
                 {/* Send button */}
                 <button
                   onClick={handleSend}
-                  disabled={(!composeText.trim() && !attachedMedia) || sendMutation.isPending}
+                  disabled={(!composeText.trim() && !attachedMedia) || sendMutation.isPending || !!schedulePreview?.error}
                   className={cn(
                     'flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
                     scheduledAt
                       ? 'bg-amber-600 hover:bg-amber-700'
                       : 'bg-primary-600 hover:bg-primary-700',
                   )}
-                  title={scheduledAt ? `Schedule for ${new Date(scheduledAt).toLocaleString()}` : 'Send message'}
+                  title={scheduledAt ? `Schedule for ${schedulePreview?.error ?? schedulePreview?.local ?? scheduledAt}` : 'Send message'}
                 >
                   {sendMutation.isPending ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -2768,7 +2921,7 @@ export function CommunicationPage() {
       )}
 
       {/* Team-inbox modals — audit §51 */}
-      <BulkSmsModal open={showBulkSms} onClose={() => setShowBulkSms(false)} />
+      {canBulkSms && <BulkSmsModal open={showBulkSms} onClose={() => setShowBulkSms(false)} />}
       <ScheduledSendModal
         open={showScheduledModal}
         onClose={() => setShowScheduledModal(false)}

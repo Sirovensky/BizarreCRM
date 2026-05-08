@@ -3,7 +3,7 @@
 // are valid ESM but break tree-shaking heuristics in some bundlers and confuse
 // linters / refactor tools.
 import axios from 'axios';
-import { api, superAdminClient } from './client';
+import { api, PAYMENT_TERMINAL_REQUEST_TIMEOUT_MS, superAdminClient } from './client';
 import { generateIdempotencyKey } from '../utils/format';
 import type {
   Customer, CreateCustomerInput, UpdateCustomerInput, CustomerAsset,
@@ -466,6 +466,15 @@ export interface StatusListResponse {
   data: TicketStatus[];
 }
 
+export type SettingsConfig = Record<string, string>;
+
+export interface TaxClassRecord {
+  id: number;
+  name: string;
+  rate: number;
+  is_default?: number | boolean;
+}
+
 export const settingsApi = {
   reconcileCogs: () => api.post('/settings/reconcile-cogs'),
   getStatuses: () => api.get<StatusListResponse>('/settings/statuses'),
@@ -474,7 +483,7 @@ export const settingsApi = {
   deleteStatus: (id: number) => api.delete(`/settings/statuses/${id}`),
   getStore: () => api.get('/settings/store'),
   updateStore: (data: UpdateStoreInput) => api.put('/settings/store', data),
-  getTaxClasses: () => api.get('/settings/tax-classes'),
+  getTaxClasses: () => api.get<{ success: boolean; data: TaxClassRecord[] }>('/settings/tax-classes'),
   createTaxClass: (data: CreateTaxClassInput) => api.post('/settings/tax-classes', data),
   updateTaxClass: (id: number, data: UpdateTaxClassInput) => api.put(`/settings/tax-classes/${id}`, data),
   deleteTaxClass: (id: number) => api.delete(`/settings/tax-classes/${id}`),
@@ -501,8 +510,8 @@ export const settingsApi = {
     }>('/settings/setup-invites', data),
   updateUser: (id: number, data: UpdateUserInput) => api.put(`/settings/users/${id}`, data),
   // Generic config (key-value store)
-  getConfig: (params?: { location_id?: number }) => api.get('/settings/config', { params }),
-  updateConfig: (data: Record<string, string>) => api.put('/settings/config', data),
+  getConfig: (params?: { location_id?: number }) => api.get<{ success: boolean; data: SettingsConfig }>('/settings/config', { params }),
+  updateConfig: (data: Record<string, string>) => api.put<{ success: boolean; data: SettingsConfig }>('/settings/config', data),
   // WEB-UIUX-944: bilateral webhook connectivity smoke-test. Server fires
   // a synthetic `ticket_created` event with `test:true` against the
   // configured webhook_url so the admin can verify reachability +
@@ -904,6 +913,17 @@ export interface PosWorkstation {
   updated_at: string;
 }
 
+type CashAdjustmentInput = { amount: number; reason?: string; idempotency_key?: string };
+
+function postCashAdjustment(path: string, data: CashAdjustmentInput) {
+  const { idempotency_key, ...payload } = data;
+  return api.post(
+    path,
+    payload,
+    idempotency_key ? { headers: { 'X-Idempotency-Key': idempotency_key } } : undefined,
+  );
+}
+
 export const posApi = {
   // WEB-FN-006 (Fixer-B18 2026-04-25): dropped `item_type` from the typed
   // wrapper. Server (`pos.routes.ts:102`) hard-codes `item_type IN
@@ -915,9 +935,9 @@ export const posApi = {
     api.get('/pos/products', { params, signal }),
   register: () => api.get('/pos/register'),
   // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer
-  // event so a flaky-network double-click doesn't double-record opening float.
-  cashIn: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-in', data),
-  cashOut: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-out', data),
+  // event so a flaky-network double-click doesn't double-record cash movement.
+  cashIn: (data: CashAdjustmentInput) => postCashAdjustment('/pos/cash-in', data),
+  cashOut: (data: CashAdjustmentInput) => postCashAdjustment('/pos/cash-out', data),
   transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
   transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
   // WEB-FH-001 / WEB-FH-002: mandatory idempotency key, minted ONCE per
@@ -1532,12 +1552,20 @@ export const blockchypApi = {
       } | null;
     };
   }>('/blockchyp/status'),
-  testConnection: (terminalName?: string) =>
-    api.post<{ success: boolean; data: { success: boolean; terminalName: string; firmwareVersion?: string; error?: string } }>('/blockchyp/test-connection', { terminalName }),
+  testConnection: (terminalName?: string, terminalIp?: string) =>
+    api.post<{ success: boolean; data: { success: boolean; terminalName: string; firmwareVersion?: string; error?: string; message?: string; verificationStatus?: 'verified' | 'gateway_only' | 'failed'; lan?: { attempted: boolean; success: boolean; host?: string; port?: number; error?: string } } }>('/blockchyp/test-connection', { terminalName, terminalIp }),
   captureCheckinSignature: () =>
-    api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-checkin-signature'),
+    api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>(
+      '/blockchyp/capture-checkin-signature',
+      undefined,
+      { timeout: PAYMENT_TERMINAL_REQUEST_TIMEOUT_MS },
+    ),
   captureSignature: (ticketId: number) =>
-    api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-signature', { ticketId }),
+    api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>(
+      '/blockchyp/capture-signature',
+      { ticketId },
+      { timeout: PAYMENT_TERMINAL_REQUEST_TIMEOUT_MS },
+    ),
   // @audit-fixed (WEB-FN-004 / Fixer-K 2026-04-24): the typed response was
   // missing six fields the server actually returns across its three branches:
   //   1. Idempotency replay (blockchyp.routes.ts:245-254): adds `replayed: true`
@@ -1590,7 +1618,7 @@ export const blockchypApi = {
       // WEB-UIUX-936: terminal user-input (tap/chip/PIN) can take 60-90s.
       // Default 30s axios timeout aborts client-side while server is still
       // waiting on terminal — combined with retry, can double-charge.
-      { timeout: 120_000 },
+      { timeout: PAYMENT_TERMINAL_REQUEST_TIMEOUT_MS },
     );
   },
   adjustTip: (transaction_id: string, new_tip: number) =>
@@ -1769,6 +1797,16 @@ export interface MembershipEnrollCardResponse {
   };
 }
 
+export interface MembershipPaymentLinkResponse {
+  success: boolean;
+  data: {
+    linkUrl: string;
+    linkCode?: string;
+    tier_name?: string;
+    amount?: number;
+  };
+}
+
 export const membershipApi = {
   // Tiers
   getTiers: () => api.get('/membership/tiers'),
@@ -1801,7 +1839,7 @@ export const membershipApi = {
   // checkout). Adding a typed wrapper so the membership-marketing pages can
   // stop reaching for raw axios.
   paymentLink: (data: { tier_id: number; customer_id: number }) =>
-    api.post('/membership/payment-link', data),
+    api.post<MembershipPaymentLinkResponse>('/membership/payment-link', data),
   // WEB-UIUX-1067: capture cancellation reason + free-text note alongside the
   // immediate/end-of-period choice so churn analytics has signal.
   cancel: (id: number, data?: { immediate?: boolean; reason?: string; note?: string }) =>
@@ -1810,9 +1848,10 @@ export const membershipApi = {
     api.post(`/membership/${id}/pause`, data || {}),
   resume: (id: number) =>
     api.post(`/membership/${id}/resume`),
-  // WEB-UIUX-1074: per-subscription payment-link (wraps POST /:id/payment-link)
-  createPaymentLink: (id: number) =>
-    api.post<{ url: string }>(`/membership/${id}/payment-link`),
+  // BUGHUNT-20260507-096: use the real payment-link route. It needs the
+  // tier/customer pair; there is no per-subscription hosted-link endpoint.
+  createPaymentLink: (data: { tier_id: number; customer_id: number }) =>
+    api.post<MembershipPaymentLinkResponse>('/membership/payment-link', data),
 
   // Payment history
   getPayments: (id: number) =>

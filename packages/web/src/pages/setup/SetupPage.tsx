@@ -66,8 +66,14 @@ interface SetupStatusPayload {
   wizard_completed?: string | boolean | null;
   setup_completed?: string | boolean | null;
   store_name?: string | null;
+  setup_imported_legacy_data?: string | null;
   [key: string]: unknown;
 }
+
+const hasSetupValue = (value: unknown): boolean => {
+  if (typeof value === 'string') return value.trim().length > 0;
+  return value !== undefined && value !== null && value !== false;
+};
 
 export function SetupPage() {
   const navigate = useNavigate();
@@ -184,6 +190,44 @@ export function SetupPage() {
   const prevPhase: WizardPhase | undefined = phaseIndex > 0 ? orderedPhases[phaseIndex - 1] : undefined;
   const nextPhase: WizardPhase | undefined =
     phaseIndex >= 0 && phaseIndex < orderedPhases.length - 1 ? orderedPhases[phaseIndex + 1] : undefined;
+  const completedCards = useMemo<Set<ExtraCardId>>(() => {
+    const cards = new Set<ExtraCardId>();
+    const hasAnyPending = (keys: Array<keyof PendingWrites>) =>
+      keys.some((key) => hasSetupValue(pending[key]));
+
+    if (hasSetupValue(pending.business_hours)) cards.add('hours');
+    if (hasAnyPending(['tax_default_parts', 'tax_default_services', 'tax_default_accessories'])) cards.add('tax');
+    if (hasAnyPending(['store_logo', 'theme_primary_color'])) cards.add('logo');
+    if (hasAnyPending(['receipt_title', 'receipt_header', 'receipt_footer'])) cards.add('receipts');
+    if (
+      hasSetupValue(pending.setup_imported_legacy_data) ||
+      hasSetupValue(setupData?.data?.data?.setup_imported_legacy_data)
+    ) {
+      cards.add('import');
+    }
+    if (hasSetupValue(pending.sms_provider_type)) cards.add('sms');
+    if (hasAnyPending(['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'])) cards.add('email');
+    if (
+      hasAnyPending([
+        'notif_tpl_received_enabled',
+        'notif_tpl_received_subj',
+        'notif_tpl_received_body',
+        'notif_tpl_ready_enabled',
+        'notif_tpl_ready_subj',
+        'notif_tpl_ready_body',
+        'notif_tpl_invoice_paid_enabled',
+        'notif_tpl_invoice_paid_subj',
+        'notif_tpl_invoice_paid_body',
+        'notif_tpl_appt_reminder_enabled',
+        'notif_tpl_appt_reminder_subj',
+        'notif_tpl_appt_reminder_body',
+      ])
+    ) {
+      cards.add('notifications');
+    }
+
+    return cards;
+  }, [pending, setupData?.data?.data?.setup_imported_legacy_data]);
 
   const goNext = useCallback(() => {
     if (nextPhase) setPhase(nextPhase);

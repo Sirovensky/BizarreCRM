@@ -10,8 +10,8 @@
  * Falls back to a compact floating card if the target element is missing.
  *
  * Skip hierarchy:
- *  - "Skip step"    — advances to next step without firing the real action
- *  - "Skip tutorial"  — dismisses this flow (localStorage flag)
+ *  - "Next step"    — advances to next step without firing the real action
+ *  - "End tutorial"  — dismisses this flow (localStorage flag)
  *  - "Skip all tutorials" — sets `tutorial.all.dismissed=1`, patches onboarding
  *                           state, and navigates to `/`
  */
@@ -31,7 +31,7 @@ import type { SpotlightStep, TutorialFlowId } from './tutorialFlows';
 
 const ALL_DISMISSED_KEY = 'tutorial.all.dismissed';
 const FLOW_DISMISSED_PREFIX = 'tutorial.';
-const TARGET_FIND_TIMEOUT_MS = 300;
+const TARGET_FIND_FALLBACK_MS = 1200;
 const CARD_MAX_WIDTH = 320;
 const CARD_EST_HEIGHT = 240;
 const CARD_PADDING = 12;
@@ -234,10 +234,9 @@ function TooltipCard({
         <button
           type="button"
           onClick={onSkipFlow}
-          data-spotlight-primary-action
           className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200"
-          title="Skip tutorial"
-          aria-label="Skip tutorial"
+          title="End tutorial"
+          aria-label="End tutorial"
         >
           <X className="h-4 w-4" />
         </button>
@@ -272,15 +271,17 @@ function TooltipCard({
           ))}
         </div>
 
-        {/* Buttons — tab order: skip-step → skip-tutorial → skip-all */}
+        {/* Buttons — tab order: next-step → end-tutorial → skip-all */}
         <div className="flex flex-wrap items-center justify-end gap-1">
           <button
             type="button"
             onClick={onSkipStep}
             tabIndex={0}
-            className="rounded-md px-2 py-1 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+            data-spotlight-primary-action
+            aria-label="Go to the next tutorial step without completing this action"
+            className="rounded-md border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300 dark:hover:bg-primary-500/20"
           >
-            Skip step
+            Next step
           </button>
           <button
             type="button"
@@ -288,7 +289,7 @@ function TooltipCard({
             tabIndex={0}
             className="rounded-md px-2 py-1 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
           >
-            Skip tutorial
+            End tutorial
           </button>
           {confirmingSkipAll ? (
             /* Inline confirm — requires deliberate second action */
@@ -399,50 +400,57 @@ export function SpotlightCoach() {
       return;
     }
 
-    // WEB-UIUX-577: replace single-shot 300ms retry with a MutationObserver that
-    // catches the target the moment it mounts. Fall back to the timeout only if
-    // the element never appears within the window.
-    let resolved = false;
-    const mo = new MutationObserver(() => {
-      if (resolved) return;
-      const retried = document.querySelector(selector);
-      if (retried) {
-        resolved = true;
-        targetElRef.current = retried;
-        updateRect();
-        const ro = new ResizeObserver(updateRect);
-        ro.observe(retried);
-        observerRef.current = ro;
-        mo.disconnect();
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
+    // WEB-UIUX-577: MutationObserver that catches the target the moment it
+    // mounts, with a timeout fallback if the element never appears.
+    let cancelled = false;
+    let mutationObserver: MutationObserver | null = null;
+    let fallbackTimer: number | undefined;
 
-    const timer = setTimeout(() => {
-      if (resolved) return;
-      mo.disconnect();
+    const attachTarget = (target: Element) => {
+      if (cancelled || targetElRef.current) return;
+      targetElRef.current = target;
+      setIsFallback(false);
+      updateRect();
+      const ro = new ResizeObserver(updateRect);
+      ro.observe(target);
+      observerRef.current = ro;
+      mutationObserver?.disconnect();
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+    };
+
+    const findTarget = () => {
+      const target = document.querySelector(selector);
+      if (target) attachTarget(target);
+    };
+
+    if (document.body) {
+      mutationObserver = new MutationObserver(findTarget);
+      mutationObserver.observe(document.body, { childList: true, subtree: true });
+    }
+
+    fallbackTimer = window.setTimeout(() => {
+      if (targetElRef.current || cancelled) return;
+      mutationObserver?.disconnect();
       const retried = document.querySelector(selector);
       if (retried) {
-        targetElRef.current = retried;
-        updateRect();
-        const ro = new ResizeObserver(updateRect);
-        ro.observe(retried);
-        observerRef.current = ro;
+        attachTarget(retried);
       } else {
+        // Element not found after the render grace period — switch to floating fallback.
         setIsFallback(true);
       }
-    }, TARGET_FIND_TIMEOUT_MS);
+    }, TARGET_FIND_FALLBACK_MS);
 
     return () => {
-      clearTimeout(timer);
-      mo.disconnect();
+      cancelled = true;
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      mutationObserver?.disconnect();
       observerRef.current?.disconnect();
     };
   }, [step, flowId, dismissed, updateRect]);
 
   // ── Reposition on scroll/resize ─────────────────────────────────────────────
   // Depend on `targetRect` (not just `targetElRef.current`) so this re-runs
-  // when the target transitions from null to non-null after the 300ms retry.
+  // when the target transitions from null to non-null after delayed rendering.
   useEffect(() => {
     if (dismissed || !targetElRef.current) return;
     window.addEventListener('scroll', updateRect, { passive: true });
@@ -510,11 +518,16 @@ export function SpotlightCoach() {
   }, [flowId, navigate]);
 
   const handleSkipAll = useCallback(() => {
-    setDismissed(true);
     void (async () => {
-      try { await dismissAllTutorials(navigate); }
+      try {
+        await dismissAllTutorials(navigate);
+        setDismissed(true);
+      }
       // WEB-FV-009 (Fixer-C4 2026-04-25): see paired callsites above.
-      catch (err) { console.error('[spotlight] dismissAllTutorials failed', err); }
+      catch (err) {
+        setDismissed(false);
+        console.error('[spotlight] dismissAllTutorials failed', err);
+      }
     })();
   }, [navigate]);
 

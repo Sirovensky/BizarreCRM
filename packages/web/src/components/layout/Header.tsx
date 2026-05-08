@@ -26,13 +26,14 @@ import {
   Package,
   MessageSquare,
   Info,
-  X,
-  Loader2,
   HelpCircle,
   ScrollText,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
 import { Button } from '@/components/shared/Button';
+import { PinModal } from '@/components/shared/PinModal';
 // WEB-FAE-001 (partial): adopt the previously-orphan `PermissionBoundary`
 // component for the Settings dropdown entry so at least one ad-hoc role
 // literal is funneled through the shared gate. Other ad-hoc sites still
@@ -740,16 +741,17 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
       {/* Switch User PIN Modal */}
       {showSwitchUser && (
-        <SwitchUserModal
-          onSuccess={async (pin: string) => {
-            try {
-              await switchUser(pin);
-              toast.success('Switched user');
-              setShowSwitchUser(false);
-              navigate('/');
-            } catch (err: unknown) {
-              throw err; // re-throw so modal shows error
-            }
+        <PinModal
+          title="Switch User"
+          description="Enter the PIN of the user to switch to."
+          submitLabel="Switch"
+          verifyPin={async (pin: string) => {
+            await switchUser(pin);
+          }}
+          onSuccess={() => {
+            toast.success('Switched user');
+            setShowSwitchUser(false);
+            navigate('/');
           }}
           onCancel={() => setShowSwitchUser(false)}
         />

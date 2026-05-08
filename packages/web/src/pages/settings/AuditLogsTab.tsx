@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/api/endpoints';
-import { Loader2, ChevronLeft, ChevronRight, Search, Filter, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, ShieldCheck, RefreshCw, Download } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
 
@@ -14,6 +14,14 @@ interface AuditLog {
   ip_address: string | null;
   details: string | null;
   created_at: string;
+}
+
+interface AuditUser {
+  id: number;
+  username?: string | null;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 // Cap rendered detail length. Huge title-attr strings stall native tooltip
@@ -53,6 +61,44 @@ function formatDetails(details: string | null): string {
   return out.length > MAX_DETAIL_LEN ? out.slice(0, MAX_DETAIL_LEN) + '…' : out;
 }
 
+function auditUserLabel(user: AuditUser): string {
+  const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+  const handle = user.username || user.email || `User #${user.id}`;
+  return name ? `${name} (${handle})` : handle;
+}
+
+function csvCell(value: string | number | null | undefined): string {
+  const text = value == null ? '' : String(value);
+  const safeText = /^[=+\-@]/.test(text.trimStart()) ? `'${text}` : text;
+  return `"${safeText.replace(/"/g, '""')}"`;
+}
+
+function exportAuditLogsCsv(logs: AuditLog[]) {
+  if (logs.length === 0) return;
+  const rows = [
+    ['Time', 'Event', 'User ID', 'User', 'Username', 'IP Address', 'Details'],
+    ...logs.map((log) => [
+      formatDateTime(log.created_at?.replace(' ', 'T')),
+      log.event,
+      log.user_id ?? '',
+      log.user_name || '',
+      log.username || '',
+      log.ip_address || '',
+      formatDetails(log.details),
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `audit-logs-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 const filterControlClassName =
   'rounded border border-surface-200 bg-white px-2 py-1.5 text-sm text-surface-900 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200';
 
@@ -74,10 +120,7 @@ const AuditLogRow = memo(function AuditLogRow({ log }: { log: AuditLog }) {
       </td>
       <td className="py-2 px-3 text-surface-700 dark:text-surface-300">{userDisplay}</td>
       <td className="py-2 px-3 text-surface-500 dark:text-surface-400 font-mono text-xs">{log.ip_address || '-'}</td>
-      <td
-        className="py-2 px-3 text-surface-500 dark:text-surface-400 text-xs max-w-xs truncate"
-        title={formattedDetails}
-      >
+      <td className="py-2 px-3 text-surface-500 dark:text-surface-400 text-xs max-w-xs truncate">
         {formattedDetails}
       </td>
     </tr>
@@ -87,6 +130,7 @@ const AuditLogRow = memo(function AuditLogRow({ log }: { log: AuditLog }) {
 export function AuditLogsTab() {
   const [page, setPage] = useState(1);
   const [eventFilter, setEventFilter] = useState('');
+  const [userFilter, setUserFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   // WEB-FG-015 fix: typing into a <input type="date"> emits onChange on every
@@ -120,7 +164,7 @@ export function AuditLogsTab() {
   const [cachedTotal, setCachedTotal] = useState<number | null>(null);
   const [cachedTotalPages, setCachedTotalPages] = useState<number | null>(null);
   // Reset cached meta whenever the filter window changes — totals depend on it.
-  const filterKey = `${eventFilter}|${debouncedFrom}|${debouncedTo}`;
+  const filterKey = `${eventFilter}|${userFilter}|${debouncedFrom}|${debouncedTo}`;
   const [lastFilterKey, setLastFilterKey] = useState(filterKey);
   useEffect(() => {
     if (filterKey !== lastFilterKey) {
@@ -133,11 +177,21 @@ export function AuditLogsTab() {
   // change, or live-tail polling skip meta to keep the response cheap.
   const wantsMeta = cachedTotal === null || cachedEventTypes.length === 0;
 
+  const { data: users = [] } = useQuery({
+    queryKey: ['settings', 'users'],
+    queryFn: async () => {
+      const res = await settingsApi.getUsers();
+      return res.data.data as AuditUser[];
+    },
+    staleTime: 60_000,
+  });
+
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['audit-logs', page, eventFilter, debouncedFrom, debouncedTo, wantsMeta],
+    queryKey: ['audit-logs', page, eventFilter, userFilter, debouncedFrom, debouncedTo, wantsMeta],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, pagesize: 50 };
       if (eventFilter) params.event = eventFilter;
+      if (userFilter) params.user_id = Number(userFilter);
       if (debouncedFrom) params.from_date = debouncedFrom;
       if (debouncedTo) params.to_date = debouncedTo;
       if (!wantsMeta) params.meta = 'skip';
@@ -182,8 +236,9 @@ export function AuditLogsTab() {
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-xs text-surface-600 dark:text-surface-400 mb-1">Event Type</label>
+          <label htmlFor="audit-event-filter" className="block text-xs text-surface-600 dark:text-surface-400 mb-1">Event Type</label>
           <select
+            id="audit-event-filter"
             value={eventFilter}
             onChange={(e) => { setEventFilter(e.target.value); setPage(1); }}
             className={filterControlClassName}
@@ -195,8 +250,23 @@ export function AuditLogsTab() {
           </select>
         </div>
         <div>
-          <label className="block text-xs text-surface-600 dark:text-surface-400 mb-1">From Date</label>
+          <label htmlFor="audit-user-filter" className="block text-xs text-surface-600 dark:text-surface-400 mb-1">User</label>
+          <select
+            id="audit-user-filter"
+            value={userFilter}
+            onChange={(e) => { setUserFilter(e.target.value); setPage(1); }}
+            className={filterControlClassName}
+          >
+            <option value="">All Users</option>
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>{auditUserLabel(user)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="audit-from-date" className="block text-xs text-surface-600 dark:text-surface-400 mb-1">From Date</label>
           <input
+            id="audit-from-date"
             type="date"
             value={fromDate}
             onChange={(e) => { setFromDate(e.target.value); setPage(1); }}
@@ -204,17 +274,18 @@ export function AuditLogsTab() {
           />
         </div>
         <div>
-          <label className="block text-xs text-surface-600 dark:text-surface-400 mb-1">To Date</label>
+          <label htmlFor="audit-to-date" className="block text-xs text-surface-600 dark:text-surface-400 mb-1">To Date</label>
           <input
+            id="audit-to-date"
             type="date"
             value={toDate}
             onChange={(e) => { setToDate(e.target.value); setPage(1); }}
             className={filterControlClassName}
           />
         </div>
-        {(eventFilter || fromDate || toDate) && (
+        {(eventFilter || userFilter || fromDate || toDate) && (
           <button
-            onClick={() => { setEventFilter(''); setFromDate(''); setToDate(''); setDebouncedFrom(''); setDebouncedTo(''); setPage(1); }}
+            onClick={() => { setEventFilter(''); setUserFilter(''); setFromDate(''); setToDate(''); setDebouncedFrom(''); setDebouncedTo(''); setPage(1); }}
             className="btn btn-ghost btn-xs !text-orange-600 hover:!text-orange-700 dark:!text-orange-400 dark:hover:!text-orange-300"
           >
             Clear filters
@@ -268,6 +339,16 @@ export function AuditLogsTab() {
           >
             <RefreshCw className={cn('h-3.5 w-3.5', isFetching && 'animate-spin')} />
             Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => exportAuditLogsCsv(logs)}
+            disabled={logs.length === 0}
+            className="btn btn-ghost btn-xs !text-surface-600 hover:!text-surface-900 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:!text-surface-300 dark:hover:!text-surface-100"
+            aria-label="Export current audit log page as CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
           </button>
           <label className="inline-flex items-center gap-1.5 text-xs text-surface-600 dark:text-surface-300 cursor-pointer select-none">
             <input

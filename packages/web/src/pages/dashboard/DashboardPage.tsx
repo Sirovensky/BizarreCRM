@@ -2433,6 +2433,7 @@ function AdminOrManagerDashboard() {
 
           case 'kpi-cards': {
             if (!showFinancials) return null;
+            const kpiPeriod = from === to ? formatDate(from) : `${formatDate(from)} to ${formatDate(to)}`;
             const allKpiCards = [
               { label: 'Total Sales', value: kpis?.total_sales ?? 0, tooltip: 'Sum of all payments in period', href: '/reports' },
               { label: 'Tax', value: kpis?.tax ?? 0, tooltip: 'Tax collected on invoices', href: '/reports' },

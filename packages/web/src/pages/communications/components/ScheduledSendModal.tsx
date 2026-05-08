@@ -31,6 +31,41 @@ function toLocalIsoInput(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function parseLocalDateTimeInput(value: string): { date: Date; normalized: boolean } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d);
+  const hour = Number(h);
+  const minute = Number(mi);
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+  const normalized =
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day ||
+    date.getHours() !== hour ||
+    date.getMinutes() !== minute;
+  return Number.isNaN(date.getTime()) ? null : { date, normalized };
+}
+
+function scheduledSendPreview(value: string): { date?: Date; local?: string; utc?: string; error?: string } {
+  const parsed = parseLocalDateTimeInput(value);
+  if (!parsed) return { error: 'Enter a valid local date and time.' };
+  if (parsed.normalized) {
+    return { error: 'That local time does not exist because of daylight saving time. Pick another time.' };
+  }
+  if (parsed.date.getTime() <= Date.now()) {
+    return { error: 'Scheduled time must be in the future.' };
+  }
+  return {
+    date: parsed.date,
+    local: parsed.date.toLocaleString(),
+    utc: `${parsed.date.toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+  };
+}
+
 function addMinutes(mins: number): Date {
   return new Date(Date.now() + mins * 60_000);
 }
@@ -47,6 +82,7 @@ export function ScheduledSendModal({
   const defaultWhen = useMemo(() => toLocalIsoInput(addMinutes(60)), []);
   const [when, setWhen] = useState(defaultWhen);
   const [sending, setSending] = useState(false);
+  const preview = scheduledSendPreview(when);
 
   const presets: { label: string; mins: number }[] = [
     { label: 'In 1 hour', mins: 60 },
@@ -92,12 +128,12 @@ export function ScheduledSendModal({
       toast.error('Phone and message are required');
       return;
     }
-    const target = new Date(when);
-    if (isNaN(target.getTime()) || target.getTime() <= Date.now()) {
-      toast.error('Scheduled time must be in the future');
+    const target = scheduledSendPreview(when);
+    if (target.error || !target.date) {
+      toast.error(target.error || 'Enter a valid scheduled time');
       return;
     }
-    if (dstAnomaly(when, target) === 'nonexistent') {
+    if (dstAnomaly(when, target.date) === 'nonexistent') {
       toast.error('That local time does not exist on the selected date (daylight-saving spring forward). Pick a different time.');
       return;
     }
@@ -106,9 +142,9 @@ export function ScheduledSendModal({
       await smsApi.send({
         to: toPhone,
         message: body,
-        send_at: target.toISOString(),
+        send_at: target.date.toISOString(),
       } as any);
-      toast.success(`Scheduled for ${target.toLocaleString()}`);
+      toast.success(`Scheduled for ${target.local}`);
       onScheduled?.();
       onClose();
     } catch (e: any) {
@@ -170,6 +206,7 @@ export function ScheduledSendModal({
             <input
               type="datetime-local"
               value={when}
+              min={toLocalIsoInput(addMinutes(1))}
               onChange={(e) => setWhen(e.target.value)}
               className="w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
@@ -212,7 +249,7 @@ export function ScheduledSendModal({
           </button>
           <button
             onClick={submit}
-            disabled={sending || !body.trim() || !toPhone}
+            disabled={sending || !body.trim() || !toPhone || !!preview.error}
             className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Send className="h-3.5 w-3.5" />

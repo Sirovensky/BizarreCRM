@@ -35,6 +35,11 @@ const ALL_COLUMNS = [
 type ColKey = (typeof ALL_COLUMNS)[number]['key'];
 
 const DEFAULT_VISIBLE: ColKey[] = ['sku', 'name', 'type', 'category', 'stock', 'cost', 'price'];
+const MAX_IMPORT_CSV_BYTES = 5 * 1024 * 1024;
+const MAX_IMPORT_ROWS = 500;
+const REQUIRED_IMPORT_COLUMNS = ['name', 'item_type', 'cost_price', 'retail_price', 'in_stock'] as const;
+const NUMERIC_IMPORT_COLUMNS = ['cost_price', 'retail_price', 'in_stock', 'reorder_level'] as const;
+const VALID_IMPORT_ITEM_TYPES = new Set(['product', 'part', 'service']);
 
 interface InventoryImportRow {
   name: string;
@@ -387,39 +392,73 @@ export function InventoryListPage() {
   //   quoted fields containing commas (e.g. `"Smith, Jr Inc."`) round-trip
   //   correctly with our own export.
   const parseImportCsv = (text: string) => {
-    const lines = text.trim().split('\n');
-    if (lines.length < 2) { toast.error('CSV must have a header row and at least one data row'); return; }
-    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
-    // WEB-UIUX-760: enforce required-column validation up-front so the
-    // operator gets a clear toast instead of a 400 after submit. `name` +
-    // `retail_price` are the two columns inventory_items requires; sku is
-    // strongly recommended but optional (server auto-generates).
-    const REQUIRED = ['name', 'retail_price'];
-    const missing = REQUIRED.filter((c) => !headers.includes(c));
-    if (missing.length > 0) {
-      toast.error(`CSV missing required column(s): ${missing.join(', ')}. Header row must include: ${REQUIRED.join(', ')}.`);
+    if (new Blob([text]).size > MAX_IMPORT_CSV_BYTES) {
+      setImportPreview([]);
+      toast.error('Inventory CSV must be 5 MB or smaller');
       return;
     }
-    const rows = lines.slice(1).map(line => {
+
+    const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/).filter(line => line.trim());
+    if (lines.length < 2) { setImportPreview([]); toast.error('CSV must have a header row and at least one data row'); return; }
+    if (lines.length - 1 > MAX_IMPORT_ROWS) {
+      setImportPreview([]);
+      toast.error(`Inventory import is limited to ${MAX_IMPORT_ROWS} rows`);
+      return;
+    }
+
+    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+    // WEB-UIUX-760: enforce required-column validation up-front so the
+    // operator gets a clear toast instead of a 400 after submit.
+    const missing = REQUIRED_IMPORT_COLUMNS.filter(h => !headers.includes(h));
+    if (missing.length > 0) {
+      setImportPreview([]);
+      toast.error(`CSV missing required column${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`);
+      return;
+    }
+
+    const errors: string[] = [];
+    const rows = lines.slice(1).map((line, idx) => {
       const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+      const rowNumber = idx + 2;
+      for (const column of REQUIRED_IMPORT_COLUMNS) {
+        if (!obj[column]?.trim()) errors.push(`Row ${rowNumber}: ${column} is required`);
+      }
+      if (obj.item_type && !VALID_IMPORT_ITEM_TYPES.has(obj.item_type)) errors.push(`Row ${rowNumber}: item_type must be product, part, or service`);
+      for (const column of NUMERIC_IMPORT_COLUMNS) {
+        if (obj[column] && !Number.isFinite(Number(obj[column]))) errors.push(`Row ${rowNumber}: ${column} must be numeric`);
+      }
       return obj;
     });
-    // WEB-UIUX-760: also flag rows with bad numeric retail_price so the
-    // operator sees the problem in the preview table before submit.
-    const badRows = rows.filter((r) => {
-      const v = (r.retail_price ?? '').trim();
-      if (!v) return true;
-      const n = Number(v);
-      return !Number.isFinite(n) || n < 0;
-    });
-    if (badRows.length > 0) {
-      toast.error(`${badRows.length} row(s) have a missing or invalid retail_price. Fix and re-import.`);
+    if (errors.length > 0) {
+      setImportPreview([]);
+      const suffix = errors.length > 3 ? `, and ${errors.length - 3} more` : '';
+      toast.error(`${errors.slice(0, 3).join('; ')}${suffix}`);
+      return;
     }
-    // Loosely-typed dictionary cast to the InventoryImportRow shape — the row
-    // editor in the modal fills any missing required keys before submit.
+    // Loosely-typed dictionary cast to the InventoryImportRow shape after
+    // header and row-level validation above.
     setImportPreview(rows as InventoryImportRow[]);
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_IMPORT_CSV_BYTES) {
+      setImportPreview([]);
+      toast.error('Inventory CSV must be 5 MB or smaller');
+      e.currentTarget.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = ev.target?.result as string;
+      setImportText(text);
+      parseImportCsv(text);
+    };
+    reader.onerror = () => toast.error('Could not read CSV file');
+    reader.readAsText(file, 'utf-8');
   };
 
   // WEB-FX-003: Esc-to-close for non-modal UI (confirmations, order-all panel).
@@ -1120,27 +1159,7 @@ export function InventoryListPage() {
             <div className="mb-2 flex items-center gap-2">
               <label className="px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 cursor-pointer">
                 <Upload className="h-4 w-4 inline mr-1" /> Upload File
-                <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  // WEB-UIUX-762: cap CSV size + decode as UTF-8 explicitly.
-                  const MAX_CSV_BYTES = 25 * 1024 * 1024;
-                  if (file.size > MAX_CSV_BYTES) {
-                    toast.error(`CSV exceeds ${(MAX_CSV_BYTES / 1024 / 1024)}MB cap (${(file.size / 1024 / 1024).toFixed(1)}MB). Split into smaller batches.`);
-                    return;
-                  }
-                  const reader = new FileReader();
-                  reader.onload = ev => {
-                    const text = ev.target?.result as string;
-                    if (/�/.test(text)) {
-                      toast.error('CSV contains characters that did not decode as UTF-8. Re-export the file as UTF-8 and try again.');
-                      return;
-                    }
-                    setImportText(text);
-                    parseImportCsv(text);
-                  };
-                  reader.readAsText(file, 'utf-8');
-                }} />
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportFile} />
               </label>
             </div>
             {importPreview.length > 0 && (

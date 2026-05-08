@@ -22,6 +22,7 @@ import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
 import { formatCurrency, formatDate, formatTicketId, timeAgo, toLocalDateString } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
+import { normalizeListSearchKeyword } from '@/utils/listSearch';
 
 // ─── Optional column definitions ──────────────────────────────────
 // Every non-essential column is toggleable. Essentials kept always-on:
@@ -80,6 +81,7 @@ const SORT_COLUMNS: Record<SortColumn, string> = {
 };
 
 const EMPTY_STATUSES: TicketStatus[] = [];
+const TICKET_STATUS_GROUPS = new Set(['active', 'open', 'on_hold', 'closed', 'cancelled']);
 
 // ─── Helpers ────────────────────────────────────────────────────────
 function finiteProgressPercent(numerator: unknown, denominator: unknown): number {
@@ -87,6 +89,22 @@ function finiteProgressPercent(numerator: unknown, denominator: unknown): number
   const total = Number(denominator);
   if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return 0;
   return Math.max(0, Math.min(100, (current / total) * 100));
+}
+
+function normalizeTicketStatusFilter(value: string, statuses: TicketStatus[]): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  const group = trimmed.toLowerCase().replace(/-/g, '_');
+  const normalizedGroup = group === 'onhold' ? 'on_hold' : group;
+  if (TICKET_STATUS_GROUPS.has(normalizedGroup)) return normalizedGroup;
+
+  if (/^\d+$/.test(trimmed)) {
+    if (statuses.length === 0) return trimmed;
+    return statuses.some((status) => String(status.id) === trimmed) ? trimmed : '';
+  }
+
+  return '';
 }
 
 
@@ -931,12 +949,14 @@ export function TicketListPage() {
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('tickets_pagesize') || getSetting('ticket_default_pagination', '25') || '25');
   const keyword = searchParams.get('keyword') || '';
-  const statusFilter = searchParams.get('status_id') || getSetting('ticket_default_filter', '');
+  const statusParamFromUrl = searchParams.get('status_id');
+  const rawStatusFilter = statusParamFromUrl ?? getSetting('ticket_default_filter', '');
   const statusGroupFilter = searchParams.get('status_group') || '';
   const assignedTo = searchParams.get('assigned_to') || '';
   const dateFilter = searchParams.get('date_filter') || '';
   const sortBy = (searchParams.get('sort_by') || getSetting('ticket_default_sort', 'urgency')) as SortColumn;
   const sortOrder = searchParams.get('sort_order') || getSetting('ticket_default_sort_order', 'DESC');
+  const serverKeyword = normalizeListSearchKeyword(keyword);
 
   // CROSS1: ticket assignment feature toggle. When ticket_all_employees_view_all is '1'
   // (default), assignment feature is OFF — hide "Assigned To" filter dropdown + column.
@@ -995,7 +1015,8 @@ export function TicketListPage() {
       prevKeywordRef.current = searchInput;
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
-        if (searchInput) next.set('keyword', searchInput); else next.delete('keyword');
+        const trimmed = searchInput.trim();
+        if (trimmed) next.set('keyword', trimmed); else next.delete('keyword');
         next.set('page', '1');
         return next;
       });
@@ -1023,12 +1044,6 @@ export function TicketListPage() {
   // Checkbox state
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
-  // WEB-UIUX-663: clear selection whenever filters change so stale IDs from
-  // a previous filter set never reach bulk-action calls on hidden rows.
-  useEffect(() => {
-    setSelected(new Set());
-  }, [statusFilter, statusGroupFilter, assignedTo, dateFilter, keyword]);
-
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [confirmDlg, setConfirmDlg] = useState<{ open: boolean; ticketId?: number; ticketLabel?: string; bulk?: boolean }>({ open: false });
   const [printTicket, setPrintTicket] = useState<{ id: number; invoiceId?: number | null } | null>(null);
@@ -1041,6 +1056,28 @@ export function TicketListPage() {
   });
   // Server: res.json({ success: true, data: statuses }) — array directly.
   const statuses: TicketStatus[] = statusData?.data?.data || EMPTY_STATUSES;
+  const statusFilter = normalizeTicketStatusFilter(rawStatusFilter, statuses);
+
+  // WEB-UIUX-663/664: clear selection when the visible result set changes so
+  // hidden rows from another filter or page never reach bulk actions.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page, pageSize, statusFilter, statusGroupFilter, assignedTo, dateFilter, keyword]);
+
+  useEffect(() => {
+    if (!statusParamFromUrl) return;
+    const nextStatus = normalizeTicketStatusFilter(statusParamFromUrl, statuses);
+    if (/^\d+$/.test(statusParamFromUrl) && statuses.length === 0) return;
+    if (nextStatus === statusParamFromUrl) return;
+
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (nextStatus) next.set('status_id', nextStatus);
+      else next.delete('status_id');
+      next.set('page', '1');
+      return next;
+    }, { replace: true });
+  }, [statusParamFromUrl, statuses, setSearchParams]);
 
   // ─── Fetch users (for Assigned To filter) ─────────────────────────
   const { data: usersData } = useQuery({
@@ -1054,7 +1091,7 @@ export function TicketListPage() {
   const ticketParams = {
     page,
     pagesize: pageSize,
-    ...(keyword ? { keyword } : {}),
+    ...(serverKeyword ? { keyword: serverKeyword } : {}),
     ...(statusFilter ? (/^\d+$/.test(statusFilter) ? { status_id: Number(statusFilter) } : { status_id: statusFilter }) : {}),
     ...(statusGroupFilter ? { status_group: statusGroupFilter } : {}),
     ...(assignedTo ? { assigned_to: assignedTo === 'me' ? 'me' as const : Number(assignedTo) } : {}),
@@ -1776,7 +1813,7 @@ export function TicketListPage() {
               onClick={async () => {
                 try {
                   const resp = await ticketApi.exportCsv({
-                    ...(keyword ? { keyword } : {}),
+                    ...(serverKeyword ? { keyword: serverKeyword } : {}),
                     ...(statusFilter ? { status_id: statusFilter } : {}),
                     ...(statusGroupFilter ? { status_group: statusGroupFilter } : {}),
                     ...(assignedTo ? { assigned_to: assignedTo === 'me' ? 'me' as const : Number(assignedTo) } : {}),
@@ -1942,6 +1979,13 @@ export function TicketListPage() {
             <div className="flex flex-col items-center justify-center py-20">
               <Wrench className="mb-4 h-12 w-12 text-surface-300 dark:text-surface-600" />
               <h2 className="text-base font-medium text-surface-600 dark:text-surface-400">No Tickets</h2>
+              <Link
+                to="/tickets/new"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+              >
+                <Plus className="h-4 w-4" />
+                New Ticket
+              </Link>
             </div>
           ) : (
             <div className="divide-y divide-surface-100 dark:divide-surface-700/50">

@@ -12,7 +12,7 @@
  * and UI copy decoupled; if UX ever standardises on one term, only the
  * REASONS labels (below) or the file name need updating — not both.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ClipboardEvent } from 'react';
 import toast from 'react-hot-toast';
 
 export type RefundReasonCode =
@@ -60,6 +60,8 @@ const REASONS: ReadonlyArray<{ code: RefundReasonCode; label: string; hint: stri
 ];
 
 const OTHER_NOTE_MIN = 5;
+const NOTE_MAX = 500;
+const NOTE_WARN_AT = 450;
 
 interface RefundReasonPickerProps {
   value: RefundReasonCode | null;
@@ -111,6 +113,14 @@ export function RefundReasonPicker({
     onChange(localReason, next);
   };
 
+  const handleNotePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    const selectionLength = e.currentTarget.selectionEnd - e.currentTarget.selectionStart;
+    if (localNote.length - selectionLength + pasted.length > NOTE_MAX) {
+      toast.error(`Notes are limited to ${NOTE_MAX} characters; extra pasted text was trimmed.`);
+    }
+  };
+
   // WEB-FE-016 (Fixer-B5 2026-04-25): swap raw `text-gray-*`/`border-gray-*`
   // for surface-* tokens with `dark:` pairs so the refund picker is readable
   // in dark mode and stays aligned with the Zinc neutral ramp the rest of the
@@ -155,7 +165,6 @@ export function RefundReasonPicker({
         <textarea
           value={localNote}
           onChange={(e) => handleNoteChange(e.target.value)}
-          onBlur={() => isOtherSelected && setNoteTouched(true)}
           // WEB-UIUX-726: warn the operator when a paste is silently truncated.
           onPaste={(e) => {
             const pasted = e.clipboardData.getData('text');
@@ -164,7 +173,9 @@ export function RefundReasonPicker({
               const dropped = projected - 500;
               toast(`Note was truncated — ${dropped} characters dropped (500 max).`, { icon: '⚠️' });
             }
+            handleNotePaste(e);
           }}
+          onBlur={() => isOtherSelected && setNoteTouched(true)}
           placeholder={isOtherSelected ? 'Please describe the reason…' : 'What happened? (optional)'}
           className={`w-full rounded-md border bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
             isOtherSelected && noteTouched && noteIsShort
@@ -172,15 +183,15 @@ export function RefundReasonPicker({
               : 'border-surface-300 dark:border-surface-700'
           }`}
           rows={3}
-          maxLength={500}
+          maxLength={NOTE_MAX}
           aria-describedby={isOtherSelected ? 'refund-note-hint' : undefined}
         />
         <div className={`mt-1 text-xs text-right ${
-          localNote.length > 450
+          localNote.length > NOTE_WARN_AT
             ? 'text-amber-600 dark:text-amber-400'
             : 'text-surface-500 dark:text-surface-400'
         }`}>
-          {localNote.length}/500
+          {localNote.length}/{NOTE_MAX}
         </div>
         {isOtherSelected && noteTouched && noteIsShort && (
           <p id="refund-note-hint" className="mt-1 text-xs text-red-600 dark:text-red-400">

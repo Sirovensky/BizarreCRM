@@ -223,13 +223,15 @@ export function StocktakePage() {
       toast.success(`Committed: ${data.items_adjusted} items adjusted`);
       queryClient.invalidateQueries({ queryKey: ['stocktakes'] });
       queryClient.invalidateQueries({ queryKey: ['stocktake', selectedId] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
       queryClient.invalidateQueries({ queryKey: ['pos-products'] });
       // WEB-UIUX-889: inventory list/detail/abc/low-stock caches all hold
       // pre-commit `in_stock` — invalidate so they reflect the adjusted counts.
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['inventory-detail'] });
       queryClient.invalidateQueries({ queryKey: ['abc-analysis'] });
       queryClient.invalidateQueries({ queryKey: ['low-stock'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-products-rewrite'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Commit failed'),
   });
@@ -255,7 +257,7 @@ export function StocktakePage() {
     // silently wins over the true UPC hit.
     const isBarcode = /^\d{8,}$/.test(q);
     try {
-      let item: { id: number; name: string } | undefined;
+      let item: { id: number; name: string; in_stock?: number } | undefined;
       if (isBarcode) {
         const res = await inventoryApi.lookupBarcode(q);
         item = res.data?.data ?? undefined;

@@ -61,6 +61,11 @@ interface GiftCardDetail {
 const formatCurrency = (amount: number): string => formatMaybeCents(amount, { abs: true });
 const formatBalance = (amount: number): string => formatMaybeCents(amount);
 
+function maskCode(code: string): string {
+  if (code.length <= 4) return code;
+  return `**** **** **** ${code.slice(-4)}`;
+}
+
 // WEB-UIUX-1444: 'adjustment' label now inspects amount sign — positive = Reload, negative = Adjustment
 function txLabel(type: TxType, amount?: number): string {
   switch (type) {
@@ -92,7 +97,7 @@ function statusBadge(status: GiftCardDetail['status']): string {
 
 // ─── Reload Modal ─────────────────────────────────────────────────────────────
 
-const RELOAD_MAX_AMOUNT = 5_000;
+const RELOAD_MAX_AMOUNT = 10_000;
 const RELOAD_CONFIRM_THRESHOLD = 500;
 
 interface ReloadModalProps {
@@ -108,6 +113,10 @@ function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState<string | null>(null);
+  const amountValue = parseFloat(amount);
+  const amountExceedsMax = Number.isFinite(amountValue) && amountValue > RELOAD_MAX_AMOUNT;
+  const amountHelpError = amountError
+    ?? (amountExceedsMax ? `Reload amount cannot exceed ${formatCurrencyShared(RELOAD_MAX_AMOUNT)}.` : null);
   // WEB-UIUX-557: focus-trap + scroll-lock (component only mounts when open).
   const dialogRef = useFocusTrap(true, { initialFocusSelector: 'input[type="number"]' }) as { current: HTMLDivElement | null };
   useBodyScrollLock(true);
@@ -119,19 +128,22 @@ function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
       // WEB-UIUX-1558: include reloaded amount + new balance in success toast
       const newBalance = (res as any)?.data?.data?.new_balance;
       if (newBalance != null) {
-        toast.success(`Reloaded ${formatCurrencyShared(value)} — new balance ${formatCurrencyShared(dollarsFromMaybeCents(newBalance))}`);
+        toast.success(`Reloaded ${formatCurrencyShared(value)} — new balance ${formatCurrencyShared(newBalance)}`);
       } else {
         toast.success(`Reloaded ${formatCurrencyShared(value)}`);
       }
       onClose();
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'Reload failed');
+      const msg =
+        (err as any)?.response?.data?.message ??
+        (err instanceof Error ? err.message : 'Reload failed');
+      toast.error(msg);
     },
   });
 
   async function handleReload() {
-    const value = parseFloat(amount);
+    const value = amountValue;
     if (!Number.isFinite(value) || value <= 0) {
       setAmountError('Enter a valid reload amount.');
       return;
@@ -188,7 +200,7 @@ function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
           }}
           placeholder="25.00"
           autoFocus
-          aria-invalid={!!amountError}
+          aria-invalid={!!amountHelpError}
           aria-describedby="gift-card-reload-help"
           className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         />
@@ -210,7 +222,7 @@ function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
         </div>
         <p id="gift-card-reload-help" className="mb-5 text-xs text-surface-500 dark:text-surface-400">
           Maximum reload is {formatCurrencyShared(RELOAD_MAX_AMOUNT)}. Reloads of {formatCurrencyShared(RELOAD_CONFIRM_THRESHOLD)} or more require confirmation.
-          {amountError && <span className="mt-1 block text-red-600 dark:text-red-400">{amountError}</span>}
+          {amountHelpError && <span className="mt-1 block text-red-600 dark:text-red-400">{amountHelpError}</span>}
         </p>
         {/* WEB-UIUX-1447: full-width buttons on mobile, row on sm+ */}
         <div className="flex flex-col sm:flex-row sm:justify-end gap-2 sm:gap-3">
@@ -222,7 +234,7 @@ function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
           </button>
           <button
             onClick={handleReload}
-            disabled={reloadMutation.isPending || !amount}
+            disabled={reloadMutation.isPending || !amount || amountExceedsMax}
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {reloadMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -322,7 +334,7 @@ export function GiftCardDetailPage() {
           icon={AlertCircle}
           title="Gift card not found"
           description="This gift card may have been removed or the link is invalid."
-          actionLabel="Back to Gift Cards"
+          actionLabel="Back to gift cards"
           onAction={() => navigate('/gift-cards')}
         />
       </div>
@@ -330,6 +342,9 @@ export function GiftCardDetailPage() {
   }
 
   const card = data;
+  const loadedTotal = card.initial_balance + card.transactions
+    .filter((tx) => tx.type === 'adjustment' && tx.amount > 0)
+    .reduce((sum, tx) => sum + tx.amount, 0);
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -352,7 +367,7 @@ export function GiftCardDetailPage() {
             <div>
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="font-mono text-sm text-surface-700 dark:text-surface-300">
-                  {showCode ? card.code : `**** **** **** ${card.code.slice(-4)}`}
+                  {showCode ? card.code : maskCode(card.code)}
                 </span>
                 {/* WEB-UIUX-1451: aria-label for screen readers on eye-toggle */}
                 <button

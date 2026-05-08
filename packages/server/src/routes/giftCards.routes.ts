@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import { requirePermission, hasPermission } from '../middleware/auth.js';
 import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -58,6 +59,14 @@ function isExpired(expiresAt: string | null | undefined): boolean {
   return ts < Date.now();
 }
 
+function isPastExpiryInput(expiresAt: string): boolean {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+    return expiresAt < now().slice(0, 10);
+  }
+  const ts = Date.parse(expiresAt);
+  return Number.isFinite(ts) && ts < Date.now();
+}
+
 // SEC-H38: 128-bit (16 byte / 32 hex char) codes. Prior 64-bit codes
 // (8 byte / 16 char) were brute-forceable in the online lookup path
 // even with rate limiting — at 10 lookups/min/user an attacker with
@@ -110,6 +119,31 @@ function currentLookupFailureCount(db: any, userKey: string): number {
     logger.warn('Failed to read gift card lookup failure count', { error: String(err) });
     return 0;
   }
+}
+
+function lookupRetryAfterSeconds(db: any, userKey: string, ipKey: string): number {
+  const nowMs = Date.now();
+  let retryAfter = 0;
+  const buckets = [
+    { category: 'gift_card_lookup', key: userKey },
+    { category: 'gift_card_lookup_ip', key: ipKey },
+  ];
+
+  for (const bucket of buckets) {
+    try {
+      const row = db.prepare(
+        'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?',
+      ).get(bucket.category, bucket.key) as RateLimitRow | undefined;
+      if (!row) continue;
+      const elapsed = nowMs - row.first_attempt;
+      if (elapsed > LOOKUP_RATE_WINDOW || row.count < LOOKUP_RATE_LIMIT) continue;
+      retryAfter = Math.max(retryAfter, Math.ceil((LOOKUP_RATE_WINDOW - elapsed) / 1000));
+    } catch (err) {
+      logger.warn('Failed to read gift card lookup retry-after', { error: String(err), category: bucket.category });
+    }
+  }
+
+  return Math.max(1, retryAfter || Math.ceil(LOOKUP_RATE_WINDOW / 1000));
 }
 
 // GET / — List gift cards
@@ -224,10 +258,17 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
     !checkWindowRate(db, 'gift_card_lookup_ip', ipKey, LOOKUP_RATE_LIMIT, LOOKUP_RATE_WINDOW)
   ) {
     // SC5: a burst that trips the limiter is worth auditing loudly.
+    const retryAfterSeconds = lookupRetryAfterSeconds(db, userKey, ipKey);
+    res.setHeader('Retry-After', String(retryAfterSeconds));
     audit(db, 'gift_card_lookup_rate_limited', userId, ip, {
       attempted_code_hash: crypto.createHash('sha256').update(code).digest('hex').slice(0, 16),
     });
-    throw new AppError('Too many lookup attempts. Please wait before trying again.', 429);
+    throw new AppError(
+      'Too many lookup attempts. Please wait before trying again.',
+      429,
+      ERROR_CODES.ERR_RATE_API,
+      { retry_after_seconds: retryAfterSeconds },
+    );
   }
 
   // SEC-H38: lookup by hashed code. `code_hash` is populated by migration

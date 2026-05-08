@@ -2549,6 +2549,16 @@ router.post('/hardware/blockchyp/test', adminOnly, async (req, res) => {
   }
 
   const success = gateway.success && (!lan.attempted || lan.success);
+  const verificationStatus = gateway.success && lan.attempted && lan.success
+    ? 'verified'
+    : gateway.success && !lan.attempted
+      ? 'gateway_only'
+      : 'failed';
+  const message = verificationStatus === 'verified'
+    ? 'BlockChyp connection verified.'
+    : verificationStatus === 'gateway_only'
+      ? 'BlockChyp gateway ping succeeded, but no terminal IP was provided so local hardware reachability was not verified.'
+      : gateway.error || lan.error || 'BlockChyp connection test failed.';
   audit(req.db, 'setup_hardware_blockchyp_test', req.user!.id, req.ip || 'unknown', {
     gateway_success: gateway.success,
     lan_success: lan.attempted ? lan.success : null,
@@ -2557,11 +2567,12 @@ router.post('/hardware/blockchyp/test', adminOnly, async (req, res) => {
   res.status(success ? 200 : 502).json({
     success,
     data: {
-      message: success ? 'BlockChyp connection verified.' : 'BlockChyp connection test failed.',
+      message,
+      verificationStatus,
       gateway,
       lan,
     },
-    ...(success ? {} : { message: gateway.error || lan.error || 'BlockChyp connection test failed.' }),
+    ...(success ? {} : { message }),
   });
 });
 

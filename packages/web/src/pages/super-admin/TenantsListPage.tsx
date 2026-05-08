@@ -17,6 +17,7 @@ import { superAdminApi, type SuperAdminTenant } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { SUPER_ADMIN_LOGOUT_EVENT, superAdminTokenStore } from '@/api/client';
 import {
+  readImpersonationTokenClaims,
   setImpersonationSession,
 } from '@/components/ImpersonationBanner';
 import { cn } from '@/utils/cn';
@@ -189,7 +190,20 @@ function useTenantImpersonation(tenant: SuperAdminTenant) {
       // can call POST /tenants/:slug/impersonate/:jti/end and revoke the
       // active token immediately instead of waiting for TTL expiry. The
       // banner reads this back via getImpersonationSession.
-      setImpersonationSession({ tenant_slug: data.tenant_slug, jti: data.jti });
+      // Also validate the token's claims match the requested tenant before
+      // persisting so a tampered/mismatched response cannot install a
+      // session for another tenant.
+      const claims = readImpersonationTokenClaims(data.token);
+      if (!claims || claims.tenantSlug !== data.tenant_slug || claims.jti !== data.jti) {
+        toast.error('Impersonation token did not include the expected tenant claims');
+        return;
+      }
+      setImpersonationSession({
+        tenant_slug: data.tenant_slug,
+        tenant_name: tenant.name,
+        started_at: new Date().toISOString(),
+        jti: claims.jti,
+      });
       const targetUser = data.target_user;
       const validRole = (['admin', 'manager', 'technician', 'cashier'] as const).includes(
         targetUser.role as 'admin' | 'manager' | 'technician' | 'cashier',

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Save, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, settingsApi } from '@/api/endpoints';
+import type { TaxClassRecord } from '@/api/endpoints';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrencySymbol } from '@/utils/format';
 
@@ -11,7 +12,8 @@ import { formatCurrencySymbol } from '@/utils/format';
 // API result, mutation arg, mutation success res, and onError handler. Tax
 // classes only need {id, name, rate} for the <option>; mutation arg accepts
 // the form shape after coerce-to-numbers; success returns the created item id.
-type TaxClassOption = { id: number; name: string; rate: number };
+type TaxClassOption = Pick<TaxClassRecord, 'id' | 'name' | 'rate' | 'is_default'>;
+type TaxDefaultConfig = Partial<Record<'tax_default_parts' | 'tax_default_services' | 'tax_default_accessories', string>>;
 type InventoryCreatePayload = Omit<typeof initialForm, 'cost_price' | 'retail_price' | 'in_stock' | 'reorder_level' | 'stock_warning' | 'tax_class_id' | 'tax_inclusive' | 'is_serialized' | 'item_type'> & {
   item_type: 'product' | 'part' | 'service';
   cost_price: number;
@@ -44,19 +46,69 @@ const initialForm = {
   is_serialized: false,
 };
 
+function findTaxClassFromConfigValue(value: string | undefined, taxClasses: TaxClassOption[]): TaxClassOption | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) return undefined;
+  const id = Number(trimmed);
+  return taxClasses.find((tc) => tc.id === id);
+}
+
 export function InventoryCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const currencySymbol = formatCurrencySymbol();
 
   const [form, setForm] = useState<typeof initialForm>(initialForm);
+  const [taxClassTouched, setTaxClassTouched] = useState(false);
 
-  const { data: taxData } = useQuery({
-    queryKey: ['tax-classes'],
+  const taxClassesQuery = useQuery({
+    queryKey: ['settings', 'tax-classes'],
     queryFn: () => settingsApi.getTaxClasses(),
   });
-  const taxClasses: TaxClassOption[] =
-    ((taxData?.data?.data ?? []) as TaxClassOption[]);
+
+  const configQuery = useQuery({
+    queryKey: ['settings', 'config'],
+    queryFn: () => settingsApi.getConfig(),
+  });
+
+  const taxClasses = useMemo<TaxClassOption[]>(
+    () => taxClassesQuery.data?.data.data ?? [],
+    [taxClassesQuery.data],
+  );
+  const taxDefaults = (configQuery.data?.data.data ?? {}) as TaxDefaultConfig;
+
+  const defaultTaxClass = useMemo(() => {
+    const configuredDefaults = form.item_type === 'part'
+      ? [taxDefaults.tax_default_parts, taxDefaults.tax_default_accessories]
+      : [taxDefaults.tax_default_accessories, taxDefaults.tax_default_parts];
+    for (const configuredDefault of configuredDefaults) {
+      const match = findTaxClassFromConfigValue(configuredDefault, taxClasses);
+      if (match) return match;
+    }
+    return taxClasses.find((tc) => Number(tc.is_default) === 1)
+      ?? (taxClasses.length === 1 ? taxClasses[0] : undefined);
+  }, [form.item_type, taxClasses, taxDefaults.tax_default_accessories, taxDefaults.tax_default_parts]);
+
+  useEffect(() => {
+    if (taxClassTouched || !defaultTaxClass) return;
+    const defaultId = String(defaultTaxClass.id);
+    setForm((current) => (
+      current.tax_class_id === defaultId
+        ? current
+        : { ...current, tax_class_id: defaultId }
+    ));
+  }, [defaultTaxClass, taxClassTouched]);
+
+  const hasStoredTaxDefaults = Boolean(
+    taxDefaults.tax_default_parts ||
+    taxDefaults.tax_default_services ||
+    taxDefaults.tax_default_accessories,
+  );
+  const taxSelectPlaceholder = taxClassesQuery.isLoading
+    ? 'Loading tax classes...'
+    : taxClassesQuery.isError
+      ? 'Tax classes unavailable'
+      : 'No tax classes available';
 
   const mutation = useMutation({
     mutationFn: (data: InventoryCreatePayload) => inventoryApi.create(data),
@@ -181,8 +233,20 @@ export function InventoryCreatePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Tax Class</label>
-                  <select value={form.tax_class_id} onChange={(e) => set('tax_class_id', e.target.value)} className="input w-full">
-                    <option value="">No Tax</option>
+                  <select
+                    value={form.tax_class_id}
+                    onChange={(e) => {
+                      setTaxClassTouched(true);
+                      set('tax_class_id', e.target.value);
+                    }}
+                    disabled={taxClasses.length === 0}
+                    className="input w-full"
+                  >
+                    {taxClasses.length === 0 ? (
+                      <option value="">{taxSelectPlaceholder}</option>
+                    ) : (
+                      <option value="">No Tax</option>
+                    )}
                     {taxClasses.map((tc) => <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>)}
                   </select>
                   {/* WEB-UIUX-862: the setup wizard's Tax step writes default
@@ -192,14 +256,22 @@ export function InventoryCreatePage() {
                       that silently. Flag the empty state + link to Settings
                       so they create a Tax Class before booking the first
                       taxable line. */}
-                  {taxClasses.length === 0 && (
-                    <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                      No tax classes yet — picking "No Tax" charges 0% sales tax.
-                      {' '}
-                      <a href="/settings/tax" className="underline">Create one in Settings → Tax</a>{' '}
-                      before ringing up a taxable sale.
-                    </p>
-                  )}
+                  {taxClassesQuery.isError ? (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200" role="alert">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>Tax classes could not be loaded. Creating now will save this item without tax unless you retry.</span>
+                    </div>
+                  ) : !taxClassesQuery.isLoading && taxClasses.length === 0 ? (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200" role="alert">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span>
+                        No tax classes are configured, so this item will be created with no tax.
+                        {hasStoredTaxDefaults ? ' Setup saved tax defaults separately, but inventory needs a tax class row before it can apply them.' : ' '}
+                        {' '}
+                        <Link to="/settings/tax" className="font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100">Add a tax class</Link>.
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className="mt-3 flex items-center gap-2">

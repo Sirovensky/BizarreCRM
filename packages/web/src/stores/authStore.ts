@@ -169,6 +169,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Pass null as prevUserId so listeners know this is a real logout (no user
     // will be active after this) and perform full wipes unconditionally.
     emitAuthCleared(true, prevUser?.id ?? null);
+    toast.success('Signed out');
   },
 
   switchUser: async (pin: string) => {
@@ -247,11 +248,58 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user: User) => set({ user }),
 }));
 
-// WEB-S5-033: sweep all per-user namespaced keys on auth-cleared so kiosk
-// handoffs don't leak dismissals, drafts, or recent-view data across logins.
-// `recent_views:*` is handled by Sidebar's own listener; `bizarrecrm:draft:*`
-// by useDraft's listener. This covers the `bizarrecrm:dismiss:*` namespace
-// (useDismissible) and any future `bizarrecrm:` prefixed additions.
+const AUTH_BOUNDARY_LOCAL_STORAGE_KEYS = new Set(['recent_views']);
+const AUTH_BOUNDARY_LOCAL_STORAGE_PREFIXES = [
+  'bizarrecrm:dismiss:',
+  'recent_views:',
+  'pos-store-u',
+] as const;
+const AUTH_BOUNDARY_SESSION_STORAGE_KEYS = new Set(['pos_register_id']);
+const AUTH_BOUNDARY_SESSION_STORAGE_PREFIXES = ['pos-store-u'] as const;
+
+function removeMatchingStorageKeys(
+  storage: Storage,
+  exactKeys: ReadonlySet<string>,
+  prefixes: readonly string[],
+): void {
+  const toRemove: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const k = storage.key(i);
+    if (k && (exactKeys.has(k) || prefixes.some((prefix) => k.startsWith(prefix)))) {
+      toRemove.push(k);
+    }
+  }
+  toRemove.forEach((k) => {
+    try { storage.removeItem(k); } catch { /* best-effort */ }
+  });
+}
+
+function sweepAuthBoundaryStorage(): void {
+  try {
+    removeMatchingStorageKeys(
+      localStorage,
+      AUTH_BOUNDARY_LOCAL_STORAGE_KEYS,
+      AUTH_BOUNDARY_LOCAL_STORAGE_PREFIXES,
+    );
+  } catch (err) {
+    console.warn('[authStore] localStorage sweep on auth-cleared failed', err);
+  }
+
+  try {
+    removeMatchingStorageKeys(
+      sessionStorage,
+      AUTH_BOUNDARY_SESSION_STORAGE_KEYS,
+      AUTH_BOUNDARY_SESSION_STORAGE_PREFIXES,
+    );
+  } catch (err) {
+    console.warn('[authStore] sessionStorage sweep on auth-cleared failed', err);
+  }
+}
+
+// WEB-S5-033: sweep per-user namespaced keys on auth-cleared so kiosk
+// handoffs don't leak dismissals, POS carts, or recent-view data across logins.
+// `bizarrecrm:draft:*` stays with useDraft's listener so draft recovery remains
+// centralized there.
 // WEB-UIUX-744: skip the sweep when auth-cleared was fired for a silent token
 // refresh with the SAME user still active (prevUserId matches current user.id).
 if (typeof window !== 'undefined') {
@@ -261,18 +309,7 @@ if (typeof window !== 'undefined') {
     // If prevUserId is set and equals the currently-authenticated user id, this
     // clear came from a silent refresh on the same session — do not wipe.
     if (detail?.prevUserId != null && detail.prevUserId === currentUserId) return;
-    try {
-      const toRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith('bizarrecrm:dismiss:')) toRemove.push(k);
-      }
-      toRemove.forEach((k) => {
-        try { localStorage.removeItem(k); } catch { /* best-effort */ }
-      });
-    } catch (err) {
-      console.warn('[authStore] dismiss key sweep on auth-cleared failed', err);
-    }
+    sweepAuthBoundaryStorage();
   });
 }
 

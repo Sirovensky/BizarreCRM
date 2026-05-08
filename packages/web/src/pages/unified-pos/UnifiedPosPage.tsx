@@ -406,6 +406,8 @@ const SYMPTOMS = [
 const CONDITIONS = ['Excellent', 'Good', 'Fair', 'Rough', 'Liquid damage'];
 
 const CATALOG_FILTERS = ['All', 'Phones', 'Accessories', 'Repairs', 'Trade-in', 'Gift cards'];
+const SCANNER_MAX_CHAR_INTERVAL_MS = 50;
+const SCANNER_BUFFER_IDLE_MS = 200;
 
 const buttonBase =
   'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
@@ -1418,17 +1420,24 @@ export function UnifiedPosPage() {
 
   useEffect(() => {
     const handleScanner = (event: KeyboardEvent) => {
-      // WEB-UIUX-792: also bail when any modal/overlay-style state is open so
+      // WEB-UIUX-792: bail when any modal/overlay-style state is open so
       // phantom barcodes don't add a line item to the underlying cart while
       // the cashier is interacting with PinModal / DeviceTemplateNudge /
       // UpsellPrompt / CheckoutModal-style overlays. The element-level
       // checks below (INPUT/TEXTAREA/SELECT/contenteditable) cover focused
       // inputs inside those modals; this guard adds the modal-state set.
-      if (processing || lineEditing || discountOpen || customItemOpen) return;
-      // Defensive: any open dialog/menu in the DOM swallows scans. Most app
-      // modals carry role="dialog"; bail when one is present + not nested
-      // inside the POS root.
-      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      const modalOpen = Boolean(document.querySelector('[aria-modal="true"], [role="dialog"]'));
+      if (
+        processing ||
+        lineEditing ||
+        discountOpen ||
+        customItemOpen ||
+        createCustomerOpen ||
+        terminalError ||
+        completedSale ||
+        (mode !== 'gate' && mode !== 'sale') ||
+        modalOpen
+      ) return;
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return;
@@ -1438,9 +1447,12 @@ export function UnifiedPosPage() {
       lastKeyTimeRef.current = now;
 
       if (event.key === 'Enter' && scanBufferRef.current.length >= 4) {
+        event.preventDefault();
         const code = scanBufferRef.current;
         scanBufferRef.current = '';
         if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+        if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
+        setScanFlash(false);
 
         // WEB-UIUX-796: queue overlapping scans so the second doesn't abort
         // the first. Previously the lookup promise was fire-and-forget; a
@@ -1460,6 +1472,8 @@ export function UnifiedPosPage() {
               if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
               scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1000);
               addProductToCart(found);
+              setScanFlash(true);
+              scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1000);
               toast.success(`Scanned ${found.name}`);
             } else {
               setCustomName(code);
@@ -1479,15 +1493,16 @@ export function UnifiedPosPage() {
       }
 
       if (event.key.length === 1) {
-        // WEB-UIUX-794: tighten scanner inter-keystroke threshold to 50ms.
-        // A 40-wpm typist averages ~75ms/char, so the previous 100ms gap
-        // accepted human typing as a scan. Real USB HID scanners deliver
-        // characters at sub-20ms intervals; 50ms is a safe upper bound.
-        scanBufferRef.current = sinceLast > 50 ? event.key : scanBufferRef.current + event.key;
+        // WEB-UIUX-794: tighten scanner inter-keystroke threshold. A 40-wpm
+        // typist averages ~75ms/char, so the previous 100ms gap accepted
+        // human typing as a scan. Real USB HID scanners deliver characters
+        // at sub-20ms intervals; SCANNER_MAX_CHAR_INTERVAL_MS is a safe
+        // upper bound (50ms).
+        scanBufferRef.current = sinceLast > SCANNER_MAX_CHAR_INTERVAL_MS ? event.key : scanBufferRef.current + event.key;
         if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
         scanTimerRef.current = setTimeout(() => {
           scanBufferRef.current = '';
-        }, 200);
+        }, SCANNER_BUFFER_IDLE_MS);
       }
     };
     window.addEventListener('keydown', handleScanner);
@@ -1496,7 +1511,7 @@ export function UnifiedPosPage() {
       if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
       if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
     };
-  }, [addProductToCart, customItemOpen, discountOpen, lineEditing, processing]);
+  }, [addProductToCart, completedSale, createCustomerOpen, customItemOpen, discountOpen, lineEditing, mode, processing, terminalError]);
 
   const startNewSale = useCallback(() => {
     setCompletedSale(null);
@@ -2091,11 +2106,14 @@ export function UnifiedPosPage() {
       // WEB-UIUX-887: invalidate inventory + reports caches so other tabs see
       // post-sale stock and revenue. Previously only membership cache was
       // touched, leaving every other surface stale.
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['reports'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      void queryClient.invalidateQueries({ queryKey: ['inventory-low-stock'] });
+      void queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      void queryClient.invalidateQueries({ queryKey: ['pos-products-rewrite'] });
+      void queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      void queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['reports'] });
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       toast.success('Sale complete');
       // WEB-UIUX-1228: server may swap a smaller manual discount for a
