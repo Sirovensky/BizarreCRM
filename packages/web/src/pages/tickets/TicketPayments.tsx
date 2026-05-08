@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi, estimateApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
@@ -131,13 +132,15 @@ export function TicketPayments({
   });
   const linkedEstimate = estimateData?.data?.data;
 
-  const handleGenerateInvoice = () => {
-    // WEB-UIUX-810: warn if a linked estimate exists but is not yet approved
+  const handleGenerateInvoice = async () => {
+    // WEB-UIUX-810: warn if a linked estimate exists but is not yet approved.
+    // Replaced native window.confirm with the styled async modal — matches
+    // the pattern WEB-FV-001 rolled out elsewhere and keeps the warning
+    // visible on mobile Safari (which sometimes mutes native confirms).
     if (linkedEstimate && linkedEstimate.status !== 'approved') {
-      const proceed = window.confirm(
-        `The linked estimate is currently "${linkedEstimate.status}". ` +
-        'Generating an invoice without an approved estimate skips the approval step. ' +
-        'Continue anyway?'
+      const proceed = await confirm(
+        `The linked estimate is currently "${linkedEstimate.status}". Generating an invoice without an approved estimate skips the approval step. Continue anyway?`,
+        { title: 'Skip estimate approval?', danger: true, confirmLabel: 'Continue' },
       );
       if (!proceed) return;
     }
