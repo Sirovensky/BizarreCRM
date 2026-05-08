@@ -2159,24 +2159,43 @@ export function UnifiedPosPage() {
             </button>
           </div>
         ))}
-        <button
-          type="button"
-          onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
+        {/* Active POS tab — outer DIV so the close-X is its own button next
+            to the body button (no nested-button violation). Active tab also
+            gets a close X (Chrome semantics: every tab is closable). On
+            close: dump the active draft and snap to the gate; if held tabs
+            exist the cashier can recall one to fill the slot. */}
+        <div
           className={cn(
-            // Chrome-style tab: rounded-top, distinct fill, an inset top
-            // accent bar on active to read clearly as "this is the active
-            // tab, others are switchable". Border between tabs comes from
-            // the gap, not a visible line.
-            'group relative inline-flex h-9 max-w-[260px] shrink-0 items-center gap-2 rounded-t-lg px-3 text-xs font-semibold whitespace-nowrap transition-colors',
+            'group relative inline-flex h-9 max-w-[280px] shrink-0 items-center rounded-t-lg whitespace-nowrap transition-colors',
             !['held', 'refund', 'close-shift', 'receipt'].includes(mode)
               ? 'bg-surface-50 dark:bg-surface-900 text-surface-900 dark:text-surface-50 shadow-[inset_0_2px_0_rgb(var(--primary-500))]'
               : 'bg-transparent text-surface-700 dark:text-surface-400 hover:bg-surface-100/60 dark:hover:bg-surface-800/60',
           )}
-          title={`POS · ${title}`}
         >
-          <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
-          <span className="truncate">POS · {title}</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
+            className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 pr-1 text-xs font-semibold"
+            title={`POS · ${title}`}
+          >
+            <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
+            <span className="truncate">POS · {title}</span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const hasWork = cartItems.length > 0 || customer || walkInActive;
+              if (hasWork && !window.confirm('Close this tab? In-flight cart + customer will be dropped.')) return;
+              startNewSale();
+            }}
+            className="mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-surface-500 opacity-0 transition group-hover:opacity-100 focus:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-700"
+            title="Close tab"
+            aria-label="Close tab"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
         {/* + New tab — always spawns a new tab, even when the current cart
             is empty. If the current sale has any in-flight work (items or a
             customer attached) we auto-hold to park it; otherwise we mint a
