@@ -3524,18 +3524,23 @@ function RepairCategoryStep({ draft, setDraft, onCancel, onContinue, onQuick }: 
   onQuick: () => void;
 }) {
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 pt-4 pb-6">
+    <div className="mx-auto flex h-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-3">
       <Stepper step="category" />
-      <Section className="p-5">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <div className="font-display text-2xl">Pick a category</div>
-            <div className="mt-0.5 text-sm text-surface-900 dark:text-surface-500">
-              Or hit <span className="font-mono">Quick check-in</span> to log without a specific device.
-            </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-surface-500">Pick a category</div>
+          <div className="mt-0.5 text-xs text-surface-600 dark:text-surface-400">
+            Or hit <span className="font-mono">Quick check-in</span> to log without a specific device.
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
+        {/* Category grid — design-system tile pattern: thicker `ring-1
+            ring-inset` border, surface-800 fill against the surface-900
+            page background so each tile reads as a distinct card.
+            Active: primary ring + tinted fill. Hover: brighter ring +
+            lift. Quick check-in keeps a dashed primary outline so it
+            reads as "the alternate path." Larger px/py + 4xl emoji +
+            base font label so the targets are obvious touch surfaces. */}
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
           {CATEGORY_TILES.map((tile) => {
             const active = draft.deviceType === tile.value;
             const isQuick = tile.value === 'quick';
@@ -3549,23 +3554,27 @@ function RepairCategoryStep({ draft, setDraft, onCancel, onContinue, onQuick }: 
                   else onContinue();
                 }}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-xl border bg-white px-4 py-6 text-center transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-900',
+                  'group flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl bg-white px-4 py-6 text-center shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-surface-800',
+                  // Inset ring instead of border — keeps tile dimensions
+                  // stable on hover/active swaps. Two units thick on
+                  // active / hover so the accent reads at any zoom.
                   active
-                    ? 'border-primary-500 bg-primary-500/10 dark:border-primary-500'
-                    : 'border-surface-200 hover:border-primary-500 dark:border-surface-800 dark:hover:border-primary-500/60',
-                  isQuick && 'border-dashed border-primary-500/50 bg-primary-500/5',
+                    ? 'ring-2 ring-inset ring-primary-500 bg-primary-500/15 dark:bg-primary-500/15'
+                    : isQuick
+                      ? 'border-2 border-dashed border-primary-500/60 hover:border-primary-500'
+                      : 'ring-1 ring-inset ring-surface-300 hover:ring-2 hover:ring-primary-500 dark:ring-surface-600 dark:hover:ring-primary-500/80',
                 )}
               >
-                <div className="text-3xl">{tile.emoji}</div>
-                <div className="text-sm font-semibold text-surface-900 dark:text-surface-100">{tile.label}</div>
+                <div className="text-4xl leading-none">{tile.emoji}</div>
+                <div className="text-base font-semibold text-surface-900 dark:text-surface-50">{tile.label}</div>
                 {isQuick && (
-                  <div className="text-[10.5px] font-mono uppercase tracking-wider text-surface-500">skip device</div>
+                  <div className="text-[10.5px] font-mono uppercase tracking-[0.14em] text-primary-700 dark:text-primary-400">skip device</div>
                 )}
               </button>
             );
           })}
         </div>
-      </Section>
+      </div>
       <WizardFooter onBack={onCancel} backLabel="Cancel" onContinue={onContinue} continueLabel="Continue" />
     </div>
   );
