@@ -128,7 +128,7 @@ export const authApi = {
 // reader confusion.
 
 export const customerApi = {
-  list: (params?: { page?: number; pagesize?: number; keyword?: string; group_id?: number; include_stats?: string; from_date?: string; to_date?: string; has_open_tickets?: string }) =>
+  list: (params?: { page?: number; pagesize?: number; keyword?: string; group_id?: number; include_stats?: string; from_date?: string; to_date?: string; has_open_tickets?: string; sort_by?: 'created_at' | 'updated_at' | 'first_name' | 'last_name' | 'organization' | 'code' | 'email' | 'city' | 'phone' | 'mobile' | 'total_spent' | 'ticket_count'; sort_order?: 'ASC' | 'DESC' }) =>
     api.get('/customers', { params }),
   importCsv: (items: ImportCustomerItem[], skipDuplicates = true) =>
     api.post('/customers/import-csv', { items, skip_duplicates: skipDuplicates }),

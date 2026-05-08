@@ -259,6 +259,25 @@ const DEVICE_TYPES = [
   { label: 'Other', icon: Wrench },
 ];
 
+// Mockup Frame 04 quick-pick grid. Hand-curated 12 most-common drop-offs in
+// the typical mixed-volume shop — covers ~70% of intake without scrolling.
+// Picking one pre-fills `deviceType` + `deviceName`. Real impl will replace
+// with a per-shop "popular devices" query (last-90-day repair frequency).
+const QUICK_DEVICES: Array<{ name: string; type: string; emoji: string }> = [
+  { name: 'iPhone 15 Pro', type: 'Phone', emoji: '📱' },
+  { name: 'iPhone 15', type: 'Phone', emoji: '📱' },
+  { name: 'iPhone 14 Pro', type: 'Phone', emoji: '📱' },
+  { name: 'iPhone 14', type: 'Phone', emoji: '📱' },
+  { name: 'iPhone 13', type: 'Phone', emoji: '📱' },
+  { name: 'Galaxy S24', type: 'Phone', emoji: '📱' },
+  { name: 'Galaxy S23', type: 'Phone', emoji: '📱' },
+  { name: 'Pixel 8 Pro', type: 'Phone', emoji: '📱' },
+  { name: 'iPad Pro 12.9', type: 'Tablet', emoji: '📱' },
+  { name: 'iPad Air', type: 'Tablet', emoji: '📱' },
+  { name: 'MacBook Pro 14', type: 'Laptop', emoji: '💻' },
+  { name: 'Apple Watch S9', type: 'Watch', emoji: '⌚' },
+];
+
 const EMPTY_CREATE_CUSTOMER_DRAFT: CreateCustomerDraft = {
   customerType: 'individual',
   firstName: '',
@@ -849,6 +868,41 @@ export function UnifiedPosPage() {
       group_auto_apply: item.group_auto_apply,
     }));
   }, [customerSearch.data]);
+
+  // Recent customers strip on the gate (search empty). Sort by updated_at DESC
+  // gives "most-recently-touched" — covers tickets, sales, profile edits,
+  // which together approximate "regulars". Capped at 8 to keep the strip
+  // single-row even at narrow widths.
+  const recentCustomersQuery = useQuery({
+    queryKey: ['pos-recent-customers'],
+    queryFn: () => customerApi.list({ sort_by: 'updated_at', sort_order: 'DESC', pagesize: 8, include_stats: '1' }),
+    enabled: mode === 'gate' && globalSearch.trim().length < 2 && !createCustomerOpen,
+    staleTime: 60_000,
+  });
+
+  const recentCustomers: CustomerResult[] = useMemo(() => {
+    const payload: any = recentCustomersQuery.data?.data?.data ?? recentCustomersQuery.data?.data;
+    const raw: any[] = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.customers)
+        ? payload.customers
+        : Array.isArray(payload?.items)
+          ? payload.items
+          : [];
+    return raw.slice(0, 8).map((item) => ({
+      id: Number(item.id),
+      first_name: item.first_name ?? '',
+      last_name: item.last_name ?? '',
+      phone: item.phone ?? null,
+      mobile: item.mobile ?? null,
+      email: item.email ?? null,
+      organization: item.organization ?? null,
+      group_name: item.group_name ?? item.customer_group_name ?? null,
+      group_discount_pct: item.group_discount_pct,
+      group_discount_type: item.group_discount_type,
+      group_auto_apply: item.group_auto_apply,
+    }));
+  }, [recentCustomersQuery.data]);
 
   const todayRange = useMemo(() => {
     const today = new Date();
@@ -1981,6 +2035,8 @@ export function UnifiedPosPage() {
                   inputRef={searchInputRef}
                   results={customerResults}
                   loading={customerSearch.isFetching}
+                  recentCustomers={recentCustomers}
+                  recentLoading={recentCustomersQuery.isLoading}
                   appointments={todaysAppointments}
                   appointmentsLoading={appointmentsQuery.isLoading}
                   onSelectAppointment={selectAppointment}
@@ -2004,6 +2060,7 @@ export function UnifiedPosPage() {
 
               {mode === 'sale' && (
                 <SaleWorkspace
+                  customer={customer}
                   products={products}
                   categories={categories}
                   loading={productsQuery.isFetching}
@@ -2235,6 +2292,8 @@ function CustomerGate({
   query,
   results,
   loading,
+  recentCustomers,
+  recentLoading,
   appointments,
   appointmentsLoading,
   onSelectAppointment,
@@ -2259,6 +2318,8 @@ function CustomerGate({
   inputRef: React.RefObject<HTMLInputElement | null>;
   results: CustomerResult[];
   loading: boolean;
+  recentCustomers: CustomerResult[];
+  recentLoading: boolean;
   appointments: PosAppointment[];
   appointmentsLoading: boolean;
   onSelectAppointment: (appointment: PosAppointment) => void;
@@ -2371,13 +2432,49 @@ function CustomerGate({
           </div>
         </section>
       ) : (
-        <section className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-          <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600">
-            + Create new customer
-          </button>
-          <button type="button" onClick={onWalkIn} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-4 text-[15px] font-bold text-surface-900 dark:text-surface-100 hover:border-primary-500 dark:hover:border-primary-500/40">
-            Walk-in · no profile
-          </button>
+        <section className="flex flex-1 flex-col items-center justify-center gap-5 px-6 py-10 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600">
+              + Create new customer
+            </button>
+            <button type="button" onClick={onWalkIn} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-4 text-[15px] font-bold text-surface-900 dark:text-surface-100 hover:border-primary-500 dark:hover:border-primary-500/40">
+              Walk-in · no profile
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Recent customers strip — only shown on the empty-search gate. Matches
+          the booking-strip card pattern (240-px min-width, avatar + name +
+          group pill, horizontal scroll) so the gate has one consistent rhythm
+          of "today's bookings" / "recents" / "ready for pickup" cards. */}
+      {!createCustomerOpen && query.trim().length < 2 && (recentLoading || recentCustomers.length > 0) && (
+        <section className="px-6 pb-2">
+          <div className="mb-3 flex items-center gap-3">
+            <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">
+              {recentLoading ? 'Recent · loading' : `Recent · ${recentCustomers.length}`}
+            </div>
+            <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-2">
+            {recentCustomers.map((customer) => (
+              <button
+                key={customer.id}
+                type="button"
+                onClick={() => onSelectCustomer(customer)}
+                className="flex min-w-[240px] items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left dark:border-surface-700 dark:bg-surface-800 hover:border-primary-500 dark:hover:border-primary-500/40"
+              >
+                <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-full bg-[#4db8c9] font-bold text-[#002d35]">
+                  {initials(getCustomerName(customer))}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-bold text-surface-900 dark:text-surface-50">{getCustomerName(customer)}</div>
+                  <div className="truncate font-mono text-[11.5px] text-surface-400">{customer.phone || customer.mobile || customer.email || 'No contact saved'}</div>
+                </div>
+                {customer.group_name && <Pill tone="vip">{customer.group_name}</Pill>}
+              </button>
+            ))}
+          </div>
         </section>
       )}
 
@@ -2804,6 +2901,7 @@ function InlineCreateCustomerPanel({
 }
 
 function SaleWorkspace({
+  customer,
   products,
   categories,
   loading,
@@ -2818,6 +2916,7 @@ function SaleWorkspace({
   onStartRepair,
   onTender,
 }: {
+  customer: CustomerResult | null;
   products: ProductSearchItem[];
   categories: string[];
   loading: boolean;
@@ -2882,14 +2981,19 @@ function SaleWorkspace({
       </div>
 
       <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
-        {/* Smart-tile spans 2 columns at xl per mockup Frame 09 — it's a
-            promotional/loyalty hint, not a product, so it deserves a wider
-            footprint than the other 1-col product tiles. */}
-        <button type="button" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 p-4 text-left xl:col-span-2" onClick={onCustomItem}>
-          <Star className="h-5 w-5 text-cyan-700 dark:text-[#4DB8C9]" />
-          <div className="mt-3 font-semibold">Loyalty smart add</div>
-          <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">Add a qualifying accessory before tender.</div>
-        </button>
+        {/* Smart-tile (Frame 09): customer-aware loyalty/upsell hint. Only
+            renders when an attached customer is in a discount group — the
+            "Sarah is 45 pts from PLATINUM" hint pattern. Walk-in / no-group
+            sales skip it so the catalog grid reclaims the col-span. Clicking
+            jumps to the custom-item modal so the cashier can attach the
+            qualifying SKU on the fly. */}
+        {customer?.group_name && (
+          <button type="button" className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 p-4 text-left xl:col-span-2" onClick={onCustomItem}>
+            <Star className="h-5 w-5 text-cyan-700 dark:text-[#4DB8C9]" />
+            <div className="mt-3 font-semibold">{getCustomerName(customer).split(' ')[0]} is {customer.group_name} · keep the streak</div>
+            <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">Add a qualifying accessory before tender to lock in the next-tier bonus.</div>
+          </button>
+        )}
         {loading && Array.from({ length: 7 }).map((_, index) => (
           <div key={index} className="h-36 animate-pulse rounded-lg bg-surface-100 dark:bg-surface-900" />
         ))}
@@ -3146,6 +3250,34 @@ function RepairDeviceStep({ draft, setDraft, onCancel, onContinue }: {
               <div className="mt-3 font-semibold">{label}</div>
             </button>
           ))}
+        </div>
+        <div className="mt-5">
+          <div className="mb-2 flex items-center gap-3">
+            <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">Quick-pick · most-common drop-offs</div>
+            <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+            {QUICK_DEVICES.map((device) => {
+              const active = draft.deviceName === device.name && draft.deviceType === device.type;
+              return (
+                <button
+                  key={device.name}
+                  type="button"
+                  onClick={() => setDraft((prev) => ({ ...prev, deviceType: device.type, deviceName: device.name }))}
+                  className={cn(
+                    'flex flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition',
+                    active
+                      ? 'border-primary-500 bg-primary-500/10 text-primary-700 dark:text-primary-300'
+                      : 'border-surface-200 hover:border-primary-500 dark:border-surface-700 dark:hover:border-primary-500/40',
+                  )}
+                >
+                  <span className="text-base">{device.emoji}</span>
+                  <span className="text-sm font-semibold">{device.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-surface-500">{device.type}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className="block">
