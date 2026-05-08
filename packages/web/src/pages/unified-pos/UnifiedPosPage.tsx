@@ -2517,54 +2517,62 @@ function CustomerGate({
           rather than crowding the gate. */}
       {!createCustomerOpen && (
         <section className="px-6 pt-5">
-          <div className="grid gap-5 rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-5 md:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="flex flex-col gap-3 min-w-0">
-              {appointmentsLoading ? (
-                <div className="text-sm text-surface-500">Loading bookings…</div>
-              ) : nextAppointment ? (
-                <button
-                  type="button"
-                  onClick={() => onSelectAppointment(nextAppointment)}
-                  className="-m-2 rounded-lg p-2 text-left hover:bg-surface-50 dark:hover:bg-surface-900"
-                  title="Open this appointment"
-                >
-                  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-500">
-                    Next appointment · {formatTime(nextAppointment.start_time)}
-                  </div>
-                  <div className="mt-1 font-display text-3xl leading-tight text-surface-900 dark:text-surface-50 truncate">
-                    {appointmentCustomerName(nextAppointment)}
-                  </div>
-                  <div className="mt-0.5 text-sm text-surface-600 dark:text-surface-400 truncate">
-                    {appointmentNote(nextAppointment) || appointmentStatusLabel(nextAppointment, nowMs)}
-                  </div>
-                </button>
-              ) : (
-                <div>
-                  <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-500">Next appointment</div>
-                  <div className="mt-1 font-display text-2xl text-surface-900 dark:text-surface-50">No bookings left</div>
-                  <div className="mt-0.5 text-sm text-surface-600 dark:text-surface-400">Walk-ins and pickups are ready.</div>
-                </div>
-              )}
-              <div className="flex items-center gap-3 text-xs text-surface-600 dark:text-surface-400">
-                <span className="font-mono uppercase tracking-wider">Total appointments today</span>
-                <span className="font-display text-base text-surface-900 dark:text-surface-100">{appointments.length}</span>
-                <button type="button" onClick={onViewCalendar} className="ml-auto text-xs font-semibold text-primary-700 dark:text-primary-500 underline-offset-4 hover:underline">
-                  View calendar
-                </button>
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
+            {/* Hero stat block — cream surface, mono uppercase label, big
+                display numeric, bottom-right pill CTA. Mirrors the SALES
+                TODAY tile pattern from the dashboard so the POS gate
+                shares one visual rhythm. The stat is the next appointment
+                (highest-signal schedule item) with the customer name as
+                the headline; the pill links to the calendar. */}
+            <button
+              type="button"
+              onClick={() => nextAppointment ? onSelectAppointment(nextAppointment) : onViewCalendar()}
+              className="group relative flex min-h-[200px] flex-col rounded-2xl bg-[#fdeed0] p-6 text-left text-surface-950 shadow-sm transition hover:shadow-md"
+              title={nextAppointment ? 'Open next appointment' : 'View calendar'}
+            >
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-surface-950/70">
+                {appointmentsLoading ? 'Loading…' : nextAppointment ? `Next appt · ${formatTime(nextAppointment.start_time)}` : 'Next appointment'}
               </div>
-            </div>
-            <div className="flex flex-col gap-2 self-center md:items-end">
+              <div className="mt-2 font-display text-[44px] leading-[1.05] tracking-tight">
+                {appointmentsLoading
+                  ? '—'
+                  : nextAppointment
+                    ? appointmentCustomerName(nextAppointment)
+                    : 'No bookings left'}
+              </div>
+              <div className="mt-2 text-sm text-surface-950/75">
+                {appointmentsLoading
+                  ? ''
+                  : nextAppointment
+                    ? (appointmentNote(nextAppointment) || appointmentStatusLabel(nextAppointment, nowMs))
+                    : 'Walk-ins and pickups are ready.'}
+              </div>
+              <div className="mt-auto flex items-end justify-between pt-6">
+                <div className="text-xs text-surface-950/70">
+                  <span className="font-mono uppercase tracking-wider">Today</span>
+                  <span className="ml-2 font-display text-lg text-surface-950">{appointments.length}</span>
+                  <span className="ml-1">appt{appointments.length === 1 ? '' : 's'}</span>
+                </div>
+                <span className="inline-flex items-center gap-2 rounded-full bg-surface-950 px-4 py-2 text-sm font-semibold text-[#fdeed0] shadow-sm transition group-hover:opacity-90">
+                  {nextAppointment ? 'Open appointment →' : 'View calendar →'}
+                </span>
+              </div>
+            </button>
+
+            {/* Right column: primary CTA + ghost walk-in. Sized to match
+                the hero block height so the row reads as one band. */}
+            <div className="flex flex-col justify-center gap-2">
               <button
                 type="button"
                 onClick={onNewCustomer}
-                className="inline-flex min-w-[260px] items-center justify-center gap-2 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary-500 dark:bg-primary-500 px-6 py-5 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600"
               >
                 + New customer
               </button>
               <button
                 type="button"
                 onClick={onWalkIn}
-                className="inline-flex min-w-[260px] items-center justify-center gap-2 rounded-lg px-6 py-2 text-sm font-semibold text-surface-700 dark:text-surface-200 hover:text-primary-700 dark:hover:text-primary-400"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-3 text-sm font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
               >
                 Walk-in · no profile
               </button>
