@@ -940,27 +940,34 @@ export function UnifiedPosPage() {
         : Array.isArray(listRes.data?.tickets)
           ? listRes.data.tickets
           : [];
-      // Stable partition: ready rows keep their original (updated_at DESC)
-      // order, non-ready rows follow in their original order. No second sort
-      // needed since the server already sorted.
+      // Two physically separate buckets: ready-for-pickup (capped section,
+      // pinned top of the gate) and everything else still active. Each
+      // bucket renders in its own scroll surface so a long ready list never
+      // pushes the in-progress queue off the screen and vice versa.
       const readyRows = rows.filter((t) => isReadyPickupStatus(t.status_name ?? t.status?.name));
       const otherRows = rows.filter((t) => !isReadyPickupStatus(t.status_name ?? t.status?.name));
-      const visibleRows = [...readyRows, ...otherRows].slice(0, 8);
-      const tickets = await Promise.all(
-        visibleRows.map(async (row: any) => {
-          try {
-            const detailRes = await ticketApi.get(Number(row.id));
-            return shapePickupTicket(detailRes.data?.data, row);
-          } catch {
-            return shapePickupTicket(row);
-          }
-        }),
-      );
+      const visibleReady = readyRows.slice(0, 20);
+      const visibleOthers = otherRows.slice(0, 30);
+
+      const shape = async (row: any) => {
+        try {
+          const detailRes = await ticketApi.get(Number(row.id));
+          return shapePickupTicket(detailRes.data?.data, row);
+        } catch {
+          return shapePickupTicket(row);
+        }
+      };
+      const [ready, others] = await Promise.all([
+        Promise.all(visibleReady.map(shape)),
+        Promise.all(visibleOthers.map(shape)),
+      ]);
 
       return {
         total: rows.length,
         readyTotal: readyRows.length,
-        tickets,
+        otherTotal: otherRows.length,
+        ready,
+        others,
       };
     },
     enabled: mode === 'gate',
@@ -969,7 +976,13 @@ export function UnifiedPosPage() {
     refetchIntervalInBackground: false,
   });
 
-  const readyPickup = readyPickupQuery.data ?? { total: 0, readyTotal: 0, tickets: [] as PosPickupTicket[] };
+  const readyPickup = readyPickupQuery.data ?? {
+    total: 0,
+    readyTotal: 0,
+    otherTotal: 0,
+    ready: [] as PosPickupTicket[],
+    others: [] as PosPickupTicket[],
+  };
 
   const productsQuery = useQuery({
     queryKey: ['pos-products-rewrite', productSearch, activeFilter],
@@ -2064,9 +2077,11 @@ export function UnifiedPosPage() {
                   appointments={todaysAppointments}
                   appointmentsLoading={appointmentsQuery.isLoading}
                   onSelectAppointment={selectAppointment}
-                  readyPickupTickets={readyPickup.tickets}
+                  readyTickets={readyPickup.ready}
+                  otherTickets={readyPickup.others}
                   readyPickupTotal={readyPickup.total}
                   readyTotal={readyPickup.readyTotal}
+                  otherTotal={readyPickup.otherTotal}
                   readyPickupLoading={readyPickupQuery.isLoading}
                   onOpenReadyPickup={openReadyPickupTicket}
                   onViewReadyPickup={() => navigate('/tickets?status_group=active')}
@@ -2320,9 +2335,11 @@ function CustomerGate({
   appointments,
   appointmentsLoading,
   onSelectAppointment,
-  readyPickupTickets,
+  readyTickets,
+  otherTickets,
   readyPickupTotal,
   readyTotal,
+  otherTotal,
   readyPickupLoading,
   onOpenReadyPickup,
   onViewReadyPickup,
@@ -2345,9 +2362,11 @@ function CustomerGate({
   appointments: PosAppointment[];
   appointmentsLoading: boolean;
   onSelectAppointment: (appointment: PosAppointment) => void;
-  readyPickupTickets: PosPickupTicket[];
+  readyTickets: PosPickupTicket[];
+  otherTickets: PosPickupTicket[];
   readyPickupTotal: number;
   readyTotal: number;
+  otherTotal: number;
   readyPickupLoading: boolean;
   onOpenReadyPickup: (ticket: PosPickupTicket) => void;
   onViewReadyPickup: () => void;
@@ -2467,14 +2486,15 @@ function CustomerGate({
         </section>
       )}
 
-      {/* Open tickets feed (was Ready-for-pickup only). Cashier sees the
-          full active queue with ready-for-pickup rows pinned to the top so
-          customer-pickups land first; everything else (in-progress repairs,
-          waiting, parts ordered) follows. Section header surfaces the
-          ready-count parenthetical so the cashier can tell at a glance how
-          many are sitting on the rack. */}
-      <section className="px-6 pb-6">
-        <div className="mb-3 flex items-center gap-3">
+      {/* Two-section gate feed:
+            1. Ready for pickup — capped at ~22vh (≈ 1/5 of screen) with
+               internal scroll, so a busy day doesn't bury everything else.
+            2. In progress — the rest of the active queue. Larger surface
+               since it's where the day's work actually lives.
+          Both share the same row layout so the eye scans cleanly across
+          the boundary. */}
+      <section className="px-6 pb-6 space-y-4">
+        <div className="flex items-center gap-3">
           <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">
             {readyPickupLoading
               ? 'Current open tickets · loading'
@@ -2485,29 +2505,62 @@ function CustomerGate({
             View active tickets
           </button>
         </div>
-        <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
-          {readyPickupLoading && (
-            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading open tickets…</div>
-          )}
-          {!readyPickupLoading && readyPickupTickets.length === 0 && (
-            <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">No open tickets right now.</div>
-          )}
-          {readyPickupTickets.map((ticket) => {
-            const isReady = isReadyPickupStatus(ticket.statusName);
-            return (
+
+        {/* Ready for pickup */}
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[#34c47e]">
+            Ready for pickup · {readyTotal}
+          </div>
+          <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
+            <div className="max-h-[22vh] overflow-y-auto">
+              {readyPickupLoading && (
+                <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading…</div>
+              )}
+              {!readyPickupLoading && readyTickets.length === 0 && (
+                <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Nothing waiting on a customer right now.</div>
+              )}
+              {readyTickets.map((ticket) => (
+                <button
+                  key={ticket.id}
+                  type="button"
+                  onClick={() => onOpenReadyPickup(ticket)}
+                  className="grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
+                >
+                  <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">✓ ready</span>
+                  <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
+                  <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-[#c5566d]">{ticket.customerGroup}</span> : null}</span>
+                  <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
+                  <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
+                  <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
+                  <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* In progress / everything else */}
+        <div>
+          <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">
+            In progress · {otherTotal}
+          </div>
+          <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
+            {readyPickupLoading && (
+              <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading…</div>
+            )}
+            {!readyPickupLoading && otherTickets.length === 0 && (
+              <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">No in-progress tickets right now.</div>
+            )}
+            {otherTickets.map((ticket) => (
               <button
                 key={ticket.id}
                 type="button"
                 onClick={() => onOpenReadyPickup(ticket)}
                 className="grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
               >
-                {isReady ? (
-                  <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">✓ ready</span>
-                ) : (
-                  <span className="truncate rounded-full bg-surface-100 dark:bg-surface-700 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-surface-600 dark:text-surface-300" title={ticket.statusName}>
-                    {ticket.statusName}
-                  </span>
-                )}
+                <span className="truncate rounded-full bg-surface-100 dark:bg-surface-700 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-surface-600 dark:text-surface-300" title={ticket.statusName}>
+                  {ticket.statusName}
+                </span>
                 <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
                 <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-[#c5566d]">{ticket.customerGroup}</span> : null}</span>
                 <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
@@ -2515,8 +2568,8 @@ function CustomerGate({
                 <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
                 <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
               </button>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </section>
     </div>
