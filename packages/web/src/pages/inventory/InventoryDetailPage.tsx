@@ -289,9 +289,10 @@ export function InventoryDetailPage() {
 
           <div className="card p-6">
             <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Pricing</h2>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
               {[
                 { label: 'Cost Price', field: 'cost_price' },
+                { label: 'Wholesale Price', field: 'wholesale_price' },
                 { label: 'Retail Price', field: 'retail_price' },
               ].map(({ label, field }) => (
                 <div key={field}>
@@ -327,13 +328,21 @@ export function InventoryDetailPage() {
               <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Stock Settings</h2>
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { label: 'Reorder Level', field: 'reorder_level' },
-                  { label: 'Stock Warning', field: 'stock_warning' },
-                ].map(({ label, field }) => (
+                  // `Reorder Level` 0 means "never auto-reorder"; valid.
+                  // `Stock Warning` 0 silently suppresses every low-stock alert,
+                  // which is almost always a typo. Floor it at 1 in the input
+                  // so the cashier can't accidentally turn off all alerts by
+                  // tabbing through the field.
+                  { label: 'Reorder Level', field: 'reorder_level', min: 0, hint: 'Auto-reorder triggers below this. 0 disables.' },
+                  { label: 'Stock Warning', field: 'stock_warning', min: 1, hint: 'Highlight stock below this count. 1+.' },
+                ].map(({ label, field, min, hint }) => (
                   <div key={field}>
                     <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">{label}</label>
                     {editMode ? (
-                      <input type="number" min="0" value={f[field] || 0} onChange={(e) => setForm({ ...f, [field]: parseInt(e.target.value) || 0 })} className="input w-full text-sm" />
+                      <>
+                        <input type="number" min={min} value={f[field] || 0} onChange={(e) => setForm({ ...f, [field]: parseInt(e.target.value) || 0 })} className="input w-full text-sm" />
+                        <p className="mt-1 text-[10.5px] text-surface-400 dark:text-surface-500">{hint}</p>
+                      </>
                     ) : (
                       <p className="text-sm text-surface-900 dark:text-surface-100">{item[field]}</p>
                     )}
