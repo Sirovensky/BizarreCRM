@@ -3578,7 +3578,6 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
   const category = draft.deviceType || 'phone';
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [otherName, setOtherName] = useState('');
   const [mfgFilter, setMfgFilter] = useState<string>('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -3618,14 +3617,9 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
     <div className="mx-auto flex h-full max-w-5xl flex-col gap-3 px-4 pt-3 pb-3">
       <Stepper step="device" />
       <Section className="flex min-h-0 flex-1 flex-col p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <div className="font-display text-xl">{categoryLabel}</div>
-            <div className="mt-0.5 text-xs text-surface-900 dark:text-surface-500">Pick the model · or scan IMEI / type to search.</div>
-          </div>
-          {draft.deviceName && (
-            <Pill tone="success">{draft.deviceName}</Pill>
-          )}
+        <div className="mb-3">
+          <div className="font-display text-xl">{categoryLabel}</div>
+          <div className="mt-0.5 text-xs text-surface-900 dark:text-surface-500">Pick the model · or scan IMEI / type to search. Selection state highlights the chip.</div>
         </div>
 
         {shortcuts.length > 0 && (
@@ -3674,7 +3668,21 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
           {showSearch && (
             <div className="rounded-lg border border-surface-200 dark:border-surface-700">
               {searchResults.length === 0 && !searchQuery.isFetching ? (
-                <p className="p-3 text-sm text-surface-400">No matching devices in catalog.</p>
+                /* No catalog match → "Add as new device" CTA that just
+                   picks the typed query directly. Keeps intake one-step:
+                   what the cashier typed becomes the model name on the
+                   ticket, no separate Free-text input + Use button to
+                   re-type the same string. */
+                <div className="flex flex-col gap-3 p-4">
+                  <div className="text-sm text-surface-500">No catalog match for "{effectiveQuery}".</div>
+                  <button
+                    type="button"
+                    onClick={() => { pick(effectiveQuery); setQuery(''); setMfgFilter(''); }}
+                    className={cn(primaryButton, 'self-start')}
+                  >
+                    + Add "{effectiveQuery}" as new device
+                  </button>
+                </div>
               ) : (
                 searchResults.map((d) => {
                   const fullName = `${d.manufacturer_name ?? ''} ${d.name ?? ''}`.trim();
@@ -3726,24 +3734,10 @@ function RepairDeviceStep({ draft, setDraft, onBack, onContinue }: {
           )}
         </div>
 
-        {/* Pinned footer: free-text + IMEI in one compact row so they're
-            always reachable without scrolling. */}
-        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto_220px]">
-          <input
-            type="text"
-            value={otherName}
-            onChange={(e) => setOtherName(e.target.value)}
-            placeholder={DEVICE_PLACEHOLDER[category] ?? 'Free-text the model'}
-            className={inputClass}
-          />
-          <button
-            type="button"
-            disabled={!otherName.trim()}
-            onClick={() => { pick(otherName.trim()); setOtherName(''); }}
-            className={cn(primaryButton, 'disabled:opacity-50 disabled:cursor-not-allowed')}
-          >
-            Use as model
-          </button>
+        {/* Pinned footer: IMEI input only. Model is captured via the
+            search → pick / Add-as-new flow above; no separate free-text
+            input here means no double-entry path. */}
+        <div className="mt-3">
           <input
             className={inputClass}
             value={draft.imei}
