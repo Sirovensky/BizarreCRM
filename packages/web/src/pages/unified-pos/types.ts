@@ -40,6 +40,12 @@ export interface RepairCartItem {
   taxable: boolean; // labor taxable?
   sourceTicketId?: number | null; // if loaded from an existing ticket
   sourceTicketOrderId?: string | null; // e.g. "T-2908"
+  // Mockup Frame 06 (quote) inputs that follow the line into the cart so
+  // pickup checkout + receipt can display "Tech mike · same-day" without
+  // re-querying the source ticket. Optional because pre-existing repair
+  // lines from older drafts may not carry them.
+  technician?: string;
+  turnaround?: string;
 }
 
 export interface ProductCartItem {
@@ -73,10 +79,12 @@ export interface CustomerResult {
   mobile: string | null;
   email: string | null;
   organization: string | null;
-  group_name?: string;
+  group_name?: string | null;
   group_discount_pct?: number;
   group_discount_type?: string;
   group_auto_apply?: boolean;
+  past_tickets_count?: number | null;
+  warranty_summary?: string | null;
 }
 
 // Repair drill-down state machine

@@ -1,5 +1,31 @@
 import { create } from 'zustand';
 
+// Server-side theme persistence: best-effort PUT to user_preferences so a
+// dark-mode choice survives cookie/localStorage wipes (incognito, fresh
+// browser, kiosk reset, different device). Fire-and-forget — local writes
+// remain the canonical paint source. Uses raw fetch to avoid the heavy
+// axios client (also avoids a circular import with @/api/client).
+const persistThemeServerSide = (theme: 'light' | 'dark' | 'system'): void => {
+  if (typeof fetch === 'undefined' || typeof window === 'undefined') return;
+  // Skip on landing/login pages where there is no authenticated session.
+  // The server returns 401, which fires the global axios refresh-token
+  // dance — uiStore is too low-level to participate in that.
+  const path = window.location.pathname;
+  if (path === '/login' || path === '/signup' || path.startsWith('/reset-password')) return;
+  // CSRF: read the csrf_token cookie issued at login. Without it the server
+  // rejects state-changing requests on cookie-auth flows.
+  const csrf = (document.cookie.split(';').find((p) => p.trim().startsWith('csrf_token=')) || '').split('=')[1] || '';
+  fetch('/api/v1/settings/preferences', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrf ? { 'x-csrf-token': decodeURIComponent(csrf) } : {}),
+    },
+    body: JSON.stringify({ theme }),
+  }).catch(() => {});
+};
+
 interface UiState {
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
@@ -202,6 +228,10 @@ export const useUiStore = create<UiState>((set) => ({
     // Mirror to a cross-subdomain cookie so a theme set on the marketing
     // host (bizarrecrm.com) survives navigation to <slug>.bizarrecrm.com.
     writeThemeCookie(theme);
+    // Also persist server-side per user so a dark-mode choice survives
+    // localStorage / cookie wipes (incognito, fresh browser, kiosk reset).
+    // Fire-and-forget — the local write is the canonical source for paint.
+    persistThemeServerSide(theme);
   },
 
   setCommandPaletteOpen: (open: boolean) => set({ commandPaletteOpen: open }),

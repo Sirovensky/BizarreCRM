@@ -1177,7 +1177,8 @@ function TaxClassesTab() {
     queryKey: ['settings', 'tax-classes'],
     queryFn: async () => {
       const res = await settingsApi.getTaxClasses();
-      return res.data.data as TaxClass[];
+      const payload: any = res?.data?.data ?? res?.data;
+      return (Array.isArray(payload) ? payload : []) as TaxClass[];
     },
   });
 
@@ -1214,7 +1215,7 @@ function TaxClassesTab() {
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message="Failed to load tax classes" />;
 
-  const taxClasses = data || [];
+  const taxClasses: TaxClass[] = Array.isArray(data) ? data : [];
 
   return (
     <div className="card">

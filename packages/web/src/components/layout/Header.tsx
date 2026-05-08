@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -89,8 +89,12 @@ function isRequestCanceled(err: unknown): boolean {
 
 export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setCommandPaletteOpen, keyboardShortcutsEnabled } = useUiStore();
   const { user, logout } = useAuthStore();
+  // POS owns its own primary search bar (mockup Frame 03 search prominence).
+  // Hide the shell command-palette button on /pos to avoid double search.
+  const isPosRoute = location.pathname === '/pos' || location.pathname.startsWith('/pos/') || location.pathname === '/tickets/new';
 
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent), []);
   const shortcutLabel = isMac ? '\u2318K' : 'Ctrl+K';
@@ -450,34 +454,41 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     : '?';
 
   return (
-    <header data-app-chrome="true" className="relative z-40 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80" style={{ overflow: 'visible' }}>
+    <header data-app-chrome="true" className={cn(
+      "relative z-40 flex shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80",
+      isPosRoute ? "h-14" : "h-16",
+    )} style={{ overflow: 'visible' }}>
       {/* Left: Hamburger (mobile) + Breadcrumb area (placeholder) */}
-      <div className="flex flex-1 items-center gap-2">
+      <div className={cn("flex items-center gap-2", isPosRoute ? "flex-none" : "flex-1")}>
         {hamburgerButton}
       </div>
 
-      {/* Center: Search */}
-      <Button
-        onClick={() => setCommandPaletteOpen(true)}
-        variant="secondary"
-        size="sm"
-        fullWidth
-        className="max-w-md !justify-start gap-2 border-surface-200 bg-surface-50 text-surface-400 hover:border-surface-300 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500 dark:hover:border-surface-600 dark:hover:bg-surface-750"
-        aria-keyshortcuts="Meta+K Control+K F6"
-      >
-        <Search className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">Search or press {shortcutLabel}...</span>
-        <kbd className="hidden rounded border border-surface-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-surface-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-400 sm:inline-block">
-          {shortcutLabel}
-        </kbd>
-      </Button>
+      {/* Center: Search — hidden on /pos because POS owns its own primary search bar.
+          On /pos, render a portal slot so POS can hoist its title+search+actions up here. */}
+      {!isPosRoute && (
+        <Button
+          onClick={() => setCommandPaletteOpen(true)}
+          variant="secondary"
+          size="sm"
+          fullWidth
+          className="max-w-md !justify-start gap-2 border-surface-200 bg-surface-50 text-surface-400 hover:border-surface-300 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500 dark:hover:border-surface-600 dark:hover:bg-surface-750"
+          aria-keyshortcuts="Meta+K Control+K F6"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-left">Search or press {shortcutLabel}...</span>
+          <kbd className="hidden rounded border border-surface-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-surface-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-400 sm:inline-block">
+            {shortcutLabel}
+          </kbd>
+        </Button>
+      )}
+      {isPosRoute && <div id="pos-header-slot" className="flex flex-1 items-center gap-3 min-w-0" />}
 
       {/* Right: Actions */}
       {/* Theme toggle was previously here but has been moved to Settings > Store.
           The wizard (StepWelcome) collects it on first-run; subsequent changes
           happen from Settings. Keeping the header focused on immediate actions
           (search, notifications, messages, user menu) reduces noise. */}
-      <div className="flex flex-1 items-center justify-end gap-1">
+      <div className={cn("flex items-center justify-end gap-1", isPosRoute ? "ml-auto" : "flex-1")}>
         {/* Keyboard shortcut reference (audit section 42, idea 14) */}
         <Button
           onClick={() => setShortcutsOpen(true)}

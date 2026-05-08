@@ -517,6 +517,7 @@ export default function App() {
                     <Suspense fallback={<PageLoader />}>
                       <Routes>
                         <Route path="/" element={<DashboardPage />} />
+                        <Route path="/dashboard" element={<Navigate to="/" replace />} />
                         <Route path="/tickets" element={<TicketListPage />} />
                         <Route path="/tickets/new" element={<UnifiedPosPage />} />
                         <Route path="/tickets/:id" element={<TicketDetailPage />} />

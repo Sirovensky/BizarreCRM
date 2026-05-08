@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -43,6 +44,7 @@ import {
   inventoryApi,
   leadApi,
   posApi,
+  settingsApi,
   ticketApi,
 } from '@/api/endpoints';
 import { useDefaultTaxRateWithStatus } from '@/hooks/useDefaultTaxRate';
@@ -50,6 +52,7 @@ import { useUiStore } from '@/stores/uiStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDateTime, formatTime, generateIdempotencyKey, toLocalDateString } from '@/utils/format';
 import { stripPhone } from '@/utils/phoneFormat';
+import { PinModal } from '@/components/shared/PinModal';
 import { computePosTotals } from './totals';
 import { useUnifiedPosStore } from './store';
 import { genId } from './types';
@@ -141,6 +144,7 @@ interface PosPickupTicket {
   id: number;
   order_id: string;
   customerName: string;
+  customerGroup?: string | null;
   itemSummary: string;
   progressLabel: string;
   total: number;
@@ -151,10 +155,26 @@ interface CreateCustomerDraft {
   customerType: 'individual' | 'business';
   firstName: string;
   lastName: string;
+  title: string;
   phone: string;
   email: string;
   organization: string;
+  customerGroupId: number | null;
+  taxClassId: number | null;
+  referredBy: string;
+  // Address
+  address1: string;
+  address2: string;
+  city: string;
+  state: string;
+  postcode: string;
+  country: string;
+  contactPerson: string;
+  // Additional
   comments: string;
+  taxNumber: string;
+  idType: string;
+  idNumber: string;
   smsOptIn: boolean;
   emailOptIn: boolean;
 }
@@ -191,6 +211,11 @@ interface RepairDraft {
   laborPrice: string;
   depositAmount: string;
   waiverHandled: boolean;
+  /** Mockup Frame 06 (quote): assigned technician + promised turnaround.
+   * Captured at quote time so the deposit confirmation + customer-facing
+   * receipt can show "Tech mike · same-day" without re-prompting. */
+  technician: string;
+  turnaround: string;
 }
 
 interface RefundLineSelection {
@@ -214,7 +239,16 @@ const DEFAULT_REPAIR_DRAFT: RepairDraft = {
   laborPrice: '79.00',
   depositAmount: '50.00',
   waiverHandled: false,
+  technician: '',
+  turnaround: 'Same-day',
 };
+
+// Mockup Frame 06 picker options. Technician list is a stub — real impl will
+// query GET /users?role=technician and surface availability. Turnaround is
+// fixed text; storing as freeform string lets shops add custom SLAs without
+// a migration.
+const TURNAROUND_OPTIONS = ['Same-day', '24 hours', '2-3 days', '5-7 days', 'Mail-in (10+ days)'];
+const TECHNICIAN_OPTIONS_STUB = ['Mike', 'Tasha', 'Devon', 'Priya', '— unassigned —'];
 
 const DEVICE_TYPES = [
   { label: 'Phone', icon: Smartphone },
@@ -229,10 +263,24 @@ const EMPTY_CREATE_CUSTOMER_DRAFT: CreateCustomerDraft = {
   customerType: 'individual',
   firstName: '',
   lastName: '',
+  title: '',
   phone: '',
   email: '',
   organization: '',
+  customerGroupId: null,
+  taxClassId: null,
+  referredBy: '',
+  address1: '',
+  address2: '',
+  city: '',
+  state: '',
+  postcode: '',
+  country: '',
+  contactPerson: '',
   comments: '',
+  taxNumber: '',
+  idType: '',
+  idNumber: '',
   smsOptIn: true,
   emailOptIn: true,
 };
@@ -314,7 +362,13 @@ function lineTitle(item: CartItem): string {
 function lineSubtitle(item: CartItem): string {
   if (item.type === 'repair') {
     const parts = item.parts.length;
-    return `${item.device.imei || item.device.serial || 'No serial yet'} · ${parts} part${parts === 1 ? '' : 's'}`;
+    const sn = item.device.imei || item.device.serial || 'No serial yet';
+    const tech = item.technician ? `tech ${item.technician}` : null;
+    const turnaround = item.turnaround ? item.turnaround.toLowerCase() : null;
+    // Tail = "tech mike · same-day" when both present, just one when only one set,
+    // empty otherwise. Joined with the existing serial + parts segments by " · ".
+    const tail = [tech, turnaround].filter(Boolean).join(' · ');
+    return [`${sn} · ${parts} part${parts === 1 ? '' : 's'}`, tail].filter(Boolean).join(' · ');
   }
   if (item.type === 'product') return `${item.sku || 'No SKU'} · qty ${item.quantity}`;
   return `Custom item · qty ${item.quantity}`;
@@ -391,16 +445,23 @@ function customerNameFromTicket(ticket: any): string {
 }
 
 function pickupItemSummary(ticket: any): string {
-  const devices = Array.isArray(ticket.devices) ? ticket.devices : [];
+  // List-shape returns `first_device` (single object) + `device_count`; detail
+  // shape returns `devices` (array). Accept either.
+  const devices: any[] = Array.isArray(ticket.devices)
+    ? ticket.devices
+    : ticket.first_device
+      ? [ticket.first_device]
+      : [];
   const deviceLabels = devices.map((device: any) => {
     const deviceName = device.device_name || device.device_type || 'Device';
     const serviceName = device.service?.name || device.service_name || device.issue || device.problem || '';
     return serviceName ? `${deviceName} - ${serviceName}` : deviceName;
   }).filter(Boolean);
 
+  const moreCount = Math.max(0, Number(ticket.device_count ?? deviceLabels.length) - 1);
   if (deviceLabels.length === 0) return ticket.latest_diagnostic_note || ticket.latest_internal_note || 'Repair ticket';
-  if (deviceLabels.length === 1) return deviceLabels[0];
-  return `${deviceLabels[0]} + ${deviceLabels.length - 1} more`;
+  if (moreCount <= 0) return deviceLabels[0];
+  return `${deviceLabels[0]} + ${moreCount} more`;
 }
 
 function pickupProgressLabel(ticket: any): string {
@@ -411,10 +472,16 @@ function pickupProgressLabel(ticket: any): string {
 
 function shapePickupTicket(ticket: any, fallback?: any): PosPickupTicket {
   const source = ticket ?? fallback ?? {};
+  const groupName = source.customer?.customer_group?.name
+    || source.customer?.group_name
+    || source.customer_group_name
+    || fallback?.customer?.group_name
+    || null;
   return {
     id: Number(source.id),
     order_id: source.order_id || `#${source.id}`,
     customerName: customerNameFromTicket(source),
+    customerGroup: groupName,
     itemSummary: pickupItemSummary(source),
     progressLabel: pickupProgressLabel(source),
     total: Number(source.total ?? fallback?.total ?? 0),
@@ -604,6 +671,25 @@ function Stepper({ step }: { step: 'device' | 'issue' | 'quote' | 'deposit' }) {
   );
 }
 
+// Tab strip portals UP into AppShell header's `#pos-header-slot` when present
+// so the shell-header empty space is reclaimed by sale tabs (parallel-sale UX).
+// Falls back to inline rendering if slot not yet mounted.
+function PosTabStripShell({ headerSlot, children }: { headerSlot: HTMLElement | null; children: React.ReactNode }) {
+  if (headerSlot) {
+    return createPortal(
+      <div className="flex h-full flex-1 items-end gap-1 min-w-0 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {children}
+      </div>,
+      headerSlot,
+    );
+  }
+  return (
+    <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 px-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {children}
+    </div>
+  );
+}
+
 export function UnifiedPosPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -650,10 +736,24 @@ export function UnifiedPosPage() {
   const [productSearch, setProductSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [scanFlash, setScanFlash] = useState(false);
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const find = () => {
+      if (cancelled) return;
+      const el = document.getElementById('pos-header-slot');
+      if (el) setHeaderSlot(el); else requestAnimationFrame(find);
+    };
+    find();
+    return () => { cancelled = true; setHeaderSlot(null); };
+  }, []);
   const [lineEditing, setLineEditing] = useState<CartItem | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountDraft, setDiscountDraft] = useState('');
   const [discountReasonDraft, setDiscountReasonDraft] = useState('cashier adjustment');
+  // Holds a discount that exceeds the 25%-of-subtotal manager-approval bar.
+  // applyDiscount() parks here instead of committing; PinModal commits on success.
+  const [pendingDiscount, setPendingDiscount] = useState<{ amount: number; reason: string } | null>(null);
   const [customItemOpen, setCustomItemOpen] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customPrice, setCustomPrice] = useState('');
@@ -668,6 +768,11 @@ export function UnifiedPosPage() {
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
   const [refundInvoiceId, setRefundInvoiceId] = useState('');
   const [refundSelections, setRefundSelections] = useState<RefundLineSelection[]>([]);
+  // Refund-to method (back-to-original is the canonical default per Frame 18 spec).
+  // Stored in state; server-side wiring follows in a separate change — `/pos/return`
+  // currently always issues a credit note. Keeping the UI control honest with users
+  // is more important than waiting for the wire — they need to *see* the choice.
+  const [refundMethod, setRefundMethod] = useState<'original' | 'cash' | 'card' | 'store_credit'>('original');
   const [cashCount, setCashCount] = useState<Record<string, string>>({
     '100': '',
     '50': '',
@@ -689,9 +794,13 @@ export function UnifiedPosPage() {
   const lastKeyTimeRef = useRef(0);
   const hydratedRef = useRef<string | null>(null);
 
+  // Clear any stale `showSuccess` flag from a previous session on mount.
+  // Was deps `[showSuccess, setShowSuccess]` which re-fired on every change
+  // and caused an extra render after every successful sale. Runs once.
   useEffect(() => {
-    if (showSuccess) setShowSuccess(null);
-  }, [showSuccess, setShowSuccess]);
+    setShowSuccess(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totals = useMemo(
     () =>
@@ -734,7 +843,7 @@ export function UnifiedPosPage() {
       mobile: item.mobile ?? null,
       email: item.email ?? null,
       organization: item.organization ?? null,
-      group_name: item.group_name,
+      group_name: item.group_name ?? item.customer_group_name ?? null,
       group_discount_pct: item.group_discount_pct,
       group_discount_type: item.group_discount_type,
       group_auto_apply: item.group_auto_apply,
@@ -806,7 +915,7 @@ export function UnifiedPosPage() {
         : Array.isArray(listRes.data?.tickets)
           ? listRes.data.tickets
           : [];
-      const readyRows = rows.filter((ticket: any) => isReadyPickupStatus(ticket.status_name));
+      const readyRows = rows.filter((ticket: any) => isReadyPickupStatus(ticket.status_name ?? ticket.status?.name));
       const visibleRows = readyRows.slice(0, 4);
       const tickets = await Promise.all(
         visibleRows.map(async (row: any) => {
@@ -850,10 +959,13 @@ export function UnifiedPosPage() {
 
   const heldCarts = useQuery({
     queryKey: ['pos-held-carts'],
-    queryFn: () => api.get<{ success: boolean; data: HeldCartRow[] }>('/pos/held-carts'),
-    enabled: mode === 'held',
+    // Background-poll silently — transient SQLite busy / network errors should
+    // not surface a global toast to the cashier mid-sale. The tab strip + Recall
+    // pill simply skip the update on this tick and try again on the next.
+    queryFn: () => api.get<{ success: boolean; data: HeldCartRow[] }>('/pos/held-carts', { skipGlobal500Toast: true } as object),
     staleTime: 10_000,
   });
+  const heldCartCount = heldCarts.data?.data?.data?.length ?? 0;
 
   const blockchypStatus = useQuery({
     queryKey: ['blockchyp-status'],
@@ -1089,7 +1201,7 @@ export function UnifiedPosPage() {
         label,
         customer_id: customer?.id ?? null,
         total_cents: totals.totalCents,
-      });
+      }, { skipGlobal500Toast: true } as object);
     },
     onSuccess: () => {
       toast.success('Sale held');
@@ -1115,11 +1227,20 @@ export function UnifiedPosPage() {
       if (item.type === 'misc') addMisc(item);
       if (item.type === 'repair') addRepair(item);
     }
+    // Clear any in-flight tender state from the previous cart so the recalled
+    // sale starts fresh: prior paidLegs would be re-summed into change math
+    // (double-credit), a stale terminalError banner would haunt the new cart,
+    // amountEntry would prefill with the previous remainder, and a hung
+    // `processing` flag would keep the Charge button disabled forever.
+    setPaidLegs([]);
+    setProcessing(false);
+    setTerminalError(null);
+    setAmountEntry('');
     setMode('sale');
   }, [addMisc, addProduct, addRepair, resetAll, setCustomer, setDiscount, setMemberDiscountApplied, setMeta, setSourceTicketId]);
 
   const recallMutation = useMutation({
-    mutationFn: (id: number) => api.post<{ success: boolean; data: HeldCartRow }>(`/pos/held-carts/${id}/recall`),
+    mutationFn: (id: number) => api.post<{ success: boolean; data: HeldCartRow }>(`/pos/held-carts/${id}/recall`, {}, { skipGlobal500Toast: true } as object),
     onSuccess: (res) => {
       const row = res.data.data;
       restoreSnapshot(JSON.parse(row.cart_json) as HeldCartSnapshot);
@@ -1159,7 +1280,7 @@ export function UnifiedPosPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Could not process refund'),
   });
 
-  const closeShiftMutation = useMutation({
+  const popDrawerMutation = useMutation({
     mutationFn: () => api.post('/pos/open-drawer', { reason: 'close-shift-count' }),
     onSuccess: () => toast.success('Drawer command sent'),
     onError: () => toast.error('Could not contact cash drawer'),
@@ -1289,6 +1410,8 @@ export function UnifiedPosPage() {
       lineDiscount: 0,
       parts: [],
       taxable: false,
+      technician: repairDraft.technician || undefined,
+      turnaround: repairDraft.turnaround || undefined,
     });
     toast.success('Repair added to cart');
     setRepairDraft(DEFAULT_REPAIR_DRAFT);
@@ -1322,10 +1445,19 @@ export function UnifiedPosPage() {
 
       const cardLegs = legs.filter((leg) => leg.method === 'Card');
       if (invoiceId && cardLegs.length > 0) {
-        for (const leg of cardLegs) {
+        // Idempotency: mint ONE base key for this checkout submission and
+        // suffix per leg index. Previously the key was minted inside the loop,
+        // so on retry of a partially-failed split (leg 1 captured, leg 2
+        // declined) the cashier's "try again" would mint NEW keys for both
+        // legs — leg 1 would re-process and double-charge.
+        // Per-leg suffix keeps each card capture deduped server-side while
+        // still being deterministic across retries within the same submit.
+        const baseCardKey = ensureIdempotencyKey();
+        for (let i = 0; i < cardLegs.length; i++) {
+          const leg = cardLegs[i];
           const terminalRes = await blockchypApi.processPayment(
             invoiceId,
-            generateIdempotencyKey('bc'),
+            `${baseCardKey}-bc-${i}`,
             undefined,
             cardLegs.length > 1 || legs.length > 1 ? leg.amount : undefined,
           );
@@ -1338,8 +1470,17 @@ export function UnifiedPosPage() {
         }
       }
 
-      const cashPaid = legs.filter((leg) => leg.method === 'Cash').reduce((sum, leg) => sum + leg.amount, 0);
-      const overpay = Math.max(0, toCents(cashPaid) + legs.filter((leg) => leg.method !== 'Cash').reduce((sum, leg) => sum + toCents(leg.amount), 0) - totals.totalCents);
+      // Change-making: ONLY cash overpay yields change. Card / gift / store
+      // credit can't return cash, so non-cash legs are capped to "what's left
+      // after subtotaling them against the total" and any cash surplus beyond
+      // that is the change. Previously the code summed everything and treated
+      // any overpay as change — meaning a $100 card on a $99.99 total would
+      // pretend to dispense $0.01 cash from the drawer.
+      // Sum in cents throughout to dodge the float-binary trap.
+      const cashCents = legs.filter((leg) => leg.method === 'Cash').reduce((sum, leg) => sum + toCents(leg.amount), 0);
+      const nonCashCents = legs.filter((leg) => leg.method !== 'Cash').reduce((sum, leg) => sum + toCents(leg.amount), 0);
+      const cashNeededCents = Math.max(0, totals.totalCents - nonCashCents);
+      const overpay = Math.max(0, cashCents - cashNeededCents);
       setCompletedSale({
         orderId: res.data?.data?.invoice?.order_id || res.data?.data?.ticket?.order_id || res.data?.data?.order_id || 'POS',
         invoiceId,
@@ -1379,8 +1520,20 @@ export function UnifiedPosPage() {
     void submitCheckout({ method, amount });
   }, [amountEntry, remainingCents, submitCheckout]);
 
+  /**
+   * Apply discount with manager-PIN gate at >25% of subtotal.
+   *
+   * The modal previously displayed an amber "should use manager approval"
+   * advisory but didn't block — that's a footgun on a busy counter where the
+   * cashier ignores the warning. Now we hard-gate by parking the action in
+   * pendingDiscount state, opening PinModal, and committing only on success.
+   */
   const applyDiscount = () => {
     const amount = parseMoney(discountDraft);
+    if (totals.subtotal > 0 && amount > totals.subtotal * 0.25) {
+      setPendingDiscount({ amount, reason: discountReasonDraft || 'cashier adjustment' });
+      return;
+    }
     setDiscount(amount, discountReasonDraft || 'cashier adjustment');
     setDiscountOpen(false);
   };
@@ -1428,10 +1581,24 @@ export function UnifiedPosPage() {
     mutationFn: () => customerApi.create({
       first_name: createCustomerDraft.firstName.trim(),
       last_name: createCustomerDraft.lastName.trim() || undefined,
+      title: createCustomerDraft.title.trim() || undefined,
       phone: stripPhone(createCustomerDraft.phone) || undefined,
       email: createCustomerDraft.email.trim() || undefined,
       organization: createCustomerDraft.organization.trim() || undefined,
       type: createCustomerDraft.customerType,
+      customer_group_id: createCustomerDraft.customerGroupId ?? undefined,
+      tax_class_id: createCustomerDraft.taxClassId ?? undefined,
+      referred_by: createCustomerDraft.referredBy.trim() || undefined,
+      address1: createCustomerDraft.address1.trim() || undefined,
+      address2: createCustomerDraft.address2.trim() || undefined,
+      city: createCustomerDraft.city.trim() || undefined,
+      state: createCustomerDraft.state.trim() || undefined,
+      postcode: createCustomerDraft.postcode.trim() || undefined,
+      country: createCustomerDraft.country.trim() || undefined,
+      contact_person: createCustomerDraft.contactPerson.trim() || undefined,
+      tax_number: createCustomerDraft.taxNumber.trim() || undefined,
+      id_type: createCustomerDraft.idType.trim() || undefined,
+      id_number: createCustomerDraft.idNumber.trim() || undefined,
       comments: createCustomerDraft.comments.trim() || undefined,
       sms_opt_in: createCustomerDraft.smsOptIn,
       email_opt_in: createCustomerDraft.emailOptIn,
@@ -1444,6 +1611,11 @@ export function UnifiedPosPage() {
         return;
       }
 
+      // Server response shape varies between /customers (POST) and search
+      // endpoints — POST may surface `customer_group_name`, search returns
+      // `group_name`, and the joined customer detail uses both. Fall through
+      // both keys so the new GOLD/VIP pill renders even when the wire shape
+      // shifts.
       setCustomer({
         id: Number(created.id),
         first_name: created.first_name ?? '',
@@ -1452,7 +1624,7 @@ export function UnifiedPosPage() {
         mobile: created.mobile || null,
         email: created.email || null,
         organization: created.organization || null,
-        group_name: created.group_name,
+        group_name: created.group_name ?? created.customer_group_name ?? null,
         group_discount_pct: created.group_discount_pct,
         group_discount_type: created.group_discount_type,
         group_auto_apply: created.group_auto_apply,
@@ -1476,6 +1648,15 @@ export function UnifiedPosPage() {
   const submitCreateCustomer = () => {
     if (!createCustomerDraft.firstName.trim()) {
       toast.error('First name is required');
+      return;
+    }
+    // Spec §3.6 (Frame 23): require phone OR email so the customer is
+    // contactable. Saves a server round-trip + matches the visual hint
+    // ("first name + one of phone / email") shown on the create panel.
+    const hasPhone = !!stripPhone(createCustomerDraft.phone);
+    const hasEmail = !!createCustomerDraft.email.trim();
+    if (!hasPhone && !hasEmail) {
+      toast.error('Add a phone or email — at least one is required');
       return;
     }
     createCustomerMutation.mutate();
@@ -1548,23 +1729,27 @@ export function UnifiedPosPage() {
   const title = mode === 'gate'
     ? 'New sale'
     : mode === 'held'
-      ? 'Held sales - recall'
+      ? 'Held sales · recall'
       : mode === 'refund'
         ? 'Refund'
         : mode === 'close-shift'
           ? 'Close shift'
           : mode.startsWith('repair')
             ? 'Repair intake'
-            : mode.startsWith('tender')
-              ? 'Tender'
+            : mode === 'tender-cash'
+              ? `Cash · ${getCustomerName(customer)}`
+              : mode === 'tender-card'
+                ? `Card · ${getCustomerName(customer)}`
+                : mode.startsWith('tender')
+                  ? `Tender · ${getCustomerName(customer)}`
               : mode === 'receipt'
                 ? 'Sale complete'
-                : `New sale - ${getCustomerName(customer)}`;
+                : `New sale · ${getCustomerName(customer)}`;
   const subtitle =
     mode === 'gate'
-      ? 'Pick a customer to begin · or take a walk-in'
+      ? null
       : mode === 'held'
-        ? 'Resume a parked sale or discard one to free the slot'
+        ? `${heldCartCount} parked · resume or discard to free slots`
         : mode === 'refund'
           ? 'Pick lines + a refund-to method · manager PIN above threshold'
           : mode === 'close-shift'
@@ -1578,59 +1763,113 @@ export function UnifiedPosPage() {
                   : mode === 'repair-deposit'
                     ? 'Step 4 of 4 · take deposit · drop-off waiver'
                     : mode === 'tender-method'
-                      ? 'Pick a method · cart locks during tender'
+                      ? `${cartLineCount} line${cartLineCount === 1 ? '' : 's'} · choose payment method`
                       : mode === 'tender-cash'
-                        ? 'Type the amount · ↵ confirms · drawer auto-opens'
+                        ? `Charging ${formatCurrency(totals.total)} · type amount or use a preset · ↵ to confirm`
                         : mode === 'tender-card'
-                          ? 'Customer terminal handles tap / chip / swipe + tip'
+                          ? `Charging ${formatCurrency(totals.total)} · customer terminal handles tap / chip / swipe + tip`
                           : cartLineCount > 0
                             ? `${cartLineCount} line${cartLineCount === 1 ? '' : 's'} in cart · ${formatCurrency(totals.total)} due`
                             : 'Browse the catalog or scan to start adding items';
 
   return (
-    <div className="-m-6 flex h-[calc(100vh-4rem-var(--dev-banner-h,0px))] min-h-[720px] flex-col overflow-hidden bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-50">
-      <div className="flex h-[38px] shrink-0 items-center gap-2 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 px-4">
+    <div className="-m-6 mx-auto flex h-[calc(100vh-4rem-var(--dev-banner-h,0px))] min-h-[720px] w-full max-w-[1440px] flex-col overflow-hidden bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-50">
+      <PosTabStripShell headerSlot={headerSlot}>
         <button
           type="button"
           onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
           className={cn(
-            'inline-flex h-7 min-w-[190px] items-center gap-2 rounded-t-lg px-3 text-xs font-semibold',
+            // Chrome-style tab: rounded-top, distinct fill, an inset top
+            // accent bar on active to read clearly as "this is the active
+            // tab, others are switchable". Border between tabs comes from
+            // the gap, not a visible line.
+            'group relative inline-flex h-9 max-w-[260px] shrink-0 items-center gap-2 rounded-t-lg px-3 text-xs font-semibold whitespace-nowrap transition-colors',
             !['held', 'refund', 'close-shift', 'receipt'].includes(mode)
-              ? 'bg-surface-100 dark:bg-surface-900 text-primary-700 dark:text-primary-500'
-              : 'text-surface-900 dark:text-surface-500 hover:text-surface-600 dark:text-surface-300',
+              ? 'bg-surface-50 dark:bg-surface-900 text-surface-900 dark:text-surface-50 shadow-[inset_0_2px_0_rgb(var(--primary-500))]'
+              : 'bg-transparent text-surface-700 dark:text-surface-400 hover:bg-surface-100/60 dark:hover:bg-surface-800/60',
           )}
+          title={`POS · ${title}`}
         >
-          <span className="grid h-3 w-3 place-items-center rounded-[3px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
-          POS
+          <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
+          <span className="truncate">POS · {title}</span>
         </button>
-        {(customer || cartItems.length > 0) && (
+        {heldCarts.data?.data?.data?.map((row) => (
           <button
+            key={row.id}
             type="button"
-            onClick={() => holdMutation.mutate()}
-            disabled={cartItems.length === 0 && !customer}
-            aria-label="Hold current sale (⌘H)"
-            title="Hold current sale (⌘H)"
-            className="inline-flex h-7 min-w-[170px] items-center gap-2 rounded-t-lg px-3 text-xs font-semibold text-surface-900 dark:text-surface-500 hover:text-surface-600 dark:text-surface-300 disabled:opacity-50"
+            onClick={async () => {
+              // Switching to a held tab should not blow away in-flight work
+              // on the current tab. If the current cart has items or a
+              // customer attached, auto-hold it first so the user's parallel
+              // sales stay independent — matches mockup §5.1's "tabs as
+              // independent sales" expectation.
+              if (cartItems.length > 0 || customer) {
+                await holdMutation.mutateAsync();
+              }
+              recallMutation.mutate(row.id);
+            }}
+            className="group relative inline-flex h-9 max-w-[220px] shrink-0 items-center gap-2 rounded-t-lg bg-transparent px-3 text-xs font-semibold text-surface-700 dark:text-surface-400 hover:bg-surface-100/60 dark:hover:bg-surface-800/60 whitespace-nowrap transition-colors"
+            title={`Resume ${row.label || `cart #${row.id}`}`}
           >
-            <Pause className="h-3.5 w-3.5" />
-            Hold current sale
-            <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘H</span>
+            <span className="grid h-3 w-3 shrink-0 place-items-center rounded-[3px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
+            <span className="truncate">#{row.id} · {row.label || (row.owner_first_name ? `${row.owner_first_name}${row.owner_last_name ? ' ' + row.owner_last_name[0] + '.' : ''}` : 'held')} (held)</span>
           </button>
-        )}
-      </div>
+        ))}
+        {/* + New tab — opens a fresh gate. If the current sale has items or
+            a customer attached, auto-hold first so the work is parked rather
+            than discarded. Mockup §5.1: parallel sales live as tabs and ⌘N
+            opens a new one without losing the current. */}
+        <button
+          type="button"
+          onClick={() => {
+            if (cartItems.length > 0 || customer) holdMutation.mutate();
+            else startNewSale();
+          }}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-t-lg text-surface-500 hover:bg-surface-100/60 dark:hover:bg-surface-800/60 dark:text-surface-400 transition-colors"
+          title="New sale (⌘N)"
+          aria-label="New sale"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </PosTabStripShell>
 
+      {/* Outer grid: topbar + main on the left column, cart spans the full
+          height on the right so the cart panel reads as a continuous side
+          column from the very top of the POS area instead of starting below
+          the topbar's bottom edge. */}
+      <div className="flex-1 grid h-full grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="flex min-h-0 flex-col overflow-hidden">
       <header className={cn(
         'flex shrink-0 items-center gap-5 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-950 px-5',
-        // Customer gate gets a taller bar (mockup Frame 03 makes the search the
-        // primary entry point at this step). Other modes keep the compact
-        // 56px bar to leave more room for main canvas content.
-        mode === 'gate' ? 'h-[68px]' : 'h-14',
+        mode === 'gate' ? 'h-16' : 'h-14',
       )}>
-        <div className="min-w-[220px]">
+        {/* Back chevron — visible on side-quest modes (held / refund /
+            close-shift / repair-*) so the cashier always has a one-click
+            escape back to the customer gate without having to remember
+            the POS-tab affordance. Hidden in gate (already home) and
+            tender (Cart/Method esc lives in the action area). */}
+        {(mode === 'held' || mode === 'refund' || mode === 'close-shift' || mode.startsWith('repair')) && (
+          <button
+            type="button"
+            onClick={() => setMode(cartItems.length > 0 || customer ? 'sale' : 'gate')}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
+            aria-label="Back to sale"
+            title="Back to sale (esc)"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        )}
+        <div className="min-w-[180px]">
           <div className="text-[15px] font-bold text-surface-900 dark:text-surface-100">{title}</div>
           {subtitle && <div className="mt-0.5 text-[11.5px] text-surface-900 dark:text-surface-500">{subtitle}</div>}
         </div>
-        <div className="relative min-w-[260px] flex-1">
+        <div className={cn(
+          'relative min-w-[260px] flex-1',
+          // Cap search width on gate so the bar doesn't sprawl across the
+          // whole topbar at 1440px+. Shorter feels more focused; the catalog
+          // search keeps full flex since it's used for live filtering.
+          mode === 'gate' && 'max-w-md',
+        )}>
           <Search className={cn(
             'absolute left-4 top-1/2 -translate-y-1/2 text-surface-900 dark:text-surface-500',
             mode === 'gate' ? 'h-[18px] w-[18px]' : 'h-4 w-4',
@@ -1644,7 +1883,7 @@ export function UnifiedPosPage() {
               'w-full rounded-[10px] border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 pr-24 font-semibold text-surface-900 dark:text-surface-100 placeholder:text-surface-400 dark:placeholder:text-surface-500 focus:border-primary-500 dark:focus:border-primary-500 focus-visible:outline-none',
               mode === 'gate' ? 'h-12 pl-12 text-[15px]' : 'h-11 pl-11 text-sm',
             )}
-            placeholder={mode === 'gate' ? 'Search customer · phone · email · ticket # · SKU' : 'Search items or scan'}
+            placeholder={mode === 'gate' ? 'Search or scan' : 'Search SKU · scan barcode · or type to filter catalog'}
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 rounded border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-900 px-2 py-0.5 font-mono text-[10px] text-surface-400">⌘K</span>
         </div>
@@ -1655,17 +1894,49 @@ export function UnifiedPosPage() {
         <div className="flex items-center gap-2">
           {!taxState.isLoaded && <Pill tone="warning">tax loading</Pill>}
           {scanFlash && <Pill tone="success">scan detected</Pill>}
-          {mode === 'gate' && (
+          {mode === 'gate' && heldCartCount > 0 && (
             <button
               type="button"
               onClick={() => setMode('held')}
               className="inline-flex items-center gap-1 rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-1 text-[11.5px] font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
             >
-              <History className="h-3 w-3" /> Recall
+              <History className="h-3 w-3" /> Recall {heldCartCount}
               <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘R</span>
             </button>
           )}
-          {mode !== 'gate' && (
+          {mode === 'sale' && (
+            <button
+              type="button"
+              onClick={() => holdMutation.mutate()}
+              disabled={cartItems.length === 0 && !customer}
+              className="inline-flex items-center gap-1 rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-1 text-[11.5px] font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40 disabled:opacity-50"
+            >
+              <Pause className="h-3 w-3" /> Hold
+              <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘H</span>
+            </button>
+          )}
+          {mode.startsWith('tender') && (
+            <>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#e8a33d]/15 px-3 py-1 text-[11.5px] font-bold text-[#e8a33d]">
+                {mode === 'tender-cash' ? <Banknote className="h-3 w-3" /> : mode === 'tender-card' ? <CreditCard className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                {mode === 'tender-cash' ? 'Cash · active' : mode === 'tender-card' ? 'Card · active' : 'Tendering'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setMode(mode === 'tender-method' ? 'sale' : 'tender-method')}
+                className="inline-flex items-center gap-1 rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-1 text-[11.5px] font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
+              >
+                <ChevronLeft className="h-3 w-3" /> {mode === 'tender-method' ? 'Cart' : 'Method'}
+                <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">esc</span>
+              </button>
+            </>
+          )}
+          {mode === 'close-shift' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#e8a33d]/15 px-3 py-1 text-[11.5px] font-bold text-[#e8a33d]">
+              <span className="h-2 w-2 rounded-full bg-[#e8a33d] animate-pulse" /> Closing in progress
+            </span>
+          )}
+          {mode !== 'gate' && mode !== 'sale' && !mode.startsWith('tender') && mode !== 'close-shift' && (
             <button
               type="button"
               onClick={startNewSale}
@@ -1675,40 +1946,34 @@ export function UnifiedPosPage() {
               <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘N</span>
             </button>
           )}
-          <div className="relative">
-            <details className="group">
-              <summary className="inline-flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40 [&::-webkit-details-marker]:hidden">
-                <span className="text-[14px] leading-none">⋯</span>
-              </summary>
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-1 shadow-xl">
-                <button type="button" onClick={() => setMode('refund')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
-                  <RotateCcw className="h-3.5 w-3.5" /> Refund
-                </button>
-                <button type="button" onClick={() => setMode('close-shift')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
-                  <Lock className="h-3.5 w-3.5" /> Close shift
-                </button>
-                {mode === 'gate' && (
-                  <button type="button" onClick={startNewSale} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
-                    <Plus className="h-3.5 w-3.5" /> New sale (⌘N)
+          {mode !== 'gate' && (
+            <div className="relative">
+              <details className="group">
+                <summary className="inline-flex h-7 w-7 cursor-pointer list-none items-center justify-center rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40 [&::-webkit-details-marker]:hidden">
+                  <span className="text-[14px] leading-none">⋯</span>
+                </summary>
+                <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-1 shadow-xl">
+                  <button type="button" onClick={() => setMode('refund')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
+                    <RotateCcw className="h-3.5 w-3.5" /> Refund
                   </button>
-                )}
-                {mode !== 'gate' && (
+                  <button type="button" onClick={() => setMode('close-shift')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
+                    <Lock className="h-3.5 w-3.5" /> Close shift
+                  </button>
                   <button type="button" onClick={() => setMode('held')} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-semibold text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700">
                     <History className="h-3.5 w-3.5" /> Recall held (⌘R)
                   </button>
-                )}
-              </div>
-            </details>
-          </div>
+                </div>
+              </details>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden">
         {mode === 'receipt' && completedSale ? (
           <ReceiptView sale={completedSale} onNext={startNewSale} />
         ) : (
-          <div className="grid h-full grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_400px]">
-            <main className="overflow-auto bg-surface-100 dark:bg-surface-900 p-0">
+          <main className="h-full overflow-auto bg-surface-100 dark:bg-surface-900 p-0">
               {mode === 'gate' && (
                 <CustomerGate
                   query={globalSearch}
@@ -1844,6 +2109,8 @@ export function UnifiedPosPage() {
                   loading={refundQuery.isFetching}
                   selections={refundSelections}
                   setSelections={setRefundSelections}
+                  refundMethod={refundMethod}
+                  setRefundMethod={setRefundMethod}
                   processing={refundMutation.isPending}
                   onProcess={() => refundMutation.mutate()}
                 />
@@ -1852,35 +2119,35 @@ export function UnifiedPosPage() {
                 <CloseShiftView
                   cashCount={cashCount}
                   setCashCount={setCashCount}
-                  onPopDrawer={() => closeShiftMutation.mutate()}
+                  onPopDrawer={() => popDrawerMutation.mutate()}
                 />
               )}
             </main>
-
-            <CartColumn
-              awake={cartAwake}
-              locked={mode.startsWith('tender')}
-              customer={customer}
-              cartItems={cartItems}
-              totals={totals}
-              taxRate={taxState.rate}
-              paidLegs={paidLegs}
-              onSwapCustomer={() => {
-                setWalkInActive(false);
-                setMode('gate');
-              }}
-              onEditLine={setLineEditing}
-              onRemoveLine={removeCartItem}
-              onQty={updateProductQty}
-              onDiscount={() => {
-                setDiscountDraft(discount ? String(discount) : '');
-                setDiscountReasonDraft(discountReason || 'cashier adjustment');
-                setDiscountOpen(true);
-              }}
-              onTender={() => setMode('tender-method')}
-            />
-          </div>
         )}
+        </div>
+        </div>
+        <CartColumn
+          awake={cartAwake}
+          locked={mode.startsWith('tender')}
+          customer={customer}
+          cartItems={cartItems}
+          totals={totals}
+          taxRate={taxState.rate}
+          paidLegs={paidLegs}
+          onSwapCustomer={() => {
+            setWalkInActive(false);
+            setMode('gate');
+          }}
+          onEditLine={setLineEditing}
+          onRemoveLine={removeCartItem}
+          onQty={updateProductQty}
+          onDiscount={() => {
+            setDiscountDraft(discount ? String(discount) : '');
+            setDiscountReasonDraft(discountReason || 'cashier adjustment');
+            setDiscountOpen(true);
+          }}
+          onTender={() => setMode('tender-method')}
+        />
       </div>
 
       {lineEditing && (
@@ -1920,11 +2187,22 @@ export function UnifiedPosPage() {
             </label>
             {parseMoney(discountDraft) > totals.subtotal * 0.25 && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                Discounts over 25% should use manager approval before tender.
+                Over 25% — manager PIN required to apply.
               </div>
             )}
           </div>
         </Modal>
+      )}
+      {pendingDiscount && (
+        <PinModal
+          title={`Manager PIN — discount ${formatCurrency(pendingDiscount.amount)} (>25% of subtotal)`}
+          onSuccess={() => {
+            setDiscount(pendingDiscount.amount, pendingDiscount.reason);
+            setPendingDiscount(null);
+            setDiscountOpen(false);
+          }}
+          onCancel={() => setPendingDiscount(null)}
+        />
       )}
       {customItemOpen && (
         <Modal
@@ -2006,8 +2284,8 @@ function CustomerGate({
     return Number.isFinite(startsAt) && startsAt >= nowMs;
   });
   const bookingSummary = appointmentsLoading
-    ? 'Booked today - loading'
-    : `Booked today - ${appointments.length}${nextAppointment ? ` - next ${appointmentStatusLabel(nextAppointment, nowMs)}` : ''}`;
+    ? 'Booked today · loading'
+    : `Booked today · ${appointments.length}${nextAppointment ? ` · next ${appointmentStatusLabel(nextAppointment, nowMs)}` : ''}`;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -2019,7 +2297,7 @@ function CustomerGate({
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {!appointmentsLoading && appointments.length === 0 && (
-            <div className="flex min-w-[280px] items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left dark:border-surface-700 dark:bg-surface-800">
+            <div className="flex min-w-[240px] items-center gap-3 rounded-xl border border-surface-200 bg-white px-4 py-3 text-left dark:border-surface-700 dark:bg-surface-800">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-bold text-surface-900 dark:text-surface-50">No bookings left</div>
                 <div className="truncate text-[11.5px] text-surface-400">Walk-ins and pickups are ready.</div>
@@ -2032,7 +2310,7 @@ function CustomerGate({
               type="button"
               onClick={() => onSelectAppointment(appointment)}
               className={cn(
-                'flex min-w-[280px] items-center gap-3 rounded-xl border bg-white dark:bg-surface-800 px-4 py-3 text-left',
+                'flex min-w-[240px] items-center gap-3 rounded-xl border bg-white dark:bg-surface-800 px-4 py-3 text-left',
                 index === 0 ? 'border-l-2 border-l-primary-500 dark:border-l-[#fdeed0] border-surface-300 dark:border-surface-700' : 'border-surface-200 dark:border-surface-700',
               )}
             >
@@ -2094,24 +2372,19 @@ function CustomerGate({
         </section>
       ) : (
         <section className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
-          <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600">
-            <UserPlus className="h-5 w-5" />
-            Create new customer
+          <button type="button" onClick={onNewCustomer} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg bg-primary-500 dark:bg-primary-500 px-6 py-4 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600">
+            + Create new customer
           </button>
-          <button type="button" onClick={onWalkIn} className="inline-flex min-w-[280px] items-center justify-center gap-3 rounded-lg border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-4 text-[15px] font-bold text-surface-900 dark:text-surface-100 hover:border-primary-500 dark:hover:border-primary-500/40">
-            <ShoppingCart className="h-5 w-5" />
-            Walk-in - no profile
+          <button type="button" onClick={onWalkIn} className="inline-flex min-w-[280px] items-center justify-center gap-2 rounded-lg border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-4 text-[15px] font-bold text-surface-900 dark:text-surface-100 hover:border-primary-500 dark:hover:border-primary-500/40">
+            Walk-in · no profile
           </button>
-          <div className="mt-2 font-mono text-[11.5px] text-surface-500 dark:text-surface-500">
-            or start typing in the search bar above · scan gun ready
-          </div>
         </section>
       )}
 
       <section className="px-6 pb-6">
         <div className="mb-3 flex items-center gap-3">
           <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-surface-900 dark:text-surface-500">
-            {readyPickupLoading ? 'Ready for pickup - loading' : `Ready for pickup - ${readyPickupTotal}`}
+            {readyPickupLoading ? 'Ready for pickup · loading' : `Ready for pickup · ${readyPickupTotal}`}
           </div>
           <div className="h-px flex-1 bg-surface-100 dark:bg-surface-700" />
           <button type="button" onClick={onViewReadyPickup} className="text-xs font-semibold text-primary-700 dark:text-primary-500 underline-offset-4 hover:underline">
@@ -2132,13 +2405,13 @@ function CustomerGate({
               onClick={() => onOpenReadyPickup(ticket)}
               className="grid w-full grid-cols-[76px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
             >
-              <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">ready</span>
-              <span className="font-mono text-xs text-surface-400">{ticket.order_id}</span>
-              <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}</span>
+              <span className="rounded-full bg-[#34c47e]/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-[#34c47e]">✓ ready</span>
+              <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
+              <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-[#c5566d]">{ticket.customerGroup}</span> : null}</span>
               <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
               <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
               <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
-              <span className="text-right text-xs font-semibold text-[#4db8c9]">Open</span>
+              <span className="text-right text-xs font-semibold text-[#4db8c9]">Open →</span>
             </button>
           ))}
         </div>
@@ -2162,13 +2435,42 @@ function InlineCreateCustomerPanel({
   onCancel: () => void;
   onWalkIn: () => void;
 }) {
+  const [activeTab, setActiveTab] = useState<'contact' | 'address' | 'additional'>('contact');
   const updateDraft = (patch: Partial<CreateCustomerDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   };
+  // Pull customer groups + tax classes for the dropdowns. Both are shop-
+  // configured and rarely change; long staleTime is fine. Coerce to array
+  // so a server shape drift doesn't crash `.map`.
+  const groupsQuery = useQuery({
+    queryKey: ['settings', 'customer-groups-pos'],
+    queryFn: async () => {
+      const res = await settingsApi.getCustomerGroups();
+      const payload: any = (res as any)?.data?.data ?? (res as any)?.data;
+      return Array.isArray(payload) ? payload : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const taxClassesQuery = useQuery({
+    queryKey: ['settings', 'tax-classes-pos'],
+    queryFn: async () => {
+      const res = await settingsApi.getTaxClasses();
+      const payload: any = (res as any)?.data?.data ?? (res as any)?.data;
+      return Array.isArray(payload) ? payload : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const customerGroups: Array<{ id: number; name: string }> = groupsQuery.data ?? [];
+  const taxClasses: Array<{ id: number; name: string; rate: number }> = taxClassesQuery.data ?? [];
+  // Suppress the global `:focus-visible` 4px primary halo on these tile
+  // inputs — the ring lit up the whole field with a too-loud cream border
+  // on focus. Focus state lives on the surrounding tile (label) as a subtle
+  // bg shift + 1px primary inset edge instead. Resting state gets a 1px
+  // surface ring so each field reads as a clear cell, not a flat block.
   const tileInput =
-    'h-10 w-full border-0 bg-transparent p-0 text-[15px] font-semibold text-surface-900 placeholder:text-surface-400 focus-visible:outline-none dark:text-surface-50 dark:placeholder:text-surface-600';
+    'h-10 w-full border-0 bg-transparent p-0 text-[15px] font-semibold text-surface-900 placeholder:text-surface-400 outline-none [&:focus-visible]:!shadow-none [&:focus-visible]:!ring-0 dark:text-surface-50 dark:placeholder:text-surface-600';
   const fieldTile =
-    'bg-white px-4 py-3 dark:bg-surface-800';
+    'block bg-white px-4 py-3 ring-1 ring-inset ring-surface-200 transition-shadow focus-within:ring-primary-500 dark:bg-surface-800 dark:ring-surface-600 dark:focus-within:ring-primary-500';
 
   return (
     <section className="flex w-full flex-1 items-center px-6 py-6">
@@ -2205,63 +2507,263 @@ function InlineCreateCustomerPanel({
           </div>
         </div>
 
-        <div className="grid gap-px sm:grid-cols-2">
-          <label className={fieldTile}>
-            <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">First name</span>
-            <input
-              autoFocus
-              required
-              value={draft.firstName}
-              onChange={(event) => updateDraft({ firstName: event.target.value })}
-              className={tileInput}
-            />
-          </label>
-          <label className={fieldTile}>
-            <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Last name</span>
-            <input
-              value={draft.lastName}
-              onChange={(event) => updateDraft({ lastName: event.target.value })}
-              className={tileInput}
-            />
-          </label>
-          <label className={fieldTile}>
-            <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Mobile</span>
-            <input
-              value={draft.phone}
-              onChange={(event) => updateDraft({ phone: event.target.value })}
-              className={tileInput}
-              inputMode="tel"
-            />
-          </label>
-          <label className={fieldTile}>
-            <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Email</span>
-            <input
-              value={draft.email}
-              onChange={(event) => updateDraft({ email: event.target.value })}
-              className={tileInput}
-              inputMode="email"
-            />
-          </label>
+        {/* Tab strip — Contact / Address / Additional Details. Mirrors the
+            RepairDesk customer-create UX so a counter clerk can capture the
+            full identity profile (loyalty group, tax class, ID, address) in
+            one go without context-switching to a separate page. */}
+        <div className="flex gap-px bg-surface-200 dark:bg-surface-700">
+          {([
+            { id: 'contact', label: 'Contact' },
+            { id: 'address', label: 'Address' },
+            { id: 'additional', label: 'Additional details' },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors',
+                activeTab === tab.id
+                  ? 'bg-white text-primary-700 dark:bg-surface-800 dark:text-primary-500'
+                  : 'bg-surface-50 text-surface-600 hover:bg-white dark:bg-surface-700 dark:text-surface-400 dark:hover:bg-surface-800',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        <div className="grid gap-px md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-          <label className={fieldTile}>
-            <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Company</span>
-            <input
-              value={draft.organization}
-              onChange={(event) => updateDraft({ organization: event.target.value })}
-              className={tileInput}
-            />
-          </label>
-          <label className={fieldTile}>
-            <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Counter note</span>
-            <input
-              value={draft.comments}
-              onChange={(event) => updateDraft({ comments: event.target.value })}
-              className={tileInput}
-            />
-          </label>
-        </div>
+        {activeTab === 'contact' && (
+          <>
+            <div className="grid gap-px sm:grid-cols-2">
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">
+                  First name <span className="text-red-500">*</span>
+                </span>
+                <input
+                  autoFocus
+                  required
+                  value={draft.firstName}
+                  onChange={(event) => updateDraft({ firstName: event.target.value })}
+                  className={tileInput}
+                  placeholder="Jane"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Last name</span>
+                <input
+                  value={draft.lastName}
+                  onChange={(event) => updateDraft({ lastName: event.target.value })}
+                  className={tileInput}
+                  placeholder="Doe"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Mobile</span>
+                <input
+                  value={draft.phone}
+                  onChange={(event) => updateDraft({ phone: event.target.value })}
+                  className={tileInput}
+                  inputMode="tel"
+                  placeholder="(415) 555-0100"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Email</span>
+                <input
+                  value={draft.email}
+                  onChange={(event) => updateDraft({ email: event.target.value })}
+                  className={tileInput}
+                  inputMode="email"
+                  placeholder="jane@example.com"
+                />
+              </label>
+            </div>
+
+            <div className="grid gap-px sm:grid-cols-2">
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Customer group</span>
+                <select
+                  value={draft.customerGroupId ?? ''}
+                  onChange={(event) => updateDraft({ customerGroupId: event.target.value ? Number(event.target.value) : null })}
+                  className={tileInput}
+                >
+                  <option value="">— Select —</option>
+                  {customerGroups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Tax class</span>
+                <select
+                  value={draft.taxClassId ?? ''}
+                  onChange={(event) => updateDraft({ taxClassId: event.target.value ? Number(event.target.value) : null })}
+                  className={tileInput}
+                >
+                  <option value="">— Default —</option>
+                  {taxClasses.map((tc) => (
+                    <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="grid gap-px sm:grid-cols-2">
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">How did you hear about us?</span>
+                <input
+                  value={draft.referredBy}
+                  onChange={(event) => updateDraft({ referredBy: event.target.value })}
+                  className={tileInput}
+                  placeholder="Google, friend, walk-by…"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">
+                  {draft.customerType === 'business' ? 'Organization *' : 'Organization'}
+                </span>
+                <input
+                  value={draft.organization}
+                  onChange={(event) => updateDraft({ organization: event.target.value })}
+                  className={tileInput}
+                  required={draft.customerType === 'business'}
+                  placeholder={draft.customerType === 'business' ? 'Acme Inc.' : 'optional'}
+                />
+              </label>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'address' && (
+          <>
+            <div className="grid gap-px sm:grid-cols-2">
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Street address</span>
+                <input
+                  value={draft.address1}
+                  onChange={(event) => updateDraft({ address1: event.target.value })}
+                  className={tileInput}
+                  placeholder="123 Main St"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">House / apt / floor</span>
+                <input
+                  value={draft.address2}
+                  onChange={(event) => updateDraft({ address2: event.target.value })}
+                  className={tileInput}
+                  placeholder="Apt 4B"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Postcode</span>
+                <input
+                  value={draft.postcode}
+                  onChange={(event) => updateDraft({ postcode: event.target.value })}
+                  className={tileInput}
+                  placeholder="94110"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">City</span>
+                <input
+                  value={draft.city}
+                  onChange={(event) => updateDraft({ city: event.target.value })}
+                  className={tileInput}
+                  placeholder="San Francisco"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">State / region</span>
+                <input
+                  value={draft.state}
+                  onChange={(event) => updateDraft({ state: event.target.value })}
+                  className={tileInput}
+                  placeholder="CA"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Country</span>
+                <input
+                  value={draft.country}
+                  onChange={(event) => updateDraft({ country: event.target.value })}
+                  className={tileInput}
+                  placeholder="USA"
+                />
+              </label>
+            </div>
+            <div className="grid gap-px">
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Contact person</span>
+                <input
+                  value={draft.contactPerson}
+                  onChange={(event) => updateDraft({ contactPerson: event.target.value })}
+                  className={tileInput}
+                  placeholder="optional · spouse / assistant / colleague"
+                />
+              </label>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'additional' && (
+          <>
+            <div className="grid gap-px sm:grid-cols-2">
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Tax / VAT number</span>
+                <input
+                  value={draft.taxNumber}
+                  onChange={(event) => updateDraft({ taxNumber: event.target.value })}
+                  className={tileInput}
+                  placeholder="optional"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">ID type</span>
+                <select
+                  value={draft.idType}
+                  onChange={(event) => updateDraft({ idType: event.target.value })}
+                  className={tileInput}
+                >
+                  <option value="">— None —</option>
+                  <option value="drivers_license">Driver's license</option>
+                  <option value="passport">Passport</option>
+                  <option value="state_id">State ID</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">ID number</span>
+                <input
+                  value={draft.idNumber}
+                  onChange={(event) => updateDraft({ idNumber: event.target.value })}
+                  className={tileInput}
+                  placeholder="optional"
+                />
+              </label>
+              <label className={fieldTile}>
+                <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Title</span>
+                <input
+                  value={draft.title}
+                  onChange={(event) => updateDraft({ title: event.target.value })}
+                  className={tileInput}
+                  placeholder="Mr. / Ms. / Dr."
+                />
+              </label>
+            </div>
+            <label className={cn(fieldTile, 'block')}>
+              <span className="block font-mono text-[10px] uppercase tracking-[0.12em] text-surface-500">Private note</span>
+              <textarea
+                value={draft.comments}
+                onChange={(event) => updateDraft({ comments: event.target.value })}
+                rows={3}
+                className={cn(tileInput, 'h-auto resize-y py-1')}
+                placeholder="staff-only · prints nowhere customer-facing"
+              />
+            </label>
+          </>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 dark:bg-surface-800">
           <div className="flex flex-wrap gap-2">
@@ -2373,16 +2875,9 @@ function SaleWorkspace({
             <Wrench className="h-3.5 w-3.5" />
             Repair
           </button>
-          {cartItems.length > 0 && (
-            <button
-              type="button"
-              onClick={onTender}
-              className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3 py-1.5 text-xs font-bold text-on-primary dark:bg-primary-500"
-            >
-              <CreditCard className="h-3.5 w-3.5" />
-              Charge
-            </button>
-          )}
+          {/* Charge button lives only in the cart footer per mockup pattern.
+              Filter row stays focused on category navigation; cart footer
+              owns the primary tender CTA. */}
         </div>
       </div>
 
@@ -2427,13 +2922,15 @@ function SaleWorkspace({
                 </span>
               )}
               <Package className="h-6 w-6 text-surface-400" />
-              <div className="mt-3 line-clamp-2 min-h-10 font-semibold">{product.name}</div>
-              <div className="mt-1 truncate font-mono text-xs text-surface-900 dark:text-surface-500">{product.sku || 'No SKU'}</div>
-              <div className="mt-auto flex items-end justify-between pt-3">
-                <span className="font-display text-2xl">{formatCurrency(Number(product.retail_price ?? product.price ?? 0))}</span>
-                <Pill tone={out ? 'error' : Number(product.in_stock ?? 0) <= 2 && product.item_type !== 'service' ? 'warning' : 'success'}>
+              <div className="mt-2 line-clamp-2 min-h-10 text-[13px] font-semibold leading-snug" title={product.sku ? `${product.name} · ${product.sku}` : product.name}>{product.name}</div>
+              <div className="mt-auto flex items-baseline justify-between pt-2">
+                <span className="font-display text-[22px] text-primary-700 dark:text-primary-500">{formatCurrency(Number(product.retail_price ?? product.price ?? 0))}</span>
+                <span className={cn(
+                  'font-mono text-[10.5px] uppercase tracking-wider',
+                  out ? 'text-red-500' : Number(product.in_stock ?? 0) <= 2 && product.item_type !== 'service' ? 'text-[#e8a33d]' : 'text-emerald-600 dark:text-[#34c47e]',
+                )}>
                   {stockLabel(product)}
-                </Pill>
+                </span>
               </div>
             </button>
           );
@@ -2497,22 +2994,30 @@ function CartColumn({
             <ShoppingCart className="h-7 w-7 text-surface-900 dark:text-surface-500" />
           </div>
           <div className="mt-4 font-display text-2xl text-surface-900 dark:text-surface-100">Cart is asleep</div>
-          <div className="mt-1 max-w-[240px] text-[12.5px] text-surface-500 dark:text-surface-400">
-            Pick a customer or take a walk-in to wake it up.
-          </div>
         </div>
       )}
       {awake && (
         <>
-          <button type="button" onClick={onSwapCustomer} className="flex items-center gap-3 border-b border-surface-200 dark:border-surface-700 p-4 text-left hover:bg-surface-100 dark:hover:bg-surface-900">
-            <div className="grid h-11 w-11 place-items-center rounded-full bg-[#4db8c9] font-bold text-[#002d35]">
+          <button type="button" onClick={onSwapCustomer} className="flex items-start gap-3 border-b border-surface-200 dark:border-surface-700 p-4 text-left hover:bg-surface-100 dark:hover:bg-surface-900">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#4db8c9] font-bold text-[#002d35]">
               {initials(getCustomerName(customer))}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-semibold text-surface-900 dark:text-surface-50">{getCustomerName(customer)}</div>
-              <div className="truncate text-sm text-surface-900 dark:text-surface-500">{customer?.phone || customer?.mobile || customer?.email || 'No customer attached'}</div>
+              <div className="flex items-center gap-2">
+                <span className="truncate font-semibold text-surface-900 dark:text-surface-50">{getCustomerName(customer)}</span>
+                {customer?.group_name && <Pill tone="vip">{customer.group_name}</Pill>}
+              </div>
+              <div className="truncate text-[12.5px] text-surface-900 dark:text-surface-500">{customer?.phone || customer?.mobile || customer?.email || 'No contact saved'}</div>
+              {(customer?.past_tickets_count != null || customer?.warranty_summary) && (
+                <div className="truncate text-[11.5px] text-surface-500 dark:text-surface-400">
+                  {[
+                    customer?.past_tickets_count != null ? `${customer.past_tickets_count} past tickets` : null,
+                    customer?.warranty_summary || null,
+                  ].filter(Boolean).join(' · ')}
+                </div>
+              )}
             </div>
-            {customer?.group_name && <Pill tone="vip">{customer.group_name}</Pill>}
+            <span className="text-surface-400 dark:text-surface-500" aria-label="Swap customer">⋯</span>
           </button>
           <div className="min-h-0 flex-1 overflow-auto p-3">
             {cartItems.length === 0 ? (
@@ -2522,27 +3027,27 @@ function CartColumn({
             ) : (
               <div className="space-y-2">
                 {cartItems.map((item) => (
-                  <div key={item.id} className={cn('rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-900 p-3', item.type === 'repair' && 'border-l-4 border-l-primary-500 dark:border-l-[#fdeed0]')}>
+                  <div key={item.id} className={cn('group relative rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 p-3', item.type === 'repair' && 'border-l-4 border-l-primary-500 dark:border-l-[#fdeed0]')}>
                     <div className="flex gap-3">
-                      <div className="mt-1 grid h-8 w-8 place-items-center rounded-lg bg-surface-100 dark:bg-surface-700">
-                        {item.type === 'repair' ? <Wrench className="h-4 w-4" /> : <Package className="h-4 w-4" />}
+                      <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300">
+                        {item.type === 'repair' ? <Wrench className="h-3.5 w-3.5" /> : <Package className="h-3.5 w-3.5" />}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="line-clamp-2 font-semibold text-surface-900 dark:text-surface-100">{lineTitle(item)}</div>
-                        <div className="mt-1 text-xs text-surface-900 dark:text-surface-500">{lineSubtitle(item)}</div>
+                        <div className="line-clamp-2 text-[13px] font-semibold text-surface-900 dark:text-surface-100">{lineTitle(item)}</div>
+                        <div className="mt-0.5 truncate text-[11.5px] text-surface-500 dark:text-surface-500">{lineSubtitle(item)}</div>
                         {(item.type === 'product' || item.type === 'misc') && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <button type="button" onClick={() => onQty(item.id, -1)} disabled={locked} className="rounded border border-surface-300 dark:border-surface-700 p-1" aria-label="Decrease quantity"><Minus className="h-3 w-3" /></button>
-                            <span className="w-8 text-center font-mono text-xs">{item.quantity}</span>
-                            <button type="button" onClick={() => onQty(item.id, 1)} disabled={locked} className="rounded border border-surface-300 dark:border-surface-700 p-1" aria-label="Increase quantity"><Plus className="h-3 w-3" /></button>
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <button type="button" onClick={() => onQty(item.id, -1)} disabled={locked} className="rounded border border-surface-200 dark:border-surface-700 p-0.5 text-surface-700 dark:text-surface-300" aria-label="Decrease quantity"><Minus className="h-3 w-3" /></button>
+                            <span className="w-6 text-center font-mono text-[11.5px]">{item.quantity}</span>
+                            <button type="button" onClick={() => onQty(item.id, 1)} disabled={locked} className="rounded border border-surface-200 dark:border-surface-700 p-0.5 text-surface-700 dark:text-surface-300" aria-label="Increase quantity"><Plus className="h-3 w-3" /></button>
                           </div>
                         )}
                       </div>
-                      <div className="text-right">
-                        <div className="font-display text-xl text-surface-900 dark:text-surface-100">{formatCurrency(lineAmount(item))}</div>
-                        <div className="mt-2 flex justify-end gap-1">
-                          <button type="button" onClick={() => onEditLine(item)} disabled={locked} className="rounded p-1 text-surface-900 dark:text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700" aria-label="Edit line"><Edit3 className="h-3.5 w-3.5" /></button>
-                          <button type="button" onClick={() => onRemoveLine(item.id)} disabled={locked} className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40" aria-label="Remove line"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <div className="font-mono text-[15px] font-semibold text-surface-900 dark:text-surface-100">{formatCurrency(lineAmount(item))}</div>
+                        <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                          <button type="button" onClick={() => onEditLine(item)} disabled={locked} className="rounded p-1 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700" aria-label="Edit line"><Edit3 className="h-3 w-3" /></button>
+                          <button type="button" onClick={() => onRemoveLine(item.id)} disabled={locked} className="rounded p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40" aria-label="Remove line"><Trash2 className="h-3 w-3" /></button>
                         </div>
                       </div>
                     </div>
@@ -2551,12 +3056,23 @@ function CartColumn({
               </div>
             )}
           </div>
-          {/* Coupon row pinned above totals (mockup pattern). Renders as a
-              flat input, not a dashed CTA, so "GOLDLOYAL10 APPLIED"
-              reads as state, not a prompt. */}
-          <button type="button" onClick={onDiscount} disabled={locked} className="flex w-full items-center gap-2 border-y border-surface-200 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-900 px-4 py-2.5 text-left text-sm font-semibold text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700">
+          {/* Coupon row pinned above totals (mockup pattern). When a discount
+              is applied, render as state ("REASON · APPLIED") not a prompt. */}
+          <button type="button" onClick={onDiscount} disabled={locked} className={cn(
+            'flex w-full items-center gap-2 border-y px-4 py-2.5 text-left text-sm font-semibold',
+            totals.discountAmount > 0
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:bg-[#34c47e]/10 dark:text-[#34c47e]'
+              : 'border-surface-200 dark:border-surface-700 bg-surface-50/60 dark:bg-surface-900 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700',
+          )}>
             <Tag className="h-4 w-4" />
-            Coupon or discount
+            {totals.discountAmount > 0 ? (
+              <>
+                <span className="truncate font-mono uppercase tracking-wider">{(customer?.group_name || 'discount').toString().toUpperCase()}</span>
+                <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider">applied</span>
+              </>
+            ) : (
+              'Coupon or discount'
+            )}
           </button>
           <div className="border-t border-surface-200 dark:border-surface-700 p-4">
             <div className="space-y-1.5 font-mono text-[12.5px]">
@@ -2739,6 +3255,21 @@ function RepairQuoteStep({ draft, setDraft, onBack, onContinue }: {
             <input className={inputClass} inputMode="decimal" value={draft.laborPrice} onChange={(event) => setDraft((prev) => ({ ...prev, laborPrice: event.target.value }))} />
           </label>
         </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold">Technician</span>
+            <select className={inputClass} value={draft.technician} onChange={(event) => setDraft((prev) => ({ ...prev, technician: event.target.value }))}>
+              <option value="">— assign later —</option>
+              {TECHNICIAN_OPTIONS_STUB.map((tech) => <option key={tech} value={tech}>{tech}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-semibold">Promised turnaround</span>
+            <select className={inputClass} value={draft.turnaround} onChange={(event) => setDraft((prev) => ({ ...prev, turnaround: event.target.value }))}>
+              {TURNAROUND_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+          </label>
+        </div>
         <label className="mt-4 block">
           <span className="mb-1 block text-sm font-semibold">Diagnostic notes</span>
           <textarea className={inputClass} rows={5} value={draft.diagnostic} onChange={(event) => setDraft((prev) => ({ ...prev, diagnostic: event.target.value }))} placeholder="Short counter-safe quote summary." />
@@ -2746,6 +3277,11 @@ function RepairQuoteStep({ draft, setDraft, onBack, onContinue }: {
         <div className="mt-4 rounded-lg border border-surface-200 p-4 dark:border-surface-800">
           <div className="text-sm font-semibold">Quote preview</div>
           <div className="mt-2 flex justify-between font-mono text-sm"><span>{draft.serviceName}</span><span>{formatCurrency(parseMoney(draft.laborPrice))}</span></div>
+          {(draft.technician || draft.turnaround) && (
+            <div className="mt-1 text-xs text-surface-500">
+              {draft.technician ? `Tech ${draft.technician}` : 'Tech: TBD'} · {draft.turnaround || 'Turnaround: TBD'}
+            </div>
+          )}
         </div>
       </Section>
       <WizardFooter onBack={onBack} onContinue={onContinue} />
@@ -2759,6 +3295,7 @@ function RepairDepositStep({ draft, setDraft, onBack, onSave }: {
   onBack: () => void;
   onSave: () => void;
 }) {
+  const [waiverModal, setWaiverModal] = useState(false);
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
       <Stepper step="deposit" />
@@ -2766,15 +3303,120 @@ function RepairDepositStep({ draft, setDraft, onBack, onSave }: {
         <div className="font-mono text-xs uppercase text-surface-900 dark:text-surface-500">Suggested deposit</div>
         <div className="mt-2 font-display text-7xl text-primary-800 dark:text-primary-500">{formatCurrency(parseMoney(draft.depositAmount))}</div>
         <div className="mt-2 text-sm text-surface-900 dark:text-surface-500">Balance is collected at pickup. Deposit can be changed before tender.</div>
+        {(draft.technician || draft.turnaround) && (
+          <div className="mx-auto mt-3 inline-flex items-center gap-2 rounded-full border border-surface-200 bg-surface-50 px-3 py-1 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-300">
+            {draft.technician ? `Tech ${draft.technician}` : 'Tech: TBD'} · {draft.turnaround || 'Turnaround: TBD'}
+          </div>
+        )}
         <div className="mx-auto mt-6 max-w-sm">
           <input className={cn(inputClass, 'text-center font-display text-4xl')} inputMode="decimal" value={draft.depositAmount} onChange={(event) => setDraft((prev) => ({ ...prev, depositAmount: event.target.value }))} />
         </div>
-        <label className="mt-5 inline-flex items-center gap-2 text-sm font-semibold">
-          <input type="checkbox" checked={draft.waiverHandled} onChange={(event) => setDraft((prev) => ({ ...prev, waiverHandled: event.target.checked }))} />
-          Waiver handled on terminal or paper
-        </label>
+        <div className="mt-5 flex items-center justify-center gap-3">
+          <label className="inline-flex items-center gap-2 text-sm font-semibold">
+            <input type="checkbox" checked={draft.waiverHandled} onChange={(event) => setDraft((prev) => ({ ...prev, waiverHandled: event.target.checked }))} />
+            Waiver handled
+          </label>
+          <button type="button" className={ghostButton} onClick={() => setWaiverModal(true)}>
+            <FileText className="h-4 w-4" /> Sign on screen
+          </button>
+        </div>
       </Section>
       <WizardFooter onBack={onBack} continueLabel="Add repair to cart" onContinue={onSave} />
+      {waiverModal && (
+        <WaiverCanvasModal
+          onCancel={() => setWaiverModal(false)}
+          onConfirm={() => {
+            setDraft((prev) => ({ ...prev, waiverHandled: true }));
+            setWaiverModal(false);
+            toast.success('Waiver signed');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * WaiverCanvasModal — Mockup Frame 07: customer signs the diagnostic waiver
+ * on screen before the deposit posts. Persisting the signature image is a
+ * follow-up — the server already has `repair_waivers` table from the audit
+ * doc, but the upload endpoint isn't wired yet. For now we capture the
+ * stroke locally and treat any non-empty signature as "handled" so the
+ * cashier can proceed; the image bytes will be hooked up when /repair-waivers
+ * lands.
+ */
+function WaiverCanvasModal({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef(false);
+  const [hasInk, setHasInk] = useState(false);
+
+  const start = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    drawingRef.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    ctx.beginPath();
+    ctx.moveTo(event.clientX - rect.left, event.clientY - rect.top);
+  };
+  const move = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#111';
+    ctx.lineTo(event.clientX - rect.left, event.clientY - rect.top);
+    ctx.stroke();
+    setHasInk(true);
+  };
+  const end = () => { drawingRef.current = false; };
+  const clear = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasInk(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+        <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-800">
+          <div>
+            <div className="font-display text-xl">Diagnostic waiver</div>
+            <div className="text-xs text-surface-500">Hand the screen to the customer to sign.</div>
+          </div>
+          <button type="button" onClick={onCancel} aria-label="Close" className="rounded p-1 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="border-b border-surface-200 bg-surface-50 px-5 py-4 text-xs leading-relaxed text-surface-700 dark:border-surface-800 dark:bg-surface-950 dark:text-surface-300">
+          By signing, you authorize diagnostic work and agree the deposit is non-refundable if the device cannot be repaired due to undisclosed prior damage. Liquid-damage repairs are best-effort. We are not responsible for data loss; back up before service.
+        </div>
+        <div className="bg-white p-3 dark:bg-surface-900">
+          <canvas
+            ref={canvasRef}
+            width={600}
+            height={180}
+            className="block w-full rounded-md border border-dashed border-surface-300 bg-surface-50 dark:border-surface-700 dark:bg-surface-100"
+            onPointerDown={start}
+            onPointerMove={move}
+            onPointerUp={end}
+            onPointerLeave={end}
+            onPointerCancel={end}
+          />
+        </div>
+        <div className="flex items-center justify-between border-t border-surface-200 px-5 py-3 dark:border-surface-800">
+          <button type="button" onClick={clear} className={ghostButton}>Clear</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={onCancel} className={secondaryButton}>Cancel</button>
+            <button type="button" disabled={!hasInk} onClick={onConfirm} className={primaryButton}>Confirm signature</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2817,8 +3459,8 @@ function TenderMethodView({
   onSelect: (method: TenderMethod) => void;
 }) {
   const methods: Array<{ method: TenderMethod; title: string; subtitle: string; icon: React.ElementType; disabled?: boolean }> = [
-    { method: 'Cash', title: 'Cash', subtitle: 'Typed amount, drawer opens on confirm', icon: Banknote },
-    { method: 'Card', title: 'Card', subtitle: blockchypConfigured ? `${terminalName} ready` : 'Pair terminal in settings', icon: CreditCard, disabled: !blockchypConfigured },
+    { method: 'Cash', title: 'Cash', subtitle: 'Type amount · drawer opens on confirm', icon: Banknote },
+    { method: 'Card', title: 'Card · tap · chip · swipe', subtitle: blockchypConfigured ? `Terminal ${terminalName} · ready · tip handled there` : 'Pair terminal in settings', icon: CreditCard, disabled: !blockchypConfigured },
     { method: 'Gift card', title: 'Gift card', subtitle: 'Scan or type code', icon: Gift },
     { method: 'Store credit', title: 'Store credit', subtitle: 'Apply customer balance', icon: Star },
   ];
@@ -2839,15 +3481,16 @@ function TenderMethodView({
         </div>
       )}
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        {methods.map(({ method, title, subtitle, icon: Icon, disabled }) => (
-          <button key={method} type="button" onClick={() => onSelect(method)} disabled={disabled} className="rounded-lg border border-surface-200 bg-white p-5 text-left shadow-sm hover:border-primary-500 disabled:hover:border-surface-200 dark:border-surface-800 dark:bg-surface-900">
+        {methods.map(({ method, title, subtitle, icon: Icon, disabled }, index) => (
+          <button key={method} type="button" onClick={() => onSelect(method)} disabled={disabled} className="relative rounded-lg border border-surface-200 bg-white p-5 text-left shadow-sm hover:border-primary-500 disabled:hover:border-surface-200 dark:border-surface-800 dark:bg-surface-900">
+            <span className="absolute right-3 top-3 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[10px] text-surface-400">{index + 1}</span>
             <Icon className="h-7 w-7 text-primary-700 dark:text-primary-500" />
             <div className="mt-4 font-display text-3xl">{title}</div>
             <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">{subtitle}</div>
           </button>
         ))}
       </div>
-      <div className="mt-4 text-center text-sm text-surface-900 dark:text-surface-500">Take a partial payment by entering less than the remaining amount.</div>
+      <div className="mt-4 text-center text-sm text-surface-900 dark:text-surface-500">Take less than the full amount on any method — remainder bounces back here for a second tender.</div>
     </div>
   );
 }
@@ -2999,48 +3642,75 @@ function HeldSalesView({ rows, loading, onRecall, onDiscard }: {
   onRecall: (id: number) => void;
   onDiscard: (id: number) => void;
 }) {
+  const filterPills = [
+    { label: 'All', count: rows.length },
+    { label: 'Mine', count: rows.length },
+    { label: 'Repair drafts', count: 0 },
+    { label: 'Pickup-ready', count: 0 },
+    { label: 'Expiring < 1h', count: 0 },
+  ];
   return (
-    <Section className="overflow-hidden">
-      <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-800">
-        <div>
-          <div className="font-display text-2xl">Held Sales</div>
-          <div className="text-sm text-surface-900 dark:text-surface-500">{rows.length} parked sale{rows.length === 1 ? '' : 's'}</div>
-        </div>
-        <Pill tone="info">recall</Pill>
+    <div className="px-5 py-4">
+      <div className="mb-3 flex flex-wrap gap-2">
+        {filterPills.map((pill, index) => (
+          <button
+            key={pill.label}
+            type="button"
+            className={cn(
+              'rounded-full px-3 py-1.5 text-xs font-semibold',
+              index === 0
+                ? 'bg-primary-500 text-on-primary dark:bg-primary-500'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300',
+            )}
+          >
+            {pill.label} · {pill.count}
+          </button>
+        ))}
       </div>
-      {loading ? (
-        <div className="p-6 text-sm text-surface-900 dark:text-surface-500">Loading held sales...</div>
-      ) : rows.length === 0 ? (
-        <div className="p-8 text-center text-sm text-surface-900 dark:text-surface-500">No held sales right now.</div>
-      ) : (
-        <div className="divide-y divide-surface-200 dark:divide-surface-800">
-          {rows.map((row) => (
-            <div key={row.id} className="grid items-center gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_140px_160px_180px]">
-              <div>
-                <div className="font-semibold">{row.label || 'Held sale'}</div>
-                <div className="text-surface-900 dark:text-surface-500">Held {formatDateTime(row.created_at)}</div>
-              </div>
-              <div className="font-mono">{row.total_cents != null ? formatCurrency(fromCents(row.total_cents)) : '-'}</div>
-              <div className="text-surface-900 dark:text-surface-500">{[row.owner_first_name, row.owner_last_name].filter(Boolean).join(' ') || 'Current cashier'}</div>
+      <div className="overflow-hidden rounded-xl border border-surface-200 bg-white dark:border-surface-700 dark:bg-surface-800">
+        <div className="grid grid-cols-[minmax(200px,1fr)_minmax(200px,1.4fr)_120px_140px_120px_120px] gap-3 border-b border-surface-200 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-surface-500 dark:border-surface-700 dark:text-surface-500">
+          <span>Customer</span>
+          <span>Items</span>
+          <span>Total</span>
+          <span>Held by</span>
+          <span>Held since</span>
+          <span></span>
+        </div>
+        {loading ? (
+          <div className="p-6 text-sm text-surface-900 dark:text-surface-500">Loading held sales...</div>
+        ) : rows.length === 0 ? (
+          <div className="p-8 text-center text-sm text-surface-900 dark:text-surface-500">No held sales right now.</div>
+        ) : (
+          rows.map((row) => (
+            <div key={row.id} className="grid grid-cols-[minmax(200px,1fr)_minmax(200px,1.4fr)_120px_140px_120px_120px] items-center gap-3 border-b border-surface-200 px-4 py-3 text-sm last:border-b-0 dark:border-surface-700">
+              <div className="font-semibold">{row.label?.split(' · ')?.[0] || 'Held sale'}</div>
+              <div className="truncate text-xs text-surface-600 dark:text-surface-300">{row.label?.split(' · ').slice(1).join(' · ') || '—'}</div>
+              <div className="font-mono">{row.total_cents != null ? formatCurrency(fromCents(row.total_cents)) : '—'}</div>
+              <div className="text-xs text-surface-600 dark:text-surface-400">{[row.owner_first_name, row.owner_last_name].filter(Boolean).join(' ') || 'Current cashier'}</div>
+              <div className="font-mono text-xs text-surface-500">{formatDateTime(row.created_at)}</div>
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => onRecall(row.id)} className={primaryButton}>Resume</button>
-                <button type="button" onClick={() => onDiscard(row.id)} className={dangerButton}>Discard</button>
+                <button type="button" onClick={() => onDiscard(row.id)} className={cn(dangerButton, 'text-xs')}>×</button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-    </Section>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 
-function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, setSelections, processing, onProcess }: {
+type RefundMethod = 'original' | 'cash' | 'card' | 'store_credit';
+
+function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, setSelections, refundMethod, setRefundMethod, processing, onProcess }: {
   invoiceId: string;
   setInvoiceId: (value: string) => void;
   invoice: any;
   loading: boolean;
   selections: RefundLineSelection[];
   setSelections: React.Dispatch<React.SetStateAction<RefundLineSelection[]>>;
+  refundMethod: RefundMethod;
+  setRefundMethod: (m: RefundMethod) => void;
   processing: boolean;
   onProcess: () => void;
 }) {
@@ -3085,6 +3755,41 @@ function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, set
               );
             })}
           </div>
+          <div className="border-t border-surface-200 p-4 dark:border-surface-800">
+            <div className="mb-3 font-mono text-[10px] uppercase tracking-wider text-surface-500">Refund to</div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {([
+                { id: 'original', label: 'Back to original', sub: 'recommended' },
+                { id: 'cash', label: 'Cash', sub: 'from drawer' },
+                { id: 'card', label: 'Card', sub: 'reverse charge' },
+                { id: 'store_credit', label: 'Store credit', sub: 'on customer file' },
+              ] as Array<{ id: RefundMethod; label: string; sub: string }>).map((opt) => {
+                const active = refundMethod === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setRefundMethod(opt.id)}
+                    className={cn(
+                      'flex flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition',
+                      active
+                        ? 'border-primary-500 bg-primary-500/10 text-primary-700 dark:text-primary-300'
+                        : 'border-surface-200 bg-surface-50 text-surface-700 hover:border-surface-300 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200',
+                    )}
+                  >
+                    <span className="text-sm font-semibold">{opt.label}</span>
+                    <span className={cn('text-[10px] uppercase tracking-wider', active ? 'text-primary-600 dark:text-primary-400' : 'text-surface-500')}>{opt.sub}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {refundMethod === 'cash' && (
+              <p className="mt-2 text-xs text-surface-500">Confirm the drawer has at least {formatCurrency(selectedTotal)} on hand before processing.</p>
+            )}
+            {refundMethod === 'store_credit' && (
+              <p className="mt-2 text-xs text-surface-500">Credit posts to the customer's file for use on a future ticket.</p>
+            )}
+          </div>
           <div className="flex items-center justify-between border-t border-surface-200 p-4 dark:border-surface-800">
             <div>
               <div className="text-sm text-surface-900 dark:text-surface-500">Refund total</div>
@@ -3100,21 +3805,102 @@ function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, set
   );
 }
 
+/**
+ * CloseShiftView — formerly hardcoded dummy values for the Z-report side panel.
+ *
+ * Now reads:
+ *   GET /pos-enrich/drawer/current    → active shift (or null if none open)
+ *   GET /pos-enrich/drawer/{id}/z-report → live totals (gross, refund, payment breakdown,
+ *                                          expected cash, variance)
+ *
+ * Lock-register fires `POST /pos-enrich/drawer/{id}/close` with the operator's
+ * counted-cash total. Variance > $5 surfaces a warning banner (manager-PIN gate
+ * lives in a follow-up — server already requires manager-or-admin).
+ */
 function CloseShiftView({ cashCount, setCashCount, onPopDrawer }: {
   cashCount: Record<string, string>;
   setCashCount: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onPopDrawer: () => void;
 }) {
-  const counted = Object.entries(cashCount).reduce((sum, [denom, count]) => sum + Number(denom) * (Number.parseInt(count || '0', 10) || 0), 0);
+  const qc = useQueryClient();
+  // Variance > $5 → require manager PIN before close lands. PinModal hits the
+  // generic /auth/verify-pin and is shared with cash-in/out + high-value sale
+  // gates, so the lockout state (5 fails → 60 s lock) is consistent.
+  const [showPinGate, setShowPinGate] = useState(false);
+  const { data: shift, isLoading: shiftLoading } = useQuery({
+    queryKey: ['pos-enrich', 'drawer-current'],
+    queryFn: async () => {
+      const res = await api.get<{ data: { id: number; opened_at: string; opening_float_cents: number; closed_at: string | null } | null }>('/pos-enrich/drawer/current');
+      return res.data.data;
+    },
+    staleTime: 30_000,
+  });
+
+  const shiftId = shift?.id ?? null;
+  const { data: zReport, isLoading: zLoading } = useQuery({
+    queryKey: ['pos-enrich', 'z-report', shiftId, 'preview'],
+    enabled: shiftId != null,
+    queryFn: async () => {
+      const res = await api.get<{ data: {
+        opening_float_cents: number;
+        expected_cents: number;
+        counted_cents: number;
+        variance_cents: number;
+        payment_breakdown: Array<{ method: string; cents: number; count: number }>;
+        totals: { gross_cents: number; refund_cents: number; net_cents: number; transaction_count: number };
+      } }>(`/pos-enrich/drawer/${shiftId}/z-report`);
+      return res.data.data;
+    },
+    // Z-report is computed live for an open shift, so refetch on focus.
+    refetchOnWindowFocus: true,
+    staleTime: 10_000,
+  });
+
+  const closeMutation = useMutation({
+    mutationFn: async (countedCents: number) => {
+      if (shiftId == null) throw new Error('No open shift');
+      const res = await api.post(`/pos-enrich/drawer/${shiftId}/close`, { closing_counted_cents: countedCents });
+      return res.data?.data;
+    },
+    onSuccess: () => {
+      toast.success('Shift closed');
+      qc.invalidateQueries({ queryKey: ['pos-enrich', 'drawer-current'] });
+      qc.invalidateQueries({ queryKey: ['pos-enrich', 'z-report'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Could not close shift');
+    },
+  });
+
+  const counted = Object.entries(cashCount).reduce(
+    (sum, [denom, count]) => sum + Number(denom) * (Number.parseInt(count || '0', 10) || 0),
+    0,
+  );
+  const expectedCash = zReport ? fromCents(zReport.expected_cents) : 0;
+  const variance = counted - expectedCash;
+  const grossSales = zReport ? fromCents(zReport.totals.gross_cents) : 0;
+  const refundsTotal = zReport ? fromCents(zReport.totals.refund_cents) : 0;
+  const cardTender = zReport
+    ? fromCents(zReport.payment_breakdown.filter((p) => p.method === 'card').reduce((s, p) => s + p.cents, 0))
+    : 0;
+  const txCount = zReport?.totals.transaction_count ?? 0;
+  const varianceFlagged = Math.abs(variance) > 5;
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
       <Section className="p-5">
         <div className="flex items-center justify-between">
           <div>
             <div className="font-display text-3xl">Close shift</div>
-            <div className="text-sm text-surface-900 dark:text-surface-500">Count denominations, review Z-report, then lock the register.</div>
+            <div className="text-sm text-surface-900 dark:text-surface-500">
+              {shiftLoading
+                ? 'Loading shift…'
+                : shift
+                  ? `Shift #${shift.id} · opened ${formatTime(shift.opened_at)} · float ${formatCurrency(fromCents(shift.opening_float_cents))}`
+                  : 'No open shift — start one from the cash-drawer widget in the topbar.'}
+            </div>
           </div>
-          <button type="button" onClick={onPopDrawer} className={secondaryButton}><Banknote className="h-4 w-4" /> Pop drawer</button>
+          <button type="button" onClick={onPopDrawer} className={secondaryButton} disabled={!shift}><Banknote className="h-4 w-4" /> Pop drawer</button>
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           {Object.keys(cashCount).map((denom) => (
@@ -3128,17 +3914,53 @@ function CloseShiftView({ cashCount, setCashCount, onPopDrawer }: {
       <Section className="p-5">
         <div className="font-mono text-xs uppercase text-surface-900 dark:text-surface-500">Counted cash</div>
         <div className="mt-1 font-display text-5xl">{formatCurrency(counted)}</div>
+        {zLoading && <div className="mt-3 text-xs text-surface-500">Loading Z-report…</div>}
         <div className="mt-5 space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Gross sales</span><span className="font-mono">{formatCurrency(1832.44)}</span></div>
-          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Refunds</span><span className="font-mono text-red-600">-{formatCurrency(34.88)}</span></div>
-          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Card tender</span><span className="font-mono">{formatCurrency(1260.12)}</span></div>
-          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Expected cash</span><span className="font-mono">{formatCurrency(537.44)}</span></div>
+          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Transactions</span><span className="font-mono">{txCount}</span></div>
+          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Gross sales</span><span className="font-mono">{formatCurrency(grossSales)}</span></div>
+          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Refunds</span><span className="font-mono text-red-600">-{formatCurrency(refundsTotal)}</span></div>
+          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Card tender</span><span className="font-mono">{formatCurrency(cardTender)}</span></div>
+          <div className="flex justify-between"><span className="text-surface-900 dark:text-surface-500">Expected cash</span><span className="font-mono">{formatCurrency(expectedCash)}</span></div>
           <div className="border-t border-surface-200 pt-3 dark:border-surface-800">
-            <div className="flex justify-between font-semibold"><span>Variance</span><span className="font-mono">{formatCurrency(counted - 537.44)}</span></div>
+            <div className="flex justify-between font-semibold">
+              <span>Variance</span>
+              <span className={cn('font-mono', varianceFlagged ? (variance < 0 ? 'text-red-600' : 'text-amber-600') : 'text-surface-700 dark:text-surface-300')}>
+                {variance >= 0 ? '+' : ''}{formatCurrency(variance)}
+              </span>
+            </div>
           </div>
         </div>
-        <button type="button" className={cn(primaryButton, 'mt-6 w-full')}>Lock register</button>
+        {varianceFlagged && (
+          <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+            Variance over $5 — manager PIN required to close.
+          </div>
+        )}
+        <button
+          type="button"
+          className={cn(primaryButton, 'mt-6 w-full')}
+          disabled={!shift || closeMutation.isPending}
+          onClick={() => {
+            if (varianceFlagged) {
+              setShowPinGate(true);
+            } else {
+              closeMutation.mutate(toCents(counted));
+            }
+          }}
+        >
+          <Lock className="h-4 w-4" />
+          {closeMutation.isPending ? 'Locking…' : 'Lock register'}
+        </button>
       </Section>
+      {showPinGate && (
+        <PinModal
+          title="Manager PIN required — variance over $5"
+          onSuccess={() => {
+            setShowPinGate(false);
+            closeMutation.mutate(toCents(counted));
+          }}
+          onCancel={() => setShowPinGate(false)}
+        />
+      )}
     </div>
   );
 }

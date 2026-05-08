@@ -115,6 +115,13 @@ export interface CreateCustomerInput {
   customer_group_id?: number;
   tax_number?: string;
   tax_class_id?: number;
+  // ID-on-file (driver's license / passport / state ID) — schema-supported
+  // since the original customer table; missing from this type kept POS
+  // and CustomerCreatePage from sending it. Surfacing now so the rich POS
+  // create-customer panel can capture ID at intake.
+  id_type?: string;
+  id_number?: string;
+  driving_license?: string;
   email_opt_in?: boolean;
   sms_opt_in?: boolean;
   comments?: string;

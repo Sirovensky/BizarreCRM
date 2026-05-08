@@ -64,9 +64,20 @@
   .browser.light { background: rgb(var(--s-50)); color: rgb(var(--s-900)); }
   .browser.compact { width: 1280px; height: 800px; }
 
+  /* Shipped 2026-05-08: the fake-browser-traffic-lights chrome is replaced
+     by the real AppShell header band. The mockup keeps `.b-chrome` as a
+     slim 56 px header slot so the sale tabs (and the right-side shell
+     cluster: ?, 💬, 🔔, user-pill) are visible in the design reference.
+     The traffic-lights and the URL bar are hidden — they were always a
+     screenshot affordance, never product chrome. */
   .b-chrome {
-    display: none;
+    height: 56px; flex-shrink: 0;
+    background: rgb(var(--s-950));
+    border-bottom: 1px solid rgb(var(--s-700));
+    display: flex; align-items: stretch; gap: 8px;
+    padding: 0 14px;
   }
+  .b-chrome .traffic, .b-chrome .url-bar { display: none; }
   .b-chrome-original {
     height: 38px; flex-shrink: 0;
     background: rgb(var(--s-950));
@@ -80,17 +91,34 @@
   .traffic .r { background: #ff5f57; }
   .traffic .y { background: #febc2e; }
   .traffic .g { background: #28c840; }
-  .b-tabs { display: flex; gap: 4px; align-items: flex-end; height: 100%; padding-top: 4px; }
-  .b-tab { padding: 6px 14px; border-radius: 8px 8px 0 0; font-size: 11.5px; color: rgb(var(--s-400)); background: transparent; display: flex; align-items: center; gap: 6px; }
-  .b-tab.active { background: rgb(var(--s-900)); color: rgb(var(--s-100)); }
-  .browser.light .b-tab.active { background: rgb(var(--s-50)); color: rgb(var(--s-900)); }
+  /* Shipped 2026-05-08: Chrome-style tabs portaled UP into the AppShell
+     header band. Active tab gets an inset 2 px cream top border so it reads
+     as the live tab merging into the content below; held tabs stay
+     transparent. + button at the end opens a new sale (auto-holds current). */
+  .b-tabs { display: flex; gap: 2px; align-items: flex-end; height: 100%; padding-top: 4px; overflow-x: auto; scrollbar-width: none; }
+  .b-tabs::-webkit-scrollbar { display: none; }
+  .b-tab { padding: 8px 12px; border-radius: 8px 8px 0 0; font-size: 11.5px; color: rgb(var(--s-400)); background: transparent; display: flex; align-items: center; gap: 6px; max-width: 260px; white-space: nowrap; transition: background 0.15s, color 0.15s; }
+  .b-tab.active { background: rgb(var(--s-900)); color: rgb(var(--s-50)); box-shadow: inset 0 2px 0 rgb(var(--primary-cream)); }
+  .browser.light .b-tab.active { background: rgb(var(--s-50)); color: rgb(var(--s-900)); box-shadow: inset 0 2px 0 rgb(var(--primary-caramel)); }
+  .b-tab:not(.active):hover { background: rgb(var(--s-800) / 0.6); color: rgb(var(--s-200)); }
+  .browser.light .b-tab:not(.active):hover { background: rgb(var(--s-100) / 0.6); color: rgb(var(--s-700)); }
+  .b-tab-add { padding: 0; width: 32px; height: 32px; border-radius: 8px 8px 0 0; color: rgb(var(--s-400)); background: transparent; display: inline-grid; place-items: center; font-size: 14px; cursor: pointer; }
+  .b-tab-add:hover { background: rgb(var(--s-800) / 0.6); color: rgb(var(--s-100)); }
+  .browser.light .b-tab-add:hover { background: rgb(var(--s-100) / 0.6); color: rgb(var(--s-900)); }
   .b-tab .x { opacity: 0.5; font-size: 10px; }
   .b-tab .fav { width: 12px; height: 12px; border-radius: 3px; background: linear-gradient(140deg, rgb(var(--primary-honey)), rgb(var(--primary-cream))); display: inline-grid; place-items: center; font-size: 8px; color: rgb(var(--primary-onPrimary)); font-weight: 800; }
   .url-bar { flex: 1; max-width: 540px; padding: 5px 12px; border-radius: 6px; background: rgb(var(--s-800)); font-size: 11.5px; color: rgb(var(--s-300)); font-family: 'JetBrains Mono', monospace; display: flex; align-items: center; gap: 8px; }
   .browser.light .url-bar { background: rgb(var(--s-100)); color: rgb(var(--s-700)); }
   .url-bar .lock { color: rgb(var(--success-dark)); font-size: 10px; }
   .browser.light .url-bar .lock { color: rgb(var(--success-light)); }
-  .b-icons { display: flex; gap: 8px; color: rgb(var(--s-500)); font-size: 13px; }
+  /* Shipped 2026-05-08: real AppShell right cluster — utility icon buttons + user pill.
+     margin-left:auto pins it to the right edge so tabs sit left, cluster sits right. */
+  .b-icons { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+  .b-icons .bi-btn { width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; font-size: 13px; color: rgb(var(--s-300)); cursor: pointer; }
+  .b-icons .bi-btn:hover { background: rgb(var(--s-800) / 0.8); color: rgb(var(--s-50)); }
+  .browser.light .b-icons .bi-btn { color: rgb(var(--s-700)); }
+  .browser.light .b-icons .bi-btn:hover { background: rgb(var(--s-100) / 0.8); color: rgb(var(--s-900)); }
+  .b-icons .bi-user { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(140deg, rgb(var(--primary-honey)), rgb(var(--primary-cream))); color: rgb(var(--primary-onPrimary)); font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; margin-left: 6px; }
 
   /* ── APP LAYOUT ──────────────────────────────────────── */
   .app {
@@ -500,9 +528,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · Open shift <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · Open shift <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/shift/open</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app shift-closed">
     <aside class="sidebar">
@@ -595,9 +623,10 @@
     <div class="b-tabs">
       <div class="b-tab active"><span class="fav">B</span> POS · New sale <span class="x">×</span></div>
       <div class="b-tab" style="opacity:0.6;"><span class="fav">B</span> #4829 · S. Marquez (held) <span class="x">×</span></div>
+          <div class="b-tab-add">+</div>
     </div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/new</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -772,9 +801,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · New sale <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · New sale <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/new</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app" style="filter: blur(0.5px);">
     <aside class="sidebar">
@@ -866,9 +895,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · S. Marquez · repair <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · S. Marquez · repair <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/draft-d20a/repair/device</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -1044,9 +1073,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · S. Marquez · repair · issue <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · S. Marquez · repair · issue <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/draft-d20a/repair/issue</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -1207,9 +1236,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · quote · iPhone 14 Pro <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · quote · iPhone 14 Pro <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/draft-d20a/repair/quote</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -1392,9 +1421,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · deposit <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #draft · deposit <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/draft-d20a/repair/deposit</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -1570,9 +1599,10 @@
     <div class="b-tabs">
       <div class="b-tab active"><span class="fav">B</span> POS · #28014 · S. Marquez <span class="x">×</span></div>
       <div class="b-tab" style="opacity:0.6;"><span class="fav">B</span> #28012 · M. D'Souza (held) <span class="x">×</span></div>
+          <div class="b-tab-add">+</div>
     </div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -1731,9 +1761,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · S. Marquez <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · S. Marquez <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014?edit=line-2</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -1866,9 +1896,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · S. Marquez · discount <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · S. Marquez · discount <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014?discount</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -2003,9 +2033,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · tender <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · tender <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014/tender</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -2115,9 +2145,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · cash <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · cash <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014/tender/cash</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -2231,9 +2261,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · card <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · card <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014/tender/card</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -2351,9 +2381,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · split <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · split <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014/tender/split</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -2485,9 +2515,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · paid <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · paid <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014/done</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app cart-collapsed">
     <aside class="sidebar">
@@ -2637,9 +2667,10 @@
     <div class="b-tabs">
       <div class="b-tab active"><span class="fav">B</span> POS · Recall held sales <span class="x">×</span></div>
       <div class="b-tab" style="opacity:0.6;"><span class="fav">B</span> POS · #28015 · new <span class="x">×</span></div>
+          <div class="b-tab-add">+</div>
     </div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sales/held</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -2775,9 +2806,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · refund <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · refund <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014/refund</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app no-cart">
     <aside class="sidebar">
@@ -2917,9 +2948,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · Pickup #4829 <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · Pickup #4829 <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/pickup/4829</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -3058,9 +3089,9 @@
 <div class="browser">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · Close shift <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · Close shift <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/shift/close</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app no-cart">
     <aside class="sidebar">
@@ -3203,9 +3234,9 @@
 <div class="browser light">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · New sale <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · New sale <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/new</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -3375,9 +3406,9 @@
 <div class="browser light">
   <div class="b-chrome">
     <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
-    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · S. Marquez <span class="x">×</span></div></div>
+    <div class="b-tabs"><div class="b-tab active"><span class="fav">B</span> POS · #28014 · S. Marquez <span class="x">×</span></div><div class="b-tab-add">+</div></div>
     <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/28014</div>
-    <div class="b-icons"><span>⤓</span><span>★</span><span>⋯</span></div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
   </div>
   <div class="app">
     <aside class="sidebar">
@@ -3522,6 +3553,173 @@
         <button class="btn btn-secondary">Discount <span class="kbd">⌘D</span></button>
         <button class="btn btn-secondary">Note</button>
         <button class="btn btn-primary btn-lg pay">Charge $401.73 <span class="kbd">⌘↵</span></button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ── Frame 23 · Inline Create Customer (rich, 3-tab) ── -->
+<div class="frame-caption"><strong>23 · Create Customer · rich inline panel</strong> &nbsp;·&nbsp; Cashier hits ⊕ on the customer gate (or "+ New customer" in the search dropdown). Inline panel takes over main column with 3 tabs · Contact · Address · Additional details. RepairDesk parity: title, organization, ID-on-file, customer group + tax class, opt-ins, source, comments, tags. Back-chevron returns to gate. Cart stays asleep until customer is created.</div>
+<div class="browser">
+  <div class="b-chrome">
+    <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+    <div class="b-tabs">
+      <div class="b-tab active"><span class="fav">B</span> POS · New customer · Sarah's slot <span class="x">×</span></div>
+      <div class="b-tab-add">+</div>
+    </div>
+    <div class="url-bar"><span class="lock">🔒</span> pos.bizarrecrm.com/sale/new/customer</div>
+    <div class="b-icons"><span class="bi-btn">?</span><span class="bi-btn">💬</span><span class="bi-btn">🔔</span><span class="bi-user">SR</span></div>
+  </div>
+  <div class="app shift-closed">
+    <aside class="sidebar">
+      <div class="sb-brand" style="padding: 4px 10px 14px;"><div class="name" style="font-family:'Bebas Neue',sans-serif; font-size: 22px; letter-spacing: 0.04em; color: rgb(var(--s-50));">BIZARRE CRM</div></div>
+      <div class="sb-group">
+        <div class="sb-group-h"><span class="caret">▾</span> MAIN</div>
+        <div class="sb-nav-list">
+          <div class="nav"><span class="ico">▦</span> Dashboard</div>
+          <div class="nav active"><span class="ico">🛒</span> POS / Check-In</div>
+          <div class="nav"><span class="ico">🔧</span> Tickets <span class="badge">23</span></div>
+          <div class="nav"><span class="ico">👥</span> Customers</div>
+        </div>
+      </div>
+      <div class="sb-group collapsed"><div class="sb-group-h"><span class="caret">▸</span> OPERATIONS</div></div>
+      <div class="sb-group collapsed"><div class="sb-group-h"><span class="caret">▸</span> COMMUNICATIONS</div></div>
+      <div class="sb-group collapsed"><div class="sb-group-h"><span class="caret">▸</span> MARKETING &amp; GROWTH</div></div>
+      <div class="sb-group collapsed"><div class="sb-group-h"><span class="caret">▸</span> TEAM</div></div>
+      <div class="sb-group collapsed"><div class="sb-group-h"><span class="caret">▸</span> BILLING</div></div>
+      <div class="sb-group collapsed"><div class="sb-group-h"><span class="caret">▸</span> ADMIN</div></div>
+      <div class="sb-spacer"></div>
+      <div class="sb-shift"><div class="label">Drawer</div><div class="float" style="font-size: 18px;">Open · 5h 24m</div><div class="meta">15 sales · since 9:14</div></div>
+      <div class="sb-bottom">
+        <div class="nav"><span class="ico">🛟</span> Support</div>
+        <div class="nav"><span class="ico">⚙</span> Settings</div>
+        <div class="sb-collapse">‹‹ Collapse</div>
+      </div>
+    </aside>
+    <header class="topbar">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="tb-icon" title="Back to customer gate" style="font-size:18px;">‹</div>
+        <div class="tb-title"><div class="t">New customer</div><div class="m">Sarah's slot · once created she's attached to the cart</div></div>
+      </div>
+      <div class="tb-search">🔍 <span style="opacity:0.7;">Search to attach an existing customer instead…</span> <span class="kbd" style="margin-left:auto;">⌘K</span></div>
+      <div class="tb-actions">
+        <span class="tb-chip">↩ Cancel <span class="kbd" style="margin-left:4px;">esc</span></span>
+        <span class="tb-chip" style="background: rgb(var(--primary-cream) / 0.18); color: rgb(var(--primary-cream)); border-color: rgb(var(--primary-cream) / 0.4);">✓ Create &amp; attach <span class="kbd" style="margin-left:4px;">⌘↵</span></span>
+      </div>
+      <div style="display:flex; align-items:center; gap:4px; padding-left: 12px; margin-left: 4px; border-left: 1px solid rgb(var(--s-700));">
+        <div class="tb-icon" title="Help">?</div>
+        <div class="tb-icon" title="Messages">💬<span class="badge">11</span></div>
+        <div class="tb-icon" title="Notifications">🔔<span class="badge error">3</span></div>
+        <div class="tb-user"><div class="av">PI</div><div style="display:flex; flex-direction:column;"><div class="nm">Pavel I.</div><div class="ro">cashier</div></div><span class="caret">▾</span></div>
+      </div>
+    </header>
+    <main class="main" style="padding: 24px 28px; overflow-y: auto;">
+      <div style="max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px;">
+        <!-- Type toggle: individual vs business -->
+        <div style="display:flex; gap: 8px;">
+          <span class="filter-pill active" style="padding: 8px 14px;">👤 Individual</span>
+          <span class="filter-pill" style="padding: 8px 14px;">🏢 Business</span>
+          <span style="margin-left:auto; font-size: 11px; color: rgb(var(--s-500)); align-self: center;">Required · <span style="color: rgb(var(--primary-cream));">first name</span> + one of <span style="color: rgb(var(--primary-cream));">phone / email</span></span>
+        </div>
+        <!-- Tab strip -->
+        <div style="display: flex; gap: 4px; border-bottom: 1px solid rgb(var(--s-700));">
+          <div style="padding: 10px 16px; font-size: 12px; font-family:'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--s-50)); border-bottom: 2px solid rgb(var(--primary-cream)); margin-bottom: -1px;">CONTACT</div>
+          <div style="padding: 10px 16px; font-size: 12px; font-family:'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--s-500));">ADDRESS</div>
+          <div style="padding: 10px 16px; font-size: 12px; font-family:'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--s-500));">ADDITIONAL DETAILS</div>
+        </div>
+        <!-- Tab body: Contact -->
+        <div style="display:grid; grid-template-columns: 120px 1fr 1fr; gap: 14px;">
+          <label style="display:flex; flex-direction:column; gap: 4px;">
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Title</span>
+            <select style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;"><option>Mr.</option><option>Ms.</option><option>Dr.</option></select>
+          </label>
+          <label style="display:flex; flex-direction:column; gap: 4px;">
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">First name <span style="color: rgb(var(--primary-cream));">*</span></span>
+            <input value="Sarah" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--primary-cream) / 0.5); color: rgb(var(--s-50)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap: 4px;">
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Last name</span>
+            <input value="Marquez" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+          </label>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <label style="display:flex; flex-direction:column; gap: 4px;">
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Mobile <span style="color: rgb(var(--primary-cream));">*</span></span>
+            <input value="(415) 555-0142" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap: 4px;">
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Phone (alt)</span>
+            <input placeholder="optional" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-500)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+          </label>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <label style="display:flex; flex-direction:column; gap: 4px;">
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Email</span>
+            <input value="sarah@example.com" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+          </label>
+          <label style="display:flex; flex-direction:column; gap: 4px;">
+            <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Organization</span>
+            <input placeholder="(individual — leave blank)" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-500)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+          </label>
+        </div>
+        <!-- Opt-in row -->
+        <div style="display:flex; gap: 22px; padding: 12px 14px; background: rgb(var(--s-900) / 0.5); border: 1px solid rgb(var(--s-700)); border-radius: 10px;">
+          <label style="display:flex; align-items:center; gap: 8px; font-size: 13px; color: rgb(var(--s-100));"><input type="checkbox" checked> Email opt-in <span style="color: rgb(var(--s-500)); font-size: 11px;">(receipts · marketing)</span></label>
+          <label style="display:flex; align-items:center; gap: 8px; font-size: 13px; color: rgb(var(--s-100));"><input type="checkbox" checked> SMS opt-in <span style="color: rgb(var(--s-500)); font-size: 11px;">(repair status · pickup)</span></label>
+        </div>
+        <!-- Other tabs (preview-collapsed) — Address fields, ID on file, group/tax/source/tags -->
+        <details style="background: rgb(var(--s-900) / 0.5); border: 1px solid rgb(var(--s-700)); border-radius: 10px; padding: 12px 14px;">
+          <summary style="font-size: 12px; font-family:'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--s-400)); cursor: pointer;">▸ ADDRESS · preview · address1 · address2 · city · state · zip · country</summary>
+          <div style="margin-top: 10px; font-size: 12px; color: rgb(var(--s-500));">5 fields · all optional. Required for shipping or invoice billing-address.</div>
+        </details>
+        <details style="background: rgb(var(--s-900) / 0.5); border: 1px solid rgb(var(--s-700)); border-radius: 10px; padding: 12px 14px;">
+          <summary style="font-size: 12px; font-family:'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--s-400)); cursor: pointer;">▸ ADDITIONAL DETAILS · ID on file · group · tax class · referral · source · tags · comments</summary>
+          <div style="margin-top: 10px; display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <label style="display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">ID type</span>
+              <select style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;"><option>Driver's license</option><option>Passport</option><option>State ID</option></select>
+            </label>
+            <label style="display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">ID number</span>
+              <input placeholder="DL #" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-500)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+            </label>
+            <label style="display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Customer group</span>
+              <select style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;"><option>— none —</option><option>Gold (10% off)</option><option>VIP (15% off)</option><option>Wholesale</option></select>
+            </label>
+            <label style="display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Tax class</span>
+              <select style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;"><option>Standard 8.875%</option><option>Tax-exempt (resale)</option></select>
+            </label>
+            <label style="display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Source</span>
+              <select style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;"><option>Walk-in</option><option>Google</option><option>Referral</option><option>Yelp</option></select>
+            </label>
+            <label style="display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Referred by</span>
+              <input placeholder="customer name or code" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-500)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+            </label>
+            <label style="grid-column: span 2; display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Tags</span>
+              <input value="vip · screen-broken · hates-AppleCare" style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-100)); padding: 8px 10px; border-radius: 8px; font-size: 13px;">
+            </label>
+            <label style="grid-column: span 2; display:flex; flex-direction:column; gap: 4px;">
+              <span style="font-size: 10.5px; font-family: 'JetBrains Mono', monospace; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--s-400));">Internal comments</span>
+              <textarea rows="2" placeholder="Visible to staff · never on receipt." style="background: rgb(var(--s-900)); border: 1px solid rgb(var(--s-700)); color: rgb(var(--s-500)); padding: 8px 10px; border-radius: 8px; font-size: 13px; resize: none; font-family: inherit;"></textarea>
+            </label>
+          </div>
+        </details>
+      </div>
+    </main>
+    <aside class="cart" style="opacity: 0.55;">
+      <div class="cart-toolbar">
+        <span class="back">‹</span>
+        <span class="lbl"><span class="ic">🛒</span> CART · waiting</span>
+      </div>
+      <div style="padding: 16px; display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; text-align:center; opacity: 0.7;">
+        <div style="width:56px; height:56px; border-radius:16px; background: rgb(var(--s-800)); display:grid; place-items:center; font-size:24px; margin-bottom:14px;">⏸</div>
+        <div class="display" style="font-size:22px; color: rgb(var(--s-200));">Cart is asleep</div>
+        <div style="font-size: 12px; color: rgb(var(--s-500)); margin-top: 6px;">Wakes when Sarah is created &amp; attached.</div>
       </div>
     </aside>
   </div>

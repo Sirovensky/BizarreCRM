@@ -1204,7 +1204,21 @@ app.use('/api/v1', (req, res, next) => {
   // Use req.db when available (tenant context), fall back to the module-level db
   // for unauthenticated requests that arrive before tenantResolver runs.
   const limitDb: Database.Database = (req.db as Database.Database | undefined) ?? db;
-  const result = consumeWindowRate(limitDb, 'api_v1', ip, API_RATE_LIMIT, API_RATE_WINDOW);
+  // Fail-open on transient SQLite contention: if the rate-limit row is locked
+  // by another concurrent transaction, swallow the error and allow this
+  // request through. The throttle is a soft-cap signal, not a security
+  // boundary — a handful of unthrottled requests beats user-facing
+  // "Internal server error" toasts during normal page-load bursts. Real
+  // overload still hits the count check on the next non-busy tick.
+  let result;
+  try {
+    result = consumeWindowRate(limitDb, 'api_v1', ip, API_RATE_LIMIT, API_RATE_WINDOW);
+  } catch (err: any) {
+    if (err?.code === 'SQLITE_BUSY' || err?.code === 'SQLITE_BUSY_SNAPSHOT') {
+      return next();
+    }
+    throw err;
+  }
   if (!result.allowed) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
     return res.status(429).json({

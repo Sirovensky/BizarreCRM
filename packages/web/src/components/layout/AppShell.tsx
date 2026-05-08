@@ -89,6 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     refetchOnWindowFocus: true,
   });
   const preferredDocumentLanguage = preferencesData?.data?.data?.language;
+  const preferredTheme = preferencesData?.data?.data?.theme as 'light' | 'dark' | 'system' | undefined;
 
   // WEB-UIUX-478: gate WebSocket activation on settings-config-env success so
   // the WS handshake never races against an auth-token overwrite from config.
@@ -107,6 +108,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       getBrowserDocumentLanguage(),
     );
   }, [preferredDocumentLanguage]);
+
+  // Hydrate theme from server-side user preference so a dark-mode choice made
+  // on one device shows up on every other login session, even when local
+  // cookies/localStorage are cleared (incognito, fresh browser, kiosk reset).
+  // The mirror to client-side cookie + localStorage still happens in
+  // uiStore.setTheme so subsequent reloads on the same device are instant.
+  const setTheme = useUiStore((s) => s.setTheme);
+  const currentTheme = useUiStore((s) => s.theme);
+  useEffect(() => {
+    if (preferredTheme && (preferredTheme === 'light' || preferredTheme === 'dark' || preferredTheme === 'system') && preferredTheme !== currentTheme) {
+      setTheme(preferredTheme);
+    }
+    // currentTheme intentionally omitted — only sync on server-pref change, not store change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferredTheme]);
 
   // Close mobile sidebar on route change
   useEffect(() => {

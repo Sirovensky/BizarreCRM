@@ -82,7 +82,18 @@ export function buildPrimaryAccentVars(color: string | null | undefined): Record
 export function applyPrimaryAccent(color: string | null | undefined): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  const vars = buildPrimaryAccentVars(color);
+  // Only override when an explicit theme color is configured. Falling back to
+  // DEFAULT_PRIMARY_ACCENT (cream) blew away the mode-aware tokens in
+  // globals.css :root / .dark — light mode lost its caramel primary and
+  // ended up cream-on-white (1.1:1 AA fail). Without a config value, let the
+  // CSS variables in globals.css take effect untouched.
+  const trimmed = (color || '').trim();
+  if (!trimmed) {
+    SHADE_KEYS.forEach((shade) => root.style.removeProperty(`--primary-${shade}`));
+    root.style.removeProperty('--primary-950');
+    return;
+  }
+  const vars = buildPrimaryAccentVars(trimmed);
   for (const [key, value] of Object.entries(vars)) {
     root.style.setProperty(key, value);
   }
