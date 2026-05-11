@@ -856,9 +856,9 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
   const visibleStale = showAllStale ? staleTickets : staleTickets.slice(0, SECTION_LIMIT);
   const visibleInvoices = showAllInvoices ? overdueInvoices : overdueInvoices.slice(0, SECTION_LIMIT);
 
-  // Snooze button group (shows on hover)
+  // Snooze button group (shows on hover OR keyboard focus — WEB-UIUX-912)
   const SnoozeButtons = ({ itemKey }: { itemKey: string }) => (
-    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={e => e.stopPropagation()}>
+    <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0" onClick={e => e.stopPropagation()}>
       {[3, 5, 10].map(d => (
         <button
           key={d}

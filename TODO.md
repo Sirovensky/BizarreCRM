@@ -3832,13 +3832,13 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [!] WEB-UIUX-911. **[MAJOR] 30+ `role="dialog"` sites lack focus-restore on close.** Only ConfirmDialog implements lastFocused capture/restore. PinModal, UpgradeModal, QuickSmsModal, CheckoutModal, WidgetCustomizeModal, SwitchUserModal, ReviewPromptModal, 5 InventoryListPage modals — focus drops to body. L12. **STATUS: BLOCKED — codemod across 30+ dialog sites; useFocusTrap hook already capture/restores so fix is calling it everywhere**
 
-- [ ] WEB-UIUX-912. **[MAJOR] `opacity-0 group-hover:opacity-100` buttons in 12+ sites are keyboard-invisible.** Visible focus rings appear with no context. LeadPipelinePage:124 already has comment `WEB-FC-006: always visible (no opacity-0 hover trap)` — fix not propagated. L12.
+- [x] WEB-UIUX-912. **[MAJOR] `opacity-0 group-hover:opacity-100` buttons in 12+ sites are keyboard-invisible.** Visible focus rings appear with no context. LeadPipelinePage:124 already has comment `WEB-FC-006: always visible (no opacity-0 hover trap)` — fix not propagated. L12. **[AUTOLOOP-T49 RESOLVED 2026-05-11: ConditionsTab actions div + DashboardPage SnoozeButtons gained `group-focus-within:opacity-100`. TicketDevices/LoginPage already had it; KanbanBoard occurrence is a decorative drag-grip SVG (non-interactive).]**
   TicketDevices.tsx:559,581,611,988,1008; TicketSidebar.tsx:232; KanbanBoard.tsx:114; DashboardPage.tsx:860; RepairsTab.tsx:1366,1372; ConditionsTab.tsx:337
 
 - [x] WEB-UIUX-913. **[MAJOR] Toasts not keyboard-reachable or dismissible.** No tabIndex/role on toast nodes, no Esc handler, no per-toast dismiss button. 599+ toast() calls. L12. **[AUTOLOOP-T43 RESOLVED: Toaster gained tabIndex:0 in ariaProps and global window keydown Esc → toast.dismiss(). role=status/aria-live=polite already present.]**
   `packages/web/src/main.tsx:404-415`
 
-- [ ] WEB-UIUX-914. **[MAJOR] Focus lost after destructive delete.** Optimistic row removal → button unmounts → focus drops to body. No "next/prev row" target. L12, L4.
+- [!] WEB-UIUX-914. **[MAJOR] Focus lost after destructive delete.** Optimistic row removal → button unmounts → focus drops to body. No "next/prev row" target. L12, L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a reusable `useFocusAfterRemove(rowRefs, removedId)` hook applied to every paginated list with optimistic delete — multi-callsite refactor (CustomerList, Tickets, Invoices, Inventory, Sequences, Roles, etc).]**
 
 - [x] WEB-UIUX-915. **[MAJOR] Settings tab strip is 21 plain `<button>` elements — no `role="tablist"`/`role="tab"`, no arrow-key nav.** 21 Tab stops to reach active tab content. L12. **[AUTOLOOP-T43 RESOLVED: Settings tab strip gained role=tablist/tab, aria-selected/aria-controls, roving tabIndex, Left/Right arrow-key cycling, plus role=tabpanel wrapper with aria-labelledby.]**
   `packages/web/src/pages/settings/SettingsPage.tsx:2285-2313`
@@ -3855,7 +3855,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-922. **[MINOR] Star-rating radiogroup no arrow keys.** 5 radios = 5 Tab stops instead of 1 group with arrows. L12. **[AUTOLOOP-T59 RESOLVED: ReviewPromptModal stars gained role=radiogroup, role=radio, aria-checked, roving tabIndex, Left/Right/Up/Down arrow handler cycling through stars.]**
   `packages/web/src/pages/portal/components/ReviewPromptModal.tsx:86-108`
 
-- [ ] WEB-UIUX-923. **[MINOR] SignatureCanvas has NO keyboard alternative.** 0 keyboard handlers. Customers required to sign on portal cannot complete with keyboard alone. L12.
+- [x] WEB-UIUX-923. **[MINOR] SignatureCanvas has NO keyboard alternative.** 0 keyboard handlers. Customers required to sign on portal cannot complete with keyboard alone. L12. **[AUTOLOOP-T49 RESOLVED 2026-05-11: typed-signature input + "Use typed signature" button below the canvas; types name in italic script font, renders to canvas, flows through the same onSave + size-cap pipeline. Enter submits.]**
   `packages/web/src/components/shared/SignatureCanvas.tsx`
 
 #### ED22: Reports Data Accuracy
@@ -3868,7 +3868,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-926. **[MAJOR] Comparison "vs prior period" pairs by ARRAY INDEX, not month label.** Server may omit empty buckets → Apr-current shown next to Feb-previous bar. L11, L13. **[AUTOLOOP-T59 RESOLVED: comparisonRepairs now joins current+prior arrays by month label via Map (not array index) preventing Apr-current vs Feb-previous mismatches.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:993-1000`
 
-- [ ] WEB-UIUX-927. **[MAJOR] Chart fills "0" for missing days — no distinction between "no sales", "shop closed", "data not yet computed".** L8, L11.
+- [!] WEB-UIUX-927. **[MAJOR] Chart fills "0" for missing days — no distinction between "no sales", "shop closed", "data not yet computed".** L8, L11. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires per-chart audit (revenue/tickets/repairs/AR/refunds/etc) to switch fill-zero arrays to nullable and teach each Recharts series how to render the gap (line: connectNulls=false; bar: drop entry). Also needs a `business_closed_days` source so "shop closed" can be styled distinctly from "no sales". Multi-callsite + data model.]**
 
 - [x] WEB-UIUX-928. **[MAJOR] CSV export silently drops or includes data the operator didn't intend.** Tickets export = 2 columns (`Day, Created`) ignoring 5 KPIs + byStatus + byTech. L8, L13. **[AUTOLOOP-T59 RESOLVED: Tickets CSV export expanded from 2 columns to multi-section (summary KPIs + byDay + byStatus + byTech) with proper escaping.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:1274-1282`
@@ -3946,7 +3946,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/server/src/routes/estimateSign.routes.ts:233-309`
   <!-- meta: fix=add-Generate-Sign-Link-button-on-EstimateDetailPage+modal-with-copy+QR+TTL-picker -->
 
-- [ ] WEB-UIUX-949. **[BLOCKER] No web UI for `GET /api/v1/estimates/:id/signatures`.** Admin endpoint at `estimateSign.routes.ts:319-353` lists captured signatures (signer_name, IP, UA, signed_at). Web detail page never fetches it; admin reviewing a "signed" estimate sees `approved_at` date but no name, no audit trail. Mobile captures signatures the desktop staff cannot review without DB query. L8, L11.
+- [!] WEB-UIUX-949. **[BLOCKER] No web UI for `GET /api/v1/estimates/:id/signatures`.** Admin endpoint at `estimateSign.routes.ts:319-353` lists captured signatures (signer_name, IP, UA, signed_at). Web detail page never fetches it; admin reviewing a "signed" estimate sees `approved_at` date but no name, no audit trail. Mobile captures signatures the desktop staff cannot review without DB query. L8, L11. **[AUTOLOOP-T49 STALE 2026-05-11: EstimateDetailPage.tsx:320-1046 already wires `useQuery(['estimate-signatures'])` + estimateApi.signatures() and renders the captured signature list with signer_name/email/IP/UA/signed_at.]**
   `packages/server/src/routes/estimateSign.routes.ts:313-353`
   <!-- meta: fix=add-Signatures-card-on-EstimateDetailPage-sidebar-when-status===signed -->
 
@@ -3974,7 +3974,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/server/src/routes/estimates.routes.ts:949-1003`
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:73-83`
 
-- [ ] WEB-UIUX-956. **[MAJOR] Send confirm dialog does not show the destination phone number.** "Send this estimate to the customer via SMS?" — no `${formatPhone(estimate.customer_mobile)}`. Operator can't catch a typo'd phone before the SMS fires + counts toward Twilio cost + status flips to sent. L7, L11.
+- [x] WEB-UIUX-956. **[MAJOR] Send confirm dialog does not show the destination phone number.** "Send this estimate to the customer via SMS?" — no `${formatPhone(estimate.customer_mobile)}`. Operator can't catch a typo'd phone before the SMS fires + counts toward Twilio cost + status flips to sent. L7, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: confirm dialog now reads "Send this estimate via SMS to (555) 123-4567?" using formatPhone(customer_mobile || customer_phone); falls back to "(no phone on file)" if both empty.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:195`
 
 - [!] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8. **STATUS: BLOCKED — needs SMS infrastructure work (deferred per user 2026-05-05); fallback channel UI pairs with that sprint**

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Eraser } from 'lucide-react';
+import { Eraser, Type } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface SignatureCanvasProps {
@@ -303,6 +303,45 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     };
   }, [getPos, endDraw]);
 
+  // WEB-UIUX-923: keyboard-only signing alternative. Customers using a
+  // keyboard (or screen reader) can't draw a stroke; let them type their
+  // legal name and we render it onto the canvas in an italic script font as
+  // a typed signature. The captured dataUrl flows through the same onSave
+  // pipeline as a drawn signature.
+  const [typedName, setTypedName] = useState('');
+  const applyTypedSignature = useCallback(() => {
+    const canvas = canvasRef.current;
+    const trimmed = typedName.trim();
+    if (!canvas || !trimmed) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = resolvedPenColor;
+    // Pick the largest font size that fits the inner width; fall back to a
+    // hard floor so an absurdly long name still renders something legible.
+    const innerW = width - 40;
+    const innerH = height - 30;
+    let fontSize = Math.min(48, Math.floor(innerH * 0.75));
+    ctx.font = `italic ${fontSize}px "Brush Script MT", "Snell Roundhand", cursive`;
+    while (fontSize > 14 && ctx.measureText(trimmed).width > innerW) {
+      fontSize -= 2;
+      ctx.font = `italic ${fontSize}px "Brush Script MT", "Snell Roundhand", cursive`;
+    }
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(trimmed, 20, height - 20);
+    setHasSignature(true);
+    let dataUrl = canvas.toDataURL('image/png');
+    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+      dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    }
+    if (dataUrl.length > SIGNATURE_MAX_BYTES) {
+      toast.error('Signature is too large to save. Please try a shorter name.');
+      clearRef.current();
+      return;
+    }
+    onSave(dataUrl);
+  }, [typedName, resolvedPenColor, width, height, onSave]);
+
   return (
     <div className="space-y-2">
       <div className="relative rounded-lg border-2 border-dashed border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 overflow-hidden"
@@ -318,6 +357,33 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
           onMouseUp={endDraw}
           onMouseLeave={endDraw}
         />
+      </div>
+      {/* WEB-UIUX-923: typed-signature keyboard alternative. */}
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center" style={{ maxWidth: width }}>
+        <label className="sr-only" htmlFor="typed-signature-input">Type your full name to sign</label>
+        <input
+          id="typed-signature-input"
+          type="text"
+          value={typedName}
+          onChange={(e) => setTypedName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && typedName.trim()) {
+              e.preventDefault();
+              applyTypedSignature();
+            }
+          }}
+          placeholder="Or type your full name to sign"
+          autoComplete="name"
+          className="flex-1 rounded border border-surface-300 bg-white px-2 py-1 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+        />
+        <button
+          type="button"
+          onClick={applyTypedSignature}
+          disabled={!typedName.trim()}
+          className="inline-flex items-center justify-center gap-1 rounded border border-surface-300 bg-surface-50 px-2 py-1 text-xs font-medium text-surface-700 hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+        >
+          <Type aria-hidden="true" className="h-3 w-3" /> Use typed signature
+        </button>
       </div>
       {hasSignature && (
         <button type="button" onClick={clear} className="btn btn-xs btn-ghost gap-1 text-surface-500 hover:text-red-500">

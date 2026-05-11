@@ -11,7 +11,7 @@ import type { EstimateSignature, EstimateSignPublicSummary } from '@/api/endpoin
 import { confirm, useConfirmStore } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatPhone } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
@@ -547,7 +547,13 @@ export function EstimateDetailPage() {
             <button
               onClick={async () => {
                 try {
-                  const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
+                  // WEB-UIUX-956: surface the destination number so a
+                  // typo'd phone gets caught before the SMS fires (Twilio
+                  // charge + status flip to "sent" both happen otherwise).
+                  const dest = formatPhone(estimate.customer_mobile || estimate.customer_phone) || '(no phone on file)';
+                  const msg = estimate.status === 'sent'
+                    ? `Resend this estimate to ${dest}?`
+                    : `Send this estimate via SMS to ${dest}?`;
                   if (await confirm(msg)) sendMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
