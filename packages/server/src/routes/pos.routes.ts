@@ -1474,7 +1474,9 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   // Pre-transaction async reads
   const [requireReferral, customerRow, defaultTaxClass, membershipEnabled, customerMembership] = await Promise.all([
     adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_require_referral'"),
-    customer_id ? adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id) : Promise.resolve(undefined),
+    // WEB-UIUX-765: also pull tax_exempt + reason so the totals path can
+    // zero-tax every line for resale / non-profit / govt customers.
+    customer_id ? adb.get<AnyRow>('SELECT id, tax_exempt, tax_exempt_reason FROM customers WHERE id = ? AND is_deleted = 0', customer_id) : Promise.resolve(undefined),
     adb.get<AnyRow>("SELECT id, rate FROM tax_classes WHERE is_default = 1 LIMIT 1"),
     adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'membership_enabled'"),
     customer_id ? adb.get<AnyRow>(`
@@ -1485,6 +1487,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       ORDER BY cs.created_at DESC LIMIT 1
     `, customer_id) : Promise.resolve(undefined),
   ]);
+  // WEB-UIUX-765: top-level flag used below to zero out tax_class_id on every
+  // taxable line so totals.ts computes zero tax. Reason copy lives on the
+  // customer row + the invoice notes for audit.
+  const customerIsTaxExempt = Number((customerRow as { tax_exempt?: number } | undefined)?.tax_exempt) === 1;
 
   // POS7: walk-in sales are allowed, but instead of storing customer_id = null
   // (which leaves rows orphaned from every customer-scoped report) we resolve
@@ -1501,7 +1507,9 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   }
 
   // Get default tax class for taxable items
-  const defaultTaxClassId = defaultTaxClass?.id ?? null;
+  // WEB-UIUX-765: tax-exempt customer forces the default class to null so
+  // computeLineItemTax sees no class and returns 0 for every line.
+  const defaultTaxClassId = customerIsTaxExempt ? null : (defaultTaxClass?.id ?? null);
 
   let ticketId: number | null = existing_ticket_id ? Number(existing_ticket_id) : null;
   let ticketOrderId: string | null = null;
@@ -1699,9 +1707,14 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     for (const dev of ticketData.devices) {
       const devicePrice = dev.price ?? dev.labor_price ?? 0;
       const lineDiscount = dev.line_discount ?? 0;
-      // Repairs (labor) default to non-taxable; explicit taxable flag overrides
-      const devTaxClassId = dev.tax_class_id ?? (dev.taxable === true ? defaultTaxClassId : null);
-      const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, devTaxClassId, dev.tax_inclusive ?? false);
+      // Repairs (labor) default to non-taxable; explicit taxable flag overrides.
+      // WEB-UIUX-765: customerIsTaxExempt zeroes everything regardless.
+      const devTaxClassId = customerIsTaxExempt
+        ? null
+        : (dev.tax_class_id ?? (dev.taxable === true ? defaultTaxClassId : null));
+      const taxAmount = customerIsTaxExempt
+        ? 0
+        : await calcTaxAsync(adb, devicePrice - lineDiscount, devTaxClassId, dev.tax_inclusive ?? false);
       const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
       const warrantyDays = (dev.warranty_days === undefined || dev.warranty_days === null)
@@ -1877,8 +1890,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     const unitPrice = validatePrice(inv.retail_price ?? 0, 'retail_price');
     const lineGross = roundCents(qty * unitPrice);
     const lineSubtotal = lineGross;
-    const taxClassId = inv.tax_class_id ?? null;
-    const lineTax = inv.tax_inclusive
+    // WEB-UIUX-765: exempt customer forces taxClassId to null so calcTaxAsync
+    // returns 0 regardless of the item's own class.
+    const taxClassId = customerIsTaxExempt ? null : (inv.tax_class_id ?? null);
+    const lineTax = inv.tax_inclusive || customerIsTaxExempt
       ? 0
       : roundCents(await calcTaxAsync(adb, lineSubtotal, taxClassId, false));
 

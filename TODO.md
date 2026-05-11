@@ -2851,7 +2851,11 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-764. **[BLOCKER] Discount stacking has NO canonical order — single cart-wide `discount` slot.** No model for "10% off + $5 off + member 20%" with sequence/basis. Subtle base-vs-net errors. L7, L13. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires product decision on stacking order (% then $ vs $ then %), max-stack cap, and member-vs-promo precedence; multi-component model change across store/totals/server.]**
   `packages/web/src/pages/unified-pos/store.ts:101-103,235-237`
 
-- [!] WEB-UIUX-765. **Customer-side scaffolding landed 2026-05-11; POS auto-apply still pending.** Migration `180_customers_tax_exempt.sql` adds `customers.tax_exempt INTEGER 0/1 CHECK` + `tax_exempt_reason TEXT` + partial index on `tax_exempt=1`. Shared `CreateCustomerInput` widened. Server INSERT + `CUSTOMER_COLUMNS` allowlist now pass both fields through. `CustomerDetailPage` Info tab renders a "Tax-exempt customer (resale / non-profit / govt)" checkbox with a free-form 500-char reason input that only appears when checked. Stays `[!]` because POS / invoice totals don't yet read `customer.tax_exempt` to auto-zero line tax — that's the second half. Once a cashier sets the toggle, the value persists and is visible on subsequent edits; downstream auto-apply is the remaining work.
+- [x] WEB-UIUX-765. **POS auto-applies tax-exempt to every line (2026-05-11).** Server `pos.routes` pre-fetches `tax_exempt` on the customer row alongside the existing customer lookup. New `customerIsTaxExempt` boolean forces:
+  - `defaultTaxClassId = null` so misc lines + parts (which use the default) compute zero tax.
+  - Product lines override `taxClassId` to `null` and short-circuit `lineTax = 0` regardless of `inv.tax_inclusive`.
+  - Repair-device lines override `devTaxClassId` to `null` and short-circuit `taxAmount = 0`.
+  Combined with the earlier migration (180_customers_tax_exempt.sql), shared `CreateCustomerInput` type, customer-form toggle on `CustomerDetailPage`, and `CUSTOMER_COLUMNS` allowlist update, the full chain ships: cashier checks the box once on the customer, every subsequent POS sale charges $0 tax with no per-line toggling. Reason free-form text persisted for audit; invoice notes do not auto-prepend it today — surface on the printed receipt is a separate template tweak.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1123,1191,1253-1254`
 
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:880-888`
