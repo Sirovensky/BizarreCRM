@@ -10,8 +10,8 @@ type: project
 ## Repair templates: device-keyed seeding with multi-tier parts (REPAIR-TEMPLATES-SEED)
 
 - **Partial done 2026-05-09:** migration `173_seed_device_model_templates.sql` ships 72 templates across 15 devices (iPhone 11–16, Galaxy S21–S24, Pixel 7/8, OnePlus 12, iPad Pro 11" M4, MacBook Pro 14" M3) with multi-tier screens (Original OEM / FOG / Soft OLED / Aftermarket) plus battery, charging port, back glass, camera, keyboard. Suggested prices keyed off the same medians the setup wizard uses. Picker now non-empty for the top devices.
-- [ ] REPAIR-TEMPLATES-SEED-2. **Hydrate parts_json from real inventory + supplier scrape.** The 173 seed leaves `parts_json: '[]'` — templates apply labor + suggested_price but don't pre-attach the SKU. Wire a follow-up that joins device_models → inventory_device_compatibility → inventory_items by tier label, and falls back to live Mobilesentrix / PhoneLCDParts scrape when the shop doesn't yet stock the SKU. Acceptance: opening "iPhone 13 — Screen (Original OEM)" auto-attaches the matching inventory line on apply.
-- [ ] REPAIR-TEMPLATES-SEED-1. **Original Seed task — extend coverage beyond the top 15 devices.** Reported 2026-05-09 — current Repair Templates picker on the ticket detail shows "No templates yet" for the most common devices (e.g. iPhone 13). User wants every popular phone/tablet to come pre-seeded with templates such as "iPhone 13 — Screen replacement" with multiple part-tier options the tech can pick at intake:
+- [!] REPAIR-TEMPLATES-SEED-2. **Hydrate parts_json from real inventory + supplier scrape.** BLOCKED 2026-05-10 — three blockers: (1) supplier scrape (Mobilesentrix/PLP) is external HTTP scraping with no auth/rate-limit story in repo; (2) device_model_templates has no tier_label column to disambiguate Original-OEM vs Soft-OLED at lookup time; (3) inventory_device_compatibility is just a model↔item link with no per-fault filtering. Auto-attach acceptance criteria cannot be met without (a) tier_label column migration on device_model_templates AND inventory_items, (b) scrape job worker. Needs design pass first. The 173 seed leaves `parts_json: '[]'` — templates apply labor + suggested_price but don't pre-attach the SKU. Wire a follow-up that joins device_models → inventory_device_compatibility → inventory_items by tier label, and falls back to live Mobilesentrix / PhoneLCDParts scrape when the shop doesn't yet stock the SKU. Acceptance: opening "iPhone 13 — Screen (Original OEM)" auto-attaches the matching inventory line on apply.
+- [!] REPAIR-TEMPLATES-SEED-1. **Original Seed task — extend coverage beyond the top 15 devices.** BLOCKED 2026-05-10 — extending to "every popular phone/tablet" with per-tier prices requires curated catalogue data (Mobilesentrix/PLP/iFixit BOM) scraped + reconciled with shop pricing-tier medians; same dependencies as SEED-2. Cannot be done as a single seed migration without first wiring the scrape worker and tier_label storage. Reported 2026-05-09 — current Repair Templates picker on the ticket detail shows "No templates yet" for the most common devices (e.g. iPhone 13). User wants every popular phone/tablet to come pre-seeded with templates such as "iPhone 13 — Screen replacement" with multiple part-tier options the tech can pick at intake:
   - Tier A: Original OEM panel
   - Tier B: Refurbished OEM ("Original FOG" — third-party assembled with original glass)
   - Tier C: Soft OLED (XO7 / QV8)
@@ -31,7 +31,7 @@ Dashboard now shows ProfitHeroCard + CashTrappedCard + a "View full reports →"
 ## Demand Forecast / charts not pulling RD-imported data (CHARTS-RD-IMPORT)
 
 - **Diagnosed 2026-05-09 — root cause is import data gap, not chart code.** SQL inspection shows the imported tenant DB has 1204 tickets but **0 ticket_device_parts rows** and only 2 invoices. The Demand Forecast endpoint aggregates from `ticket_device_parts.created_at` (`reports.routes.ts:2510`) — empty because parts weren't imported. Revenue chart aggregates `invoices` — only 2 rows. Chart endpoints + SQL are correct.
-- [ ] CHARTS-RD-IMPORT-1. **Fix the RepairDesk import path so it populates ticket_device_parts + invoices.** [services/repairDeskImport.ts:571](packages/server/src/services/repairDeskImport.ts) has the INSERT for `ticket_device_parts`; line 610 inserts `invoices`. Verify: does the user's RD export CSV include parts/invoice data, and if so why isn't the importer hydrating those rows? Check the CSV column mapping + reproduce the import locally with the same dataset.
+- [!] CHARTS-RD-IMPORT-1. **Fix the RepairDesk import path so it populates ticket_device_parts + invoices.** BLOCKED 2026-05-10 — diagnosis confirms root cause is upstream CSV gap (RepairDesk export omits parts/invoices), not importer code. Reproducing requires the actual user RD export to inspect column names; fix is column-mapping configuration once we have it. Needs sample CSV from user. [services/repairDeskImport.ts:571](packages/server/src/services/repairDeskImport.ts) has the INSERT for `ticket_device_parts`; line 610 inserts `invoices`. Verify: does the user's RD export CSV include parts/invoice data, and if so why isn't the importer hydrating those rows? Check the CSV column mapping + reproduce the import locally with the same dataset.
 
 ## Nav restructure: separate Communications and Leads (NAV-COMMS-LEADS-SPLIT) — DONE 2026-05-09
 
@@ -57,7 +57,7 @@ Root: `consumeWindowRate` ran in DEFERRED transaction mode; rapid tab POSTs hit 
 
 ## Messages page: broken / hidden buttons (MESSAGES-BROKEN-BUTTONS)
 
-- [ ] MESSAGES-BROKEN-BUTTONS-1. **Audit the Messages page for hidden / non-functional buttons.** Reported 2026-05-09 — user "can't read; messages have broken (hidden) buttons" with a screenshot showing the page mostly blank. Still needs a reproduction with browser dev-tools open: confirm SMS provider config, check for elements with `opacity-0` / `display:none` / `pointer-events-none` that should be visible, verify routes don't 404. Suspect either an unconfigured provider stripping the action bar, or the recent dark-mode token migration missing this page. Page is `packages/web/src/pages/communications/CommunicationPage.tsx` (~2700 lines).
+- [!] MESSAGES-BROKEN-BUTTONS-1. **Audit the Messages page for hidden / non-functional buttons.** BLOCKED 2026-05-10 — requires browser repro on user's session with screenshot/network tab; CommunicationPage.tsx (~2700 LOC) static audit without repro = speculation. Defer until user produces dev-tools dump. Reported 2026-05-09 — user "can't read; messages have broken (hidden) buttons" with a screenshot showing the page mostly blank. Still needs a reproduction with browser dev-tools open: confirm SMS provider config, check for elements with `opacity-0` / `display:none` / `pointer-events-none` that should be visible, verify routes don't 404. Suspect either an unconfigured provider stripping the action bar, or the recent dark-mode token migration missing this page. Page is `packages/web/src/pages/communications/CommunicationPage.tsx` (~2700 lines).
 
 ## Catalog tenancy access gating (CATALOG-TENANCY-GATE) — RESOLVED 2026-05-09
 
@@ -69,11 +69,11 @@ Confirmed single-tenant via `MULTI_TENANT=false` in `packages/server/.env` (serv
 
 ## Ticket list status-change PATCH no-op investigation (TICKETS-STATUS-NOOP)
 
-- [ ] TICKETS-STATUS-NOOP-1. **Diagnose why the inline StatusDropdown click never reaches the server.** Reported 2026-05-09 — user changes a ticket status from the list dropdown and "nothing happens" — no PATCH request reaches `/api/v1/tickets/:id/status` according to live `/tmp/srv.log`, no toast fires either way. Code path looks intact: [TicketListPage.tsx StatusDropdown](../packages/web/src/pages/tickets/TicketListPage.tsx) onClick → handleChangeStatus → `changeStatusMut.mutate({ ticketId, statusId })` → `ticketApi.changeStatus` → PATCH. Possible culprits to investigate: outside-click handler firing on mousedown before option click registers, requirePermission gating returning a 403 silently swallowed by an axios interceptor, optimistic update masking a server error, or rendering through the Kanban board (different code path). Repro on a logged-in dev session and check Network tab + console.
+- [!] TICKETS-STATUS-NOOP-1. **Diagnose why the inline StatusDropdown click never reaches the server.** BLOCKED 2026-05-10 — static read of code path is intact: StatusDropdown option onClick → handleChangeStatus → useMutation → ticketApi.changeStatus → PATCH `/tickets/:id/status`. Optimistic update + onError toast + onSettled invalidate all wired. Outside-click uses mousedown but option is inside `ref.current`, so does not close pre-emptively. Needs runtime repro with Network tab to distinguish: (a) silent 403 from requirePermission, (b) interceptor swallowing error, (c) different render path (Kanban). Can't pinpoint without browser session. Reported 2026-05-09 — user changes a ticket status from the list dropdown and "nothing happens" — no PATCH request reaches `/api/v1/tickets/:id/status` according to live `/tmp/srv.log`, no toast fires either way. Code path looks intact: [TicketListPage.tsx StatusDropdown](../packages/web/src/pages/tickets/TicketListPage.tsx) onClick → handleChangeStatus → `changeStatusMut.mutate({ ticketId, statusId })` → `ticketApi.changeStatus` → PATCH. Possible culprits to investigate: outside-click handler firing on mousedown before option click registers, requirePermission gating returning a 403 silently swallowed by an axios interceptor, optimistic update masking a server error, or rendering through the Kanban board (different code path). Repro on a logged-in dev session and check Network tab + console.
 
 ## Cookie consent / privacy compliance (LEGAL-COOKIE-CONSENT)
 
-- [ ] LEGAL-COOKIE-CONSENT-1. **Add cookie consent banner before introducing analytics / marketing / fingerprinting cookies.** Today's cookies (auth: refreshToken/csrf_token; preference: theme) are exempt under ePrivacy Directive (strictly necessary + explicitly user-requested). The exemption does NOT cover Sentry session-replay, Google Analytics, ad pixels, or third-party fingerprinting. When any of those land we MUST ship a banner with categories (necessary / preferences / analytics / marketing), default-deny for non-necessary, persisted choice, easy revoke. CCPA "Do Not Sell" link if any data sale starts. See uiStore.ts `LEGAL-COOKIE-CONSENT` marker for theme-cookie reasoning.
+- [!] LEGAL-COOKIE-CONSENT-1. **Add cookie consent banner before introducing analytics / marketing / fingerprinting cookies.** BLOCKED 2026-05-10 — premature: current cookie set (refreshToken/csrf_token/theme) is exempt under ePrivacy strictly-necessary clause. Banner work tracks alongside first non-exempt cookie introduction (Sentry replay / GA / marketing pixel). No such cookie shipping yet. Re-open when those land. Today's cookies (auth: refreshToken/csrf_token; preference: theme) are exempt under ePrivacy Directive (strictly necessary + explicitly user-requested). The exemption does NOT cover Sentry session-replay, Google Analytics, ad pixels, or third-party fingerprinting. When any of those land we MUST ship a banner with categories (necessary / preferences / analytics / marketing), default-deny for non-necessary, persisted choice, easy revoke. CCPA "Do Not Sell" link if any data sale starts. See uiStore.ts `LEGAL-COOKIE-CONSENT` marker for theme-cookie reasoning.
 
 ## Web unwired controls audit (WEB-UNWIRED)
 
@@ -356,7 +356,7 @@ Verified working. Not TODOs.
   - iOS: confirms formats decode locally, uploads honor whatever server accepts, surfaces "Your shop's server doesn't accept X — convert or attach different file" when rejected.
   Recommend server-side transcoding to JPEG on ingestion so all clients see a consistent format; keep original on server for download. Block iOS implementation of TIFF / DNG / HEIC upload until this is decided.
 
-- [ ] **TEAM-CHAT-AUDIT-001. Team chat data-at-rest audit (server + clients).** **[AUTOLOOP-T0 BLOCKED: 7-item audit covering SQLCipher, retention, GDPR, redactor — multi-week design, not a fix.]**
+- [!] **TEAM-CHAT-AUDIT-001. Team chat data-at-rest audit (server + clients).** **[AUTOLOOP-T0 BLOCKED: 7-item audit covering SQLCipher, retention, GDPR, redactor — multi-week design, not a fix.]**
   Surfaced from `ios/ActionPlan.md §47`. Server today stores message bodies in SQLite TEXT columns (`team_chat_messages.body TEXT NOT NULL`, migration `096_team_management.sql`). No column-level encryption, no hashing. Fine as a staff-chat MVP but needs a comprehensive review before scaling:
   1. **At-rest encryption.** Does the tenant server DB sit on an encrypted filesystem? For SQLite deployments, the file is plaintext-readable unless SQLCipher (or equivalent) is applied at the DB layer. Cloud-hosted tenants inherit our infra's disk encryption; self-hosted tenants are on their own.
   2. **In-transit.** HTTPS already covers this; verify no polling fallback ever lands HTTP.
@@ -454,7 +454,7 @@ Verified working. Not TODOs.
 
 
 
-- [ ] WEB-FD-014. **[MED] `endpoints.ts` is 27k tokens / single-file mega-export — every page-level import drags the whole module graph.** Vite tree-shakes named exports but TypeScript declaration-merging across the file means a typo in one route forces a typecheck on every consumer. Split into `endpoints/{auth,ticket,customer,inventory,…}.ts` re-exported via `endpoints/index.ts`. Bundle and HMR cost: every chunk pulls every endpoint definition. **[AUTOLOOP-T0 BLOCKED: 2042-LOC file → 15+ domain modules + hundreds of import-site updates. Too broad.]**
+- [!] WEB-FD-014. **[MED] `endpoints.ts` is 27k tokens / single-file mega-export — every page-level import drags the whole module graph.** Vite tree-shakes named exports but TypeScript declaration-merging across the file means a typo in one route forces a typecheck on every consumer. Split into `endpoints/{auth,ticket,customer,inventory,…}.ts` re-exported via `endpoints/index.ts`. Bundle and HMR cost: every chunk pulls every endpoint definition. **[AUTOLOOP-T0 BLOCKED: 2042-LOC file → 15+ domain modules + hundreds of import-site updates. Too broad.]**
   <!-- meta: scope=web/api; files=packages/web/src/api/endpoints.ts; fix=split-by-domain+re-export-via-barrel -->
 
 
@@ -662,7 +662,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] DASH-ELEC-116. **[LOW][I18N] All 400+ user-facing strings hardcoded English — no i18n framework** — packages/management/src/renderer/src/ entire tree — no i18next/react-intl. Fix: adopt i18next with `en.json` namespace as foundation; literals become `t('key')` calls. **[AUTOLOOP-T0 BLOCKED: requires new i18next dep + extracting 400+ strings across 52 renderer files.]**
+- [!] DASH-ELEC-116. **[LOW][I18N] All 400+ user-facing strings hardcoded English — no i18n framework** — packages/management/src/renderer/src/ entire tree — no i18next/react-intl. Fix: adopt i18next with `en.json` namespace as foundation; literals become `t('key')` calls. **[AUTOLOOP-T0 BLOCKED: requires new i18next dep + extracting 400+ strings across 52 renderer files.]**
 
 
 
@@ -731,7 +731,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [ ] DASH-ELEC-269. **[LOW][DEBT] EnvFieldCategory union duplicated** — management-api.ts:145 + bridge.ts:203. — Fixer-C26 2026-04-25 (PARTIAL — drift-defense only): cross-reference comment added on both type declarations explaining that Electron main and renderer compile to separate bundles with no `packages/management/src/shared/` folder yet, so the union is intentionally duplicated; instructs future contributors to edit BOTH files in the same commit and points at the eventual cleanup path. Real dedup still requires creating a shared types file referenced by both tsconfigs. **[AUTOLOOP-T0 BLOCKED: tsconfig.node rootDir + tsconfig include block any shared/ import without build-config restructure.]**
+- [!] DASH-ELEC-269. **[LOW][DEBT] EnvFieldCategory union duplicated** — management-api.ts:145 + bridge.ts:203. — Fixer-C26 2026-04-25 (PARTIAL — drift-defense only): cross-reference comment added on both type declarations explaining that Electron main and renderer compile to separate bundles with no `packages/management/src/shared/` folder yet, so the union is intentionally duplicated; instructs future contributors to edit BOTH files in the same commit and points at the eventual cleanup path. Real dedup still requires creating a shared types file referenced by both tsconfigs. **[AUTOLOOP-T0 BLOCKED: tsconfig.node rootDir + tsconfig include block any shared/ import without build-config restructure.]**
 
 
 
@@ -971,7 +971,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FM-012. **[MED] Six pages exceed 1,500 LOC + endpoints.ts at 1,287 LOC — page-as-monolith pattern blocks tree-shake / parallel TS check.** After SettingsPage (3,464): `CommunicationPage.tsx` (2,223), `CustomerDetailPage.tsx` (2,142), `DashboardPage.tsx` (2,112), `TicketWizard.tsx` (2,008), `TicketListPage.tsx` (1,817), `InventoryListPage.tsx` (1,780), `RepairsTab.tsx` (1,448), `ReportsPage.tsx` (1,396). Each contains 5-15 tightly-coupled inline subcomponents. The single `endpoints.ts` causes any tiny API tweak to invalidate the cached type-build for all pages — split per-domain (auth, billing, tickets, inventory, ...). **[AUTOLOOP-T0 BLOCKED: shared inline types/utils used across all subcomponents; even smallest extraction needs project-spanning refactor.]**
+- [!] WEB-FM-012. **[MED] Six pages exceed 1,500 LOC + endpoints.ts at 1,287 LOC — page-as-monolith pattern blocks tree-shake / parallel TS check.** After SettingsPage (3,464): `CommunicationPage.tsx` (2,223), `CustomerDetailPage.tsx` (2,142), `DashboardPage.tsx` (2,112), `TicketWizard.tsx` (2,008), `TicketListPage.tsx` (1,817), `InventoryListPage.tsx` (1,780), `RepairsTab.tsx` (1,448), `ReportsPage.tsx` (1,396). Each contains 5-15 tightly-coupled inline subcomponents. The single `endpoints.ts` causes any tiny API tweak to invalidate the cached type-build for all pages — split per-domain (auth, billing, tickets, inventory, ...). **[AUTOLOOP-T0 BLOCKED: shared inline types/utils used across all subcomponents; even smallest extraction needs project-spanning refactor.]**
   <!-- meta: scope=web/pages+api; files=packages/web/src/pages/communications/CommunicationPage.tsx,packages/web/src/pages/customers/CustomerDetailPage.tsx,packages/web/src/pages/dashboard/DashboardPage.tsx,packages/web/src/pages/tickets/TicketWizard.tsx,packages/web/src/pages/tickets/TicketListPage.tsx,packages/web/src/pages/inventory/InventoryListPage.tsx,packages/web/src/api/endpoints.ts; fix=extract-inline-subcomponents-into-co-located-./components/+split-endpoints.ts-by-domain -->
 
 
@@ -1003,10 +1003,10 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 - [ ] WEB-FQ-014. **[MED] No EmptyState illustration — empty lists render plain `<p class="text-sm text-surface-400">No X yet</p>`, no icon, no CTA, on 18+ pages.** `NotificationTemplatesTab.tsx:280`, `CustomerDetailPage.tsx:980,993`, `SettingsPage.tsx:552`, `MembershipSettings.tsx:496`, `ReceiptSettings.tsx:187`, `AuditLogsTab.tsx:119`, `DeviceTemplatesPage.tsx:232,413`, `TicketNotes.tsx:302`, `RepairPricingTab.tsx:301,547`, `TicketDevices.tsx:86,519` — all single-line text. Shared `EmptyState` component exists (`shared/EmptyState.tsx`, used 5× in SettingsPage) but adoption is partial. New users see flat "no data" everywhere instead of guided illustrations.
   <!-- meta: scope=web/pages; files=packages/web/src/components/shared/EmptyState.tsx,packages/web/src/pages/settings/NotificationTemplatesTab.tsx:280,packages/web/src/pages/customers/CustomerDetailPage.tsx:980,packages/web/src/pages/tickets/TicketNotes.tsx:302; fix=expand-EmptyState-to-take-icon+title+description+action-prop+codemod-inline-`<p>No X yet</p>`-instances -->
 
-- [ ] WEB-FQ-015. **[MED] Native browser `<select>` used 25× in pages while shared CommandPalette + custom dropdowns coexist — different a11y, hover, selection visuals.** `CustomerListPage.tsx:609,627`, `CustomerCreatePage.tsx:236`, all use raw `<select>` with `rounded-md` + Tailwind classes. Other surfaces (e.g. CustomerListPage:926 column-picker) hand-roll a custom `<div role="menu">` dropdown. Selects don't open to themed listbox; dropdowns don't follow native keyboard rules. No shared `<Select>` primitive. Date-picker landscape similar — 14 native `<input type="date">` only, no library; 0 themed pickers. (Memory says brand surface ramp drift.) **[AUTOLOOP-T0 BLOCKED: requires Radix/HeadlessUI + DatePicker deps + codemod 128 native selects. Too broad.]**
+- [!] WEB-FQ-015. **[MED] Native browser `<select>` used 25× in pages while shared CommandPalette + custom dropdowns coexist — different a11y, hover, selection visuals.** `CustomerListPage.tsx:609,627`, `CustomerCreatePage.tsx:236`, all use raw `<select>` with `rounded-md` + Tailwind classes. Other surfaces (e.g. CustomerListPage:926 column-picker) hand-roll a custom `<div role="menu">` dropdown. Selects don't open to themed listbox; dropdowns don't follow native keyboard rules. No shared `<Select>` primitive. Date-picker landscape similar — 14 native `<input type="date">` only, no library; 0 themed pickers. (Memory says brand surface ramp drift.) **[AUTOLOOP-T0 BLOCKED: requires Radix/HeadlessUI + DatePicker deps + codemod 128 native selects. Too broad.]**
   <!-- meta: scope=web/pages+components; files=packages/web/src/pages/customers/CustomerCreatePage.tsx:236,packages/web/src/pages/customers/CustomerListPage.tsx:609,627,926; fix=add-shared/Select.tsx+shared/DatePicker.tsx-as-headless-radix/HeadlessUI-wrappers+codemod-25-native-selects -->
 
-- [ ] WEB-FQ-016. **[MED] Status-color usage uses raw amber/blue/green/red Tailwind colors with NO dark variants in 30+ spots — light-only badges.** `CustomerListPage.tsx:464` rounded-full badge; `DashboardPage.tsx:284,314,355,738,776` `text-amber-600 dark:text-amber-400` (dark variants present here) but `:1338,1873` only `text-red-500` / `text-green-600` (no dark:). Customer detail page `border-purple-200 text-purple-700 bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10` (long), but other pages omit the `dark:` arm. Inconsistent dark-mode coverage = washed-out badges in dark mode. **STATUS: BLOCKED — codemod across 30+ badge sites + StatusBadge component design; multi-component, defer to design-system sprint**
+- [!] WEB-FQ-016. **[MED] Status-color usage uses raw amber/blue/green/red Tailwind colors with NO dark variants in 30+ spots — light-only badges.** `CustomerListPage.tsx:464` rounded-full badge; `DashboardPage.tsx:284,314,355,738,776` `text-amber-600 dark:text-amber-400` (dark variants present here) but `:1338,1873` only `text-red-500` / `text-green-600` (no dark:). Customer detail page `border-purple-200 text-purple-700 bg-purple-50 dark:border-purple-500/30 dark:text-purple-300 dark:bg-purple-500/10` (long), but other pages omit the `dark:` arm. Inconsistent dark-mode coverage = washed-out badges in dark mode. **STATUS: BLOCKED — codemod across 30+ badge sites + StatusBadge component design; multi-component, defer to design-system sprint**
   <!-- meta: scope=web/pages; files=packages/web/src/pages/dashboard/DashboardPage.tsx:1338,1873,packages/web/src/pages/customers/CustomerListPage.tsx:464; fix=define-StatusBadge-component-with-tone=success|warning|danger|info+full-light/dark-token-pairs -->
 
 - [~] WEB-FQ-017. **[LOW] Button-label conventions inconsistent — "Add" / "Add Customer" / "Create" / "New" coexist for the same intent across pages.** `CustomerListPage.tsx:577` Link label "Add Customer"; `tickets/TicketListPage.tsx:632` form button ">Add<"; many settings pages use `>Create<`; some `>New<`. Microcopy convention should pick one verb per CRUD slot ("Add X" for list-page CTAs, "Save changes" for edit, "Create X" only for wizards) and document it in a copywriting guide.
@@ -1051,7 +1051,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FX-008. **[MED] PinModal is the only well-built modal — has `role="dialog"` + `aria-modal` + `aria-labelledby="pin-modal-title"` + close-button `aria-label="Close"`. Its pattern should be the shared `<Modal>` primitive everyone migrates to.** `components/shared/PinModal.tsx:133-146`. Currently each modal hand-rolls its own backdrop + close button, often forgetting all four ARIA hooks (see WEB-FX-003). **[AUTOLOOP-T0 BLOCKED: codemod of 46 bare overlays — too broad for single-tick fix.]**
+- [!] WEB-FX-008. **[MED] PinModal is the only well-built modal — has `role="dialog"` + `aria-modal` + `aria-labelledby="pin-modal-title"` + close-button `aria-label="Close"`. Its pattern should be the shared `<Modal>` primitive everyone migrates to.** `components/shared/PinModal.tsx:133-146`. Currently each modal hand-rolls its own backdrop + close button, often forgetting all four ARIA hooks (see WEB-FX-003). **[AUTOLOOP-T0 BLOCKED: codemod of 46 bare overlays — too broad for single-tick fix.]**
   <!-- meta: scope=web/components; files=packages/web/src/components/shared/PinModal.tsx:133-146,packages/web/src/components/shared/ConfirmDialog.tsx; fix=extract-shared/Modal.tsx-from-PinModal-pattern+add-focus-trap+ESC+codemod-46-bare-overlays-to-use-it -->
 
 
@@ -1082,10 +1082,10 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FAC-005. **[MED] Tooltips implemented as native `title="..."` attributes on 168 elements — no delay-in/out, OS-rendered (breaks brand), flickers on rapid mouse movement across icon clusters.** `Header.tsx:284,294,313`, `Sidebar.tsx:352`, `ImpersonationBanner.tsx:86`, etc. Native title shows after ~700ms with no fade, dismisses on movement, ignores keyboard focus (a11y gap). Build a shared `<Tooltip>` with `delayShow={300}` `delayHide={150}` + 150ms fade-in/out, focus-visible support, motion-reduce fallback to instant show. Replace all 168 `title=` callsites via codemod. **[AUTOLOOP-T1 BLOCKED: 168-site native title→Tooltip codemod, too broad.]**
+- [!] WEB-FAC-005. **[MED] Tooltips implemented as native `title="..."` attributes on 168 elements — no delay-in/out, OS-rendered (breaks brand), flickers on rapid mouse movement across icon clusters.** `Header.tsx:284,294,313`, `Sidebar.tsx:352`, `ImpersonationBanner.tsx:86`, etc. Native title shows after ~700ms with no fade, dismisses on movement, ignores keyboard focus (a11y gap). Build a shared `<Tooltip>` with `delayShow={300}` `delayHide={150}` + 150ms fade-in/out, focus-visible support, motion-reduce fallback to instant show. Replace all 168 `title=` callsites via codemod. **[AUTOLOOP-T1 BLOCKED: 168-site native title→Tooltip codemod, too broad.]**
   <!-- meta: scope=web/components; files=packages/web/src/components/layout/Header.tsx:284,294,313,packages/web/src/components/layout/Sidebar.tsx:352,packages/web/src/components/ImpersonationBanner.tsx:86; fix=author-shared/Tooltip.tsx+@radix-ui/react-tooltip+delay-300/150+motion-reduce:transition-none+codemod-title-attr -->
 
-- [ ] WEB-FAC-006. **[MED] No page-route transitions — `<Routes>` in `App.tsx:351,369` swap routes synchronously with zero crossfade, causing "white flash" between heavy pages (Dashboard -> CustomerList -> TicketDetail).** React Router v6 unmounts old route immediately. Wrap `<Routes location={location} />` in `framer-motion AnimatePresence` keyed on `location.pathname` with 150ms fade or short slide. Critical when Suspense fallback (Skeleton) chains multiple paint phases — currently looks broken instead of intentional. **STATUS: BLOCKED — needs new framer-motion dependency + AnimatePresence wiring across all routes; defer to motion sprint**
+- [!] WEB-FAC-006. **[MED] No page-route transitions — `<Routes>` in `App.tsx:351,369` swap routes synchronously with zero crossfade, causing "white flash" between heavy pages (Dashboard -> CustomerList -> TicketDetail).** React Router v6 unmounts old route immediately. Wrap `<Routes location={location} />` in `framer-motion AnimatePresence` keyed on `location.pathname` with 150ms fade or short slide. Critical when Suspense fallback (Skeleton) chains multiple paint phases — currently looks broken instead of intentional. **STATUS: BLOCKED — needs new framer-motion dependency + AnimatePresence wiring across all routes; defer to motion sprint**
   <!-- meta: scope=web/App; files=packages/web/src/App.tsx:351,369; fix=AnimatePresence+motion.div-key=pathname+150ms-fade+motion-reduce:duration-0 -->
 
 
@@ -1117,7 +1117,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 
 
 
-- [ ] WEB-FAE-006. **[MED] Hardcoded role lists drift from server's canonical `shared/constants/permissions` — comment at `Sidebar.tsx:141` literally says "shared ROLE_PERMISSIONS grants manager every permission except a handful" but the client doesn't import that constant; it just reproduces `userRole === 'admin' || userRole === 'manager'` inline.** `Header.tsx:439` checks `'admin' || 'manager'`, `DashboardPage.tsx:1626` checks `'admin' || 'manager'`, `DangerZoneTab.tsx:35` checks only `'admin'`, `BulkSmsModal.tsx:18` says "backend enforces req.user.role === 'admin'" (only one consistent), `SettingsPage.tsx:1762` lists `'manager'`+`['Tickets', 'Customers', 'POS']`+`'technician'` — all hand-rolled. If server adds an `'owner'` or `'kiosk'` role, every callsite drifts silently. Import `ROLE_PERMISSIONS` from `@bizarre-crm/shared` and derive role gates from a single map. **[AUTOLOOP-T1 BLOCKED: 15-file role-check codemod, exceeds limit.]**
+- [!] WEB-FAE-006. **[MED] Hardcoded role lists drift from server's canonical `shared/constants/permissions` — comment at `Sidebar.tsx:141` literally says "shared ROLE_PERMISSIONS grants manager every permission except a handful" but the client doesn't import that constant; it just reproduces `userRole === 'admin' || userRole === 'manager'` inline.** `Header.tsx:439` checks `'admin' || 'manager'`, `DashboardPage.tsx:1626` checks `'admin' || 'manager'`, `DangerZoneTab.tsx:35` checks only `'admin'`, `BulkSmsModal.tsx:18` says "backend enforces req.user.role === 'admin'" (only one consistent), `SettingsPage.tsx:1762` lists `'manager'`+`['Tickets', 'Customers', 'POS']`+`'technician'` — all hand-rolled. If server adds an `'owner'` or `'kiosk'` role, every callsite drifts silently. Import `ROLE_PERMISSIONS` from `@bizarre-crm/shared` and derive role gates from a single map. **[AUTOLOOP-T1 BLOCKED: 15-file role-check codemod, exceeds limit.]**
   <!-- meta: scope=web/components+pages; files=packages/web/src/components/layout/Header.tsx:439,packages/web/src/components/layout/Sidebar.tsx:147,packages/web/src/pages/settings/SettingsPage.tsx:1761-1762,packages/web/src/pages/dashboard/DashboardPage.tsx:1626; fix=import-ROLE_PERMISSIONS-from-shared+derive-isAdminOrManager-from-canonical-map+add-eslint-rule-no-hardcoded-role-string-literal -->
 
 
@@ -2311,7 +2311,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-180`
   <!-- meta: fix=success-modal-with-refund-summary+print-receipt-CTA -->
 
-- [ ] WEB-UIUX-433. **[MINOR usability] No way to refund directly from POS sale — operator must navigate to Invoices → find invoice → open detail → click Credit Note.** ~5 clicks for what should be 2-tap operation in-store. L1, L5. **[AUTOLOOP-T18 BLOCKED: ReturnModal exists + hotkeybound, but surfacing button on SuccessScreen requires prop-threading across SuccessScreen+UnifiedPosPage; exceeds single-file edit.]**
+- [!] WEB-UIUX-433. **[MINOR usability] No way to refund directly from POS sale — operator must navigate to Invoices → find invoice → open detail → click Credit Note.** ~5 clicks for what should be 2-tap operation in-store. L1, L5. **[AUTOLOOP-T18 BLOCKED: ReturnModal exists + hotkeybound, but surfacing button on SuccessScreen requires prop-threading across SuccessScreen+UnifiedPosPage; exceeds single-file edit.]**
   Cross-reference: `packages/web/src/pages/unified-pos/` no refund affordance from past-sales view
   <!-- meta: fix=add-Refund-button-to-recent-sales-list-in-POS -->
 
@@ -2964,13 +2964,13 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-639. **[MAJOR] Bulk price update preview truncated to 20 items.** 200 selected → user sees random 20, clicks Apply, no "view all" toggle. L8. **RESOLVED 2026-05-07: valid; the preview still starts compact at 20 rows but now exposes a "View all N price changes" toggle plus a "Show first 20" collapse path, so large selections are inspectable before Apply.**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:998`
 
-- [ ] WEB-UIUX-640. **[MAJOR] Shrinkage events cannot be edited or deleted — wrong reason (e.g. "stolen" vs "damaged") permanent.** Compliance + insurance implications. L4, L16. **[AUTOLOOP-T29 BLOCKED: requires server PATCH/DELETE endpoints for shrinkage events + UI controls; multi-component.]**
+- [!] WEB-UIUX-640. **[MAJOR] Shrinkage events cannot be edited or deleted — wrong reason (e.g. "stolen" vs "damaged") permanent.** Compliance + insurance implications. L4, L16. **[AUTOLOOP-T29 BLOCKED: requires server PATCH/DELETE endpoints for shrinkage events + UI controls; multi-component.]**
   `packages/web/src/pages/inventory/ShrinkagePage.tsx:73-99,209-243`
 
 - [ ] WEB-UIUX-641. **[MAJOR] Loaner has no `due_back_at` field, no overdue detection, no charge-customer flow that creates invoice.** Damage cost goes to free-text `notes` only. L5, L13.
   `packages/web/src/pages/loaners/LoanersPage.tsx:312-422`
 
-- [ ] WEB-UIUX-642. **[MAJOR] No "mark loaner as lost" status — enum is `available|loaned` only.** Customer walks off with device → loaner stuck "loaned" forever. L5, L13. **[AUTOLOOP-T29 BLOCKED: requires server enum extension + status-transition route + shared type update + UI button; spans 4+ files.]**
+- [!] WEB-UIUX-642. **[MAJOR] No "mark loaner as lost" status — enum is `available|loaned` only.** Customer walks off with device → loaner stuck "loaned" forever. L5, L13. **[AUTOLOOP-T29 BLOCKED: requires server enum extension + status-transition route + shared type update + UI button; spans 4+ files.]**
   `packages/web/src/api/endpoints.ts:1218-1259`
 
 - [ ] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8.
@@ -2982,7 +2982,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-645. **[MAJOR] Serial number status flip has zero side effects.** `sold→returned` doesn't increment in_stock, no invoice back-link enforced, no warning. L13, L16.
   `packages/web/src/pages/inventory/SerialNumbersPage.tsx:74-81,186-198`
 
-- [ ] WEB-UIUX-646. **[MAJOR] PO Receive doesn't capture serials at receive time — phantom stock for serialized items until separate manual entry.** L13. **[AUTOLOOP-T29 BLOCKED: requires new serial-entry UI flow at receive time + backend API; multi-component.]**
+- [!] WEB-UIUX-646. **[MAJOR] PO Receive doesn't capture serials at receive time — phantom stock for serialized items until separate manual entry.** L13. **[AUTOLOOP-T29 BLOCKED: requires new serial-entry UI flow at receive time + backend API; multi-component.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:50-151`
 
 - [x] WEB-UIUX-647. **[MAJOR] Bulk price `pct === -100` allowed (strict `pct < -100`) — accidentally zeros all prices.** Combined with no-revert = catastrophic. L7, L16. **RESOLVED 2026-05-07: stale as a strict-bound bug because current code already rejects `pct <= -100`; tightened the visible error copy and input bounds so the UI no longer implies -100% is acceptable.**
@@ -3005,7 +3005,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-652. **[MAJOR] Manager can't stop someone else's timer — only owner has Stop button.** Orphan timers run until owner starts another. L4, L13.
   `packages/web/src/components/tickets/BenchTimer.tsx:168-177`
 
-- [ ] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
+- [!] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:797-1149`
 
 - [ ] WEB-UIUX-654. **[MAJOR] Defect data exists per item but never read at reorder time.** `benchApi.defects.byItem(itemId)` API exists, zero call sites. Tech can re-add same defective part with no warning. L13.
@@ -3025,7 +3025,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-658. **[MAJOR] No "renew" / "extend valid_until" / "clone" action on expired estimate.** Customer comes back, operator has to manually clone. L1, L5.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx`
 
-- [ ] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13. **[AUTOLOOP-T30 BLOCKED: estimate_line_items has no cost_price column; server snapshot on creation/convert requires schema migration.]**
+- [!] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13. **[AUTOLOOP-T30 BLOCKED: estimate_line_items has no cost_price column; server snapshot on creation/convert requires schema migration.]**
 
 - [ ] WEB-UIUX-660. **[MAJOR · BLOCKED] No abandoned-ticket workflow.** 90-day Ready-for-Pickup gets zero escalation lane (lumped with 7-day stale tickets in dashboard). No SMS cadence, no liability disclaimer, no auto-write-off. L5.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
@@ -3047,7 +3047,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-666. **[MAJOR] EstimateListPage bulk delete fires N parallel requests, no batching.** 1000 selected = 1000 simultaneous DELETEs. L15.
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
-- [ ] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5. **[AUTOLOOP-T30 BLOCKED: app-wide — every list page uses URL search params; sidebar NavLinks use bare paths stripping query state. Cross-cutting fix needed.]**
+- [!] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5. **[AUTOLOOP-T30 BLOCKED: app-wide — every list page uses URL search params; sidebar NavLinks use bare paths stripping query state. Cross-cutting fix needed.]**
 
 - [x] WEB-UIUX-668. **[MINOR] Saved filter deleted by user A → user B's cache still applies the deleted filter (no cross-tab invalidation).** L6. **[AUTOLOOP-T31 RESOLVED: SavedFiltersDropdown adds BroadcastChannel("saved-filters") listener; delete/create handlers postMessage so other tabs invalidate React Query cache.]**
   `packages/web/src/pages/tickets/TicketListPage.tsx:201-320`
@@ -3055,7 +3055,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-669. **[MINOR] Invoice empty state: just icon + "No invoices found" — no "clear filters" CTA.** L8.
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:426-430`
 
-- [ ] WEB-UIUX-670. **[MINOR] No "Select all 4,832 matching" affordance like Gmail.** Bulk actions max at pagesize. L1. **[AUTOLOOP-T31 BLOCKED: requires server bulk-by-filter endpoints accepting filter criteria instead of explicit IDs.]**
+- [!] WEB-UIUX-670. **[MINOR] No "Select all 4,832 matching" affordance like Gmail.** Bulk actions max at pagesize. L1. **[AUTOLOOP-T31 BLOCKED: requires server bulk-by-filter endpoints accepting filter criteria instead of explicit IDs.]**
 
 - [ ] WEB-UIUX-671. **[MINOR] Native `<input type="date">` for from/to has no max/min — future date `2099-01-01` allowed silently.** L7.
   `packages/web/src/pages/customers/CustomerListPage.tsx:636-642`
@@ -3085,7 +3085,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-679. **[MAJOR] Z-Report uses single `window.print()` with no resume-on-jam, no save-as-PDF fallback, no `printed_at` audit flag.** L4, L13.
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:81`
 
-- [ ] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
+- [!] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
   `packages/web/src/pages/inventory/MassLabelPrintPage.tsx:42-95`
 
 - [ ] WEB-UIUX-681. **[MAJOR] Invoice print fallback uses `window.print()` against current SPA route — prints sidebar+toolbars+breadcrumbs.** Same on EstimateDetailPage. L9, L8.
@@ -3148,7 +3148,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [ ] WEB-UIUX-698. **[MAJOR] Segments have no concept of intersection / precedence.** Customer in "VIP" AND "High Risk" → which campaign wins? Undocumented. L5, L14.
   `packages/web/src/pages/marketing/SegmentsPage.tsx`
 
-- [ ] WEB-UIUX-699. **[MAJOR] Automation triggers don't include `customer_in_segment`.** Operator wanting "send VIP auto-reply" cannot express it. L5. **[AUTOLOOP-T32 BLOCKED: customer_in_segment trigger needs server segment evaluation engine + UI trigger config form; multi-component.]**
+- [!] WEB-UIUX-699. **[MAJOR] Automation triggers don't include `customer_in_segment`.** Operator wanting "send VIP auto-reply" cannot express it. L5. **[AUTOLOOP-T32 BLOCKED: customer_in_segment trigger needs server segment evaluation engine + UI trigger config form; multi-component.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:42-48`
 
 - [x] WEB-UIUX-700. **[MINOR] Segment value coercion: `Number("$50")` = NaN → falls through to string → segment matches zero customers silently.** L7. **[AUTOLOOP-T58 VERIFIED: coerceRuleValue strips non-numeric chars before Number(); returns null on invalid; save blocked + inline error rendered.]**
@@ -3167,7 +3167,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### Blockers — Unwired server APIs
 
-- [ ] WEB-UIUX-703. **[BLOCKER] No web UI for `refunds.routes.ts` API surface.** Server exposes POST `/refunds` (idempotent + `refunds.create` perm), PATCH `/refunds/:id/approve` (+`refunds.approve`), PATCH `/refunds/:id/decline`, GET `/refunds/credits/:customerId`, POST `/refunds/credits/:customerId/use`, GET `/refunds/credits/liability`. Zero callers in `packages/web/src` (grep `/refunds`, `refundsApi` → 0). Operators have only Credit Note path — no approval workflow, no store-credit redemption at POS, no manager liability dashboard. L8, L3, L1. **[AUTOLOOP-T32 BLOCKED: refunds API has 7 endpoints (list/create/approve/decline/credit balance/use/liability) — multi-page feature implementation.]**
+- [!] WEB-UIUX-703. **[BLOCKER] No web UI for `refunds.routes.ts` API surface.** Server exposes POST `/refunds` (idempotent + `refunds.create` perm), PATCH `/refunds/:id/approve` (+`refunds.approve`), PATCH `/refunds/:id/decline`, GET `/refunds/credits/:customerId`, POST `/refunds/credits/:customerId/use`, GET `/refunds/credits/liability`. Zero callers in `packages/web/src` (grep `/refunds`, `refundsApi` → 0). Operators have only Credit Note path — no approval workflow, no store-credit redemption at POS, no manager liability dashboard. L8, L3, L1. **[AUTOLOOP-T32 BLOCKED: refunds API has 7 endpoints (list/create/approve/decline/credit balance/use/liability) — multi-page feature implementation.]**
   `packages/server/src/routes/refunds.routes.ts:107,253,418,439,462,529`
   <!-- meta: fix=add-refundsApi-endpoint-shim+RefundsListPage+ApprovalQueue+StoreCreditRedeemModal -->
 
@@ -3236,7 +3236,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
   <!-- meta: fix=primary=Record-Payment-keep-Print-collapse-rest-into-overflow-menu -->
 
-- [ ] WEB-UIUX-721. **[MAJOR] No "Refund to original card" branch — server has no card-refund route either.** `blockchyp.routes.ts` exposes process-payment + void-payment but no refund endpoint. Card-charged customer always gets store credit, never card-credited back. Common SaaS expectation broken (chargeback risk). L8, L16. **STATUS: BLOCKED — needs new server endpoint for blockchypApi.refund + UI wiring on CreditNote modal; multi-component, defer to refunds sprint**
+- [!] WEB-UIUX-721. **[MAJOR] No "Refund to original card" branch — server has no card-refund route either.** `blockchyp.routes.ts` exposes process-payment + void-payment but no refund endpoint. Card-charged customer always gets store credit, never card-credited back. Common SaaS expectation broken (chargeback risk). L8, L16. **STATUS: BLOCKED — needs new server endpoint for blockchypApi.refund + UI wiring on CreditNote modal; multi-component, defer to refunds sprint**
   `packages/server/src/routes/blockchyp.routes.ts:131,482` (no refund route)
   <!-- meta: fix=add-blockchypApi.refund+wire-from-CreditNote-modal-when-card-payment-exists -->
 
@@ -3278,7 +3278,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-732. **[MINOR] `STATUS_COLORS` map at top of InvoiceDetailPage has `unpaid/partial/paid/void` but missing `'refunded'` — yet List + Customer pages have it.** If server ever sets refunded, detail page renders empty class (no badge color). Inconsistent across pages even within stale-status assumption. L9.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:26-31`
 
-- [ ] WEB-UIUX-733. **[NIT] Credit-note `code` + `note` composed into one `reason` string at client (`${d.code}: ${d.note}`) before send.** Server already accepts `code` + `note` as separate fields (migration 150) and stores them in `credit_note_code` / `credit_note_note`. The composed `reason` is now redundant — server stores both. Drift. L4. **[AUTOLOOP-T33 BLOCKED: server requires composed `reason` field + composes it into invoice notes. Client-only switch to separate code+note breaks endpoint; server-side change needed first.]**
+- [!] WEB-UIUX-733. **[NIT] Credit-note `code` + `note` composed into one `reason` string at client (`${d.code}: ${d.note}`) before send.** Server already accepts `code` + `note` as separate fields (migration 150) and stores them in `credit_note_code` / `credit_note_note`. The composed `reason` is now redundant — server stores both. Drift. L4. **[AUTOLOOP-T33 BLOCKED: server requires composed `reason` field + composes it into invoice notes. Client-only switch to separate code+note breaks endpoint; server-side change needed first.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-167`
 
 
@@ -3286,13 +3286,13 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED9: Concurrent Editor Conflicts
 
-- [ ] WEB-UIUX-734. **[BLOCKER] No version/etag on any write — server is naive last-write-wins.** Two cashiers editing same ticket — one notes, one status — both succeed; later PUT wins for fields it sends. L11, L4. **[AUTOLOOP-T34 BLOCKED: cross-cutting optimistic concurrency — version columns + If-Match + UI conflict prompts; not safe to implement unilaterally.]**
+- [!] WEB-UIUX-734. **[BLOCKER] No version/etag on any write — server is naive last-write-wins.** Two cashiers editing same ticket — one notes, one status — both succeed; later PUT wins for fields it sends. L11, L4. **[AUTOLOOP-T34 BLOCKED: cross-cutting optimistic concurrency — version columns + If-Match + UI conflict prompts; not safe to implement unilaterally.]**
   `packages/web/src/api/client.ts:372-394` (acknowledged)
 
 - [ ] WEB-UIUX-735. **[BLOCKER] ReceiptSettings/InvoiceSettings/TicketsRepairsSettings/BlockChypSettings/SmsVoiceSettings/DataRetentionTab all PUT entire config blob.** Sibling tab clobber bug (PosSettings already fixed via OWNED_KEYS). L5, L16.
   Multiple settings tabs share `['settings','config']` cache
 
-- [ ] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11. **[AUTOLOOP-T34 BLOCKED: requires server endpoint expected_qty CAS + new client UI input; multi-component.]**
+- [!] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11. **[AUTOLOOP-T34 BLOCKED: requires server endpoint expected_qty CAS + new client UI input; multi-component.]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:101-112,127-131`
 
 - [ ] WEB-UIUX-737. **[MAJOR] Optimistic mutations cancel queries but never reconcile WS pushes mid-flight.** User flips status to Done → WS pushes "In Progress" from co-worker → invalidate fires → user's optimistic Done disappears mid-render. Pill flickers, no signal. L11, L4.
@@ -3311,7 +3311,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED5: Auth/Session/Permission Edges
 
-- [ ] WEB-UIUX-742. **[BLOCKER] SwitchUser is sticky forever — no auto-revert, no banner.** Manager switches in to override, walks away, cashier sells under manager identity. Only signal = name in Header avatar. L16, L11. **[AUTOLOOP-T34 BLOCKED: switchUser fully replaces auth state via emitAuthCleared(); no original-user snapshot exists for "Switch back" banner.]**
+- [!] WEB-UIUX-742. **[BLOCKER] SwitchUser is sticky forever — no auto-revert, no banner.** Manager switches in to override, walks away, cashier sells under manager identity. Only signal = name in Header avatar. L16, L11. **[AUTOLOOP-T34 BLOCKED: switchUser fully replaces auth state via emitAuthCleared(); no original-user snapshot exists for "Switch back" banner.]**
   `packages/web/src/components/layout/Header.tsx:101,540-555`
   `packages/web/src/stores/authStore.ts:113-127`
   <!-- meta: fix=ImpersonationBanner-style-yellow-bar+auto-revert-after-N-min -->
@@ -3389,7 +3389,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-764. **[BLOCKER] Discount stacking has NO canonical order — single cart-wide `discount` slot.** No model for "10% off + $5 off + member 20%" with sequence/basis. Subtle base-vs-net errors. L7, L13.
   `packages/web/src/pages/unified-pos/store.ts:101-103,235-237`
 
-- [ ] WEB-UIUX-765. **[BLOCKER] No `tax_exempt` flag on customer record.** Cashiers must manually toggle each line's `taxable`. Customer change AFTER lines added doesn't auto-flip. Silent tax on non-profit invoice. L6, L13. **[AUTOLOOP-T35 BLOCKED: tax_exempt flag spans server schema + customer form + POS auto-apply logic; multi-component.]**
+- [!] WEB-UIUX-765. **[BLOCKER] No `tax_exempt` flag on customer record.** Cashiers must manually toggle each line's `taxable`. Customer change AFTER lines added doesn't auto-flip. Silent tax on non-profit invoice. L6, L13. **[AUTOLOOP-T35 BLOCKED: tax_exempt flag spans server schema + customer form + POS auto-apply logic; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1123,1191,1253-1254`
 
 - [ ] WEB-UIUX-766. **[BLOCKER] Discount cap permission gate not implemented — cashier can apply $9999 discount on $50 sale.** `pos_max_cashier_discount_pct` setting missing. L16.
@@ -3402,7 +3402,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/unified-pos/totals.ts:94`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:464-466`
 
-- [ ] WEB-UIUX-769. **[MAJOR] Refund line cannot be entered — clamp at parse hides use case.** Trade-in credits, returns can't be expressed at POS. L5, L7. **[AUTOLOOP-T35 BLOCKED: dedicated trade-in/return modal needed for refund lines; conflicts with returns flow if patched at stepper.]**
+- [!] WEB-UIUX-769. **[MAJOR] Refund line cannot be entered — clamp at parse hides use case.** Trade-in credits, returns can't be expressed at POS. L5, L7. **[AUTOLOOP-T35 BLOCKED: dedicated trade-in/return modal needed for refund lines; conflicts with returns flow if patched at stepper.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:599-603`
 
 - [ ] WEB-UIUX-770. **[MAJOR] Tip/gratuity not implemented + no rounding-mode selector.** No tip-on-card flow, no Canada/Switzerland 5¢ rounding. L5, L7.
@@ -3410,7 +3410,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-771. **[MAJOR] Tax-rate change updates cart silently mid-checkout — no banner.** "Your total is $108.88" → "$109.13" between cashier saying it and tap to charge. L6, L8. **[AUTOLOOP-T35 RESOLVED: LeftPanel useRef+useEffect tracks prev taxRate; fires toast.warning with old%/new%/updated total on mid-session change.]**
   `packages/web/src/hooks/useDefaultTaxRate.ts:18-22`
 
-- [ ] WEB-UIUX-772. **[MAJOR] Bulk-price adjustment changes don't recompute existing cart lines.** Two cashiers add same item → different totals depending on add-time. L6, L11. **[AUTOLOOP-T36 BLOCKED: server emits no `inventory:price_changed` WS event; cannot signal cart for re-pricing without server-side event.]**
+- [!] WEB-UIUX-772. **[MAJOR] Bulk-price adjustment changes don't recompute existing cart lines.** Two cashiers add same item → different totals depending on add-time. L6, L11. **[AUTOLOOP-T36 BLOCKED: server emits no `inventory:price_changed` WS event; cannot signal cart for re-pricing without server-side event.]**
   `packages/web/src/pages/settings/RepairPricingTab.tsx:823-971`
 
 - [ ] WEB-UIUX-773. **[MAJOR] Tax-inclusive flag locked at line add — no UI to flip in cart.** ProductRow shows "No tax" for tax-inclusive item, cashier panic. L7, L9.
@@ -3442,7 +3442,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-781. **[MAJOR] DST spring-forward gap silently materialised — picking 02:30 on March 8 lands at 03:30 MDT.** No "non-existent local time" check. 15-min select includes 4 invalid slots. L7.
   `packages/web/src/pages/leads/CalendarPage.tsx:179-192`
 
-- [ ] WEB-UIUX-782. **[MAJOR] DST fall-back ambiguity silently picks first occurrence.** Shift end 02:00 + start 01:00 on rollback day → undercount or silent overlap. Payroll bug. L7, L13. **[AUTOLOOP-T36 BLOCKED: DST fall-back ambiguity needs server-side TZ-aware duration math (dayjs/luxon with named TZ).]**
+- [!] WEB-UIUX-782. **[MAJOR] DST fall-back ambiguity silently picks first occurrence.** Shift end 02:00 + start 01:00 on rollback day → undercount or silent overlap. Payroll bug. L7, L13. **[AUTOLOOP-T36 BLOCKED: DST fall-back ambiguity needs server-side TZ-aware duration math (dayjs/luxon with named TZ).]**
 
 - [ ] WEB-UIUX-783. **[MAJOR] ShiftSchedulePage `start_at: newStart` sends `<input type="datetime-local">` value RAW with no offset.** Server interprets as UTC vs local vs shop-TZ — undefined. L7, L14.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:108-113`
@@ -3459,7 +3459,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-787. **[MINOR] PaymentLinks `expires_at` date-only sent as YYYY-MM-DD — server picks own end-of-day in own TZ.** Hawaii customer at 9pm sees "Expired" unexpectedly. L7, L14.
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:135-148,238-241`
 
-- [ ] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
+- [!] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
 
 - [ ] WEB-UIUX-789. **[MINOR] `timeAgo()` appends `Z` only if no `Z`/`+` — `2026-04-30T10:00:00-05:00Z` malformed.** Mixed-format timestamps produce wrong "ago" labels. L14.
   `packages/web/src/utils/format.ts:154-168`
@@ -3486,7 +3486,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-796. **[MAJOR] Two scans 200ms apart: second aborts first's API call. First scan's product NEVER added.** No queue, no toast-on-loss. L11, L8.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:160-163`
 
-- [ ] WEB-UIUX-797. **[MAJOR] ReceiveItemsModal scans NOT tied to any PO.** Scan-and-go restock looks like PO receive but creates ad-hoc unlinked stock. PO permanently "open". L5, L13. **[AUTOLOOP-T37 BLOCKED: ReceiveItemsModal needs PO picker UI + scan-validation + server purchase_order_id field; multi-component.]**
+- [!] WEB-UIUX-797. **[MAJOR] ReceiveItemsModal scans NOT tied to any PO.** Scan-and-go restock looks like PO receive but creates ad-hoc unlinked stock. PO permanently "open". L5, L13. **[AUTOLOOP-T37 BLOCKED: ReceiveItemsModal needs PO picker UI + scan-validation + server purchase_order_id field; multi-component.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:1318-1492`
 
 - [ ] WEB-UIUX-798. **[MAJOR] Four independent scan implementations with no shared abstraction — diverge in all behaviors.** Multi-match, in-flight guard, audio, no-match recovery, modal context — all different across 4 paths. L3, L4.
@@ -3509,7 +3509,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [ ] WEB-UIUX-804. **[MAJOR] No back-link from Ticket→Estimate.** `ticket.estimate_id` never read or rendered. Ticket is orphan after conversion. L5, L13.
 
-- [ ] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13. **[AUTOLOOP-T37 BLOCKED: invoices table + shared Invoice type lack estimate_id; needs server migration + route changes.]**
+- [!] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13. **[AUTOLOOP-T37 BLOCKED: invoices table + shared Invoice type lack estimate_id; needs server migration + route changes.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:416-420`
 
 - [ ] WEB-UIUX-806. **[MAJOR] Version history shows version numbers but NOT signature/approval lineage.** No `total_at_signing`, no signed-version indicator. Operator can't tell which version was signed. L13, L11.
@@ -3521,7 +3521,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-808. **[MAJOR] Print on EstimateDetail uses `window.print()` of LIVE DOM.** Post-edit numbers + original `created_at` + `order_id` — customer can argue printout doesn't match what they signed. L13.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:248-254`
 
-- [ ] WEB-UIUX-809. **[MAJOR] PrintPreviewModal has no `estimateId` prop — operator can only print latest invoice/work-order, never original signed quote.** L5, L13. **[AUTOLOOP-T37 BLOCKED: PrintPage has no /print/estimate/:id route; adding estimateId prop has no target. Needs backend-rendered estimate print page.]**
+- [!] WEB-UIUX-809. **[MAJOR] PrintPreviewModal has no `estimateId` prop — operator can only print latest invoice/work-order, never original signed quote.** L5, L13. **[AUTOLOOP-T37 BLOCKED: PrintPage has no /print/estimate/:id route; adding estimateId prop has no target. Needs backend-rendered estimate print page.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:100-120`
 
 - [x] WEB-UIUX-810. **[MAJOR] Stage-skip allowed: estimate→invoice WITHOUT going through ticket approval.** `Generate Invoice` only checks `!ticket.invoice_id`, not approved-estimate gate. L5, L16. **[AUTOLOOP-T38 RESOLVED: TicketPayments fetches linked estimate via useQuery; handleGenerateInvoice shows window.confirm warning when estimate.status !== "approved".]**
@@ -3530,7 +3530,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-811. **[MAJOR] Customer-side approval doesn't lock totals snapshot.** Operator edits line items post-approval (WEB-UIUX-801), portal shows new totals "Approved on [date]" — customer told they approved version they never saw. L16.
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:22-51`
 
-- [ ] WEB-UIUX-812. **[MINOR] Customer-side portal has only Approve, not Reject.** Q4 ("customer rejects → ticket auto-cancels?") unimplementable on customer side. L5. **[AUTOLOOP-T38 BLOCKED: portal Reject needs server route + UI button + auto-cancel logic; multi-component.]**
+- [!] WEB-UIUX-812. **[MINOR] Customer-side portal has only Approve, not Reject.** Q4 ("customer rejects → ticket auto-cancels?") unimplementable on customer side. L5. **[AUTOLOOP-T38 BLOCKED: portal Reject needs server route + UI button + auto-cancel logic; multi-component.]**
 
 #### ED18: Super-Admin / Multi-Tenant
 
@@ -3571,14 +3571,14 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-825. **[BLOCKER] CheckoutModal HTTP 202 / `pending_reconciliation` lumped into flat "decline".** Cashier hits Retry, server idempotency replays prior charge, customer potentially double-billed. UI never tells operator first charge actually went through. L8, L16.
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:351-365,377-398`
 
-- [ ] WEB-UIUX-826. **[BLOCKER] `subscribeMut` calls `membershipApi.subscribe` with NO `blockchyp_token` and NO `signature_file`.** Activation never captures card on file. Every nightly renewal will fail by definition. L5, L7, L16. **[AUTOLOOP-T38 BLOCKED: needs BlockChyp tokenize step + signature pad UI in CheckoutModal/CustomerDetailPage; multi-component.]**
+- [!] WEB-UIUX-826. **[BLOCKER] `subscribeMut` calls `membershipApi.subscribe` with NO `blockchyp_token` and NO `signature_file`.** Activation never captures card on file. Every nightly renewal will fail by definition. L5, L7, L16. **[AUTOLOOP-T38 BLOCKED: needs BlockChyp tokenize step + signature pad UI in CheckoutModal/CustomerDetailPage; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:891-902`
 
 - [ ] WEB-UIUX-827. **[BLOCKER] Cancel hard-codes `{ immediate: true }` — no end-of-period option.** Customer paid through end of month → forfeits remaining time. CustomerDetailPage variant has NO confirmation at all. L5, L8, L16.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124,155-168`
 
-- [ ] WEB-UIUX-828. **[BLOCKER] No tier-change UI ANYWHERE.** `membershipApi` exposes only subscribe/cancel/pause/resume. Operator must cancel (immediately, see above) + re-subscribe at full price. L5, L7. **[AUTOLOOP-T38 BLOCKED: tier-change needs new server route + billing service update + UI flow; multi-component.]**
+- [!] WEB-UIUX-828. **[BLOCKER] No tier-change UI ANYWHERE.** `membershipApi` exposes only subscribe/cancel/pause/resume. Operator must cancel (immediately, see above) + re-subscribe at full price. L5, L7. **[AUTOLOOP-T38 BLOCKED: tier-change needs new server route + billing service update + UI flow; multi-component.]**
 
 - [x] WEB-UIUX-829. **[BLOCKER] Past-due status badge shown but per-row "Bill now" button gated on `status === 'active'` — past-due rows can't be retried.** Wrong gating. L5, L8. **[AUTOLOOP-T39 RESOLVED: STALE — SubscriptionsListPage line 442 already gates on `status==="active" || status==="past_due"`. Past-due Bill Now works.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
@@ -3586,7 +3586,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-830. **[BLOCKER] Dunning bulk run partial-failure: aggregate counters only, no list of which 5 of 200 failed.** No "Retry failed" button. L8, L13.
   `packages/web/src/pages/billing/DunningPage.tsx:153-164,119-151`
 
-- [ ] WEB-UIUX-831. **[MAJOR] InstallmentPlanWizard customer-default-on-3rd-payment story COMPLETELY ABSENT.** No payment status per row, no missed-payment marker, no transition to dunning, no auto-debit retry view. L5, L13. **[AUTOLOOP-T39 BLOCKED: per-installment payment status + missed-payment marker + dunning needs DB schema + API + cron; multi-component.]**
+- [!] WEB-UIUX-831. **[MAJOR] InstallmentPlanWizard customer-default-on-3rd-payment story COMPLETELY ABSENT.** No payment status per row, no missed-payment marker, no transition to dunning, no auto-debit retry view. L5, L13. **[AUTOLOOP-T39 BLOCKED: per-installment payment status + missed-payment marker + dunning needs DB schema + API + cron; multi-component.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:43-198`
 
 - [ ] WEB-UIUX-832. **[MAJOR] BillingTab has no representation of "trial ended but card declined" state.** Stripe redirect handler reads only `?upgraded=1`/`?cancelled=1`, no `?declined=1` branch. L5, L8.
@@ -3715,7 +3715,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-870. **[MAJOR] Tech context-switching between 5 tickets loses cart state — only ONE persisted cart per user.** Switching ticket via `?ticket=` calls `resetAll()`. Inactivity timer 10min silently `resetAll()`. L4, L5.
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:240-251`
 
-- [ ] WEB-UIUX-871. **[MAJOR] Kanban no batch drag.** Tech with 5 "ready for pickup" tickets must drag each individually. Bulk-mode exists in List view but not Kanban. L1, L5. **[AUTOLOOP-T40 BLOCKED: requires-multi-select-batch-drag-feature; multi-select infrastructure missing.]**
+- [!] WEB-UIUX-871. **[MAJOR] Kanban no batch drag.** Tech with 5 "ready for pickup" tickets must drag each individually. Bulk-mode exists in List view but not Kanban. L1, L5. **[AUTOLOOP-T40 BLOCKED: requires-multi-select-batch-drag-feature; multi-select infrastructure missing.]**
 
 - [ ] WEB-UIUX-872. **[MAJOR] End-of-day flow scattered across 3 pages — no End-of-Day wizard.** CashDrawerWidget + CashRegisterPage + BottomActions. No unified close-shift sequence. L1, L4.
 
@@ -3746,7 +3746,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-881. **[MAJOR] CustomerHistorySidebar caps at 5 with NO "See all" + repeat-fault pill only fires for current device.** L11.
   `packages/web/src/components/tickets/CustomerHistorySidebar.tsx:90-92`
 
-- [ ] WEB-UIUX-882. **[MAJOR] Communications tab on customer page strips call affordances — no duration, no recording-play, no transcript link.** 200% regression vs standalone CommunicationPage. L11, L4. **[AUTOLOOP-T41 BLOCKED: customer Communications call affordances need server SQL + client type+render; multi-component.]**
+- [!] WEB-UIUX-882. **[MAJOR] Communications tab on customer page strips call affordances — no duration, no recording-play, no transcript link.** 200% regression vs standalone CommunicationPage. L11, L4. **[AUTOLOOP-T41 BLOCKED: customer Communications call affordances need server SQL + client type+render; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1740-1785`
 
 - [ ] WEB-UIUX-883. **[MAJOR] Refund history not aggregated anywhere.** Operator clicks each invoice individually to see credit-note timeline. CustomerAnalyticsBar shows LTV but no "total refunds" or "refund ratio". L11, L13.
@@ -3756,7 +3756,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-885. **[MAJOR · BLOCKED] No SMS/email follow-up scaffold from credit-note success.** Customer hangs up not knowing if refund landed. Receipt-prompt only fires after payment, not after refund. L8, L4.
   **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
+- [!] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
 
 #### DATA1: Data Flow Consistency
 
@@ -3818,19 +3818,19 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-906. **[MINOR] AuditLogsTab `formatDetails` JSON in `title=` tooltip exposes hashed PINs/IPs/PII on hover.** Screen-share/screenshot leak. L12, L16.
   `packages/web/src/pages/settings/AuditLogsTab.tsx:60-70,161`
 
-- [ ] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16. **STATUS: BLOCKED — already fixed: Sidebar.tsx auth-cleared listener sweeps recent_views + recent_views:* keys**
+- [!] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16. **STATUS: BLOCKED — already fixed: Sidebar.tsx auth-cleared listener sweeps recent_views + recent_views:* keys**
   `packages/web/src/stores/authStore.ts:185-200`
 
 - [ ] WEB-UIUX-908. **[MINOR] `pos-store-u*` keys never swept.** Fired employee's pending cart sits forever in localStorage with customer name + items. L16.
 
-- [ ] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16. **STATUS: BLOCKED — already fixed: PinModal lockout uses localStorage since SCAN-1168/WEB-UIUX-752**
+- [!] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16. **STATUS: BLOCKED — already fixed: PinModal lockout uses localStorage since SCAN-1168/WEB-UIUX-752**
   `packages/web/src/components/shared/PinModal.tsx:23-55`
 
 - [ ] WEB-UIUX-910. **[MINOR] AuditLogsTab cannot export / search-by-user from UI.** During incident, admin can't filter by user_id. No export. L1, L13.
 
 #### ED19: Keyboard Nav
 
-- [ ] WEB-UIUX-911. **[MAJOR] 30+ `role="dialog"` sites lack focus-restore on close.** Only ConfirmDialog implements lastFocused capture/restore. PinModal, UpgradeModal, QuickSmsModal, CheckoutModal, WidgetCustomizeModal, SwitchUserModal, ReviewPromptModal, 5 InventoryListPage modals — focus drops to body. L12. **STATUS: BLOCKED — codemod across 30+ dialog sites; useFocusTrap hook already capture/restores so fix is calling it everywhere**
+- [!] WEB-UIUX-911. **[MAJOR] 30+ `role="dialog"` sites lack focus-restore on close.** Only ConfirmDialog implements lastFocused capture/restore. PinModal, UpgradeModal, QuickSmsModal, CheckoutModal, WidgetCustomizeModal, SwitchUserModal, ReviewPromptModal, 5 InventoryListPage modals — focus drops to body. L12. **STATUS: BLOCKED — codemod across 30+ dialog sites; useFocusTrap hook already capture/restores so fix is calling it everywhere**
 
 - [ ] WEB-UIUX-912. **[MAJOR] `opacity-0 group-hover:opacity-100` buttons in 12+ sites are keyboard-invisible.** Visible focus rings appear with no context. LeadPipelinePage:124 already has comment `WEB-FC-006: always visible (no opacity-0 hover trap)` — fix not propagated. L12.
   TicketDevices.tsx:559,581,611,988,1008; TicketSidebar.tsx:232; KanbanBoard.tsx:114; DashboardPage.tsx:860; RepairsTab.tsx:1366,1372; ConditionsTab.tsx:337
@@ -3848,7 +3848,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [ ] WEB-UIUX-917. **[MINOR] Password-toggle eye buttons set `tabIndex={-1}` everywhere.** Forces blind typing with no peek-ahead. Material/GOV.UK convention is to keep in tab order. L12.
 
-- [ ] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12. **STATUS: BLOCKED — cross-flow Esc-policy design touching ~12 search inputs; needs documented policy first; defer to design-system sprint**
+- [!] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12. **STATUS: BLOCKED — cross-flow Esc-policy design touching ~12 search inputs; needs documented policy first; defer to design-system sprint**
 
 - [ ] WEB-UIUX-921. **[MINOR] CustomerListPage CustomerActionsMenu lacks `role="menu"`/`menuitem`, no arrow-key nav, no Esc handler.** Header.tsx:465 + LeadPipelinePage.tsx:144 use proper pattern — propagate. L12.
 
@@ -3897,7 +3897,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-936. **[BLOCKER] Default 30s axios timeout shorter than terminal user-input window (60-90s).** Tap-to-pay/chip flow times out client-side while server still processing. Combined with above = double-charge. L16, L4.
   `packages/web/src/api/client.ts:65`
 
-- [ ] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **STATUS: BLOCKED — needs server reachability heartbeat field on /blockchyp/status; backend infra change, defer to terminal sprint**
+- [!] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **STATUS: BLOCKED — needs server reachability heartbeat field on /blockchyp/status; backend infra change, defer to terminal sprint**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:170-178`
 
 - [ ] WEB-UIUX-938. **[MAJOR] BlockChyp Test Connection requires unsaved keys — operator can't retest live key against offline terminal.** Saved secrets arrive redacted as `''`. Most common diagnostic ("did terminal go offline?") requires re-entering 3 secrets. L8, L4.
@@ -3942,7 +3942,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:132-139`
   <!-- meta: fix=portal-Approve-must-route-through-signed-token-flow-OR-capture-signer-name-+-IP-+-UA-server-side -->
 
-- [ ] WEB-UIUX-948. **[BLOCKER] No web UI for `POST /api/v1/estimates/:id/sign-url`.** `estimateSign.routes.ts:233-309` issues admin-side e-sign token + URL (`buildPublicSignUrl`) so staff can hand customer a secure copy-link or QR for in-shop signature pad. Zero callers in `packages/web/src` (grep `sign-url` → only authedRouter declaration in server). Desktop staff can't hand customer the e-sign URL — only mobile clients drive it. EstimateDetailPage has Send (SMS) but nothing for sign-link generation. L8, L3. **STATUS: BLOCKED — needs new Generate Sign Link modal + QR render + TTL picker + clipboard wiring; multi-component, defer to estimates sprint**
+- [!] WEB-UIUX-948. **[BLOCKER] No web UI for `POST /api/v1/estimates/:id/sign-url`.** `estimateSign.routes.ts:233-309` issues admin-side e-sign token + URL (`buildPublicSignUrl`) so staff can hand customer a secure copy-link or QR for in-shop signature pad. Zero callers in `packages/web/src` (grep `sign-url` → only authedRouter declaration in server). Desktop staff can't hand customer the e-sign URL — only mobile clients drive it. EstimateDetailPage has Send (SMS) but nothing for sign-link generation. L8, L3. **STATUS: BLOCKED — needs new Generate Sign Link modal + QR render + TTL picker + clipboard wiring; multi-component, defer to estimates sprint**
   `packages/server/src/routes/estimateSign.routes.ts:233-309`
   <!-- meta: fix=add-Generate-Sign-Link-button-on-EstimateDetailPage+modal-with-copy+QR+TTL-picker -->
 
@@ -3970,14 +3970,14 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [ ] WEB-UIUX-954. **[MAJOR] SMS body hardcoded server-side, says "Reply YES to approve" but NO inbound-SMS approve handler exists.** `estimates.routes.ts:984` builds `Hi ${first_name}, ... Reply YES to approve...`. Customer texts "YES" → goes to nowhere (smsInbox shows it as raw thread message; no parser flips estimate status). False promise. Customers expect SMS-reply approval, get silence. L7, L16.
   `packages/server/src/routes/estimates.routes.ts:984`
 
-- [ ] WEB-UIUX-955. **[MAJOR] `send` flips `status='sent'` BEFORE SMS dispatch; SMS failure surfaces toast but status stays `'sent'`.** `estimates.routes.ts:949-955` UPDATEs status='sent' first, then SMS attempt at `:980-1003` may fail. Web treats `data.sent === false` as error toast (`EstimateDetailPage:76-77`) but the estimate's status persists as 'sent' — operator/customer/audit chain says "sent" even though nothing left the building. L7, L11. **STATUS: BLOCKED — server estimates.routes.ts must defer status update until SMS dispatch confirmed; backend change, defer to estimates sprint**
+- [!] WEB-UIUX-955. **[MAJOR] `send` flips `status='sent'` BEFORE SMS dispatch; SMS failure surfaces toast but status stays `'sent'`.** `estimates.routes.ts:949-955` UPDATEs status='sent' first, then SMS attempt at `:980-1003` may fail. Web treats `data.sent === false` as error toast (`EstimateDetailPage:76-77`) but the estimate's status persists as 'sent' — operator/customer/audit chain says "sent" even though nothing left the building. L7, L11. **STATUS: BLOCKED — server estimates.routes.ts must defer status update until SMS dispatch confirmed; backend change, defer to estimates sprint**
   `packages/server/src/routes/estimates.routes.ts:949-1003`
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:73-83`
 
 - [ ] WEB-UIUX-956. **[MAJOR] Send confirm dialog does not show the destination phone number.** "Send this estimate to the customer via SMS?" — no `${formatPhone(estimate.customer_mobile)}`. Operator can't catch a typo'd phone before the SMS fires + counts toward Twilio cost + status flips to sent. L7, L11.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:195`
 
-- [ ] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8. **STATUS: BLOCKED — needs SMS infrastructure work (deferred per user 2026-05-05); fallback channel UI pairs with that sprint**
+- [!] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8. **STATUS: BLOCKED — needs SMS infrastructure work (deferred per user 2026-05-05); fallback channel UI pairs with that sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:75-80`
 
 - [ ] WEB-UIUX-958. **[MAJOR] Convert button enabled while `status='draft'` — operator converts never-sent estimate to ticket.** `:219` gates only on `!== 'converted' && !== 'rejected'`. Customer who never saw the estimate now has a billable ticket. Should require `status IN ('approved','signed','sent')` minimum, with explicit warn for `'sent'` (not yet approved). L1, L5.
@@ -4013,7 +4013,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [ ] WEB-UIUX-966. **[MAJOR] Detail page shows `Sent` date but never `approval_token_expires_at`.** SMS contains a magic-link approval URL with TTL (`APPROVAL_TOKEN_TTL_MS`); customer who delays beyond expiry hits 410, asks shop to reissue. Web detail Details card has no "Approval link expires DD MMM HH:mm" row. Operator can't see whether to resend. L8, L11.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:461-507`
 
-- [ ] WEB-UIUX-967. **[MAJOR] Inline line-item editor exposes raw `tax_amount` cell with no `tax_class_id` picker.** `EstimateDetailPage:345-350`. Modal create at `EstimateListPage:287-296` has tax-class dropdown that auto-computes. Editor forces operator to do mental math + paste cents into tax field. Inconsistent within same flow. L4, L7. **STATUS: BLOCKED — inline editor needs tax_class_id picker mirroring CreateEstimateModal; multi-component refactor + auto-compute logic, defer to estimates sprint**
+- [!] WEB-UIUX-967. **[MAJOR] Inline line-item editor exposes raw `tax_amount` cell with no `tax_class_id` picker.** `EstimateDetailPage:345-350`. Modal create at `EstimateListPage:287-296` has tax-class dropdown that auto-computes. Editor forces operator to do mental math + paste cents into tax field. Inconsistent within same flow. L4, L7. **STATUS: BLOCKED — inline editor needs tax_class_id picker mirroring CreateEstimateModal; multi-component refactor + auto-compute logic, defer to estimates sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:323-359`
 
 - [x] WEB-UIUX-968. **[MAJOR] Inline line-item Save accepts empty-description rows.** Save click sends `draftItems` raw; no `filter(li => li.description.trim())`. CreateEstimateModal at `EstimateListPage:179-183` filters; editor doesn't. Server stores blank line-items. L7, L8. **[AUTOLOOP-T62 RESOLVED: lineItemsMut now filters draftItems on description.trim()!=='' before posting; mirrors EstimateListPage create-modal pattern.]**
@@ -4064,7 +4064,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 
 #### Blockers — Cannot redeem, silent currency corruption, no recovery, no nav
 
-- [ ] WEB-UIUX-981. **[BLOCKER] POS has no Gift Card tender — `PaymentMethod = 'Cash' | 'Card' | 'Other'`.** `CheckoutModal.tsx:16` literal union does not include gift card; `PAYMENT_METHODS` array (`:23-27`) only Cash/Card/Other. Operator finishes sale → customer hands physical card → no UI path to apply balance. `giftCardApi.lookup` + `giftCardApi.redeem` declared in `endpoints.ts:1274-1276` and never called anywhere in `packages/web/src`. Entire feature half-built. L1, L8, L4. **STATUS: BLOCKED — multi-component blocker feature: new GiftCard tender + lookup-redeem modal + invoice gift_card_id linkage + receipt updates; needs design review**
+- [!] WEB-UIUX-981. **[BLOCKER] POS has no Gift Card tender — `PaymentMethod = 'Cash' | 'Card' | 'Other'`.** `CheckoutModal.tsx:16` literal union does not include gift card; `PAYMENT_METHODS` array (`:23-27`) only Cash/Card/Other. Operator finishes sale → customer hands physical card → no UI path to apply balance. `giftCardApi.lookup` + `giftCardApi.redeem` declared in `endpoints.ts:1274-1276` and never called anywhere in `packages/web/src`. Entire feature half-built. L1, L8, L4. **STATUS: BLOCKED — multi-component blocker feature: new GiftCard tender + lookup-redeem modal + invoice gift_card_id linkage + receipt updates; needs design review**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:16-27`
   `packages/web/src/api/endpoints.ts:1274-1276`
   <!-- meta: fix=add-GiftCard-tender+code-input-modal+lookup→redeem-flow+update-PaymentMethod-union -->
@@ -4074,7 +4074,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
   <!-- meta: fix=remove-cents-heuristic+pin-server-to-one-representation+migrate-callsites -->
 
-- [ ] WEB-UIUX-983. **[BLOCKER] No way to disable lost/stolen card.** DB `status` enum has `'disabled'` (statusBadge handles it, list filter has Disabled option) but giftCards.routes.ts exposes ONLY GET, POST, redeem, reload — no PATCH/DELETE/disable route. DetailPage has no Disable / Void / Cancel button. Customer reports stolen $500 card → operator must hit DB directly. L1, L8, L16. **STATUS: BLOCKED — needs new server route POST /gift-cards/:id/disable + audit-log + reason input + 5+ files; deferred to gift-card hardening sprint**
+- [!] WEB-UIUX-983. **[BLOCKER] No way to disable lost/stolen card.** DB `status` enum has `'disabled'` (statusBadge handles it, list filter has Disabled option) but giftCards.routes.ts exposes ONLY GET, POST, redeem, reload — no PATCH/DELETE/disable route. DetailPage has no Disable / Void / Cancel button. Customer reports stolen $500 card → operator must hit DB directly. L1, L8, L16. **STATUS: BLOCKED — needs new server route POST /gift-cards/:id/disable + audit-log + reason input + 5+ files; deferred to gift-card hardening sprint**
   `packages/server/src/routes/giftCards.routes.ts:104-451`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
   <!-- meta: fix=add-POST-/:id/disable-server-route+Disable-Card-action-on-DetailPage+confirm-with-reason -->
@@ -4089,28 +4089,28 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [ ] WEB-UIUX-986. **[BLOCKER] Sidebar has zero Gift Cards entry.** `grep "gift" packages/web/src/components/layout/Sidebar.tsx` → empty. Discoverable only via Cmd+K palette (`CommandPalette.tsx:73`) or direct `/gift-cards` URL. Cashier with no docs cannot find feature. L8, L1, L4.
   `packages/web/src/components/layout/Sidebar.tsx`
 
-- [ ] WEB-UIUX-987. **[BLOCKER] POS has no "sell gift card" line item.** Operator selling a $50 gift card to a walk-in customer must (a) leave POS, (b) navigate to /gift-cards, (c) Issue card, (d) save code, (e) return to POS, (f) add a generic "Gift Card" misc product line, (g) checkout. Sale is never linked to gift_card_id; receipt doesn't show issued code; `gift_card_transactions` row says `notes='Initial load'` instead of `'Sold via invoice #N'`. Walk-in flow broken. L1, L4, L8. **STATUS: BLOCKED — multi-component POS rewrite: new line-item type + invoice gift_card_transactions linkage + receipt; deferred to gift-card hardening sprint**
+- [!] WEB-UIUX-987. **[BLOCKER] POS has no "sell gift card" line item.** Operator selling a $50 gift card to a walk-in customer must (a) leave POS, (b) navigate to /gift-cards, (c) Issue card, (d) save code, (e) return to POS, (f) add a generic "Gift Card" misc product line, (g) checkout. Sale is never linked to gift_card_id; receipt doesn't show issued code; `gift_card_transactions` row says `notes='Initial load'` instead of `'Sold via invoice #N'`. Walk-in flow broken. L1, L4, L8. **STATUS: BLOCKED — multi-component POS rewrite: new line-item type + invoice gift_card_transactions linkage + receipt; deferred to gift-card hardening sprint**
   `packages/web/src/pages/unified-pos/`
   `packages/server/src/routes/giftCards.routes.ts:303-307`
   <!-- meta: fix=add-Sell-Gift-Card-button-in-POS-Misc-section+create-invoice-line+POST-issue-with-invoice_id-link -->
 
 #### Major — Truthfulness, label/hierarchy, recovery
 
-- [ ] WEB-UIUX-988. **[MAJOR] IssueModal collects no `customer_id` — server accepts it, list endpoint LEFT-JOINs customers, both wasted.** `giftCards.routes.ts:128` joins `customers c ON c.id = gc.customer_id`, returns `c.first_name, c.last_name`. UI's `IssueFormState` has only amount/recipient_name/recipient_email/expires_at. Operator selling to existing customer with full profile must retype name. Card never appears on customer's profile. L1, L4. **STATUS: BLOCKED — needs new CustomerPicker component + customer_id wiring on issue + customer link on list/detail; defer to gift-card hardening sprint**
+- [!] WEB-UIUX-988. **[MAJOR] IssueModal collects no `customer_id` — server accepts it, list endpoint LEFT-JOINs customers, both wasted.** `giftCards.routes.ts:128` joins `customers c ON c.id = gc.customer_id`, returns `c.first_name, c.last_name`. UI's `IssueFormState` has only amount/recipient_name/recipient_email/expires_at. Operator selling to existing customer with full profile must retype name. Card never appears on customer's profile. L1, L4. **STATUS: BLOCKED — needs new CustomerPicker component + customer_id wiring on issue + customer link on list/detail; defer to gift-card hardening sprint**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:38-43,86-91,104-109`
   <!-- meta: fix=add-CustomerPicker-component+pass-customer_id+show-customer-link-on-list+detail -->
 
 - [x] WEB-UIUX-989. **[MAJOR] IssueModal collects no `notes` — server validates 1000 chars.** `giftCards.routes.ts:284-286` accepts notes, INSERT writes notes column. UI never offers field. Operator can't tag "promo: black-friday-2025" or "comp: customer service apology". Reporting on issuance reasons impossible. L4, L8. **[AUTOLOOP-T45 RESOLVED: IssueModal IssueFormState now includes notes; textarea (max 1000 chars) added under expiry input; payload threads notes through to server.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-227`
 
-- [ ] WEB-UIUX-990. **[MAJOR] DetailPage typed `notes: string | null` but never renders it.** `GiftCardDetail` interface includes notes; the meta `<dl>` at `:258-281` shows recipient/email/issued/expires but skips notes. Manager auditing card never sees the original tag. L1, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx is currently dirty in a parallel agent session; defer to next tick**
+- [!] WEB-UIUX-990. **[MAJOR] DetailPage typed `notes: string | null` but never renders it.** `GiftCardDetail` interface includes notes; the meta `<dl>` at `:258-281` shows recipient/email/issued/expires but skips notes. Manager auditing card never sees the original tag. L1, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx is currently dirty in a parallel agent session; defer to next tick**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:31,258-281`
 
-- [ ] WEB-UIUX-991. **[MAJOR] DetailPage transaction row never shows WHO redeemed/reloaded.** Server `gift_card_transactions` has `user_id` column written on every insert. DetailPage transactions table renders date / type / notes / amount only. Audit trail invisible — operator can't tell which cashier rang the redemption. L8, L11. **STATUS: BLOCKED — needs server-side JOIN users + UI By column on GiftCardDetailPage (dirty in parallel agent session); defer**
+- [!] WEB-UIUX-991. **[MAJOR] DetailPage transaction row never shows WHO redeemed/reloaded.** Server `gift_card_transactions` has `user_id` column written on every insert. DetailPage transactions table renders date / type / notes / amount only. Audit trail invisible — operator can't tell which cashier rang the redemption. L8, L11. **STATUS: BLOCKED — needs server-side JOIN users + UI By column on GiftCardDetailPage (dirty in parallel agent session); defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:303-329`
   <!-- meta: fix=server-detail-route-must-JOIN-users+UI-add-By-column -->
 
-- [ ] WEB-UIUX-992. **[MAJOR] DetailPage redemption row never links invoice.** `redeem` route accepts `invoice_id` and writes it on the transaction row. List response `:447-449` selects `*`, so invoice_id is present. UI doesn't render — Notes column shows hardcoded "Redeemed at POS". Operator reconciling a refund can't pivot from gift-card-tx → invoice. L1, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx is currently dirty in a parallel agent session; defer to next tick**
+- [!] WEB-UIUX-992. **[MAJOR] DetailPage redemption row never links invoice.** `redeem` route accepts `invoice_id` and writes it on the transaction row. List response `:447-449` selects `*`, so invoice_id is present. UI doesn't render — Notes column shows hardcoded "Redeemed at POS". Operator reconciling a refund can't pivot from gift-card-tx → invoice. L1, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx is currently dirty in a parallel agent session; defer to next tick**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:317-318`
 
 - [x] WEB-UIUX-993. **[MAJOR] IssueModal "Initial value ($)" hardcoded `$` glyph — ignores tenant currency.** Label `:180`. Tenant in EUR sees "$" prompt; submits "25.00" thinking euros; server stores 25 dollar-denominated value (server doesn't know currency). Same pattern as the @audit-fixed display path but the input prompt itself was missed. L9, L7. **[AUTOLOOP-T45 RESOLVED: hardcoded "$" glyph in Initial value label replaced with formatCurrencySymbol() from utils/format so EUR/GBP tenants see the right prompt.]**
@@ -4135,7 +4135,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [ ] WEB-UIUX-999. **[MAJOR] Reload button stays enabled when card balance ≥ $10,000.** Server `GIFT_CARD_MAX_AMOUNT = 10_000` rejects further reload but the gate at `GiftCardDetailPage.tsx:283` only checks `status !== 'used' && status !== 'disabled'`. Operator clicks Reload, types $1, server 400, generic toast. L1, L8.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
 
-- [ ] WEB-UIUX-1000. **[MAJOR] DetailPage no "Send code to recipient email" action even when recipient_email is set.** Field collected at issue, stored, displayed as readonly meta — never actionable. Customer says "I lost the code, can you resend?" → no UI. L4, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; Send-code email also needs new server route POST /:id/resend-code; defer**
+- [!] WEB-UIUX-1000. **[MAJOR] DetailPage no "Send code to recipient email" action even when recipient_email is set.** Field collected at issue, stored, displayed as readonly meta — never actionable. Customer says "I lost the code, can you resend?" → no UI. L4, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; Send-code email also needs new server route POST /:id/resend-code; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:265-269`
 
 - [ ] WEB-UIUX-1001. **[MAJOR] No dual-control / second-admin requirement on issuance.** Issuing cash-equivalent value of up to $10,000 takes one admin or manager click. Estimates have a self-approval guard (`Cannot approve your own estimate`); gift cards have nothing. Cashier-collusion risk: manager-role employee mints $10k card, reads code from success modal, uses it. L16.
@@ -4155,7 +4155,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [ ] WEB-UIUX-1005. **[MINOR] Issue success modal monospaced code at 2xl size with `tracking-widest` — 32-char code wraps awkwardly on narrow modal.** No segmentation like `XXXX-XXXX-XXXX-...`. Eye chunks readability research (Tinker; Wickelgren) shows 4-char groups improve transcription accuracy ~30%. L9, L11.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-144`
 
-- [ ] WEB-UIUX-1006. **[MINOR] Detail page back-link is text + arrow only ("Gift Cards"), no breadcrumb path.** Pattern asymmetry vs Estimates/Tickets which expose breadcrumb. L9. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
+- [!] WEB-UIUX-1006. **[MINOR] Detail page back-link is text + arrow only ("Gift Cards"), no breadcrumb path.** Pattern asymmetry vs Estimates/Tickets which expose breadcrumb. L9. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:191-193,217-223`
 
 - [ ] WEB-UIUX-1007. **[MINOR] Currency-cents heuristic comment says "> 1000" but code uses `>= 1000`.** Off-by-one between docstring and behavior — also reinforces that the heuristic is a known footgun. L7.
@@ -4167,7 +4167,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [ ] WEB-UIUX-1009. **[MINOR] List status filter chip not visually grouped with keyword search — separate `<select>` is plain styled, no chip pattern.** Most filter UIs in this app use chip toggles (LeadPipelinePage etc). Inconsistency. L9.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
 
-- [ ] WEB-UIUX-1010. **[MINOR] Detail "Reload balance" button sized small + outline — same surface as primary buttons elsewhere on the page; no obvious primary CTA.** L1, L11. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
+- [!] WEB-UIUX-1010. **[MINOR] Detail "Reload balance" button sized small + outline — same surface as primary buttons elsewhere on the page; no obvious primary CTA.** L1, L11. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:285-291`
 
 - [ ] WEB-UIUX-1011. **[MINOR] No progress bar / "spent of initial" visualization.** Detail summary shows `$X of $Y initial` text only. A linear bar improves at-a-glance utilization. L9.
@@ -4179,7 +4179,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [ ] WEB-UIUX-1013. **[MINOR] Lookup endpoint rate-limit error 429 never surfaced to operator UI** — `giftCardApi.lookup` not called, but if/when wired, generic-onError handlers won't translate "Too many lookup attempts" into a meaningful "wait 60s" countdown. Pre-emptive: lookup UI should special-case 429 + show retry-after. L8.
   `packages/server/src/routes/giftCards.routes.ts:188-197`
 
-- [ ] WEB-UIUX-1014. **[NIT] `dollarsFromMaybeCents` exists on detail page, near-duplicate `formatCurrency` on list page — two separate copies of the same fragile heuristic.** L7. **STATUS: BLOCKED — refactor of currency heuristic touches both GCLP + GCDP and risks duplicating across the codebase; needs design review for unified currency utility**
+- [!] WEB-UIUX-1014. **[NIT] `dollarsFromMaybeCents` exists on detail page, near-duplicate `formatCurrency` on list page — two separate copies of the same fragile heuristic.** L7. **STATUS: BLOCKED — refactor of currency heuristic touches both GCLP + GCDP and risks duplicating across the codebase; needs design review for unified currency utility**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:57-63`
 
@@ -4208,7 +4208,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/web/src/components/shared/CommandPalette.tsx`
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:121`
 
-- [ ] WEB-UIUX-1019. **[BLOCKER] Pending-refund approval queue invisible — admin has no UI to approve or decline a pending refund.** `refunds.routes.ts:253-435` implements PATCH /:id/approve + PATCH /:id/decline with admin-only role gate, prior-status guard, atomic flip + invoice decrement, commission reversal, store-credit upsert. There is no list page of pending refunds, no detail view with Approve/Decline buttons, no notification when a refund needs admin attention. The dual-control workflow exists in code but is effectively dead. L1, L8, L16. **STATUS: BLOCKED — needs new RefundsListPage + RefundDetailPage + approve/decline UI + notification on pending creation; multi-component blocker, defer to refunds sprint**
+- [!] WEB-UIUX-1019. **[BLOCKER] Pending-refund approval queue invisible — admin has no UI to approve or decline a pending refund.** `refunds.routes.ts:253-435` implements PATCH /:id/approve + PATCH /:id/decline with admin-only role gate, prior-status guard, atomic flip + invoice decrement, commission reversal, store-credit upsert. There is no list page of pending refunds, no detail view with Approve/Decline buttons, no notification when a refund needs admin attention. The dual-control workflow exists in code but is effectively dead. L1, L8, L16. **STATUS: BLOCKED — needs new RefundsListPage + RefundDetailPage + approve/decline UI + notification on pending creation; multi-component blocker, defer to refunds sprint**
   `packages/server/src/routes/refunds.routes.ts:253-435`
   <!-- meta: fix=add-RefundsListPage+RefundDetailPage+approve-decline-buttons+notification-on-pending-create -->
 
@@ -4216,7 +4216,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/web/src/api/endpoints.ts:749-761`
   `packages/server/src/routes/pos.routes.ts:2492-2637`
 
-- [ ] WEB-UIUX-1021. **[BLOCKER] `/pos/return` writes refund row directly at `status='completed'` — bypasses dual-control approval entirely.** `pos.routes.ts:2618-2621` `INSERT INTO refunds ... status='completed'`. Refunds.routes.ts `POST /` always inserts `status='pending'` then requires admin approve. The cashier path (when wired) skips that gate. Defeats the entire SEC-H28 atomic-approve design + SEC-H29 idempotency + EM1 commission reversal that fires only on `/approve`. Manager dual-control becomes opt-in based on which write path the cashier happens to take. L16, L4. **STATUS: BLOCKED — server pos.routes.ts dual-control policy change requires audit + role-gate review; defer to refunds sprint**
+- [!] WEB-UIUX-1021. **[BLOCKER] `/pos/return` writes refund row directly at `status='completed'` — bypasses dual-control approval entirely.** `pos.routes.ts:2618-2621` `INSERT INTO refunds ... status='completed'`. Refunds.routes.ts `POST /` always inserts `status='pending'` then requires admin approve. The cashier path (when wired) skips that gate. Defeats the entire SEC-H28 atomic-approve design + SEC-H29 idempotency + EM1 commission reversal that fires only on `/approve`. Manager dual-control becomes opt-in based on which write path the cashier happens to take. L16, L4. **STATUS: BLOCKED — server pos.routes.ts dual-control policy change requires audit + role-gate review; defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2618-2621`
   `packages/server/src/routes/refunds.routes.ts:107,229-234`
   <!-- meta: fix=force-pos-return-to-status=pending-OR-require-elevated-role-at-route-level -->
@@ -4233,7 +4233,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 - [ ] WEB-UIUX-1024. **[BLOCKER] No "Credits Liability" / "Outstanding Refund Liability" dashboard.** Server `GET /refunds/credits/liability` (admin/manager) returns total + per-customer breakdown; never called. GAAP requires gift-card AND store-credit liability tracking on the closing books — same finding pattern as WEB-UIUX-998 for gift cards. Bookkeeper must hit DB. L8, L1.
   `packages/server/src/routes/refunds.routes.ts:528-545`
 
-- [ ] WEB-UIUX-1025. **[BLOCKER] No way to issue a CASH refund — the only wired path ("Credit Note") creates a negative invoice but does not move money out.** Customer wants a $50 cash refund from till. Operator clicks "Credit Note" on InvoiceDetail → server creates `CRN-####` invoice with `amount_paid=0`, decrements original invoice's amount_due. No drawer pop, no `cash_register` row written, no `payments` row showing $-50 paid out. Cashier hands back $50 from drawer with no system record of the cash leaving. End-of-day Z-report won't reconcile. L1, L4, L8, L16. **STATUS: BLOCKED — Cash Refund tender requires drawer-pop + cash_register row + payments row writes; multi-component, server change; defer to refunds sprint**
+- [!] WEB-UIUX-1025. **[BLOCKER] No way to issue a CASH refund — the only wired path ("Credit Note") creates a negative invoice but does not move money out.** Customer wants a $50 cash refund from till. Operator clicks "Credit Note" on InvoiceDetail → server creates `CRN-####` invoice with `amount_paid=0`, decrements original invoice's amount_due. No drawer pop, no `cash_register` row written, no `payments` row showing $-50 paid out. Cashier hands back $50 from drawer with no system record of the cash leaving. End-of-day Z-report won't reconcile. L1, L4, L8, L16. **STATUS: BLOCKED — Cash Refund tender requires drawer-pop + cash_register row + payments row writes; multi-component, server change; defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1162-1317`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311,737-805`
   <!-- meta: fix=add-Cash-Refund-tender-on-credit-note-modal+post-cashRegister-row+open-drawer -->
@@ -4280,7 +4280,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 - [ ] WEB-UIUX-1037. **[MAJOR] Credit Note modal has no recovery: no "Preview", no "Save Draft", no Undo window.** Void has 5s undo (`useUndoableAction` at `:110-135`); credit-note creation is fire-and-forget. Operator who fat-fingers $200 instead of $20 must manually issue a $180 reverse credit note and reconcile. Pattern asymmetry inside same page. L8, L16.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`
 
-- [ ] WEB-UIUX-1038. **[MAJOR] Refund-related side-effects (commission reversal, payroll lock) entirely invisible to operator.** Server emits `commission_reversal_skipped` and `commission_reversal_error` flags in approve response (`refunds.routes.ts:404-411`); even if a refund-approve UI were wired, the typical `onSuccess` toast pattern won't surface those flags. Manager approving a refund won't know whether commission was reversed or skipped due to locked payroll period. L8, L11. **STATUS: BLOCKED — depends on WEB-UIUX-1019 (refund-approve UI) which is BLOCKED for the refunds sprint; commission-reversal flag surfacing has no host UI yet**
+- [!] WEB-UIUX-1038. **[MAJOR] Refund-related side-effects (commission reversal, payroll lock) entirely invisible to operator.** Server emits `commission_reversal_skipped` and `commission_reversal_error` flags in approve response (`refunds.routes.ts:404-411`); even if a refund-approve UI were wired, the typical `onSuccess` toast pattern won't surface those flags. Manager approving a refund won't know whether commission was reversed or skipped due to locked payroll period. L8, L11. **STATUS: BLOCKED — depends on WEB-UIUX-1019 (refund-approve UI) which is BLOCKED for the refunds sprint; commission-reversal flag surfacing has no host UI yet**
   `packages/server/src/routes/refunds.routes.ts:319-411`
 
 #### Minor — Polish, edge cases, label/hierarchy
@@ -4312,7 +4312,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 - [ ] WEB-UIUX-1047. **[MINOR] Z-Report (`ZReportModal.tsx:204`) shows "Refunds" total in cents, but no drill-down link to refund detail and no per-tender breakdown (cash refunds vs card refunds).** End-of-day reconciliation is summary-only. L8, L1.
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:204`
 
-- [ ] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8. **STATUS: BLOCKED — needs new server-side card-refund route (BlockChyp refund API call) + audit-log + 5+ files; defer to refunds sprint**
+- [!] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8. **STATUS: BLOCKED — needs new server-side card-refund route (BlockChyp refund API call) + audit-log + 5+ files; defer to refunds sprint**
   `packages/web/src/pages/settings/BlockChypSettings.tsx`
 
 - [ ] WEB-UIUX-1049. **[MINOR] Dashboard `DashboardPage.tsx` mentions "refund" but has no widget for "pending refunds requiring approval" — admin landing page doesn't surface the queue.** Even if the approval UI existed, admin would need to remember to navigate. L1, L4.
@@ -4354,12 +4354,12 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:998-1005`
   <!-- meta: fix=wrap-cancelMut-in-confirm-from-confirmStore+danger:true+match-list-page-pattern -->
 
-- [ ] WEB-UIUX-1059. **[BLOCKER] Cancel hardcodes `immediate: true` everywhere in UI; server's `cancel_at_period_end` path unreachable.** `SubscriptionsListPage.tsx:114` and `CustomerDetailPage.tsx:905` both pass `{ immediate: true }`. Server `membership.routes.ts:229-235` supports both modes — column `cancel_at_period_end` exists, list-page row even renders "Cancels {date}" (`SubscriptionsListPage.tsx:245-249`) for that state — but no UI surface ever sets it. Customer who cancels mid-cycle loses paid remaining days; refunds aren't auto-issued either. Stripe/Recurly default = end-of-period; immediate is the override. We've inverted the safer default. L2, L1, L4. **STATUS: BLOCKED — needs end-of-period vs immediate cancel modal radio across 2 files + server response wiring; defer to memberships sprint**
+- [!] WEB-UIUX-1059. **[BLOCKER] Cancel hardcodes `immediate: true` everywhere in UI; server's `cancel_at_period_end` path unreachable.** `SubscriptionsListPage.tsx:114` and `CustomerDetailPage.tsx:905` both pass `{ immediate: true }`. Server `membership.routes.ts:229-235` supports both modes — column `cancel_at_period_end` exists, list-page row even renders "Cancels {date}" (`SubscriptionsListPage.tsx:245-249`) for that state — but no UI surface ever sets it. Customer who cancels mid-cycle loses paid remaining days; refunds aren't auto-issued either. Stripe/Recurly default = end-of-period; immediate is the override. We've inverted the safer default. L2, L1, L4. **STATUS: BLOCKED — needs end-of-period vs immediate cancel modal radio across 2 files + server response wiring; defer to memberships sprint**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   <!-- meta: fix=replace-confirm-with-modal-radio[end-of-period(default)|cancel-now]+pass-immediate-from-radio -->
 
-- [ ] WEB-UIUX-1060. **[BLOCKER] Cancelled subscriptions vanish from list — no history view.** `GET /membership/subscriptions` query filters `cs.status IN ('active','past_due','paused')` (`membership.routes.ts:283`). Once cancelled, row drops from `SubscriptionsListPage`. Admin can't answer "Was Joe ever a Gold member? When did he leave?" Cannot re-activate. Cannot view past-payment history because page is the only entry to `/payments` data. Same defect on customer profile: `getCustomerMembership` filters `IN ('active','past_due')` (`membership.routes.ts:138`) so cancelled membership disappears from CRM card too. L4, L8, L9. **STATUS: BLOCKED — needs server filter relaxation + new status-tab UI + Reactivate path; multi-component, defer to memberships sprint**
+- [!] WEB-UIUX-1060. **[BLOCKER] Cancelled subscriptions vanish from list — no history view.** `GET /membership/subscriptions` query filters `cs.status IN ('active','past_due','paused')` (`membership.routes.ts:283`). Once cancelled, row drops from `SubscriptionsListPage`. Admin can't answer "Was Joe ever a Gold member? When did he leave?" Cannot re-activate. Cannot view past-payment history because page is the only entry to `/payments` data. Same defect on customer profile: `getCustomerMembership` filters `IN ('active','past_due')` (`membership.routes.ts:138`) so cancelled membership disappears from CRM card too. L4, L8, L9. **STATUS: BLOCKED — needs server filter relaxation + new status-tab UI + Reactivate path; multi-component, defer to memberships sprint**
   `packages/server/src/routes/membership.routes.ts:138,283`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:208-292`
   <!-- meta: fix=add-status-tab-filter[active|paused|past_due|cancelled]+show-cancelled-greyed-with-Reactivate-button+keep-history-LEFT-JOIN-not-INNER -->
@@ -4374,7 +4374,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:120-122,155-168,275-284`
   <!-- meta: fix=wrap-Cancel-button-in-AdminOnly+replace-onError-toast-with-formatApiError(err) -->
 
-- [ ] WEB-UIUX-1063. **[MAJOR] Header label "Memberships" but route+filename "subscriptions"; CommandPalette aliases both.** `SubscriptionsListPage.tsx:180` reads "Memberships". Route `/subscriptions` (`App.tsx:540`). CommandPalette entry `display: 'Subscriptions'` with aliases `['memberships','recurring']` (`CommandPalette.tsx:72`). Three names for one feature. Customer-profile card uses third term "Membership" (singular). Support tickets ambiguous; new admins searching for the wrong word miss it. Pick one (industry: Stripe → Subscriptions; Shopify/Recharge → Subscriptions; Squarespace/Wix → Memberships when consumer-facing). For repair-shop B2C this is consumer-facing → Memberships, then rename URL/file/component. L2. **STATUS: BLOCKED — file/route/component rename across many files + 301 redirect needs design review; defer to memberships sprint**
+- [!] WEB-UIUX-1063. **[MAJOR] Header label "Memberships" but route+filename "subscriptions"; CommandPalette aliases both.** `SubscriptionsListPage.tsx:180` reads "Memberships". Route `/subscriptions` (`App.tsx:540`). CommandPalette entry `display: 'Subscriptions'` with aliases `['memberships','recurring']` (`CommandPalette.tsx:72`). Three names for one feature. Customer-profile card uses third term "Membership" (singular). Support tickets ambiguous; new admins searching for the wrong word miss it. Pick one (industry: Stripe → Subscriptions; Shopify/Recharge → Subscriptions; Squarespace/Wix → Memberships when consumer-facing). For repair-shop B2C this is consumer-facing → Memberships, then rename URL/file/component. L2. **STATUS: BLOCKED — file/route/component rename across many files + 301 redirect needs design review; defer to memberships sprint**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:180`
   `packages/web/src/App.tsx:540`
   <!-- meta: fix=rename-route-to-/memberships+keep-/subscriptions-as-301-redirect+rename-file+update-CommandPalette-display -->
@@ -4391,7 +4391,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
   <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
 
-- [ ] WEB-UIUX-1067. **[MAJOR] Cancel reason not collected at all.** Industry standard (Stripe, Recurly, Chargebee, ChartMogul) prompts `cancellation_reason` on cancel for retention analytics + win-back targeting. Server has no `cancellation_reason` column on `customer_subscriptions`; UI has no field; audit log has only `{ subscription_id, immediate }` (`membership.routes.ts:237`). Lost MRR-churn signal entirely. L1, L4. **STATUS: BLOCKED — needs schema migration (cancellation_reason+cancellation_note cols) + modal radio + audit log changes; defer to memberships sprint**
+- [!] WEB-UIUX-1067. **[MAJOR] Cancel reason not collected at all.** Industry standard (Stripe, Recurly, Chargebee, ChartMogul) prompts `cancellation_reason` on cancel for retention analytics + win-back targeting. Server has no `cancellation_reason` column on `customer_subscriptions`; UI has no field; audit log has only `{ subscription_id, immediate }` (`membership.routes.ts:237`). Lost MRR-churn signal entirely. L1, L4. **STATUS: BLOCKED — needs schema migration (cancellation_reason+cancellation_note cols) + modal radio + audit log changes; defer to memberships sprint**
   `packages/server/src/routes/membership.routes.ts:222-239`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:155-168`
   <!-- meta: fix=add-cancellation_reason+cancellation_note-cols-via-migration+modal-radio[too-expensive|moved|switched|not-using|other]+include-in-audit -->
@@ -4412,7 +4412,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
 
 #### Minor — feedback specificity, sub-state polish
 
-- [ ] WEB-UIUX-1072. **[MINOR] Cancel success toast is identical for immediate vs end-of-period cancel.** `toast.success('Subscription cancelled')` (`SubscriptionsListPage.tsx:117`). Once WEB-UIUX-1059 ships the radio choice, the same string lies for `immediate:false` (which doesn't cancel — it schedules cancel). L7. Trivial fix when the choice modal lands: read response `data.immediate` and switch text. **STATUS: BLOCKED — depends on WEB-UIUX-1059 (immediate-vs-end-of-period radio modal) which is BLOCKED; trivial when 1059 ships**
+- [!] WEB-UIUX-1072. **[MINOR] Cancel success toast is identical for immediate vs end-of-period cancel.** `toast.success('Subscription cancelled')` (`SubscriptionsListPage.tsx:117`). Once WEB-UIUX-1059 ships the radio choice, the same string lies for `immediate:false` (which doesn't cancel — it schedules cancel). L7. Trivial fix when the choice modal lands: read response `data.immediate` and switch text. **STATUS: BLOCKED — depends on WEB-UIUX-1059 (immediate-vs-end-of-period radio modal) which is BLOCKED; trivial when 1059 ships**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:117`
   <!-- meta: fix=after-WEB-UIUX-1059-toast='Cancelled-immediately'-vs-'Will-cancel-on-{date}' -->
 
@@ -4445,7 +4445,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
 #### Blocker — broken contract, unwired status, missing admin surfaces
 
-- [ ] WEB-UIUX-1078. **[BLOCKER] Migration 088 promises `qc_required=true` blocks PATCH `status='complete'` until a `qc_sign_offs` row exists — no server enforcement exists.** `088_bench_timer_qc_defects.sql:22-23` states the gate; `tickets.routes.ts` has zero references to `qc_required` or `qc_sign_offs`. Admin who flips the flag (DB-only, see WEB-UIUX-1079) gets a false sense of compliance — every tech still completes tickets without sign-off. Documentation lies. L2, L8. **STATUS: BLOCKED — server policy enforcement (qc_required gate in PATCH status handler) needs route audit + integration tests; defer to QC sprint**
+- [!] WEB-UIUX-1078. **[BLOCKER] Migration 088 promises `qc_required=true` blocks PATCH `status='complete'` until a `qc_sign_offs` row exists — no server enforcement exists.** `088_bench_timer_qc_defects.sql:22-23` states the gate; `tickets.routes.ts` has zero references to `qc_required` or `qc_sign_offs`. Admin who flips the flag (DB-only, see WEB-UIUX-1079) gets a false sense of compliance — every tech still completes tickets without sign-off. Documentation lies. L2, L8. **STATUS: BLOCKED — server policy enforcement (qc_required gate in PATCH status handler) needs route audit + integration tests; defer to QC sprint**
   `packages/server/src/db/migrations/088_bench_timer_qc_defects.sql:18-26`
   `packages/server/src/routes/tickets.routes.ts`
   <!-- meta: fix=in-tickets-PATCH-status-handler-when-qc_required==='true'-AND-target-status-is-terminal('Repaired'|'Repaired-Pending QC'|'Payment Received & Picked Up')-SELECT-1-FROM-qc_sign_offs-WHERE-ticket_id=?-LIMIT-1+throw-409-if-missing -->
@@ -4455,7 +4455,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/server/src/routes/bench.routes.ts:255-275`
   <!-- meta: fix=add-pages/settings/BenchQcSettings.tsx+settings-tab-Bench/QC+toggles-for-qc_required+bench_timer_enabled+number-input-for-labor-rate -->
 
-- [ ] WEB-UIUX-1080. **[BLOCKER] No admin UI for QC checklist CRUD — and the modal's empty-state copy points to that nonexistent page.** Server has `POST/PUT/DELETE /bench/qc-checklist` admin-gated routes (`bench.routes.ts:614-700`) with no client wrapper besides `checklist()` (read). Empty-state in modal: `"Ask an admin to add some under Settings → Bench / QC."` (`QcSignOffModal.tsx:218`) — that path doesn't exist. Tech reads guidance, admin follows guidance, both dead-end. L1, L2, L4, L8. **STATUS: BLOCKED — needs new pages/settings/QcChecklistPage admin UI with row CRUD + drag-sort + endpoints; multi-component, defer to QC sprint**
+- [!] WEB-UIUX-1080. **[BLOCKER] No admin UI for QC checklist CRUD — and the modal's empty-state copy points to that nonexistent page.** Server has `POST/PUT/DELETE /bench/qc-checklist` admin-gated routes (`bench.routes.ts:614-700`) with no client wrapper besides `checklist()` (read). Empty-state in modal: `"Ask an admin to add some under Settings → Bench / QC."` (`QcSignOffModal.tsx:218`) — that path doesn't exist. Tech reads guidance, admin follows guidance, both dead-end. L1, L2, L4, L8. **STATUS: BLOCKED — needs new pages/settings/QcChecklistPage admin UI with row CRUD + drag-sort + endpoints; multi-component, defer to QC sprint**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:217-219`
   `packages/web/src/api/endpoints.ts:1366-1374`
   <!-- meta: fix=add-pages/settings/QcChecklistPage.tsx+row-CRUD+device-category-filter+drag-sort_order+wire-endpoints.bench.qc.{create,update,delete}+update-empty-state-link-to-real-route -->
@@ -4475,11 +4475,11 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:136-174`
   <!-- meta: fix=add-row-level-pass/fail-radio+if-any-fail-replace-CTA-with-Mark-failed-routes-ticket-to-In-Progress-and-creates-defect-report-with-reason -->
 
-- [ ] WEB-UIUX-1084. **[MAJOR] `POST /bench/qc/sign-off` has no role gate — any authenticated user can sign as the tech.** `bench.routes.ts:756-772` checks only `req.user?.id`. Cashier role, viewer role, even a sandboxed customer-portal user (if added) can submit a sign-off and have `tech_user_id` recorded as theirs. Compare admin-only routes for checklist CRUD (`:618,650,693`). Industry baseline: QC sign-off requires explicit `qc.sign` permission gated to tech/manager. L8. **STATUS: BLOCKED — server role-gate change (POST /bench/qc/sign-off requires permission(qc.sign)) needs security review of all callers; defer to QC sprint**
+- [!] WEB-UIUX-1084. **[MAJOR] `POST /bench/qc/sign-off` has no role gate — any authenticated user can sign as the tech.** `bench.routes.ts:756-772` checks only `req.user?.id`. Cashier role, viewer role, even a sandboxed customer-portal user (if added) can submit a sign-off and have `tech_user_id` recorded as theirs. Compare admin-only routes for checklist CRUD (`:618,650,693`). Industry baseline: QC sign-off requires explicit `qc.sign` permission gated to tech/manager. L8. **STATUS: BLOCKED — server role-gate change (POST /bench/qc/sign-off requires permission(qc.sign)) needs security review of all callers; defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:756-774`
   <!-- meta: fix=add-requireRole(['tech','manager','admin'])-or-permission(qc.sign)-middleware-before-handler -->
 
-- [ ] WEB-UIUX-1085. **[MAJOR] Signature canvas content not bound to the signing user's identity — `tech_user_id = req.user.id` regardless of squiggle drawn.** No PIN re-auth, no name typed, no biometric, no hash of the captured image vs. a baseline signature on file. A manager who hands their tablet to an apprentice gets "signed by manager" stored on a record actually signed by apprentice. Repudiation risk in warranty / dispute scenarios. L8. **STATUS: BLOCKED — needs server schema (typed_name+pin_verified_at cols) + PIN re-auth modal + signature hash; defer to QC sprint**
+- [!] WEB-UIUX-1085. **[MAJOR] Signature canvas content not bound to the signing user's identity — `tech_user_id = req.user.id` regardless of squiggle drawn.** No PIN re-auth, no name typed, no biometric, no hash of the captured image vs. a baseline signature on file. A manager who hands their tablet to an apprentice gets "signed by manager" stored on a record actually signed by apprentice. Repudiation risk in warranty / dispute scenarios. L8. **STATUS: BLOCKED — needs server schema (typed_name+pin_verified_at cols) + PIN re-auth modal + signature hash; defer to QC sprint**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:289-307`
   `packages/server/src/routes/bench.routes.ts:885-902`
   <!-- meta: fix=add-required-typed-name-field+optional-PIN-re-auth-modal-before-canvas+server-stores-typed_name+pin_verified_at-alongside-image -->
@@ -4497,7 +4497,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/layout/Sidebar.tsx`
   <!-- meta: fix=add-page-/qc/queue-listing-tickets-status='Repaired-Pending-QC'-OR-status='Repaired'-AND-no-qc_sign_off-LEFT-JOIN-qc_sign_offs-IS-NULL+badge-on-Sidebar-Tickets -->
 
-- [ ] WEB-UIUX-1089. **[MAJOR] Signed sign-off is not printable / emailable / PDF-exportable — customer never receives a copy.** Migration 088 stores signature + photo + checklist results, but no `/qc/sign-off/:id/pdf` route, no print template, no `Email customer` button on TicketDetail post-sign. Customer who was promised "we'll send you the QC certificate" gets nothing. L1, L4, L8. **STATUS: BLOCKED — needs new /qc/queue page + Sidebar badge + LEFT-JOIN-IS-NULL query; multi-component, defer to QC sprint**
+- [!] WEB-UIUX-1089. **[MAJOR] Signed sign-off is not printable / emailable / PDF-exportable — customer never receives a copy.** Migration 088 stores signature + photo + checklist results, but no `/qc/sign-off/:id/pdf` route, no print template, no `Email customer` button on TicketDetail post-sign. Customer who was promised "we'll send you the QC certificate" gets nothing. L1, L4, L8. **STATUS: BLOCKED — needs new /qc/queue page + Sidebar badge + LEFT-JOIN-IS-NULL query; multi-component, defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:703-910`
   <!-- meta: fix=add-GET-/qc/sign-off/:id/pdf-uses-existing-pdf-pipeline+after-success-toast-render-button-Send-to-customer-emails-PDF -->
 
@@ -4513,7 +4513,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:248-285`
   <!-- meta: fix=schema-add-qc_sign_off_photos-table-(sign_off_id,path,kind:before|after|other)+UI-multi-upload+server-multipart-array -->
 
-- [ ] WEB-UIUX-1093. **[MAJOR] `GET /qc/status` strips `tech_signature_path` + `working_photo_path` for non-admin/non-manager (`bench.routes.ts:738-740`) — tech who signed cannot review their own signature later.** Self-review is the most common dispute case ("did I sign that?"). Privilege filter denies the signing party access to their own act. L1, L8. **STATUS: BLOCKED — needs schema migration (qc_sign_off_photos table) + multi-upload + multipart array server route; multi-component, defer to QC sprint**
+- [!] WEB-UIUX-1093. **[MAJOR] `GET /qc/status` strips `tech_signature_path` + `working_photo_path` for non-admin/non-manager (`bench.routes.ts:738-740`) — tech who signed cannot review their own signature later.** Self-review is the most common dispute case ("did I sign that?"). Privilege filter denies the signing party access to their own act. L1, L8. **STATUS: BLOCKED — needs schema migration (qc_sign_off_photos table) + multi-upload + multipart array server route; multi-component, defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:728-741`
   <!-- meta: fix=loosen-filter-to-isPrivileged-OR-tech_user_id===req.user.id -->
 
@@ -4592,7 +4592,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-186`
   <!-- meta: fix=on-templateId-change-set-tplPreview-from-templates.find(t=>t.id===id).content+render-160char-preview+character-count-vs-160-segment-cost -->
 
-- [ ] WEB-UIUX-1113. **[BLOCKER] No recipient sample / no recipient list — pure blind dispatch.** Modal shows ONLY a count (`This will send to 1,200 recipients`, `:191-194`). Operator cannot inspect WHO. Server's `previewBulkSegment` already collects up to 500 phones (`inbox.routes.ts:420`), only the count is wired into the response. Industry baseline: Klaviyo/Attentive/Postscript show 5-10 sample recipients + opt to download CSV pre-send. For repair-shop SMS where one wrong segment = TCPA complaint, this is operator-protection minimum. L6, L8. **STATUS: BLOCKED — needs server preview-payload to include first-5 sample phones; multi-component change to inbox.routes.ts; defer to bulk-sms sprint**
+- [!] WEB-UIUX-1113. **[BLOCKER] No recipient sample / no recipient list — pure blind dispatch.** Modal shows ONLY a count (`This will send to 1,200 recipients`, `:191-194`). Operator cannot inspect WHO. Server's `previewBulkSegment` already collects up to 500 phones (`inbox.routes.ts:420`), only the count is wired into the response. Industry baseline: Klaviyo/Attentive/Postscript show 5-10 sample recipients + opt to download CSV pre-send. For repair-shop SMS where one wrong segment = TCPA complaint, this is operator-protection minimum. L6, L8. **STATUS: BLOCKED — needs server preview-payload to include first-5 sample phones; multi-component change to inbox.routes.ts; defer to bulk-sms sprint**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
   `packages/server/src/routes/inbox.routes.ts:563-571`
   <!-- meta: fix=server-include-first-5-phones-in-preview-payload+client-render-list+optional-exclude-toggle -->
@@ -4615,7 +4615,7 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:215-222`
   <!-- meta: fix=swap-bg-red-600/hover:bg-red-700-to-bg-primary-600/hover:bg-primary-700+keep-Send-icon -->
 
-- [ ] WEB-UIUX-1117. **[MAJOR] No in-flight progress + no abort during ~10–30s dispatch.** Server loops `for (const phone of preview.phones)` SYNCHRONOUSLY awaiting each `sendSmsTenant` (`inbox.routes.ts:640-676`). At provider-typical 100-200ms per SMS, 500 recipients = 50-100s blocking response. Client only renders `Sending…` on the button (`:221`); modal frozen. No cancel button, no progress bar, no streamed counter. If admin realizes 5s in "wrong template" — too late, no abort path. Per-message inserts to `sms_retry_queue` mean partial failures persist mid-loop with no surface. L7, L8. (Note: server-side fix needed; client UX still has place for streaming via SSE / polling on a job id.) **STATUS: BLOCKED — needs server-side job table + SSE/polling streaming + abort flag; multi-component, defer to bulk-sms sprint**
+- [!] WEB-UIUX-1117. **[MAJOR] No in-flight progress + no abort during ~10–30s dispatch.** Server loops `for (const phone of preview.phones)` SYNCHRONOUSLY awaiting each `sendSmsTenant` (`inbox.routes.ts:640-676`). At provider-typical 100-200ms per SMS, 500 recipients = 50-100s blocking response. Client only renders `Sending…` on the button (`:221`); modal frozen. No cancel button, no progress bar, no streamed counter. If admin realizes 5s in "wrong template" — too late, no abort path. Per-message inserts to `sms_retry_queue` mean partial failures persist mid-loop with no surface. L7, L8. (Note: server-side fix needed; client UX still has place for streaming via SSE / polling on a job id.) **STATUS: BLOCKED — needs server-side job table + SSE/polling streaming + abort flag; multi-component, defer to bulk-sms sprint**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:215-222`
   `packages/server/src/routes/inbox.routes.ts:637-704`
   <!-- meta: fix=convert-to-job-table+return-job_id-immediately+client-poll-/inbox/bulk-send/:job_id+show-progress-bar+abort-button-flips-job-state -->
@@ -4672,7 +4672,7 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
 
 #### Major — finder/recovery breakage
 
-- [ ] WEB-UIUX-1127. **[MAJOR] "New Ticket" link from TicketListPage routes to POS surface, not a ticket-creation form.** `TicketListPage.tsx:1205-1211` `<Link to="/tickets/new">New Ticket</Link>` → `App.tsx:483` `<Route path="/tickets/new" element={<UnifiedPosPage />} />`. User clicks "New Ticket", lands on Unified POS — three tabs (Repairs / Products / Misc), Cash Drawer widget, "Open Drawer" button, Cash In/Out controls, Z-Report — none of which a user creating a ticket needs. Tab defaults to `repairs` (`store.ts:247`) but URL/intent mismatch is unfixed: bookmarking `/tickets/new` always lands in cash-drawer chrome. Consider either a dedicated ticket-creation route that hides POS-only chrome OR rename the button + URL to "New Sale / Repair". L3 route correctness, L6 discoverability. **STATUS: BLOCKED — needs route restructure (/tickets/new on dedicated stripped POS shell vs full POS); design decision; defer to POS sprint**
+- [!] WEB-UIUX-1127. **[MAJOR] "New Ticket" link from TicketListPage routes to POS surface, not a ticket-creation form.** `TicketListPage.tsx:1205-1211` `<Link to="/tickets/new">New Ticket</Link>` → `App.tsx:483` `<Route path="/tickets/new" element={<UnifiedPosPage />} />`. User clicks "New Ticket", lands on Unified POS — three tabs (Repairs / Products / Misc), Cash Drawer widget, "Open Drawer" button, Cash In/Out controls, Z-Report — none of which a user creating a ticket needs. Tab defaults to `repairs` (`store.ts:247`) but URL/intent mismatch is unfixed: bookmarking `/tickets/new` always lands in cash-drawer chrome. Consider either a dedicated ticket-creation route that hides POS-only chrome OR rename the button + URL to "New Sale / Repair". L3 route correctness, L6 discoverability. **STATUS: BLOCKED — needs route restructure (/tickets/new on dedicated stripped POS shell vs full POS); design decision; defer to POS sprint**
   `packages/web/src/pages/tickets/TicketListPage.tsx:1205-1211`
   `packages/web/src/App.tsx:483`
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:375-422`
@@ -4728,7 +4728,7 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:795`
   <!-- meta: fix=toast.success(...,{icon:'✓'})+briefly-pulse-the-Create-Ticket-button-via-store-flag+ring-2-ring-primary-500-for-1.5s -->
 
-- [ ] WEB-UIUX-1139. **[MINOR] "Photo reminder" amber strip in DetailsStep tells the cashier to take photos but offers no in-flow capture button — the QR/photo widget is on the next-screen success view.** `RepairsTab.tsx:980-985` "Remember to take device photos after check-in for pre-repair documentation." — passive copy, no link or trigger. By the time the success screen renders, the device may already be on the bench. Inline "Capture now (camera)" or "Email me the link" would complete the loop. L6 discoverability. **STATUS: BLOCKED — needs new PhotoCaptureModal opened pre-create OR success-screen QR promoted into details step; multi-component, defer to POS sprint**
+- [!] WEB-UIUX-1139. **[MINOR] "Photo reminder" amber strip in DetailsStep tells the cashier to take photos but offers no in-flow capture button — the QR/photo widget is on the next-screen success view.** `RepairsTab.tsx:980-985` "Remember to take device photos after check-in for pre-repair documentation." — passive copy, no link or trigger. By the time the success screen renders, the device may already be on the bench. Inline "Capture now (camera)" or "Email me the link" would complete the loop. L6 discoverability. **STATUS: BLOCKED — needs new PhotoCaptureModal opened pre-create OR success-screen QR promoted into details step; multi-component, defer to POS sprint**
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:980-985`
   <!-- meta: fix=replace-static-strip-with-button-that-opens-PhotoCaptureModal-pre-create-OR-promotes-the-success-screen-QR-into-this-step -->
 
@@ -4773,7 +4773,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:54-77`
   <!-- meta: fix=server-validation:-reject-when-EXISTS-payroll_periods-WHERE-(start_date<=newEnd-AND-end_date>=newStart)-AND-locked_at-IS-NOT-NULL+OR-warn-on-any-overlap+enforce-name-UNIQUE -->
 
-- [ ] WEB-UIUX-1148. **[MAJOR] Period list capped at server `LIMIT 100` with zero pagination/filter/search; weekly cadence × 2 years fills it; older periods silently fall off the end.** `team.routes.ts:852` `ORDER BY start_date DESC LIMIT 100`. Client `CommissionPeriodLock.tsx:35-44` accepts whatever it gets, no "load more". Manager opening the page after 24 months sees the most recent 100 weeks; periods 101+ are invisible to the UI even though the audit/CSV export still works by ID. L6 discoverability of historical data. **STATUS: BLOCKED — server team.routes.ts pagination + year filter; multi-component, defer to payroll sprint**
+- [!] WEB-UIUX-1148. **[MAJOR] Period list capped at server `LIMIT 100` with zero pagination/filter/search; weekly cadence × 2 years fills it; older periods silently fall off the end.** `team.routes.ts:852` `ORDER BY start_date DESC LIMIT 100`. Client `CommissionPeriodLock.tsx:35-44` accepts whatever it gets, no "load more". Manager opening the page after 24 months sees the most recent 100 weeks; periods 101+ are invisible to the UI even though the audit/CSV export still works by ID. L6 discoverability of historical data. **STATUS: BLOCKED — server team.routes.ts pagination + year filter; multi-component, defer to payroll sprint**
   `packages/server/src/routes/team.routes.ts:847-856`
   <!-- meta: fix=add-?year=YYYY-or-?before=ISO+limit/offset-pagination+client-year-picker-or-Load-more-link -->
 
@@ -4808,7 +4808,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:163-174`
   <!-- meta: fix=aria-label=`Lock period ${p.name}`+title=`Permanently lock ${p.name}`+consider-Shield-or-Lock-icon-with-arrow -->
 
-- [ ] WEB-UIUX-1156. **[MINOR] Empty-CSV (period with zero commissions/clock entries) still triggers a download with header row + zeros for every active employee — no "No payroll data for this period" prompt.** `team.routes.ts:971-989` always emits a row per active user even when h/c/t are all 0. Operator opens an empty payroll CSV and wonders if export broke. L9 empty-state. **STATUS: BLOCKED — server team.routes.ts empty-CSV detection requires summary endpoint; defer to payroll sprint**
+- [!] WEB-UIUX-1156. **[MINOR] Empty-CSV (period with zero commissions/clock entries) still triggers a download with header row + zeros for every active employee — no "No payroll data for this period" prompt.** `team.routes.ts:971-989` always emits a row per active user even when h/c/t are all 0. Operator opens an empty payroll CSV and wonders if export broke. L9 empty-state. **STATUS: BLOCKED — server team.routes.ts empty-CSV detection requires summary endpoint; defer to payroll sprint**
   `packages/server/src/routes/team.routes.ts:925-996`
   <!-- meta: fix=if-all-rows-zero-return-409-with-message-No-payroll-activity-or-client-pre-flight-via-/payroll/periods/:id/summary-(WEB-UIUX-1145) -->
 
@@ -4816,7 +4816,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:70-94`
   <!-- meta: fix=fall-through-to-data?.errors[0]?.message-or-data?.message-before-string-fallback -->
 
-- [ ] WEB-UIUX-1158. **[NIT] Bulk-lock for past closed periods absent — weekly cadence requires admin to click Lock + (eventual) confirm 4× per month per shop. No "Lock all periods ending before {date}" affordance.** `CommissionPeriodLock.tsx` only renders per-row buttons. After WEB-UIUX-1140 confirmation lands, bulk action saves rep-stress without lowering safety. L6 discoverability of bulk operation. **STATUS: BLOCKED — needs new server batch endpoint /payroll/lock-bulk + UI bulk-confirm; multi-component, defer to payroll sprint**
+- [!] WEB-UIUX-1158. **[NIT] Bulk-lock for past closed periods absent — weekly cadence requires admin to click Lock + (eventual) confirm 4× per month per shop. No "Lock all periods ending before {date}" affordance.** `CommissionPeriodLock.tsx` only renders per-row buttons. After WEB-UIUX-1140 confirmation lands, bulk action saves rep-stress without lowering safety. L6 discoverability of bulk operation. **STATUS: BLOCKED — needs new server batch endpoint /payroll/lock-bulk + UI bulk-confirm; multi-component, defer to payroll sprint**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:139-180`
   <!-- meta: fix=add-Lock-all-closed-periods-button+confirm-dialog-listing-affected-period-names+server-batch-endpoint-/payroll/lock-bulk -->
 
@@ -4827,7 +4827,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
 
 #### Blocker — money-reconciliation, variance correctness, dual-systems
 
-- [ ] WEB-UIUX-1159. **[BLOCKER] `computeExpectedCents` IGNORES the `cash_register` table — every paid-in/paid-out from CashRegisterPage (legacy `posApi.cashIn`/`cashOut` → `/pos/cash-in`,`/pos/cash-out`) is invisible to the shift's expected_cents.** `posEnrich.routes.ts:211-229` sums only `payments WHERE method LIKE '%cash%'` between `opened_at..closed_at`. So a $200 float + $50 cash-in (till change) + $30 cash-out (vendor refund) + $0 sales should expect $220 in drawer, but the server computes $200 → declares a $20 OVER variance for an in-balance till. Cashier "investigates" a phantom variance every shift. **Money-correctness bug.** L1, L7, L13, L16. **STATUS: BLOCKED — server posEnrich.routes.ts computeExpectedCents change + cash_register integration; multi-component, defer to cash sprint**
+- [!] WEB-UIUX-1159. **[BLOCKER] `computeExpectedCents` IGNORES the `cash_register` table — every paid-in/paid-out from CashRegisterPage (legacy `posApi.cashIn`/`cashOut` → `/pos/cash-in`,`/pos/cash-out`) is invisible to the shift's expected_cents.** `posEnrich.routes.ts:211-229` sums only `payments WHERE method LIKE '%cash%'` between `opened_at..closed_at`. So a $200 float + $50 cash-in (till change) + $30 cash-out (vendor refund) + $0 sales should expect $220 in drawer, but the server computes $200 → declares a $20 OVER variance for an in-balance till. Cashier "investigates" a phantom variance every shift. **Money-correctness bug.** L1, L7, L13, L16. **STATUS: BLOCKED — server posEnrich.routes.ts computeExpectedCents change + cash_register integration; multi-component, defer to cash sprint**
   `packages/server/src/routes/posEnrich.routes.ts:211-229`
   `packages/web/src/pages/pos/CashRegisterPage.tsx:54-86`
   <!-- meta: fix=expand-computeExpectedCents-to-also-SUM(amount-where-type=cash_in)-MINUS-SUM(amount-where-type=cash_out)-FROM-cash_register-WHERE-created_at-BETWEEN-?-AND-?+include-the-net-in-Z-report-payment_breakdown-as-Cash-Adjustments-row -->
@@ -4837,7 +4837,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx`
   <!-- meta: fix=consolidate-into-single-cash-drawer-domain:-make-/pos/cash-in-/pos/cash-out-also-write-to-cash_drawer_shifts.adjustments+OR-deprecate-CashRegisterPage-and-add-an-In-shift-Cash-Adjustments-section-on-CashDrawerWidget-modal -->
 
-- [ ] WEB-UIUX-1161. **[BLOCKER] `CloseShiftModal` does not surface expected cash, opening float math, or in-shift cash adjustments before the irreversible commit. Operator counts blind, sees variance only after the close mutation succeeds — and there is no reopen path.** `CashDrawerWidget.tsx:246-296` shows only opening float + counted input. The user submits and the server writes `closed_at`, freezes `z_report_json`, locks the shift; `posEnrich.routes.ts:303-385` rejects re-close (409) and there is no admin reverse-close endpoint anywhere. So a typo in counted (e.g., `2200` instead of `220.00`) is permanent and the next shift starts with the prior one's bad variance baked into the audit log. L7 feedback (no preview), L8 recovery (no undo), L1 finding the right number. L7, L8. **STATUS: BLOCKED — needs admin reverse-close endpoint + UI; server policy + audit changes; defer to cash sprint**
+- [!] WEB-UIUX-1161. **[BLOCKER] `CloseShiftModal` does not surface expected cash, opening float math, or in-shift cash adjustments before the irreversible commit. Operator counts blind, sees variance only after the close mutation succeeds — and there is no reopen path.** `CashDrawerWidget.tsx:246-296` shows only opening float + counted input. The user submits and the server writes `closed_at`, freezes `z_report_json`, locks the shift; `posEnrich.routes.ts:303-385` rejects re-close (409) and there is no admin reverse-close endpoint anywhere. So a typo in counted (e.g., `2200` instead of `220.00`) is permanent and the next shift starts with the prior one's bad variance baked into the audit log. L7 feedback (no preview), L8 recovery (no undo), L1 finding the right number. L7, L8. **STATUS: BLOCKED — needs admin reverse-close endpoint + UI; server policy + audit changes; defer to cash sprint**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:220-296`
   `packages/server/src/routes/posEnrich.routes.ts:303-385`
   <!-- meta: fix=before-submit-show-Expected-row-(call-/pos-enrich/drawer/:id/preview-or-compute-locally)+confirm()-when-counted-is->-3x-or-<-third-of-expected+admin-only-/drawer/:id/reopen-endpoint-that-clears-closed_at+nulls-z_report_json+writes-audit-row -->
@@ -4858,7 +4858,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/server/src/routes/pos.routes.ts:203-232`
   <!-- meta: fix=add-idempotency_key=crypto.randomUUID()-mint-on-modal-open+pass-on-call+wire-idempotent-middleware-to-/pos/cash-in-/pos/cash-out-routes-(same-as-/pos/transaction:253) -->
 
-- [ ] WEB-UIUX-1165. **[MAJOR] Open shift requires no role; close requires manager/admin (`requireManagerOrAdmin`). Asymmetric — cashier opens, then can't close at end of shift if no manager onsite.** `posEnrich.routes.ts:245-301` no role check on open; `:303-307` requires manager on close. End-of-shift cashier stuck staring at "Close Shift" button that 403s — error toast surfaces server message but no path forward (no "request manager approval" affordance, no manager-PIN inline gate like the high-value-sale path). L8 recovery, L1 findability of next step. **STATUS: BLOCKED — needs server auth flow with manager-PIN co-sign + UI fallback modal; security review; defer to cash sprint**
+- [!] WEB-UIUX-1165. **[MAJOR] Open shift requires no role; close requires manager/admin (`requireManagerOrAdmin`). Asymmetric — cashier opens, then can't close at end of shift if no manager onsite.** `posEnrich.routes.ts:245-301` no role check on open; `:303-307` requires manager on close. End-of-shift cashier stuck staring at "Close Shift" button that 403s — error toast surfaces server message but no path forward (no "request manager approval" affordance, no manager-PIN inline gate like the high-value-sale path). L8 recovery, L1 findability of next step. **STATUS: BLOCKED — needs server auth flow with manager-PIN co-sign + UI fallback modal; security review; defer to cash sprint**
   `packages/server/src/routes/posEnrich.routes.ts:245-307`
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:225-244`
   <!-- meta: fix=add-inline-ManagerPinModal-fallback-when-close-returns-403+OR-allow-cashier-to-close-with-manager-PIN-co-sign-(server-accepts-pin-field-bypass-of-role-check) -->
@@ -4886,7 +4886,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:142-211`
   <!-- meta: fix=server-JOIN-users-on-opened_by_user_id-and-closed_by_user_id+include-first/last+include-store_config.station_id-or-similar+UI-renders-Cashier-Manager-Duration-rows-above-totals -->
 
-- [ ] WEB-UIUX-1171. **[MAJOR] No reverse-close / reopen-shift path anywhere. A wrong counted value or accidental click on "Close Shift & View Z-Report" is permanent.** `posEnrich.routes.ts` exposes only `/open` and `/:id/close`. Recovery options: ZERO. The variance lives in the audit log forever; the next shift inherits a fictitious starting position if the operator over/undercounts. L8 recovery (cardinal rule — every irreversible action needs an admin path back). **STATUS: BLOCKED — needs new admin POST /pos-enrich/drawer/:id/reopen endpoint with audit; server policy + UI confirm; defer to cash sprint**
+- [!] WEB-UIUX-1171. **[MAJOR] No reverse-close / reopen-shift path anywhere. A wrong counted value or accidental click on "Close Shift & View Z-Report" is permanent.** `posEnrich.routes.ts` exposes only `/open` and `/:id/close`. Recovery options: ZERO. The variance lives in the audit log forever; the next shift inherits a fictitious starting position if the operator over/undercounts. L8 recovery (cardinal rule — every irreversible action needs an admin path back). **STATUS: BLOCKED — needs new admin POST /pos-enrich/drawer/:id/reopen endpoint with audit; server policy + UI confirm; defer to cash sprint**
   `packages/server/src/routes/posEnrich.routes.ts:303-385`
   <!-- meta: fix=admin-only-POST-/pos-enrich/drawer/:id/reopen-with-reason+nulls-closed_at+closing_counted_cents+expected_cents+variance_cents+z_report_json+writes-drawer_shift_reopened-audit-with-prior-values+UI-button-on-ZReportModal-(admin-role)-with-confirm-modal-and-required-reason -->
 
@@ -4934,7 +4934,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:164-209, 246-296`
   <!-- meta: fix=mirror-ZReportModal-pattern:-role=dialog-aria-modal-true-aria-labelledby=open/close-shift-title+id-on-h3+focus-trap-or-trap-within-modal -->
 
-- [ ] WEB-UIUX-1182. **[MINOR] Z-Report "Print" injects a global `body > * { display: none }` style and removes it on unmount — but if user opens another modal mid-print (e.g. a confirm dialog from elsewhere), that modal disappears from screen too because it's also a `body > *`.** `ZReportModal.tsx:66-79`. Brittle global style hijack. Standard approach is a dedicated `@media print` stylesheet with `data-print-only` semantics on the receipt content. L9, L13 robustness. **STATUS: BLOCKED — Z-report print uses global body>* style hijack; correct fix is iframe-portal or react-to-print rewrite; multi-component, defer to print sprint**
+- [!] WEB-UIUX-1182. **[MINOR] Z-Report "Print" injects a global `body > * { display: none }` style and removes it on unmount — but if user opens another modal mid-print (e.g. a confirm dialog from elsewhere), that modal disappears from screen too because it's also a `body > *`.** `ZReportModal.tsx:66-79`. Brittle global style hijack. Standard approach is a dedicated `@media print` stylesheet with `data-print-only` semantics on the receipt content. L9, L13 robustness. **STATUS: BLOCKED — Z-report print uses global body>* style hijack; correct fix is iframe-portal or react-to-print rewrite; multi-component, defer to print sprint**
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:66-79`
   <!-- meta: fix=use-react-to-print-or-render-receipt-into-a-portal-iframe-and-call-iframe.contentWindow.print()+remove-global-style-injection -->
 
@@ -4975,7 +4975,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
 
 #### Major — flow incompleteness + data loss
 
-- [ ] WEB-UIUX-1189. **[MAJOR] Receive modal captures only quantity — no field for supplier invoice #, packing slip #, lot/batch, expiration date, bin location, or actual unit cost as received.** Standard receiving workflow needs invoice number for AP matching and lot/expiry for traceability (mandatory for regulated parts). Without these the `stock_movements.notes` column is hard-coded `'Received from PO'` (server line 1503) — no audit trail of which physical shipment created the units. Cost variance: PO `cost_price` is locked at order time; if supplier raised price between order and ship, actual cost is silently lost. L4 flow completion, L11 data integrity. **STATUS: BLOCKED — receive modal needs supplier_invoice_no/lot/expiry/actual_cost/bin fields + server schema additions; multi-component, defer to inventory sprint**
+- [!] WEB-UIUX-1189. **[MAJOR] Receive modal captures only quantity — no field for supplier invoice #, packing slip #, lot/batch, expiration date, bin location, or actual unit cost as received.** Standard receiving workflow needs invoice number for AP matching and lot/expiry for traceability (mandatory for regulated parts). Without these the `stock_movements.notes` column is hard-coded `'Received from PO'` (server line 1503) — no audit trail of which physical shipment created the units. Cost variance: PO `cost_price` is locked at order time; if supplier raised price between order and ship, actual cost is silently lost. L4 flow completion, L11 data integrity. **STATUS: BLOCKED — receive modal needs supplier_invoice_no/lot/expiry/actual_cost/bin fields + server schema additions; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:50-150`
   `packages/server/src/routes/inventory.routes.ts:1465-1526`
   <!-- meta: fix=add-optional-supplier_invoice_no+packing_slip+per-line-lot/batch/expiry/actual_cost+bin-location-fields+server-extends-stock_movements.notes-or-new-receipts-table -->
@@ -4985,7 +4985,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
   `packages/server/src/routes/inventory.routes.ts:1384`
   <!-- meta: fix=add-Expected-Delivery-date-input-to-create-form+pass-as-expected_date-in-createPurchaseOrder-payload -->
 
-- [ ] WEB-UIUX-1191. **[MAJOR] No "Send PO to Supplier" action — created PO sits in `draft` forever with no email/PDF/print path.** Procurement workflow normally: create PO → email supplier → mark `pending` (awaiting confirm) → mark `ordered` (supplier acknowledged). This UI has neither send action nor PDF render. Real-world cashier creates PO and then has to retype it into a separate email client. L4 flow completion, L6 discoverability. **STATUS: BLOCKED — needs new server endpoint POST /purchase-orders/:id/email + PDF render via existing print pipeline; multi-component**
+- [!] WEB-UIUX-1191. **[MAJOR] No "Send PO to Supplier" action — created PO sits in `draft` forever with no email/PDF/print path.** Procurement workflow normally: create PO → email supplier → mark `pending` (awaiting confirm) → mark `ordered` (supplier acknowledged). This UI has neither send action nor PDF render. Real-world cashier creates PO and then has to retype it into a separate email client. L4 flow completion, L6 discoverability. **STATUS: BLOCKED — needs new server endpoint POST /purchase-orders/:id/email + PDF render via existing print pipeline; multi-component**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (entire file — no send action)
   <!-- meta: fix=add-"Send-to-Supplier"-button-on-PO-row+server-endpoint-POST-/purchase-orders/:id/email+optional-pdf-render-via-existing-print-pipeline -->
 
@@ -4994,7 +4994,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
   `packages/server/src/routes/inventory.routes.ts:1347-1378`
   <!-- meta: fix=add-status-pill-filter-row+search-input-debounced-by-PO-#-or-supplier-name+server-extends-LIST-with-q-LIKE-clause -->
 
-- [ ] WEB-UIUX-1193. **[MAJOR] No barcode-scan receive path surfaced from PO page.** Server has `POST /inventory/receive-scan` (`inventory.routes.ts:1716`) for barcode receiving — but no link from `PurchaseOrdersPage`. Operator with a hand scanner has to manually find the line item and type qty. Faster, less error-prone path is hidden. L6 discoverability, L4 flow. **STATUS: BLOCKED — needs scan modal + scanner-input wiring to /inventory/receive-scan + permission gates; multi-component**
+- [!] WEB-UIUX-1193. **[MAJOR] No barcode-scan receive path surfaced from PO page.** Server has `POST /inventory/receive-scan` (`inventory.routes.ts:1716`) for barcode receiving — but no link from `PurchaseOrdersPage`. Operator with a hand scanner has to manually find the line item and type qty. Faster, less error-prone path is hidden. L6 discoverability, L4 flow. **STATUS: BLOCKED — needs scan modal + scanner-input wiring to /inventory/receive-scan + permission gates; multi-component**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (no scan entry point)
   `packages/server/src/routes/inventory.routes.ts:1713-1716`
   <!-- meta: fix=add-"Scan-to-Receive"-button-on-PoDetailRow-(canReceive)+open-modal-with-scanner-input-bound-to-receive-scan-endpoint -->
@@ -5056,7 +5056,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
 
 #### Blocker — semantic mismatch + dead workflow
 
-- [ ] WEB-UIUX-1206. **[BLOCKER] No "Refund" action exists in the UI — the only money-back affordance on an invoice is "Credit Note", which DOES NOT reverse the customer's card payment.** `InvoiceDetailPage.tsx:376-380` renders one button (`<CreditCard /> Credit Note`). The handler calls `POST /invoices/:id/credit-note` (`invoices.routes.ts:1162`). That endpoint creates a negative-total invoice, marks the original `paid`, and (if overflow) increments `store_credits`. It NEVER touches the original card payment, never calls BlockChyp/Stripe void, never decrements `payments.amount`. Operator picking reason "Defective product" or "Duplicate charge" expects the customer's card to be credited; instead the customer's card statement is unchanged and the shop's books say "paid". The reason picker labels (`RefundReasonPicker.tsx:18-23`) prove the design intent was a refund flow — but the wired action is a ledger adjustment. L2 truthfulness (label = "Credit Note", reasons = refund-language), L3 destination correctness (button doesn't do what the reasons promise). **STATUS: BLOCKED — split into Refund Card + Credit Note actions needs new server route + multi-component UI; defer to refunds sprint**
+- [!] WEB-UIUX-1206. **[BLOCKER] No "Refund" action exists in the UI — the only money-back affordance on an invoice is "Credit Note", which DOES NOT reverse the customer's card payment.** `InvoiceDetailPage.tsx:376-380` renders one button (`<CreditCard /> Credit Note`). The handler calls `POST /invoices/:id/credit-note` (`invoices.routes.ts:1162`). That endpoint creates a negative-total invoice, marks the original `paid`, and (if overflow) increments `store_credits`. It NEVER touches the original card payment, never calls BlockChyp/Stripe void, never decrements `payments.amount`. Operator picking reason "Defective product" or "Duplicate charge" expects the customer's card to be credited; instead the customer's card statement is unchanged and the shop's books say "paid". The reason picker labels (`RefundReasonPicker.tsx:18-23`) prove the design intent was a refund flow — but the wired action is a ledger adjustment. L2 truthfulness (label = "Credit Note", reasons = refund-language), L3 destination correctness (button doesn't do what the reasons promise). **STATUS: BLOCKED — split into Refund Card + Credit Note actions needs new server route + multi-component UI; defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   `packages/web/src/components/billing/RefundReasonPicker.tsx:17-24`
   `packages/server/src/routes/invoices.routes.ts:1162-1316`
@@ -5069,7 +5069,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
 
 #### Major — flow correctness + recovery
 
-- [ ] WEB-UIUX-1208. **[MAJOR] Credit-note silently inflates `amount_paid` on the original invoice by the credit amount — invoice flips to "paid" status with no actual money movement.** `invoices.routes.ts:1245-1257` `cappedAmountPaid = Math.min(prevAmountPaid + amount, total)` then UPDATE. So a $100 invoice with $50 collected, after a $50 credit note, reads `amount_paid=$100, amount_due=$0, status=paid` — but the customer paid only $50 cash. Reconciliation between AR ledger and bank deposits will silently disagree by $50 forever. The accounting-correct shape is: original invoice's `amount_paid` stays at $50 (real cash), and the new credit-note row's negative total is what brings net AR to zero. L13 trust/correctness, L7 honest feedback (status reads "paid" while customer was not refunded). **STATUS: BLOCKED — server invoices.routes.ts amount_paid mutation behavior change needs accounting review; backend, defer**
+- [!] WEB-UIUX-1208. **[MAJOR] Credit-note silently inflates `amount_paid` on the original invoice by the credit amount — invoice flips to "paid" status with no actual money movement.** `invoices.routes.ts:1245-1257` `cappedAmountPaid = Math.min(prevAmountPaid + amount, total)` then UPDATE. So a $100 invoice with $50 collected, after a $50 credit note, reads `amount_paid=$100, amount_due=$0, status=paid` — but the customer paid only $50 cash. Reconciliation between AR ledger and bank deposits will silently disagree by $50 forever. The accounting-correct shape is: original invoice's `amount_paid` stays at $50 (real cash), and the new credit-note row's negative total is what brings net AR to zero. L13 trust/correctness, L7 honest feedback (status reads "paid" while customer was not refunded). **STATUS: BLOCKED — server invoices.routes.ts amount_paid mutation behavior change needs accounting review; backend, defer**
   `packages/server/src/routes/invoices.routes.ts:1245-1257`
   <!-- meta: fix=do-not-mutate-original.amount_paid-on-credit-note+let-the-negative-credit-note-row-cover-the-AR-reduction+OR-introduce-amount_credited-column-distinct-from-amount_paid -->
 
@@ -5088,7 +5088,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/server/src/routes/invoices.routes.ts:1162-1316` (no reverse endpoint exists)
   <!-- meta: fix=ConfirmDialog-with-requireTyping=order_id+danger-styling+server-add-DELETE-/invoices/:cn_id/credit-note-(admin-only)-or-POST-/invoices/:id/credit-note/reverse -->
 
-- [ ] WEB-UIUX-1212. **[MAJOR] After credit note, no customer notification — no email "we issued a $X credit toward invoice Y", no SMS.** Operator who issues credit-as-refund-substitute then has to manually message the customer "your card wasn't refunded but you have store credit" or risk a chargeback. The `notificationApi.sendReceipt` exists for receipts; there's no analogous `sendCreditNote` path. L4 flow completion, L7 customer-side feedback. **STATUS: BLOCKED — server-side notification enqueue (sendCreditNote template) + email pipeline; backend change, defer to refunds sprint**
+- [!] WEB-UIUX-1212. **[MAJOR] After credit note, no customer notification — no email "we issued a $X credit toward invoice Y", no SMS.** Operator who issues credit-as-refund-substitute then has to manually message the customer "your card wasn't refunded but you have store credit" or risk a chargeback. The `notificationApi.sendReceipt` exists for receipts; there's no analogous `sendCreditNote` path. L4 flow completion, L7 customer-side feedback. **STATUS: BLOCKED — server-side notification enqueue (sendCreditNote template) + email pipeline; backend change, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1303-1316`
   `packages/web/src/api/endpoints.ts` (no `sendCreditNote`)
   <!-- meta: fix=server-after-credit-note-create-enqueue-notification-credit_note_issued+send-via-existing-notif-pipeline+template-includes-amount-reason-store-credit-balance-if-overflow -->
@@ -5125,7 +5125,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
   <!-- meta: fix=switch-to-bg-red-600/hover:bg-red-700-to-match-Void-button+OR-bg-primary-600-and-add-an-explicit-confirm-step-(see-WEB-UIUX-1211) -->
 
-- [ ] WEB-UIUX-1220. **[MINOR] Reason picker labels "Defective product / Duplicate charge / Wrong item" all imply REFUND semantics (money back to card). The chosen action (Credit Note) does not refund the card. Either the picker is wrong here or the action is wrong — they don't match.** `RefundReasonPicker.tsx:17-24` was authored as a refund picker (component name + comments confirm — see line 2 "for partial refunds"); reusing it on a credit-note modal mis-leads operators. L2 truthful labels. **STATUS: BLOCKED — split CreditNoteReasonPicker from RefundReasonPicker requires component-level refactor + caller updates; defer to refunds sprint**
+- [!] WEB-UIUX-1220. **[MINOR] Reason picker labels "Defective product / Duplicate charge / Wrong item" all imply REFUND semantics (money back to card). The chosen action (Credit Note) does not refund the card. Either the picker is wrong here or the action is wrong — they don't match.** `RefundReasonPicker.tsx:17-24` was authored as a refund picker (component name + comments confirm — see line 2 "for partial refunds"); reusing it on a credit-note modal mis-leads operators. L2 truthful labels. **STATUS: BLOCKED — split CreditNoteReasonPicker from RefundReasonPicker requires component-level refactor + caller updates; defer to refunds sprint**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:1-10`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:783-789`
   <!-- meta: fix=split-CreditNoteReasonPicker-(price_adjustment+goodwill+billing_correction+other)-from-RefundReasonPicker-(defective+wrong_item+duplicate_charge+dissatisfaction+other)+each-paired-with-its-correct-action -->
@@ -5148,7 +5148,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
   <!-- meta: fix=grid-cols-1-sm:grid-cols-2 -->
 
-- [ ] WEB-UIUX-1225. **[NIT] Credit-note `notes` field on the new invoice row stores `"Credit note: ${reason}"` (`invoices.routes.ts:1224`) — duplicates `credit_note_code` + `credit_note_note` columns. Three places store the reason; report queries that read `notes` get the legacy composed string while reports reading `credit_note_code` get the enum value.** Risk of divergence as new credit notes are issued. L13 schema dup. **STATUS: BLOCKED — server invoices.routes.ts notes-column dedup needs read/write migration; backend, defer to refunds sprint**
+- [!] WEB-UIUX-1225. **[NIT] Credit-note `notes` field on the new invoice row stores `"Credit note: ${reason}"` (`invoices.routes.ts:1224`) — duplicates `credit_note_code` + `credit_note_note` columns. Three places store the reason; report queries that read `notes` get the legacy composed string while reports reading `credit_note_code` get the enum value.** Risk of divergence as new credit notes are issued. L13 schema dup. **STATUS: BLOCKED — server invoices.routes.ts notes-column dedup needs read/write migration; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1213-1224`
   <!-- meta: fix=stop-writing-Credit-note-prefix-into-notes+OR-derive-notes-display-from-code+note-on-read+single-source-of-truth -->
 
@@ -5158,7 +5158,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Blocker — missing primitives + dead UI
 
-- [ ] WEB-UIUX-1226. **[BLOCKER] `LineItemDiscountMenu` (164 lines, complete chip-picker with 5 reason codes + percent input + portal positioning) is NEVER imported anywhere in the codebase — per-line discount UI does not exist for operators.** `LineItemDiscountMenu.tsx:1-164`. Verified by `grep -rn "LineItemDiscountMenu"` — only matches are inside its own file. `RepairsTab.tsx:790` always inits `lineDiscount: 0`, `LeftPanel.tsx:148/399` and `UnifiedPosPage.tsx:318` only read `device.line_discount` from a server-loaded ticket — there is no client write path. The cart row at `LeftPanel.tsx:585-589` displays a per-line discount line item if non-zero, but no UI lets the operator set one. Server (`pos.routes.ts:1630-1668`) accepts `line_discount` per device, validates and applies it, so backend is fully wired — only the client UI is missing. Operator wanting "10% off labor on this device only" has to (a) edit `laborPrice` directly to fake it (loses the audit reason, breaks reports that group by `line_discount`), or (b) apply a cart-wide discount that hits everything. L3 destination correctness (no entry point), L6 discoverability, L4 flow completion. **STATUS: BLOCKED — wiring LineItemDiscountMenu requires RepairRow integration + types extension + payload thread; multi-component, defer to discount sprint**
+- [!] WEB-UIUX-1226. **[BLOCKER] `LineItemDiscountMenu` (164 lines, complete chip-picker with 5 reason codes + percent input + portal positioning) is NEVER imported anywhere in the codebase — per-line discount UI does not exist for operators.** `LineItemDiscountMenu.tsx:1-164`. Verified by `grep -rn "LineItemDiscountMenu"` — only matches are inside its own file. `RepairsTab.tsx:790` always inits `lineDiscount: 0`, `LeftPanel.tsx:148/399` and `UnifiedPosPage.tsx:318` only read `device.line_discount` from a server-loaded ticket — there is no client write path. The cart row at `LeftPanel.tsx:585-589` displays a per-line discount line item if non-zero, but no UI lets the operator set one. Server (`pos.routes.ts:1630-1668`) accepts `line_discount` per device, validates and applies it, so backend is fully wired — only the client UI is missing. Operator wanting "10% off labor on this device only" has to (a) edit `laborPrice` directly to fake it (loses the audit reason, breaks reports that group by `line_discount`), or (b) apply a cart-wide discount that hits everything. L3 destination correctness (no entry point), L6 discoverability, L4 flow completion. **STATUS: BLOCKED — wiring LineItemDiscountMenu requires RepairRow integration + types extension + payload thread; multi-component, defer to discount sprint**
   `packages/web/src/pages/unified-pos/LineItemDiscountMenu.tsx:1-164` (dead component)
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:585-608` (display path with no editor)
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:790` (init only, never updated)
@@ -5171,7 +5171,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Major — silent overrides, missing reasoning, dead paths
 
-- [ ] WEB-UIUX-1228. **[MAJOR] Server takes `Math.max(manualDiscount, membershipDiscountAmt)` by default — manual discount is silently DROPPED if membership tier discount is larger, with no UI feedback.** `pos.routes.ts:1881` `const discount = roundCents(Math.max(manualDiscount, membershipDiscountAmt))`. Operator types $5 manual "Damaged box" reason → customer's Gold tier gives 15% = $30 → final invoice records $30 discount, reason becomes the audit log's `discount_reason: 'Damaged box'` (manual reason preserved) but the manual $5 was discarded. Operator believes both applied. The `stack_membership` flag (line 1880 elided) lets them sum, but NO client passes it (verified — grepped `stack_membership` across web tree, zero matches). L7 silent state loss, L2 truthful feedback. **STATUS: BLOCKED — server pos.routes.ts Math.max behavior + stack_membership flag needs design review; backend, defer to discount sprint**
+- [!] WEB-UIUX-1228. **[MAJOR] Server takes `Math.max(manualDiscount, membershipDiscountAmt)` by default — manual discount is silently DROPPED if membership tier discount is larger, with no UI feedback.** `pos.routes.ts:1881` `const discount = roundCents(Math.max(manualDiscount, membershipDiscountAmt))`. Operator types $5 manual "Damaged box" reason → customer's Gold tier gives 15% = $30 → final invoice records $30 discount, reason becomes the audit log's `discount_reason: 'Damaged box'` (manual reason preserved) but the manual $5 was discarded. Operator believes both applied. The `stack_membership` flag (line 1880 elided) lets them sum, but NO client passes it (verified — grepped `stack_membership` across web tree, zero matches). L7 silent state loss, L2 truthful feedback. **STATUS: BLOCKED — server pos.routes.ts Math.max behavior + stack_membership flag needs design review; backend, defer to discount sprint**
   `packages/server/src/routes/pos.routes.ts:1869-1889`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:102-121` (request payload — no `stack_membership` field)
   <!-- meta: fix=client-show-Member-tier-X-discount:-$Y-line-separately-from-manual+OR-add-stackMembership-toggle-with-explanation+server-warn-if-manual<member-and-not-stacking-(return-info-in-response) -->
@@ -5182,7 +5182,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:443-447`
   <!-- meta: fix=add-second-row-in-cart-totals-when-member-applied:Member-(Gold-15%)-(-$X)+toast-on-customer-pick:Auto-applied-Gold-tier-15%-discount+receipt-prints-each-discount-line-separately -->
 
-- [ ] WEB-UIUX-1230. **[MAJOR] `discount_reason` is captured client-side and sent in every checkout payload, but the `INSERT INTO invoices ...` statement at `pos.routes.ts:2217-2236` does NOT pass it.** Schema HAS `invoices.discount_reason TEXT` (`migrations/001_initial.sql:282`, `013_invoices_nullable_customer.sql:21`). For non-ticket sales (product-only carts), the reason vanishes from invoices.discount_reason — only audit_logs gets it. `InvoiceDetailPage.tsx:460` reads `invoice.discount_reason` and prints it parenthetically; for product-only checkouts it always renders blank. L13 schema/data integrity, L4 audit completeness, L7 truthful display. **STATUS: BLOCKED — server INSERT INTO invoices missing discount_reason column; backend SQL change, defer to refunds sprint**
+- [!] WEB-UIUX-1230. **[MAJOR] `discount_reason` is captured client-side and sent in every checkout payload, but the `INSERT INTO invoices ...` statement at `pos.routes.ts:2217-2236` does NOT pass it.** Schema HAS `invoices.discount_reason TEXT` (`migrations/001_initial.sql:282`, `013_invoices_nullable_customer.sql:21`). For non-ticket sales (product-only carts), the reason vanishes from invoices.discount_reason — only audit_logs gets it. `InvoiceDetailPage.tsx:460` reads `invoice.discount_reason` and prints it parenthetically; for product-only checkouts it always renders blank. L13 schema/data integrity, L4 audit completeness, L7 truthful display. **STATUS: BLOCKED — server INSERT INTO invoices missing discount_reason column; backend SQL change, defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2215-2236` (missing column)
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:460`
   <!-- meta: fix=add-discount_reason-to-INSERT-INTO-invoices-(both-update-and-insert-arms)+pass-ticketData?.discount_reason ?? null+drop-redundant-audit-only-path-OR-keep-both -->
@@ -5238,7 +5238,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:949-961`
   <!-- meta: fix=show-asterisk-whenever-requireReason+OR-show-helper-text-Reason-becomes-required-once-amount-is-entered -->
 
-- [ ] WEB-UIUX-1243. **[MINOR] `manualDiscount` validation in `pos.routes.ts:1874` allows zero but not via the same code path as the rest — `ticketData?.discount ? validatePrice(...) : 0`.** Edge: a client sending the literal string `"0.00"` (truthy) goes through validatePrice (fine), but `0` (falsy) skips. Inconsistent with `tip` handling on the same form. L13 input contract. **STATUS: BLOCKED — server pos.routes.ts manualDiscount input contract change; backend, defer to discount sprint**
+- [!] WEB-UIUX-1243. **[MINOR] `manualDiscount` validation in `pos.routes.ts:1874` allows zero but not via the same code path as the rest — `ticketData?.discount ? validatePrice(...) : 0`.** Edge: a client sending the literal string `"0.00"` (truthy) goes through validatePrice (fine), but `0` (falsy) skips. Inconsistent with `tip` handling on the same form. L13 input contract. **STATUS: BLOCKED — server pos.routes.ts manualDiscount input contract change; backend, defer to discount sprint**
   `packages/server/src/routes/pos.routes.ts:1874-1876`
   <!-- meta: fix=use-rawDiscount!=null?validatePrice(rawDiscount,'discount'):0+match-existing-tip-style -->
 
@@ -5246,7 +5246,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-981`
   <!-- meta: fix=on-resetAll-also-reset-DiscountEditor-(via-effect-listening-on-cartItems.length===0)+OR-key-the-component-on-cartId-so-it-remounts-clean -->
 
-- [ ] WEB-UIUX-1245. **[MINOR] `Math.max(manual, member)` server-side means a tiny manual discount + a tiny membership tier silently picks one — operator who deliberately wants both has no UX path. `stack_membership` server flag is exposed but no UI.** Discussed in WEB-UIUX-1228 from the silent-override angle; this is the inverse — an intentional power-user can't compose. L6 discoverability of advanced. **STATUS: BLOCKED — exposing stack_membership requires UI checkbox + payload thread + server membership-tier query; multi-component, defer**
+- [!] WEB-UIUX-1245. **[MINOR] `Math.max(manual, member)` server-side means a tiny manual discount + a tiny membership tier silently picks one — operator who deliberately wants both has no UX path. `stack_membership` server flag is exposed but no UI.** Discussed in WEB-UIUX-1228 from the silent-override angle; this is the inverse — an intentional power-user can't compose. L6 discoverability of advanced. **STATUS: BLOCKED — exposing stack_membership requires UI checkbox + payload thread + server membership-tier query; multi-component, defer**
   `packages/server/src/routes/pos.routes.ts:1879-1881`
   <!-- meta: fix=expose-Stack-with-membership-checkbox-in-DiscountEditor-when-customer-has-active-tier+pass-stack_membership=true-in-buildTicketPayload-when-checked -->
 
@@ -5330,7 +5330,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:512-514`
   <!-- meta: fix="Manage-team,-time,-and-pay"-or-just-"Manage-team-members" -->
 
-- [ ] WEB-UIUX-1264. **[MINOR] Pay-rate edit has no effective-date or history. After raising someone's rate (`PayRateEditor.commit`), the new value applies — but commissions table has its own per-record amounts, hours don't snapshot the rate, and prior pay calculations have no audit trail visible from this UI. Manager raised John from $18 → $20 mid-week; no way to confirm which rate the current pay-period uses.** L7 feedback meaning, L4 flow completion. **STATUS: BLOCKED — needs new pay_rate_history table + server CRUD + UI; multi-component, defer to payroll sprint**
+- [!] WEB-UIUX-1264. **[MINOR] Pay-rate edit has no effective-date or history. After raising someone's rate (`PayRateEditor.commit`), the new value applies — but commissions table has its own per-record amounts, hours don't snapshot the rate, and prior pay calculations have no audit trail visible from this UI. Manager raised John from $18 → $20 mid-week; no way to confirm which rate the current pay-period uses.** L7 feedback meaning, L4 flow completion. **STATUS: BLOCKED — needs new pay_rate_history table + server CRUD + UI; multi-component, defer to payroll sprint**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:227-315`
   <!-- meta: fix=show-"Effective-from-{today}"-on-save+keep-pay_rate_history-table-and-render-last-3-changes-in-expanded-row -->
 
@@ -5355,7 +5355,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:371-372`
   <!-- meta: fix="Use-the-Clock-In-button-on-the-row-header"-or-just-"No-clock-entries-yet." -->
 
-- [ ] WEB-UIUX-1270. **[NIT] No bulk close-all action for end-of-day. Manager closing the shop has to expand each row, click Clock Out, type PIN, repeat — for every still-active worker who forgot. The 16-hour auto-close (`employees.routes.ts:115`) won't fire until tomorrow.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs admin End-of-Day modal + bulk-clock-out endpoint with manager-PIN co-sign; multi-component, defer to time-clock sprint**
+- [!] WEB-UIUX-1270. **[NIT] No bulk close-all action for end-of-day. Manager closing the shop has to expand each row, click Clock Out, type PIN, repeat — for every still-active worker who forgot. The 16-hour auto-close (`employees.routes.ts:115`) won't fire until tomorrow.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs admin End-of-Day modal + bulk-clock-out endpoint with manager-PIN co-sign; multi-component, defer to time-clock sprint**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:531-570`
   <!-- meta: fix=admin-only-"End-of-Day"-button-→-confirm-modal-listing-active-workers-→-bulk-clock-out-with-manager-PIN-once -->
 
@@ -5384,7 +5384,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/api/endpoints.ts` (no `refundsApi`)
   <!-- meta: fix=add-RefundsListPage-/refunds+RefundDetailPage-with-Approve/Decline-buttons-(admin-only)+sidebar-link-under-Billing+endpoints.ts-refundsApi.list/get/create/approve/decline -->
 
-- [ ] WEB-UIUX-1276. **[BLOCKER] `/pos/return` (line-item return + stock restoration) is an orphan endpoint. Built `pos.routes.ts:2496` with admin-only gate, per-line quantity/reason, automatic inventory restoration via `stock_movements`, and credit-note generation — and ZERO web callers (`grep posApi.return` returns only the wrapper definition).** Manager who returns "1 of the 3 chargers from invoice INV-44" has no UI: forced to use the full-amount Credit Note modal which does NOT restore stock. Inventory shrinkage hidden, COGS skewed. L3, L4, L13 inventory integrity. **STATUS: BLOCKED — needs ReturnItemsModal with line-item checkboxes + per-line qty + posApi.return wiring; multi-component, defer to refunds sprint**
+- [!] WEB-UIUX-1276. **[BLOCKER] `/pos/return` (line-item return + stock restoration) is an orphan endpoint. Built `pos.routes.ts:2496` with admin-only gate, per-line quantity/reason, automatic inventory restoration via `stock_movements`, and credit-note generation — and ZERO web callers (`grep posApi.return` returns only the wrapper definition).** Manager who returns "1 of the 3 chargers from invoice INV-44" has no UI: forced to use the full-amount Credit Note modal which does NOT restore stock. Inventory shrinkage hidden, COGS skewed. L3, L4, L13 inventory integrity. **STATUS: BLOCKED — needs ReturnItemsModal with line-item checkboxes + per-line qty + posApi.return wiring; multi-component, defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2492-2637`
   `packages/web/src/api/endpoints.ts:753-761` (wrapper exists, no caller)
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx` (only Credit Note path)
@@ -5410,7 +5410,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/refunds.routes.ts:107-239`
   <!-- meta: fix=Refund-modal-with-radio-group-type=refund_to_original|store_credit|credit_note+route-cash/card-refunds-through-/refunds+keep-/credit-note-only-for-explicit-doc-issuance -->
 
-- [ ] WEB-UIUX-1281. **[MAJOR] No record of prior credit notes on the invoice page. Server enforces `priorCredits` aggregate (`invoices.routes.ts:1192-1202`); UI never shows them. Operator who already credited $50 against a $200 paid invoice sees identical UI to a never-credited invoice; tries to credit another $200; bounces on server reject "would exceed invoice total (already credited 50.00 of 200.00)". The Payment Timeline (`InvoiceDetailPage.tsx:475-548`) has no Credit Notes timeline.** L7 feedback meaningful, L9 missing prior-credit state. **STATUS: BLOCKED — needs Credit Notes timeline section + new useQuery for invoices.credit_note_for=:id; multi-component, defer to refunds sprint**
+- [!] WEB-UIUX-1281. **[MAJOR] No record of prior credit notes on the invoice page. Server enforces `priorCredits` aggregate (`invoices.routes.ts:1192-1202`); UI never shows them. Operator who already credited $50 against a $200 paid invoice sees identical UI to a never-credited invoice; tries to credit another $200; bounces on server reject "would exceed invoice total (already credited 50.00 of 200.00)". The Payment Timeline (`InvoiceDetailPage.tsx:475-548`) has no Credit Notes timeline.** L7 feedback meaningful, L9 missing prior-credit state. **STATUS: BLOCKED — needs Credit Notes timeline section + new useQuery for invoices.credit_note_for=:id; multi-component, defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:474-548`
   `packages/server/src/routes/invoices.routes.ts:1192-1202`
   <!-- meta: fix=add-Credit-Notes-section-OR-merge-into-Payment-Timeline-(query-invoices-where-credit_note_for=:id)+each-row-amount+date+CRN-link+update-Max-helper-amount_paid-already_credited -->
@@ -5456,7 +5456,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/components/billing/RefundReasonPicker.tsx:17-24`
   <!-- meta: fix=expand-REASONS-cancelled_service+exchange+goodwill+tax_adjustment+shipping+promo+keep-other-as-fallback+server-enum-validate-against-this-list -->
 
-- [ ] WEB-UIUX-1291. **[MAJOR] Reason composed as `${code}: ${note}` AND sent both as `reason` AND structured `code`/`note` (`InvoiceDetailPage.tsx:158-167`). Server stores all three (`invoices.routes.ts:1180-1185,1224`). Reports keying on `reason` get pre-FA-L8 free-text rows AND new "code: note" rows mixed; reports keying on `code` lose pre-FA-L8 rows entirely. No back-fill migration. Reporting cardinality is still split.** L13 reporting integrity. **STATUS: BLOCKED — needs server migration back-fill of credit_note_code from legacy reason field; backend change, defer to data-cleanup sprint**
+- [!] WEB-UIUX-1291. **[MAJOR] Reason composed as `${code}: ${note}` AND sent both as `reason` AND structured `code`/`note` (`InvoiceDetailPage.tsx:158-167`). Server stores all three (`invoices.routes.ts:1180-1185,1224`). Reports keying on `reason` get pre-FA-L8 free-text rows AND new "code: note" rows mixed; reports keying on `code` lose pre-FA-L8 rows entirely. No back-fill migration. Reporting cardinality is still split.** L13 reporting integrity. **STATUS: BLOCKED — needs server migration back-fill of credit_note_code from legacy reason field; backend change, defer to data-cleanup sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-168`
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
@@ -5465,7 +5465,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=onChange-clamp-to-Math.min(parsed,amount_paid)+inline-amber-helper-when-input-exceeds-max+disable-Submit-while-out-of-bounds -->
 
-- [ ] WEB-UIUX-1293. **[MAJOR] No commission reversal on the credit-note path. `/refunds` PATCH approve calls `reverseCommission()` (`refunds.routes.ts:10`); `/invoices/:id/credit-note` does NOT. Tech who earned $40 commission on a $400 invoice that's then credit-noted keeps the $40; payroll-period lock never trips. Operator processing a returned-product credit note has no idea this is happening.** L13 ledger integrity, L7 silent side-effect. **STATUS: BLOCKED — server invoices.routes.ts credit-note path needs reverseCommission integration; backend, defer to refunds sprint**
+- [!] WEB-UIUX-1293. **[MAJOR] No commission reversal on the credit-note path. `/refunds` PATCH approve calls `reverseCommission()` (`refunds.routes.ts:10`); `/invoices/:id/credit-note` does NOT. Tech who earned $40 commission on a $400 invoice that's then credit-noted keeps the $40; payroll-period lock never trips. Operator processing a returned-product credit note has no idea this is happening.** L13 ledger integrity, L7 silent side-effect. **STATUS: BLOCKED — server invoices.routes.ts credit-note path needs reverseCommission integration; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1162-1317` (no commission reversal)
   `packages/server/src/routes/refunds.routes.ts:10` (vs. has it)
   <!-- meta: fix=server-credit-note-route-call-reverseCommission-proportionally+OR-warn-in-modal-Credit-notes-do-not-reverse-tech-commissions+document-policy -->
@@ -5474,7 +5474,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/api/endpoints.ts:295-298`
   <!-- meta: fix=add-X-Idempotency-Key-header-(crypto.randomUUID-fallback)+wrap-credit-note-route-with-idempotent-middleware-server-side -->
 
-- [ ] WEB-UIUX-1295. **[MAJOR] Card-method routing missing. When the original payment was on a BlockChyp terminal (`processor_transaction_id` set, `InvoiceDetailPage.tsx:203-205`), the natural refund path is to send the credit BACK to the original card. UI offers no terminal-refund button; operator with a $300 card sale + customer in front of them has no way to push the refund through the terminal. They click Credit Note → ledger only. Customer leaves with no money on the card.** L1 findability, L4 flow completion. **STATUS: BLOCKED — needs new server blockchypApi.processRefund route + UI Refund-to-Card branch; multi-component, defer to terminal sprint**
+- [!] WEB-UIUX-1295. **[MAJOR] Card-method routing missing. When the original payment was on a BlockChyp terminal (`processor_transaction_id` set, `InvoiceDetailPage.tsx:203-205`), the natural refund path is to send the credit BACK to the original card. UI offers no terminal-refund button; operator with a $300 card sale + customer in front of them has no way to push the refund through the terminal. They click Credit Note → ledger only. Customer leaves with no money on the card.** L1 findability, L4 flow completion. **STATUS: BLOCKED — needs new server blockchypApi.processRefund route + UI Refund-to-Card branch; multi-component, defer to terminal sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:203-205,376-380`
   <!-- meta: fix=if-cardPaymentWithTxn-add-Refund-to-Card-($amount-on-card-XXXX)-button+wire-blockchypApi.processRefund-(stub-if-not-yet-implemented)+otherwise-warn-Card-refund-not-available -->
 
@@ -5489,7 +5489,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
   <!-- meta: fix=conditional-copy-amount_due>0-current-text+amount_due===0-"This-will-be-recorded-as-store-credit-on-the-customer's-account." -->
 
-- [ ] WEB-UIUX-1298. **[MINOR] Store-credit overflow path (`invoices.routes.ts:1248-1302`) is server-only; UI never tells the operator the credit went to the customer's store-credit balance. Customer gets no heads-up either. Operator can't answer "where did the $50 overflow go" without DB access.** L7 feedback meaning. **STATUS: BLOCKED — server invoices.routes.ts must return credit_overflow + store_credit_balance in response; backend, defer to refunds sprint**
+- [!] WEB-UIUX-1298. **[MINOR] Store-credit overflow path (`invoices.routes.ts:1248-1302`) is server-only; UI never tells the operator the credit went to the customer's store-credit balance. Customer gets no heads-up either. Operator can't answer "where did the $50 overflow go" without DB access.** L7 feedback meaning. **STATUS: BLOCKED — server invoices.routes.ts must return credit_overflow + store_credit_balance in response; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1248-1302`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
   <!-- meta: fix=server-return-credit_overflow+store_credit_balance-in-response+UI-onSuccess-toast/banner-$X-applied-to-balance,-$Y-added-to-store-credit-(now-$Z) -->
@@ -5548,7 +5548,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:749,792`
   <!-- meta: fix=remove-footer-Cancel+widen-Submit-OR-remove-header-X-(more-keyboard-friendly) -->
 
-- [ ] WEB-UIUX-1312. **[NIT] No analytics / dashboard tile for refund volume. Server has the data; UI surfaces nothing. Manager asking "why are returns up this month" has no in-app answer.** L6 discoverability of insights. **STATUS: BLOCKED — needs Refunds-this-week dashboard tile + drilldown route + reason-codes bar; multi-component, defer**
+- [!] WEB-UIUX-1312. **[NIT] No analytics / dashboard tile for refund volume. Server has the data; UI surfaces nothing. Manager asking "why are returns up this month" has no in-app answer.** L6 discoverability of insights. **STATUS: BLOCKED — needs Refunds-this-week dashboard tile + drilldown route + reason-codes bar; multi-component, defer**
   `packages/server/src/routes/refunds.routes.ts:74-95` (data)
   `packages/web/src/pages/dashboard/DashboardPage.tsx` (no refund tile)
   <!-- meta: fix=Refunds-this-week-tile-on-dashboard+drilldown-to-Refunds-page-(see-WEB-UIUX-1275)+top-3-reason-codes-bar -->
@@ -5570,7 +5570,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/api/types.ts:436-442`
   <!-- meta: fix=add-Customer-typeahead+optional-Lead-typeahead+pass-customer_id+lead_id-in-payload+extend-CreateAppointmentInput-with-both -->
 
-- [ ] WEB-UIUX-1316. **[BLOCKER] No edit, reschedule, cancel, or mark-no-show path anywhere in UI. `leadApi.updateAppointment` and `leadApi.deleteAppointment` (`endpoints.ts:877-878`) exist; **zero call sites** in `packages/web/src`. AppointmentDetailModal (`CalendarPage.tsx:82-173`) is read-only — no buttons. Once created, status frozen at "scheduled" forever; customer reschedule = staff has to recreate (and orphan the old one since they can't delete it either).** L8 recovery, L4 flow completion. **STATUS: BLOCKED — needs Edit/Reschedule/Cancel/Mark-No-show buttons + AppointmentDetailModal expansion; multi-action UI, defer to scheduling sprint**
+- [!] WEB-UIUX-1316. **[BLOCKER] No edit, reschedule, cancel, or mark-no-show path anywhere in UI. `leadApi.updateAppointment` and `leadApi.deleteAppointment` (`endpoints.ts:877-878`) exist; **zero call sites** in `packages/web/src`. AppointmentDetailModal (`CalendarPage.tsx:82-173`) is read-only — no buttons. Once created, status frozen at "scheduled" forever; customer reschedule = staff has to recreate (and orphan the old one since they can't delete it either).** L8 recovery, L4 flow completion. **STATUS: BLOCKED — needs Edit/Reschedule/Cancel/Mark-No-show buttons + AppointmentDetailModal expansion; multi-action UI, defer to scheduling sprint**
   `packages/web/src/pages/leads/CalendarPage.tsx:82-173`
   `packages/web/src/api/endpoints.ts:877-878`
   <!-- meta: fix=add-Edit/Reschedule/Cancel/Mark-No-show-buttons-in-AppointmentDetailModal+wire-updateAppointment+deleteAppointment+confirm-modal-on-cancel/delete -->
@@ -5652,7 +5652,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:132-137`
   <!-- meta: fix=STATUS_LABELS-map-(scheduled→Scheduled,no-show→No-Show)+drop-capitalize-class -->
 
-- [ ] WEB-UIUX-1336. **[NIT] No SMS/email confirmation toggle on create. If server auto-sends confirmation (per location settings), staff has no way to opt out for internal-only blocks. If server doesn't, staff has no way to send. Either way, opaque.** L7 feedback, L6 discoverability. **STATUS: BLOCKED — needs server flag in /leads/appointments + SMS infrastructure (deferred per user 2026-05-05); defer to messaging sprint**
+- [!] WEB-UIUX-1336. **[NIT] No SMS/email confirmation toggle on create. If server auto-sends confirmation (per location settings), staff has no way to opt out for internal-only blocks. If server doesn't, staff has no way to send. Either way, opaque.** L7 feedback, L6 discoverability. **STATUS: BLOCKED — needs server flag in /leads/appointments + SMS infrastructure (deferred per user 2026-05-05); defer to messaging sprint**
   `packages/web/src/pages/leads/CalendarPage.tsx:288-440`
   <!-- meta: fix=checkbox-"Send-SMS-confirmation-to-customer"-(default-on-when-customer-selected)+wire-server-to-honor-flag -->
 
@@ -5676,7 +5676,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:64,371-378`
   <!-- meta: fix=convert-handler-SELECT-customers-WHERE-email=?-OR-phone=?-LIMIT-1-before-INSERT+if-match-return-{found:true,customer_id,name}+UI-presents-link-or-create-new-choice -->
 
-- [ ] WEB-UIUX-1340. **[MAJOR] Lead reminders orphaned by convert. Lead has `lead_reminders` rows (`leads.routes.ts:945-998`); convert flips status to 'converted' but never copies/migrates reminders to the new ticket. Operator scheduled "follow up Mon" on the lead → converted same day → Monday arrives, no reminder fires (ticket has no reminder, lead is closed). Detail page even shows the reminders in the activity timeline (`LeadDetailPage.tsx:290-298`) so user thinks they're real promises. Devices DO get copied (`:1098-1113`); reminders are forgotten.** L4 broken flow, L7 silent loss of work. **STATUS: BLOCKED — server convert handler must INSERT INTO ticket_reminders SELECT FROM lead_reminders; backend, defer to convert sprint**
+- [!] WEB-UIUX-1340. **[MAJOR] Lead reminders orphaned by convert. Lead has `lead_reminders` rows (`leads.routes.ts:945-998`); convert flips status to 'converted' but never copies/migrates reminders to the new ticket. Operator scheduled "follow up Mon" on the lead → converted same day → Monday arrives, no reminder fires (ticket has no reminder, lead is closed). Detail page even shows the reminders in the activity timeline (`LeadDetailPage.tsx:290-298`) so user thinks they're real promises. Devices DO get copied (`:1098-1113`); reminders are forgotten.** L4 broken flow, L7 silent loss of work. **STATUS: BLOCKED — server convert handler must INSERT INTO ticket_reminders SELECT FROM lead_reminders; backend, defer to convert sprint**
   `packages/server/src/routes/leads.routes.ts:945-998,1098-1136`
   `packages/web/src/pages/leads/LeadDetailPage.tsx:290-298`
   <!-- meta: fix=convert-handler-INSERT-INTO-ticket_reminders-(SELECT-...-FROM-lead_reminders-WHERE-lead_id=?-AND-is_dismissed=0)+OR-leave-reminders-on-lead-and-add-link-back-to-lead-from-ticket-detail+document-which-side-owns-future-followups -->
@@ -5721,7 +5721,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/leads/LeadDetailPage.tsx:197-206`
   <!-- meta: fix=detect-err.response.data.upgrade_required+open-UpgradeModal-(reuse-from-/billing-CTA-elsewhere)+ticket-count-progress-bar-shown-on-/leads-when-current/limit>=80% -->
 
-- [ ] WEB-UIUX-1350. **[NIT] LeadListPage convertMut success message says "Lead converted to ticket" (`:418`), navigates to /tickets/:id. Detail-page success says "Converted to ticket" (`:201`). Inconsistent copy across two surfaces for same action. Pick one ("Lead #L042 converted → Ticket #T117") and include both order_ids so user can confirm correct destination.** L7 feedback specificity, L11 consistency. **STATUS: BLOCKED — needs UpgradeModal integration in convert flow + ticket-count progress bar; multi-component, defer to monetization sprint**
+- [!] WEB-UIUX-1350. **[NIT] LeadListPage convertMut success message says "Lead converted to ticket" (`:418`), navigates to /tickets/:id. Detail-page success says "Converted to ticket" (`:201`). Inconsistent copy across two surfaces for same action. Pick one ("Lead #L042 converted → Ticket #T117") and include both order_ids so user can confirm correct destination.** L7 feedback specificity, L11 consistency. **STATUS: BLOCKED — needs UpgradeModal integration in convert flow + ticket-count progress bar; multi-component, defer to monetization sprint**
   `packages/web/src/pages/leads/LeadListPage.tsx:418`
   `packages/web/src/pages/leads/LeadDetailPage.tsx:201`
   <!-- meta: fix=both-toasts-show-"Lead-{order_id}-→-Ticket-{ticket.order_id}"+single-helper-formatConvertSuccess(res) -->
@@ -5741,13 +5741,13 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:177` + `packages/server/src/routes/stocktake.routes.ts:218-234`
   <!-- meta: fix=client-keeps-running-count+sends-absolute-counted_qty=prior+1+OR-add-POST-/counts/increment-route-with-delta-semantics -->
 
-- [ ] WEB-UIUX-1353. **[BLOCKER] SKU lookup uses `keyword=q&pagesize=1` — picks FIRST match silently, including partial matches. Scanning a barcode that maps to 2+ items (sku-prefix collision, search treats keyword as fuzzy) credits an arbitrary item. No "exact match required" or "did you mean…" feedback.** L2 label truthfulness, L4 flow. **STATUS: BLOCKED — needs new server route /inventory/by-sku?sku=:exact + UI fuzzy-match suggestions; multi-component, defer to inventory sprint**
+- [!] WEB-UIUX-1353. **[BLOCKER] SKU lookup uses `keyword=q&pagesize=1` — picks FIRST match silently, including partial matches. Scanning a barcode that maps to 2+ items (sku-prefix collision, search treats keyword as fuzzy) credits an arbitrary item. No "exact match required" or "did you mean…" feedback.** L2 label truthfulness, L4 flow. **STATUS: BLOCKED — needs new server route /inventory/by-sku?sku=:exact + UI fuzzy-match suggestions; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/StocktakePage.tsx:166-173`
   <!-- meta: fix=add-/inventory/by-sku?sku=:exact-route-OR-pass-exact_sku=1-flag+if-no-exact-match-show-toast-with-top-3-fuzzy-suggestions -->
 
 #### Blocker — recovery + irreversible state
 
-- [ ] WEB-UIUX-1354. **[BLOCKER] No way to delete or amend a single count row from the UI. Server has UPSERT (and a row-delete is trivially adddable) but UI gives operator no per-row edit/remove. A typo on row 384 of a 1000-line stocktake is unrecoverable except by re-scanning the same SKU with a corrected qty AND knowing what the right qty is.** L8 recovery. **STATUS: BLOCKED — needs new server DELETE /stocktake/:id/counts/:countId route + per-row UI; multi-component, defer to inventory sprint**
+- [!] WEB-UIUX-1354. **[BLOCKER] No way to delete or amend a single count row from the UI. Server has UPSERT (and a row-delete is trivially adddable) but UI gives operator no per-row edit/remove. A typo on row 384 of a 1000-line stocktake is unrecoverable except by re-scanning the same SKU with a corrected qty AND knowing what the right qty is.** L8 recovery. **STATUS: BLOCKED — needs new server DELETE /stocktake/:id/counts/:countId route + per-row UI; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/StocktakePage.tsx:378-400`
   <!-- meta: fix=add-row-actions-cell-with-edit-counted_qty-input+delete-button+wire-DELETE-/stocktake/:id/counts/:countId-route -->
 
@@ -5757,7 +5757,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Major — feedback gaps
 
-- [ ] WEB-UIUX-1356. **[MAJOR] Variance computed against `expected_qty` snapshot taken at scan time (server line 215). UI never warns "your variance baseline may be stale — items sold since you scanned will skew totals". A 4-hour stocktake with concurrent sales produces wrong variance and operator has no way to know.** L7 feedback meaningfulness. **STATUS: BLOCKED — server stocktake.routes.ts must include current_in_stock alongside baseline; backend, defer to inventory sprint**
+- [!] WEB-UIUX-1356. **[MAJOR] Variance computed against `expected_qty` snapshot taken at scan time (server line 215). UI never warns "your variance baseline may be stale — items sold since you scanned will skew totals". A 4-hour stocktake with concurrent sales produces wrong variance and operator has no way to know.** L7 feedback meaningfulness. **STATUS: BLOCKED — server stocktake.routes.ts must include current_in_stock alongside baseline; backend, defer to inventory sprint**
   `packages/server/src/routes/stocktake.routes.ts:209-216` + `packages/web/src/pages/inventory/StocktakePage.tsx:285-305`
   <!-- meta: fix=show-banner-"baseline-locked-at-scan-time:N-sales-since-then"+server-includes-current_in_stock-in-counts-row+UI-shows-current-vs-baseline-side-by-side -->
 
@@ -5781,7 +5781,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:397`
   <!-- meta: fix=use-formatDateTime-helper-(already-imported)+OR-add-day-suffix-when-not-today -->
 
-- [ ] WEB-UIUX-1362. **[MAJOR] Session list cards show `opened_at` only, no progress preview. Operator returning to a list of 5 open sessions must drill into each to remember "which one had I gotten to 200 items on". Compare invoices/estimates lists which surface counts/totals on the row.** L7 feedback. **STATUS: BLOCKED — server stocktake list payload must include items_counted + items_with_variance; backend, defer**
+- [!] WEB-UIUX-1362. **[MAJOR] Session list cards show `opened_at` only, no progress preview. Operator returning to a list of 5 open sessions must drill into each to remember "which one had I gotten to 200 items on". Compare invoices/estimates lists which surface counts/totals on the row.** L7 feedback. **STATUS: BLOCKED — server stocktake list payload must include items_counted + items_with_variance; backend, defer**
   `packages/web/src/pages/inventory/StocktakePage.tsx:244-273`
   <!-- meta: fix=add-items_counted+items_with_variance-to-/stocktake-list-payload+render-pill-"42-items-3-variance"-on-each-card -->
 
@@ -5799,7 +5799,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:286-410`
   <!-- meta: fix=add-search-input+filter-pills-(All|Variance|Surplus|Shortage)+make-Variance-summary-stat-a-button-that-toggles-the-filter -->
 
-- [ ] WEB-UIUX-1366. **[MAJOR] No CSV/PDF export of counts. Auditors require a flat list to attach to year-end paperwork. App has print/CSV elsewhere (invoices, reports) — pattern not extended here.** L6 discoverability. **STATUS: BLOCKED — needs server /stocktake/:id.csv route + UI Export button; multi-component, defer to inventory sprint**
+- [!] WEB-UIUX-1366. **[MAJOR] No CSV/PDF export of counts. Auditors require a flat list to attach to year-end paperwork. App has print/CSV elsewhere (invoices, reports) — pattern not extended here.** L6 discoverability. **STATUS: BLOCKED — needs server /stocktake/:id.csv route + UI Export button; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/StocktakePage.tsx:283-410`
   <!-- meta: fix=add-Export-CSV-button-near-summary+wire-/stocktake/:id.csv-server-route-(reuse-csv-helper-from-reports.routes) -->
 
@@ -5807,7 +5807,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:239-273`
   <!-- meta: fix=add-segmented-control-(All|Open|Committed|Cancelled)+location-select-(populated-from-distinct-locations)+pass-status+location-into-query -->
 
-- [ ] WEB-UIUX-1368. **[MAJOR] No upload-CSV path for blind counts. Many stores count on paper or offline scanner gun, then bulk-upload at end of day. Forcing real-time scan-to-server excludes that workflow entirely. Industry-standard stocktake tools (Square, Lightspeed, Vend) all support CSV import.** L6 discoverability. **STATUS: BLOCKED — needs new server POST /stocktake/:id/counts/bulk route + Import CSV modal + sample template; multi-component, defer**
+- [!] WEB-UIUX-1368. **[MAJOR] No upload-CSV path for blind counts. Many stores count on paper or offline scanner gun, then bulk-upload at end of day. Forcing real-time scan-to-server excludes that workflow entirely. Industry-standard stocktake tools (Square, Lightspeed, Vend) all support CSV import.** L6 discoverability. **STATUS: BLOCKED — needs new server POST /stocktake/:id/counts/bulk route + Import CSV modal + sample template; multi-component, defer**
   `packages/web/src/pages/inventory/StocktakePage.tsx`
   <!-- meta: fix=add-Import-CSV-button+modal-with-sample-template+POST-/stocktake/:id/counts/bulk-route-with-sku|qty-rows -->
 
@@ -5876,7 +5876,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Blocker — entire refund subsystem unreachable from UI
 
-- [ ] WEB-UIUX-1382. **[BLOCKER] No refund UI exists at all. `packages/server/src/routes/refunds.routes.ts` exposes 6 endpoints (list, create, approve, decline, credits/use, credits/liability) under `/api/v1/refunds`; `packages/web/src/api/endpoints.ts` defines NO `refundsApi` object. No page in `packages/web/src/App.tsx` (77 routes — none for `/refunds`). No nav item. Operator who needs to issue an actual cash/card refund — money returned to customer — has no entry point. Closest UI is "Credit Note" which reduces invoice balance only; it never moves money. Refund queue (pending → admin approves) cannot be actioned by anyone via the web. Manager-tier permission `refunds.create` is granted but unusable.** L1 primary action findability, L4 flow completion (irrecoverable dead-end), L6 discoverability. **STATUS: BLOCKED — entire refundsApi + RefundsListPage + InvoiceDetail Refund button + sidebar Billing entry; massive multi-component, defer to refunds sprint**
+- [!] WEB-UIUX-1382. **[BLOCKER] No refund UI exists at all. `packages/server/src/routes/refunds.routes.ts` exposes 6 endpoints (list, create, approve, decline, credits/use, credits/liability) under `/api/v1/refunds`; `packages/web/src/api/endpoints.ts` defines NO `refundsApi` object. No page in `packages/web/src/App.tsx` (77 routes — none for `/refunds`). No nav item. Operator who needs to issue an actual cash/card refund — money returned to customer — has no entry point. Closest UI is "Credit Note" which reduces invoice balance only; it never moves money. Refund queue (pending → admin approves) cannot be actioned by anyone via the web. Manager-tier permission `refunds.create` is granted but unusable.** L1 primary action findability, L4 flow completion (irrecoverable dead-end), L6 discoverability. **STATUS: BLOCKED — entire refundsApi + RefundsListPage + InvoiceDetail Refund button + sidebar Billing entry; massive multi-component, defer to refunds sprint**
   `packages/server/src/routes/refunds.routes.ts:107,253,418`
   `packages/web/src/api/endpoints.ts:1-end (no refundsApi)`
   `packages/web/src/App.tsx (no /refunds route)`
@@ -5899,7 +5899,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Major — credit-note flow ergonomics + truthfulness
 
-- [ ] WEB-UIUX-1386. **[MAJOR] Credit-note client cap mismatched to server cap. Client caps amount at `Number(invoice.amount_paid) || 0` (`InvoiceDetailPage.tsx:298,763,777`). Server caps at `original.total - alreadyCreditedSoFar` (`invoices.routes.ts:1186,1197-1201`). Unpaid $200 invoice that legitimately needs a $200 ledger write-off (e.g. uncollectible debt to be written off as discount-after-the-fact) cannot be credited via UI — client throws "Amount cannot exceed amount paid ($0)" before request leaves browser. Server would accept the $200 credit. Two divergent rules; client is more restrictive than necessary.** L4 flow, L11 consistency. **STATUS: BLOCKED — credit-note client/server cap mismatch needs accounting policy decision (write-off semantics); defer to refunds sprint**
+- [!] WEB-UIUX-1386. **[MAJOR] Credit-note client cap mismatched to server cap. Client caps amount at `Number(invoice.amount_paid) || 0` (`InvoiceDetailPage.tsx:298,763,777`). Server caps at `original.total - alreadyCreditedSoFar` (`invoices.routes.ts:1186,1197-1201`). Unpaid $200 invoice that legitimately needs a $200 ledger write-off (e.g. uncollectible debt to be written off as discount-after-the-fact) cannot be credited via UI — client throws "Amount cannot exceed amount paid ($0)" before request leaves browser. Server would accept the $200 credit. Two divergent rules; client is more restrictive than necessary.** L4 flow, L11 consistency. **STATUS: BLOCKED — credit-note client/server cap mismatch needs accounting policy decision (write-off semantics); defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:298-303,763,776-778`
   `packages/server/src/routes/invoices.routes.ts:1186,1197-1201`
   <!-- meta: fix=decide-policy:-(a)-write-off-flow-needs-server+client=invoice.total-prior_credits+OR-(b)-document-credit-note-as-refund-only-and-keep-amount_paid-cap+server-aligns-to-amount_paid -->
@@ -5921,7 +5921,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   <!-- meta: fix=track-fieldErrors:Record<string,string>+render-text-red-500-text-xs-mt-1-under-each-field+disable-Create-button-when-any-fieldError-set -->
 
-- [ ] WEB-UIUX-1391. **[MAJOR] No notification to customer when credit note created. Refund-style action against a paid invoice — customer expects an email/SMS receipt of the credit ("$50 credited toward INV-001 — reason: defective product"). Server returns success silently; UI clears form, no follow-up. Compare InvoiceDetail's `showReceiptPrompt` after payment (`:594+`) which prompts cashier to email/SMS receipt. Symmetry broken on the credit side.** L7 feedback (downstream actor unaware), L4 flow. **STATUS: BLOCKED — needs notificationApi.sendCreditNoteReceipt template + server enqueue + customer email; multi-component, defer to refunds sprint**
+- [!] WEB-UIUX-1391. **[MAJOR] No notification to customer when credit note created. Refund-style action against a paid invoice — customer expects an email/SMS receipt of the credit ("$50 credited toward INV-001 — reason: defective product"). Server returns success silently; UI clears form, no follow-up. Compare InvoiceDetail's `showReceiptPrompt` after payment (`:594+`) which prompts cashier to email/SMS receipt. Symmetry broken on the credit side.** L7 feedback (downstream actor unaware), L4 flow. **STATUS: BLOCKED — needs notificationApi.sendCreditNoteReceipt template + server enqueue + customer email; multi-component, defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-177, 594-733`
   <!-- meta: fix=onSuccess-show-prompt-modal-(reuse-receipt-prompt-pattern)+wire-notificationApi.sendCreditNoteReceipt+pre-fill-with-customer-email -->
 
@@ -5951,7 +5951,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:107,253,418`
   <!-- meta: fix=blocker-on-WEB-UIUX-1382-(ship-UI)-OR-add-Settings-banner-"Refund-routes-currently-have-no-UI;-permissions-take-effect-once-/refunds-page-ships" -->
 
-- [ ] WEB-UIUX-1397. **[MAJOR] Reports do not surface refund detail. Dashboard KPI shows aggregate (`kpis.refunds`); `/reports` page (linked from KPI siblings) has no per-refund breakdown — server's `GET /refunds` returns paginated detail with customer name + invoice order_id + creator, but the data is unread by any frontend.** L6 discoverability, L4 flow. **STATUS: BLOCKED — Reports refund detail tab needs server pagination + UI table; multi-component, defer**
+- [!] WEB-UIUX-1397. **[MAJOR] Reports do not surface refund detail. Dashboard KPI shows aggregate (`kpis.refunds`); `/reports` page (linked from KPI siblings) has no per-refund breakdown — server's `GET /refunds` returns paginated detail with customer name + invoice order_id + creator, but the data is unread by any frontend.** L6 discoverability, L4 flow. **STATUS: BLOCKED — Reports refund detail tab needs server pagination + UI table; multi-component, defer**
   `packages/server/src/routes/refunds.routes.ts:74-95`
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=add-Refunds-Detail-tab-to-/reports+table-with-date+invoice+customer+amount+reason+method+approver -->
@@ -5960,7 +5960,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:177-202`
   <!-- meta: fix=NewRefundModal-prefill-method-from-invoice.payments[0].method+disable-non-card-options-when-original-was-card+show-card-cap-inline-($X-card-collected,-$Y-already-refunded) -->
 
-- [ ] WEB-UIUX-1399. **[MAJOR] Capture-state precondition (`refunds.routes.ts:140-153` — refunds blocked while any payment is `authorized` or `voided` not yet captured) — no UI hint. Operator on an invoice with an auth-only BlockChyp payment will hit a 400 "Cannot refund — N payment(s) on this invoice are not captured" with no path to "Capture or void the authorization first" the error tells them to do. Capture flow itself buried/nonexistent.** L4 flow dead-end, L7 feedback unactionable. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); capture-state hint pairs with that sprint**
+- [!] WEB-UIUX-1399. **[MAJOR] Capture-state precondition (`refunds.routes.ts:140-153` — refunds blocked while any payment is `authorized` or `voided` not yet captured) — no UI hint. Operator on an invoice with an auth-only BlockChyp payment will hit a 400 "Cannot refund — N payment(s) on this invoice are not captured" with no path to "Capture or void the authorization first" the error tells them to do. Capture flow itself buried/nonexistent.** L4 flow dead-end, L7 feedback unactionable. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); capture-state hint pairs with that sprint**
   `packages/server/src/routes/refunds.routes.ts:133-153`
   <!-- meta: fix=Refund-button-disabled-with-tooltip-"Capture-pending-authorization-first"-when-any-payment.capture_state!='captured'+CTA-link-to-capture-flow -->
 
@@ -5971,7 +5971,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Major — recovery + concurrency surfacing
 
-- [ ] WEB-UIUX-1401. **[MAJOR] Server returns 409 "Refund exceeds available balance (concurrent refund conflict)" (`refunds.routes.ts:227`) and 409 "Refund is no longer pending" (`:299`) — surface-friendly admin needs UI hint "another admin just acted; reload". With no UI today the messages are theoretical, but when WEB-UIUX-1382 lands the toast must distinguish 409 (race, retry) from 400 (operator-fixable input).** L7 feedback specificity, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); 409 race surface pairs with that sprint**
+- [!] WEB-UIUX-1401. **[MAJOR] Server returns 409 "Refund exceeds available balance (concurrent refund conflict)" (`refunds.routes.ts:227`) and 409 "Refund is no longer pending" (`:299`) — surface-friendly admin needs UI hint "another admin just acted; reload". With no UI today the messages are theoretical, but when WEB-UIUX-1382 lands the toast must distinguish 409 (race, retry) from 400 (operator-fixable input).** L7 feedback specificity, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); 409 race surface pairs with that sprint**
   `packages/server/src/routes/refunds.routes.ts:227,299,308`
   <!-- meta: fix=on-409-show-toast-"Already-actioned-by-another-admin.-Refresh-to-see-current-state."+auto-invalidate-refund-list-query+on-400-keep-form-open-with-server-message -->
 
@@ -6010,26 +6010,26 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Blocker — gift-card delivery + redemption are unreachable from the floor
 
-- [ ] WEB-UIUX-1427. **[BLOCKER] No POS payment method for gift cards. CheckoutModal `PaymentMethod = 'Cash' | 'Card' | 'Other'` (`CheckoutModal.tsx:16,23-27`). Server's `/gift-cards/lookup/:code` + `POST /gift-cards/:id/redeem` (`giftCards.routes.ts:172,328`) cannot be reached from any sale UI. Recipient walks in with the code → cashier rings up sale → no "Gift Card" tile in payment methods → cashier hand-codes "Other" → no balance check, no redemption row written → server gift-card balance never decremented → physical card stays at full balance forever, customer can spend it again at next visit.** L1 primary action findability, L4 flow completion (entire redemption loop dead), L6 discoverability. **STATUS: BLOCKED — needs PaymentMethod GiftCard tile + lookup→balance pill + redeem POST chain + invoice gift_card_id linkage; multi-component, defer to gift-card sprint**
+- [!] WEB-UIUX-1427. **[BLOCKER] No POS payment method for gift cards. CheckoutModal `PaymentMethod = 'Cash' | 'Card' | 'Other'` (`CheckoutModal.tsx:16,23-27`). Server's `/gift-cards/lookup/:code` + `POST /gift-cards/:id/redeem` (`giftCards.routes.ts:172,328`) cannot be reached from any sale UI. Recipient walks in with the code → cashier rings up sale → no "Gift Card" tile in payment methods → cashier hand-codes "Other" → no balance check, no redemption row written → server gift-card balance never decremented → physical card stays at full balance forever, customer can spend it again at next visit.** L1 primary action findability, L4 flow completion (entire redemption loop dead), L6 discoverability. **STATUS: BLOCKED — needs PaymentMethod GiftCard tile + lookup→balance pill + redeem POST chain + invoice gift_card_id linkage; multi-component, defer to gift-card sprint**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:16,23-27,530-575`
   `packages/server/src/routes/giftCards.routes.ts:172-245,328-392`
   <!-- meta: fix=add-PaymentMethod='GiftCard'+tile-with-Gift-icon+on-select-show-code-input+lookup→show-balance-pill-"$45.00-available"+confirm-amount-(cap-at-min(due,balance))+POST-/gift-cards/:id/redeem-with-invoice_id-on-checkout-success+include-in-split-payments -->
 
-- [ ] WEB-UIUX-1428. **[BLOCKER] No way to deliver issued code to recipient. Issue success modal shows the 32-char hex code in `select-all` div (`GiftCardsListPage.tsx:142-144`) with body copy "Save this code now — it will not be shown again." Then a single "Done" button (`:145-150`). No copy-to-clipboard, no "Email to recipient", no "Send SMS", no "Print receipt", no "Print physical card layout". Recipient_email field on the issue form (`:208-214`) is harvested but server never emails the code (no notification call in `giftCards.routes.ts:253-323`); UI never surfaces a delivery action either. Cashier must manually transcribe a 32-char hex code onto something physical, or hand the recipient an unsealed slip with the code visible. Code is lost = balance unrecoverable (server hashes the plaintext at storage; only the GET /:id endpoint returns it before a future migration drops the column). High-stakes "save this now" warning + zero tools to act on it.** L4 flow completion, L7 feedback meaningfulness, L8 recovery (zero recovery if window closed). **STATUS: BLOCKED — needs Copy/Email/SMS/Print actions on success modal + server notification helper; multi-component, defer to gift-card sprint**
+- [!] WEB-UIUX-1428. **[BLOCKER] No way to deliver issued code to recipient. Issue success modal shows the 32-char hex code in `select-all` div (`GiftCardsListPage.tsx:142-144`) with body copy "Save this code now — it will not be shown again." Then a single "Done" button (`:145-150`). No copy-to-clipboard, no "Email to recipient", no "Send SMS", no "Print receipt", no "Print physical card layout". Recipient_email field on the issue form (`:208-214`) is harvested but server never emails the code (no notification call in `giftCards.routes.ts:253-323`); UI never surfaces a delivery action either. Cashier must manually transcribe a 32-char hex code onto something physical, or hand the recipient an unsealed slip with the code visible. Code is lost = balance unrecoverable (server hashes the plaintext at storage; only the GET /:id endpoint returns it before a future migration drops the column). High-stakes "save this now" warning + zero tools to act on it.** L4 flow completion, L7 feedback meaningfulness, L8 recovery (zero recovery if window closed). **STATUS: BLOCKED — needs Copy/Email/SMS/Print actions on success modal + server notification helper; multi-component, defer to gift-card sprint**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:123-153, 208-214`
   `packages/server/src/routes/giftCards.routes.ts:253-323`
   <!-- meta: fix=success-modal-row-of-actions:-Copy-(navigator.clipboard.writeText)+Email-(POST-/notifications/send-gift-card-receipt)+SMS-(POST-/notifications/send-sms)+Print-(window.print-w/-printable-card-layout)+server-add-notification-helper-that-emails-recipient-when-recipient_email-set-(opt-in-checkbox-on-form) -->
 
 #### Blocker — orphan from main navigation
 
-- [ ] WEB-UIUX-1429. **[BLOCKER] `/gift-cards` has no Sidebar entry. `packages/web/src/components/layout/Sidebar.tsx` (549 lines) contains zero `/gift-cards` references — only Cmd+K (`CommandPalette.tsx:73`) and a notification deep-link for the `gift_card` event type (`notificationRoutes.ts:28`) reach the page. Operator who has not memorised Cmd+K has no way to discover gift-card management exists. Compounds with WEB-UIUX-1427: not only can't they redeem, they can't even find the list to know cards have been issued.** L1, L6 discoverability, L4 flow completion. **STATUS: BLOCKED — needs Sidebar Gift Cards entry under Billing/Customers section + permission gate; defer to nav sprint**
+- [!] WEB-UIUX-1429. **[BLOCKER] `/gift-cards` has no Sidebar entry. `packages/web/src/components/layout/Sidebar.tsx` (549 lines) contains zero `/gift-cards` references — only Cmd+K (`CommandPalette.tsx:73`) and a notification deep-link for the `gift_card` event type (`notificationRoutes.ts:28`) reach the page. Operator who has not memorised Cmd+K has no way to discover gift-card management exists. Compounds with WEB-UIUX-1427: not only can't they redeem, they can't even find the list to know cards have been issued.** L1, L6 discoverability, L4 flow completion. **STATUS: BLOCKED — needs Sidebar Gift Cards entry under Billing/Customers section + permission gate; defer to nav sprint**
   `packages/web/src/components/layout/Sidebar.tsx:1-549 (no /gift-cards)`
   `packages/web/src/components/shared/CommandPalette.tsx:73`
   <!-- meta: fix=add-Gift-Cards-nav-item-under-Billing-or-Customers-section+Gift-icon+permission-gate-on-gift_cards.issue-OR-gift_cards.redeem -->
 
 #### Major — Issue flow truthfulness + completeness
 
-- [ ] WEB-UIUX-1430. **[MAJOR] IssueModal form is missing `customer_id` field — server schema accepts it (`giftCards.routes.ts:260,269-277,300`) and validates against `customers` table, but the UI form (`GiftCardsListPage.tsx:38-43,86-91,104-109`) has no customer picker. Cards are always issued unlinked. Customer Detail page therefore has no "Gift cards held by this customer" section to show. Operator selling to a known regular cannot tie the card to that account, breaking analytics + future "lookup by customer" expectations.** L4 flow completion, L6 discoverability. **STATUS: BLOCKED — needs CustomerPicker reusable component + customer_id payload thread + ?customer_id deep-link query; multi-component**
+- [!] WEB-UIUX-1430. **[MAJOR] IssueModal form is missing `customer_id` field — server schema accepts it (`giftCards.routes.ts:260,269-277,300`) and validates against `customers` table, but the UI form (`GiftCardsListPage.tsx:38-43,86-91,104-109`) has no customer picker. Cards are always issued unlinked. Customer Detail page therefore has no "Gift cards held by this customer" section to show. Operator selling to a known regular cannot tie the card to that account, breaking analytics + future "lookup by customer" expectations.** L4 flow completion, L6 discoverability. **STATUS: BLOCKED — needs CustomerPicker reusable component + customer_id payload thread + ?customer_id deep-link query; multi-component**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:38-43,86-91,104-109`
   `packages/server/src/routes/giftCards.routes.ts:260,269-277,300`
   <!-- meta: fix=add-CustomerPicker-(reuse-component-from-InvoiceDetail/UnifiedPos)+include-customer_id-in-issueMutation-payload+populate-from-?customer_id-query-string-when-deep-linked-from-CustomerDetailPage -->
@@ -6050,7 +6050,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:124-135`
   <!-- meta: fix=helper-text-below-amount-input-"Max-$10,000-per-card."+set-input-max=10000+disable-Issue-button-when-value>10000+inline-red-error-on-blur -->
 
-- [ ] WEB-UIUX-1434. **[MAJOR] Expiry-date input is `type=date` (`GiftCardsListPage.tsx:220-225`) — picks a calendar date with no time. Server stores via `validateIsoDate` then UPDATE WHERE clause uses `expires_at > datetime('now')` UTC (`giftCards.routes.ts:365`). A card "expiring 2026-12-31" picked by a US-East cashier becomes invalid at 7pm local time on 2026-12-30 (UTC midnight rolls over) — recipient walking in at 8pm gets "Gift card expired". No timezone hint; no "End of day in your store's timezone" copy.** L7 feedback meaningfulness, L11 consistency (server stores UTC, UI ignores tz). **STATUS: BLOCKED — server giftCards.routes.ts must treat expires_at as local end-of-day in tenant tz; backend, defer**
+- [!] WEB-UIUX-1434. **[MAJOR] Expiry-date input is `type=date` (`GiftCardsListPage.tsx:220-225`) — picks a calendar date with no time. Server stores via `validateIsoDate` then UPDATE WHERE clause uses `expires_at > datetime('now')` UTC (`giftCards.routes.ts:365`). A card "expiring 2026-12-31" picked by a US-East cashier becomes invalid at 7pm local time on 2026-12-30 (UTC midnight rolls over) — recipient walking in at 8pm gets "Gift card expired". No timezone hint; no "End of day in your store's timezone" copy.** L7 feedback meaningfulness, L11 consistency (server stores UTC, UI ignores tz). **STATUS: BLOCKED — server giftCards.routes.ts must treat expires_at as local end-of-day in tenant tz; backend, defer**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:217-225`
   `packages/server/src/routes/giftCards.routes.ts:365,238-241`
   <!-- meta: fix=server-treat-expires_at-as-local-end-of-day-in-tenant-tz-(append-T23:59:59+offset)-OR-UI-helper-"Expires-at-midnight-UTC-on-this-date"+show-resolved-local-time -->
@@ -6062,7 +6062,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Major — Lookup, list, filter gaps
 
-- [ ] WEB-UIUX-1436. **[MAJOR] No code-lookup surface anywhere in UI. `GET /gift-cards/lookup/:code` (`giftCards.routes.ts:172-245`) is purpose-built for "cashier types code, system returns balance + status + expiry". Web client never invokes it. Even outside POS, an operator answering a phone call ("what's my balance on card XYZ?") has no input field — must scroll the masked-code list, and the list shows only `****XXXX` last-4 anyway, so they cannot find a card by anything but the last 4 hex chars (assuming the user can read their own code).** L1 primary action findability, L4 flow, L6 discoverability. **STATUS: BLOCKED — needs new lookup-by-code modal + balance pill + redeem/disable/reload actions; multi-component, defer**
+- [!] WEB-UIUX-1436. **[MAJOR] No code-lookup surface anywhere in UI. `GET /gift-cards/lookup/:code` (`giftCards.routes.ts:172-245`) is purpose-built for "cashier types code, system returns balance + status + expiry". Web client never invokes it. Even outside POS, an operator answering a phone call ("what's my balance on card XYZ?") has no input field — must scroll the masked-code list, and the list shows only `****XXXX` last-4 anyway, so they cannot find a card by anything but the last 4 hex chars (assuming the user can read their own code).** L1 primary action findability, L4 flow, L6 discoverability. **STATUS: BLOCKED — needs new lookup-by-code modal + balance pill + redeem/disable/reload actions; multi-component, defer**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:309-331`
   `packages/server/src/routes/giftCards.routes.ts:172-245`
   <!-- meta: fix=add-secondary-"Look-up-by-code"-button-next-to-"Issue-gift-card"+modal-with-code-input+barcode-scan-icon+POST-lookup→show-balance-card-(amount-status-recipient-expires)+actions-row-(redeem-disable-reload) -->
@@ -6148,7 +6148,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->
 
-- [ ] WEB-UIUX-1455. **[NIT] Lookup-rate-limit feedback (when WEB-UIUX-1436 lands) must distinguish "Too many lookup attempts" (429) from "Gift card not found" (404) and "Gift card is used/expired" (400). Server returns these as separate AppError messages (`giftCards.routes.ts:196,232,236,240`) — UI should branch on status code, not blindly toast `e.message`. 429 should also show a countdown until window reset (1 min from first failure).** L7 feedback meaningfulness, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1436 (lookup modal not yet shipped); rate-limit branching pairs with that sprint**
+- [!] WEB-UIUX-1455. **[NIT] Lookup-rate-limit feedback (when WEB-UIUX-1436 lands) must distinguish "Too many lookup attempts" (429) from "Gift card not found" (404) and "Gift card is used/expired" (400). Server returns these as separate AppError messages (`giftCards.routes.ts:196,232,236,240`) — UI should branch on status code, not blindly toast `e.message`. 429 should also show a countdown until window reset (1 min from first failure).** L7 feedback meaningfulness, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1436 (lookup modal not yet shipped); rate-limit branching pairs with that sprint**
   `packages/server/src/routes/giftCards.routes.ts:196,232,236,240`
   <!-- meta: fix=on-Lookup-modal-mutation-error-branch-on-status:-429→banner-with-countdown;404→inline-"No-card-with-that-code";400→show-server-message-(used/expired);else→generic -->
 
@@ -6173,7 +6173,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:208-211`
   <!-- meta: fix=portal-Approve-opens-confirm-sheet-with-total+terms+typed-or-checkbox-acknowledgement+optional-signature-pad+single-button-"I-Approve-$X.XX" -->
 
-- [ ] WEB-UIUX-1459. **[BLOCKER] Portal Approve doesn't enforce expiry. `valid_until` is rendered as plain text ("Valid until: Jan 5") on `PortalEstimatesView.tsx:128-130`, but Approve button shows whenever `est.status==='sent'` regardless of expiry. Server `/portal/estimates/:id/approve` (`portal.routes.ts:1437-1452`) doesn't check `valid_until` either. Customer can approve an expired estimate three months after the quote — shop is then bound to a stale price. Compare with detail page's expiry visual (`EstimateDetailPage.tsx:472`) which only renders red text but doesn't block actions.** L2 truthfulness, L4 flow integrity, L7 feedback. **STATUS: BLOCKED — server portal.routes.ts must reject approve when valid_until expired; backend, defer to estimates sprint**
+- [!] WEB-UIUX-1459. **[BLOCKER] Portal Approve doesn't enforce expiry. `valid_until` is rendered as plain text ("Valid until: Jan 5") on `PortalEstimatesView.tsx:128-130`, but Approve button shows whenever `est.status==='sent'` regardless of expiry. Server `/portal/estimates/:id/approve` (`portal.routes.ts:1437-1452`) doesn't check `valid_until` either. Customer can approve an expired estimate three months after the quote — shop is then bound to a stale price. Compare with detail page's expiry visual (`EstimateDetailPage.tsx:472`) which only renders red text but doesn't block actions.** L2 truthfulness, L4 flow integrity, L7 feedback. **STATUS: BLOCKED — server portal.routes.ts must reject approve when valid_until expired; backend, defer to estimates sprint**
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:128-140`
   `packages/server/src/routes/portal.routes.ts:1437-1457`
   <!-- meta: fix=server-rejects-approve-when-valid_until-IS-NOT-NULL-AND-valid_until<datetime('now')+UI-replaces-Approve-with-"Estimate-expired-—-request-new-quote"+Re-quote-CTA -->
@@ -6186,7 +6186,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimateSign.routes.ts:233-352`
   <!-- meta: fix=add-estimateApi.signUrl(id,ttl_minutes)+estimateApi.signatures(id)+SignLinkModal-with-copy/SMS/QR+section-on-EstimateDetail-listing-captured-signatures+make-mobile-only-comment-obsolete -->
 
-- [ ] WEB-UIUX-1461. **[MAJOR] Send button on `EstimateDetailPage.tsx:191-205` and `EstimateListPage.tsx:737-764` confirms `'Send this estimate to the customer via SMS?'` with no preview of (a) destination phone, (b) message body, (c) channel choice. Server hardcodes the message `Hi ${first_name}, your estimate ${order_id} for $${total} is ready. Reply YES to approve or view details at your repair shop.` (`estimates.routes.ts:984`) — operator can't see what customer will receive, can't see masked recipient phone, can't catch a stale customer record. Standard SaaS pattern: confirm shows "To: ***-***-1234 — [Edit phone]" plus a collapsible "Message preview". Bonus: "Reply YES to approve" is a promise the inbound-SMS handler may not honor (no YES auto-approval handler in `sms.routes.ts` last grep) — see WEB-UIUX-1462.** L7 feedback, L1 findability. **STATUS: BLOCKED — Send button needs full SendEstimateModal redesign with phone-mask + message preview + edit; multi-component, defer**
+- [!] WEB-UIUX-1461. **[MAJOR] Send button on `EstimateDetailPage.tsx:191-205` and `EstimateListPage.tsx:737-764` confirms `'Send this estimate to the customer via SMS?'` with no preview of (a) destination phone, (b) message body, (c) channel choice. Server hardcodes the message `Hi ${first_name}, your estimate ${order_id} for $${total} is ready. Reply YES to approve or view details at your repair shop.` (`estimates.routes.ts:984`) — operator can't see what customer will receive, can't see masked recipient phone, can't catch a stale customer record. Standard SaaS pattern: confirm shows "To: ***-***-1234 — [Edit phone]" plus a collapsible "Message preview". Bonus: "Reply YES to approve" is a promise the inbound-SMS handler may not honor (no YES auto-approval handler in `sms.routes.ts` last grep) — see WEB-UIUX-1462.** L7 feedback, L1 findability. **STATUS: BLOCKED — Send button needs full SendEstimateModal redesign with phone-mask + message preview + edit; multi-component, defer**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:193-204`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:744-763`
   `packages/server/src/routes/estimates.routes.ts:984`
@@ -6209,7 +6209,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/portal/PortalDashboard.tsx:89-103,144-162`
   <!-- meta: fix=always-render-Estimates-CTA-(disabled-grey-when-total=0)+badge-shows-pending-count-only-when>0+secondary-style-when-no-action-needed -->
 
-- [ ] WEB-UIUX-1466. **[MAJOR] Portal estimate list mixes draft + sent + approved + converted in raw `created_at DESC` order (`portal.routes.ts:1378-1385`). Newest-first is fine for shop-side; for customer-side the ranking should be (a) action-required first (sent), (b) recent-history second (approved/converted), (c) drafts hidden entirely (drafts are works-in-progress not meant for customer eyes). Today a customer browsing sees a `'draft'` row with no Approve button — looks like a broken estimate. Server should drop `'draft'` from the IN-list (or UI should hide draft rows).** L11 consistency, L4 flow integrity. **STATUS: BLOCKED — server portal.routes.ts WHERE clause needs draft excluded + ORDER BY status priority; backend, defer**
+- [!] WEB-UIUX-1466. **[MAJOR] Portal estimate list mixes draft + sent + approved + converted in raw `created_at DESC` order (`portal.routes.ts:1378-1385`). Newest-first is fine for shop-side; for customer-side the ranking should be (a) action-required first (sent), (b) recent-history second (approved/converted), (c) drafts hidden entirely (drafts are works-in-progress not meant for customer eyes). Today a customer browsing sees a `'draft'` row with no Approve button — looks like a broken estimate. Server should drop `'draft'` from the IN-list (or UI should hide draft rows).** L11 consistency, L4 flow integrity. **STATUS: BLOCKED — server portal.routes.ts WHERE clause needs draft excluded + ORDER BY status priority; backend, defer**
   `packages/server/src/routes/portal.routes.ts:1382`
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:94-148`
   <!-- meta: fix=server-WHERE-status-IN-('sent','approved','converted','signed')+ORDER-BY-CASE-status-WHEN-'sent'-THEN-0-ELSE-1-END,created_at-DESC -->
@@ -6221,7 +6221,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/portal.routes.ts:1450`
   <!-- meta: fix=read-err.response.data.message+if-404-call-getEstimates()-to-refresh+toast.success-"Already-approved"-when-server-confirms -->
 
-- [ ] WEB-UIUX-1468. **[MAJOR] No "no phone on file" recovery on Send. Server returns `sent:false` + `warning:'Customer has no phone number on file.'` (`estimates.routes.ts:1010-1011`), UI surfaces the warning as a single toast (`EstimateDetailPage.tsx:77`, `EstimateListPage.tsx:459`) — no "Add phone" button, no link to the customer record. Operator must manually navigate Customers → search → edit → save → back to estimate → Send again. 5 clicks for a missing field that's one-tap to fix inline.** L8 recovery, L4 flow. **STATUS: BLOCKED — needs new PhoneEditModal + auto-retry Send chain; multi-component, defer to estimates sprint**
+- [!] WEB-UIUX-1468. **[MAJOR] No "no phone on file" recovery on Send. Server returns `sent:false` + `warning:'Customer has no phone number on file.'` (`estimates.routes.ts:1010-1011`), UI surfaces the warning as a single toast (`EstimateDetailPage.tsx:77`, `EstimateListPage.tsx:459`) — no "Add phone" button, no link to the customer record. Operator must manually navigate Customers → search → edit → save → back to estimate → Send again. 5 clicks for a missing field that's one-tap to fix inline.** L8 recovery, L4 flow. **STATUS: BLOCKED — needs new PhoneEditModal + auto-retry Send chain; multi-component, defer to estimates sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:71-83`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:454-466`
   `packages/server/src/routes/estimates.routes.ts:1009-1012`
@@ -6242,7 +6242,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
   <!-- meta: fix=confirm-with-{title:'Approve-on-customer-behalf?',body:'This-bypasses-the-e-sign-flow.-Use-only-when-customer-has-authorized-in-person-and-you-have-recorded-authorization.',confirmLabel:'Approve-on-behalf'} -->
 
-- [ ] WEB-UIUX-1472. **[MINOR] `'Convert to Ticket'` button shows on `'rejected'` estimates? No — UI hides at `EstimateDetailPage.tsx:219`. But it DOES show on `'signed'` estimates, and Convert clobbers the signed status (`status='converted'` overwrites). The captured signature stays in `estimate_signatures` table but the estimate's status no longer reflects "customer signed before conversion" — operator looking back at a converted ticket has to dig into a separate Signatures admin view (which doesn't exist on web — see WEB-UIUX-1460). Convert should preserve signed-state somewhere visible: e.g. converted ticket carries `signed_by` and `signed_at` from the original estimate.** L11 consistency, L4 flow integrity. **STATUS: BLOCKED — needs server schema (tickets.signed_by/signed_at copied from estimate) + UI display; backend + UI changes, defer**
+- [!] WEB-UIUX-1472. **[MINOR] `'Convert to Ticket'` button shows on `'rejected'` estimates? No — UI hides at `EstimateDetailPage.tsx:219`. But it DOES show on `'signed'` estimates, and Convert clobbers the signed status (`status='converted'` overwrites). The captured signature stays in `estimate_signatures` table but the estimate's status no longer reflects "customer signed before conversion" — operator looking back at a converted ticket has to dig into a separate Signatures admin view (which doesn't exist on web — see WEB-UIUX-1460). Convert should preserve signed-state somewhere visible: e.g. converted ticket carries `signed_by` and `signed_at` from the original estimate.** L11 consistency, L4 flow integrity. **STATUS: BLOCKED — needs server schema (tickets.signed_by/signed_at copied from estimate) + UI display; backend + UI changes, defer**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
   `packages/server/src/routes/estimates.routes.ts:865-873`
   <!-- meta: fix=on-convert-copy-signed_by/signed_at/signature_id-onto-tickets-table+render-"Customer-signed-on-Date-by-Name"-on-ticket-detail-when-source-estimate-was-signed -->
@@ -6251,7 +6251,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:233-247`
   <!-- meta: fix=conditional-confirm-body-string-when-estimate.status==='approved'-or-'signed'-with-approved_at-formatted -->
 
-- [ ] WEB-UIUX-1474. **[MINOR] Approve / Reject / Send / Convert buttons sit in a horizontal `flex` group (`EstimateDetailPage.tsx:190`) with no visual ranking — Send (border-primary), Approve (border-emerald), Convert (border-green), Reject (border-red), Print (border-surface). Five buttons, four colors of "outline-with-tint". The destructive (Reject) and the legally-binding (Approve) have similar visual weight to the routine (Send, Print). Hierarchy: highest-leverage = solid filled button, secondary = outline, destructive = red outline at far end with separator. Today a sleepy operator could miss-click Reject for Send (both icon-+-text in identical button shells).** L5 hierarchy, L11 consistency. **STATUS: BLOCKED — header CTA hierarchy redesign already covered by WEB-UIUX-961 tick 61 RESOLVED; this nit is duplicate**
+- [!] WEB-UIUX-1474. **[MINOR] Approve / Reject / Send / Convert buttons sit in a horizontal `flex` group (`EstimateDetailPage.tsx:190`) with no visual ranking — Send (border-primary), Approve (border-emerald), Convert (border-green), Reject (border-red), Print (border-surface). Five buttons, four colors of "outline-with-tint". The destructive (Reject) and the legally-binding (Approve) have similar visual weight to the routine (Send, Print). Hierarchy: highest-leverage = solid filled button, secondary = outline, destructive = red outline at far end with separator. Today a sleepy operator could miss-click Reject for Send (both icon-+-text in identical button shells).** L5 hierarchy, L11 consistency. **STATUS: BLOCKED — header CTA hierarchy redesign already covered by WEB-UIUX-961 tick 61 RESOLVED; this nit is duplicate**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-255`
   <!-- meta: fix=primary-CTA-is-context-dependent-(Send-when-draft;-Convert-when-approved);-secondary-outline-for-others;-Reject-pinned-right-with-`ml-auto`-divider+red-outline -->
 
@@ -6268,7 +6268,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
   <!-- meta: fix=add-{value:'signed',label:'Signed',color:'#0ea5e9'}-as-fifth-pill-AFTER-Approved -->
 
-- [ ] WEB-UIUX-1478. **[MINOR] EstimateDetailPage Approve+Convert+Send+Reject all use `await confirm(...)` wrapped in try/catch with `formatApiError(err)` (`:197,210,223,239`). The `confirm()` rejection on backdrop-cancel is treated as an error path — toast.error fires with whatever `formatApiError` returns from a non-Error rejection. Backdrop-cancel should be a no-op, not an error toast. (Same pattern in `EstimateListPage.tsx:751,776,798` — comment WEB-FM-020 documents this as deliberate but the user-facing effect is a noisy spurious toast on every cancel.)** L7 feedback, L8 recovery. **STATUS: BLOCKED — confirmStore reject-on-cancel behavior change is shared-store risk; needs design review across all callers, defer**
+- [!] WEB-UIUX-1478. **[MINOR] EstimateDetailPage Approve+Convert+Send+Reject all use `await confirm(...)` wrapped in try/catch with `formatApiError(err)` (`:197,210,223,239`). The `confirm()` rejection on backdrop-cancel is treated as an error path — toast.error fires with whatever `formatApiError` returns from a non-Error rejection. Backdrop-cancel should be a no-op, not an error toast. (Same pattern in `EstimateListPage.tsx:751,776,798` — comment WEB-FM-020 documents this as deliberate but the user-facing effect is a noisy spurious toast on every cancel.)** L7 feedback, L8 recovery. **STATUS: BLOCKED — confirmStore reject-on-cancel behavior change is shared-store risk; needs design review across all callers, defer**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:193-247`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:744-820`
   `packages/web/src/stores/confirmStore.ts`
@@ -6287,7 +6287,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:158-169`
   <!-- meta: fix=labelMap={sent:'Awaiting-approval',approved:'Approved',signed:'Signed',rejected:'Declined',converted:'In-progress',draft:'Draft'}+badge-uses-label-not-status -->
 
-- [ ] WEB-UIUX-1482. **[NIT] Portal `EstimateSummary.line_items[].discount` (`portalApi.ts:155`) is always `0` — server `portal.routes.ts:1421-1428` hardcodes `discount: 0` even when the estimate has a header-level discount. Customer sees Total = subtotal+tax with no Discount line, then questions "where did the discount go?". Render header-level discount above Total (server already returns `discount` on the summary `:1414`).** L7 feedback, L2 truthfulness. **STATUS: BLOCKED — server portal.routes.ts hardcoded discount:0; backend, defer to portal sprint**
+- [!] WEB-UIUX-1482. **[NIT] Portal `EstimateSummary.line_items[].discount` (`portalApi.ts:155`) is always `0` — server `portal.routes.ts:1421-1428` hardcodes `discount: 0` even when the estimate has a header-level discount. Customer sees Total = subtotal+tax with no Discount line, then questions "where did the discount go?". Render header-level discount above Total (server already returns `discount` on the summary `:1414`).** L7 feedback, L2 truthfulness. **STATUS: BLOCKED — server portal.routes.ts hardcoded discount:0; backend, defer to portal sprint**
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:120-125`
   `packages/server/src/routes/portal.routes.ts:1421-1428`
   <!-- meta: fix=portal-renders-Subtotal+Discount-(if>0)+Tax+Total-block-instead-of-just-Total -->
@@ -6304,7 +6304,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:998-1005`
   <!-- meta: fix=wrap-cancelMut.mutate()-in-await-confirm({title,confirmLabel:'Cancel-membership',danger:true})+match-list-page-pattern -->
 
-- [ ] WEB-UIUX-1485. **[BLOCKER] Cancel UI is immediate-only. SubscriptionsListPage hardcodes `{ immediate: true }` (`:114`); CustomerDetailPage does the same (`:905`). Server `/membership/:id/cancel` supports `immediate: false` → sets `cancel_at_period_end = 1` (`membership.routes.ts:233-234`). UI never sends that path. Customer paid for the month, gets zero remaining-period access. Industry default = end-of-period cancel. Worse: the "Cancels {date}" badge (`SubscriptionsListPage.tsx:244-249`) and "Cancels at period end" pill (`CustomerDetailPage.tsx:983-985`) are dead branches — UI displays them but no UI codepath sets the flag.** L1 truthfulness, L3 hierarchy, L8 recovery. **STATUS: BLOCKED — duplicate of WEB-UIUX-1059 (tick 49 BLOCK); cancel-at-period-end radio multi-component, defer to memberships sprint**
+- [!] WEB-UIUX-1485. **[BLOCKER] Cancel UI is immediate-only. SubscriptionsListPage hardcodes `{ immediate: true }` (`:114`); CustomerDetailPage does the same (`:905`). Server `/membership/:id/cancel` supports `immediate: false` → sets `cancel_at_period_end = 1` (`membership.routes.ts:233-234`). UI never sends that path. Customer paid for the month, gets zero remaining-period access. Industry default = end-of-period cancel. Worse: the "Cancels {date}" badge (`SubscriptionsListPage.tsx:244-249`) and "Cancels at period end" pill (`CustomerDetailPage.tsx:983-985`) are dead branches — UI displays them but no UI codepath sets the flag.** L1 truthfulness, L3 hierarchy, L8 recovery. **STATUS: BLOCKED — duplicate of WEB-UIUX-1059 (tick 49 BLOCK); cancel-at-period-end radio multi-component, defer to memberships sprint**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-114,158-164,244-249`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911,983-985`
   <!-- meta: fix=add-radio-in-confirm-modal:Cancel-now-vs-Cancel-at-period-end+default-to-period-end+pass-immediate:false-when-selected -->
@@ -6333,7 +6333,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:988-1018`
   <!-- meta: fix=wrap-Cancel/Pause/Resume-in-AdminOnly+OR-disable-with-tooltip-'Admin-only'-for-staff -->
 
-- [ ] WEB-UIUX-1491. **[MAJOR] `POST /:id/resume` does not check current status (`membership.routes.ts:251-258`). Calling resume on a `cancelled` row sets `status='active'` — but `customers.active_subscription_id` was nulled on immediate cancel (`:232`), never restored. Result: cs.status='active' but customer.active_subscription_id=NULL → POS won't apply membership discount, list shows row as active, customer detail shows no membership card (queries by active_subscription_id). Data inconsistency reachable via API. UI hides resume for cancelled but server is the source of truth.** L4 flow completion, L1 truthfulness. **STATUS: BLOCKED — server membership.routes.ts /:id/resume must reject cancelled-status OR restore active_subscription_id; backend, defer**
+- [!] WEB-UIUX-1491. **[MAJOR] `POST /:id/resume` does not check current status (`membership.routes.ts:251-258`). Calling resume on a `cancelled` row sets `status='active'` — but `customers.active_subscription_id` was nulled on immediate cancel (`:232`), never restored. Result: cs.status='active' but customer.active_subscription_id=NULL → POS won't apply membership discount, list shows row as active, customer detail shows no membership card (queries by active_subscription_id). Data inconsistency reachable via API. UI hides resume for cancelled but server is the source of truth.** L4 flow completion, L1 truthfulness. **STATUS: BLOCKED — server membership.routes.ts /:id/resume must reject cancelled-status OR restore active_subscription_id; backend, defer**
   `packages/server/src/routes/membership.routes.ts:251-258`
   <!-- meta: fix=if-status==='cancelled'-throw-AppError('Cancelled-subs-cannot-be-resumed-create-new-subscription')+OR-also-restore-active_subscription_id-on-resume -->
 
@@ -6353,7 +6353,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1003-1004`
   <!-- meta: fix=label-'Cancel-membership'-OR-'End-plan'+keep-confirm-modal-confirmLabel-'Cancel-subscription' -->
 
-- [ ] WEB-UIUX-1496. **[MINOR] Pause action takes no reason despite server `pause_reason` column + API supporting `{ reason }` body (`membership.routes.ts:241-249`, `endpoints.ts:1324-1325`). UI calls `membershipApi.pause(id)` with no body (`CustomerDetailPage.tsx:914`). Reason is exactly the kind of data ops needs to triage paused members ("vacation", "financial", "switching tier") — column will always be NULL.** L7 feedback, L1 truthfulness. **STATUS: BLOCKED — duplicate of WEB-UIUX-1066 (tick 50 BLOCK); pause-reason capture multi-component, defer to memberships sprint**
+- [!] WEB-UIUX-1496. **[MINOR] Pause action takes no reason despite server `pause_reason` column + API supporting `{ reason }` body (`membership.routes.ts:241-249`, `endpoints.ts:1324-1325`). UI calls `membershipApi.pause(id)` with no body (`CustomerDetailPage.tsx:914`). Reason is exactly the kind of data ops needs to triage paused members ("vacation", "financial", "switching tier") — column will always be NULL.** L7 feedback, L1 truthfulness. **STATUS: BLOCKED — duplicate of WEB-UIUX-1066 (tick 50 BLOCK); pause-reason capture multi-component, defer to memberships sprint**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920`
   <!-- meta: fix=pause-opens-small-modal-with-reason-textarea-(or-preset-pills:Vacation/Financial/Other)+pass-reason-to-pause-mutation -->
 
@@ -6371,7 +6371,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->
 
-- [ ] WEB-UIUX-1500. **[NIT] Subscription rows for cancelled subs disappear from list (`membership.routes.ts:283` filters `IN ('active','past_due','paused')`). No history view for admins to audit churn — "did Anya cancel last week or did her card decline?" requires reading the audit log table directly. Add a `?status=cancelled` query param + a "Show cancelled" toggle on the list page.** L9 empty/loading, L6 discoverability. **STATUS: BLOCKED — duplicate of WEB-UIUX-1060 (tick 49 BLOCK); cancelled-subs history view multi-component, defer**
+- [!] WEB-UIUX-1500. **[NIT] Subscription rows for cancelled subs disappear from list (`membership.routes.ts:283` filters `IN ('active','past_due','paused')`). No history view for admins to audit churn — "did Anya cancel last week or did her card decline?" requires reading the audit log table directly. Add a `?status=cancelled` query param + a "Show cancelled" toggle on the list page.** L9 empty/loading, L6 discoverability. **STATUS: BLOCKED — duplicate of WEB-UIUX-1060 (tick 49 BLOCK); cancelled-subs history view multi-component, defer**
   `packages/server/src/routes/membership.routes.ts:274-289`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:104-111`
   <!-- meta: fix=server-accept-?include=cancelled+UI-toggle-'Show-cancelled'-default-off+sort-cancelled-to-bottom -->
@@ -6390,7 +6390,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 ## Deferred operational items
 
-- [ ] OPS-DEFERRED-001. **Multi-platform setup migration (`setup.bat` → `setup.mjs`) + cross-platform auto-startup adapter.** **STATUS: BLOCKED — operational migration deferred (Phase 2 awaits Windows host smoke test); not a UI fix item**
+- [!] OPS-DEFERRED-001. **Multi-platform setup migration (`setup.bat` → `setup.mjs`) + cross-platform auto-startup adapter.** **STATUS: BLOCKED — operational migration deferred (Phase 2 awaits Windows host smoke test); not a UI fix item**
   - [x] **Phase 0 LANDED 2026-05-05**: per-OS gateway shims (`setup.bat` + `setup.command` + `setup.sh`) verify Node v22-24 and best-effort install via winget / Homebrew / apt-dnf-yum-pacman-zypper-apk-NodeSource, falling back to opening `https://nodejs.org/en/download/` on any failure.
   - [x] **Phase 1 LANDED 2026-05-05**: `setup.mjs` is now a full cross-platform 12-step install/update flow (preflight → git pull → pm2 stop → npm install → .env → certs → build → Android APK conditional → dashboard build → pm2 start+save → autostart register → open browser). Cross-platform autostart adapter at `scripts/autostart/{index,linux,darwin,win32}.mjs` with one entrypoint and three OS-specific implementations (Linux: `pm2 startup systemd` + `pm2 save`; macOS: `pm2 startup launchd` + `pm2 save`; Windows: Task Scheduler XML via `schtasks` — NO vendored binaries, NO PowerShell scripts). Single transitional Windows-only branch in setup.mjs for the Electron-package step (electron-builder is `--win`-flagged in packages/management/package.json); goes away when [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) Phase E ships. `scripts/setup-windows.bat` retained as escape hatch + reference; no longer invoked by setup.mjs.
   - Verified: bash -n + node --check pass on all 7 setup files; partial smoke run on macOS (preflight → pm2 stop → npm install) reaches step 4 cleanly; autostart adapter exports verified via direct module import + status() call.
@@ -6398,7 +6398,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   - Acceptance when fully unblocked: fresh boot on Linux/macOS/Windows brings CRM online without user login; zero `process.platform === 'win32'` branches outside the three adapter files (pending Electron-package transition); `scripts/setup-windows.bat` deleted.
   - Related: [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) Phase C-pre — `setup.mjs` also drops the Electron build/launch from this script and replaces with `vite build` of the static dashboard + open-in-browser to `https://localhost/super-admin/`. Once that lands, the only Windows-only branch in setup.mjs disappears.
 
-- [ ] OPS-DEFERRED-002. **Browser-served super-admin dashboard (deprecate Electron `packages/management/`).** **STATUS: BLOCKED — operational migration deferred (4-week implementation gated on team capacity); not a UI fix item**
+- [!] OPS-DEFERRED-002. **Browser-served super-admin dashboard (deprecate Electron `packages/management/`).** **STATUS: BLOCKED — operational migration deferred (4-week implementation gated on team capacity); not a UI fix item**
   - [ ] BLOCKED: planning doc complete at [dashboard-migration-plan.md](./docs/dashboard-migration-plan.md) 2026-05-05; implementation gated on team capacity (~4 weeks for one engineer). Replaces ~4500 lines of Electron main + ~89 IPC handlers + Chromium binary + per-OS code-signing pipeline with: server-side `/super-admin/api/management/*` REST routes + static SPA at `/super-admin/` + a tiny `bizarre-crm-rescue` PM2 app for the crashed-server case.
   - Pairs with `OPS-DEFERRED-001` — Phase C-pre of this plan modifies `setup.bat`/`setup.mjs` to drop Electron build/launch and open browser instead. Independent of (3)/(4) of dashboardplan can start any time; (5)/(6)/(8) gate on multi-OS setup migration.
   - Acceptance: `packages/management/` deleted, fresh `setup.mjs` opens default browser to `https://localhost/super-admin/`, phone/tablet remote management works on LAN, Rescue Agent at `http://localhost:7474/rescue` handles crashed-main-server case.
@@ -6427,7 +6427,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:117`
   <!-- meta: fix=disable-backdrop-onClose-when-preview-non-null;-or-route-backdrop-click-through-confirmation-"Discard-this-send?" -->
 
-- [ ] WEB-UIUX-1508. **[MAJOR] No "send test to me" option. Industry standard for mass-mail / mass-SMS: send a single test to the operator's own phone before the blast, to verify wording/links/variable substitution. Missing entirely from BulkSmsModal. Admin's only options are: send to 12k recipients, or don't. No middle ground.** L6 discoverability, L4 flow integrity. **STATUS: BLOCKED — needs new send-test-to-me feature with quota bypass; multi-component, defer to bulk-sms sprint**
+- [!] WEB-UIUX-1508. **[MAJOR] No "send test to me" option. Industry standard for mass-mail / mass-SMS: send a single test to the operator's own phone before the blast, to verify wording/links/variable substitution. Missing entirely from BulkSmsModal. Admin's only options are: send to 12k recipients, or don't. No middle ground.** L6 discoverability, L4 flow integrity. **STATUS: BLOCKED — needs new send-test-to-me feature with quota bypass; multi-component, defer to bulk-sms sprint**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-223`
   <!-- meta: fix=add-"Send-test-to-my-number"-button-next-to-Preview;-uses-req.user.mobile-or-prompts-for-number;-doesn't-decrement-hourly-quota;-doesn't-mutate-token -->
 
@@ -6436,7 +6436,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/CommunicationPage.tsx:1846-1850`
   <!-- meta: fix=keep-modal-open-when-failed>0-with-failure-summary+route-link-to-/inbox/retry-queue-page;-OR-promote-retry-queue-to-persistent-toolbar-badge -->
 
-- [ ] WEB-UIUX-1510. **[MAJOR] Provider-not-configured surfaced only at confirm step. Server `inbox.routes.ts:626-635` checks `getSmsProvider()` and throws "SMS provider is not configured…" only after token verification, after segment-drift check. Admin builds full campaign (segment + template + Preview), reads "12,003 recipients", clicks "Send to 12,003" — gets a toast saying configure provider first. All effort wasted; banner blocks every attempt until Settings is fixed. Move provider real-or-simulated check to the preview branch (`:552-571`) and either (a) refuse preview with the same error, or (b) show a yellow "Provider not configured — sends will be queued in retry queue" banner inline before Send is enabled.** L7 feedback, L4 flow integrity, L9 error states. **STATUS: BLOCKED — server contract change to surface provider status in preview response; backend, defer**
+- [!] WEB-UIUX-1510. **[MAJOR] Provider-not-configured surfaced only at confirm step. Server `inbox.routes.ts:626-635` checks `getSmsProvider()` and throws "SMS provider is not configured…" only after token verification, after segment-drift check. Admin builds full campaign (segment + template + Preview), reads "12,003 recipients", clicks "Send to 12,003" — gets a toast saying configure provider first. All effort wasted; banner blocks every attempt until Settings is fixed. Move provider real-or-simulated check to the preview branch (`:552-571`) and either (a) refuse preview with the same error, or (b) show a yellow "Provider not configured — sends will be queued in retry queue" banner inline before Send is enabled.** L7 feedback, L4 flow integrity, L9 error states. **STATUS: BLOCKED — server contract change to surface provider status in preview response; backend, defer**
   `packages/server/src/routes/inbox.routes.ts:552-571,626-635`
   <!-- meta: fix=move-isProviderRealOrSimulated-check-into-preview-branch+return-provider_status-in-preview-response;-modal-renders-warning-or-disables-Send -->
 
@@ -6445,7 +6445,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/inbox.routes.ts:602-609`
   <!-- meta: fix=on-error.response.status===409-{setPreview(null);-previewMut.mutate()};-show-banner-"Audience-changed:-was-N1-now-N2" -->
 
-- [ ] WEB-UIUX-1512. **[MAJOR] No live segment count alongside segment buttons. `BulkSmsModal.tsx:142-164` renders 3 segment buttons, each shows label + hint but no count. Admin must commit to a segment and click "Preview" to learn it's 12k vs 50. Switching segments after preview clears state (`:148-149`). Pre-fetch counts via `GET /inbox/bulk-send-segment-counts` (or extend an existing endpoint) and render `{count}` on each segment button (e.g., "Open tickets — 47", "All customers — 12,003"). Lets admin sanity-check audience size before committing.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs new server endpoint /inbox/bulk-send-segment-counts; backend, defer**
+- [!] WEB-UIUX-1512. **[MAJOR] No live segment count alongside segment buttons. `BulkSmsModal.tsx:142-164` renders 3 segment buttons, each shows label + hint but no count. Admin must commit to a segment and click "Preview" to learn it's 12k vs 50. Switching segments after preview clears state (`:148-149`). Pre-fetch counts via `GET /inbox/bulk-send-segment-counts` (or extend an existing endpoint) and render `{count}` on each segment button (e.g., "Open tickets — 47", "All customers — 12,003"). Lets admin sanity-check audience size before committing.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs new server endpoint /inbox/bulk-send-segment-counts; backend, defer**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:142-164`
   <!-- meta: fix=add-server-endpoint-returning-{open_tickets:N,all_customers:N,recent_purchases:N};-render-counts-as-trailing-badges-on-segment-cards;-keep-token-issuance-on-explicit-Preview -->
 
@@ -6463,7 +6463,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-196`
   <!-- meta: fix=compute-segments=Math.ceil(content.length/(hasUnicode?70:160));-render-"{segments}-segment(s)-x-{count}-recipients-=-{total}-billable-segments" -->
 
-- [ ] WEB-UIUX-1516. **[MINOR] No scheduling option in BulkSmsModal. `ScheduledSendModal.tsx` already exists in the same `components/` folder for 1:1 scheduled sends. Bulk SMS is send-now only — admin who wants to blast Tuesday 10am has to set a personal reminder and re-build the campaign. Wire a "Schedule for later" checkbox; defer to existing scheduler infra.** L6 discoverability. **STATUS: BLOCKED — needs new scheduled-bulk-send endpoint integration with ScheduledSendModal infra; multi-component, defer**
+- [!] WEB-UIUX-1516. **[MINOR] No scheduling option in BulkSmsModal. `ScheduledSendModal.tsx` already exists in the same `components/` folder for 1:1 scheduled sends. Bulk SMS is send-now only — admin who wants to blast Tuesday 10am has to set a personal reminder and re-build the campaign. Wire a "Schedule for later" checkbox; defer to existing scheduler infra.** L6 discoverability. **STATUS: BLOCKED — needs new scheduled-bulk-send endpoint integration with ScheduledSendModal infra; multi-component, defer**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:198-224`
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx`
   <!-- meta: fix=add-"Schedule-for-later"-toggle+datetime-picker;-on-confirm-route-to-scheduled-bulk-send-endpoint-instead-of-immediate-/inbox/bulk-send -->
@@ -6473,7 +6473,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:198-224`
   <!-- meta: fix=server-returns-{used,limit,resets_at_iso}-on-preview-response;-modal-renders-status-line-+-disables-Send-when-used>=limit -->
 
-- [ ] WEB-UIUX-1518. **[MINOR] No segment audit / sample list. Preview shows count only — admin cannot spot-check "is John Doe really in this segment? Did we exclude staff?". Render up to 10 sample rows (first name + last 4 digits of phone) below the recipient banner so admin can sanity-check before pulling the trigger.** L7 feedback. **STATUS: BLOCKED — server preview must return up to 10 sample rows (first+phone_last4); backend, defer**
+- [!] WEB-UIUX-1518. **[MINOR] No segment audit / sample list. Preview shows count only — admin cannot spot-check "is John Doe really in this segment? Did we exclude staff?". Render up to 10 sample rows (first name + last 4 digits of phone) below the recipient banner so admin can sanity-check before pulling the trigger.** L7 feedback. **STATUS: BLOCKED — server preview must return up to 10 sample rows (first+phone_last4); backend, defer**
   `packages/server/src/routes/inbox.routes.ts:550-571`
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
   <!-- meta: fix=server-preview-returns-{preview_count,sample:[{first,phone_last4}]-up-to-10};-modal-renders-sample-list-with-"+N-more"-tail -->
@@ -6507,7 +6507,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/settings.routes.ts:838-842`
   <!-- meta: fix=replace-`pmData?.data?.data?.payment_methods`-with-`Array.isArray(pmData?.data?.data)?pmData.data.data:[]`;-typed-as-PaymentMethod[];-keep-fallback-only-when-array-is-empty -->
 
-- [ ] WEB-UIUX-1525. **[BLOCKER] Same-amount-same-user dedup window (5s in-memory + 10s DB at `invoices.routes.ts:763-776`) blocks a legitimate split tender. Two friends each hand the cashier $50 cash for a $100 invoice. Cashier records first $50 → success. Records second $50 immediately → server returns 409 "Duplicate payment detected. Please wait before retrying." Toast message implies the prior write didn't land, so cashier waits, retries, fails again. Common workarounds: change second amount to $50.01, or split into two payments by method (cash + cash again later) — both falsify the ledger. Either (a) require an explicit `force` flag with an "Yes, this is a separate tender" confirmation when dedup hits, or (b) include an idempotency key from the client so the dedup is keyed on intent not amount.** L2 truthfulness, L4 flow integrity, L8 recovery. **STATUS: BLOCKED — server invoices.routes.ts dedup needs idempotency-key based check + force flag; backend, defer to billing sprint**
+- [!] WEB-UIUX-1525. **[BLOCKER] Same-amount-same-user dedup window (5s in-memory + 10s DB at `invoices.routes.ts:763-776`) blocks a legitimate split tender. Two friends each hand the cashier $50 cash for a $100 invoice. Cashier records first $50 → success. Records second $50 immediately → server returns 409 "Duplicate payment detected. Please wait before retrying." Toast message implies the prior write didn't land, so cashier waits, retries, fails again. Common workarounds: change second amount to $50.01, or split into two payments by method (cash + cash again later) — both falsify the ledger. Either (a) require an explicit `force` flag with an "Yes, this is a separate tender" confirmation when dedup hits, or (b) include an idempotency key from the client so the dedup is keyed on intent not amount.** L2 truthfulness, L4 flow integrity, L8 recovery. **STATUS: BLOCKED — server invoices.routes.ts dedup needs idempotency-key based check + force flag; backend, defer to billing sprint**
   `packages/server/src/routes/invoices.routes.ts:760-777`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:94-105`
   <!-- meta: fix=client-sends-Idempotency-Key-uuid-on-mutate;-server-dedup-on-key-not-amount;-on-409-toast-"Looks-like-duplicate-(prior-payment-of-$X-recorded-Ns-ago).-Record-this-as-a-separate-tender?"-with-Force-button -->
@@ -6546,7 +6546,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/invoices.routes.ts:750,754-758`
   <!-- meta: fix=add-payment_type-toggle-or-derive-from-(amount<total&&amount_paid===0);-pass-through-on-mutate -->
 
-- [ ] WEB-UIUX-1533. **[MAJOR] Invoice list has no inline "Record Payment" — collections workflow loses scroll/filter on every row. `InvoiceListPage.tsx:533-538` action column shows "View" only; the row is also clickable as a whole, so selection or quick action requires `e.stopPropagation()` plumbing already in place. A cashier reviewing the overdue tab (50 rows) and calling each customer in turn must click row → land on detail → click Record Payment → record → navigate back → scroll back to position. Add a small "$" / "Pay" icon button beside View on rows with `amount_due > 0`, opening the same payment modal in-list (or via a side drawer).** L4 flow integrity, L6 discoverability. **STATUS: BLOCKED — needs RecordPaymentModal extracted into shared component + InvoiceListPage row action; multi-component, defer**
+- [!] WEB-UIUX-1533. **[MAJOR] Invoice list has no inline "Record Payment" — collections workflow loses scroll/filter on every row. `InvoiceListPage.tsx:533-538` action column shows "View" only; the row is also clickable as a whole, so selection or quick action requires `e.stopPropagation()` plumbing already in place. A cashier reviewing the overdue tab (50 rows) and calling each customer in turn must click row → land on detail → click Record Payment → record → navigate back → scroll back to position. Add a small "$" / "Pay" icon button beside View on rows with `amount_due > 0`, opening the same payment modal in-list (or via a side drawer).** L4 flow integrity, L6 discoverability. **STATUS: BLOCKED — needs RecordPaymentModal extracted into shared component + InvoiceListPage row action; multi-component, defer**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:483-540`
   <!-- meta: fix=add-quick-pay-button-on-rows-with-amount_due>0;-mount-shared-PaymentModal-component-with-invoiceId-+-onClose;-extract-modal-from-InvoiceDetailPage.tsx-into-components/billing/RecordPaymentModal.tsx -->
 
@@ -6599,7 +6599,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:328-392`
   <!-- meta: fix=add-Gift-Card-method-button-in-RecordPaymentModal+lookup-by-code-step+redeem-mutation;-OR-add-/gift-cards/redeem-route-with-LookupForm+RedeemForm -->
 
-- [ ] WEB-UIUX-1544. **[BLOCKER] "Save this code now — it will not be shown again" is a lie. Issue success modal copy at `GiftCardsListPage.tsx:139-141` claims one-time reveal. Detail page `GiftCardDetailPage.tsx:235` toggles full plaintext code via Eye/EyeOff button — server `GET /gift-cards/:id` returns full `code` column unconditionally (`giftCards.routes.ts:444-450`, `code` selected via `SELECT *`). Worse: GET has no `requirePermission` gate — only `authMiddleware` (`server/index.ts:1623`). ANY authed user (including base-role cashiers without `gift_cards.issue`/`gift_cards.redeem` perms) can iterate `/gift-cards/:id` and harvest plaintext codes for redemption elsewhere. Either (a) finish the SEC-H38 hash-rollover (drop plaintext `code` column, never return it from GET) and remove the false claim, or (b) gate the plaintext branch behind a manager-PIN re-auth + audit log entry per reveal.** L2 truthfulness, L10 trust, security overlap. **STATUS: BLOCKED — server SEC-H38 hash-rollover (drop plaintext code column) + permission gate on GET reveal; backend, defer to security sprint**
+- [!] WEB-UIUX-1544. **[BLOCKER] "Save this code now — it will not be shown again" is a lie. Issue success modal copy at `GiftCardsListPage.tsx:139-141` claims one-time reveal. Detail page `GiftCardDetailPage.tsx:235` toggles full plaintext code via Eye/EyeOff button — server `GET /gift-cards/:id` returns full `code` column unconditionally (`giftCards.routes.ts:444-450`, `code` selected via `SELECT *`). Worse: GET has no `requirePermission` gate — only `authMiddleware` (`server/index.ts:1623`). ANY authed user (including base-role cashiers without `gift_cards.issue`/`gift_cards.redeem` perms) can iterate `/gift-cards/:id` and harvest plaintext codes for redemption elsewhere. Either (a) finish the SEC-H38 hash-rollover (drop plaintext `code` column, never return it from GET) and remove the false claim, or (b) gate the plaintext branch behind a manager-PIN re-auth + audit log entry per reveal.** L2 truthfulness, L10 trust, security overlap. **STATUS: BLOCKED — server SEC-H38 hash-rollover (drop plaintext code column) + permission gate on GET reveal; backend, defer to security sprint**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138-143`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:233-244`
   `packages/server/src/routes/giftCards.routes.ts:441-451`
@@ -6624,7 +6624,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/utils/validate.ts:169-195`
   <!-- meta: fix=client-min={new Date().toISOString().slice(0,10)};-server-rejects-expires_at<=now()-with-"Expiry-must-be-in-the-future" -->
 
-- [ ] WEB-UIUX-1549. **[MAJOR] Date-only expiry parsed as UTC midnight — card expires the night before in user's local time. `isExpired()` at `giftCards.routes.ts:38-46` calls `Date.parse('2026-05-05')` → `2026-05-05T00:00:00Z`. A US Pacific (UTC-7/8) tenant's card showing "Expires May 5" is dead at 5pm May 4 local time. Customer walks in May 5 morning, gets "Gift card expired" error. Either (a) coerce expiry to end-of-day in tenant timezone (`expires_at + 'T23:59:59' + tenantTz`), or (b) interpret a date-only expiry as "valid through end of that day local" by appending `T23:59:59.999Z` and accepting the wider window.** L2 truthfulness. **STATUS: BLOCKED — needs new LookupBar component + lookup mutation + navigation chain; multi-component, defer to gift-card sprint**
+- [!] WEB-UIUX-1549. **[MAJOR] Date-only expiry parsed as UTC midnight — card expires the night before in user's local time. `isExpired()` at `giftCards.routes.ts:38-46` calls `Date.parse('2026-05-05')` → `2026-05-05T00:00:00Z`. A US Pacific (UTC-7/8) tenant's card showing "Expires May 5" is dead at 5pm May 4 local time. Customer walks in May 5 morning, gets "Gift card expired" error. Either (a) coerce expiry to end-of-day in tenant timezone (`expires_at + 'T23:59:59' + tenantTz`), or (b) interpret a date-only expiry as "valid through end of that day local" by appending `T23:59:59.999Z` and accepting the wider window.** L2 truthfulness. **STATUS: BLOCKED — needs new LookupBar component + lookup mutation + navigation chain; multi-component, defer to gift-card sprint**
   `packages/server/src/routes/giftCards.routes.ts:38-46,287-289`
   <!-- meta: fix=at-INSERT-store-expires_at-as-{date}T23:59:59-in-tenant-tz;-OR-isExpired-treats-date-only-as-end-of-day-local -->
 
@@ -6651,7 +6651,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-191`
   <!-- meta: fix=presets=[25,50,100,200,500];-render-grid-of-buttons-that-setForm({amount:String(v)});-keep-input-as-Custom-fallback -->
 
-- [ ] WEB-UIUX-1555. **[MAJOR] Status filter has no `expired` option. `GiftCardsListPage.tsx:325-329` offers active/used/disabled. Server doesn't persist an `expired` status — `isExpired` is computed at lookup/redeem only. Manager wants to email customers whose cards expire next month — no UI path. Either (a) persist a `gift_card_expired` daemon (the `giftCardExpirySweep` service exists at `packages/server/src/services/giftCardExpirySweep.ts` — wire its output to the status column), or (b) add a virtual `expired` filter that translates to `expires_at < datetime('now')` on the server.** L6 discoverability. **STATUS: BLOCKED — needs server POST /gift-cards/bulk + CSV upload modal + result CSV download; multi-component, defer**
+- [!] WEB-UIUX-1555. **[MAJOR] Status filter has no `expired` option. `GiftCardsListPage.tsx:325-329` offers active/used/disabled. Server doesn't persist an `expired` status — `isExpired` is computed at lookup/redeem only. Manager wants to email customers whose cards expire next month — no UI path. Either (a) persist a `gift_card_expired` daemon (the `giftCardExpirySweep` service exists at `packages/server/src/services/giftCardExpirySweep.ts` — wire its output to the status column), or (b) add a virtual `expired` filter that translates to `expires_at < datetime('now')` on the server.** L6 discoverability. **STATUS: BLOCKED — needs server POST /gift-cards/bulk + CSV upload modal + result CSV download; multi-component, defer**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
   `packages/server/src/services/giftCardExpirySweep.ts`
   `packages/server/src/routes/giftCards.routes.ts:117`
@@ -21846,7 +21846,7 @@ Apply the same URL allowlist check from `catalogScraper.ts:292-305` to the `/bul
 
 ## FEATURE — Dashboard "Price list" button → spreadsheet view (web/android/iOS) — 2026-05-05
 
-- [ ] FEAT-PRICELIST-001. **[FEATURE] Dashboard "📋 Price list" button opens an Excel-like spreadsheet of every device + repair price the admin has configured, with full search.** Admin sets prices once in Settings → cashier/technician hits one button on Dashboard to see the live price grid during a customer call or in-person visit. No need to dig into Settings → Repair pricing every time. Server already exposes the data via `routes/repairPricing.routes.ts` (`/api/v1/repair-pricing/prices`) and `services/repairPricing/*`; what's missing is a fast, focused, read-mostly grid surface usable from the dashboard. **STATUS: BLOCKED — full feature build requires new PriceListPage (web) + PriceListActivity (Android) + PriceListView (iOS) + virtualized grid + edit + audit + CSV export; multi-platform multi-week effort, defer to feature sprint**
+- [!] FEAT-PRICELIST-001. **[FEATURE] Dashboard "📋 Price list" button opens an Excel-like spreadsheet of every device + repair price the admin has configured, with full search.** Admin sets prices once in Settings → cashier/technician hits one button on Dashboard to see the live price grid during a customer call or in-person visit. No need to dig into Settings → Repair pricing every time. Server already exposes the data via `routes/repairPricing.routes.ts` (`/api/v1/repair-pricing/prices`) and `services/repairPricing/*`; what's missing is a fast, focused, read-mostly grid surface usable from the dashboard. **STATUS: BLOCKED — full feature build requires new PriceListPage (web) + PriceListActivity (Android) + PriceListView (iOS) + virtualized grid + edit + audit + CSV export; multi-platform multi-week effort, defer to feature sprint**
   **Scope:**
   1. **Dashboard button** — added in mockups already (web header, android phone top app bar, android tablet toolbar, ios iphone greeting card, ios ipad capsule). Wire to a new route/screen `/price-list` (web), `PriceListActivity` (Android), `PriceListView` (iOS).
   2. **Spreadsheet view** — virtualized grid (web: TanStack Table or AG Grid Community; Android: Compose `LazyColumn` × `LazyRow` or RecyclerView; iOS: SwiftUI `LazyVGrid`/`Table`). Columns: Brand · Model · Repair · Tier1 · Tier2 · Tier3 · Updated. Sticky header row + first column.
@@ -21890,5 +21890,38 @@ Apply the same URL allowlist check from `catalogScraper.ts:292-305` to the `/bul
   `mockups/Other mockups&files/price-list-ios-iphone.html`
   `mockups/Other mockups&files/price-list-ios-ipad.html`
   <!-- meta: scope=dashboard+price-list; depends=server/repairPricing.routes.ts (exists); fix=add-route+grid+search+edit-mode+csv-export+a11y+pagination -->
+
+---
+
+## POS-REWRITE-FOLLOWUPS
+
+Spawned from POS bug-hunt 2026-05-10. Fixes for refresh-loss / corrupt-cart-crash / beforeunload / deposit-notes shipped in `c119b3dc`. Remaining items are either out of POS-rewrite scope or need product decisions.
+
+### Open
+
+- **POS-DEPOSIT-SPLIT** — Repair deposit step records deposit intent in `meta.internalNotes` and toasts a warning, but does NOT actually charge only the deposit. Cashier must manually edit cart line prices before tender. Real fix needs a server-side ticket-balance route: charge deposit now, leave the rest as owed on the ticket, reconcile at pickup.
+  - **Server work:** new endpoint `POST /tickets/:id/balance-payment` that captures a payment against an existing ticket without re-creating the ticket; updates `tickets.deposit_paid_cents` + `tickets.balance_owed_cents`; emits the deposit invoice as a child of the ticket.
+  - **Client work:** in `RepairDepositStep` flow, replace `saveRepairWithDeposit` with a path that submits the ticket via `submitCreateTicket` (full quote on the ticket, zero invoice) AND adds a single misc cart line `Deposit — <serviceName>` at depositAmount for the immediate tender.
+  - **Files:** `packages/server/src/routes/tickets.routes.ts`, `packages/server/src/db/migrations/<next>_ticket_balance_owed.sql`, `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx` (saveRepairWithDeposit, RepairDepositStep).
+  - <!-- meta: scope=pos; severity=med; symptom=cashier-must-manually-edit-line-prices-to-charge-deposit-only; depends=new-ticket-balance-route -->
+
+- **POS-DISCOUNT-OVERSTACK** — In `packages/web/src/pages/unified-pos/totals.ts:~94`, manual discount and auto-applied member discount stack additively without capping at subtotal. Customer with a 20% member discount ($50 on $250) plus a manual $100 discount can drive `discountC = 150`, exceeding line totals if more lines deletions follow. The Manager-PIN gate only checks the MANUAL discount against subtotal, not the combined effect. Pre-existing in the merged-discount logic, not introduced by the POS rewrite — out of scope for `c119b3dc` but worth a follow-up.
+  - **Fix:** clamp `discountC = Math.min(toCents(subtotal), toCents(discount) + memberDiscountC)`; surface a UI note when the cap is reached so the cashier sees that the manual discount was reduced by the member portion.
+  - **Files:** `packages/web/src/pages/unified-pos/totals.ts`, `UnifiedPosPage.tsx` (discount modal copy).
+  - <!-- meta: scope=pos; severity=med; symptom=combined-discount-can-exceed-subtotal; pre-existing -->
+
+### Closed (shipped in c119b3dc 2026-05-10)
+
+- ~~POS-REPAIR-DRAFT-LOST~~ — `repairDraft` lived in `useState` only; cmd-R mid-intake wiped device + problems + notes. Now sessionStorage-backed + included in `HeldCartSnapshot`.
+- ~~POS-CART-JSON-CRASH~~ — `recallMutation.onSuccess` did `JSON.parse(row.cart_json)` with no try/catch. Corrupt blob crashed the page. Now defensive parse + toast on failure.
+- ~~POS-NO-UNLOAD-WARNING~~ — No `beforeunload` warning during `processing` or partial tender. Cashier could close the tab between charge and ack. Added a guarded listener.
+- ~~POS-DEPOSIT-SILENT-DROP~~ — Repair-deposit step called `saveRepairToCart` which dropped `depositAmount` entirely; customer was charged the full quote. Now stamps deposit + balance into `meta.internalNotes` and toasts the cashier. (Full split-payment flow → see POS-DEPOSIT-SPLIT above.)
+
+### Triaged out (false positives from the audit)
+
+- `drillState` lost on hold — already in zustand store with `persist`, not lost.
+- Hold + recall race on ⌘N — `holdMutation` refuses when `paidLegs.length > 0`; tab-switch path serializes via `lastClickedHeldRef`.
+- Payment-decline leaves `processing` stuck — `finally` block already calls `setProcessing(false)`.
+- `CustomerSelector` stale-closure refetch — comparison-only, no data loss; at worst a redundant `setCustomer` of identical data.
 
 ---
