@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { settingsApi, authApi } from '@/api/endpoints';
 import { useUiStore } from '@/stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
 import type { PendingWrites, WizardPhase, ExtraCardId } from './wizardTypes';
 import { WIZARD_BODY_ORDER } from './wizardTypes';
 import { WizardBreadcrumb } from './components/WizardBreadcrumb';
@@ -112,53 +113,67 @@ export function SetupPage() {
   const orderedPhases = useMemo<WizardPhase[]>(() => WIZARD_BODY_ORDER, []);
 
   // ── Persistent wizard state ─────────────────────────────────────
-  // sessionStorage survives page refreshes within the same tab so the user
-  // never loses progress to F5 / browser autoreload / Vite HMR. Cleared
-  // when the wizard finishes (complete/skip flushAndExit) AND when the tab
-  // closes — a brand-new tab starts a fresh wizard. Keyed per session so
-  // multiple tabs of the same browser don't collide.
-  const STORAGE_KEY = 'bizarrecrm:setup-wizard:v1';
+  // BUGHUNT-2026-05-10-44: migrated from sessionStorage → user-keyed
+  // localStorage so closing the tab mid-wizard no longer wipes pending
+  // edits. localStorage survives reload + tab close + browser restart;
+  // namespacing by user.id keeps a kiosk-handoff from leaking the prior
+  // admin's draft into the next signed-in user's session. The wizard's
+  // own flushAndExit() still clears the key on complete/skip, and the
+  // global `bizarre-crm:auth-cleared` listener (Sidebar.tsx) wipes every
+  // `setup-wizard:*` key on logout so a second user starts clean even
+  // when the prior admin never finished.
+  const userId = useAuthStore((s) => s.user?.id);
+  const STORAGE_KEY = userId
+    ? `bizarrecrm:setup-wizard:v2:u${userId}`
+    : 'bizarrecrm:setup-wizard:v2:anon';
+  // Legacy sessionStorage key carried per-tab state pre-fix; read it ONCE
+  // on first mount so an admin upgrading mid-wizard doesn't lose progress.
+  const LEGACY_SESSION_KEY = 'bizarrecrm:setup-wizard:v1';
   type Persisted = { phase: WizardPhase; pending: PendingWrites };
 
-  const [phase, setPhase] = useState<WizardPhase>(() => {
-    if (typeof window === 'undefined') return 'welcome';
+  function readDraft(): Persisted | null {
+    if (typeof window === 'undefined') return null;
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (!raw) return 'welcome';
-      const parsed = JSON.parse(raw) as Persisted;
-      // Validate phase is in the body order — otherwise restart fresh.
-      if (parsed.phase && WIZARD_BODY_ORDER.includes(parsed.phase)) {
-        return parsed.phase;
+      // Prefer the new per-user localStorage entry.
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw) as Persisted;
+      // One-time migration: pull from the legacy sessionStorage entry if it
+      // exists, then drop it so the next save lands in localStorage.
+      const legacy = sessionStorage.getItem(LEGACY_SESSION_KEY);
+      if (legacy) {
+        try { sessionStorage.removeItem(LEGACY_SESSION_KEY); } catch { /* ignore */ }
+        return JSON.parse(legacy) as Persisted;
       }
     } catch {
-      // Corrupt JSON or storage disabled — fall through to default.
+      // Corrupt JSON or storage disabled — fall through to defaults.
     }
+    return null;
+  }
+
+  const [phase, setPhase] = useState<WizardPhase>(() => {
+    const parsed = readDraft();
+    if (parsed?.phase && WIZARD_BODY_ORDER.includes(parsed.phase)) return parsed.phase;
     return 'welcome';
   });
   const [pending, setPending] = useState<PendingWrites>(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw) as Persisted;
-      return parsed.pending ?? {};
-    } catch {
-      return {};
-    }
+    const parsed = readDraft();
+    return parsed?.pending ?? {};
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Persist every state change so a refresh restores both phase + pending.
+  // Persist every state change so a refresh OR tab close restores both
+  // phase + pending. localStorage write is best-effort; quota / private-
+  // mode failures fall back to in-memory only (same as the pre-fix path).
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ phase, pending } satisfies Persisted));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ phase, pending } satisfies Persisted));
     } catch {
       // Storage quota exceeded / disabled — silently ignore. Worst case the
-      // user loses partial state on refresh, which is the pre-fix behavior.
+      // user loses partial state on reload, which is the pre-fix behavior.
     }
-  }, [phase, pending]);
+  }, [STORAGE_KEY, phase, pending]);
 
   const update = useCallback((patch: Partial<PendingWrites>) => {
     setPending((prev) => ({ ...prev, ...patch }));
@@ -216,7 +231,10 @@ export function SetupPage() {
       // state so a future revisit to /setup starts fresh instead of resuming
       // a stale half-complete session.
       try {
-        sessionStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_KEY);
+        // Also scrub the legacy sessionStorage entry so a downgrade or hard
+        // refresh doesn't resurrect stale draft state.
+        sessionStorage.removeItem(LEGACY_SESSION_KEY);
       } catch {
         /* ignore */
       }

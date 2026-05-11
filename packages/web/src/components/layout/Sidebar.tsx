@@ -348,12 +348,21 @@ if (typeof window !== 'undefined') {
       // namespaced entry so a kiosk handoff doesn't expose the previous
       // user's recent customer/ticket labels.
       localStorage.removeItem('recent_views');
+      // BUGHUNT-2026-05-10-44: also wipe any per-user setup-wizard drafts so
+      // the next signed-in user doesn't land on the prior admin's half-
+      // finished wizard. Single scan covers both prefixes.
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i);
-        if (k && k.startsWith('recent_views:')) localStorage.removeItem(k);
+        if (!k) continue;
+        if (
+          k.startsWith('recent_views:')
+          || k.startsWith('bizarrecrm:setup-wizard:')
+        ) {
+          localStorage.removeItem(k);
+        }
       }
     } catch (err) {
-      console.warn('[Sidebar] recent_views auth-cleared wipe failed', err);
+      console.warn('[Sidebar] auth-cleared wipe failed', err);
     }
   });
 }
