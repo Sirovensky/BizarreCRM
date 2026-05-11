@@ -706,6 +706,56 @@ router.get(
   }),
 );
 
+// GET /bench/qc/history/:ticketId — full sign-off list for the ticket
+// WEB-UIUX-1105: /qc/status returns only the latest row (LIMIT 1); /qc/history
+// returns every past sign-off so a manager can audit which version captured
+// the working state, when, and by whom. File paths are still stripped for
+// non-admin / non-manager callers.
+router.get(
+  '/qc/history/:ticketId',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const ticketId = Number(req.params.ticketId);
+    if (!Number.isFinite(ticketId)) throw new AppError('Invalid ticket id', 400);
+
+    type SignOff = {
+      id: number;
+      ticket_id: number;
+      tech_user_id: number;
+      checklist_results_json: string;
+      working_photo_path: string | null;
+      tech_signature_path: string | null;
+      outcome: string | null;
+      signed_at: string;
+      first_name: string | null;
+      last_name: string | null;
+    };
+    const rows = (await adb.all<SignOff>(
+      `SELECT qs.*, u.first_name, u.last_name
+         FROM qc_sign_offs qs
+         LEFT JOIN users u ON u.id = qs.tech_user_id
+        WHERE qs.ticket_id = ?
+        ORDER BY qs.signed_at DESC, qs.id DESC`,
+      ticketId,
+    )) as SignOff[];
+
+    const role = req.user?.role;
+    const isPrivileged = role === 'admin' || role === 'manager';
+
+    const items = rows.map((row) => ({
+      ...row,
+      checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
+        row.checklist_results_json,
+        [],
+      ),
+      tech_signature_path: isPrivileged ? row.tech_signature_path : undefined,
+      working_photo_path: isPrivileged ? row.working_photo_path : undefined,
+    }));
+
+    res.json({ success: true, data: { sign_offs: items, total: rows.length } });
+  }),
+);
+
 // POST /bench/qc/sign-off (multipart: photo + signature + JSON fields)
 router.post(
   '/qc/sign-off',

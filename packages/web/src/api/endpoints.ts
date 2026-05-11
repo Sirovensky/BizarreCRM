@@ -1754,6 +1754,19 @@ export const benchApi = {
       api.put(`/bench/qc-checklist/${id}`, data),
     deleteChecklistItem: (id: number) => api.delete(`/bench/qc-checklist/${id}`),
     status: (ticketId: number) => api.get(`/bench/qc/status/${ticketId}`),
+    history: (ticketId: number) =>
+      api.get<{ success: boolean; data: { sign_offs: Array<{
+        id: number;
+        ticket_id: number;
+        tech_user_id: number;
+        signed_at: string;
+        outcome: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        working_photo_path?: string | null;
+        tech_signature_path?: string | null;
+        checklist_results: Array<{ item_id: number; passed: boolean }>;
+      }>; total: number } }>(`/bench/qc/history/${ticketId}`),
     signOff: (formData: FormData) =>
       api.post('/bench/qc/sign-off', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },

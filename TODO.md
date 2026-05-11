@@ -3765,7 +3765,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:176-180`
 
-- [!] WEB-UIUX-1105. **[MINOR] No "view past sign-offs" history.** Re-sign overwrites visually (only latest queried per `LIMIT 1` at `:712`), but DB keeps all rows. No UI to enumerate. Manager investigating "which sign-off captured the working state" can't reach prior rows. L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs server endpoint listing past qc_sign_offs for a ticket (currently LIMIT 1) + ticket-detail tab "QC history" with per-row signer/date/outcome/photo. Multi-component.]**
+- [!] WEB-UIUX-1105. **Server history endpoint landed 2026-05-11; ticket-detail "QC history" tab still pending.** `GET /bench/qc/history/:ticketId` returns every past sign-off (`qc_sign_offs` joined with `users` for signer name), ordered by `signed_at DESC`. File paths stripped for non-admin/non-manager callers like the existing /qc/status route. `benchApi.qc.history(ticketId)` typed wrapper added in `endpoints.ts`. Remaining UI work: render the list as a collapsible panel on the ticket-detail QC tab with per-row signer / signed_at / outcome / working-photo thumb / checklist diff. Stays `[!]` until that surface lands.
   `packages/server/src/routes/bench.routes.ts:711-714`
 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:317-321`
