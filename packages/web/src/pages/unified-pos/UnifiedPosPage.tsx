@@ -1395,9 +1395,6 @@ export function UnifiedPosPage() {
         const code = scanBufferRef.current;
         scanBufferRef.current = '';
         if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
-        setScanFlash(true);
-        if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
-        scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1000);
 
         const lookup = /^\d{8,}$/.test(code)
           ? inventoryApi.lookupBarcode(code).then((res) => res.data?.data)
@@ -1405,6 +1402,12 @@ export function UnifiedPosPage() {
         lookup
           .then((found: ProductSearchItem | null | undefined) => {
             if (found) {
+              // WEB-UIUX-800: flash only on confirmed-hit so failed lookups
+              // don't show a green "Scan detected!" banner alongside the red
+              // error toast.
+              setScanFlash(true);
+              if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
+              scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1000);
               addProductToCart(found);
               toast.success(`Scanned ${found.name}`);
             } else {
@@ -2006,6 +2009,14 @@ export function UnifiedPosPage() {
       clearDraft();
       setPaidLegs([]);
       setMode('receipt');
+      // WEB-UIUX-887: invalidate inventory + reports caches so other tabs see
+      // post-sale stock and revenue. Previously only membership cache was
+      // touched, leaving every other surface stale.
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       toast.success('Sale complete');
     } catch (err: any) {
@@ -2013,7 +2024,7 @@ export function UnifiedPosPage() {
     } finally {
       setProcessing(false);
     }
-  }, [paidLegs, totals, blockchypConfigured, cartItems, customer, ensureIdempotencyKey, clearDraft]);
+  }, [paidLegs, totals, blockchypConfigured, cartItems, customer, ensureIdempotencyKey, clearDraft, queryClient]);
 
   /**
    * Create the ticket on the server WITHOUT taking payment. Counterpart to

@@ -265,8 +265,13 @@ export function toLocalDateString(date: Date | string | number, timeZone?: strin
 // ─── Relative time ──────────────────────────────────────────────────────────
 
 export function timeAgo(iso: string): string {
-  // Ensure UTC interpretation -- server stores without Z suffix
-  const ts = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
+  // Ensure UTC interpretation -- server stores without Z suffix.
+  // WEB-UIUX-789: also treat ISO strings carrying a numeric offset (e.g.
+  // `-05:00` or `+02:00`) as fully-qualified — previously we only skipped
+  // the `+` form so `-05:00` got an extra `Z` appended (malformed). Match
+  // any explicit offset suffix.
+  const hasOffset = /Z$|[+-]\d{2}:?\d{2}$/.test(iso);
+  const ts = hasOffset ? iso : iso + 'Z';
   const diff = Date.now() - new Date(ts).getTime();
   if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);

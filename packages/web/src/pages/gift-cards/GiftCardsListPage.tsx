@@ -186,8 +186,11 @@ function IssueModal({ onClose }: IssueModalProps) {
             <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
               Save this code now — it will not be shown again.
             </p>
-            <div className="font-mono text-2xl text-center tracking-widest py-4 px-3 bg-surface-100 dark:bg-surface-800 rounded-lg text-surface-900 dark:text-surface-100 select-all mb-4">
-              {issuedCode}
+            <div className="font-mono text-2xl text-center tracking-widest py-4 px-3 bg-surface-100 dark:bg-surface-800 rounded-lg text-surface-900 dark:text-surface-100 select-all mb-4 break-all">
+              {/* WEB-UIUX-1005: 4-char groups improve transcription accuracy
+                  (Wickelgren chunking research). Render as space-joined groups
+                  while keeping select-all so cashier can copy the raw value. */}
+              {issuedCode.replace(/(.{4})/g, '$1 ').trim()}
             </div>
           </div>
           <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
@@ -270,6 +273,9 @@ function IssueModal({ onClose }: IssueModalProps) {
             </div>
             {/* WEB-UIUX-994: max="10000" matches server $10k cap — freeform "Custom" fallback below presets */}
             <input
+              // WEB-UIUX-1003: autoFocus matches ReloadModal pattern so cashier on
+              // quiet POS does not have to tab-stop through DOM to start typing.
+              autoFocus
               type="number"
               // WEB-UIUX-1566: $0.01 gift cards make no business sense; bumped to $1 minimum
               // and whole-dollar step to match real-world denominations.

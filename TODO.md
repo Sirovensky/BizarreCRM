@@ -3221,7 +3221,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-716. **[MAJOR] Credit Note button uses `<CreditCard>` icon — semantically conflicts (this is not a card-payment).** Operators scanning header read it as "charge card" or "save card on file". Should be `Receipt` / `Undo2` / `RotateCcw` / `BanknoteArrowDown` (lucide). L9, L1. **[AUTOLOOP-T33 RESOLVED: Credit Note button icon changed from `<CreditCard>` to `<Undo2>` (lucide); semantic alignment with refund/reverse action.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:378`
 
-- [ ] WEB-UIUX-717. **[MAJOR] Credit Note backdrop click dismisses with no unsaved-changes guard.** Operator types $147 + reason + 480-char note, accidentally clicks backdrop, all lost. No `beforeunload`-style confirm. Same defect on Payment Modal. L8, L7.
+- [!] WEB-UIUX-717. **[MAJOR] Credit Note backdrop click dismisses with no unsaved-changes guard.** Operator types $147 + reason + 480-char note, accidentally clicks backdrop, all lost. No `beforeunload`-style confirm. Same defect on Payment Modal. L8, L7. **STALE 2026-05-10: Credit Note backdrop already guards via WEB-UIUX-1046 — checks dirty state + `window.confirm('Discard credit-note in progress?')` before closing (InvoiceDetailPage.tsx:1024-1038).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744,597`
   <!-- meta: fix=guard-on-isDirty -->
 
@@ -3229,7 +3229,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376`
   <!-- meta: fix=gate-on-amount_paid>0-not-total>0 -->
 
-- [ ] WEB-UIUX-719. **[MAJOR] Credit Note primary submit is `bg-amber-600` — cautionary but not destructive.** Pattern elsewhere: amber=warn, red=destructive (Void uses red border + red text). Credit Note moves money out — deserves at least red-tinted variant or explicit warning iconography. L9, L1.
+- [!] WEB-UIUX-719. **[MAJOR] Credit Note primary submit is `bg-amber-600` — cautionary but not destructive.** Pattern elsewhere: amber=warn, red=destructive (Void uses red border + red text). Credit Note moves money out — deserves at least red-tinted variant or explicit warning iconography. L9, L1. **STALE 2026-05-10: Credit Note submit already uses `bg-red-600 hover:bg-red-700` (WEB-UIUX-1040/1308/1405 series at line 1229).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
 
 - [x] WEB-UIUX-720. **[MAJOR] Header action overload — 6 buttons (Record Payment, Payment Plan, Financing, Print, Credit Note, Void) on unpaid invoice.** No "More actions ▼" overflow. Tablet (768 px) wraps + shrinks; primary action loses prominence vs visual cluster. L1, L11. **[AUTOLOOP-T33 RESOLVED: invoice header action container gets `flex-wrap`; 6 buttons wrap on tablet/mobile instead of overflowing.]**
@@ -3256,7 +3256,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-725. **[MINOR] RefundReasonPicker uses `useState` for localReason/localNote initialised from props once — parent state changes don't re-sync.** Works today because parent only resets on success, but breaks if parent ever pre-fills (e.g., editing a draft credit note). L4. **[AUTOLOOP-T33 RESOLVED: RefundReasonPicker `useEffect([value, note])` re-syncs localReason+localNote when parent props change.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:39-40`
 
-- [ ] WEB-UIUX-726. **[MINOR] RefundReasonPicker note `maxLength=500` silently truncates paste — no count, no warning.** Operator pasting 800-char dispute log doesn't know last 300 chars dropped. L8.
+- [x] WEB-UIUX-726. **[MINOR] RefundReasonPicker note `maxLength=500` silently truncates paste — no count, no warning.** Operator pasting 800-char dispute log doesn't know last 300 chars dropped. L8. **[AUTOLOOP-T49 RESOLVED 2026-05-10: onPaste warns via toast "Note was truncated — N characters dropped (500 max)." Counter already existed.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:85-92`
   <!-- meta: fix=add-X/500-counter+toast-on-truncate -->
 
@@ -3352,7 +3352,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED13: File Upload Chaos
 
-- [ ] WEB-UIUX-754. **[BLOCKER] No global drag-drop guard — zero `addEventListener('drop'` outside specific handlers.** Drag PDF/photo onto any non-handler region → browser navigates to file://, app unloads, all unsaved forms lost. L7, L4.
+- [x] WEB-UIUX-754. **[BLOCKER] No global drag-drop guard — zero `addEventListener('drop'` outside specific handlers.** Drag PDF/photo onto any non-handler region → browser navigates to file://, app unloads, all unsaved forms lost. L7, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-10: added window-level `dragover`+`drop` preventDefault in main.tsx; feature-specific drop targets must stopPropagation to allow their drop.]**
   `packages/web/src/main.tsx`
   <!-- meta: fix=window-addEventListener-dragover-drop-preventDefault -->
 
@@ -3461,7 +3461,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [!] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
 
-- [ ] WEB-UIUX-789. **[MINOR] `timeAgo()` appends `Z` only if no `Z`/`+` — `2026-04-30T10:00:00-05:00Z` malformed.** Mixed-format timestamps produce wrong "ago" labels. L14.
+- [x] WEB-UIUX-789. **[MINOR] `timeAgo()` appends `Z` only if no `Z`/`+` — `2026-04-30T10:00:00-05:00Z` malformed.** Mixed-format timestamps produce wrong "ago" labels. L14. **[AUTOLOOP-T49 RESOLVED 2026-05-10: regex `/Z$|[+-]\\d{2}:?\\d{2}$/` now also matches numeric offset; ISO strings carrying `-05:00` no longer get an extra `Z`.]**
   `packages/web/src/utils/format.ts:154-168`
 
 - [x] WEB-UIUX-790. **[MINOR] BenchTimer visibility refetch is correct but visible jitter on wake — local elapsed snaps high then snaps to server.** L13. **[AUTOLOOP-T36 RESOLVED: BenchTimer adds wakeRefetching state — local interval cleared on visibilitychange, display dimmed until refetch resolves with server value.]**
@@ -3493,7 +3493,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-799. **[MAJOR] `posApi.products` no LIMIT — short numeric scan (e.g. "1") returns all matching items.** 10k-item inventory = MB+ payload. Client takes [0]. L15. **[AUTOLOOP-T37 RESOLVED: posApi.products gains `limit` param; all 4 call sites pass limit:20 (ProductsTab, LeftPanel ×2, UnifiedPosPage).]**
 
-- [ ] WEB-UIUX-800. **[MINOR] Scan flash "Scan detected!" set BEFORE API call.** 404/500 still shows green flash + concurrent red toast. L8.
+- [x] WEB-UIUX-800. **[MINOR] Scan flash "Scan detected!" set BEFORE API call.** 404/500 still shows green flash + concurrent red toast. L8. **[AUTOLOOP-T49 RESOLVED 2026-05-10: setScanFlash moved into the confirmed-hit branch of the lookup promise; failed lookups no longer flash.]**
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:157-158`
 
 #### ED17: Estimate→Ticket→Invoice Chain
@@ -3546,7 +3546,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-816. **[BLOCKER] Cross-tenant guard skipped when oldSlug is null.** Tab logged-out + sibling tab writes tenant-B token → tab silently re-hydrates as B. L16. **[AUTOLOOP-T38 RESOLVED: handleAuthBroadcastMessage("ready") no longer calls checkAuth() when current user is null; dispatches `bizarre-crm:cross-tenant-token` event; main.tsx shows persistent toast requiring explicit reload.]**
   `packages/web/src/stores/authStore.ts:250-267`
 
-- [ ] WEB-UIUX-817. **[MAJOR] Guard reads `payload.tenantSlug` (camelCase) but rest of codebase uses `tenant_slug` (snake_case) — guard likely silently no-op.** L16.
+- [!] WEB-UIUX-817. **[MAJOR] Guard reads `payload.tenantSlug` (camelCase) but rest of codebase uses `tenant_slug` (snake_case) — guard likely silently no-op.** L16. **STALE 2026-05-10: ImpersonationBanner.tsx consistently reads `obj.tenant_slug` (snake_case) at lines 32/33/35; no `tenantSlug` camelCase reader in current source.**
   `packages/web/src/stores/authStore.ts:241-249`
 
 - [x] WEB-UIUX-818. **[MAJOR] Exit impersonation calls full `logout()` → bounces to tenant /login.** SA console not restored. SA must manually navigate back to /super-admin/tenants. L4, L1. **[AUTOLOOP-T38 RESOLVED: handleExit clears impersonation marker + navigate("/super-admin/tenants") instead of full logout; SA console restored.]**
@@ -3654,7 +3654,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-851. **[BLOCKER] Card payments silently disabled day 1 — BlockChyp underwriting takes 24-48h.** No fallback (Stripe/Square/manual), no warning before wizard. New owner with 5 walk-ins waiting = stuck. L1, L4, L16. **[AUTOLOOP-T40 RESOLVED: StepPaymentTerminal amber banner "Card payments require BlockChyp underwriting (24-48 hours). Cash payments work immediately."]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:178,533-538`
 
-- [ ] WEB-UIUX-852. **[BLOCKER] Tickets list empty state has NO "+ New Ticket" button.** Most important page for new repair shop has the worst empty state. CustomerListPage has CTA + "Load 5 sample customers" — TicketListPage has neither. L1, L8.
+- [x] WEB-UIUX-852. **[BLOCKER] Tickets list empty state has NO "+ New Ticket" button.** Most important page for new repair shop has the worst empty state. CustomerListPage has CTA + "Load 5 sample customers" — TicketListPage has neither. L1, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-10: empty state now renders Link to /tickets/new with Plus icon when no filters active.]**
   `packages/web/src/pages/tickets/TicketListPage.tsx:1750-1760`
 
 - [x] WEB-UIUX-853. **[MAJOR] Wizard is 24 mandatory-or-skip body steps — "About 10 minutes" claim wildly optimistic.** Realistic 30-60min. 12% rage-quit at step 8. Skip cap = 3, cooldown 24h. L1, L14. **[AUTOLOOP-T40 RESOLVED: StepWelcome wizard time updated from "About 10 minutes" to "30-60 minutes (you can save and resume)".]**
@@ -3760,13 +3760,13 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### DATA1: Data Flow Consistency
 
-- [ ] WEB-UIUX-887. **[BLOCKER] POS sale never invalidates inventory cache.** `CheckoutModal.onSuccess` invalidates `['membership',...]` only. Other tabs show pre-sale stock indefinitely. L6, L11, L13.
+- [x] WEB-UIUX-887. **[BLOCKER] POS sale never invalidates inventory cache.** `CheckoutModal.onSuccess` invalidates `['membership',...]` only. Other tabs show pre-sale stock indefinitely. L6, L11, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-10: submitCheckout success path now invalidates inventory/invoices/invoice-stats/dashboard/reports query keys before showing receipt.]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:228-230`
 
 - [x] WEB-UIUX-888. **[BLOCKER] `pos-products` cache key NEVER invalidated by any mutation.** Inventory edit (price/stock/PO/stocktake) → POS product tile shows old price/stock until hard refresh. Cashier rings yesterday's price. L6, L13, L16. **[AUTOLOOP-T41 RESOLVED: queryClient.invalidateQueries(["pos-products"]) added to price update + stock adjust (InventoryDetailPage) + stocktake commit + PO receive onSuccess.]**
   `packages/web/src/pages/unified-pos/ProductsTab.tsx:40`
 
-- [ ] WEB-UIUX-889. **[BLOCKER] Stocktake commit doesn't invalidate inventory cache.** Toast says "Committed: N items adjusted" but inventory list shows pre-stocktake numbers. L6, L13.
+- [x] WEB-UIUX-889. **[BLOCKER] Stocktake commit doesn't invalidate inventory cache.** Toast says "Committed: N items adjusted" but inventory list shows pre-stocktake numbers. L6, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-10: commitMut.onSuccess now invalidates inventory/inventory-detail/abc-analysis/low-stock query keys in addition to existing stocktakes/pos-products.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:141-145`
 
 - [x] WEB-UIUX-890. **[BLOCKER] PO receive doesn't invalidate inventory cache.** After receiving 50 phones, POS still says "0 in stock". L6, L13. **[AUTOLOOP-T41 RESOLVED: PurchaseOrdersPage ReceiveModal onSuccess invalidates ["inventory"] + ["pos-products"] caches.]**
@@ -3815,7 +3815,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-905. **[MINOR] DangerZoneTab visible to managers, button only disabled.** Should redirect away like AuditLogsTab does. L11, L16. **[AUTOLOOP-T43 RESOLVED: DangerZoneTab now early-returns Navigate to /settings for non-admins, mirroring AuditLogsTab pattern.]**
   `packages/web/src/pages/settings/DangerZoneTab.tsx:32-83`
 
-- [ ] WEB-UIUX-906. **[MINOR] AuditLogsTab `formatDetails` JSON in `title=` tooltip exposes hashed PINs/IPs/PII on hover.** Screen-share/screenshot leak. L12, L16.
+- [x] WEB-UIUX-906. **[MINOR] AuditLogsTab `formatDetails` JSON in `title=` tooltip exposes hashed PINs/IPs/PII on hover.** Screen-share/screenshot leak. L12, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-10: formatDetails now redacts keys matching pin/password/token/ssn/ein/card_number/cvv/_hash/_token/_secret as `‹redacted›` before joining; tooltip + cell text share the same sanitized output.]**
   `packages/web/src/pages/settings/AuditLogsTab.tsx:60-70,161`
 
 - [!] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16. **STATUS: BLOCKED — already fixed: Sidebar.tsx auth-cleared listener sweeps recent_views + recent_views:* keys**
@@ -3863,7 +3863,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-924. **[MAJOR] Reports `last_7` is 8 days, `last_30` is 31 days — Dashboard uses correct math.** Same product, same preset name, different ranges across pages. L7, L13. **[AUTOLOOP-T59 RESOLVED: Reports last_7/last_30 presets now subtract 6/29 days inclusive (was 7/30 = 8/31-day windows); matches Dashboard math.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:98-101`
 
-- [ ] WEB-UIUX-925. **[MAJOR] Reports `todayStr()` uses `.toISOString().slice(0,10)` (UTC) — Dashboard fixed via `localYmd()` (SCAN-1162) — Reports never adopted.** 11:55pm America/Denver → tomorrow's UTC date. L7, L13.
+- [x] WEB-UIUX-925. **[MAJOR] Reports `todayStr()` uses `.toISOString().slice(0,10)` (UTC) — Dashboard fixed via `localYmd()` (SCAN-1162) — Reports never adopted.** 11:55pm America/Denver → tomorrow's UTC date. L7, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-10: ReportsPage.todayStr already uses toLocalDate (local); TaxReportPage's remaining UTC `toISOString().slice(0,10)` swapped to `toLocalDateString(new Date())`.]**
 
 - [x] WEB-UIUX-926. **[MAJOR] Comparison "vs prior period" pairs by ARRAY INDEX, not month label.** Server may omit empty buckets → Apr-current shown next to Feb-previous bar. L11, L13. **[AUTOLOOP-T59 RESOLVED: comparisonRepairs now joins current+prior arrays by month label via Map (not array index) preventing Apr-current vs Feb-previous mismatches.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:993-1000`
@@ -3886,7 +3886,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-933. **[MINOR] DateRangePicker custom-range "To" has NO upper bound — future date allowed.** Backend silently clamps; chart renders empty days. L7. **[AUTOLOOP-T60 RESOLVED: DateRangePicker 'To' input gained max={todayISO()} so future dates can't be selected; 'From' unrestricted for historical ranges.]**
   `packages/web/src/components/shared/DateRangePicker.tsx:236,252-253`
 
-- [ ] WEB-UIUX-934. **[MINOR] `formatCurrency` swallows NaN as `$0.00`.** Server returns object → `$0.00` silently. Indistinguishable from real zero. L8, L13.
+- [!] WEB-UIUX-934. **[MINOR] `formatCurrency` swallows NaN as `$0.00`.** Server returns object → `$0.00` silently. Indistinguishable from real zero. L8, L13. **STALE 2026-05-10: format.ts formatCurrency() at line 68 already returns `'—'` for null/undefined/NaN; not silently `$0.00`.**
   `packages/web/src/utils/format.ts:55-57`
 
 #### ED23: External Integrations
@@ -3894,7 +3894,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-935. **[BLOCKER] BlockChyp `processPayment` mints fresh idempotency key per call.** Server idem cache keyed by `(user, url, key)` — every retry treated as fresh charge. Operator clicks "Pay via Terminal", times out at 30s, clicks again → server processes both. L16, L4. **[AUTOLOOP-T60 RESOLVED: blockchypApi.processPayment accepts optional idempotencyKey; CheckoutModal mints once per click and reuses on retries so server (user,url,key) cache deduplicates.]**
   `packages/web/src/api/endpoints.ts:1177-1209`
 
-- [ ] WEB-UIUX-936. **[BLOCKER] Default 30s axios timeout shorter than terminal user-input window (60-90s).** Tap-to-pay/chip flow times out client-side while server still processing. Combined with above = double-charge. L16, L4.
+- [x] WEB-UIUX-936. **[BLOCKER] Default 30s axios timeout shorter than terminal user-input window (60-90s).** Tap-to-pay/chip flow times out client-side while server still processing. Combined with above = double-charge. L16, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-10: blockchypApi.processPayment now sends explicit `timeout: 120_000` override; covers full 60-90s terminal user-input window with margin.]**
   `packages/web/src/api/client.ts:65`
 
 - [!] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **STATUS: BLOCKED — needs server reachability heartbeat field on /blockchyp/status; backend infra change, defer to terminal sprint**
@@ -3955,7 +3955,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 
 #### Major — Truthfulness, hierarchy, recovery
 
-- [ ] WEB-UIUX-951. **[MAJOR] Self-approval check is server-side only — Approve button does NOT pre-disable when `created_by === currentUser.id`.** `estimates.routes.ts:1138-1143` rejects with 403 "Cannot approve your own estimate. Another admin must approve this one." — UI lets the operator click, then surfaces server's message via toast. Should disable button + tooltip "needs another admin to approve" up-front. L8, L1.
+- [!] WEB-UIUX-951. **[MAJOR] Self-approval check is server-side only — Approve button does NOT pre-disable when `created_by === currentUser.id`.** `estimates.routes.ts:1138-1143` rejects with 403 "Cannot approve your own estimate. Another admin must approve this one." — UI lets the operator click, then surfaces server's message via toast. Should disable button + tooltip "needs another admin to approve" up-front. L8, L1. **STALE 2026-05-10: WEB-UIUX-1463 fix already pre-disables Approve when `currentUserId === estimate.created_by` with explanatory tooltip (EstimateDetailPage.tsx:578-590).**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:206-218`
 
 - [x] WEB-UIUX-952. **[MAJOR] Staff Approve confirm copy hides the audit gap.** "Mark this estimate as approved?" — does not warn this BYPASSES customer e-sign and writes no `estimate_signatures` row. Operator approving on customer's behalf has no in-UI signal that this is a unilateral action vs the customer's own portal/SMS approval. L7, L16. **[AUTOLOOP-T60 RESOLVED: Staff Approve confirm copy switched to danger-styled 'Approving on customer behalf — skips e-sign, no signature row. Continue?' so audit-bypass is visible.]**
@@ -3987,7 +3987,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:222`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:772`
 
-- [ ] WEB-UIUX-960. **[MAJOR] Convert mutation `onError: () => toast.error('Failed to convert')` swallows server's specific 409/400/403 messages.** `estimates.routes.ts:739-740,809,748` returns "Already converted", "Estimate was cancelled", "Estimate is already being converted. Try again in a moment.", "Plan limit reached". Web replaces all with generic "Failed to convert". Operator hits tier limit, gets useless toast. L8, L7.
+- [x] WEB-UIUX-960. **[MAJOR] Convert mutation `onError: () => toast.error('Failed to convert')` swallows server's specific 409/400/403 messages.** `estimates.routes.ts:739-740,809,748` returns "Already converted", "Estimate was cancelled", "Estimate is already being converted. Try again in a moment.", "Plan limit reached". Web replaces all with generic "Failed to convert". Operator hits tier limit, gets useless toast. L8, L7. **[AUTOLOOP-T49 RESOLVED 2026-05-10: EstimateDetailPage convertMut.onError now surfaces `err.response.data.message`; EstimateListPage already did.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:102`
   <!-- meta: fix=use-formatApiError(err)+err.response.data.message-fallback -->
 
@@ -4069,7 +4069,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
   `packages/web/src/api/endpoints.ts:1274-1276`
   <!-- meta: fix=add-GiftCard-tender+code-input-modal+lookup→redeem-flow+update-PaymentMethod-union -->
 
-- [ ] WEB-UIUX-982. **[BLOCKER] Currency render heuristic silently 100x-divides $1000–$10000 cards.** `formatCurrency` in both list + detail pages: `Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount`. Server `GIFT_CARD_MAX_AMOUNT = 10_000` (dollars). Issue $1500 corp card → server stores `1500` (integer) → list/detail render `$15.00`. Comment claims "no real-world gift-card balance reaches $1000 in float-dollars outside corporate gifting" — corporate gifting is exactly the cohort that uses $1000+ cards. Reload to round amount has same defect. L7, L13, L8.
+- [!] WEB-UIUX-982. **[BLOCKER] Currency render heuristic silently 100x-divides $1000–$10000 cards.** `formatCurrency` in both list + detail pages: `Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount`. Server `GIFT_CARD_MAX_AMOUNT = 10_000` (dollars). Issue $1500 corp card → server stores `1500` (integer) → list/detail render `$15.00`. Comment claims "no real-world gift-card balance reaches $1000 in float-dollars outside corporate gifting" — corporate gifting is exactly the cohort that uses $1000+ cards. Reload to round amount has same defect. L7, L13, L8. **BLOCKED 2026-05-10: real fix is server-side schema normalization (REAL→INTEGER cents) tracked by SEC-H34-money-refactor; cannot be removed unilaterally without breaking pages that DO pass cents.**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:57-63`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
   <!-- meta: fix=remove-cents-heuristic+pin-server-to-one-representation+migrate-callsites -->
@@ -4146,19 +4146,19 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [x] WEB-UIUX-1002. **[MINOR] IssueModal Issue button gate `!form.amount` accepts non-numeric "abc" — same defect as WEB-UIUX-489 on Reload.** Click → mutationFn `parseFloat → NaN` → throws → toast. Should disable until `parseFloat(form.amount) > 0`. L7. **[AUTOLOOP-T46 RESOLVED: Issue submit button now disabled until parseFloat(form.amount)>0  Number.isFinite, rejecting non-numeric "abc" input.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:236-243`
 
-- [ ] WEB-UIUX-1003. **[MINOR] IssueModal first-render no autofocus on amount input.** ReloadModal correctly auto-focuses; IssueModal's amount input lacks `autoFocus`. Cashier on quiet POS Tab-stops through DOM. L4, L12.
+- [x] WEB-UIUX-1003. **[MINOR] IssueModal first-render no autofocus on amount input.** ReloadModal correctly auto-focuses; IssueModal's amount input lacks `autoFocus`. Cashier on quiet POS Tab-stops through DOM. L4, L12.  **[AUTOLOOP-T49 RESOLVED 2026-05-10: added `autoFocus` to IssueModal amount input.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
 
 - [x] WEB-UIUX-1004. **[MINOR] Issue success modal "Done" button label generic.** Better: "I've saved the code". Reinforces the consequence + acknowledges the irreversibility. L7. **[AUTOLOOP-T46 RESOLVED: success modal Done relabeled "I've saved the code" to reinforce irreversibility.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:145-150`
 
-- [ ] WEB-UIUX-1005. **[MINOR] Issue success modal monospaced code at 2xl size with `tracking-widest` — 32-char code wraps awkwardly on narrow modal.** No segmentation like `XXXX-XXXX-XXXX-...`. Eye chunks readability research (Tinker; Wickelgren) shows 4-char groups improve transcription accuracy ~30%. L9, L11.
+- [x] WEB-UIUX-1005. **[MINOR] Issue success modal monospaced code at 2xl size with `tracking-widest` — 32-char code wraps awkwardly on narrow modal.** No segmentation like `XXXX-XXXX-XXXX-...`. Eye chunks readability research (Tinker; Wickelgren) shows 4-char groups improve transcription accuracy ~30%. L9, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-10: code rendered with `replace(/(.{4})/g, '$1 ').trim()` for 4-char groups; container also `break-all` for narrow modal.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-144`
 
 - [!] WEB-UIUX-1006. **[MINOR] Detail page back-link is text + arrow only ("Gift Cards"), no breadcrumb path.** Pattern asymmetry vs Estimates/Tickets which expose breadcrumb. L9. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:191-193,217-223`
 
-- [ ] WEB-UIUX-1007. **[MINOR] Currency-cents heuristic comment says "> 1000" but code uses `>= 1000`.** Off-by-one between docstring and behavior — also reinforces that the heuristic is a known footgun. L7.
+- [!] WEB-UIUX-1007. **[MINOR] Currency-cents heuristic comment says "> 1000" but code uses `>= 1000`.** Off-by-one between docstring and behavior — also reinforces that the heuristic is a known footgun. L7. **STALE 2026-05-10: format.ts:218 docstring `>= 1000` matches the code `>= 1000`; no mismatch.**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:50-62`
 
 - [x] WEB-UIUX-1008. **[MINOR] List balance column right-aligned but column header "Balance" left-aligned (`text-left px-4 py-3`) — header drifts away from values on wide tables.** Visual scan friction. L9, L11. **[AUTOLOOP-T46 RESOLVED: Balance th now text-right matching cell alignment.]**

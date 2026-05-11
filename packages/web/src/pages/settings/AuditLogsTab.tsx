@@ -20,13 +20,32 @@ interface AuditLog {
 // rendering and the truncated cell never shows them anyway.
 const MAX_DETAIL_LEN = 300;
 
+// WEB-UIUX-906: avoid surfacing hashed PINs / IPs / PII through hover tooltips.
+// Browser title= attributes are visible to screen-share, screenshot OCR, and
+// accessibility tooling. Redact known-sensitive fields before rendering details.
+const REDACTED_KEYS = new Set([
+  'pin', 'pin_hash', 'password', 'password_hash', 'token', 'refresh_token',
+  'ssn', 'ein', 'tax_id', 'card_number', 'cvv', 'cvc', 'fingerprint',
+  'authorization', 'cookie', 'set-cookie',
+]);
+
+function isRedactedKey(k: string): boolean {
+  const lower = k.toLowerCase();
+  if (REDACTED_KEYS.has(lower)) return true;
+  // Heuristic: anything ending in _hash / _token / _secret.
+  return /_hash$|_token$|_secret$/.test(lower);
+}
+
 function formatDetails(details: string | null): string {
   if (!details) return '-';
   let out: string;
   try {
     const obj = JSON.parse(details);
     out = Object.entries(obj)
-      .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      .map(([k, v]) => {
+        if (isRedactedKey(k)) return `${k}: ‹redacted›`;
+        return `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`;
+      })
       .join(', ');
   } catch {
     out = details;

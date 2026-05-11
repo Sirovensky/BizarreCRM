@@ -166,6 +166,12 @@ export function StocktakePage() {
       queryClient.invalidateQueries({ queryKey: ['stocktakes'] });
       queryClient.invalidateQueries({ queryKey: ['stocktake', selectedId] });
       queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      // WEB-UIUX-889: inventory list/detail/abc/low-stock caches all hold
+      // pre-commit `in_stock` — invalidate so they reflect the adjusted counts.
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['abc-analysis'] });
+      queryClient.invalidateQueries({ queryKey: ['low-stock'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Commit failed'),
   });

@@ -1502,6 +1502,10 @@ export const blockchypApi = {
     }>(
       '/blockchyp/process-payment',
       { invoiceId, tip, amount, idempotency_key: idemKey },
+      // WEB-UIUX-936: terminal user-input (tap/chip/PIN) can take 60-90s.
+      // Default 30s axios timeout aborts client-side while server is still
+      // waiting on terminal — combined with retry, can double-charge.
+      { timeout: 120_000 },
     );
   },
   adjustTip: (transaction_id: string, new_tip: number) =>

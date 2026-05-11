@@ -13,6 +13,7 @@
  * REASONS labels (below) or the file name need updating — not both.
  */
 import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 
 export type RefundReasonCode =
   | 'defective'
@@ -138,6 +139,15 @@ export function RefundReasonPicker({
           value={localNote}
           onChange={(e) => handleNoteChange(e.target.value)}
           onBlur={() => isOtherSelected && setNoteTouched(true)}
+          // WEB-UIUX-726: warn the operator when a paste is silently truncated.
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData('text');
+            const projected = (localNote ?? '').length + pasted.length;
+            if (projected > 500) {
+              const dropped = projected - 500;
+              toast(`Note was truncated — ${dropped} characters dropped (500 max).`, { icon: '⚠️' });
+            }
+          }}
           placeholder={isOtherSelected ? 'Please describe the reason…' : 'Free-form context to help with reporting…'}
           className={`w-full rounded-md border bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
             isOtherSelected && noteTouched && noteIsShort

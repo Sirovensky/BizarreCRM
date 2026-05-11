@@ -383,7 +383,11 @@ export function EstimateDetailPage() {
         { duration: 8000 },
       );
     },
-    onError: () => toast.error('Failed to convert'),
+    // WEB-UIUX-960: surface the server's specific message (Already converted,
+    // Estimate was cancelled, Plan limit reached, etc.) instead of swallowing it
+    // with a generic 'Failed to convert'.
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message || 'Failed to convert'),
   });
 
   const updateMut = useMutation({

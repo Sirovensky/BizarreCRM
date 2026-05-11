@@ -1984,6 +1984,17 @@ export function TicketListPage() {
                           ? 'No tickets match your filters'
                           : 'Create your first ticket to get started'}
                       </p>
+                      {/* WEB-UIUX-852: surface the primary CTA on the empty state
+                          since the page-level "+ New Ticket" button is far away
+                          for new shops. */}
+                      {!(keyword || statusFilter || dateFilter) && (
+                        <Link
+                          to="/tickets/new"
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+                        >
+                          <Plus className="h-4 w-4" /> New Ticket
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </tr>
