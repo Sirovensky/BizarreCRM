@@ -28,6 +28,7 @@ interface Employee {
   updated_at: string;
   // WEB-S6-033: list endpoint now includes these fields so no per-row fetch needed
   is_clocked_in?: number | boolean;
+  active_clock_in_at?: string | null;
   weekly_hours?: number;
 }
 
@@ -233,13 +234,16 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
             </div>
           ) : (
             <>
-              <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
+              <label htmlFor="pin-modal-input" className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
                 Enter PIN
               </label>
               <div className="relative">
                 <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
                 {/* WEB-UIUX-1266: type toggles between password and text via Eye/EyeOff icon */}
+                {/* WEB-UIUX-1271: aria-describedby points at the visible hint
+                    below so SR users hear the 4-6 digit length constraint. */}
                 <input
+                  id="pin-modal-input"
                   type={showPin ? 'text' : 'password'}
                   inputMode="numeric"
                   maxLength={6}
@@ -254,6 +258,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
                   placeholder="4-6 digit PIN"
                   autoFocus
                   disabled={!!lockedUntil}
+                  aria-describedby="pin-modal-hint"
                   className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-10 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 disabled:opacity-50"
                 />
                 {/* WEB-UIUX-1266: show/hide toggle button */}
@@ -266,6 +271,11 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
                   {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {/* WEB-UIUX-1271: visible-on-screen hint paired with aria-describedby
+                  so the length constraint is announced to SR users. */}
+              <p id="pin-modal-hint" className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                4–6 digit PIN (digits only)
+              </p>
               {/* WEB-UIUX-1262: rate-limit lockout feedback — live countdown + attempts remaining */}
               {lockedUntil && countdown && (
                 <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-300">
@@ -351,6 +361,15 @@ function PayRateEditor({ employeeId, currentRate }: { employeeId: number; curren
     if (trimmed !== '' && (isNaN(rate!) || rate! < 0 || rate! > 9999.99)) {
       toast.error('Pay rate must be a number between 0 and 9999.99');
       return;
+    }
+    // WEB-UIUX-1265: $0 or sub-$1 pay rates are almost certainly typos.
+    // Confirm before banking a value that silently zeros out future
+    // commissions/hours math for this employee.
+    if (rate !== null && rate < 1) {
+      const label = rate === 0 ? '$0.00/hr (no pay)' : `$${rate.toFixed(2)}/hr`;
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm(`Set pay rate to ${label}? This will be used for all future timesheet + commission math.`);
+      if (!ok) return;
     }
     mutation.mutate(rate);
   }
@@ -461,7 +480,9 @@ function EmployeeExpandedRow({
             {isDetailLoading && !detail ? (
               <p className="text-sm text-surface-400">Loading clock entries...</p>
             ) : recentClock.length === 0 ? (
-              <p className="text-sm text-surface-400">No clock entries yet. Use the clock in/out buttons above.</p>
+              // WEB-UIUX-1269: spatial reference depends on viewport; just
+              // point to the action label.
+              <p className="text-sm text-surface-400">No clock entries yet. Use the Clock In button on this row to log a shift.</p>
             ) : (
               <div className="space-y-1">
                 {recentClock.map((entry) => (
@@ -631,8 +652,21 @@ export function EmployeeListPage() {
   // Clock out mutation
   const clockOutMutation = useMutation({
     mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockOut(id, pin),
-    onSuccess: () => {
-      toast.success('Clocked out successfully');
+    onSuccess: (res: any) => {
+      // WEB-UIUX-1256: surface total hours banked + (when available)
+      // clock-in time so the worker has explicit confirmation of what
+      // was logged. Server returns total_hours on the response payload
+      // (employees.routes.ts:457,473).
+      const data = res?.data?.data ?? res?.data ?? {};
+      const totalHours = Number(data.total_hours ?? 0);
+      const clockInAt = data.clock_in ?? data.clock_in_at ?? null;
+      let msg = 'Clocked out successfully';
+      if (totalHours > 0) {
+        const h = Math.floor(totalHours);
+        const m = Math.round((totalHours - h) * 60);
+        msg = `Clocked out — ${h}h ${m}m logged${clockInAt ? ` since ${new Date(clockInAt).toLocaleTimeString()}` : ''}`;
+      }
+      toast.success(msg);
       setPinModal(null);
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
@@ -664,14 +698,19 @@ export function EmployeeListPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Employees</h1>
-          <p className="text-surface-500 dark:text-surface-400">Manage technicians and staff</p>
+          {/* WEB-UIUX-1263: subtitle covers every staff role, not just techs. */}
+          <p className="text-surface-500 dark:text-surface-400">Employees, time clock, and payroll roster</p>
         </div>
+        {/* WEB-UIUX-1258: label promises action; it's actually navigation to
+            the user-management settings tab. Make the destination explicit. */}
         <a
           href="/settings/users"
           className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+          title="Open Settings → Users to create or invite a new employee"
+          aria-label="Add a new employee — opens Settings > Users"
         >
           <UserCog className="h-4 w-4" />
-          Add Employee
+          Add Employee (in Settings)
         </a>
       </div>
 
@@ -760,6 +799,30 @@ export function EmployeeListPage() {
   );
 }
 
+// WEB-UIUX-1254: tiny live-elapsed display rendered under the on-shift pill.
+// Re-ticks every 30s so the row doesn't thrash on second boundaries while the
+// rest of the list re-renders.
+function ActiveShiftElapsed({ clockInAt }: { clockInAt: string }) {
+  const [, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const startMs = new Date(clockInAt).getTime();
+  if (!Number.isFinite(startMs)) return null;
+  const elapsedMin = Math.max(0, Math.floor((Date.now() - startMs) / 60_000));
+  const h = Math.floor(elapsedMin / 60);
+  const m = elapsedMin % 60;
+  return (
+    <span
+      className="ml-2 text-[11px] font-mono tabular-nums text-surface-500 dark:text-surface-400"
+      title={`Clocked in at ${new Date(clockInAt).toLocaleTimeString()}`}
+    >
+      {h > 0 ? `${h}h ${m}m` : `${m}m`}
+    </span>
+  );
+}
+
 // ─── Employee Row ────────────────────────────────────────────────────
 // WEB-S6-033 / WEB-UIUX-184: clock status + weekly hours are served by the
 // list endpoint, and the expanded panel reuses one detail payload for pay rate,
@@ -826,6 +889,8 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
           </span>
         </td>
         {/* WEB-UIUX-1272: pill badge replaces tiny dot for better kiosk legibility */}
+        {/* WEB-UIUX-1254: live elapsed timer under the pill so a worker sees
+            "On shift · 4h 12m" at a glance. */}
         <td className="px-4 py-3">
           <span className={cn(
             'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold',
@@ -835,6 +900,9 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
           )}>
             {isClockedIn ? 'On shift' : 'Off'}
           </span>
+          {isClockedIn && employee.active_clock_in_at && (
+            <ActiveShiftElapsed clockInAt={employee.active_clock_in_at} />
+          )}
         </td>
         <td className="px-4 py-3 text-surface-700 dark:text-surface-300">
           {formatHours(weeklyHours)}

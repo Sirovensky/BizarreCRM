@@ -189,6 +189,11 @@ router.get(
                SELECT 1 FROM clock_entries ce
                WHERE ce.user_id = u.id AND ce.clock_out IS NULL
              ) THEN 1 ELSE 0 END AS is_clocked_in,
+             -- WEB-UIUX-1254: timestamp of the currently-open clock entry so
+             -- the client can render a live elapsed timer on the row.
+             (SELECT ce.clock_in FROM clock_entries ce
+                WHERE ce.user_id = u.id AND ce.clock_out IS NULL
+                ORDER BY ce.clock_in DESC LIMIT 1) AS active_clock_in_at,
              COALESCE((
                SELECT SUM(
                  CASE WHEN ce.clock_out IS NULL

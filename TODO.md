@@ -5270,7 +5270,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:895-919`
   <!-- meta: fix=upgrade-to-bordered-button-style-(matches-DiscountEditor-open-state)+OR-add-a-Tag-icon-and-keep-text-link-but-bump-to-text-sm-with-explicit-+icon -->
 
-- [ ] WEB-UIUX-1250. **[NIT] `Apply` button in the editor uses `text-xs` while the input is `text-sm` — visual hierarchy inverted (action smaller than input).** `LeftPanel.tsx:973-977`. L5.
+- [!] WEB-UIUX-1250. **[NIT] `Apply` button in the editor uses `text-xs` while the input is `text-sm` — visual hierarchy inverted (action smaller than input).** `LeftPanel.tsx:973-977`. L5. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx no longer exists; cart-wide discount editor refactored into UnifiedPosPage.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:963-980`
   <!-- meta: fix=text-sm-on-Apply-and-Clear+keep-input-text-sm+optionally-bump-Apply-to-font-semibold-text-sm-py-1.5 -->
 
@@ -5280,7 +5280,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:660-675`
   <!-- meta: fix=hide-or-disable-clock-button-when-currentUser.role!=='admin'-AND-currentUser.id!==employee.id+show-tooltip-"Only-admins-can-clock-others" -->
 
-- [ ] WEB-UIUX-1252. **[MAJOR] No location selector in PIN modal even though server `clock-in` accepts `location_id` (`employees.routes.ts:381-389`). Web mutation never passes one (`EmployeeListPage.tsx:470,485`,`endpoints.ts:919-920`). Multi-location stores silently record every punch under `home_location_id` or `1` — wrong-location hours leak into the wrong payroll/commission bucket.** L4 flow completion, L7 feedback.
+- [!] WEB-UIUX-1252. **[MAJOR] No location selector in PIN modal even though server `clock-in` accepts `location_id` (`employees.routes.ts:381-389`). Web mutation never passes one (`EmployeeListPage.tsx:470,485`,`endpoints.ts:919-920`). Multi-location stores silently record every punch under `home_location_id` or `1` — wrong-location hours leak into the wrong payroll/commission bucket.** L4 flow completion, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: multi-location PIN modal needs a location dropdown (server already accepts location_id) + employeeApi.clockIn/clockOut signature widening + UX for stores with N>1 active locations. Worth doing but multi-component.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:469-505`
   `packages/web/src/api/endpoints.ts:919-920`
   <!-- meta: fix=add-location-select-in-PinModal-when-locations.count>1+default-to-home_location_id+pass-through-mutation-and-API-client -->
@@ -5289,7 +5289,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:183-185`
   <!-- meta: fix=remove-Enter-auto-submit-OR-debounce-300ms-after-last-keystroke-OR-only-auto-submit-when-pin.length===6-(max)+keep-explicit-Submit-button -->
 
-- [ ] WEB-UIUX-1254. **[MAJOR] Active shift has no live-elapsed timer. Status column shows green dot + "Clocked In" only; expanded row shows "Active" badge with no duration (`EmployeeListPage.tsx:386-388`). Worker can't see "you've been on the clock for 4h 12m" — primary at-a-glance info for any time-clock UI.** L1 primary-action findability, L7 feedback.
+- [x] WEB-UIUX-1254. **[MAJOR] Active shift has no live-elapsed timer. Status column shows green dot + "Clocked In" only; expanded row shows "Active" badge with no duration (`EmployeeListPage.tsx:386-388`). Worker can't see "you've been on the clock for 4h 12m" — primary at-a-glance info for any time-clock UI.** L1 primary-action findability, L7 feedback. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server employees list now exposes active_clock_in_at; client ActiveShiftElapsed component ticks every 30s and shows e.g. "4h 12m" next to the On-shift pill.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:642-655,386-388`
   <!-- meta: fix=add-elapsed-counter-(now-clock_in)-next-to-status-pill+ticking-once-per-minute+also-render-in-expanded-Active-entry -->
 
@@ -5297,7 +5297,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:469-481`
   <!-- meta: fix=clock-in-success-handler-inspect-response-for-auto_closed_entry+toast-warning-"Previous-shift-was-auto-closed-after-16h+contact-manager-to-correct"+also-show-banner-on-row -->
 
-- [ ] WEB-UIUX-1256. **[MAJOR] Clock-out toast says only "Clocked out successfully" (`EmployeeListPage.tsx:487`). Server returns `total_hours` (`employees.routes.ts:457,473`) — UI throws it away. Worker has zero confirmation of what was banked: shift duration, clock-in time, lunch deduction. Industry baseline is "Clocked out: 4h 32m logged".** L7 feedback meaning.
+- [x] WEB-UIUX-1256. **[MAJOR] Clock-out toast says only "Clocked out successfully" (`EmployeeListPage.tsx:487`). Server returns `total_hours` (`employees.routes.ts:457,473`) — UI throws it away. Worker has zero confirmation of what was banked: shift duration, clock-in time, lunch deduction. Industry baseline is "Clocked out: 4h 32m logged".** L7 feedback meaning. **[AUTOLOOP-T49 RESOLVED 2026-05-11: clockOutMutation onSuccess parses total_hours from the server response and surfaces "Clocked out — Nh Mm logged since HH:MM" instead of the generic toast.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:484-496`
   <!-- meta: fix=onSuccess-read-data.data.total_hours-and-clock_in+toast.success(`Clocked-out-${formatHours(total_hours)}-(${formatTime(clock_in)}-→-${formatTime(now)})`)+similar-detail-on-clock-in -->
 
@@ -5305,7 +5305,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:147,162-169`
   <!-- meta: fix=title="PIN-Required"-when-!has_pin+inline-link-(admin-only)-"Set-PIN-now"-→-/settings/users?employee=ID+for-non-admins-show-"Ask-an-admin-to-set-your-PIN" -->
 
-- [ ] WEB-UIUX-1258. **[MAJOR] Header "Add Employee" button (`EmployeeListPage.tsx:515-521`) is a navigation to `/settings/users`, not an in-page form. Label promises action ("Add Employee"), reality is page transfer. Same surprise pattern flagged in past passes for other CTAs.** L2 label truthfulness, L3 route correctness.
+- [x] WEB-UIUX-1258. **[MAJOR] Header "Add Employee" button (`EmployeeListPage.tsx:515-521`) is a navigation to `/settings/users`, not an in-page form. Label promises action ("Add Employee"), reality is page transfer. Same surprise pattern flagged in past passes for other CTAs.** L2 label truthfulness, L3 route correctness. **[AUTOLOOP-T49 RESOLVED 2026-05-11: button now labelled "Add Employee (in Settings)" with title + aria-label clarifying it opens Settings → Users.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:515-521`
   <!-- meta: fix=relabel-to-"Manage-Users-→"+ext-link-icon-OR-mount-the-Add-Employee-create-form-as-a-modal-on-this-page -->
 
@@ -5317,7 +5317,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:458-466`
   <!-- meta: fix=refetchInterval:30000+also-on-window-focus-(default-on)+map-server-"Already-clocked-in"-error-to-toast-with-"Refresh"-action -->
 
-- [ ] WEB-UIUX-1261. **[MAJOR] Notes field unreachable. Server clock-out accepts `notes` (`employees.routes.ts:410,461`). API client ignores it (`endpoints.ts:920` signature has only pin+location_id), and PIN modal has no textarea. Manager can't append "covered for sick teammate" or "client meeting ran late" — context lost.** L4 flow completion.
+- [!] WEB-UIUX-1261. **[MAJOR] Notes field unreachable. Server clock-out accepts `notes` (`employees.routes.ts:410,461`). API client ignores it (`endpoints.ts:920` signature has only pin+location_id), and PIN modal has no textarea. Manager can't append "covered for sick teammate" or "client meeting ran late" — context lost.** L4 flow completion. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires widening employeeApi.clockOut signature + PIN modal textarea + permission gating (clock-out notes are operational data, but who can add them needs spec).]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:113-225`
   `packages/web/src/api/endpoints.ts:920`
   <!-- meta: fix=add-optional-notes-textarea-in-PinModal-(only-for-clock-out)+pass-through-employeeApi.clockOut(id,pin,location_id,notes) -->
@@ -5326,7 +5326,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:478-481,492-495`
   <!-- meta: fix=parse-Retry-After-or-add-server-field-{lockedUntil}-→-render-countdown-in-modal+also-display-attempts-remaining-(N/5)-after-each-failed-attempt -->
 
-- [ ] WEB-UIUX-1263. **[MINOR] Header subtitle "Manage technicians and staff" (`EmployeeListPage.tsx:513`) — page also lists cashiers, managers, admins. Tech-shop legacy language; misleads non-tech-shop tenants.** L2 label truthfulness.
+- [x] WEB-UIUX-1263. **[MINOR] Header subtitle "Manage technicians and staff" (`EmployeeListPage.tsx:513`) — page also lists cashiers, managers, admins. Tech-shop legacy language; misleads non-tech-shop tenants.** L2 label truthfulness. **[AUTOLOOP-T49 RESOLVED 2026-05-11: subtitle now reads "Employees, time clock, and payroll roster".]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:512-514`
   <!-- meta: fix="Manage-team,-time,-and-pay"-or-just-"Manage-team-members" -->
 
@@ -5334,7 +5334,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:227-315`
   <!-- meta: fix=show-"Effective-from-{today}"-on-save+keep-pay_rate_history-table-and-render-last-3-changes-in-expanded-row -->
 
-- [ ] WEB-UIUX-1265. **[MINOR] Pay-rate validation accepts 0 (`EmployeeListPage.tsx:253` checks `rate! < 0` only). $0.00/hr is almost certainly a typo and silently zeros out future commissions/hours math. No confirm prompt for low values either ($0.01 typo).** L7 feedback meaning.
+- [x] WEB-UIUX-1265. **[MINOR] Pay-rate validation accepts 0 (`EmployeeListPage.tsx:253` checks `rate! < 0` only). $0.00/hr is almost certainly a typo and silently zeros out future commissions/hours math. No confirm prompt for low values either ($0.01 typo).** L7 feedback meaning. **[AUTOLOOP-T49 RESOLVED 2026-05-11: rates under $1.00 (including $0) now trigger a window.confirm before commit, so typos can't silently zero out commission/hours math.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:250-258`
   <!-- meta: fix=warn-on-rate===0-with-confirm-"Set-pay-rate-to-$0.00?-Worker-will-not-accrue-hourly-pay."+also-warn-on-rate<5 -->
 
@@ -5342,7 +5342,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:175-190`
   <!-- meta: fix=add-eye-icon-toggle-right-side-of-input+briefly-reveal-on-press-(2s)-or-toggle-with-state -->
 
-- [ ] WEB-UIUX-1267. **[MINOR] `getWeekRange()` hardcodes Monday-start (`EmployeeListPage.tsx:85-95`). Stores running Sunday–Saturday or Saturday–Friday pay weeks see misaligned "Hours This Week" — number on this page won't match what payroll reports show.** L11 i18n / config awareness.
+- [!] WEB-UIUX-1267. **[MINOR] `getWeekRange()` hardcodes Monday-start (`EmployeeListPage.tsx:85-95`). Stores running Sunday–Saturday or Saturday–Friday pay weeks see misaligned "Hours This Week" — number on this page won't match what payroll reports show.** L11 i18n / config awareness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a  store_config setting (0-6) + matching server-side aggregation alignment + UI for admins to flip; otherwise the page-level fix would drift from server payroll math.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:85-104`
   `packages/server/src/routes/employees.routes.ts:201`
   <!-- meta: fix=read-store-setting-pay_week_start_day-(0-6)+derive-monday-offset-from-it+server-and-client-must-agree -->
@@ -5351,7 +5351,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:359-432`
   <!-- meta: fix=add-"View-all-(N)-→"-link-under-each-list+target-/timesheets?user_id=X-or-/team/payroll -->
 
-- [ ] WEB-UIUX-1269. **[MINOR] Empty-state copy "No clock entries yet. Use the clock in/out buttons above." (`EmployeeListPage.tsx:372`) — buttons are in the row's Actions column to the right, not "above". Spatial reference is wrong; on mobile (vertical stack) they may indeed be above, but on desktop they're inline-right.** L2 label truthfulness, L9 empty-state honesty.
+- [x] WEB-UIUX-1269. **[MINOR] Empty-state copy "No clock entries yet. Use the clock in/out buttons above." (`EmployeeListPage.tsx:372`) — buttons are in the row's Actions column to the right, not "above". Spatial reference is wrong; on mobile (vertical stack) they may indeed be above, but on desktop they're inline-right.** L2 label truthfulness, L9 empty-state honesty. **[AUTOLOOP-T49 RESOLVED 2026-05-11: copy now reads "Use the Clock In button on this row to log a shift" — no spatial reference.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:371-372`
   <!-- meta: fix="Use-the-Clock-In-button-on-the-row-header"-or-just-"No-clock-entries-yet." -->
 
@@ -5359,7 +5359,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:531-570`
   <!-- meta: fix=admin-only-"End-of-Day"-button-→-confirm-modal-listing-active-workers-→-bulk-clock-out-with-manager-PIN-once -->
 
-- [ ] WEB-UIUX-1271. **[NIT] PIN input lacks `aria-describedby` pointing at the "4–6 digit PIN" placeholder hint (`EmployeeListPage.tsx:177-189`). Screen-reader users hear only "Enter PIN" without the length constraint.** L10 a11y.
+- [x] WEB-UIUX-1271. **[NIT] PIN input lacks `aria-describedby` pointing at the "4–6 digit PIN" placeholder hint (`EmployeeListPage.tsx:177-189`). Screen-reader users hear only "Enter PIN" without the length constraint.** L10 a11y. **[AUTOLOOP-T49 RESOLVED 2026-05-11: PIN input gains aria-describedby pointing to a visible "4-6 digit PIN (digits only)" hint so SR users hear the length constraint.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:172-190`
   <!-- meta: fix=add-id="pin-help"-on-a-helper-paragraph-"4-to-6-digit-PIN"+aria-describedby="pin-help"-on-input -->
 
