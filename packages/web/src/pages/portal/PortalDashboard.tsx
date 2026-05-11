@@ -105,6 +105,9 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
           )}
         </div>
 
+        {/* Membership self-service (WEB-UIUX-1485 / customer-portal self-service cancel) */}
+        <MembershipCard currency={currency} locale={locale} />
+
         {/* Ticket List */}
         <div>
           <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">Your Repairs</h2>
@@ -237,6 +240,167 @@ function StatusBadge({ name, color }: { name: string; color: string }) {
     >
       {name}
     </span>
+  );
+}
+
+interface MembershipCardProps {
+  currency: string;
+  locale: string;
+}
+
+function MembershipCard({ currency, locale }: MembershipCardProps) {
+  const [membership, setMembership] = useState<api.PortalMembership | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [confirming, setConfirming] = useState<'cancel' | 'resume' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getPortalMembership()
+      .then((m) => setMembership(m))
+      .catch(() => { /* silently absent — non-fatal */ })
+      .finally(() => setLoaded(true));
+  }, []);
+
+  if (!loaded || !membership) return null;
+
+  const periodEnd = membership.current_period_end ? formatDate(membership.current_period_end, locale) : null;
+  const pendingCancel = !!membership.cancel_at_period_end;
+
+  async function commit(action: 'cancel' | 'resume') {
+    setBusy(true);
+    setErr(null);
+    try {
+      if (action === 'cancel') {
+        await api.cancelPortalMembership();
+      } else {
+        await api.resumePortalMembership();
+      }
+      const fresh = await api.getPortalMembership();
+      setMembership(fresh);
+      setConfirming(null);
+    } catch (e) {
+      setErr((e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'Could not update membership. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+            {membership.tier_name || 'Membership'}
+          </h2>
+          {membership.monthly_price != null && (
+            <p className="text-sm text-surface-600 dark:text-surface-400">
+              {formatCurrency(membership.monthly_price, currency, locale)} / month
+            </p>
+          )}
+        </div>
+        <span
+          className={
+            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ' +
+            (membership.status === 'active'
+              ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
+              : membership.status === 'past_due'
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+              : 'bg-surface-100 text-surface-700 dark:bg-surface-700 dark:text-surface-300')
+          }
+        >
+          {pendingCancel ? 'Cancels at period end' : membership.status}
+        </span>
+      </div>
+
+      {periodEnd && (
+        <p className="text-xs text-surface-500 dark:text-surface-400">
+          {pendingCancel
+            ? `Access continues through ${periodEnd}. No further charges.`
+            : `Next billing on or after ${periodEnd}.`}
+        </p>
+      )}
+
+      {err && (
+        <div role="alert" className="text-xs text-red-600 dark:text-red-400">
+          {err}
+        </div>
+      )}
+
+      {!confirming && !pendingCancel && (
+        <button
+          type="button"
+          onClick={() => setConfirming('cancel')}
+          className="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+        >
+          Cancel membership
+        </button>
+      )}
+      {!confirming && pendingCancel && (
+        <button
+          type="button"
+          onClick={() => setConfirming('resume')}
+          className="text-sm font-medium text-primary-600 hover:text-primary-700"
+        >
+          Keep my membership
+        </button>
+      )}
+
+      {confirming === 'cancel' && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm dark:border-red-500/30 dark:bg-red-500/10">
+          <p className="font-medium text-red-700 dark:text-red-300">Cancel at period end?</p>
+          <p className="mt-1 text-red-700/80 dark:text-red-300/80">
+            You will keep access until {periodEnd ?? 'the end of the current period'} and will not be charged again. You can undo this any time before then.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => commit('cancel')}
+              className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            >
+              {busy ? 'Cancelling…' : 'Yes, cancel'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirming(null)}
+              className="rounded-md border border-surface-300 px-3 py-1.5 text-xs hover:bg-surface-100 disabled:opacity-60 dark:border-surface-600 dark:hover:bg-surface-700"
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirming === 'resume' && (
+        <div className="rounded-md border border-primary-200 bg-primary-50 p-3 text-sm dark:border-primary-500/30 dark:bg-primary-500/10">
+          <p className="font-medium text-primary-700 dark:text-primary-300">Keep your membership?</p>
+          <p className="mt-1 text-primary-700/80 dark:text-primary-300/80">
+            Your scheduled cancellation will be removed and auto-renew will turn back on.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => commit('resume')}
+              className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-60"
+            >
+              {busy ? 'Saving…' : 'Yes, keep it'}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirming(null)}
+              className="rounded-md border border-surface-300 px-3 py-1.5 text-xs hover:bg-surface-100 disabled:opacity-60 dark:border-surface-600 dark:hover:bg-surface-700"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

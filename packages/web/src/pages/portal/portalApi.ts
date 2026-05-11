@@ -336,3 +336,30 @@ export async function getEmbedConfig(): Promise<EmbedConfig> {
   const res = await portalClient.get('/embed/config');
   return res.data.data;
 }
+
+export interface PortalMembership {
+  id: number;
+  status: 'active' | 'past_due' | 'paused';
+  cancel_at_period_end: 0 | 1;
+  current_period_end: string | null;
+  next_billing_attempt_at: string | null;
+  auto_renew: 0 | 1;
+  tier_id: number | null;
+  tier_name: string | null;
+  monthly_price: number | null;
+}
+
+export async function getPortalMembership(): Promise<PortalMembership | null> {
+  const res = await portalClient.get('/membership');
+  return res.data.data;
+}
+
+export async function cancelPortalMembership(): Promise<{ cancelled: true; subscription_id: number }> {
+  const res = await portalClient.post('/membership/cancel');
+  return res.data.data;
+}
+
+export async function resumePortalMembership(): Promise<{ resumed: true; subscription_id: number }> {
+  const res = await portalClient.post('/membership/resume');
+  return res.data.data;
+}

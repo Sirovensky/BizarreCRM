@@ -1657,6 +1657,95 @@ router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (re
 }));
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Portal self-service membership (WEB-UIUX-1485 unblock)
+// ---------------------------------------------------------------------------
+// GET  /membership            — return the portal customer's active subscription
+// POST /membership/cancel     — request end-of-period cancellation (no immediate
+//                                option from the portal; staff still own immediate
+//                                cancels via /membership/:id/cancel)
+// POST /membership/resume     — undo a pending end-of-period cancel before it
+//                                fires (only valid while cancel_at_period_end=1)
+// Scope: requires full account scope; ticket-only sessions cannot self-cancel.
+router.get('/membership', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = req.portalCustomerId!;
+  const sub = await adb.get<AnyRow>(
+    `SELECT cs.id, cs.status, cs.cancel_at_period_end, cs.current_period_end,
+            cs.next_billing_attempt_at, cs.auto_renew,
+            mt.id AS tier_id, mt.name AS tier_name, mt.monthly_price
+       FROM customer_subscriptions cs
+       LEFT JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.customer_id = ?
+        AND cs.status IN ('active','past_due','paused')
+      LIMIT 1`,
+    customerId,
+  );
+  if (!sub) {
+    res.json({ success: true, data: null });
+    return;
+  }
+  res.json({ success: true, data: sub });
+}));
+
+router.post('/membership/cancel', portalAuth, requireCsrfToken, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = req.portalCustomerId!;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const sub = await adb.get<AnyRow>(
+    `SELECT id, status, cancel_at_period_end FROM customer_subscriptions
+      WHERE customer_id = ? AND status IN ('active','past_due','paused')
+      LIMIT 1`,
+    customerId,
+  );
+  if (!sub) {
+    res.status(404).json({ success: false, message: 'No active membership to cancel.' });
+    return;
+  }
+  if (sub.cancel_at_period_end) {
+    res.status(409).json({ success: false, message: 'Your membership is already scheduled to cancel at period end.' });
+    return;
+  }
+  await adb.run(
+    `UPDATE customer_subscriptions
+        SET cancel_at_period_end = 1,
+            auto_renew = 0,
+            next_billing_attempt_at = NULL,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    sub.id,
+  );
+  audit(req.db, 'membership_cancelled_self_service', customerId, ip, { subscription_id: sub.id, source: 'portal' });
+  res.json({ success: true, data: { cancelled: true, immediate: false, subscription_id: sub.id } });
+}));
+
+router.post('/membership/resume', portalAuth, requireCsrfToken, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = req.portalCustomerId!;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const sub = await adb.get<AnyRow>(
+    `SELECT id FROM customer_subscriptions
+      WHERE customer_id = ? AND cancel_at_period_end = 1
+        AND status IN ('active','past_due')
+      LIMIT 1`,
+    customerId,
+  );
+  if (!sub) {
+    res.status(404).json({ success: false, message: 'No pending cancellation to undo.' });
+    return;
+  }
+  await adb.run(
+    `UPDATE customer_subscriptions
+        SET cancel_at_period_end = 0,
+            auto_renew = 1,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    sub.id,
+  );
+  audit(req.db, 'membership_resumed_self_service', customerId, ip, { subscription_id: sub.id, source: 'portal' });
+  res.json({ success: true, data: { resumed: true, subscription_id: sub.id } });
+}));
+
 // GET /embed/config — Public store branding for widget
 // ---------------------------------------------------------------------------
 // SEC-M19: IP-rate-limited (60 requests / 5 min) + gated on the tenant's
