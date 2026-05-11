@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Printer, ArrowRightLeft, Send, Pencil, Save, X,
   CheckCircle, History, ChevronDown, ChevronUp, XCircle, Plus, Trash2,
-  FileSignature, Link2,
+  FileSignature, Link2, Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
@@ -284,6 +284,9 @@ export function EstimateDetailPage() {
   const [editingValidUntil, setEditingValidUntil] = useState(false);
   const [draftValidUntil, setDraftValidUntil] = useState('');
   const [showVersions, setShowVersions] = useState(false);
+  // WEB-UIUX-973: when an operator clicks View on a version row we fetch
+  // the full snapshot via estimateApi.versionDetail and open it in a modal.
+  const [viewingVersionId, setViewingVersionId] = useState<number | null>(null);
   const [signSession, setSignSession] = useState<EstimateSignSession | null>(null);
   // WEB-W2-019: inline line-item editing state
   const [editingItems, setEditingItems] = useState(false);
@@ -316,6 +319,18 @@ export function EstimateDetailPage() {
     staleTime: 60_000, // versions of completed/sent estimates rarely change minute-to-minute
   });
   const versions: EstimateVersion[] = versionsData?.data?.data || [];
+
+  // WEB-UIUX-973: per-version snapshot fetch, lazily enabled when an operator
+  // has clicked View on a row. The server returns the full data blob with
+  // parsed JSON (estimates.routes.ts:898-918).
+  const { data: versionDetailData, isLoading: versionDetailLoading } = useQuery({
+    queryKey: ['estimate-version-detail', id, viewingVersionId],
+    queryFn: () => estimateApi.versionDetail(Number(id), Number(viewingVersionId)),
+    enabled: idIsValid && viewingVersionId != null,
+    staleTime: 5 * 60_000,
+  });
+  const versionDetail: { data?: any; version_number?: number; created_at?: string } | null =
+    versionDetailData?.data?.data ?? null;
 
   const { data: signaturesData, isLoading: signaturesLoading, isError: signaturesError } = useQuery({
     queryKey: ['estimate-signatures', numericId],
@@ -554,7 +569,12 @@ export function EstimateDetailPage() {
                   const msg = estimate.status === 'sent'
                     ? `Resend this estimate to ${dest}?`
                     : `Send this estimate via SMS to ${dest}?`;
-                  if (await confirm(msg)) sendMut.mutate();
+                  // WEB-UIUX-975: explicit confirmLabel so the dialog button
+                  // names match the action (Send/Resend) instead of generic OK.
+                  if (await confirm(msg, {
+                    title: estimate.status === 'sent' ? 'Resend estimate?' : 'Send estimate?',
+                    confirmLabel: estimate.status === 'sent' ? 'Resend' : 'Send',
+                  })) sendMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending || isExpired}
@@ -997,6 +1017,22 @@ export function EstimateDetailPage() {
                   <dd className="text-surface-900 dark:text-surface-100">{formatDate(estimate.sent_at)}</dd>
                 </div>
               )}
+              {/* WEB-UIUX-966: surface approval link expiry so the operator
+                  knows whether to resend before the customer hits a 410. The
+                  field is null once the customer has approved/signed, and once
+                  the row reaches a terminal status it stops mattering. */}
+              {estimate.approval_token_expires_at && !estimate.approved_at && (estimate.status === 'sent') && (() => {
+                const exp = new Date(estimate.approval_token_expires_at);
+                const expired = exp.getTime() < Date.now();
+                return (
+                  <div className="flex justify-between">
+                    <dt className="text-surface-500">Approval link {expired ? 'expired' : 'expires'}</dt>
+                    <dd className={expired ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}>
+                      {exp.toLocaleString()}
+                    </dd>
+                  </div>
+                );
+              })()}
               {estimate.approved_at && (
                 <div className="flex justify-between">
                   <dt className="text-surface-500">Approved</dt>
@@ -1089,9 +1125,20 @@ export function EstimateDetailPage() {
                             v{v.version_number}
                           </span>
                         </div>
-                        <span className="text-xs text-surface-400">
-                          {formatDate(v.created_at)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-surface-400">
+                            {formatDate(v.created_at)}
+                          </span>
+                          {/* WEB-UIUX-973: view snapshot of this version. */}
+                          <button
+                            type="button"
+                            onClick={() => setViewingVersionId(v.id)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                            title={`View v${v.version_number} snapshot`}
+                          >
+                            <Eye className="h-3 w-3" /> View
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1113,6 +1160,73 @@ export function EstimateDetailPage() {
             queryClient.invalidateQueries({ queryKey: ['estimates'] });
           }}
         />
+      )}
+      {/* WEB-UIUX-973: version snapshot viewer modal. */}
+      {viewingVersionId != null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="version-detail-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setViewingVersionId(null); }}
+        >
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+            <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
+              <h2 id="version-detail-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+                Snapshot: v{versionDetail?.version_number ?? '?'}
+                {versionDetail?.created_at && (
+                  <span className="ml-2 text-xs font-normal text-surface-400">
+                    {formatDate(versionDetail.created_at)}
+                  </span>
+                )}
+              </h2>
+              <button
+                aria-label="Close"
+                onClick={() => setViewingVersionId(null)}
+                className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto px-6 py-4 text-sm">
+              {versionDetailLoading || !versionDetail ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-surface-400" /></div>
+              ) : (() => {
+                const snap = versionDetail.data || {};
+                const items: any[] = Array.isArray(snap.line_items) ? snap.line_items : [];
+                return (
+                  <div className="space-y-3">
+                    <dl className="grid grid-cols-2 gap-2">
+                      <div><dt className="text-surface-500">Status</dt><dd className="text-surface-900 dark:text-surface-100">{snap.status ?? '—'}</dd></div>
+                      <div><dt className="text-surface-500">Order ID</dt><dd className="font-mono text-surface-900 dark:text-surface-100">{snap.order_id ?? '—'}</dd></div>
+                      <div><dt className="text-surface-500">Subtotal</dt><dd className="text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.subtotal ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Tax</dt><dd className="text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.total_tax ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Discount</dt><dd className="text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.discount ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Total</dt><dd className="font-semibold text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.total ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Valid until</dt><dd className="text-surface-900 dark:text-surface-100">{snap.valid_until ? formatDate(snap.valid_until) : '—'}</dd></div>
+                      <div><dt className="text-surface-500">Notes</dt><dd className="text-surface-900 dark:text-surface-100">{snap.notes || '—'}</dd></div>
+                    </dl>
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase text-surface-500">Line items ({items.length})</h3>
+                      <ul className="mt-1 divide-y divide-surface-100 dark:divide-surface-700">
+                        {items.length === 0 ? (
+                          <li className="py-2 text-surface-400 italic">No line items</li>
+                        ) : items.map((li, i) => (
+                          <li key={i} className="flex justify-between gap-3 py-1.5">
+                            <span className="truncate text-surface-700 dark:text-surface-300">{li.description || `Item ${i + 1}`}</span>
+                            <span className="shrink-0 text-surface-600 dark:text-surface-400">
+                              {Number(li.quantity ?? 1)} × {formatCurrency(Number(li.unit_price ?? 0))}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

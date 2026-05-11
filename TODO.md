@@ -3980,7 +3980,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [!] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8. **STATUS: BLOCKED — needs SMS infrastructure work (deferred per user 2026-05-05); fallback channel UI pairs with that sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:75-80`
 
-- [ ] WEB-UIUX-958. **[MAJOR] Convert button enabled while `status='draft'` — operator converts never-sent estimate to ticket.** `:219` gates only on `!== 'converted' && !== 'rejected'`. Customer who never saw the estimate now has a billable ticket. Should require `status IN ('approved','signed','sent')` minimum, with explicit warn for `'sent'` (not yet approved). L1, L5.
+- [!] WEB-UIUX-958. **[MAJOR] Convert button enabled while `status='draft'` — operator converts never-sent estimate to ticket.** `:219` gates only on `!== 'converted' && !== 'rejected'`. Customer who never saw the estimate now has a billable ticket. Should require `status IN ('approved','signed','sent')` minimum, with explicit warn for `'sent'` (not yet approved). L1, L5. **[AUTOLOOP-T49 STALE 2026-05-11: EstimateDetailPage:655 already disables Convert when `status !== 'approved' && status !== 'signed'` (WEB-UIUX-959) with tooltip "Customer hasn't approved yet".]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
 
 - [x] WEB-UIUX-959. **[MAJOR] Convert button enabled while `status='sent'` (not approved) — silent conversion of unapproved estimate.** Confirm "Convert this estimate to a ticket?" gives no signal that customer hasn't approved yet. Same defect on EstimateListPage row action. L7, L1. **[AUTOLOOP-T61 RESOLVED: Convert button disabled unless status in approved|signed; tooltip 'Customer hasn't approved yet' on disabled state in DetailPage + ListPage.]**
@@ -4002,7 +4002,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [x] WEB-UIUX-963. **[MAJOR] List-page bulk-Delete uses `Promise.all` — partial failure shows "Deleted N" toast even when half failed.** `:591-595`: `Promise.all([...selectedIds].map(id => estimateApi.delete(id)))` — if 3 of 10 throw, `.all` rejects but `await` is inside try, `catch` shows generic. Even when all settle, success toast counts requested IDs not server-confirmed. L8. **[AUTOLOOP-T61 VERIFIED: code already uses sequential for-loop with per-item try/catch tracking deletedCount + failures[]; toast accurately reflects partial/all-fail.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:588-596`
 
-- [ ] WEB-UIUX-964. **[MAJOR] Reject confirm copy "This cannot be undone" — false. PUT `/:id` accepts arbitrary `status` change, server has no rule preventing rejected→draft.** Copy lies; operator who mis-clicks Reject reads "permanent" warning, panics, opens ticket. L7.
+- [x] WEB-UIUX-964. **[MAJOR] Reject confirm copy "This cannot be undone" — false. PUT `/:id` accepts arbitrary `status` change, server has no rule preventing rejected→draft.** Copy lies; operator who mis-clicks Reject reads "permanent" warning, panics, opens ticket. L7. **[AUTOLOOP-T49 RESOLVED 2026-05-11: estimates.routes PUT /:id LOCKED_STATUSES gained 'rejected' so the copy is now truthful — rejected estimates 409 on edit just like approved/signed/converted.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:237`
   <!-- meta: fix=either-enforce-server-side-rejected-as-terminal-OR-soften-copy-to-Reject-this-estimate? -->
 
@@ -4010,7 +4010,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:177`
   <!-- meta: fix=mirror-breadcrumb-fallback -->
 
-- [ ] WEB-UIUX-966. **[MAJOR] Detail page shows `Sent` date but never `approval_token_expires_at`.** SMS contains a magic-link approval URL with TTL (`APPROVAL_TOKEN_TTL_MS`); customer who delays beyond expiry hits 410, asks shop to reissue. Web detail Details card has no "Approval link expires DD MMM HH:mm" row. Operator can't see whether to resend. L8, L11.
+- [x] WEB-UIUX-966. **[MAJOR] Detail page shows `Sent` date but never `approval_token_expires_at`.** SMS contains a magic-link approval URL with TTL (`APPROVAL_TOKEN_TTL_MS`); customer who delays beyond expiry hits 410, asks shop to reissue. Web detail Details card has no "Approval link expires DD MMM HH:mm" row. Operator can't see whether to resend. L8, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Details card now shows "Approval link expires/expired <localized timestamp>" in amber/red for status='sent' rows without approved_at. Field already present in GET /:id response (e.*).]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:461-507`
 
 - [!] WEB-UIUX-967. **[MAJOR] Inline line-item editor exposes raw `tax_amount` cell with no `tax_class_id` picker.** `EstimateDetailPage:345-350`. Modal create at `EstimateListPage:287-296` has tax-class dropdown that auto-computes. Editor forces operator to do mental math + paste cents into tax field. Inconsistent within same flow. L4, L7. **STATUS: BLOCKED — inline editor needs tax_class_id picker mirroring CreateEstimateModal; multi-component refactor + auto-compute logic, defer to estimates sprint**
@@ -4021,25 +4021,25 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 
 #### Minor — Polish, edge cases
 
-- [ ] WEB-UIUX-969. **[MINOR] CreateEstimateModal has no `discount` input; server accepts `discount` field — modal forces "create then edit notes" two-step.** `EstimateListPage:188-202` payload omits discount. Estimate with line-item discount not expressible in create flow. L4.
+- [x] WEB-UIUX-969. **[MINOR] CreateEstimateModal has no `discount` input; server accepts `discount` field — modal forces "create then edit notes" two-step.** `EstimateListPage:188-202` payload omits discount. Estimate with line-item discount not expressible in create flow. L4. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Discount input added next to Subtotal/Tax in CreateEstimateModal totals block; value is clamped to subtotal and submitted as top-level `discount` field on create.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:171-203`
 
 - [x] WEB-UIUX-970. **[MINOR] `sent_at = COALESCE(sent_at, ?)` — re-send after edit doesn't refresh `sent_at`.** Audit trail loses re-send timestamp; Detail "Sent" field shows first-send only even if customer received v2 yesterday. L11, L8. **[AUTOLOOP-T44 RESOLVED: estimates.routes.ts now uses sent_at = ? (no COALESCE) so re-send refreshes timestamp; first-send still captured by send_log audit row.]**
   `packages/server/src/routes/estimates.routes.ts:944,953-954`
 
-- [ ] WEB-UIUX-971. **[MINOR] List sort headers include `customer` column — server may not honor.** `EstimateListPage:621` adds 'customer' to sort headers; `estimates.routes.ts` GET `/` likely whitelists `order_id|status|total|valid_until|created_at`. Click on Customer → arrow flips, list unchanged or 400 swallowed. L7, L8.
+- [!] WEB-UIUX-971. **[MINOR] List sort headers include `customer` column — server may not honor.** `EstimateListPage:621` adds 'customer' to sort headers; `estimates.routes.ts` GET `/` likely whitelists `order_id|status|total|valid_until|created_at`. Click on Customer → arrow flips, list unchanged or 400 swallowed. L7, L8. **[AUTOLOOP-T49 STALE 2026-05-11: estimates.routes ESTIMATE_SORT_COLS already maps `customer` → `c.last_name || ' ' || c.first_name` (line 266-273).]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:619-625`
 
 - [x] WEB-UIUX-972. **[MINOR] Detail page has no `valid_until` editor.** Notes editable inline; expiry is not. Operator extending validity must round-trip via server PUT (no UI). L4. **[AUTOLOOP-T44 RESOLVED: EstimateDetailPage Details sidebar gained inline date editor for valid_until mirroring notes pattern (Pencil + Save/Cancel). Hidden when estimateContentLocked. Server PUT /:id already accepts the field.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:399-431`
 
-- [ ] WEB-UIUX-973. **[MINOR] Versions accordion shows `v1, v2` + date but no diff/view button.** `estimateApi.versionDetail` exposed in `endpoints.ts:909`, never called. Operator can see "3 prior versions exist" but cannot inspect what changed. Useless history panel. L8, L1.
+- [x] WEB-UIUX-973. **[MINOR] Versions accordion shows `v1, v2` + date but no diff/view button.** `estimateApi.versionDetail` exposed in `endpoints.ts:909`, never called. Operator can see "3 prior versions exist" but cannot inspect what changed. Useless history panel. L8, L1. **[AUTOLOOP-T49 RESOLVED 2026-05-11: per-version "View" button opens a snapshot modal showing status/order_id/subtotal/tax/discount/total/valid_until/notes + line items via estimateApi.versionDetail. Lazy-fetched on click.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:530-549`
 
 - [x] WEB-UIUX-974. **[MINOR] Inline line-item Save: sidebar Total stays stale until `invalidateQueries` refetch settles.** No client-side recompute; brief mismatch where line items show new sum but Summary card still shows old. L1, L11. **[AUTOLOOP-T44 RESOLVED: lineItemsMut.onSuccess now setQueryData with the PUT response so Summary card totals update immediately, eliminating stale window before invalidate refetch settles.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:127-136,437-457`
 
-- [ ] WEB-UIUX-975. **[MINOR] Approve / Send / Convert / Reject confirms use generic `confirm()` dialog with no `confirmLabel` differentiation except Reject (`danger:true`).** Approve and Convert get default neutral OK button — pattern asymmetry. Operator scanning the dialog can't tell at a glance which flow they're in. L9.
+- [x] WEB-UIUX-975. **[MINOR] Approve / Send / Convert / Reject confirms use generic `confirm()` dialog with no `confirmLabel` differentiation except Reject (`danger:true`).** Approve and Convert get default neutral OK button — pattern asymmetry. Operator scanning the dialog can't tell at a glance which flow they're in. L9. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Send/Resend confirm now passes title + confirmLabel ("Send"/"Resend"); Approve has confirmLabel='Approve' + danger; Convert has confirmLabel='Convert'; Reject has confirmLabel='Reject' + danger.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209,222`
 
 - [x] WEB-UIUX-976. **[MINOR] `'converting'` transient status leaks to UI on race.** `estimates.routes.ts:802` flips status to 'converting' for atomic guard; if operator refreshes during the convert window, badge shows raw "converting" with gray fallback. Should map to "Converting…" with spinner. L9, L13. **[AUTOLOOP-T44 RESOLVED: Added converting status to STATUS_COLORS/LABELS in EstimateDetailPage + EstimateListPage + PortalEstimatesView. Loader2 spin replaces dot when status=converting.]**
@@ -4051,7 +4051,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [x] WEB-UIUX-978. **[MINOR] `_redirect_after_convert` is implicit — `convert` mutation auto-navigates to `/tickets/:id`.** No "Open ticket" / "Stay here" choice; operator wanting to print estimate before viewing ticket is yanked away. L4. **[AUTOLOOP-T44 RESOLVED: convertMut.onSuccess no longer auto-navigates; replaced with custom react-hot-toast offering Open ticket / Stay here buttons (8s).]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:99-101`
 
-- [ ] WEB-UIUX-979. **[NIT] Approve mutation loading state coexists with Reject loading state via shared `anyMutationPending` — clicking Approve disables Reject too, fine — but no per-button skeleton cue beyond `<Loader2>` icon swap. Reject button visually identical mid-Approve.** L11.
+- [!] WEB-UIUX-979. **[NIT] Approve mutation loading state coexists with Reject loading state via shared `anyMutationPending` — clicking Approve disables Reject too, fine — but no per-button skeleton cue beyond `<Loader2>` icon swap. Reject button visually identical mid-Approve.** L11. **[AUTOLOOP-T49 BLOCKED 2026-05-11: nit-level polish; per-button skeleton cue requires deciding a button-level skeleton design pattern (subtle stripe vs reduced opacity vs disabled-with-progress) and applying it consistently across the action button row.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:160`
 
 - [x] WEB-UIUX-980. **[NIT] Approve button confirm rejects auto-cleanup on backdrop dismiss — modal overlay click counts as "no" via `confirm` store, no toast feedback. Operator who clicks outside waits for nothing.** L8. **[AUTOLOOP-T44 RESOLVED: Approve handler now captures confirm() boolean; backdrop dismiss triggers toast(Approval cancelled.) so operator gets feedback.]**

@@ -99,6 +99,10 @@ function CreateEstimateModal({
   ]);
   const [notes, setNotes] = useState('');
   const [validUntil, setValidUntil] = useState('');
+  // WEB-UIUX-969: cart-wide discount input; server accepts a top-level
+  // `discount` field so a one-step create flow can express "$50 off this
+  // estimate" without the create-then-edit two-step.
+  const [discount, setDiscount] = useState<number>(0);
 
   const { data: taxClassData } = useQuery({
     queryKey: ['tax-classes'],
@@ -154,6 +158,7 @@ function CreateEstimateModal({
     setLineItems([{ description: '', quantity: 1, unit_price: 0, tax_class_id: '' }]);
     setNotes('');
     setValidUntil('');
+    setDiscount(0);
   }
 
   function addLineItem() {
@@ -175,7 +180,10 @@ function CreateEstimateModal({
     const tc = taxClasses.find((t) => t.id === Number(li.tax_class_id));
     return sum + (tc ? li.quantity * li.unit_price * (tc.rate / 100) : 0);
   }, 0);
-  const total = subtotal + totalTax;
+  // WEB-UIUX-969: clamp discount at subtotal so we never show a negative total
+  // in the preview; server will validate as well.
+  const clampedDiscount = Math.max(0, Math.min(discount || 0, subtotal));
+  const total = Math.max(0, subtotal + totalTax - clampedDiscount);
 
   if (!open) return null;
 
@@ -215,6 +223,7 @@ function CreateEstimateModal({
               customer_id: selectedCustomer.id,
               notes: notes || null,
               valid_until: validUntil || null,
+              discount: clampedDiscount > 0 ? clampedDiscount : undefined,
               line_items: validItems.map((li) => {
                 const tc = taxClasses.find((t) => t.id === Number(li.tax_class_id));
                 return {
@@ -350,6 +359,23 @@ function CreateEstimateModal({
             <div className="mt-1 flex justify-between text-sm">
               <span className="text-surface-500">Tax</span>
               <span className="font-medium text-surface-900 dark:text-surface-100">{formatCurrency(totalTax)}</span>
+            </div>
+            {/* WEB-UIUX-969: cart-wide discount input lives next to totals. */}
+            <div className="mt-1 flex items-center justify-between text-sm">
+              <label htmlFor="estimate-create-discount" className="text-surface-500">Discount</label>
+              <div className="flex items-center gap-1">
+                <span className="text-surface-400 text-xs">$</span>
+                <input
+                  id="estimate-create-discount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={discount === 0 ? '' : discount}
+                  onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className="w-24 rounded border border-surface-200 bg-white px-2 py-1 text-right text-sm dark:border-surface-700 dark:bg-surface-800"
+                />
+              </div>
             </div>
             <div className="mt-2 flex justify-between border-t border-surface-200 pt-2 text-sm dark:border-surface-700">
               <span className="font-medium text-surface-700 dark:text-surface-300">Total</span>

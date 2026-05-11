@@ -734,8 +734,12 @@ router.put(
     const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
-    // WEB-UIUX-801: block edits to locked estimates (approved/signed/converted)
-    const LOCKED_STATUSES = ['approved', 'signed', 'converted'];
+    // WEB-UIUX-801 / UIUX-964: block edits to locked estimates. 'rejected' is
+    // a terminal status — the Reject confirm dialog promises "This cannot be
+    // undone", so the server must honor that promise (previously rejected
+    // estimates could be flipped back to draft via PUT body, making the copy
+    // a lie).
+    const LOCKED_STATUSES = ['approved', 'signed', 'converted', 'rejected'];
     if (LOCKED_STATUSES.includes(existing.status)) {
       throw new AppError(
         `Estimate is locked (status: ${existing.status}). Create a revision instead.`,
