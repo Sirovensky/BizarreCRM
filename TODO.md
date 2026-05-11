@@ -585,7 +585,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [!] DASH-ELEC-024-needs-licensed-fonts. **Management brand font stack partially implemented; exact Saved By Zero + Futura Medium blocked.** CODE-PARTIAL 2026-05-06 — bundled local Bebas Neue, Inter, and JetBrains Mono are self-hosted and wired into renderer font tokens, but the repo does not contain licensed Saved By Zero or Futura Medium files and production CSP should not fetch network fonts. Needs local licensed WOFF2/TTF assets before exact completion.
+- [!] DASH-ELEC-024-needs-licensed-fonts. **Web side self-hosted 2026-05-11 (Bebas Neue + Jost 400/500/700 + JetBrains Mono 400/500 fetched from Google Fonts; @font-face declarations land in `packages/web/src/styles/globals.css`). Tailwind `font-display` / `font-sans` / `font-mono` / `font-logo` tokens already chained correctly. Management dashboard still bundles its own Bebas + Inter + JetBrains. Exact Saved By Zero + Futura Medium remain pending licensed source files — Saved By Zero is donation-ware (free for personal, license for commercial), Futura is commercial-only; both fall back to Bebas Neue / Jost respectively until licensed copies are dropped under `packages/web/public/fonts/`.
 
 
 

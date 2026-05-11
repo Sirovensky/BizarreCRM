@@ -2,6 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Brand fonts (DASH-ELEC-024 / WEB brand font partial-implementation):
+ * self-hosted to keep production CSP from needing googleapis. Bebas Neue
+ * (display heading), Jost (body — drop-in Futura replacement until a
+ * licensed Futura Medium asset is purchased and replaces these), and
+ * JetBrains Mono (code). Saved By Zero (logo) is donation-ware; until
+ * a licensed copy is supplied, the logo falls back to Bebas Neue. */
+@font-face {
+  font-family: 'Bebas Neue';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/bebas-neue.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jost-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jost-500.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jost-700.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-500.ttf') format('truetype');
+}
+
 @layer base {
   :root {
     --sidebar-width: 256px;
