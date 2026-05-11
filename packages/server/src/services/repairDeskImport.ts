@@ -143,6 +143,8 @@ interface ErrorEntry {
 
 type EntityType = 'customers' | 'tickets' | 'invoices' | 'inventory' | 'sms';
 
+export const RD_SYNTHETIC_INVOICE_NOTE = 'Placeholder invoice synthesized from imported ticket totals (no source invoice was found).';
+
 // Per-tenant cancellation flags (keyed by tenant slug; 'default' for single-tenant)
 const cancelFlags = new Map<string, boolean>();
 export function requestCancel(tenantSlug?: string): void {
@@ -632,6 +634,147 @@ function getStatements(db: any) {
   };
 }
 
+function firstRawValue(source: Record<string, any>, keys: string[]): any {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return null;
+}
+
+function firstString(source: Record<string, any>, keys: string[]): string | null {
+  return safeStr(firstRawValue(source, keys));
+}
+
+function firstNumber(source: Record<string, any>, keys: string[], fallback = 0): number {
+  const value = firstRawValue(source, keys);
+  return value === null ? fallback : safeNum(value, fallback);
+}
+
+function firstInt(source: Record<string, any>, keys: string[], fallback = 0): number {
+  const value = firstRawValue(source, keys);
+  return value === null ? fallback : safeInt(value, fallback);
+}
+
+function collectRdParts(...sources: any[]): any[] {
+  const parts: any[] = [];
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    for (const key of ['parts', 'suplied', 'supplied', 'accessory', 'accessories', 'repair_parts', 'ticket_items']) {
+      const value = source[key];
+      if (Array.isArray(value)) parts.push(...value);
+    }
+  }
+  return parts;
+}
+
+export function importRdPartsForDevice(
+  db: any,
+  stmts: ReturnType<typeof getStatements>,
+  localDeviceId: number | null | undefined,
+  rawParts: any[],
+  createdAt: string,
+): number {
+  if (!localDeviceId || rawParts.length === 0) return 0;
+
+  let imported = 0;
+  for (const [index, rawPart] of rawParts.entries()) {
+    try {
+      if (!rawPart || typeof rawPart !== 'object') continue;
+
+      const partName = firstString(rawPart, [
+        'name',
+        'part_name',
+        'product_name',
+        'item_name',
+        'title',
+        'description',
+      ]);
+      if (!partName) continue;
+
+      const rdInventoryId = firstString(rawPart, [
+        'product_id',
+        'inventory_item_id',
+        'inventory_id',
+        'item_id',
+        'part_id',
+        'id',
+      ]);
+      const sku = firstString(rawPart, ['sku', 'product_sku', 'part_sku', 'item_sku']);
+      const quantity = firstInt(rawPart, ['quantity', 'qty', 'part_quantity', 'part_qty'], 1) || 1;
+      const price = firstNumber(rawPart, [
+        'price',
+        'retail_price',
+        'unit_price',
+        'sale_price',
+        'selling_price',
+        'charges',
+        'amount',
+      ]);
+      const cost = firstNumber(rawPart, [
+        'cost_price',
+        'cost',
+        'part_cost',
+        'unit_cost',
+        'purchase_price',
+        'avg_cost',
+      ], price);
+      const serial = firstString(rawPart, ['serial', 'serials', 'item_serials', 'serial_number']);
+      const warranty = firstRawValue(rawPart, ['warranty', 'warrenty']) ? 1 : 0;
+
+      let invItemId: number | null = null;
+      if (sku) {
+        const bySku = stmts.findInventoryBySku.get(sku) as any;
+        if (bySku) invItemId = bySku.id;
+      }
+      if (!invItemId && rdInventoryId) {
+        const mapped = stmts.findMapping.get('inventory', rdInventoryId) as any;
+        if (mapped) invItemId = mapped.local_id;
+      }
+      if (!invItemId) {
+        const byName = stmts.findInventoryByName.get(partName) as any;
+        if (byName) invItemId = byName.id;
+      }
+      if (!invItemId) {
+        const placeholderSku = sku || `RD-PART-${rdInventoryId || `${localDeviceId}-${index}`}`;
+        const result = db.prepare(
+          `INSERT OR IGNORE INTO inventory_items
+            (sku, upc, name, description, item_type, category, manufacturer,
+             cost_price, retail_price, in_stock, reorder_level, stock_warning,
+             tax_inclusive, is_serialized, is_active, created_at, updated_at)
+           VALUES (?, '', ?, '', 'part', 'Imported Parts', '',
+                   ?, ?, 0, 0, 0,
+                   0, 0, 1, ?, ?)`
+        ).run(placeholderSku, partName, cost, price, createdAt, createdAt);
+        if (result.changes > 0) {
+          invItemId = Number(result.lastInsertRowid);
+        } else {
+          const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(placeholderSku) as any;
+          if (existing) invItemId = existing.id;
+        }
+      }
+
+      if (!invItemId) continue;
+
+      stmts.insertTicketPart.run(
+        localDeviceId,
+        invItemId,
+        quantity,
+        price,
+        warranty,
+        serial,
+        createdAt,
+        createdAt,
+      );
+      imported++;
+    } catch (_partErr) {
+      // Bad part rows should not block the parent ticket import.
+    }
+  }
+
+  return imported;
+}
+
 // ---------------------------------------------------------------------------
 // Status name → local status ID mapping with caching
 // ---------------------------------------------------------------------------
@@ -1015,62 +1158,7 @@ async function importTickets(
                 );
                 // Import parts for this device
                 const localDeviceId = Number(devInsertResult.lastInsertRowid);
-                const rdParts = [...(Array.isArray(dev.parts) ? dev.parts : []), ...(Array.isArray(dev.suplied) ? dev.suplied : [])];
-                for (const part of rdParts) {
-                  try {
-                    const partName = safeStr(part.name) || '';
-                    if (!partName) continue;
-                    const partPrice = safeNum(part.price);
-                    const partQty = safeInt(part.quantity) || 1;
-                    const partSerial = safeStr(part.serial || part.serials);
-                    const partWarranty = part.warranty ? 1 : 0;
-
-                    // Try to find matching inventory item
-                    let invItemId: number | null = null;
-                    if (part.product_id) {
-                      const mapped = db.prepare('SELECT local_id FROM import_id_map WHERE entity_type = ? AND rd_id = ?').get('inventory', String(part.product_id)) as any;
-                      if (mapped) invItemId = mapped.local_id;
-                    }
-                    if (!invItemId) {
-                      const byName = stmts.findInventoryByName.get(partName) as any;
-                      if (byName) invItemId = byName.id;
-                    }
-                    // If still no match, create a placeholder inventory item
-                    if (!invItemId) {
-                      const placeholderSku = `RD-PART-${part.product_id || Date.now()}`;
-                      const result = db.prepare(
-                        `INSERT OR IGNORE INTO inventory_items
-                          (sku, upc, name, description, item_type, category, manufacturer,
-                           cost_price, retail_price, in_stock, reorder_level, stock_warning,
-                           tax_inclusive, is_serialized, is_active, created_at, updated_at)
-                         VALUES (?, '', ?, '', 'part', 'Imported Parts', '',
-                                 ?, ?, 0, 0, 0,
-                                 0, 0, 1, ?, ?)`
-                      ).run(placeholderSku, partName, partPrice, partPrice, devCreatedAt, devCreatedAt);
-                      if (result.changes > 0) {
-                        invItemId = Number(result.lastInsertRowid);
-                      } else {
-                        const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(placeholderSku) as any;
-                        if (existing) invItemId = existing.id;
-                      }
-                    }
-
-                    if (!invItemId) continue; // still no item, skip
-
-                    stmts.insertTicketPart.run(
-                      localDeviceId || 0,
-                      invItemId,
-                      partQty,
-                      partPrice,
-                      partWarranty,
-                      partSerial,
-                      devCreatedAt,
-                      devCreatedAt,
-                    );
-                  } catch (_partErr) {
-                    // Skip bad parts silently
-                  }
-                }
+                importRdPartsForDevice(db, stmts, localDeviceId, collectRdParts(dev), devCreatedAt);
 
               } catch (devErr: any) {
                 // Log device error but don't fail the whole ticket
@@ -1089,64 +1177,7 @@ async function importTickets(
               const firstDevice = db.prepare('SELECT id FROM ticket_devices WHERE ticket_id = ? ORDER BY id LIMIT 1').get(localTicketId) as any;
               const targetDeviceId = firstDevice?.id;
               if (targetDeviceId) {
-                for (const acc of accessories) {
-                  try {
-                    const accName = safeStr(acc.name) || '';
-                    if (!accName) continue;
-                    const accPrice = safeNum(acc.price);
-                    const accQty = safeInt(acc.quantity) || 1;
-                    const accSerial = safeStr(acc.item_serials);
-                    const accWarranty = acc.warranty ? 1 : 0;
-
-                    let invItemId: number | null = null;
-                    // Try to find by SKU first (accessories usually have SKUs)
-                    if (acc.sku) {
-                      const bySku = stmts.findInventoryBySku.get(acc.sku) as any;
-                      if (bySku) invItemId = bySku.id;
-                    }
-                    if (!invItemId && acc.id) {
-                      const mapped = db.prepare('SELECT local_id FROM import_id_map WHERE entity_type = ? AND rd_id = ?').get('inventory', String(acc.id)) as any;
-                      if (mapped) invItemId = mapped.local_id;
-                    }
-                    if (!invItemId) {
-                      const byName = stmts.findInventoryByName.get(accName) as any;
-                      if (byName) invItemId = byName.id;
-                    }
-                    // Create placeholder if not found
-                    if (!invItemId) {
-                      const placeholderSku = acc.sku || `RD-ACC-${acc.id || Date.now()}`;
-                      const insertResult = db.prepare(
-                        `INSERT OR IGNORE INTO inventory_items
-                          (sku, upc, name, description, item_type, category, manufacturer,
-                           cost_price, retail_price, in_stock, reorder_level, stock_warning,
-                           tax_inclusive, is_serialized, is_active, created_at, updated_at)
-                         VALUES (?, '', ?, '', 'part', 'Imported Parts', '',
-                                 ?, ?, 0, 0, 0,
-                                 0, 0, 1, ?, ?)`
-                      ).run(placeholderSku, accName, safeNum(acc.cost_price), accPrice, createdAt, createdAt);
-                      if (insertResult.changes > 0) {
-                        invItemId = Number(insertResult.lastInsertRowid);
-                      } else {
-                        const existing = db.prepare('SELECT id FROM inventory_items WHERE sku = ?').get(placeholderSku) as any;
-                        if (existing) invItemId = existing.id;
-                      }
-                    }
-                    if (!invItemId) continue;
-
-                    stmts.insertTicketPart.run(
-                      targetDeviceId,
-                      invItemId,
-                      accQty,
-                      accPrice,
-                      accWarranty,
-                      accSerial,
-                      createdAt,
-                      createdAt,
-                    );
-                  } catch (_accErr) {
-                    // Skip bad accessories silently
-                  }
-                }
+                importRdPartsForDevice(db, stmts, targetDeviceId, accessories, createdAt);
               }
             }
 
@@ -1271,14 +1302,40 @@ async function importInvoices(
             }
             // Allow invoices without a customer (walk-in POS sales)
 
-            // Resolve linked ticket (RD uses ticket_number like "T-999")
+            // Resolve linked ticket. RD invoice payloads vary by endpoint:
+            // sometimes `ticket_id` / `ticket.id` is the RD internal id,
+            // while `ticket_number` / `ticket.order_id` can be the visible
+            // ticket order number. Try both mapping and local order_id.
             let localTicketId: number | null = null;
-            const rdTicketRef = rd.ticket_id || rd.ticket_number || rd.ticket?.id;
-            if (rdTicketRef) {
-              // Try to find by RD ticket ID
-              const ticketIdStr = String(rdTicketRef).replace(/^T-/, '');
+            const rdTicketRefs = [
+              rd.ticket_id,
+              rd.ticket?.id,
+              rd.ticket_number,
+              rd.ticket?.order_id,
+            ].filter(ref => ref !== undefined && ref !== null && String(ref).trim() !== '');
+            for (const ref of rdTicketRefs) {
+              const refStr = String(ref).trim();
+              const ticketIdStr = refStr.replace(/^T-/i, '');
               const ticketMap = stmts.findMapping.get('ticket', ticketIdStr) as { local_id: number } | undefined;
-              localTicketId = ticketMap?.local_id ?? null;
+              if (ticketMap?.local_id) {
+                localTicketId = ticketMap.local_id;
+                break;
+              }
+
+              const orderCandidates = [refStr];
+              if (/^T-/i.test(refStr)) {
+                orderCandidates.push(ticketIdStr);
+              } else {
+                orderCandidates.push(`T-${refStr}`);
+              }
+              for (const orderCandidate of orderCandidates) {
+                const ticketByOrder = stmts.findTicketByOrderId.get(orderCandidate) as { id: number } | undefined;
+                if (ticketByOrder?.id) {
+                  localTicketId = ticketByOrder.id;
+                  break;
+                }
+              }
+              if (localTicketId) break;
             }
 
             // Map RD status to local
@@ -1317,6 +1374,9 @@ async function importInvoices(
 
             const localInvId = Number(result.lastInsertRowid);
             stmts.insertMapping.run(runId, 'invoice', rdId, localInvId);
+            if (localTicketId) {
+              replaceSyntheticPlaceholderInvoiceForTicket(db, localTicketId, localInvId);
+            }
 
             // Import line items (from rdLineItems extracted above, or fallback)
             const lineItems = rdLineItems.length > 0 ? rdLineItems : (Array.isArray(rd.items) ? rd.items : []);
@@ -1397,6 +1457,226 @@ async function importInvoices(
   );
 
   console.log(`[Import] Invoices: ${imported} imported, ${skipped} skipped, ${errors} errors out of ${totalRecords}`);
+
+  // Post-import linkage + placeholder synth so dashboard stats reconcile.
+  // RepairDesk's invoice import sets `invoices.ticket_id` but never updates
+  // the reverse `tickets.invoice_id` pointer; without it the ticket detail
+  // page renders Paid/Due as if the ticket has no invoice. Plus: many RD
+  // tickets are settled at the till and never get a separate RD invoice
+  // record — those tickets land here with a non-zero total but no invoice
+  // mapping at all, so they vanish from revenue / paid stats.
+  try {
+    const linkRes = backfillTicketInvoiceLinks(db);
+    const synthRes = synthesizePlaceholderInvoicesForUnlinkedTickets(db);
+    console.log(`[Import] Invoice backfill: linked ${linkRes.linked} tickets, synthesized ${synthRes.created} placeholder invoices`);
+  } catch (err: any) {
+    console.warn('[Import] Invoice backfill failed (non-fatal):', err?.message ?? err);
+  }
+}
+
+export function canSynthesizePlaceholderInvoicesForUnlinkedTickets(db: any): { ok: boolean; reason?: string } {
+  try {
+    const latest = db.prepare(
+      `SELECT status, total_records, imported
+         FROM import_runs
+        WHERE source = 'repairdesk'
+          AND entity_type = 'invoices'
+        ORDER BY id DESC
+        LIMIT 1`,
+    ).get() as { status: string; total_records: number | null; imported: number | null } | undefined;
+
+    if (!latest) {
+      return { ok: false, reason: 'repairdesk_invoice_import_never_ran' };
+    }
+    if (latest.status !== 'completed') {
+      return { ok: false, reason: `repairdesk_invoice_import_${latest.status}` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'repairdesk_invoice_import_status_unavailable' };
+  }
+}
+
+/**
+ * When the placeholder backfill ran before the real RD invoice import, tickets
+ * may already point at a synthetic unpaid invoice. A later real invoice import
+ * should take ownership of that ticket, then remove the synthetic receivable so
+ * reports don't double-count it as unpaid.
+ */
+export function replaceSyntheticPlaceholderInvoiceForTicket(
+  db: any,
+  ticketId: number,
+  realInvoiceId: number,
+): { replaced: boolean; placeholderId?: number } {
+  const placeholder = db.prepare(
+    `SELECT inv.id
+       FROM tickets t
+       JOIN invoices inv ON inv.id = t.invoice_id
+      WHERE t.id = ?
+        AND inv.id != ?
+        AND inv.notes = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM import_id_map im
+           WHERE im.entity_type = 'invoice'
+             AND im.local_id = inv.id
+        )
+      LIMIT 1`,
+  ).get(ticketId, realInvoiceId, RD_SYNTHETIC_INVOICE_NOTE) as { id: number } | undefined;
+
+  if (!placeholder) return { replaced: false };
+
+  const paymentCount = db.prepare(
+    `SELECT COUNT(*) AS count FROM payments WHERE invoice_id = ?`,
+  ).get(placeholder.id) as { count: number };
+  if ((paymentCount?.count ?? 0) > 0) return { replaced: false, placeholderId: placeholder.id };
+
+  db.prepare('UPDATE tickets SET invoice_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(realInvoiceId, ticketId);
+  db.prepare('DELETE FROM invoice_line_items WHERE invoice_id = ?').run(placeholder.id);
+  db.prepare('DELETE FROM payments WHERE invoice_id = ?').run(placeholder.id);
+  db.prepare('DELETE FROM invoices WHERE id = ?').run(placeholder.id);
+
+  return { replaced: true, placeholderId: placeholder.id };
+}
+
+export function inferSyntheticInvoiceStateFromTicketStatus(
+  statusName: string | null | undefined,
+  isCancelled: number | boolean | null | undefined,
+  total: number,
+): { status: 'unpaid' | 'paid' | 'void'; amountPaid: number; amountDue: number } {
+  if (isCancelled) return { status: 'void', amountPaid: 0, amountDue: 0 };
+
+  const normalized = String(statusName ?? '').toLowerCase();
+  const isPaidLike = [
+    'payment received',
+    'payment collected',
+    'paid',
+    'collected',
+    'picked up',
+    'shipped',
+  ].some(token => normalized.includes(token));
+
+  if (isPaidLike) return { status: 'paid', amountPaid: total, amountDue: 0 };
+  return { status: 'unpaid', amountPaid: 0, amountDue: total };
+}
+
+/**
+ * Backfill `tickets.invoice_id` from `invoices.ticket_id`. Idempotent: only
+ * touches rows where the reverse pointer is NULL and a matching invoice
+ * exists. Returns `{ linked: n }`.
+ */
+export function backfillTicketInvoiceLinks(db: any): { linked: number } {
+  const result = db.prepare(
+    `UPDATE tickets
+        SET invoice_id = (
+              SELECT inv.id FROM invoices inv
+              WHERE inv.ticket_id = tickets.id
+              ORDER BY inv.id DESC
+              LIMIT 1
+            ),
+            updated_at = datetime('now')
+      WHERE invoice_id IS NULL
+        AND is_deleted = 0
+        AND EXISTS (SELECT 1 FROM invoices inv WHERE inv.ticket_id = tickets.id)`
+  ).run();
+  return { linked: result.changes ?? 0 };
+}
+
+/**
+ * For tickets that survived import without ANY linked invoice (RD ticket
+ * settled at the till with no separate invoice record on the source side)
+ * but carry a real total, mint a placeholder unpaid invoice so revenue /
+ * receivables stats include them. Skip tickets with total = 0 (estimates,
+ * draft intakes) — they don't represent settled work.
+ *
+ * Idempotent: skips tickets that already have invoice_id set or that have
+ * a row in invoices.ticket_id.
+ */
+export function synthesizePlaceholderInvoicesForUnlinkedTickets(
+  db: any,
+  options: { requireCompletedInvoiceImport?: boolean } = {},
+): { created: number; skipped?: boolean; reason?: string } {
+  if (options.requireCompletedInvoiceImport !== false) {
+    const guard = canSynthesizePlaceholderInvoicesForUnlinkedTickets(db);
+    if (!guard.ok) return { created: 0, skipped: true, reason: guard.reason };
+  }
+
+  const candidates = db.prepare(
+    `SELECT t.id, t.order_id, t.customer_id, t.subtotal, t.discount, t.total_tax, t.total, t.created_at,
+            ts.name AS status_name,
+            COALESCE(ts.is_cancelled, 0) AS is_cancelled
+       FROM tickets t
+       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
+      WHERE t.invoice_id IS NULL
+        AND t.is_deleted = 0
+        AND COALESCE(t.total, 0) > 0
+        AND NOT EXISTS (SELECT 1 FROM invoices inv WHERE inv.ticket_id = t.id)
+      LIMIT 5000`,
+  ).all() as Array<{
+    id: number;
+    order_id: string;
+    customer_id: number | null;
+    subtotal: number | null;
+    discount: number | null;
+    total_tax: number | null;
+    total: number | null;
+    created_at: string | null;
+    status_name: string | null;
+    is_cancelled: number | null;
+  }>;
+  if (candidates.length === 0) return { created: 0 };
+
+  // Find next available INV order_id sequence start. Source = max numeric
+  // suffix on existing INV-* rows + 1.
+  const seqRow = db.prepare(
+    `SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) AS n
+       FROM invoices
+      WHERE order_id LIKE 'INV-%'`,
+  ).get() as { n: number };
+  let nextSeq = (seqRow?.n ?? 0) + 1;
+
+  const insertInv = db.prepare(
+    `INSERT INTO invoices
+       (order_id, ticket_id, customer_id, status, subtotal, discount, total_tax,
+        total, amount_paid, amount_due, notes, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+  );
+  const linkTicket = db.prepare(
+    `UPDATE tickets SET invoice_id = ?, updated_at = ? WHERE id = ?`,
+  );
+  let created = 0;
+  const txn = db.transaction((rows: typeof candidates) => {
+    for (const t of rows) {
+      const subtotal = Number(t.subtotal ?? 0);
+      const discount = Number(t.discount ?? 0);
+      const tax = Number(t.total_tax ?? 0);
+      const total = Number(t.total ?? 0);
+      if (total <= 0) continue;
+      const invoiceState = inferSyntheticInvoiceStateFromTicketStatus(t.status_name, t.is_cancelled, total);
+      const orderId = `INV-${nextSeq++}`;
+      const ts = t.created_at ?? new Date().toISOString();
+      const r = insertInv.run(
+        orderId,
+        t.id,
+        t.customer_id,
+        invoiceState.status,
+        subtotal,
+        discount,
+        tax,
+        total,
+        invoiceState.amountPaid,
+        invoiceState.amountDue,
+        RD_SYNTHETIC_INVOICE_NOTE,
+        ts,
+        ts,
+      );
+      if (r.changes > 0) {
+        linkTicket.run(Number(r.lastInsertRowid), ts, t.id);
+        created++;
+      }
+    }
+  });
+  txn(candidates);
+  return { created };
 }
 
 async function importInventory(
@@ -1815,18 +2095,26 @@ async function importTicketNotesAndHistory(
   stmts: ReturnType<typeof getStatements>,
   tenantSlug: string,
   opts: { startFresh?: boolean; startTime?: number; timezone?: string } = {},
-): Promise<{ notesImported: number; historyImported: number; errors: number }> {
+): Promise<{ notesImported: number; historyImported: number; partsImported: number; errors: number }> {
   const mappings = db.prepare(
     `SELECT source_id, local_id FROM import_id_map WHERE entity_type = 'ticket' ORDER BY local_id`
   ).all() as Array<{ source_id: string; local_id: number }>;
 
   const countNotes = db.prepare(`SELECT COUNT(*) as cnt FROM ticket_notes WHERE ticket_id = ?`);
   const countHistory = db.prepare(`SELECT COUNT(*) as cnt FROM ticket_history WHERE ticket_id = ?`);
+  const countParts = db.prepare(
+    `SELECT COUNT(*) as cnt
+     FROM ticket_device_parts tdp
+     JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+     WHERE td.ticket_id = ?`
+  );
+  const countPartsForDevice = db.prepare(`SELECT COUNT(*) as cnt FROM ticket_device_parts WHERE ticket_device_id = ?`);
+  const findTicketDevices = db.prepare(`SELECT id FROM ticket_devices WHERE ticket_id = ? ORDER BY id`);
 
   // SA7-1 checkpoint handle. `startFresh` defaults to false here because
   // an in-process import should be resumable across a crash by default;
   // explicit callers (CLI scripts) override.
-  const jobId = buildJobId('repairdesk', 'ticket-notes-history', tenantSlug);
+  const jobId = buildJobId('repairdesk', 'ticket-details', tenantSlug);
   const jobState = resumeJobState(db, jobId, {
     total: mappings.length,
     startFresh: opts.startFresh ?? false,
@@ -1835,16 +2123,17 @@ async function importTicketNotesAndHistory(
 
   let notesImported = 0;
   let historyImported = 0;
+  let partsImported = 0;
   let errors = 0;
   let processed = jobState.currentStep();
 
   if (jobState.resumed) {
     console.log(
-      `[Import] Resuming notes/history from checkpoint: step=${processed} ` +
+      `[Import] Resuming ticket details from checkpoint: step=${processed} ` +
       `cursor=${jobState.currentCursor()}`,
     );
   }
-  console.log(`[Import] Fetching notes/history for ${mappings.length} tickets individually...`);
+  console.log(`[Import] Fetching ticket details for ${mappings.length} tickets individually...`);
 
   // SEC-H82: resolve wallclock context from opts (may be undefined for standalone callers)
   const notesStartTime = opts.startTime;
@@ -1883,9 +2172,12 @@ async function importTicketNotesAndHistory(
       await new Promise<void>(resolve => setTimeout(resolve, BUSINESS_HOURS_THROTTLE_MS));
     }
 
-    // Skip tickets that already have notes — still checkpoint so resume doesn't revisit.
-    const existing = (countNotes.get(localTicketId) as { cnt: number }).cnt;
-    if (existing > 0) {
+    // Skip only when every detail side table already has data. Parts may be
+    // absent from the list endpoint and only present on the individual ticket.
+    const existingNotes = (countNotes.get(localTicketId) as { cnt: number }).cnt;
+    const existingHistory = (countHistory.get(localTicketId) as { cnt: number }).cnt;
+    const existingParts = (countParts.get(localTicketId) as { cnt: number }).cnt;
+    if (existingNotes > 0 && existingHistory > 0 && existingParts > 0) {
       jobState.checkpoint({ step: processed, lastProcessedId: rdId });
       continue;
     }
@@ -1920,29 +2212,68 @@ async function importTicketNotesAndHistory(
       const history = Array.isArray(ticket.hostory)
         ? ticket.hostory
         : (Array.isArray(ticket.history) ? ticket.history : []);
+      const detailDevices = Array.isArray(ticket.devices)
+        ? ticket.devices
+        : (Array.isArray(ticket.device)
+            ? ticket.device
+            : (ticket.device && typeof ticket.device === 'object' ? [ticket.device] : []));
+      const localDevices = findTicketDevices.all(localTicketId) as Array<{ id: number }>;
 
-      // SA7-1: notes + history + checkpoint in ONE transaction.
+      // SA7-1: details + checkpoint in ONE transaction.
       db.transaction(() => {
-        for (const note of notes) {
-          const content = safeStr(note.msg_text) || safeStr(note.tittle) || '';
-          if (!content) continue;
-          const noteType = note.type === 1 ? 'diagnostic' : 'internal';
-          const noteDate = toISODate(note.created_on) || now();
-          stmts.insertTicketNote.run(localTicketId, null, noteType, content, note.is_flag ? 1 : 0, noteDate, noteDate);
-          notesImported++;
+        if (existingNotes === 0) {
+          for (const note of notes) {
+            const content = safeStr(note.msg_text) || safeStr(note.tittle) || '';
+            if (!content) continue;
+            const noteType = note.type === 1 ? 'diagnostic' : 'internal';
+            const noteDate = toISODate(note.created_on) || now();
+            stmts.insertTicketNote.run(localTicketId, null, noteType, content, note.is_flag ? 1 : 0, noteDate, noteDate);
+            notesImported++;
+          }
         }
-        for (const h of history) {
-          const desc = safeStr(h.description) || '';
-          if (!desc) continue;
-          const hDate = toISODate(h.creationdate) || now();
-          stmts.insertTicketHistory.run(localTicketId, 'import', desc, hDate);
-          historyImported++;
+        if (existingHistory === 0) {
+          for (const h of history) {
+            const desc = safeStr(h.description) || '';
+            if (!desc) continue;
+            const hDate = toISODate(h.creationdate) || now();
+            stmts.insertTicketHistory.run(localTicketId, 'import', desc, hDate);
+            historyImported++;
+          }
         }
+
+        if (existingParts === 0 && localDevices.length > 0) {
+          for (const [deviceIndex, detailDevice] of detailDevices.entries()) {
+            const targetDevice = localDevices[deviceIndex] || localDevices[0];
+            if (!targetDevice) continue;
+            const deviceExistingParts = (countPartsForDevice.get(targetDevice.id) as { cnt: number }).cnt;
+            if (deviceExistingParts > 0) continue;
+            partsImported += importRdPartsForDevice(
+              db,
+              stmts,
+              targetDevice.id,
+              collectRdParts(detailDevice),
+              toISODate(detailDevice?.created_at || detailDevice?.createdd_date || detailDevice?.created_date) || now(),
+            );
+          }
+
+          const targetDevice = localDevices[0];
+          const targetExistingParts = (countPartsForDevice.get(targetDevice.id) as { cnt: number }).cnt;
+          if (targetExistingParts === 0) {
+            partsImported += importRdPartsForDevice(
+              db,
+              stmts,
+              targetDevice.id,
+              collectRdParts(ticket),
+              toISODate(ticket.created_at || ticket.createdd_date || ticket.created_date) || now(),
+            );
+          }
+        }
+
         jobState.checkpoint({ step: processed, lastProcessedId: rdId });
       })();
 
       if (processed % 100 === 0) {
-        console.log(`[Import] Notes progress: ${processed}/${mappings.length} | Notes: ${notesImported} | History: ${historyImported}`);
+        console.log(`[Import] Details progress: ${processed}/${mappings.length} | Notes: ${notesImported} | History: ${historyImported} | Parts: ${partsImported}`);
       }
 
       await sleep(200); // polite delay
@@ -1958,8 +2289,8 @@ async function importTicketNotesAndHistory(
   if (!cancelFlags.get(tenantSlug)) {
     jobState.complete(processed);
   }
-  console.log(`[Import] Notes complete: ${notesImported} notes, ${historyImported} history entries, ${errors} errors`);
-  return { notesImported, historyImported, errors };
+  console.log(`[Import] Details complete: ${notesImported} notes, ${historyImported} history entries, ${partsImported} parts, ${errors} errors`);
+  return { notesImported, historyImported, partsImported, errors };
 }
 
 /**
