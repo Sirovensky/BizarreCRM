@@ -315,10 +315,15 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   window.addEventListener(LOGOUT_REQUIRED_EVENT, (e: Event) => {
     const detail = (e as CustomEvent<{ reason: string }>).detail;
+    const prevUserId = useAuthStore.getState().user?.id ?? null;
     useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
     // @audit-fixed: forced logout (refresh-failed, session-expired, etc.) must
     // also wipe per-user caches so the next sign-in starts clean.
-    emitAuthCleared();
+    // WEB-UIUX-745: pass prevUserId so the useDraft listener can compare it
+    // to the post-relogin user_id and decline to wipe drafts when the same
+    // person signs back in after a mid-action 401. Cross-user kiosk handoff
+    // (different prevUserId vs new user) still triggers a full sweep.
+    emitAuthCleared(true, prevUserId);
     if (detail?.reason === 'refresh-failed' || detail?.reason === 'session-expired') {
       toast.error('Your session has expired. Please sign in again.');
     }

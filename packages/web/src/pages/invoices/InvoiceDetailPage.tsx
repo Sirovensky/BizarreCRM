@@ -86,15 +86,20 @@ export function InvoiceDetailPage() {
 
   // Esc-to-close for the inline payment modal (Fixer-TT a11y). The credit-note
   // dialog handles Escape on its own overlay so the behavior stays scoped there.
+  // WEB-UIUX-730: if both modals are open simultaneously (shouldn't happen via
+  // normal flow but defensively) the credit-note dialog takes priority — Esc
+  // closes it first; subsequent Esc closes the payment modal.
   useEffect(() => {
     if (!showPayment) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
+      // Credit-note overlay owns Esc when both open.
+      if (showCreditNote) return;
       setShowPayment(false);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showPayment]);
+  }, [showPayment, showCreditNote]);
 
   // WEB-UIUX-729: focus-trap + Esc for the Credit Note dialog.
   // useFocusTrap returns a ref that must be attached to the inner dialog div.

@@ -3269,7 +3269,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-729. **[MINOR] Credit Note dialog has `aria-modal="true"` and `aria-labelledby` but no focus trap.** `autoFocus` on amount input but Tab cycles into underlying invoice page. Same defect as Payment Modal. L12. **[AUTOLOOP-T33 RESOLVED: Credit Note dialog wired with useFocusTrap(showCreditNote) + useEscClose; trapRef on inner dialog div.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:739-746`
 
-- [ ] WEB-UIUX-730. **[MINOR] Credit Note Esc-to-close handler shared with Payment Modal — logical race if both somehow open Esc closes Credit Note only.** Brittle. L13.
+- [x] WEB-UIUX-730. **[MINOR] Credit Note Esc-to-close handler shared with Payment Modal — logical race if both somehow open Esc closes Credit Note only.** Brittle. L13. **[AUTOLOOP-T49 RESOLVED 2026-05-11: payment-modal Esc handler now checks showCreditNote first; credit-note overlay owns Esc when both open. Race resolved.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:60-69`
 
 - [x] WEB-UIUX-731. **[MINOR] `creditNoteMutation` `onError` catches `e?.response?.data?.message` but no field-level highlight on the error.** Operator just gets generic toast, must re-read modal to find the offending field. L7, L8. **[AUTOLOOP-T33 RESOLVED: creditNoteError state — server `fields` map parsed; amount input gets red border + inline; reason/note picker shows inline error; general banner above form.]**
@@ -3324,7 +3324,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/stores/authStore.ts:269-282`
   `packages/web/src/hooks/useDraft.ts:59`
 
-- [ ] WEB-UIUX-745. **[MAJOR] Mid-action 401 → form data lost.** Forced logout → SPA nav to /login → wipeAllDrafts() synchronous. Re-login lands on fromPath but form is fresh state. L4, L7.
+- [x] WEB-UIUX-745. **[MAJOR] Mid-action 401 → form data lost.** Forced logout → SPA nav to /login → wipeAllDrafts() synchronous. Re-login lands on fromPath but form is fresh state. L4, L7. **[AUTOLOOP-T49 RESOLVED 2026-05-11: LOGOUT_REQUIRED listener now propagates prevUserId through emitAuthCleared so useDraft (which already short-circuits when prevUserId matches the post-relogin user) preserves drafts when the same person signs back in after a mid-action 401.]**
   `packages/web/src/stores/authStore.ts:294-309`
 
 - [x] WEB-UIUX-746. **[MAJOR] Cross-tab logout wipes drafts in current tab even mid-form — NO toast, NO warning before redirect.** L6, L4. **[AUTOLOOP-T34 RESOLVED: handleAuthBroadcastMessage scans localStorage for bizarrecrm:draft: keys; if drafts exist, toast.error + 700 ms delay before requestLoginNav.]**
