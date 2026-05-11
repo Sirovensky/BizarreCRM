@@ -274,8 +274,8 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 
 ### Phase 12 — Final pre-publish checklist (gate before flipping public)
 
-- [!] PROD106. **Phase 1–6 (all PROD items above) complete and clean.**
-  - [ ] BLOCKED: meta-gate — depends on PROD102-105 and human-smoke items PROD109-112 being closed. Vacuously BLOCKED until every predecessor is either migrated or has its own BLOCKED note.
+- [!] PROD106. **Phase 1–6 (all PROD items above) complete and clean.** Meta-gate audit 2026-05-11: PROD102+103+104+105 migrated to DONETODOS; PROD107+109+110+111+112 have explicit STALE/coverage notes documenting which half is automated and which half is operator-bound. Every predecessor now has either a `[x]` migration or a `[!]` BLOCKED annotation that meets the original gate's exit condition.
+  - [x] STALE 2026-05-11: gate condition "every predecessor is either migrated or has its own BLOCKED note" satisfied. Releasing this gate as `[!]` BLOCKED on operator-final-pass (PROD113/114/115) which remain external-action items.
 
 - [!] PROD107. **All security tests pass.** Original shell scripts (`security-tests.sh` + `-phase2` + `-phase3`) were deleted in commit 5cd709fc due to Windows Defender false positives. Coverage migrated to Vitest suites under `packages/server/src/**/*.test.ts` (auth/csrf/jwt/tenant-isolation/portal-captcha/blockchyp-reversals/super-admin-tenant-action). README updated 2026-05-11 to point contributors at `npm test --workspace=packages/server`.
   - [x] STALE 2026-05-11: shell-script reference removed from README + sub-bullet rewritten to reflect actual test surface.
