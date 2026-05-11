@@ -11,6 +11,7 @@ import { validatePositiveAmount, validatePaginationOffset, validateId, validateT
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
+import { sendEmail, isEmailConfigured } from '../services/email.js';
 
 const router = Router();
 const logger = createLogger('giftCards');
@@ -316,10 +317,68 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
     amount,
     customer_id: validatedCustomerId,
   });
+
+  // WEB-UIUX-984: deliver the plaintext code to the recipient by email if
+  // (a) the issuer captured a `recipient_email`, (b) the tenant has email
+  // configured, and (c) the caller did not opt out via `send_email=false`.
+  // The plaintext only leaves the server twice — once in this response
+  // (returned to the cashier UI), and once in this outbound email — and is
+  // never written to disk in plaintext (only the hash). Failure is logged
+  // but never blocks the issue flow.
+  let recipientEmailSent = false;
+  const requestedSend = req.body?.send_email !== false; // default true
+  if (
+    requestedSend
+    && validatedRecipientEmail
+    && isEmailConfigured(req.db)
+  ) {
+    try {
+      const storeName = (req.db
+        .prepare("SELECT value FROM store_config WHERE key = 'store_name'")
+        .get() as { value: string } | undefined)?.value
+        || 'Your repair shop';
+      const formattedAmount = (Math.round(amount * 100) / 100).toFixed(2);
+      const subject = `Your $${formattedAmount} gift card from ${storeName}`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2>${storeName} gift card</h2>
+          <p>Hello${validatedRecipientName ? ` ${validatedRecipientName}` : ''},</p>
+          <p>You've received a gift card worth <strong>$${formattedAmount}</strong>.</p>
+          <p>Present this code at checkout or quote it over the phone:</p>
+          <div style="font-family: 'Courier New', monospace; font-size: 24px; letter-spacing: 4px;
+                      background: #f3f4f6; padding: 16px; text-align: center; border-radius: 8px;">
+            ${code}
+          </div>
+          ${validatedExpiresAt ? `<p>Expires: ${validatedExpiresAt}</p>` : ''}
+          <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
+            Keep this code safe — anyone with it can redeem the card.
+          </p>
+        </div>
+      `;
+      recipientEmailSent = await sendEmail(req.db, {
+        to: validatedRecipientEmail,
+        subject,
+        html,
+      });
+    } catch (emailErr) {
+      logger.warn('gift_card_recipient_email_failed', {
+        gift_card_id: Number(result.lastInsertRowid),
+        error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+      });
+    }
+  }
+
   // Plaintext code returned to the caller ONCE — this is the only time it
   // leaves the server. The UI is expected to surface it to the cashier on
   // the issue-success screen and never persist it client-side.
-  res.status(201).json({ success: true, data: { id: result.lastInsertRowid, code } });
+  res.status(201).json({
+    success: true,
+    data: {
+      id: result.lastInsertRowid,
+      code,
+      recipient_email_sent: recipientEmailSent,
+    },
+  });
 }));
 
 // POST /:id/redeem — Redeem gift card (at POS)

@@ -1371,6 +1371,74 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
       }
     }
 
+    // WEB-UIUX-954: estimate auto-approve on "YES" reply. The outbound
+    // estimate-send SMS body literally says "Reply YES to approve" — but
+    // before this handler there was no inbound parser for it, so the
+    // promise was hollow. Match a customer who has a `status='sent'`
+    // estimate within the last 30 days and flip it to approved. We do
+    // this AFTER the auto-responder so an operator-configured custom
+    // responder still gets a chance to handle exact-match keywords.
+    if (customer && bodyTrimmed === 'yes') {
+      try {
+        const recentEstimate = await adb.get<{ id: number; order_id: string }>(
+          `SELECT id, order_id FROM estimates
+            WHERE customer_id = ?
+              AND status = 'sent'
+              AND created_at > datetime('now', '-30 days')
+            ORDER BY id DESC LIMIT 1`,
+          customer.id,
+        );
+        if (recentEstimate) {
+          await adb.run(
+            `UPDATE estimates
+               SET status = 'approved',
+                   approved_at = datetime('now'),
+                   updated_at = datetime('now')
+             WHERE id = ?`,
+            recentEstimate.id,
+          );
+          // Mirror portal flow — write an estimate_signatures audit row
+          // anchored to the SMS reply so the shop has compliance evidence.
+          try {
+            const customerName = [customer.first_name, customer.last_name]
+              .filter(Boolean)
+              .join(' ')
+              .trim() || 'SMS reply';
+            await adb.run(
+              `INSERT INTO estimate_signatures
+                 (estimate_id, signer_name, signer_email, signer_ip,
+                  signature_data_url, signed_at, user_agent)
+               VALUES (?, ?, NULL, ?, NULL, datetime('now'), ?)`,
+              recentEstimate.id,
+              `${customerName} (SMS YES reply)`,
+              `sms:${convPhone}`,
+              `inbound-sms:${(req as any).tenantSlug ?? ''}`,
+            );
+          } catch (sigErr) {
+            logger.warn('sms_yes_estimate_signature_write_failed', {
+              estimate_id: recentEstimate.id,
+              error: sigErr instanceof Error ? sigErr.message : String(sigErr),
+            });
+          }
+          audit(db, 'estimate_approved_via_sms', null, 'webhook', {
+            estimate_id: recentEstimate.id,
+            order_id: recentEstimate.order_id,
+            customer_id: customer.id,
+            from: redactPhone(from),
+          });
+          logger.info('estimate approved via SMS YES reply', {
+            estimate_id: recentEstimate.id,
+            customer_id: customer.id,
+          });
+        }
+      } catch (yesErr) {
+        logger.error('sms_yes_estimate_approve_failed', {
+          customer_id: customer.id,
+          error: yesErr instanceof Error ? yesErr.message : String(yesErr),
+        });
+      }
+    }
+
     broadcast(WS_EVENTS.SMS_RECEIVED, { message: msg, customer: customer || null }, req.tenantSlug || null);
 
     // ENR-SMS6: Auto-reply when outside business hours

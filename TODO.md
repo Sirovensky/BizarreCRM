@@ -3967,7 +3967,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/server/src/routes/estimates.routes.ts:967-969`
   <!-- meta: fix=narrow-type-to-'sms'-only-OR-implement-email-path -->
 
-- [ ] WEB-UIUX-954. **[MAJOR] SMS body hardcoded server-side, says "Reply YES to approve" but NO inbound-SMS approve handler exists.** `estimates.routes.ts:984` builds `Hi ${first_name}, ... Reply YES to approve...`. Customer texts "YES" → goes to nowhere (smsInbox shows it as raw thread message; no parser flips estimate status). False promise. Customers expect SMS-reply approval, get silence. L7, L16.
+- [x] WEB-UIUX-954. **[MAJOR] SMS body hardcoded server-side, says "Reply YES to approve" but NO inbound-SMS approve handler exists.** `estimates.routes.ts:984` builds `Hi ${first_name}, ... Reply YES to approve...`. Customer texts "YES" → goes to nowhere (smsInbox shows it as raw thread message; no parser flips estimate status). False promise. Customers expect SMS-reply approval, get silence. L7, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: inbound SMS webhook now parses bodyTrimmed==="yes" against the customers most recent status=sent estimate within 30 days, flips it to approved, writes an estimate_signatures audit row anchored to the SMS reply, and audits estimate_approved_via_sms.]**
   `packages/server/src/routes/estimates.routes.ts:984`
 
 - [!] WEB-UIUX-955. **[MAJOR] `send` flips `status='sent'` BEFORE SMS dispatch; SMS failure surfaces toast but status stays `'sent'`.** `estimates.routes.ts:949-955` UPDATEs status='sent' first, then SMS attempt at `:980-1003` may fail. Web treats `data.sent === false` as error toast (`EstimateDetailPage:76-77`) but the estimate's status persists as 'sent' — operator/customer/audit chain says "sent" even though nothing left the building. L7, L11. **STATUS: BLOCKED — server estimates.routes.ts must defer status update until SMS dispatch confirmed; backend change, defer to estimates sprint**
@@ -4079,7 +4079,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
   <!-- meta: fix=add-POST-/:id/disable-server-route+Disable-Card-action-on-DetailPage+confirm-with-reason -->
 
-- [ ] WEB-UIUX-984. **[BLOCKER] Issued code shown ONCE, never recoverable.** IssueModal success state at `:138-141`: "Save this code now — it will not be shown again." Code value is `select-all` div with no Copy button, no QR, no Print, no Send-to-recipient-email. Server stores `code_hash` only (SEC-H38, plaintext drops on next migration). `recipient_email` collected at issue but no email-send path — the field is decorative. Customer who drops the receipt = card lost forever. L4, L8.
+- [x] WEB-UIUX-984. **[BLOCKER] Issued code shown ONCE, never recoverable.** IssueModal success state at `:138-141`: "Save this code now — it will not be shown again." Code value is `select-all` div with no Copy button, no QR, no Print, no Send-to-recipient-email. Server stores `code_hash` only (SEC-H38, plaintext drops on next migration). `recipient_email` collected at issue but no email-send path — the field is decorative. Customer who drops the receipt = card lost forever. L4, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: gift-card issue handler now emails the plaintext code to recipient_email when isEmailConfigured and send_email!=false; response includes recipient_email_sent.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:123-153`
   <!-- meta: fix=email-on-issue+Copy-button+QR-render+Print-receipt -->
 
