@@ -73,7 +73,7 @@ Confirmed single-tenant via `MULTI_TENANT=false` in `packages/server/.env` (serv
 
 ## Cookie consent / privacy compliance (LEGAL-COOKIE-CONSENT)
 
-- [!] LEGAL-COOKIE-CONSENT-1. **Add cookie consent banner before introducing analytics / marketing / fingerprinting cookies.** BLOCKED 2026-05-10 — premature: current cookie set (refreshToken/csrf_token/theme) is exempt under ePrivacy strictly-necessary clause. Banner work tracks alongside first non-exempt cookie introduction (Sentry replay / GA / marketing pixel). No such cookie shipping yet. Re-open when those land. Today's cookies (auth: refreshToken/csrf_token; preference: theme) are exempt under ePrivacy Directive (strictly necessary + explicitly user-requested). The exemption does NOT cover Sentry session-replay, Google Analytics, ad pixels, or third-party fingerprinting. When any of those land we MUST ship a banner with categories (necessary / preferences / analytics / marketing), default-deny for non-necessary, persisted choice, easy revoke. CCPA "Do Not Sell" link if any data sale starts. See uiStore.ts `LEGAL-COOKIE-CONSENT` marker for theme-cookie reasoning.
+- [x] LEGAL-COOKIE-CONSENT-1. **Cookie consent banner landed 2026-05-11.** `packages/web/src/stores/consentStore.ts` persists per-category opt-in (necessary always on; preferences / analytics / marketing default-deny) under `localStorage:bizarre-crm:cookie-consent` and emits a `bizarre-crm:cookie-consent-changed` event so future analytics SDKs gate writes through `useConsentStore.isAllowed(category)`. `packages/web/src/components/shared/CookieConsentBanner.tsx` ships an Accept-all / Reject-non-essential / Customize bottom banner with per-row toggles + a CCPA "Do Not Sell or Share My Personal Information" checkbox; wired at the App.tsx root so it covers both the landing branch and the authenticated app shell. Re-opening for changes is one `useConsentStore.reopen()` away (footer link to add later when the banner gets paired with `/legal/cookies`).
 
 ## Web unwired controls audit (WEB-UNWIRED)
 
@@ -699,11 +699,8 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 
 
-- [!] DASH-ELEC-157-upstream. **`inflight` + `glob@7` deprecated transitives are still pulled by current electron-builder.** BLOCKED 2026-05-06 — `electron-builder@26.8.1` pulls `glob@7.2.3`/`inflight@1.0.6` via `@electron/asar` and `electron-winstaller -> temp -> rimraf@2`; no safe direct app-level override removes them without patching builder internals. Track upstream electron-builder/@electron/asar/electron-winstaller releases.
 
-- [!] DASH-ELEC-158-upstream. **`prebuild-install@7.1.3` is still pulled by current native addons.** BLOCKED 2026-05-06 — current `better-sqlite3@12.9.0` and `canvas@3.2.3` still depend on `prebuild-install`; replacing it would require changing native-addon package internals or swapping database/canvas libraries. Track upstream native-addon releases.
 
-- [!] DASH-ELEC-159-upstream-builder. **`boolean@3.2.0` is still pulled by current electron-builder, not Electron runtime.** BLOCKED 2026-05-06 — the Electron runtime was moved to the current supported line and no longer pulls `boolean`; `npm ls electron boolean --workspace=packages/management --all` shows the remaining copy only through `electron-builder@26.8.1 -> app-builder-lib -> @electron/get@3.1.0 -> global-agent@3.0.0`. Track electron-builder/@electron/get/global-agent upstream removal.
 
 
 
