@@ -1797,10 +1797,20 @@ export function TicketListPage() {
         </div>
 
         {/* Bulk action bar */}
-        {selected.size > 0 && (
+        {selected.size > 0 && (() => {
+          // WEB-UIUX-664: clarify cross-page selection so a "50 selected" bar
+          // never shows up against 25 visibly-checked rows on the current page.
+          const onCurrentPage = tickets.filter((t) => selected.has(t.id)).length;
+          const crossPageCount = selected.size - onCurrentPage;
+          return (
           <div className="flex items-center gap-3 border-b border-surface-200 bg-primary-50 px-4 py-2.5 dark:border-surface-700 dark:bg-primary-950/30">
             <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
               {selected.size} selected
+              {crossPageCount > 0 && (
+                <span className="ml-1 text-xs font-normal text-primary-600/80 dark:text-primary-300/70">
+                  ({onCurrentPage} on this page · {crossPageCount} from other pages)
+                </span>
+              )}
             </span>
             <div className="relative" ref={bulkStatusRef}>
               <button
@@ -1879,7 +1889,8 @@ export function TicketListPage() {
               Clear
             </button>
           </div>
-        )}
+          );
+        })()}
 
         {ticketsIsError && (
           <div

@@ -681,10 +681,22 @@ export function CustomerListPage() {
       {/* Table */}
       <div className="card overflow-hidden flex-1 flex flex-col min-h-0">
         {/* Bulk action bar */}
-        {selected.size > 0 && (
+        {selected.size > 0 && (() => {
+          // WEB-UIUX-664: cross-page selection clarity. Distinguish "selected
+          // on this page" from "selected across all loaded pages" so the
+          // operator never sees a mystery "50 selected" without seeing 50
+          // checkboxes.
+          const onCurrentPage = customers.filter((c) => selected.has(c.id)).length;
+          const crossPageCount = selected.size - onCurrentPage;
+          return (
           <div className="flex items-center gap-3 border-b border-surface-200 bg-primary-50 px-4 py-2.5 dark:border-surface-700 dark:bg-primary-950/30 shrink-0">
             <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
               {selected.size} selected
+              {crossPageCount > 0 && (
+                <span className="ml-1 text-xs font-normal text-primary-600/80 dark:text-primary-300/70">
+                  ({onCurrentPage} on this page · {crossPageCount} from other pages)
+                </span>
+              )}
             </span>
             {showTagInput ? (
               <div className="flex items-center gap-2">
@@ -734,7 +746,8 @@ export function CustomerListPage() {
               Clear
             </button>
           </div>
-        )}
+          );
+        })()}
 
         {isError ? (
           <div className="flex flex-col items-center justify-center py-12 text-surface-500">

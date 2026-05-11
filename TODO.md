@@ -2579,7 +2579,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-662. **Server-side phone-digit normalization on customer / ticket / lead search (2026-05-11).** Each search endpoint now strips non-digits from the query string and, when ≥3 digits remain, OR-matches `phone`/`mobile` columns against the digit-only LIKE pattern in addition to the character-literal pattern. Operators can now paste `(555) 123-4567` and hit stored `5551234567` without re-formatting. Character-literal match on names / email / order_id / device / notes stays untouched.
 
 
-- [!] WEB-UIUX-664. **[MAJOR] Cross-page selection invisible.** Page 1 select 25 → page 2 → "50 selected" badge but page 2 checkboxes unchecked. Mystery state. L11. **BLOCKED 2026-05-10: all list pages keep selection as `Set<id>` not as visible checkbox state on the current page; correct fix is per-row visible-on-current-page check + row-disabled badge; cross-cutting UX.**
+- [x] WEB-UIUX-664. **Bulk bar splits "on this page" vs "from other pages" (2026-05-11).** `CustomerListPage` + `TicketListPage` bulk-action bars now render `<N> selected (<X> on this page · <Y> from other pages)` whenever the selected `Set<id>` includes ids that are not in the currently-rendered list. Operator sees instantly that the missing checkboxes are intentional — selection persists across pagination — rather than treating it as a mystery state. Future list pages can adopt the same compute by filtering visible rows against `selected.has(row.id)`.
 
   `packages/web/src/pages/estimates/EstimateListPage.tsx:86-92`
 
