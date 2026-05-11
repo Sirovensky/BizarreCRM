@@ -17,6 +17,9 @@ import { Menu, AlertTriangle, X } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
 import { useFormKeyboardShortcuts } from '@/hooks/useFormKeyboardShortcuts';
+import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
+import { useAuthStore } from '@/stores/authStore';
+import toast from 'react-hot-toast';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
@@ -94,6 +97,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // WEB-UIUX-478: gate WebSocket activation on settings-config-env success so
   // the WS handshake never races against an auth-token overwrite from config.
   useWebSocket({ enabled: configLoaded });
+
+  // WEB-UIUX-747: idle-session warning + forced logout. 25 min idle pops a
+  // sticky toast asking the user to confirm; another 5 min without activity
+  // calls authStore.logout. Activity = mouse/key/touch/scroll/visibility.
+  // Skipped when not authenticated.
+  const inactivityAuthed = useAuthStore((s) => s.isAuthenticated);
+  const inactivityLogout = useAuthStore((s) => s.logout);
+  useInactivityTimeout({
+    enabled: inactivityAuthed,
+    warnMs: 25 * 60 * 1000,
+    idleMs: 30 * 60 * 1000,
+    onWarn: () => {
+      toast(
+        'You have been idle for 25 minutes. The session ends in 5 minutes — move your mouse or press a key to stay signed in.',
+        { duration: 5 * 60 * 1000, id: 'inactivity-warn', icon: '⏳' },
+      );
+    },
+    onLogout: () => {
+      toast.dismiss('inactivity-warn');
+      toast('Signed out after 30 minutes of inactivity.', { duration: 6000 });
+      inactivityLogout().catch(() => { /* logout already best-effort */ });
+    },
+  });
 
   // Initialise shared currency formatter from store settings
   useEffect(() => {

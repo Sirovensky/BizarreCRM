@@ -3330,7 +3330,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-746. **[MAJOR] Cross-tab logout wipes drafts in current tab even mid-form — NO toast, NO warning before redirect.** L6, L4. **[AUTOLOOP-T34 RESOLVED: handleAuthBroadcastMessage scans localStorage for bizarrecrm:draft: keys; if drafts exist, toast.error + 700 ms delay before requestLoginNav.]**
   `packages/web/src/stores/authStore.ts:213-228`
 
-- [ ] WEB-UIUX-747. **[MAJOR] No global inactivity timeout / no expiring-session warning.** TODO since DASH-6. Token rolls forward indefinitely. L1, L16.
+- [x] WEB-UIUX-747. **[MAJOR] No global inactivity timeout / no expiring-session warning.** TODO since DASH-6. Token rolls forward indefinitely. L1, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: useInactivityTimeout hook + AppShell wiring: 25min idle pops a sticky warning toast, 30min idle calls authStore.logout. Activity = mouse/key/touch/scroll/visibility.]**
   `packages/web/src/stores/authStore.ts:62-71`
 
 - [x] WEB-UIUX-748. **[MAJOR] POS cart bleeding partially mitigated (user-scoped key) but `auth-cleared` doesn't clear POS store.** Stale cart from cashier A persists, resumes on relogin (privacy: customer phone/email attached). L16. **[AUTOLOOP-T34 RESOLVED: POS store gets `bizarre-crm:auth-cleared` listener calling resetAll() — cart/customer/discounts/UI/idempotency cleared on logout/relogin.]**
