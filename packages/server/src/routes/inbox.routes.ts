@@ -35,7 +35,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
-import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { consumeWindowRate, peekWindowRate } from '../utils/rateLimiter.js';
 import {
   validateRequiredString,
   validateEnum,
@@ -575,6 +575,18 @@ router.post(
           ? `${p.slice(0, 3)}•••${p.slice(-4)}`
           : p,
       }));
+      // WEB-UIUX-1517: tell the operator how many bulk sends they've used in
+      // the current hourly window before they commit to a send. We only PEEK
+      // at the rate-limit bucket here (preview is a free operation; only
+      // step-2 consumes a slot via guardInboxRate).
+      const quotaPeek = peekWindowRate(
+        req.db,
+        INBOX_BULK_SEND_CATEGORY,
+        String(req.user!.id),
+        INBOX_BULK_SEND_WINDOW_MS,
+      );
+      const quotaUsed = quotaPeek?.count ?? 0;
+      const quotaResetAt = quotaPeek?.resetAtMs ?? null;
       res.json({
         success: true,
         data: {
@@ -583,6 +595,16 @@ router.post(
           confirmed: false,
           sample_phones: samplePhones,
           sample_size: sampleSize,
+          quota: {
+            used: quotaUsed,
+            max: INBOX_BULK_SEND_MAX_PER_HOUR,
+            window_ms: INBOX_BULK_SEND_WINDOW_MS,
+            // ISO so the client can compute its own countdown without
+            // worrying about clock skew interpretation (the absolute
+            // wall-clock time is more useful than "ms remaining" when
+            // the page is left open for an hour).
+            reset_at: quotaResetAt ? new Date(quotaResetAt).toISOString() : null,
+          },
         },
       });
       return;

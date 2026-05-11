@@ -98,6 +98,26 @@ export function clearRateLimit(db: Database.Database, category: string, key: str
   db.prepare('DELETE FROM rate_limits WHERE category = ? AND key = ?').run(category, key);
 }
 
+/**
+ * Read-only inspection of a window-based rate limit. Returns current usage so
+ * a route can surface "X/N used, resets in Yms" without consuming a slot.
+ * Returns null when the bucket is empty or the window has expired.
+ */
+export function peekWindowRate(
+  db: Database.Database, category: string, key: string, windowMs: number,
+): { count: number; firstAttempt: number; resetAtMs: number } | null {
+  const row = db.prepare(
+    'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?',
+  ).get(category, key) as RateLimitEntry | undefined;
+  if (!row) return null;
+  if (Date.now() - row.first_attempt > windowMs) return null;
+  return {
+    count: row.count,
+    firstAttempt: row.first_attempt,
+    resetAtMs: row.first_attempt + windowMs,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Lockout-based rate limiting (TOTP)
 // ---------------------------------------------------------------------------

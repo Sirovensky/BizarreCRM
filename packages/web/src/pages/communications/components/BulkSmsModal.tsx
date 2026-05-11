@@ -50,6 +50,14 @@ interface PreviewResponse {
   // can sanity-check WHO before confirming a marketing blast.
   sample_phones?: Array<{ masked: string }>;
   sample_size?: number;
+  // WEB-UIUX-1517: hourly bulk-send quota counter so admin knows how many
+  // sends remain in the current window before hitting the 429.
+  quota?: {
+    used: number;
+    max: number;
+    window_ms: number;
+    reset_at: string | null;
+  };
 }
 
 // WEB-UIUX-1111: Updated to match server response shape from inbox.routes.ts:693-703
@@ -570,6 +578,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               </ul>
             </div>
           )}
+          {/* WEB-UIUX-1517: surface remaining hourly quota so the admin sees
+              why a 4th send returns 429 instead of being surprised by it. */}
+          {preview && preview.quota && (
+            <BulkSendQuotaLine quota={preview.quota} />
+          )}
           </>}
         </div>
 
@@ -651,6 +664,53 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * WEB-UIUX-1517: live hourly quota line. Server reports the absolute
+ * reset_at; the component ticks once per second so the countdown stays
+ * truthful without the parent re-rendering on every tick.
+ */
+function BulkSendQuotaLine({ quota }: { quota: NonNullable<PreviewResponse['quota']> }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!quota.reset_at) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [quota.reset_at]);
+
+  const remaining = Math.max(0, quota.max - quota.used);
+  const resetMs = quota.reset_at ? new Date(quota.reset_at).getTime() : null;
+  const secondsToReset = resetMs ? Math.max(0, Math.floor((resetMs - now) / 1000)) : null;
+  const mm = secondsToReset != null ? String(Math.floor(secondsToReset / 60)).padStart(2, '0') : null;
+  const ss = secondsToReset != null ? String(secondsToReset % 60).padStart(2, '0') : null;
+  const exhausted = remaining === 0;
+
+  return (
+    <div
+      className={
+        exhausted
+          ? 'rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-500/30 dark:bg-amber-500/10'
+          : 'rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-800/50'
+      }
+    >
+      <p
+        className={
+          exhausted
+            ? 'font-medium text-amber-800 dark:text-amber-300'
+            : 'font-medium text-surface-700 dark:text-surface-300'
+        }
+      >
+        Bulk sends this hour: {quota.used} of {quota.max} used
+        {secondsToReset != null && secondsToReset > 0 && (
+          <> · resets in {mm}:{ss}</>
+        )}
+        {exhausted && (
+          <> — wait for the window to reset before sending.</>
+        )}
+      </p>
     </div>
   );
 }
