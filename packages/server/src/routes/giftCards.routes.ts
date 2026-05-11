@@ -310,6 +310,49 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
     }
   }
 
+  // WEB-UIUX-1001: dual-control gate for manager-tier issuance. Admins still
+  // mint cards directly. Manager-tier user requesting >= threshold lands a
+  // pending row that an admin (different user) must approve before the card
+  // is actually minted. Threshold lives in store_config; default $500
+  // (50000 cents) when unset or invalid.
+  if (role === 'manager') {
+    const thresholdRow = await adb.get<{ value: string }>(
+      "SELECT value FROM store_config WHERE key = 'gift_card_dual_control_threshold_cents'",
+    );
+    const thresholdCents = Number(thresholdRow?.value);
+    const effectiveThresholdCents = Number.isFinite(thresholdCents) && thresholdCents > 0
+      ? thresholdCents
+      : 50_000;
+    const amountCents = Math.round(amount * 100);
+    if (amountCents >= effectiveThresholdCents) {
+      const pendingResult = await adb.run(
+        `INSERT INTO gift_card_pending_issuances
+           (amount, customer_id, recipient_name, recipient_email, expires_at, notes, requester_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        amount, validatedCustomerId, validatedRecipientName, validatedRecipientEmail,
+        validatedExpiresAt, validatedNotes, req.user!.id,
+      );
+      audit(req.db, 'gift_card_pending_issuance_requested', req.user!.id, req.ip || 'unknown', {
+        pending_issuance_id: Number(pendingResult.lastInsertRowid),
+        amount,
+        amount_cents: amountCents,
+        threshold_cents: effectiveThresholdCents,
+        customer_id: validatedCustomerId,
+      });
+      res.status(202).json({
+        success: true,
+        data: {
+          pending_issuance_id: Number(pendingResult.lastInsertRowid),
+          status: 'pending_approval',
+          amount,
+          threshold_cents: effectiveThresholdCents,
+          message: 'Awaiting admin approval — issuance over the dual-control threshold.',
+        },
+      });
+      return;
+    }
+  }
+
   const code = generateCode();
   const codeHash = hashCode(code);
   // SEC-H38: write both the plaintext `code` (kept during the two-step
@@ -617,6 +660,139 @@ router.post('/:id/enable', requirePermission('gift_cards.reload'), asyncHandler(
   });
 
   res.json({ success: true, data: { id: cardId, status: restoredStatus } });
+}));
+
+// ────────────────────────────────────────────────────────────────────
+// WEB-UIUX-1001: dual-control pending-issuance queue
+// ────────────────────────────────────────────────────────────────────
+
+// GET /gift-cards/pending-issuances — admin queue of awaiting-approval rows.
+// Filters: ?status=pending (default) | approved | declined | cancelled | all.
+router.get('/pending-issuances', asyncHandler(async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin role required to view the pending-issuance queue', 403);
+  }
+  const adb = req.asyncDb;
+  const statusRaw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : 'pending';
+  const allowed = ['pending', 'approved', 'declined', 'cancelled', 'all'];
+  const status = allowed.includes(statusRaw) ? statusRaw : 'pending';
+  const where = status === 'all' ? '' : 'WHERE p.status = ?';
+  const args = status === 'all' ? [] : [status];
+  const rows = await adb.all(`
+    SELECT p.*, u.first_name AS requester_first, u.last_name AS requester_last,
+           a.first_name AS approver_first, a.last_name AS approver_last,
+           c.first_name AS customer_first, c.last_name AS customer_last
+      FROM gift_card_pending_issuances p
+      LEFT JOIN users u ON u.id = p.requester_id
+      LEFT JOIN users a ON a.id = p.approver_id
+      LEFT JOIN customers c ON c.id = p.customer_id
+      ${where}
+      ORDER BY p.created_at DESC
+      LIMIT 200
+  `, ...args);
+  res.json({ success: true, data: rows });
+}));
+
+// POST /gift-cards/pending-issuances/:id/approve — admin approves + mints.
+router.post('/pending-issuances/:id/approve', asyncHandler(async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin role required to approve gift-card issuance', 403);
+  }
+  const adb = req.asyncDb;
+  const id = validateId(req.params.id, 'id');
+  const pending = await adb.get<{
+    id: number;
+    amount: number;
+    customer_id: number | null;
+    recipient_name: string | null;
+    recipient_email: string | null;
+    expires_at: string | null;
+    notes: string | null;
+    requester_id: number;
+    status: string;
+  }>(`SELECT id, amount, customer_id, recipient_name, recipient_email, expires_at, notes,
+             requester_id, status
+        FROM gift_card_pending_issuances WHERE id = ?`, id);
+  if (!pending) throw new AppError('Pending issuance not found', 404);
+  if (pending.status !== 'pending') {
+    throw new AppError(`Pending issuance is ${pending.status}; cannot approve.`, 409);
+  }
+  // Approver cannot be the requester — dual-control invariant.
+  if (pending.requester_id === req.user!.id) {
+    throw new AppError(
+      'Different admin must approve — the requester cannot approve their own pending issuance.',
+      403,
+    );
+  }
+
+  const code = generateCode();
+  const codeHash = hashCode(code);
+  const inserted = await adb.run(
+    `INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status,
+       customer_id, recipient_name, recipient_email, expires_at, notes, created_by,
+       created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`,
+    code, codeHash, pending.amount, pending.amount, pending.customer_id,
+    pending.recipient_name, pending.recipient_email, pending.expires_at, pending.notes,
+    pending.requester_id, now(), now(),
+  );
+  const giftCardId = Number(inserted.lastInsertRowid);
+  await adb.run(
+    `INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    giftCardId, 'purchase', pending.amount,
+    `Dual-control issuance (pending #${id})`, pending.requester_id, now(),
+  );
+  await adb.run(
+    `UPDATE gift_card_pending_issuances
+        SET status = 'approved', approver_id = ?, decided_at = datetime('now'), gift_card_id = ?
+      WHERE id = ? AND status = 'pending'`,
+    req.user!.id, giftCardId, id,
+  );
+
+  audit(req.db, 'gift_card_pending_issuance_approved', req.user!.id, req.ip || 'unknown', {
+    pending_issuance_id: id,
+    gift_card_id: giftCardId,
+    code_prefix: code.slice(0, 4),
+    code_hash: codeHash,
+    amount: pending.amount,
+    requester_id: pending.requester_id,
+  });
+  res.json({
+    success: true,
+    data: {
+      pending_issuance_id: id,
+      gift_card_id: giftCardId,
+      code,
+      amount: pending.amount,
+    },
+  });
+}));
+
+// POST /gift-cards/pending-issuances/:id/decline — admin declines without minting.
+router.post('/pending-issuances/:id/decline', asyncHandler(async (req, res) => {
+  if (req.user?.role !== 'admin') {
+    throw new AppError('Admin role required to decline gift-card issuance', 403);
+  }
+  const adb = req.asyncDb;
+  const id = validateId(req.params.id, 'id');
+  const reason = typeof req.body?.reason === 'string'
+    ? validateTextLength(req.body.reason, 500, 'reason')
+    : null;
+  const result = await adb.run(
+    `UPDATE gift_card_pending_issuances
+        SET status = 'declined', approver_id = ?, decline_reason = ?, decided_at = datetime('now')
+      WHERE id = ? AND status = 'pending'`,
+    req.user!.id, reason, id,
+  );
+  if (result.changes === 0) {
+    throw new AppError('Pending issuance not found or no longer pending', 404);
+  }
+  audit(req.db, 'gift_card_pending_issuance_declined', req.user!.id, req.ip || 'unknown', {
+    pending_issuance_id: id,
+    reason,
+  });
+  res.json({ success: true, data: { pending_issuance_id: id } });
 }));
 
 export default router;

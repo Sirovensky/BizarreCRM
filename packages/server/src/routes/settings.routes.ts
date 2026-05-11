@@ -315,6 +315,10 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'billing_financing_provider', 'billing_financing_provider_key',
   'billing_financing_webhook_secret', 'billing_financing_return_url',
   'billing_financing_cancel_url',
+  // WEB-UIUX-1001: dual-control threshold (in cents). Manager-tier user
+  // requesting >= threshold lands a pending row that a second admin must
+  // approve before the card is actually issued. Default 50000 ($500).
+  'gift_card_dual_control_threshold_cents',
   // ENR-LE8: Estimate auto-follow-up days
   'estimate_followup_days',
   // ENR-A3: Notification digest mode
