@@ -367,7 +367,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
             disabled={submitting}
             className="btn btn-md w-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
-            {submitting ? 'Closing...' : 'Close Shift & View Z-Report'}
+            {submitting ? 'Closing...' : 'Close Shift'}
           </button>
         </div>
       </div>

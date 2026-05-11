@@ -193,7 +193,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
           <h3 id="pin-modal-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {!employee.has_pin
               ? 'PIN Required'
-              : `${action === 'clock-in' ? 'Clock In' : 'Clock Out'} — ${employee.first_name}`}
+              : `${action === 'clock-in' ? 'Clock In' : 'Clock Out'} — ${[employee.first_name, employee.last_name].filter(Boolean).join(' ')}`}
           </h3>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5 text-surface-500" />

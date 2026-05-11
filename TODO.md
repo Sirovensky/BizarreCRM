@@ -4940,7 +4940,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
 
 #### Nit — copy, polish
 
-- [ ] WEB-UIUX-1183. **[NIT] CloseShift button label "Close Shift & View Z-Report" reads as a single conjoined irreversible action — the "& View" is innocuous but the sentence makes the operator commit to the destructive part to see the report.** `CashDrawerWidget.tsx:288-291`. Cleaner: "Close Shift" alone (Z-report opens automatically). L2 label truthfulness (don't combine actions in label even if they happen together).
+- [x] WEB-UIUX-1183. **[NIT] CloseShift button label "Close Shift & View Z-Report" reads as a single conjoined irreversible action — the "& View" is innocuous but the sentence makes the operator commit to the destructive part to see the report.** `CashDrawerWidget.tsx:288-291`. Cleaner: "Close Shift" alone (Z-report opens automatically). L2 label truthfulness (don't combine actions in label even if they happen together). **[AUTOLOOP-T49 RESOLVED 2026-05-10: label simplified to "Close Shift".]**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:285-291`
   <!-- meta: fix=Close-Shift-as-button+small-helper-text-below-Z-report-will-open-after-close -->
 
@@ -5144,7 +5144,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
 
 #### Nit — visual polish
 
-- [ ] WEB-UIUX-1224. **[NIT] Reason picker uses `grid-cols-2` on all viewports — on narrow modal widths the 2-line hints wrap awkwardly into 3-4 lines per chip.** `RefundReasonPicker.tsx:62`. Single-column under `sm:` would breathe. L11 responsive.
+- [!] WEB-UIUX-1224. **[NIT] Reason picker uses `grid-cols-2` on all viewports — on narrow modal widths the 2-line hints wrap awkwardly into 3-4 lines per chip.** `RefundReasonPicker.tsx:62`. Single-column under `sm:` would breathe. L11 responsive. **STALE 2026-05-10: RefundReasonPicker grid is `grid-cols-1 sm:grid-cols-2` (line 111); already single-column under `sm:`.**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
   <!-- meta: fix=grid-cols-1-sm:grid-cols-2 -->
 
@@ -5367,7 +5367,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:642-655`
   <!-- meta: fix=h-3-w-3-or-h-4-w-4-dot+OR-replace-with-green-pill-"On-shift"-vs-gray-pill-"Off" -->
 
-- [ ] WEB-UIUX-1273. **[NIT] Modal title "Clock In - John" omits last name (`EmployeeListPage.tsx:147`). Two staff with the same first name (small-team scenario) → ambiguous confirmation; worker can't tell whose timesheet they're about to punch.** L2 label truthfulness.
+- [x] WEB-UIUX-1273. **[NIT] Modal title "Clock In - John" omits last name (`EmployeeListPage.tsx:147`). Two staff with the same first name (small-team scenario) → ambiguous confirmation; worker can't tell whose timesheet they're about to punch.** L2 label truthfulness. **[AUTOLOOP-T49 RESOLVED 2026-05-10: title now includes last name when present.]**
   `packages/web/src/pages/employees/EmployeeListPage.tsx:146-148`
   <!-- meta: fix={first_name}-{last_name}-or-{first_name}-{last_name[0]}. -->
 
