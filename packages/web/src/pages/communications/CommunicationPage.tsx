@@ -1205,7 +1205,7 @@ export function CommunicationPage() {
   // WEB-FO-010 (Fixer-426B 2026-04-26): opt in to refetchOnWindowFocus.
   // The conversation list is shared-workflow state (multiple staff tabs) so a
   // tech returning from another app should see newly received threads.
-  const { data: convData, isLoading: convLoading } = useQuery({
+  const { data: convData, isLoading: convLoading, isError: convIsError, error: convError } = useQuery({
     // WEB-S6-034: include debouncedSearch in the cache key so a new search
     // triggers a fresh server-side fetch.
     queryKey: ['sms-conversations', includeArchived, debouncedSearch, assignedFilter],
@@ -1775,6 +1775,31 @@ export function CommunicationPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : convIsError ? (
+            <div
+              role="alert"
+              className="m-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm dark:border-red-500/30 dark:bg-red-500/10"
+            >
+              <p className="font-medium text-red-700 dark:text-red-300">
+                Couldn't load conversations
+              </p>
+              <p className="mt-1 text-red-700/80 dark:text-red-300/80">
+                {(() => {
+                  const e = convError as {
+                    response?: { status?: number; data?: { message?: string } };
+                    message?: string;
+                  };
+                  const status = e?.response?.status;
+                  if (status === 401 || status === 403) {
+                    return 'You may not be signed in or lack permission. Reload the page or contact your admin.';
+                  }
+                  if (status === 503) {
+                    return 'SMS service is not configured for this shop. Settings → SMS & Voice.';
+                  }
+                  return e?.response?.data?.message ?? e?.message ?? 'Network error. Try reloading the page.';
+                })()}
+              </p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-surface-400">

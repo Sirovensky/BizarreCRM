@@ -14,6 +14,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { useSettings } from '@/hooks/useSettings';
+import { useHasPermission } from '@/hooks/useHasPermission';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
@@ -196,6 +197,10 @@ function PhoneActionPopover({ phone, label, className }: {
 }
 
 // ─── StatusDropdown (inline, with outside-click close) ──────────────
+// TICKETS-STATUS-NOOP-1: client-side permission gate. If the user lacks
+// `tickets.change_status`, the dropdown renders as a static badge so the
+// click that used to silently 403 (and read as "nothing happens") never
+// fires the request in the first place.
 function StatusDropdown({
   ticket,
   statuses,
@@ -207,6 +212,7 @@ function StatusDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const canChange = useHasPermission('tickets.change_status');
 
   useEffect(() => {
     if (!open) return;
@@ -218,6 +224,19 @@ function StatusDropdown({
   }, [open]);
 
   const current = ticket.status;
+
+  if (!canChange) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-3 py-2 min-h-[44px] md:min-h-0 md:px-2.5 md:py-0.5 text-xs font-medium"
+        style={{ backgroundColor: `${safeColor(current?.color)}18`, color: safeColor(current?.color) }}
+        title="You do not have permission to change ticket status"
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: safeColor(current?.color) }} />
+        <span className="min-w-[80px] max-w-[180px] leading-tight">{current?.name ?? 'Unknown'}</span>
+      </span>
+    );
+  }
 
   return (
     <div className="relative" ref={ref}>
@@ -1118,9 +1137,24 @@ export function TicketListPage() {
       });
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err: unknown, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['tickets', ticketParams], ctx.prev);
-      toast.error('Failed to change status');
+      // TICKETS-STATUS-NOOP-1: surface the actual server reason instead of a
+      // generic toast that read as "nothing happened" when the real cause was
+      // a 403 / illegal-transition rejection.
+      const e = err as {
+        response?: { status?: number; data?: { message?: string; code?: string } };
+        message?: string;
+      };
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 403) {
+        toast.error(serverMsg ?? 'You do not have permission to change ticket status');
+      } else if (status === 409 || (e?.response?.data?.code ?? '').startsWith('ERR_TICKET_STATUS_')) {
+        toast.error(serverMsg ?? 'Illegal status transition for this ticket');
+      } else {
+        toast.error(serverMsg ?? e?.message ?? 'Failed to change status');
+      }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
