@@ -56,7 +56,17 @@ async function normalizeOrientation(file: File): Promise<Blob> {
       // Font scales with image size so it remains legible on both thumbnails
       // and full-res exports (floor at 14px, cap at 36px).
       const fontSize = Math.min(36, Math.max(14, Math.round(canvas.width * 0.022)));
-      const label = formatTimestamp(new Date());
+      // BUGHUNT-2026-05-10-43: prefer the file's capture timestamp
+      // (`file.lastModified`) over `Date.now()` so the burned-in stamp
+      // reflects WHEN the photo was taken — not when the user uploaded
+      // it minutes/hours later. Chain-of-custody evidence depends on
+      // capture time, not upload time. Fall back to `now` only when the
+      // browser provides no lastModified (unusual but possible for
+      // synthesized Blobs).
+      const captureMs = Number.isFinite(file.lastModified) && file.lastModified > 0
+        ? file.lastModified
+        : Date.now();
+      const label = formatTimestamp(new Date(captureMs));
       const padding = Math.round(fontSize * 0.6);
       ctx.font = `bold ${fontSize}px monospace`;
       const textWidth = ctx.measureText(label).width;
