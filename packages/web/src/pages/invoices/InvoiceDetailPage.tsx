@@ -247,6 +247,16 @@ export function InvoiceDetailPage() {
       const returnedCN = (_data as any)?.data?.data as import('@/types/invoice').InvoiceDetail | undefined;
       const cnOrderId = returnedCN?.order_id;
       const cnId = returnedCN?.id;
+      // WEB-UIUX-1032: server now returns `meta.credit_overflow` and
+      // `meta.store_credit_balance` so operators can tell the customer
+      // exactly how much was parked as store credit + their new balance.
+      const meta = (_data as any)?.data?.meta as { credit_overflow?: number; store_credit_balance?: number | null } | undefined;
+      const overflow = Number(meta?.credit_overflow ?? 0);
+      const newBalance = meta?.store_credit_balance != null ? Number(meta.store_credit_balance) : null;
+      if (overflow > 0) {
+        const balanceFrag = newBalance != null ? ` New balance: ${formatCurrency(newBalance)}.` : '';
+        msg += ` · ${formatCurrency(overflow)} added to store credit.${balanceFrag}`;
+      }
       if (cnOrderId && cnId) {
         toast.custom(
           (t) => (
@@ -255,6 +265,11 @@ export function InvoiceDetailPage() {
             >
               <span className="flex-1 text-surface-800 dark:text-surface-100">
                 Credit note <span className="font-mono font-semibold">{cnOrderId}</span> · {formatCurrency(variables.amount)} refunded
+                {overflow > 0 && (
+                  <span className="block text-xs text-emerald-700 dark:text-emerald-300">
+                    {formatCurrency(overflow)} added to store credit{newBalance != null ? ` · balance ${formatCurrency(newBalance)}` : ''}
+                  </span>
+                )}
               </span>
               <button
                 onClick={() => { toast.dismiss(t.id); navigate(`/invoices/${cnId}`); }}

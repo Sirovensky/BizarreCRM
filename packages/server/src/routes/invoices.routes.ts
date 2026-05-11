@@ -1410,6 +1410,31 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
     VALUES (?, ?, 1, ?, ?, ?)
   `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, reason.trim());
 
+  // WEB-UIUX-1026: also write a refunds row of type='credit_note' so the
+  // /refunds reporting surface and "show me all refunds processed today"
+  // queries reconcile with the invoices-table credit-note records.
+  // Previously credit notes were invisible to refunds reporting and the two
+  // surfaces never matched.
+  try {
+    await adb.run(`
+      INSERT INTO refunds (invoice_id, ticket_id, customer_id, amount, type, reason, method, status, approved_by, created_by)
+      VALUES (?, ?, ?, ?, 'credit_note', ?, 'store_credit', 'completed', ?, ?)
+    `,
+      invoiceId,
+      original.ticket_id ?? null,
+      original.customer_id ?? null,
+      amount,
+      reason.trim(),
+      req.user!.id,
+      req.user!.id,
+    );
+  } catch (refundsErr) {
+    logger.warn('invoices_credit_note_refund_row_failed', {
+      error: refundsErr instanceof Error ? refundsErr.message : String(refundsErr),
+      credit_note_id: Number(creditNoteId),
+    });
+  }
+
   // M5: Adjust the original invoice balance, CLAMPING newAmountPaid at total so
   // amount_due can never go negative. If the credit would push amount_paid past
   // the invoice total (i.e. credit > remaining due), record the overflow as a
@@ -1545,7 +1570,29 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   broadcast(WS_EVENTS.INVOICE_CREATED, creditNote, req.tenantSlug || null);
   broadcast(WS_EVENTS.INVOICE_UPDATED, { id: invoiceId }, req.tenantSlug || null);
 
-  res.status(201).json({ success: true, data: creditNote });
+  // WEB-UIUX-1032: surface the overflow portion so the client can show
+  // "Customer now has $X store credit" instead of silently parking the
+  // excess on the store_credits row. Also expose the new running balance
+  // when there is one, so a single toast can summarise the outcome.
+  let store_credit_balance: number | null = null;
+  if (creditOverflow > 0 && original.customer_id) {
+    try {
+      const credit = await adb.get<{ amount: number }>(
+        'SELECT amount FROM store_credits WHERE customer_id = ?',
+        original.customer_id,
+      );
+      store_credit_balance = credit ? Number(credit.amount) : null;
+    } catch { /* non-fatal */ }
+  }
+
+  res.status(201).json({
+    success: true,
+    data: creditNote,
+    meta: {
+      credit_overflow: creditOverflow,
+      store_credit_balance,
+    },
+  });
 });
 
 export default router;
