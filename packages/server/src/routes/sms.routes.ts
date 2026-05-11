@@ -1057,14 +1057,42 @@ function requireManagerOrAdmin(req: Request): void {
   }
 }
 
+// WEB-UIUX-690: known-token registry. Template content uses single-brace
+// `{var}` substitution on the auto-feedback + automations paths; the bulk-
+// SMS customers path uses `{{var}}`. Reject any token outside the known
+// set so a `{first_nam}` typo doesn't silently send the literal text to a
+// thousand recipients. Matches both single and double braces.
+const KNOWN_SMS_TEMPLATE_VARS = new Set([
+  'customer_name', 'first_name', 'last_name',
+  'ticket_id', 'order_id',
+  'device_name', 'store_name', 'store_phone',
+  'amount', 'balance', 'invoice_id',
+  'appointment_date', 'appointment_time',
+  'estimate_id', 'estimate_total',
+]);
+
+function findUnknownTemplateTokens(content: string): string[] {
+  const tokens = new Set<string>();
+  // Match {key} and {{key}} forms; trim outer braces in the capture group.
+  const re = /\{\{?([a-zA-Z0-9_]+)\}?\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    tokens.add(m[1]);
+  }
+  const unknown: string[] = [];
+  for (const t of tokens) {
+    if (!KNOWN_SMS_TEMPLATE_VARS.has(t)) unknown.push(t);
+  }
+  return unknown.sort();
+}
+
 router.get('/templates', async (req, res) => {
   const adb = req.asyncDb;
   const templates = await adb.all<any>('SELECT * FROM sms_templates WHERE is_active = 1 ORDER BY category, name');
-  // ENR-SMS5: Include available template variables for documentation
-  const available_variables = [
-    'customer_name', 'first_name', 'last_name', 'ticket_id',
-    'device_name', 'store_name', 'store_phone', 'order_id',
-  ];
+  // ENR-SMS5: Include available template variables for documentation.
+  // WEB-UIUX-690: this is now the authoritative known-token set; keep
+  // KNOWN_SMS_TEMPLATE_VARS above in sync if you add anything.
+  const available_variables = Array.from(KNOWN_SMS_TEMPLATE_VARS).sort();
   res.json({ success: true, data: { templates, available_variables } });
 });
 
@@ -1073,6 +1101,16 @@ router.post('/templates', async (req, res) => {
   const adb = req.asyncDb;
   const { name, content, category } = req.body;
   if (!name || !content) throw new AppError('Name and content required', 400);
+  // WEB-UIUX-690: reject unknown tokens up-front so the operator catches
+  // the typo at save time, not when 1000 SMS go out with literal
+  // "{first_nam}" in the body.
+  const unknown = findUnknownTemplateTokens(String(content));
+  if (unknown.length > 0) {
+    throw new AppError(
+      `Unknown template token(s): ${unknown.map((t) => `{${t}}`).join(', ')}. Allowed: ${Array.from(KNOWN_SMS_TEMPLATE_VARS).sort().join(', ')}`,
+      400,
+    );
+  }
   const result = await adb.run('INSERT INTO sms_templates (name, content, category) VALUES (?, ?, ?)', name, content, category || null);
   const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: tpl });
@@ -1082,6 +1120,16 @@ router.put('/templates/:id', async (req, res) => {
   requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const { name, content, category, is_active } = req.body;
+  // WEB-UIUX-690: same guard on PUT — bad token shape never gets persisted.
+  if (content !== undefined && content !== null) {
+    const unknown = findUnknownTemplateTokens(String(content));
+    if (unknown.length > 0) {
+      throw new AppError(
+        `Unknown template token(s): ${unknown.map((t) => `{${t}}`).join(', ')}. Allowed: ${Array.from(KNOWN_SMS_TEMPLATE_VARS).sort().join(', ')}`,
+        400,
+      );
+    }
+  }
   await adb.run(`
     UPDATE sms_templates SET
       name = COALESCE(?, name), content = COALESCE(?, content),

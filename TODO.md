@@ -3096,7 +3096,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/settings/PosSettings.tsx:233-238`
   `packages/web/src/pages/settings/settingsMetadata.ts:669-674`
 
-- [ ] WEB-UIUX-683. **[MAJOR] No printer-status telemetry anywhere — zero hits for printer.*offline / printer_status.** Cannot pre-disable Print buttons when no printer connected. L8, L11.
+- [!] WEB-UIUX-683. **[MAJOR] No printer-status telemetry anywhere — zero hits for printer.*offline / printer_status.** Cannot pre-disable Print buttons when no printer connected. L8, L11. **BLOCKED 2026-05-11: needs printer-status integration with the local hardware (CUPS/IPP poll, ESC/POS heartbeat, or USB enumeration). No telemetry agent in repo; printers vary by tenant. Cannot pre-disable Print buttons reliably without a deployment-side detector.**
 
 - [x] WEB-UIUX-684. **[MINOR] PrintPreviewModal paper-size selection has no in-modal override.** 80mm receipt rendered on 58mm thermal → right edge clipped. L9. **[AUTOLOOP-T31 RESOLVED: PrintPreviewModal adds 58mm/80mm/Letter dropdown overriding default for receipts; live badge update.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:16-21`
@@ -3120,7 +3120,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/settings/AutomationsTab.tsx:59-69`
   `packages/web/src/pages/marketing/CampaignsPage.tsx:84,727`
 
-- [ ] WEB-UIUX-690. **[BLOCKER] No unknown-token detection on template bodies.** Save accepts any `{...}` token, dryRun success toast slices first 60 chars. L7, L8.
+- [x] WEB-UIUX-690. **[BLOCKER] No unknown-token detection on template bodies.** Save accepts any `{...}` token, dryRun success toast slices first 60 chars. L7, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: sms.routes /templates POST+PUT now reject unknown tokens via KNOWN_SMS_TEMPLATE_VARS (matches both {key} and {{key}}); GET /templates surfaces the canonical token list for client validation.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:182-189`
 
 - [ ] WEB-UIUX-691. **[BLOCKER · BLOCKED] Off-hours auto-reply has no loop-detection.** Auto-reply phrasing matches automation trigger → re-fires. SMS spend bomb. L5, L16.
@@ -3133,13 +3133,13 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-693. **[MAJOR] Campaign opt-out compliance regex catches phrasings but doesn't show which segment members are suppressed.** Operator firing 2000 blast can't see "X opted out, will not receive". L7, L16. **[AUTOLOOP-T32 RESOLVED: campaign PreviewModal shows "X of Y will receive — Z suppressed (opted out / unreachable)" using segment_total - total client-side.]**
   `packages/web/src/pages/marketing/CampaignsPage.tsx:81-88`
 
-- [ ] WEB-UIUX-694. **[MAJOR] No duplicate-rule detection — two rules sharing `(trigger_type, trigger_config)` both fire silently.** Dry-run shows single rule only. L3, L8.
+- [x] WEB-UIUX-694. **[MAJOR] No duplicate-rule detection — two rules sharing `(trigger_type, trigger_config)` both fire silently.** Dry-run shows single rule only. L3, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: automations POST / now rejects 409 when an active rule with identical (trigger_type, trigger_config) already exists; error names the dup row.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx`
 
 - [x] WEB-UIUX-695. **[MAJOR] Disable rule toggle has no UI feedback about pending/queued sends.** Disabled rule, queued effects honored or aborted? L11, L8. **[AUTOLOOP-T32 RESOLVED: AutomationsTab disabled rule shows amber inline note "Already-queued effects will still fire. Disabling stops new triggers only."]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:606-612`
 
-- [ ] WEB-UIUX-696. **[MAJOR] ScheduledSendModal naive about DST — March 9 03:00 EDT-edge case ambiguous.** Zoneless `<input type="datetime-local">`, no UTC display, no impossible-time rejection. L7, L14.
+- [x] WEB-UIUX-696. **[MAJOR] ScheduledSendModal naive about DST — March 9 03:00 EDT-edge case ambiguous.** Zoneless `<input type="datetime-local">`, no UTC display, no impossible-time rejection. L7, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: ScheduledSendModal now detects DST spring-forward non-existent local time via component comparison; rejects submit + inline-flags below the picker; resolved UTC instant shown for transparency.]**
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx:27-83`
 
 - [x] WEB-UIUX-697. **[MAJOR] FailedSendRetryList doesn't distinguish permanent failures (5xx hard bounce, opted-out).** Retry button always enabled — operator can hammer bounced address. L8, L16. **[AUTOLOOP-T32 RESOLVED: FailedSendRetryList isPermanentFailure helper disables Retry on opted-out/invalid-number/5xx; tooltip explains. Fixed pre-existing JSX fragment bug.]**
@@ -3203,7 +3203,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-711. **[MAJOR] Credit Note modal does not show store-credit overflow preview.** Server (`invoices.routes.ts:1259-1289`) silently creates `store_credits` row when credit > remaining due. Operator never told customer accumulated $X store credit. Customer leaves not knowing they have a balance. L8, L16. **[AUTOLOOP-T32 RESOLVED: Credit Note modal shows live 3-line split preview when amount > amount_due — balance reduction + store credit overflow + total credit.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
 
-- [ ] WEB-UIUX-712. **[MAJOR] Customer's existing `store_credits` balance not displayed anywhere in web.** Server endpoints `GET /refunds/credits/:customerId` + `POST /refunds/credits/:customerId/use` exist; CustomerDetailPage has no panel, InvoiceDetailPage cannot apply prior credit toward outstanding. Customers expecting "use my $20 credit" cannot — operator runs cash payment instead, ledger drifts. L8, L1.
+- [!] WEB-UIUX-712. **[MAJOR] Customer's existing `store_credits` balance not displayed anywhere in web.** Server endpoints `GET /refunds/credits/:customerId` + `POST /refunds/credits/:customerId/use` exist; CustomerDetailPage has no panel, InvoiceDetailPage cannot apply prior credit toward outstanding. Customers expecting "use my $20 credit" cannot — operator runs cash payment instead, ledger drifts. L8, L1. **PARTIAL 2026-05-11: StoreCreditCard component already mounted on CustomerDetailPage line 488 (reads refundApi.getCredits, shows balance when > 0). Remaining gap is the apply-credit-at-payment flow on InvoiceDetailPage which needs a new payment-method option in the Record Payment modal + cart redraw — multi-component, defer to refunds-UI sprint.**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx`
   <!-- meta: fix=add-Store-Credit-card-on-customer-page+Apply-Credit-button-on-invoice -->
 

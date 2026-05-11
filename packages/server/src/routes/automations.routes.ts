@@ -130,13 +130,36 @@ router.post(
     assertTriggerType(trigger_type);
     assertActionType(action_type);
 
+    // WEB-UIUX-694: reject a duplicate rule that would fire on the exact
+    // same (trigger_type, trigger_config) shape. Previously two rules
+    // could share both and both would fire silently — dry-run only
+    // surfaced the first match, so the operator never noticed the
+    // duplicate until a customer got two SMS. Match against active rules
+    // only; the operator can deactivate the older row first if a true
+    // replacement is intended.
+    const triggerConfigJson = JSON.stringify(trigger_config ?? {});
+    const dup = await adb.get<{ id: number; name: string }>(
+      `SELECT id, name FROM automations
+        WHERE trigger_type = ?
+          AND trigger_config = ?
+          AND COALESCE(is_active, 1) = 1`,
+      trigger_type,
+      triggerConfigJson,
+    );
+    if (dup) {
+      throw new AppError(
+        `Duplicate automation: "${dup.name}" (id ${dup.id}) already fires on this trigger + config. Deactivate or edit that rule first.`,
+        409,
+      );
+    }
+
     const result = await adb.run(`
       INSERT INTO automations (name, trigger_type, trigger_config, action_type, action_config, sort_order)
       VALUES (?, ?, ?, ?, ?, ?)
     `,
       name,
       trigger_type,
-      JSON.stringify(trigger_config ?? {}),
+      triggerConfigJson,
       action_type,
       JSON.stringify(action_config ?? {}),
       sort_order ?? 0,
