@@ -145,7 +145,36 @@ export function SubscriptionsListPage() {
       setBillingId(null);
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Billing failed');
+      // WEB-UIUX-834: surface a specific reason when the server (or
+      // upstream processor) returns a structured error code. Maps the
+      // BlockChyp / Stripe + native variants to operator-actionable copy.
+      const code: string | undefined =
+        err?.response?.data?.code ?? err?.response?.data?.error_code;
+      const serverMsg: string | undefined = err?.response?.data?.message;
+      let msg: string;
+      switch (code) {
+        case 'card_expired':
+        case 'expired_card':
+          msg = 'Card on file is expired. Ask the customer for a new card and update Payment Method.';
+          break;
+        case 'insufficient_funds':
+          msg = 'Card declined: insufficient funds. Retry later or ask for a different card.';
+          break;
+        case 'invalid_token':
+        case 'card_not_present':
+          msg = 'Saved card token is no longer valid. Re-tokenize the card via Payment Method.';
+          break;
+        case 'terminal_offline':
+        case 'processor_offline':
+          msg = 'Payment terminal is offline. Check the terminal, retry, or take cash and record manually.';
+          break;
+        case 'card_declined':
+          msg = serverMsg || 'Card declined. Ask the customer for a different card.';
+          break;
+        default:
+          msg = serverMsg || 'Billing failed';
+      }
+      toast.error(msg);
       setBillingId(null);
     },
   });

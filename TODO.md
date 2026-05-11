@@ -3595,7 +3595,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-833. **[MAJOR] Pause subscription doesn't capture reason — API accepts `{reason}` but UI passes nothing.** Audit trail empty. L7, L13. **[AUTOLOOP-T39 RESOLVED: Pause button uses window.prompt for reason; passes { reason } to membershipApi.pause matching API signature.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920`
 
-- [ ] WEB-UIUX-834. **[MAJOR] Generic "Billing failed" toast — no differentiation between card_expired/insufficient_funds/invalid_token/terminal_offline.** L8, L14.
+- [x] WEB-UIUX-834. **[MAJOR] Generic "Billing failed" toast — no differentiation between card_expired/insufficient_funds/invalid_token/terminal_offline.** L8, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: SubscriptionsListPage runBilling onError now switches on response.code: card_expired/insufficient_funds/invalid_token/terminal_offline/card_declined produce specific operator-actionable copy; falls back to server message then generic.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:135-139`
 
 - [x] WEB-UIUX-835. **[MAJOR] BlockChyp Test Connection only checks at config-time — no live status indicator at checkout.** Cashier hits "Complete" → failure happens DURING charge attempt. L8, L11. **[AUTOLOOP-T39 RESOLVED: CheckoutModal Card-tender useQuery live-pings blockchypApi.testConnection (30s); amber banner "Card terminal unreachable — try other tender" on fail.]**
