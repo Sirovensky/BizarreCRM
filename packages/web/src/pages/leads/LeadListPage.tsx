@@ -468,13 +468,18 @@ export function LeadListPage() {
   const convertMut = useMutation({
     mutationFn: (id: number) => leadApi.convert(id),
     onSuccess: (res, leadId) => {
-      const ticketId = res?.data?.data?.ticket?.id;
-      toast.success('Lead converted to ticket');
+      const ticket = res?.data?.data?.ticket;
+      const lead = res?.data?.data?.lead;
+      // WEB-UIUX-1350: unify success copy between list + detail with both
+      // stable order_ids so the operator can confirm the right destination.
+      const ticketLabel = ticket?.order_id ? `Ticket ${ticket.order_id}` : 'a ticket';
+      const leadLabel = lead?.order_id ? `Lead ${lead.order_id}` : 'Lead';
+      toast.success(`${leadLabel} converted → ${ticketLabel}`);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       // Invalidate the specific lead detail cache so its page reflects the converted state
       queryClient.invalidateQueries({ queryKey: ['leads', leadId] });
       queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
-      if (ticketId) navigate(`/tickets/${ticketId}`);
+      if (ticket?.id) navigate(`/tickets/${ticket.id}`);
     },
     onError: (err: unknown) => {
       // WEB-UIUX-1349: tier-limit reject (`leads.routes.ts:1066-1076`) is a 403

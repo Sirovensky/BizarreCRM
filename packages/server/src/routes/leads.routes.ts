@@ -1170,12 +1170,18 @@ router.post(
     await adb.run("UPDATE leads SET status = 'converted', updated_at = datetime('now') WHERE id = ?", id);
 
     const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
+    // WEB-UIUX-1350: include the lead's order_id alongside the ticket so the
+    // client can render "Lead #L042 → Ticket #T117" with both stable IDs and
+    // unify success copy between the list and detail surfaces.
+    const leadStub = await adb.get<{ id: number; order_id: string | null }>(
+      'SELECT id, order_id FROM leads WHERE id = ?', id,
+    );
 
     audit(db, 'lead_converted', req.user!.id, req.ip || 'unknown', { lead_id: id, ticket_id: ticketId });
 
     res.status(201).json({
       success: true,
-      data: { ticket, message: 'Lead converted to ticket' },
+      data: { ticket, lead: leadStub ?? { id, order_id: null }, message: 'Lead converted to ticket' },
     });
   }),
 );

@@ -4753,7 +4753,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/leads/LeadDetailPage.tsx:197-206`
   <!-- meta: fix=detect-err.response.data.upgrade_required+open-UpgradeModal-(reuse-from-/billing-CTA-elsewhere)+ticket-count-progress-bar-shown-on-/leads-when-current/limit>=80% -->
 
-- [!] WEB-UIUX-1350. **[NIT] LeadListPage convertMut success message says "Lead converted to ticket" (`:418`), navigates to /tickets/:id. Detail-page success says "Converted to ticket" (`:201`). Inconsistent copy across two surfaces for same action. Pick one ("Lead #L042 converted → Ticket #T117") and include both order_ids so user can confirm correct destination.** L7 feedback specificity, L11 consistency. **STATUS: BLOCKED — needs UpgradeModal integration in convert flow + ticket-count progress bar; multi-component, defer to monetization sprint**
+- [x] WEB-UIUX-1350. **Convert success copy unified 2026-05-11.** Server `/leads/:id/convert` response now also carries `lead: { id, order_id }` alongside the existing `ticket`. Both LeadListPage and LeadDetailPage convertMut.onSuccess render the identical `${leadLabel} converted → ${ticketLabel}` toast (e.g. "Lead L042 converted → Ticket T117"), with sane fallbacks when an order_id is missing. Navigates to the new ticket as before.
   `packages/web/src/pages/leads/LeadListPage.tsx:418`
   `packages/web/src/pages/leads/LeadDetailPage.tsx:201`
   <!-- meta: fix=both-toasts-show-"Lead-{order_id}-→-Ticket-{ticket.order_id}"+single-helper-formatConvertSuccess(res) -->

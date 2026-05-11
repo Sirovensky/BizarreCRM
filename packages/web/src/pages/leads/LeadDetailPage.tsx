@@ -206,8 +206,14 @@ export function LeadDetailPage() {
     mutationFn: () => leadApi.convert(Number(id)),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['lead', id] });
-      toast.success('Converted to ticket');
-      const ticketId = res.data?.data?.ticket?.id || res.data?.data?.ticket_id;
+      // WEB-UIUX-1350: include both order_ids so the success copy matches the
+      // list-page version + lets the operator confirm the correct destination.
+      const ticket = res.data?.data?.ticket;
+      const lead = res.data?.data?.lead;
+      const ticketLabel = ticket?.order_id ? `Ticket ${ticket.order_id}` : 'a ticket';
+      const leadLabel = lead?.order_id ? `Lead ${lead.order_id}` : 'Lead';
+      toast.success(`${leadLabel} converted → ${ticketLabel}`);
+      const ticketId = ticket?.id || res.data?.data?.ticket_id;
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
     // WEB-UIUX-1338 / WEB-UIUX-1349: tier-limit 403 → open the canonical
