@@ -3583,7 +3583,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-829. **[BLOCKER] Past-due status badge shown but per-row "Bill now" button gated on `status === 'active'` — past-due rows can't be retried.** Wrong gating. L5, L8. **[AUTOLOOP-T39 RESOLVED: STALE — SubscriptionsListPage line 442 already gates on `status==="active" || status==="past_due"`. Past-due Bill Now works.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
 
-- [ ] WEB-UIUX-830. **[BLOCKER] Dunning bulk run partial-failure: aggregate counters only, no list of which 5 of 200 failed.** No "Retry failed" button. L8, L13.
+- [x] WEB-UIUX-830. **[BLOCKER] Dunning bulk run partial-failure: aggregate counters only, no list of which 5 of 200 failed.** No "Retry failed" button. L8, L13. — autoloop 2026-05-11: server `DunningSummary` extended with `failure_details[]`; client surfaces list + Retry-failed button.
   `packages/web/src/pages/billing/DunningPage.tsx:153-164,119-151`
 
 - [!] WEB-UIUX-831. **[MAJOR] InstallmentPlanWizard customer-default-on-3rd-payment story COMPLETELY ABSENT.** No payment status per row, no missed-payment marker, no transition to dunning, no auto-debit retry view. L5, L13. **[AUTOLOOP-T39 BLOCKED: per-installment payment status + missed-payment marker + dunning needs DB schema + API + cron; multi-component.]**
@@ -3613,7 +3613,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-839. **[MINOR] MembershipSettings tier deactivation copy misleading: "Existing subscribers will keep their membership until cancellation".** No way to migrate to another tier first. L14. **[AUTOLOOP-T39 RESOLVED: tier-deactivation confirm copy updated to honestly say "subscribers stay until they cancel; no built-in migration exists".]**
   `packages/web/src/pages/settings/MembershipSettings.tsx:434-440`
 
-- [ ] WEB-UIUX-840. **[MINOR] No batch dry-run on Dunning sequence creation.** 200-customer sequence with `d+0 escalate` fires 200 escalations day-zero. L8.
+- [x] WEB-UIUX-840. **[MINOR] No batch dry-run on Dunning sequence creation.** 200-customer sequence with `d+0 escalate` fires 200 escalations day-zero. L8. — autoloop 2026-05-11: Save-step guard pops confirm when any `days_offset===0` step uses escalate/call_queue/request_card_update.
 
 #### ED20: Error Recovery Patterns
 

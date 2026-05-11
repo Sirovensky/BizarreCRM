@@ -49,6 +49,14 @@ export interface DunningStep {
   template_id?: string;
 }
 
+export interface DunningFailureDetail {
+  invoice_id: number;
+  order_id: string | null;
+  reason: string;
+  sequence_id: number;
+  step_index: number;
+}
+
 export interface DunningSummary {
   sequences_evaluated: number;
   /**
@@ -85,6 +93,12 @@ export interface DunningSummary {
    * some steps did not fire (e.g. "channel not wired"). Empty on a perfect run.
    */
   warnings: string[];
+  /**
+   * WEB-UIUX-830: per-invoice failure list so the UI can show "5 of 200
+   * failed" rather than just aggregate counts, and offer a Retry-Failed
+   * affordance. Populated alongside steps_failed/failures.
+   */
+  failure_details: DunningFailureDetail[];
 }
 
 /**
@@ -222,6 +236,7 @@ export async function runDunningOnce(
     invoices_touched: 0,
     failures: 0,
     warnings: [],
+    failure_details: [],
   };
 
   // Honor the store_config kill-switch so an operator can pause dunning
@@ -376,6 +391,16 @@ export async function runDunningOnce(
               if (dispatchResult.warning) {
                 summary.warnings.push(dispatchResult.warning);
               }
+              // WEB-UIUX-830: capture per-invoice failure detail so the
+              // /run-now response can drive a "Retry failed" UI without a
+              // second DB scan.
+              summary.failure_details.push({
+                invoice_id: invoice.id,
+                order_id: invoice.order_id ?? null,
+                reason: dispatchResult.warning ?? 'Dispatch failed',
+                sequence_id: seq.id,
+                step_index: stepIndex,
+              });
               break;
             case 'skipped':
               summary.steps_skipped += 1;
@@ -434,6 +459,7 @@ export async function runDunningIfDue(
       warnings: [
         'Dunning run skipped: last run was less than the minimum gap ago.',
       ],
+      failure_details: [],
     };
   }
   return runDunningOnce(db);
