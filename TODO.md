@@ -3171,7 +3171,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/server/src/routes/refunds.routes.ts:107,253,418,439,462,529`
   <!-- meta: fix=add-refundsApi-endpoint-shim+RefundsListPage+ApprovalQueue+StoreCreditRedeemModal -->
 
-- [ ] WEB-UIUX-704. **[BLOCKER] No web UI for `creditNotes.routes.ts` collection endpoints.** Server exposes GET `/credit-notes`, GET `/credit-notes/:id`, POST `/credit-notes/:id/apply` (use credit), POST `/credit-notes/:id/void`. Web only calls invoice-scoped POST `/invoices/:id/credit-note`. No list page, no detail page, no apply-to-future-invoice flow, no void path for mistaken credit notes. L3, L8.
+- [!] WEB-UIUX-704. **[BLOCKER] No web UI for `creditNotes.routes.ts` collection endpoints.** Server exposes GET `/credit-notes`, GET `/credit-notes/:id`, POST `/credit-notes/:id/apply` (use credit), POST `/credit-notes/:id/void`. Web only calls invoice-scoped POST `/invoices/:id/credit-note`. No list page, no detail page, no apply-to-future-invoice flow, no void path for mistaken credit notes. L3, L8. **BLOCKED 2026-05-11: requires new web pages (list/detail/apply) — multi-page feature scope. Server endpoints are stable. Defer to credit-notes UI sprint.**
   `packages/server/src/routes/creditNotes.routes.ts:63,135,237,318`
   <!-- meta: fix=add-creditNotesApi+CreditNotesListPage+apply-modal+void-mutation -->
 
@@ -3336,7 +3336,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-748. **[MAJOR] POS cart bleeding partially mitigated (user-scoped key) but `auth-cleared` doesn't clear POS store.** Stale cart from cashier A persists, resumes on relogin (privacy: customer phone/email attached). L16. **[AUTOLOOP-T34 RESOLVED: POS store gets `bizarre-crm:auth-cleared` listener calling resetAll() — cart/customer/discounts/UI/idempotency cleared on logout/relogin.]**
   `packages/web/src/pages/unified-pos/store.ts:64-68`
 
-- [ ] WEB-UIUX-749. **[MAJOR] Trial expiry mid-action: 403 upgrade_required opens modal — but CART NOT PERSISTED before modal.** Cashier mid-sale loses cart. L4, L8.
+- [x] WEB-UIUX-749. **[MAJOR] Trial expiry mid-action: 403 upgrade_required opens modal — but CART NOT PERSISTED before modal.** Cashier mid-sale loses cart. L4, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: unified-pos store already persists cart to sessionStorage on every mutation; api/client.ts upgrade_required interceptor now dispatches  event before opening modal so any future POS-side hook can snapshot extra state. Cart survives the 403.]**
   `packages/web/src/api/client.ts:294-313`
 
 - [x] WEB-UIUX-750. **[MAJOR] Mid-checkout 401 → re-login lands back on POS but no banner: "Your previous checkout was interrupted. Check Tickets to verify."** Cashier may run sale twice on different till. L8, L11. **[AUTOLOOP-T34 RESOLVED: client.ts sets `pos.checkout_interrupted` sessionStorage flag on 401 mid-checkout; UnifiedPosPage reads + clears + renders dismissible amber banner with /tickets link.]**
@@ -3379,7 +3379,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-761. **[MAJOR] ExpensesPage receipt upload `accept="image/*,application/pdf"` — no size cap, no MIME allow-list, no magic-byte sniff.** 50MB PDF → 413 → generic toast. L7, L8. **[AUTOLOOP-T35 RESOLVED: ExpensesPage upload uses RECEIPT_UPLOAD_MIME_TYPES + validateReceiptFile (10 MB cap, JPEG/PNG/WebP/PDF allowlist + magic-byte sniff).]**
   `packages/web/src/pages/expenses/ExpensesPage.tsx:308-314`
 
-- [ ] WEB-UIUX-762. **[MINOR] CustomerListPage / InventoryListPage CSV `readAsText` no size cap, no encoding declaration.** 200MB CSV hangs renderer; Windows-1252/Shift_JIS exports show mojibake. L15.
+- [x] WEB-UIUX-762. **[MINOR] CustomerListPage / InventoryListPage CSV `readAsText` no size cap, no encoding declaration.** 200MB CSV hangs renderer; Windows-1252/Shift_JIS exports show mojibake. L15. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerListPage + InventoryListPage CSV import now reject files over 25MB, request UTF-8 decoding explicitly, and toast a clear error when replacement chars indicate non-UTF-8 input.]**
 
 - [x] WEB-UIUX-763. **[MINOR] CommunicationPage `safeMediaUrl` accepts any http(s) URL → leaks Referer to attacker.example.** No `referrerpolicy="no-referrer"` on rendered img/a. L16. **[AUTOLOOP-T35 RESOLVED: CommunicationPage MMS media adds referrerPolicy="no-referrer" on imgs + rel="noreferrer noopener" on anchors. Referer leak closed.]**
   `packages/web/src/pages/communications/CommunicationPage.tsx:2120-2145`
@@ -3392,7 +3392,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-765. **[BLOCKER] No `tax_exempt` flag on customer record.** Cashiers must manually toggle each line's `taxable`. Customer change AFTER lines added doesn't auto-flip. Silent tax on non-profit invoice. L6, L13. **[AUTOLOOP-T35 BLOCKED: tax_exempt flag spans server schema + customer form + POS auto-apply logic; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1123,1191,1253-1254`
 
-- [ ] WEB-UIUX-766. **[BLOCKER] Discount cap permission gate not implemented — cashier can apply $9999 discount on $50 sale.** `pos_max_cashier_discount_pct` setting missing. L16.
+- [x] WEB-UIUX-766. **[BLOCKER] Discount cap permission gate not implemented — cashier can apply $9999 discount on $50 sale.** `pos_max_cashier_discount_pct` setting missing. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: pos.routes /checkout and /checkout-with-ticket now read  store_config and 403 when a non-admin/non-manager cashier sends discount > subtotal*pct. Manager/admin bypass; membership discount unaffected.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:880-888`
 
 - [x] WEB-UIUX-767. **[BLOCKER] Group/auto-apply discount silently flips when customer changes mid-cart.** Switch to customer with `group_auto_apply=true` → cart total drops 10-20% silently. L6, L8. **[AUTOLOOP-T35 RESOLVED: CustomerSelector group_auto_apply useEffect fires toast.success showing old→new total on first activation; deduped on re-renders.]**

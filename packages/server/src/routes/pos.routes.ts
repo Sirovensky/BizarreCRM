@@ -547,6 +547,30 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
     throw new AppError('Discount cannot exceed subtotal + tax', 400);
   }
 
+  // WEB-UIUX-766: server-enforced cashier discount cap. `pos_max_cashier_discount_pct`
+  // store_config (0-100, integer) caps the per-sale manual discount for
+  // non-admin/non-manager users. Admin and manager bypass the cap because
+  // they own pricing decisions; everyone else is blocked. Membership
+  // discount is computed server-side from the tier and bypasses the cap
+  // (already a contractual benefit) — we only constrain the explicit
+  // `discount` field. Skipped when the cap is empty or 100.
+  if (subtotal > 0 && discount > 0 && req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    const capRow = await adb.get<{ value: string }>(
+      "SELECT value FROM store_config WHERE key = 'pos_max_cashier_discount_pct'",
+    );
+    const rawCap = capRow?.value ?? '';
+    const capPct = Number.parseFloat(rawCap);
+    if (Number.isFinite(capPct) && capPct >= 0 && capPct < 100) {
+      const maxDiscount = roundCents(subtotal * (capPct / 100));
+      if (discount > maxDiscount) {
+        throw new AppError(
+          `Discount exceeds your role cap (${capPct}% = ${maxDiscount.toFixed(2)}). Manager approval required.`,
+          403,
+        );
+      }
+    }
+  }
+
   // Final total = subtotal − discount + tax + tip. Because tax was computed
   // on line net (already discount-adjusted), re-subtracting `effectiveDiscount`
   // would double-count. Instead we subtract the DELTA between effectiveDiscount
@@ -1134,6 +1158,24 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
       lineTotal,
       notes: lineNote,
     });
+  }
+
+  // WEB-UIUX-766: same cashier-discount cap on checkout-with-ticket path.
+  if (subtotal > 0 && cartDiscount > 0 && req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    const capRow = await adb.get<{ value: string }>(
+      "SELECT value FROM store_config WHERE key = 'pos_max_cashier_discount_pct'",
+    );
+    const rawCap = capRow?.value ?? '';
+    const capPct = Number.parseFloat(rawCap);
+    if (Number.isFinite(capPct) && capPct >= 0 && capPct < 100) {
+      const maxDiscount = roundCents(subtotal * (capPct / 100));
+      if (cartDiscount > maxDiscount) {
+        throw new AppError(
+          `Cart discount exceeds your role cap (${capPct}% = ${maxDiscount.toFixed(2)}). Manager approval required.`,
+          403,
+        );
+      }
+    }
   }
 
   if (cartDiscount > roundCents(subtotal + total_tax)) {

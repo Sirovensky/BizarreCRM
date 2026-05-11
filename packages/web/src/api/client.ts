@@ -330,6 +330,18 @@ client.interceptors.response.use(
 
     // Tier gate 403: open the upgrade modal globally so the user sees it
     if (error.response?.status === 403 && error.response?.data?.upgrade_required) {
+      // WEB-UIUX-749: persist any in-flight POS cart BEFORE we hand the
+      // upgrade modal control of the screen, so a trial expiry mid-sale
+      // doesn't silently nuke the cashier's cart. The unified-pos store
+      // already auto-persists on cart mutation, but the modal handoff
+      // can trigger a sign-out path that calls wipeAllDrafts; emitting
+      // this event lets the POS store snapshot itself to sessionStorage
+      // first.
+      try {
+        window.dispatchEvent(new CustomEvent('bizarre-crm:upgrade-required', {
+          detail: { feature: error.response?.data?.feature ?? null },
+        }));
+      } catch { /* non-fatal */ }
       // Lazy import to avoid circular deps with planStore
       import('@/stores/planStore')
         .then(({ usePlanStore, isUpgradeFeatureKey }) => {

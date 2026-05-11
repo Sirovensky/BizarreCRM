@@ -859,11 +859,28 @@ export function CustomerListPage() {
             <div className="mb-2">
               <label className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 cursor-pointer">
                 <Upload className="h-4 w-4 inline mr-1" /> Upload File
-                <input type="file" accept=".csv" className="hidden" onChange={e => {
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => {
                   const file = e.target.files?.[0]; if (!file) return;
+                  // WEB-UIUX-762: cap CSV size so a 200MB paste doesn't hang
+                  // the renderer; read as UTF-8 explicitly so Windows-1252 /
+                  // Shift_JIS exports surface mojibake at parse time instead
+                  // of silently corrupting customer names.
+                  const MAX_CSV_BYTES = 25 * 1024 * 1024;
+                  if (file.size > MAX_CSV_BYTES) {
+                    toast.error(`CSV exceeds ${(MAX_CSV_BYTES / 1024 / 1024)}MB cap (${(file.size / 1024 / 1024).toFixed(1)}MB). Split into smaller batches.`);
+                    return;
+                  }
                   const reader = new FileReader();
-                  reader.onload = ev => { const text = ev.target?.result as string; setImportText(text); parseImportCsv(text); };
-                  reader.readAsText(file);
+                  reader.onload = ev => {
+                    const text = ev.target?.result as string;
+                    if (/�/.test(text)) {
+                      toast.error('CSV contains characters that did not decode as UTF-8. Re-export the file as UTF-8 and try again.');
+                      return;
+                    }
+                    setImportText(text);
+                    parseImportCsv(text);
+                  };
+                  reader.readAsText(file, 'utf-8');
                 }} />
               </label>
             </div>
