@@ -793,6 +793,19 @@ function WebhookConfigSection() {
     onError: () => toast.error('Failed to save webhook settings'),
   });
 
+  // WEB-UIUX-944: dispatch synthetic ticket_created event to the configured
+  // URL so the admin can verify the provider is reachable + signing secret
+  // matches before relying on real events. Server endpoint already exists
+  // (settings.routes.ts:3424 /webhook-test).
+  const testMut = useMutation({
+    mutationFn: () => settingsApi.testWebhook(),
+    onSuccess: (res: any) => {
+      const msg = res?.data?.data?.message || 'Test delivery queued — check dead-letter queue if it does not arrive.';
+      toast.success(msg, { duration: 7000 });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to send test webhook'),
+  });
+
   function toggleEvent(event: string) {
     const updated = webhookEvents.includes(event)
       ? webhookEvents.filter((e) => e !== event)
@@ -835,6 +848,29 @@ function WebhookConfigSection() {
           <p className="text-xs text-surface-400 mt-1">
             POST requests will be sent to this URL when selected events occur. Use with Zapier, Make.com, or custom endpoints.
           </p>
+          {/* WEB-UIUX-944: bilateral connectivity smoke-test. Pushes a
+              synthetic ticket_created event to the configured URL so the
+              admin can verify reachability + signing-secret match before
+              counting on production events. */}
+          <button
+            type="button"
+            onClick={() => {
+              if (dirty) {
+                toast.error('Save the URL first, then send a test webhook.');
+                return;
+              }
+              if (!webhookUrl.trim()) {
+                toast.error('Set a webhook URL before sending a test.');
+                return;
+              }
+              testMut.mutate();
+            }}
+            disabled={testMut.isPending || !webhookUrl.trim() || dirty}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-surface-300 px-3 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+          >
+            {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+            Send test webhook
+          </button>
         </div>
         <div>
           <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-2">Events to Send</label>

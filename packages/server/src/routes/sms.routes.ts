@@ -1574,18 +1574,34 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
               // match an automation trigger (or another customer-side
               // auto-responder) re-fires every inbound message, draining
               // Twilio credit. Skip when we've already sent an auto-reply
-              // outbound to this conv_phone in the last 24 hours.
-              (((await adb.get<{ c: number }>(
-                `SELECT COUNT(*) AS c
-                   FROM sms_messages
-                  WHERE conv_phone = ?
-                    AND direction = 'outbound'
-                    AND provider IN ('auto-reply', 'auto-responder')
-                    AND created_at > datetime('now', '-24 hours')`,
-                convPhone,
-              )) as { c: number } | undefined)?.c ?? 0) > 0
+              // outbound to this conv_phone within the configurable
+              // cooldown window.
+              // WEB-UIUX-945: read auto_reply_cooldown_hours from
+              // store_config so the previously hardcoded 24h is tunable
+              // per tenant (low-volume shops 48h, high-volume 4h, etc.).
+              // Bounded [1, 168] (1h - 1 week) to prevent operator typos
+              // from disabling the suppression entirely.
+              await (async () => {
+                const cooldownRow = await adb.get<{ value?: string }>(
+                  `SELECT value FROM store_config WHERE key = 'auto_reply_cooldown_hours'`,
+                );
+                let cooldownHours = parseInt(cooldownRow?.value ?? '24', 10);
+                if (!Number.isFinite(cooldownHours) || cooldownHours <= 0) cooldownHours = 24;
+                cooldownHours = Math.min(168, Math.max(1, cooldownHours));
+                const row = await adb.get<{ c: number }>(
+                  `SELECT COUNT(*) AS c
+                     FROM sms_messages
+                    WHERE conv_phone = ?
+                      AND direction = 'outbound'
+                      AND provider IN ('auto-reply', 'auto-responder')
+                      AND created_at > datetime('now', ?)`,
+                  convPhone,
+                  `-${cooldownHours} hours`,
+                );
+                return (row?.c ?? 0) > 0;
+              })()
             ) {
-              logger.info('sms auto-reply suppressed — already replied to this sender in last 24h', {
+              logger.info('sms auto-reply suppressed — already replied to this sender within the configured cooldown window', {
                 fromRedacted: redactPhone(from),
               });
             } else {

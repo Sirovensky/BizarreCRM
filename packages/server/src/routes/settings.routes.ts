@@ -302,6 +302,9 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'role_module_visibility',
   // ENR-SMS6: Auto-reply off-hours
   'auto_reply_enabled', 'auto_reply_message',
+  // WEB-UIUX-945: cooldown window (hours) before the same sender gets
+  // another auto-reply. Defaults to 24; bounded [1, 168] in sms.routes.
+  'auto_reply_cooldown_hours',
   // ENR-LE8: Estimate auto-follow-up days
   'estimate_followup_days',
   // ENR-A3: Notification digest mode

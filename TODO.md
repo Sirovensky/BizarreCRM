@@ -3917,11 +3917,11 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-943. **[MAJOR] VoiceCallsListPage swallows recording-fetch errors with generic "Could not load recording".** 401/404/410 indistinguishable. No retrigger webhook path. L8. **[AUTOLOOP-T60 RESOLVED: openRecordingSecure now dispatches status-specific toasts for 401/404/410 + status-code-included fallback for other errors.]**
 
-- [ ] WEB-UIUX-944. **[MINOR · BLOCKED] Webhook URL panel never tests bilateral connectivity.** No "send test webhook" action to verify provider can reach server, signing-secret matches. Silent drop if misconfigured. L8.
+- [x] WEB-UIUX-944. **[MINOR · BLOCKED] Webhook URL panel never tests bilateral connectivity.** No "send test webhook" action to verify provider can reach server, signing-secret matches. Silent drop if misconfigured. L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Settings → Webhook Configuration panel gains a "Send test webhook" button that POSTs /settings/webhook-test (server endpoint already existed at settings.routes.ts:3424). Disabled until URL is saved + non-empty.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/settings/SmsVoiceSettings.tsx:235-262`
 
-- [ ] WEB-UIUX-945. **[MINOR · BLOCKED] SMS auto-reply "Sent once per sender per 24-hour window" hardcoded server-side, not configurable from UI.** No "auto-reply paused due to rate limit" indicator. L7, L11.
+- [x] WEB-UIUX-945. **[MINOR · BLOCKED] SMS auto-reply "Sent once per sender per 24-hour window" hardcoded server-side, not configurable from UI.** No "auto-reply paused due to rate limit" indicator. L7, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: sms.routes auto-reply cooldown now reads `auto_reply_cooldown_hours` from store_config (default 24, bounded [1, 168]); key added to settings.routes ALLOWED_CONFIG whitelist so admins can tune per tenant.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
 

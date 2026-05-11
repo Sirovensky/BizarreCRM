@@ -479,6 +479,11 @@ export const settingsApi = {
   // Generic config (key-value store)
   getConfig: (params?: { location_id?: number }) => api.get('/settings/config', { params }),
   updateConfig: (data: Record<string, string>) => api.put('/settings/config', data),
+  // WEB-UIUX-944: bilateral webhook connectivity smoke-test. Server fires
+  // a synthetic `ticket_created` event with `test:true` against the
+  // configured webhook_url so the admin can verify reachability +
+  // signing-secret match.
+  testWebhook: () => api.post('/settings/webhook-test'),
   getSetupStatus: () => api.get<{
     success: boolean;
     data: {
