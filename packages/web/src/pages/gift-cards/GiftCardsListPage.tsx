@@ -64,8 +64,14 @@ function formatCurrency(amount: number): string {
 }
 
 function maskCode(code: string): string {
-  if (code.length <= 4) return code;
-  return `****${code.slice(-4)}`;
+  if (!code) return code;
+  // WEB-UIUX-1437: show first 4 + last 4 (e.g. "A4F2 **** 9HX2") so a
+  // cashier on the phone with a customer ("I think it starts with A4...")
+  // can match by prefix OR suffix. Codes are 32-char base32; revealing 8
+  // chars total still leaves 24 unknown bits — not a brute-force vector
+  // (server enforces per-IP rate limiting on /gift-cards/lookup).
+  if (code.length <= 8) return code;
+  return `${code.slice(0, 4)} **** ${code.slice(-4)}`;
 }
 
 // WEB-UIUX-1012: added default case so unknown future statuses (e.g. 'expired') never return undefined
@@ -285,8 +291,14 @@ function IssueModal({ onClose }: IssueModalProps) {
               value={form.amount}
               onChange={(e) => update('amount', e.target.value)}
               placeholder="Custom amount"
+              aria-describedby="gift-card-amount-hint"
               className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
             />
+            {/* WEB-UIUX-1433: surface the server cap inline so $15,000 typos
+                are caught before submit, not via opaque toast. */}
+            <p id="gift-card-amount-hint" className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+              $1 — $10,000 per card
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
@@ -302,7 +314,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-              Recipient email (optional)
+              Recipient email (optional, stored only)
             </label>
             <input
               type="email"
@@ -312,8 +324,15 @@ function IssueModal({ onClose }: IssueModalProps) {
               // WEB-UIUX-1564: client-side regex validation so garbage emails don't slip through
               // (server validates length only). aria-invalid surfaces inline error to AT.
               aria-invalid={form.recipient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient_email) ? 'true' : undefined}
+              aria-describedby="gift-card-email-hint"
               className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800 aria-[invalid=true]:border-red-500"
             />
+            {/* WEB-UIUX-1435: server stores the email but never sends a
+                delivery notification. Spell that out so the cashier knows
+                to hand the code over in person / via a separate channel. */}
+            <p id="gift-card-email-hint" className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+              Stored for records only — no email is sent. Hand the code to the recipient yourself.
+            </p>
             {form.recipient_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient_email) && (
               <p className="mt-1 text-xs text-red-600 dark:text-red-400">Enter a valid email address.</p>
             )}
@@ -529,7 +548,10 @@ export function GiftCardsListPage() {
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="used">Used</option>
-          <option value="disabled">Disabled</option>
+          {/* WEB-UIUX-1439: removed Disabled option — no UI sets a card to
+              this status (no Disable button on detail, no bulk action, no
+              server route), so the filter always returned empty and the
+              dropdown promised a workflow that doesn't exist. */}
           {/* WEB-UIUX-1438: expired filter option */}
           <option value="expired">Expired</option>
         </select>

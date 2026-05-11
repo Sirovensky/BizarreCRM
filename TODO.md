@@ -6034,7 +6034,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:260,269-277,300`
   <!-- meta: fix=add-CustomerPicker-(reuse-component-from-InvoiceDetail/UnifiedPos)+include-customer_id-in-issueMutation-payload+populate-from-?customer_id-query-string-when-deep-linked-from-CustomerDetailPage -->
 
-- [ ] WEB-UIUX-1431. **[MAJOR] IssueModal "Save this code now — it will not be shown again." copy contradicts `GiftCardDetailPage.tsx:237-243` which lets ANY user with read access click the Eye toggle and reveal the full 32-char plaintext code from `card.code`. The detail page returns plaintext from `GET /gift-cards/:id` (`giftCards.routes.ts:441-451` returns `card.*` including `code` column). Either the warning is wrong (code IS still retrievable) or the detail page Show button is a security leak (server intends migration to drop the `code` column per `:293-296`). Today reality: warning is misleading + plaintext code leaks to anyone who can open the detail page (no extra permission gate beyond list-read).** L2 label truthfulness, L11 consistency.
+- [!] WEB-UIUX-1431. **[MAJOR] IssueModal "Save this code now — it will not be shown again." copy contradicts `GiftCardDetailPage.tsx:237-243` which lets ANY user with read access click the Eye toggle and reveal the full 32-char plaintext code from `card.code`. The detail page returns plaintext from `GET /gift-cards/:id` (`giftCards.routes.ts:441-451` returns `card.*` including `code` column). Either the warning is wrong (code IS still retrievable) or the detail page Show button is a security leak (server intends migration to drop the `code` column per `:293-296`). Today reality: warning is misleading + plaintext code leaks to anyone who can open the detail page (no extra permission gate beyond list-read).** L2 label truthfulness, L11 consistency. **[AUTOLOOP-T49 BLOCKED 2026-05-11: full code remains retrievable via GiftCardDetailPage Eye toggle; honest fix needs the schema migration that drops the plaintext code column (server intends per line 293-296). Until then "will not be shown again" is aspirational copy.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:139-141`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:235-243`
   `packages/server/src/routes/giftCards.routes.ts:441-451`
@@ -6045,7 +6045,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:260,284-286,300`
   <!-- meta: fix=add-textarea-"Notes-(optional,-internal)"-with-1000-char-max+wire-to-issueMutation-payload -->
 
-- [ ] WEB-UIUX-1433. **[MAJOR] `GIFT_CARD_MAX_AMOUNT = $10,000` server cap (`giftCards.routes.ts:29,262-264`) never advertised in UI. Operator creating a corporate gift of $15,000 types the amount, hits Issue, gets toast "Gift card amount cannot exceed $10,000" with no inline hint or `max=` attribute on the input (`GiftCardsListPage.tsx:182-190`). Same opaque ceiling on Reload (`:402-404`).** L7 feedback meaningfulness.
+- [x] WEB-UIUX-1433. **[MAJOR] `GIFT_CARD_MAX_AMOUNT = $10,000` server cap (`giftCards.routes.ts:29,262-264`) never advertised in UI. Operator creating a corporate gift of $15,000 types the amount, hits Issue, gets toast "Gift card amount cannot exceed $10,000" with no inline hint or `max=` attribute on the input (`GiftCardsListPage.tsx:182-190`). Same opaque ceiling on Reload (`:402-404`).** L7 feedback meaningfulness. **[AUTOLOOP-T49 RESOLVED 2026-05-11: amount input gains an inline aria-describedby hint reading "$1 - $10,000 per card" so the server cap is visible before submit.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:178-190`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:124-135`
   <!-- meta: fix=helper-text-below-amount-input-"Max-$10,000-per-card."+set-input-max=10000+disable-Issue-button-when-value>10000+inline-red-error-on-blur -->
@@ -6055,7 +6055,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:365,238-241`
   <!-- meta: fix=server-treat-expires_at-as-local-end-of-day-in-tenant-tz-(append-T23:59:59+offset)-OR-UI-helper-"Expires-at-midnight-UTC-on-this-date"+show-resolved-local-time -->
 
-- [ ] WEB-UIUX-1435. **[MAJOR] No upfront indication that recipient_email gets nothing. Field placeholder is just "jane@example.com" (`:212`); cashier reasonably assumes filling it triggers an email of the gift-card code (Stripe / Square / every consumer SaaS does this). Reality: server stores the email but never sends anything (no notification call in the issue route). Recipient never receives the code unless cashier separately emails them outside the system. Field is decorative metadata, not an action.** L2 label truthfulness, L7 feedback.
+- [x] WEB-UIUX-1435. **[MAJOR] No upfront indication that recipient_email gets nothing. Field placeholder is just "jane@example.com" (`:212`); cashier reasonably assumes filling it triggers an email of the gift-card code (Stripe / Square / every consumer SaaS does this). Reality: server stores the email but never sends anything (no notification call in the issue route). Recipient never receives the code unless cashier separately emails them outside the system. Field is decorative metadata, not an action.** L2 label truthfulness, L7 feedback. **[AUTOLOOP-T49 RESOLVED 2026-05-11: recipient email label now reads "(optional, stored only)" + an amber inline hint "Stored for records only — no email is sent. Hand the code to the recipient yourself."]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:204-214`
   `packages/server/src/routes/giftCards.routes.ts:253-323`
   <!-- meta: fix=add-checkbox-"Email-this-code-to-recipient-on-issue"-(default-on-when-email-supplied)+server-honours-flag+sends-via-notificationApi+OR-rename-field-"Recipient-email-(for-records-only)" -->
@@ -6067,7 +6067,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:172-245`
   <!-- meta: fix=add-secondary-"Look-up-by-code"-button-next-to-"Issue-gift-card"+modal-with-code-input+barcode-scan-icon+POST-lookup→show-balance-card-(amount-status-recipient-expires)+actions-row-(redeem-disable-reload) -->
 
-- [ ] WEB-UIUX-1437. **[MAJOR] List "Code" column shows only `****XXXX` (`GiftCardsListPage.tsx:65-68,371`) with no copy/reveal action. Cashier on the phone with customer reading "I think my code starts with A4..." cannot search by prefix — the search input matches plaintext `gc.code LIKE` (`giftCards.routes.ts:113`) BUT the list never shows the prefix. Compound problem with WEB-UIUX-1436: no lookup, no useful list view.** L4 flow, L7 feedback.
+- [x] WEB-UIUX-1437. **[MAJOR] List "Code" column shows only `****XXXX` (`GiftCardsListPage.tsx:65-68,371`) with no copy/reveal action. Cashier on the phone with customer reading "I think my code starts with A4..." cannot search by prefix — the search input matches plaintext `gc.code LIKE` (`giftCards.routes.ts:113`) BUT the list never shows the prefix. Compound problem with WEB-UIUX-1436: no lookup, no useful list view.** L4 flow, L7 feedback. **[AUTOLOOP-T49 RESOLVED 2026-05-11: list code render now shows first 4 + last 4 ("A4F2 **** 9HX2") so a cashier on the phone can match by prefix OR suffix. 8-of-32 char reveal still leaves ~120 bits unknown; /lookup endpoint rate-limits separately.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:65-68,370-372`
   <!-- meta: fix=show-first-4-+-last-4:-`A4F2****1234`+per-row-Eye-icon-(permission-gated)-to-reveal+per-row-Copy-icon -->
 
@@ -6076,7 +6076,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/index.ts:2641-2653`
   <!-- meta: fix=widen-GiftCard.status-type-to-include-'expired'+add-statusBadge-case-(amber-tone)+add-<option-value="expired">Expired</option>-to-filter -->
 
-- [ ] WEB-UIUX-1439. **[MAJOR] Status filter has `disabled` option but no UI ever sets a card to `disabled` — no Disable button on detail, no bulk action on list, server route absent. Selecting "Disabled" filter returns empty list always. Dead UI option that promises a workflow that does not exist. Either ship a Disable action (lost-card / fraud reporting) or remove the filter option.** L4 flow dead-end, L11 dead UI, L13 dead code.
+- [x] WEB-UIUX-1439. **[MAJOR] Status filter has `disabled` option but no UI ever sets a card to `disabled` — no Disable button on detail, no bulk action on list, server route absent. Selecting "Disabled" filter returns empty list always. Dead UI option that promises a workflow that does not exist. Either ship a Disable action (lost-card / fraud reporting) or remove the filter option.** L4 flow dead-end, L11 dead UI, L13 dead code. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Disabled status dropdown option removed — no UI sets cards to that status, filter always returned empty.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:329`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
   <!-- meta: fix=ship-DELETE-or-PATCH-/gift-cards/:id/disable-route+wire-Disable-button-on-detail-page-(red-secondary)-with-requireTyping-confirm+OR-remove-the-disabled-filter-option -->
@@ -6085,7 +6085,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:270-280,313-320`
   <!-- meta: fix=wrap-keyword-in-useDeferredValue-or-debounce-300ms-(reuse-existing-useDebounce-hook-from-InventoryList)-before-passing-into-queryKey -->
 
-- [ ] WEB-UIUX-1441. **[MAJOR] No pagination controls on list. `GiftCardListData` exposes `pagination.total_pages` (`:30-35`), `useQuery` doesn't pass `page` (default page 1, per_page=50). Cards 51-N invisible. Tenants with seasonal gift-card promos pile up hundreds of cards; only the most recent 50 are reachable by the operator.** L4 flow, L9 loading state.
+- [!] WEB-UIUX-1441. **[MAJOR] No pagination controls on list. `GiftCardListData` exposes `pagination.total_pages` (`:30-35`), `useQuery` doesn't pass `page` (default page 1, per_page=50). Cards 51-N invisible. Tenants with seasonal gift-card promos pile up hundreds of cards; only the most recent 50 are reachable by the operator.** L4 flow, L9 loading state. **[AUTOLOOP-T49 STALE 2026-05-11: pagination is wired — useState(page), PAGE_SIZE, prev/next buttons at lines 661/670 already operational.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:264-281`
   <!-- meta: fix=add-page-state+pagination-controls-(reuse-component-used-on-CustomersListPage)+pass-{page,per_page}-into-giftCardApi.list -->
 
