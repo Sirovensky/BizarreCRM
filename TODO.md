@@ -4045,7 +4045,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [x] WEB-UIUX-976. **[MINOR] `'converting'` transient status leaks to UI on race.** `estimates.routes.ts:802` flips status to 'converting' for atomic guard; if operator refreshes during the convert window, badge shows raw "converting" with gray fallback. Should map to "Converting…" with spinner. L9, L13. **[AUTOLOOP-T44 RESOLVED: Added converting status to STATUS_COLORS/LABELS in EstimateDetailPage + EstimateListPage + PortalEstimatesView. Loader2 spin replaces dot when status=converting.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:16-22`
 
-- [ ] WEB-UIUX-977. **[MINOR] List-page empty state copy says "Click 'New Estimate' above" but no in-state CTA button.** Operator must scroll up to find the button. Standard pattern: include a primary button inline. L4, L1.
+- [x] WEB-UIUX-977. **[MINOR] List-page empty state copy says "Click 'New Estimate' above" but no in-state CTA button.** Operator must scroll up to find the button. Standard pattern: include a primary button inline. L4, L1. **[AUTOLOOP-T49 RESOLVED 2026-05-10: empty state now renders inline "+ New Estimate" button when no filters active; copy trimmed.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:651-663`
 
 - [x] WEB-UIUX-978. **[MINOR] `_redirect_after_convert` is implicit — `convert` mutation auto-navigates to `/tickets/:id`.** No "Open ticket" / "Stay here" choice; operator wanting to print estimate before viewing ticket is yanked away. L4. **[AUTOLOOP-T44 RESOLVED: convertMut.onSuccess no longer auto-navigates; replaced with custom react-hot-toast offering Open ticket / Stay here buttons (8s).]**
@@ -4550,7 +4550,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 - [x] WEB-UIUX-1101. **[MINOR] "Cancel" same visual weight as "Sign off" — both filled-equivalent buttons.** `QcSignOffModal.tsx:324-343`. Cancel destroys 30s+ of work; Sign off persists it. Cancel should be ghost/text-only; primary CTA should dominate. L9. **[AUTOLOOP-T51 RESOLVED: Cancel button stripped to ghost/text-only so primary Sign off CTA dominates.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:324-343`
 
-- [ ] WEB-UIUX-1102. **[MINOR] Notes placeholder "Any observations the customer should know about..." — but `qc_sign_offs.notes` is internal (no email path, no print path per WEB-UIUX-1089).** Tech writes a note thinking customer will see it; customer never does. Misleading copy. L7.
+- [x] WEB-UIUX-1102. **[MINOR] Notes placeholder "Any observations the customer should know about..." — but `qc_sign_offs.notes` is internal (no email path, no print path per WEB-UIUX-1089).** Tech writes a note thinking customer will see it; customer never does. Misleading copy. L7. **[AUTOLOOP-T49 RESOLVED 2026-05-10: placeholder changed to "Internal QC notes (not shown to the customer)…"]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:319-321`
   <!-- meta: fix=change-placeholder-to-"Internal-notes-for-the-record"-or-actually-route-to-customer-email-when-WEB-UIUX-1089-lands -->
 
@@ -4796,7 +4796,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:231-238`
   <!-- meta: fix=replace-Save-with-Create-period -->
 
-- [ ] WEB-UIUX-1153. **[MINOR] Date-range invalid client-side: form lets `end < start`, Save stays enabled, server returns 400 → toast "end_date must be on/after start_date" surfaces only after submit.** `CommissionPeriodLock.tsx:203-222` no client comparison. `:233` `disabled={!newName || !newStart || !newEnd || createMut.isPending}` doesn't include the range check. L7 feedback specificity (catch earlier).
+- [x] WEB-UIUX-1153. **[MINOR] Date-range invalid client-side: form lets `end < start`, Save stays enabled, server returns 400 → toast "end_date must be on/after start_date" surfaces only after submit.** `CommissionPeriodLock.tsx:203-222` no client comparison. `:233` `disabled={!newName || !newStart || !newEnd || createMut.isPending}` doesn't include the range check. L7 feedback specificity (catch earlier). **[AUTOLOOP-T49 RESOLVED 2026-05-10: Create period button now also disabled when end < start; tooltip explains.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:203-238`
   <!-- meta: fix=disable-Save-when-newStart>newEnd+inline-error-text-End-must-be-on-or-after-start -->
 

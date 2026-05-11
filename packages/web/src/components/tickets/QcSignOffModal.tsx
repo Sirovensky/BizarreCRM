@@ -634,7 +634,7 @@ export function QcSignOffModal({
                 rows={2}
                 maxLength={1000}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 p-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
-                placeholder="Any observations the customer should know about..."
+                placeholder="Internal QC notes (not shown to the customer)…"
               />
               {/* WEB-UIUX-1106: Character counter so tech sees remaining chars before truncation. */}
               <div className="text-xs text-surface-400 text-right mt-1">{notes.length} / 1000</div>

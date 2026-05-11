@@ -778,8 +778,18 @@ export function EstimateListPage() {
                       <p className="mt-1 max-w-sm text-center text-sm text-surface-400 dark:text-surface-500">
                         {keyword || statusFilter
                           ? 'No estimates match your filters. Try adjusting your search or status filter.'
-                          : 'Create an estimate to give customers a repair quote. Click "New Estimate" above to get started.'}
+                          : 'Create an estimate to give customers a repair quote.'}
                       </p>
+                      {/* WEB-UIUX-977: surface the primary CTA inline so the
+                          operator does not have to scroll up to find it. */}
+                      {!(keyword || statusFilter) && (
+                        <button
+                          onClick={() => setShowCreate(true)}
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+                        >
+                          <Plus className="h-4 w-4" /> New Estimate
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
