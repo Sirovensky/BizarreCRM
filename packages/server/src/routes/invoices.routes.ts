@@ -1359,9 +1359,35 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   // WEB-W2-018: structured refund reason code + free-text note (migration 150
   // added credit_note_code / credit_note_note columns to invoices). Both are
   // optional — existing callers that only send `reason` still work fine.
-  const cnCode: string | null = typeof req.body.code === 'string' && req.body.code.trim()
-    ? req.body.code.trim()
-    : null;
+  // WEB-UIUX-1221: code must be one of the RefundReasonCode enum values; the
+  // UI sends from a fixed dropdown but curl/integration callers could submit
+  // arbitrary strings and pollute reporting aggregations with unbounded
+  // cardinality. Reject anything outside the enum.
+  const REFUND_REASON_CODES = new Set([
+    'defective', 'dissatisfaction', 'wrong_item', 'duplicate_charge',
+    'price_adjustment', 'failed_repair', 'lost_data', 'extended_delay',
+    'goodwill_gesture', 'chargeback_prevention', 'warranty_invocation', 'other',
+  ]);
+  const cnCodeRaw = typeof req.body.code === 'string' ? req.body.code.trim() : '';
+  if (cnCodeRaw && !REFUND_REASON_CODES.has(cnCodeRaw)) {
+    throw new AppError(
+      `Invalid credit-note code "${cnCodeRaw}". Must be one of: ${[...REFUND_REASON_CODES].join(', ')}`,
+      400,
+    );
+  }
+  const cnCode: string | null = cnCodeRaw || null;
+  // WEB-UIUX-1217: "other" without a note is useless for downstream reporting
+  // (the audit row stores literal "other" with no context). Server enforces
+  // the minimum so curl callers can't bypass the client validation.
+  if (cnCode === 'other') {
+    const noteForOther = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+    if (noteForOther.length < 5) {
+      throw new AppError(
+        'Credit-note code "other" requires a note of at least 5 characters explaining the reason.',
+        400,
+      );
+    }
+  }
   const cnNote: string | null = typeof req.body.note === 'string' && req.body.note.trim()
     ? req.body.note.trim()
     : null;

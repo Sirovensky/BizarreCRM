@@ -372,9 +372,23 @@ export function PurchaseOrdersPage() {
   // WEB-W3-003: receive modal state
   const [receiveModal, setReceiveModal] = useState<{ po: Record<string, unknown>; items: any[] } | null>(null);
 
+  // WEB-UIUX-1192: status filter + keyword search.
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['purchase-orders', page],
-    queryFn: () => inventoryApi.listPurchaseOrders({ page, pagesize: 25 }),
+    queryKey: ['purchase-orders', page, statusFilter, searchTerm],
+    queryFn: () => inventoryApi.listPurchaseOrders({
+      page,
+      pagesize: 25,
+      status: statusFilter || undefined,
+      q: searchTerm || undefined,
+    }),
     staleTime: 30_000,
   });
 
@@ -459,6 +473,32 @@ export function PurchaseOrdersPage() {
         >
           <Plus className="h-4 w-4" /> New Purchase Order
         </button>
+      </div>
+
+      {/* WEB-UIUX-1192: status filter + keyword search for the PO list. */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
+          placeholder="Search PO number or supplier name…"
+          className="flex-1 rounded-lg border border-surface-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+          aria-label="Search purchase orders by PO number or supplier name"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          aria-label="Filter purchase orders by status"
+          className="rounded-lg border border-surface-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+        >
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="ordered">Ordered</option>
+          <option value="partial">Partial</option>
+          <option value="backordered">Backordered</option>
+          <option value="received">Received</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
       </div>
 
       {/* Create form */}

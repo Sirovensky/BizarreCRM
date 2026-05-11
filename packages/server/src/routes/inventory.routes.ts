@@ -1507,7 +1507,7 @@ const PO_STATUS_ALLOWLIST = new Set(['draft', 'ordered', 'partial', 'received', 
 
 router.get('/purchase-orders/list', async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { page = '1', pagesize = '20', status } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', status, q } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
   const ps = Math.min(100, parseInt(pagesize, 10) || 20);
   const offset = (p - 1) * ps;
@@ -1519,6 +1519,15 @@ router.get('/purchase-orders/list', async (req, res) => {
       throw new AppError(`Invalid status filter '${status}'`, 400);
     }
     where += ' AND po.status = ?'; params.push(status);
+  }
+  // WEB-UIUX-1192: keyword search across PO number + supplier name.
+  // LIKE wildcards in the user input are escaped so an admin can't smuggle
+  // a "%" and match everything.
+  if (q && q.trim()) {
+    const escaped = q.trim().replace(/[\\%_]/g, (m) => '\\' + m);
+    const like = `%${escaped}%`;
+    where += " AND (po.order_id LIKE ? ESCAPE '\\\\' OR s.name LIKE ? ESCAPE '\\\\')";
+    params.push(like, like);
   }
 
   const [totalRow, orders] = await Promise.all([

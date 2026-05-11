@@ -4989,7 +4989,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (entire file — no send action)
   <!-- meta: fix=add-"Send-to-Supplier"-button-on-PO-row+server-endpoint-POST-/purchase-orders/:id/email+optional-pdf-render-via-existing-print-pipeline -->
 
-- [ ] WEB-UIUX-1192. **[MAJOR] PO list has no search and no status filter.** `PurchaseOrdersPage.tsx:293-297` calls `listPurchaseOrders({ page, pagesize: 25 })` with no `status` or `q` param. Server LIST endpoint accepts `status` (`inventory.routes.ts:1356-1361`) but no `q` (search by PO #, supplier name). At 25 rows/page a shop with 500 POs/yr scrolls 20 pages to find one. L6 discoverability.
+- [x] WEB-UIUX-1192. **[MAJOR] PO list has no search and no status filter.** `PurchaseOrdersPage.tsx:293-297` calls `listPurchaseOrders({ page, pagesize: 25 })` with no `status` or `q` param. Server LIST endpoint accepts `status` (`inventory.routes.ts:1356-1361`) but no `q` (search by PO #, supplier name). At 25 rows/page a shop with 500 POs/yr scrolls 20 pages to find one. L6 discoverability. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server GET /purchase-orders/list now accepts `q` (escaped LIKE on po.order_id + supplier name) alongside `status`; client adds a debounced search input + status dropdown above the table.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:286, 293-297, 363-374`
   `packages/server/src/routes/inventory.routes.ts:1347-1378`
   <!-- meta: fix=add-status-pill-filter-row+search-input-debounced-by-PO-#-or-supplier-name+server-extends-LIST-with-q-LIKE-clause -->
@@ -5104,7 +5104,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
 
 #### Minor — picker bugs, modal hygiene, copy
 
-- [ ] WEB-UIUX-1215. **[MINOR] `RefundReasonPicker` swallows note text typed BEFORE a reason is picked — `handleNoteChange` only calls `onChange` when `localReason` is set.** `RefundReasonPicker.tsx:47-50`. Operator opens modal, types a long explanation in Notes, then clicks a reason chip — the note IS now propagated. But if they type the note then close the modal (Esc, Cancel, backdrop), parent's `note` is `''` and the typing is lost. The visible `value={localNote}` (line 86) preserves text in the textarea so the user thinks it's safely captured. L7 silent state loss.
+- [!] WEB-UIUX-1215. **[MINOR] `RefundReasonPicker` swallows note text typed BEFORE a reason is picked — `handleNoteChange` only calls `onChange` when `localReason` is set.** `RefundReasonPicker.tsx:47-50`. Operator opens modal, types a long explanation in Notes, then clicks a reason chip — the note IS now propagated. But if they type the note then close the modal (Esc, Cancel, backdrop), parent's `note` is `''` and the typing is lost. The visible `value={localNote}` (line 86) preserves text in the textarea so the user thinks it's safely captured. L7 silent state loss. **[AUTOLOOP-T49 STALE 2026-05-11: current handleNoteChange (RefundReasonPicker.tsx:96-99) unconditionally calls onChange(localReason, next), so note text is propagated even when no reason is picked yet. Audit description doesn't match current code.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:39-50`
   <!-- meta: fix=propagate-note-to-parent-on-every-keystroke-regardless-of-localReason+OR-disable-the-note-textarea-until-a-reason-is-selected -->
 
@@ -5112,7 +5112,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/components/billing/RefundReasonPicker.tsx:85-92`
   <!-- meta: fix=add-counter-${localNote.length}/500-below-textarea+turn-amber-when->450 -->
 
-- [ ] WEB-UIUX-1217. **[MINOR] "Other" reason hint reads "Free-form reason in the note." but the note label says "Notes (optional)" — for "Other" the note should be required, otherwise the audit row stores only the literal string `"other"`.** `RefundReasonPicker.tsx:23, 83`. Reporting that groups by reason gets a useless `"other"` bucket with no detail. L4 flow completion (forced detail), L13 audit value.
+- [x] WEB-UIUX-1217. **[MINOR] "Other" reason hint reads "Free-form reason in the note." but the note label says "Notes (optional)" — for "Other" the note should be required, otherwise the audit row stores only the literal string `"other"`.** `RefundReasonPicker.tsx:23, 83`. Reporting that groups by reason gets a useless `"other"` bucket with no detail. L4 flow completion (forced detail), L13 audit value. **[AUTOLOOP-T49 RESOLVED 2026-05-11: client `OTHER_NOTE_MIN=5` + `onValidityChange` already enforce; server credit-note POST now also rejects `code='other'` with note shorter than 5 chars so curl callers can't bypass.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:23, 82-92`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:305-310` (validation only requires `reason`, not `note` when reason==='other')
   <!-- meta: fix=if-localReason==='other'-make-note-required+label-becomes-Notes-(required)+parent-handleCreditNote-validates-note.trim().length-when-code==='other' -->
@@ -5121,7 +5121,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-746`
   <!-- meta: fix=if-(amount||reason||note.trim())-show-window.confirm("Discard-credit-note?")-on-backdrop-click+also-on-Esc-handler-in-useEffect:60-69 -->
 
-- [ ] WEB-UIUX-1219. **[MINOR] "Create Credit Note" submit button is amber-600 (warning hue) — neither destructive (red) nor primary. Inconsistent with Void (red) which IS destructive in the same way.** `InvoiceDetailPage.tsx:798`. Color signals "caution" but action is irreversible money movement; should match Void's red palette OR primary for non-destructive save. L5 hierarchy / destructive distinguishability.
+- [!] WEB-UIUX-1219. **[MINOR] "Create Credit Note" submit button is amber-600 (warning hue) — neither destructive (red) nor primary. Inconsistent with Void (red) which IS destructive in the same way.** `InvoiceDetailPage.tsx:798`. Color signals "caution" but action is irreversible money movement; should match Void's red palette OR primary for non-destructive save. L5 hierarchy / destructive distinguishability. **[AUTOLOOP-T49 STALE 2026-05-11: current Issue Credit Note button is already bg-red-600 hover:bg-red-700 (InvoiceDetailPage.tsx:1259) matching Void's destructive treatment. Amber audit reference is outdated.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
   <!-- meta: fix=switch-to-bg-red-600/hover:bg-red-700-to-match-Void-button+OR-bg-primary-600-and-add-an-explicit-confirm-step-(see-WEB-UIUX-1211) -->
 
@@ -5130,7 +5130,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:783-789`
   <!-- meta: fix=split-CreditNoteReasonPicker-(price_adjustment+goodwill+billing_correction+other)-from-RefundReasonPicker-(defective+wrong_item+duplicate_charge+dissatisfaction+other)+each-paired-with-its-correct-action -->
 
-- [ ] WEB-UIUX-1221. **[MINOR] Server `code` field accepts arbitrary string — not validated against the 6-code enum.** `invoices.routes.ts:1180-1182` `typeof req.body.code === 'string' && req.body.code.trim()`. UI sends from a fixed list; curl/integration callers can submit `code='lol'` and the row stores it. Reports that group by reason then have unbounded code cardinality, breaking aggregation. L13 schema integrity.
+- [x] WEB-UIUX-1221. **[MINOR] Server `code` field accepts arbitrary string — not validated against the 6-code enum.** `invoices.routes.ts:1180-1182` `typeof req.body.code === 'string' && req.body.code.trim()`. UI sends from a fixed list; curl/integration callers can submit `code='lol'` and the row stores it. Reports that group by reason then have unbounded code cardinality, breaking aggregation. L13 schema integrity. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server enforces a REFUND_REASON_CODES allowlist of all 12 enum values; non-enum codes 400 with the allowed set listed in the error.]**
   `packages/server/src/routes/invoices.routes.ts:1180-1182`
   <!-- meta: fix=validateEnum(req.body.code,['defective','dissatisfaction','wrong_item','duplicate_charge','price_adjustment','other','billing_correction','goodwill'],'code')+share-the-list-with-RefundReasonPicker -->
 

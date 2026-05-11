@@ -147,6 +147,8 @@ export interface ListPurchaseOrdersParams {
   pagesize?: number;
   status?: string;
   supplier_id?: number;
+  /** WEB-UIUX-1192: keyword search (PO number or supplier name). */
+  q?: string;
 }
 
 // @audit-fixed: server reads `item.quantity_ordered` (inventory.routes.ts:1151)
