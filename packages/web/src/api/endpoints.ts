@@ -1627,6 +1627,32 @@ export interface LoanerHistoryEntry {
 }
 
 // ==================== Gift Cards ====================
+// WEB-UIUX-1001: pending issuance row shape (gift_card_pending_issuances).
+// Manager-initiated issuances over the configured threshold land here for
+// admin approval; the row is back-linked to the minted card on approve.
+export interface PendingGiftCardIssuance {
+  id: number;
+  amount: number;
+  customer_id: number | null;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  requester_id: number | null;
+  approver_id: number | null;
+  status: 'pending' | 'approved' | 'declined' | 'cancelled';
+  decline_reason: string | null;
+  gift_card_id: number | null;
+  decided_at: string | null;
+  created_at: string;
+  // Server JOINs hydrate these per-row names; nulls when the foreign row is
+  // missing (legacy data) or the join target is intentionally unset.
+  requester_first?: string | null;
+  requester_last?: string | null;
+  approver_first?: string | null;
+  approver_last?: string | null;
+  customer_first?: string | null;
+  customer_last?: string | null;
+}
+
 export const giftCardApi = {
   list: (params?: { keyword?: string; status?: string; page?: number; per_page?: number }) =>
     api.get('/gift-cards', { params }),
@@ -1659,7 +1685,7 @@ export const giftCardApi = {
     ),
   // WEB-UIUX-1001: dual-control pending-issuance queue.
   pendingIssuances: (status?: 'pending' | 'approved' | 'declined' | 'cancelled' | 'all') =>
-    api.get<{ success: boolean; data: unknown[] }>('/gift-cards/pending-issuances', {
+    api.get<{ success: boolean; data: PendingGiftCardIssuance[] }>('/gift-cards/pending-issuances', {
       params: status ? { status } : undefined,
     }),
   approvePendingIssuance: (id: number) =>

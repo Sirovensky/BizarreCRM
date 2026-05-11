@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { giftCardApi } from '@/api/endpoints';
+import { giftCardApi, type PendingGiftCardIssuance } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents } from '@/utils/format';
 // WEB-UIUX-998: CSV export for outstanding liability — PII-gated
 import { toCsvRow, CSV_BOM } from '@/utils/csv';
@@ -786,7 +786,214 @@ export function GiftCardsListPage() {
         </div>
       )}
 
+      {/* WEB-UIUX-1001: admin-only approver inbox for manager-initiated
+          issuances over the dual-control threshold. Hidden behind a useHasRole
+          check inside the component so non-admins never fire the query. */}
+      <PendingIssuancesInbox />
+
       {showIssueModal && <IssueModal onClose={() => setShowIssueModal(false)} />}
     </div>
+  );
+}
+
+/**
+ * WEB-UIUX-1001: pending gift-card issuances awaiting admin approval. Only
+ * renders for admin users (manager + cashier never hit the route either way
+ * — server returns 403). Pending tab is the default + most common
+ * landing-place; approved/declined surfaces are reachable via the status
+ * pill row for audit follow-up.
+ */
+function PendingIssuancesInbox() {
+  const isAdmin = useHasRole('admin');
+  const queryClient = useQueryClient();
+  const [statusTab, setStatusTab] = useState<'pending' | 'approved' | 'declined' | 'cancelled'>('pending');
+  const [declineId, setDeclineId] = useState<number | null>(null);
+  const [declineReason, setDeclineReason] = useState('');
+
+  const inboxQuery = useQuery({
+    queryKey: ['gift-cards', 'pending-issuances', statusTab],
+    queryFn: async () => {
+      const res = await giftCardApi.pendingIssuances(statusTab);
+      return res.data.data;
+    },
+    enabled: isAdmin,
+    staleTime: 30_000,
+  });
+
+  const approveMut = useMutation({
+    mutationFn: (id: number) => giftCardApi.approvePendingIssuance(id),
+    onSuccess: (res) => {
+      const code = res.data?.data?.code;
+      toast.success(
+        code
+          ? `Approved · code ${code.slice(0, 4)}…${code.slice(-4)} minted`
+          : 'Issuance approved',
+      );
+      queryClient.invalidateQueries({ queryKey: ['gift-cards'] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message ?? 'Approval failed';
+      toast.error(msg);
+    },
+  });
+
+  const declineMut = useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
+      giftCardApi.declinePendingIssuance(id, reason),
+    onSuccess: () => {
+      toast.success('Issuance declined');
+      setDeclineId(null);
+      setDeclineReason('');
+      queryClient.invalidateQueries({ queryKey: ['gift-cards', 'pending-issuances'] });
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })
+        ?.response?.data?.message ?? 'Decline failed';
+      toast.error(msg);
+    },
+  });
+
+  if (!isAdmin) return null;
+  const rows: PendingGiftCardIssuance[] = inboxQuery.data ?? [];
+  // Hide the section entirely when the default Pending tab is empty so a
+  // tenant with zero outstanding approvals doesn't see an empty card. The
+  // approver can still hit the queue by switching tabs from a populated
+  // state once they have any history.
+  if (statusTab === 'pending' && !inboxQuery.isLoading && rows.length === 0) {
+    return null;
+  }
+
+  const requesterLabel = (r: PendingGiftCardIssuance) =>
+    [r.requester_first, r.requester_last].filter(Boolean).join(' ').trim() || 'unknown';
+  const customerLabel = (r: PendingGiftCardIssuance) => {
+    const name = [r.customer_first, r.customer_last].filter(Boolean).join(' ').trim();
+    return name || r.recipient_name || '—';
+  };
+
+  return (
+    <section className="mt-8 rounded-xl border border-amber-300 bg-amber-50/40 dark:border-amber-500/30 dark:bg-amber-500/5 p-4">
+      <header className="mb-3 flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+            Pending gift-card issuances
+          </h2>
+          <p className="text-xs text-surface-500 dark:text-surface-400">
+            Manager-initiated issuances over the dual-control threshold land here for admin approval.
+          </p>
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          {(['pending', 'approved', 'declined', 'cancelled'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatusTab(s)}
+              className={`rounded-full px-2.5 py-1 capitalize ${
+                statusTab === s
+                  ? 'bg-amber-200 text-amber-900 dark:bg-amber-500/30 dark:text-amber-100'
+                  : 'bg-white/60 text-surface-600 hover:bg-white dark:bg-surface-800 dark:text-surface-300'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {inboxQuery.isLoading ? (
+        <p className="text-sm text-surface-500 dark:text-surface-400">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-surface-500 dark:text-surface-400">
+          No {statusTab} issuances.
+        </p>
+      ) : (
+        <ul className="divide-y divide-amber-200 dark:divide-amber-500/30 rounded-md border border-amber-200 dark:border-amber-500/30 bg-white dark:bg-surface-900">
+          {rows.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-surface-900 dark:text-surface-100">
+                  {formatCurrency(r.amount)} · {customerLabel(r)}
+                </p>
+                <p className="text-xs text-surface-500 dark:text-surface-400">
+                  Requested by {requesterLabel(r)} · {formatDate(r.created_at)}
+                  {r.recipient_email && <> · {r.recipient_email}</>}
+                </p>
+                {r.status === 'declined' && r.decline_reason && (
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                    Reason: {r.decline_reason}
+                  </p>
+                )}
+              </div>
+              {r.status === 'pending' ? (
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(`Approve and mint a ${formatCurrency(r.amount)} gift card?`)) {
+                        approveMut.mutate(r.id);
+                      }
+                    }}
+                    disabled={approveMut.isPending}
+                    className="rounded-md bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {approveMut.isPending && approveMut.variables === r.id ? 'Approving…' : 'Approve'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setDeclineId(r.id); setDeclineReason(''); }}
+                    disabled={declineMut.isPending}
+                    className="rounded-md border border-red-300 px-3 py-1.5 font-medium text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Decline
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs uppercase tracking-wide text-surface-500 dark:text-surface-400">
+                  {r.status}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {declineId != null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-xl bg-white dark:bg-surface-900 p-5 shadow-xl">
+            <h3 className="text-base font-semibold mb-2 text-surface-900 dark:text-surface-100">
+              Decline issuance
+            </h3>
+            <p className="text-xs text-surface-500 dark:text-surface-400 mb-3">
+              Optional reason (≤ 500 chars). The requester sees this on their audit timeline.
+            </p>
+            <textarea
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+              maxLength={500}
+              rows={3}
+              className="w-full rounded-md border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 p-2 text-sm text-surface-900 dark:text-surface-100"
+              placeholder="e.g. amount looks wrong, customer not on file…"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setDeclineId(null); setDeclineReason(''); }}
+                className="rounded-md border border-surface-300 dark:border-surface-700 px-3 py-1.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => declineMut.mutate({ id: declineId, reason: declineReason.trim() || undefined })}
+                disabled={declineMut.isPending}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {declineMut.isPending ? 'Declining…' : 'Decline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
