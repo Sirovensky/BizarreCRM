@@ -3687,7 +3687,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:51-53`
 
-- [ ] WEB-UIUX-862. **[MAJOR] Inventory creation: Tax Class dropdown empty by default — wizard wrote `tax_default_parts` to `store_config` not tax_classes table.** User picks "No Tax" silently. L7, L16.
+- [x] WEB-UIUX-862. **[MAJOR] Inventory creation: Tax Class dropdown empty by default — wizard wrote `tax_default_parts` to `store_config` not tax_classes table.** User picks "No Tax" silently. L7, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: InventoryCreatePage now renders an amber notice when taxClasses is empty, explaining No Tax means 0%% and linking to Settings -> Tax to create a class before ringing up taxable lines.]**
   `packages/web/src/pages/inventory/InventoryCreatePage.tsx:175-179`
 
 - [x] WEB-UIUX-863. **[MAJOR] Daily nudges hardcode paths that may not exist.** Day-3 ctaHref `/settings/users` — but Settings tabs are query-string based. Day-7 sends to `/invoices` for "refund" but new shop has zero invoices. L5, L14. **[AUTOLOOP-T40 RESOLVED: DailyNudge Day-3 ctaHref → /settings?tab=users; Day-7 refund nudge gated on first_invoice_at presence (skip if zero invoices).]**
