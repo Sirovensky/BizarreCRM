@@ -3799,7 +3799,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-899. **[MAJOR] `posPinVerified` flag never expires — only reset by `resetAll()`.** Cashier verifies, walks away, another staff steps up to checkout, reuses verification. L16. **[AUTOLOOP-T43 RESOLVED: posPinVerified now has 10-min TTL via posPinVerifiedAt timestamp + isPosPinVerified() helper. Stale verification expires; resetAll/clearDraft zero the timestamp.]**
   `packages/web/src/pages/unified-pos/store.ts:126-127,253-254,268,290-303`
 
-- [ ] WEB-UIUX-900. **[MAJOR] SwitchUser in Header bypasses shared PinModal — NO failCount, NO lockout, NO sessionStorage persistence.** Walk-up brute force at network round-trip rate. L16.
+- [x] WEB-UIUX-900. **[MAJOR] SwitchUser in Header bypasses shared PinModal — NO failCount, NO lockout, NO sessionStorage persistence.** Walk-up brute force at network round-trip rate. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: SwitchUserModal already had 5-attempt + 60s lockout (WEB-UIUX-474); now persists failCount + lockedUntil into sessionStorage so refresh+retry no longer resets the brute-force counter.]**
   `packages/web/src/components/layout/Header.tsx:642-728`
 
 - [x] WEB-UIUX-901. **[MAJOR] Customer CSV export not role-gated, no PII warning, no audit-log breadcrumb.** Cashier exports entire DB. L16, L8. **[AUTOLOOP-T43 RESOLVED: Customer CSV export gated behind useHasRole admin/manager + ConfirmDialog with PII warning before download fires.]**
@@ -3873,14 +3873,14 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-928. **[MAJOR] CSV export silently drops or includes data the operator didn't intend.** Tickets export = 2 columns (`Day, Created`) ignoring 5 KPIs + byStatus + byTech. L8, L13. **[AUTOLOOP-T59 RESOLVED: Tickets CSV export expanded from 2 columns to multi-section (summary KPIs + byDay + byStatus + byTech) with proper escaping.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:1274-1282`
 
-- [ ] WEB-UIUX-929. **[MAJOR] Refunds KPI tooltip: "Total refunded amount" — no period/sign disclosure, doesn't say if Net Profit subtracts refunds.** L13, L14.
+- [x] WEB-UIUX-929. **[MAJOR] Refunds KPI tooltip: "Total refunded amount" — no period/sign disclosure, doesn't say if Net Profit subtracts refunds.** L13, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Refunds KPI tooltip now reads "Sum of credit-notes + returns in the selected period (positive value; already subtracted from Net Profit)"; Net Profit tooltip explicitly lists the subtracted components.]**
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
 
 - [x] WEB-UIUX-930. **[MINOR] Avg Turnaround Hours card never discloses if On-Hold/Awaiting-Customer time excluded.** SummaryCard lacks tooltip prop. L14. **[AUTOLOOP-T59 RESOLVED: SummaryCard gained optional tooltip prop with ⓘ glyph + title/aria-label; Avg Turnaround now discloses On-Hold/Awaiting-Customer time excluded per server calculateAvgActiveRepairTime.]**
 
 - [x] WEB-UIUX-931. **[MINOR] No `data_as_of` / generated_at timestamp on any Reports tab.** `staleTime: 30_000` cache opaque. L13, L11. **[AUTOLOOP-T60 RESOLVED: 'Updated X ago' indicator added near Reports filter row using react-query dataUpdatedAt + timeAgo + RefreshCw icon; subscribes to cache changes for live updates.]**
 
-- [ ] WEB-UIUX-932. **[MINOR] Aging Report has NO date-range picker — "as of when" invisible.** L7, L13.
+- [x] WEB-UIUX-932. **[MINOR] Aging Report has NO date-range picker — "as of when" invisible.** L7, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-11: AgingReportPage header renders an "As of <local timestamp>" subline so the operator (or printout reader) sees the snapshot time.]**
   `packages/web/src/pages/billing/AgingReportPage.tsx:46-52`
 
 - [x] WEB-UIUX-933. **[MINOR] DateRangePicker custom-range "To" has NO upper bound — future date allowed.** Backend silently clamps; chart renders empty days. L7. **[AUTOLOOP-T60 RESOLVED: DateRangePicker 'To' input gained max={todayISO()} so future dates can't be selected; 'From' unrestricted for historical ranges.]**
@@ -3900,7 +3900,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **STATUS: BLOCKED — needs server reachability heartbeat field on /blockchyp/status; backend infra change, defer to terminal sprint**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:170-178`
 
-- [ ] WEB-UIUX-938. **[MAJOR] BlockChyp Test Connection requires unsaved keys — operator can't retest live key against offline terminal.** Saved secrets arrive redacted as `''`. Most common diagnostic ("did terminal go offline?") requires re-entering 3 secrets. L8, L4.
+- [!] WEB-UIUX-938. **[MAJOR] BlockChyp Test Connection requires unsaved keys — operator can't retest live key against offline terminal.** Saved secrets arrive redacted as `''`. Most common diagnostic ("did terminal go offline?") requires re-entering 3 secrets. L8, L4. **STALE 2026-05-11: blockchypApi.testConnection uses server-side stored secrets via getBlockChypConfig(db); does not require the operator to re-enter redacted form values. The test pings against the saved config.**
   `packages/web/src/pages/settings/BlockChypSettings.tsx:282-296`
 
 - [x] WEB-UIUX-939. **[MAJOR] Catalog `partial_failure` job status falls through to "pending" badge.** Looks like in-progress job. Operator can't distinguish "still running" from "finished but skipped half". L11, L8. **[AUTOLOOP-T60 RESOLVED: partial_failure status mapped to amber 'Done with errors' badge; unknown statuses fall to neutral warning instead of pending spinner.]**

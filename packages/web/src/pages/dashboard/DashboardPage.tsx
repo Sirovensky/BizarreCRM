@@ -2396,8 +2396,10 @@ function AdminOrManagerDashboard() {
               { label: 'Tax', value: kpis?.tax ?? 0, tooltip: 'Tax collected on invoices', href: '/reports' },
               { label: 'Discounts', value: kpis?.discounts ?? 0, tooltip: 'Total discounts applied', href: '/invoices' },
               { label: 'COGS', value: kpis?.cogs ?? 0, tooltip: 'Cost of goods sold (parts cost)', href: '/inventory' },
-              { label: 'Net Profit', value: kpis?.net_profit ?? 0, tooltip: 'Sales minus COGS and discounts', href: '/reports' },
-              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: 'Total refunded amount', href: undefined },
+              // WEB-UIUX-929: clarify Net Profit math + Refunds sign so the
+              // operator knows whether refunds are already subtracted.
+              { label: 'Net Profit', value: kpis?.net_profit ?? 0, tooltip: 'Sales − COGS − discounts − refunds in the selected period', href: '/reports' },
+              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: 'Sum of credit-notes + returns in the selected period (positive value; already subtracted from Net Profit)', href: undefined },
               { label: 'Expenses', value: kpis?.expenses ?? 0, tooltip: 'Business expenses in period', href: '/expenses' },
               { label: 'Receivables', value: kpis?.receivables ?? 0, tooltip: 'Outstanding unpaid invoice amounts', href: '/invoices?status=unpaid' },
             ];

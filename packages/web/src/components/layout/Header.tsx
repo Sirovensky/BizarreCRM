@@ -836,13 +836,50 @@ const NotificationItem = memo(function NotificationItem({
 const SWITCH_MAX_ATTEMPTS = 5;
 const SWITCH_LOCKOUT_SECONDS = 60;
 
+// WEB-UIUX-900: persist failCount + lockedUntil across page refreshes so a
+// refresh + retry doesn't reset the brute-force counter. sessionStorage
+// (tab-isolated) avoids leaking attempt state across kiosks; localStorage
+// would let the next user inherit the lockout, which is too sticky.
+const SWITCH_FAIL_KEY = 'bizarre-crm:switch-user-fails';
+function readSwitchLockState(): { failCount: number; lockedUntil: number | null } {
+  if (typeof sessionStorage === 'undefined') return { failCount: 0, lockedUntil: null };
+  try {
+    const raw = sessionStorage.getItem(SWITCH_FAIL_KEY);
+    if (!raw) return { failCount: 0, lockedUntil: null };
+    const parsed = JSON.parse(raw) as { f?: number; u?: number };
+    const lockedUntil = typeof parsed.u === 'number' && parsed.u > Date.now() ? parsed.u : null;
+    // Lockout expired — drop the stored counter so a fresh attempt window starts.
+    const failCount = lockedUntil === null ? 0 : (parsed.f ?? 0);
+    if (lockedUntil === null) sessionStorage.removeItem(SWITCH_FAIL_KEY);
+    return { failCount, lockedUntil };
+  } catch {
+    return { failCount: 0, lockedUntil: null };
+  }
+}
+function writeSwitchLockState(state: { failCount: number; lockedUntil: number | null }): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (state.failCount === 0 && state.lockedUntil === null) {
+      sessionStorage.removeItem(SWITCH_FAIL_KEY);
+      return;
+    }
+    sessionStorage.setItem(SWITCH_FAIL_KEY, JSON.stringify({ f: state.failCount, u: state.lockedUntil }));
+  } catch { /* best-effort */ }
+}
+
 function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => Promise<void>; onCancel: () => void }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [failCount, setFailCount] = useState(0);
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  // WEB-UIUX-900: seed from sessionStorage so the lockout survives reload.
+  const initialLockState = readSwitchLockState();
+  const [failCount, setFailCount] = useState(initialLockState.failCount);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(initialLockState.lockedUntil);
   const [lockCountdown, setLockCountdown] = useState(0);
+  // WEB-UIUX-900: mirror state into sessionStorage every change.
+  useEffect(() => {
+    writeSwitchLockState({ failCount, lockedUntil });
+  }, [failCount, lockedUntil]);
   const inputRef = useRef<HTMLInputElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 

@@ -129,7 +129,16 @@ export function AgingReportPage() {
 
   return (
     <div className="p-6 space-y-6 text-surface-900 dark:text-surface-100">
-      <h1 className="text-2xl font-semibold text-surface-900 dark:text-surface-100">Aging Report</h1>
+      <div className="flex items-baseline justify-between gap-4 flex-wrap">
+        <h1 className="text-2xl font-semibold text-surface-900 dark:text-surface-100">Aging Report</h1>
+        {/* WEB-UIUX-932: surface "as of when" so the operator can prove the
+            buckets match the close-of-day snapshot. Server currently
+            computes buckets at request time; we display request-time and
+            tag the as-of timestamp on every printout / screenshot. */}
+        <div className="text-xs text-surface-500 dark:text-surface-400">
+          As of <span className="font-mono">{new Date().toLocaleString()}</span>
+        </div>
+      </div>
 
       {!isLoading && data && data.invoices.length === 0 && (
         <EmptyState
