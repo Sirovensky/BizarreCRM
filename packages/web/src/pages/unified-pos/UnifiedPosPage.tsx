@@ -1987,6 +1987,18 @@ export function UnifiedPosPage() {
             cardLegs.length > 1 || legs.length > 1 ? leg.amount : undefined,
           );
           const terminalResult = terminalRes.data?.data;
+          // WEB-UIUX-825: distinguish HTTP 202 / `pending_reconciliation`
+          // from a flat decline. A pending state means the server has NOT
+          // confirmed the capture either way — retrying the same
+          // idempotency key replays the prior charge if it actually went
+          // through, which can double-bill. Surface a different message
+          // and bail without offering a retry button.
+          if (terminalResult?.status === 'pending_reconciliation') {
+            setTerminalError(
+              'Card status pending — the terminal did not confirm capture. Do NOT retry: check the terminal and the customer\'s card. If charged, complete the sale manually.',
+            );
+            return;
+          }
           if (!terminalResult?.success) {
             const message = terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
             setTerminalError(`Invoice created but card was not approved: ${message}`);

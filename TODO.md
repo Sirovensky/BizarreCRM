@@ -3568,7 +3568,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED7: Subscription/Billing Chaos
 
-- [ ] WEB-UIUX-825. **[BLOCKER] CheckoutModal HTTP 202 / `pending_reconciliation` lumped into flat "decline".** Cashier hits Retry, server idempotency replays prior charge, customer potentially double-billed. UI never tells operator first charge actually went through. L8, L16.
+- [x] WEB-UIUX-825. **[BLOCKER] CheckoutModal HTTP 202 / `pending_reconciliation` lumped into flat "decline".** Cashier hits Retry, server idempotency replays prior charge, customer potentially double-billed. UI never tells operator first charge actually went through. L8, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: UnifiedPosPage submitCheckout terminal-leg handler now treats  as a distinct "do not retry" state with explicit operator guidance; flat decline path unchanged.]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:351-365,377-398`
 
 - [!] WEB-UIUX-826. **[BLOCKER] `subscribeMut` calls `membershipApi.subscribe` with NO `blockchyp_token` and NO `signature_file`.** Activation never captures card on file. Every nightly renewal will fail by definition. L5, L7, L16. **[AUTOLOOP-T38 BLOCKED: needs BlockChyp tokenize step + signature pad UI in CheckoutModal/CustomerDetailPage; multi-component.]**
@@ -3589,7 +3589,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-831. **[MAJOR] InstallmentPlanWizard customer-default-on-3rd-payment story COMPLETELY ABSENT.** No payment status per row, no missed-payment marker, no transition to dunning, no auto-debit retry view. L5, L13. **[AUTOLOOP-T39 BLOCKED: per-installment payment status + missed-payment marker + dunning needs DB schema + API + cron; multi-component.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:43-198`
 
-- [ ] WEB-UIUX-832. **[MAJOR] BillingTab has no representation of "trial ended but card declined" state.** Stripe redirect handler reads only `?upgraded=1`/`?cancelled=1`, no `?declined=1` branch. L5, L8.
+- [x] WEB-UIUX-832. **[MAJOR] BillingTab has no representation of "trial ended but card declined" state.** Stripe redirect handler reads only `?upgraded=1`/`?cancelled=1`, no `?declined=1` branch. L5, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: BillingTab redirect handler now branches on ?declined=1 (Stripe failure) with an explicit toast + plan refresh; upgrades/cancelled branches kept.]**
   `packages/web/src/pages/settings/BillingTab.tsx:104-118`
 
 - [x] WEB-UIUX-833. **[MAJOR] Pause subscription doesn't capture reason — API accepts `{reason}` but UI passes nothing.** Audit trail empty. L7, L13. **[AUTOLOOP-T39 RESOLVED: Pause button uses window.prompt for reason; passes { reason } to membershipApi.pause matching API signature.]**
