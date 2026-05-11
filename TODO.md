@@ -1159,7 +1159,7 @@ L14-Copy L15-Perf L16-Trust.
 
   <!-- meta: scope=web/all; fix=replace-with-formatDate-formatDateTime -->
 
-- [!] WEB-UIUX-12. **[MAJOR] `prefers-reduced-motion` not respected anywhere.** BLOCKED 2026-05-07 — valid accessibility debt, but app-wide motion reduction spans skeletons, spinners, route/hover transitions, modals, and TV/photo flows. Needs a motion policy and visual QA rather than a blind `motion-reduce:*` sweep.
+- [x] WEB-UIUX-12. **STALE 2026-05-11: globals.css already implements the `prefers-reduced-motion` policy.** `packages/web/src/styles/globals.css:354-362` strips `animation-duration` + `transition-duration` to ~0 across `*, *::before, *::after`, disables smooth-scroll, and explicitly cancels Tailwind's looping `animate-spin` / `animate-pulse`. That covers the audit's spinner/skeleton/transition surfaces without a per-file `motion-reduce:*` codemod across 401 sites. Modal entrance/exit transitions and route fades will still feel snappy but the WCAG 2.3.3 gate is met.
   <!-- meta: scope=web/all; fix=add-motion-reduce:animate-none-or-@media-prefers-reduced-motion -->
 
   <!-- meta: scope=web/pages/tickets; fix=extract-to-utils/ticket.ts -->
