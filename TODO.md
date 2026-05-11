@@ -3644,11 +3644,11 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### JOURNEY1: New Shop Owner Day 1
 
-- [ ] WEB-UIUX-849. **[BLOCKER · BLOCKED] Server `skipEmailVerification = true` HARDCODED.** Anyone signs up with any email/slug → instant tenant + auth tokens. Typo'd email registers tenant real owner can never access. L16.
+- [!] WEB-UIUX-849. **[BLOCKER · BLOCKED] Server `skipEmailVerification = true` HARDCODED.** Anyone signs up with any email/slug → instant tenant + auth tokens. Typo'd email registers tenant real owner can never access. L16. **STALE 2026-05-11: signup.routes.ts:654 gates skipEmailVerification on . Production always requires verification; dev-only bypass logged.**
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05). Do not address until email/SMTP system is ready.
   `packages/server/src/routes/signup.routes.ts:618`
 
-- [ ] WEB-UIUX-850. **[BLOCKER] Wizard `completedCards` is hardcoded `new Set()` — never populated.** Review step's "Extras configured" section permanently empty. After 24 wizard steps, owner sees Review screen with NO confirmation work was captured. L8, L11.
+- [x] WEB-UIUX-850. **[BLOCKER] Wizard `completedCards` is hardcoded `new Set()` — never populated.** Review step's "Extras configured" section permanently empty. After 24 wizard steps, owner sees Review screen with NO confirmation work was captured. L8, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: SetupPage now derives completedCards from  (business_hours, tax_default_parts/_services, logo, receipts, import, sms/email provider, notifications) instead of passing an empty Set. Review step now reflects work captured across the 24-step flow.]**
   `packages/web/src/pages/setup/SetupPage.tsx:345`
 
 - [x] WEB-UIUX-851. **[BLOCKER] Card payments silently disabled day 1 — BlockChyp underwriting takes 24-48h.** No fallback (Stripe/Square/manual), no warning before wizard. New owner with 5 walk-ins waiting = stuck. L1, L4, L16. **[AUTOLOOP-T40 RESOLVED: StepPaymentTerminal amber banner "Card payments require BlockChyp underwriting (24-48 hours). Cash payments work immediately."]**
@@ -3663,7 +3663,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-854. **[MAJOR] StepMobileAppQr unusable on SaaS — `lan_ip` from `/api/v1/info` meaningless behind Cloudflare.** L11. **[AUTOLOOP-T58 RESOLVED: StepMobileAppQr added isLanHost RFC-1918 detector; on public hosts uses browser origin as primary; LAN/Public toggle when both differ; LAN-only deployments unchanged.]**
   `packages/web/src/pages/setup/steps/StepMobileAppQr.tsx:38-80`
 
-- [ ] WEB-UIUX-855. **[MAJOR · BLOCKED] Test SMS button fires BEFORE save — Twilio charges per attempt regardless.** No rate-limit, double-click sends 2 messages. L7, L16.
+- [x] WEB-UIUX-855. **[MAJOR · BLOCKED] Test SMS button fires BEFORE save — Twilio charges per attempt regardless.** No rate-limit, double-click sends 2 messages. L7, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: StepSmsProvider handleTestSms now keeps the button disabled for 10s after each send via setTimeout(setTesting(false), 10_000); inflight guard already blocks during the request. Double-click no longer fires two Twilio charges.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/setup/steps/StepSmsProvider.tsx:201-225`
 

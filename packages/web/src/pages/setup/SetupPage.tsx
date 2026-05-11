@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { settingsApi, authApi } from '@/api/endpoints';
 import { useUiStore } from '@/stores/uiStore';
-import type { PendingWrites, WizardPhase } from './wizardTypes';
+import type { PendingWrites, WizardPhase, ExtraCardId } from './wizardTypes';
 import { WIZARD_BODY_ORDER } from './wizardTypes';
 import { WizardBreadcrumb } from './components/WizardBreadcrumb';
 import { StepWelcome } from './steps/StepWelcome';
@@ -342,11 +342,32 @@ export function SetupPage() {
       case 'mobileAppQr':
         return <StepMobileAppQr {...stepProps} />;
 
-      case 'review':
+      case 'review': {
+        // WEB-UIUX-850: derive `completedCards` from `pending` so the Review
+        // step's "Extras configured" section actually reflects work the
+        // owner did across the 24-step flow. Previously a `new Set()` was
+        // passed unconditionally — every owner saw an empty extras block,
+        // making the wizard read as if nothing they entered was captured.
+        const completedCards = new Set<ExtraCardId>();
+        if (pending.business_hours) completedCards.add('hours');
+        if (pending.tax_default_parts || pending.tax_default_services) completedCards.add('tax');
+        if ((pending as Record<string, unknown>).store_logo) completedCards.add('logo');
+        if ((pending as Record<string, unknown>).receipt_footer || (pending as Record<string, unknown>).receipt_slogan) {
+          completedCards.add('receipts');
+        }
+        if ((pending as Record<string, unknown>).import_completed) completedCards.add('import');
+        if ((pending as Record<string, unknown>).sms_provider) completedCards.add('sms');
+        if ((pending as Record<string, unknown>).smtp_host) completedCards.add('email');
+        if (
+          (pending as Record<string, unknown>).notify_customer_on_status_change ||
+          (pending as Record<string, unknown>).sms_template_status_change
+        ) {
+          completedCards.add('notifications');
+        }
         return (
           <StepReview
             pending={pending}
-            completedCards={new Set()}
+            completedCards={completedCards}
             onBack={goBack}
             onComplete={handleComplete}
             onSkip={handleSkip}
@@ -354,6 +375,7 @@ export function SetupPage() {
             error={error}
           />
         );
+      }
       case 'done':
         return <StepDone {...stepProps} />;
 
