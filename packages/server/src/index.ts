@@ -51,7 +51,8 @@ import { seedDatabase } from './db/seed.js';
 import { backfillGiftCardCodeHashes } from './services/giftCardCodeHashBackfill.js';
 import { backfillEstimateApprovalTokenHashes } from './services/estimateApprovalTokenHashBackfill.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { authMiddleware } from './middleware/auth.js';
+import { authMiddleware, requirePermission } from './middleware/auth.js';
+import { PERMISSIONS } from '@bizarre-crm/shared';
 import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
 import { crashGuardMiddleware, getCurrentRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
@@ -1653,12 +1654,12 @@ app.use('/api/v1/inventory-enrich', authMiddleware, inventoryEnrichRoutes);
 app.use('/api/v1/invoices', authMiddleware, invoiceRoutes);
 app.use('/api/v1/leads', authMiddleware, leadRoutes);
 app.use('/api/v1/estimates', authMiddleware, estimateRoutes);
-app.use('/api/v1/pos', authMiddleware, posRoutes);
+app.use('/api/v1/pos', authMiddleware, requirePermission(PERMISSIONS.POS_ACCESS), posRoutes);
 // POS Daily Flow enrichment (criticalaudit.md §43) — cash drawer shifts,
 // top-five quick-add tiles, training sandbox, and the manager PIN gate.
 // Separate namespace so it never collides with pos.routes.ts owned by the
 // POS agent.
-app.use('/api/v1/pos-enrich', authMiddleware, posEnrichRoutes);
+app.use('/api/v1/pos-enrich', authMiddleware, requirePermission(PERMISSIONS.POS_ACCESS), posEnrichRoutes);
 app.use('/api/v1/reports', authMiddleware, reportRoutes);
 app.use('/api/v1/sms', authMiddleware, smsRoutes);
 app.use('/api/v1/employees', authMiddleware, employeeRoutes);
@@ -1714,7 +1715,7 @@ app.use('/api/v1/credit-notes', authMiddleware, creditNotesRoutes);
 app.use('/api/v1/activity', authMiddleware, activityRoutes);
 app.use('/api/v1/notification-preferences', authMiddleware, notificationPrefsRoutes);
 app.use('/api/v1/users/me/notification-prefs', authMiddleware, userNotificationPrefsRouter);
-app.use('/api/v1/pos/held-carts', authMiddleware, heldCartsRoutes);
+app.use('/api/v1/pos/held-carts', authMiddleware, requirePermission(PERMISSIONS.POS_ACCESS), heldCartsRoutes);
 // Web-parity backend wave 2 (2026-04-23).
 // Public estimate-sign endpoints sit OUTSIDE authMiddleware — token IS the credential
 // (HMAC-signed, single-use, TTL bounded). All other wave-2 routes are JWT-gated.

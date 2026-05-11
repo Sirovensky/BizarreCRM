@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { requirePermission } from '../middleware/auth.js';
+import { hasPermission, requirePermission } from '../middleware/auth.js';
 import { audit } from '../utils/audit.js';
 import { validatePaginationOffset, validateId, validatePrice, roundCents, validateTextLength } from '../utils/validate.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { allocateCounter, allocateUniqueOrderId, formatInvoiceOrderId } from '../utils/counters.js';
 import type { AsyncDb } from '../db/async-db.js';
-import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
+import { PERMISSIONS } from '@bizarre-crm/shared';
 
 const router = Router();
 
@@ -33,12 +33,7 @@ function now(): string {
 function userCan(req: any, permission: string): boolean {
   const user = req.user;
   if (!user) return false;
-  const explicit = user.permissions || {};
-  if (user.customRolePermissions) {
-    return user.customRolePermissions.has(permission) || user.customRolePermissions.has('admin.full') || !!explicit[permission];
-  }
-  if (user.role === 'admin') return true;
-  return (ROLE_PERMISSIONS[user.role] || []).includes(permission) || !!explicit[permission];
+  return hasPermission(user, permission);
 }
 
 function optionalText(value: unknown, fieldName: string, maxLength: number): string | null {
@@ -56,7 +51,7 @@ function parseReturnPaymentFlag(value: unknown): boolean {
 // SEC-M18: loaner rows expose serial + IMEI + current-holder name. That
 // gives any authenticated cashier a way to map hardware asset numbers to
 // customers — useful for theft/resale fencing. Gate list + detail on the
-// same inventory.adjust grant that covers RMA reads; non-admins get
+// same inventory.adjust_stock grant that covers RMA reads; non-admins get
 // serial + IMEI redacted so the core "which loaner is out?" workflow
 // still works without handing over per-device identifiers.
 function redactLoanerForRole(row: any, role: string | undefined): any {
@@ -68,7 +63,7 @@ function redactLoanerForRole(row: any, role: string | undefined): any {
 }
 
 // GET / — List all loaner devices
-router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req, res) => {
+router.get('/', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
   const page = parsePage(_req.query.page);
   const perPage = parsePageSize(_req.query.per_page, 50);
@@ -87,7 +82,7 @@ router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req,
 }));
 
 // GET /:id — Single loaner device with history
-router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
+router.get('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const id = validateId(req.params.id, 'id');
   const device = await adb.get('SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0', id);
@@ -105,7 +100,7 @@ router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (re
 }));
 
 // POST / — Create loaner device
-router.post('/', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
+router.post('/', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { name, serial, imei, condition = 'good', notes } = req.body;
   if (!name) throw new AppError('Name required', 400);
@@ -118,7 +113,7 @@ router.post('/', requirePermission('inventory.adjust'), asyncHandler(async (req,
 }));
 
 // PUT /:id — Update loaner device details (API-3)
-router.put('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
+router.put('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const id = validateId(req.params.id, 'id');
   const existing = await adb.get('SELECT id FROM loaner_devices WHERE id = ? AND is_deleted = 0', id);
@@ -143,7 +138,7 @@ router.put('/:id', requirePermission('inventory.adjust'), asyncHandler(async (re
 }));
 
 // POST /:id/loan — Loan out to customer
-router.post('/:id/loan', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
+router.post('/:id/loan', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   // SCAN-1043: per-user write rate limit on loan creation.
@@ -201,7 +196,7 @@ router.post('/:id/loan', requirePermission('inventory.adjust'), asyncHandler(asy
 }));
 
 // POST /:id/return — Return loaner
-router.post('/:id/return', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
+router.post('/:id/return', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   const id = validateId(req.params.id, 'id');
@@ -387,7 +382,7 @@ router.post('/:id/return', requirePermission('inventory.adjust'), asyncHandler(a
 // preserve audit trail. The device row is marked is_deleted = 1 so it
 // disappears from all normal list/detail queries. loaner_history rows are
 // intentionally kept intact — they form the per-device loan audit trail.
-router.delete('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
+router.delete('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const id = validateId(req.params.id, 'id');
   const device = await adb.get(

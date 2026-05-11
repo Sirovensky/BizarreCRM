@@ -8,6 +8,7 @@ import { validateEnum, validateTextLength, validatePaginationOffset, validateId 
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
+import { PERMISSIONS } from '@bizarre-crm/shared';
 
 // Write-side rate limit: a privileged user creating RMAs in a tight loop is
 // the realistic abuse shape (mass supplier-RMA spam). 30 creations per minute
@@ -60,7 +61,7 @@ function now(): string {
 // e.g. a cashier who opens the list sees "Supplier: Mobilesentrix,
 // tracking #CJ12345" which lets them place outside-the-system orders,
 // intercept shipments, or build a supplier graph for social-engineering.
-// Gate list + detail on inventory.adjust (same grant that owns the
+// Gate list + detail on inventory.adjust_stock (same grant that owns the
 // create/patch path in SEC-H31 via inventory.edit — readers get a
 // looser gate). Non-admin readers additionally get supplier_name,
 // supplier_id, tracking_number, and notes redacted from the payload;
@@ -77,7 +78,7 @@ function redactRmaForRole(row: any, role: string | undefined): any {
 }
 
 // GET / — List RMA requests
-router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req, res) => {
+router.get('/', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
   const page = parsePage(_req.query.page);
   const perPage = parsePageSize(_req.query.per_page, 50);
@@ -102,7 +103,7 @@ router.get('/', requirePermission('inventory.adjust'), asyncHandler(async (_req,
 }));
 
 // GET /:id — Single RMA with items
-router.get('/:id', requirePermission('inventory.adjust'), asyncHandler(async (req, res) => {
+router.get('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const rmaId = validateId(req.params.id, 'id');
   const [rma, items] = await Promise.all([

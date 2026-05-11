@@ -36,20 +36,15 @@ const router = Router();
 
 type Row = Record<string, any>;
 
-// SEC (post-enrichment audit §6): applying a deposit to an invoice =
-// manager/admin (affects invoice balance); refund = admin only.
+// SEC (post-enrichment audit §6): applying/deleting a deposit affects invoice
+// balance. The permission middleware is authoritative; the role helper remains
+// for those higher-risk endpoints where seeded non-manager roles have no grant.
 function requireManagerOrAdmin(req: Request): void {
   const role = req.user?.role;
   if (role !== 'admin' && role !== 'manager') {
     throw new AppError('Admin or manager role required', 403);
   }
 }
-function requireAdminDeposits(req: Request): void {
-  if (req.user?.role !== 'admin') {
-    throw new AppError('Admin role required', 403);
-  }
-}
-
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -161,15 +156,9 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // POST / — collect a new deposit
 // Body: { customer_id, ticket_id?, amount, notes? }
 //
-// SEC-H25: gate deposit creation behind deposits.create permission. The
-// requireManagerOrAdmin() call below is kept as defence-in-depth.
+// SEC-H25: gate deposit creation behind deposits.create permission.
 // ---------------------------------------------------------------------------
 router.post('/', requirePermission('deposits.create'), asyncHandler(async (req: Request, res: Response) => {
-  // Defence-in-depth: requirePermission above is authoritative.
-  // SEC-M14: collecting a deposit moves money — gate to manager/admin, matching
-  // the apply-to-invoice / refund handlers below.
-  requireManagerOrAdmin(req);
-
   // Post-enrichment audit §9: per-user rate guard BEFORE validation so
   // rejected requests don't even touch the DB.
   const userKey = String(req.user?.id ?? 'anon');
@@ -434,11 +423,8 @@ router.post('/:id/apply-to-invoice', requirePermission('deposits.apply'), asyncH
 // ---------------------------------------------------------------------------
 // DELETE /:id — mark deposit as refunded (soft — we keep the row for history)
 // SEC-H25: refunding a deposit is a financial reversal — gate behind deposits.delete.
-// The inline requireAdminDeposits() call below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.delete('/:id', requirePermission('deposits.delete'), asyncHandler(async (req: Request, res: Response) => {
-  // Defence-in-depth: requirePermission above is authoritative.
-  requireAdminDeposits(req);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 

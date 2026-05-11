@@ -210,8 +210,11 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
         'SELECT id, username, email, first_name, last_name, role, permissions FROM users WHERE id = ? AND is_active = 1',
         payload.userId
       ),
-      req.asyncDb.get<{ role_id: number }>(
-        'SELECT role_id FROM user_custom_roles WHERE user_id = ?',
+      req.asyncDb.get<{ role_id: number; role_name: string | null; is_active: number | null }>(
+        `SELECT ucr.role_id, cr.name AS role_name, cr.is_active
+           FROM user_custom_roles ucr
+           LEFT JOIN custom_roles cr ON cr.id = ucr.role_id
+          WHERE ucr.user_id = ?`,
         payload.userId
       ),
       loadUserPermissionOverrides(req.asyncDb, payload.userId),
@@ -251,22 +254,19 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
           logger.warn('auth: last_active update failed', { err: err instanceof Error ? err.message : String(err) });
         });
 
-      // AUD-H2: if a custom_roles row is assigned, load its allowed=1 keys
-      // and cap at the active-role check. Inactive custom_roles are ignored
-      // (treated as no-assignment, falls back to users.role).
+      // AUD-H2: if a custom_roles row is assigned, load its explicit matrix.
+      // If a built-in role was assigned before role_permissions was lazily
+      // materialized, fall back to the shared built-in defaults.
       let customRolePermissions: Set<string> | null = null;
-      if (customRole?.role_id) {
-        const roleRow = await req.asyncDb.get<{ is_active: number }>(
-          'SELECT is_active FROM custom_roles WHERE id = ?',
+      if (customRole?.role_id && customRole.is_active === 1) {
+        const rows = await req.asyncDb.all<{ permission_key: string; allowed: number }>(
+          'SELECT permission_key, allowed FROM role_permissions WHERE role_id = ?',
           customRole.role_id,
         );
-        if (roleRow?.is_active === 1) {
-          const rows = await req.asyncDb.all<{ permission_key: string }>(
-            'SELECT permission_key FROM role_permissions WHERE role_id = ? AND allowed = 1',
-            customRole.role_id,
-          );
-          customRolePermissions = new Set(rows.map(r => r.permission_key));
-        }
+        const defaultRolePerms = customRole.role_name ? ROLE_PERMISSIONS[customRole.role_name] : undefined;
+        customRolePermissions = rows.length > 0
+          ? new Set(rows.filter(r => r.allowed === 1).map(r => r.permission_key))
+          : new Set(defaultRolePerms || []);
       }
 
       // SCAN-1142: a corrupt users.permissions row (truncated import, manual

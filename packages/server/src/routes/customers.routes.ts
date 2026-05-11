@@ -376,7 +376,11 @@ function ftsMatchExpr(keyword: string): string {
   const cleaned = bounded.replace(/[^a-zA-Z0-9\s\-@.]/g, '').trim();
   const tokens = cleaned.split(/\s+/).filter(Boolean).slice(0, 16);
   if (tokens.length === 0) return '';
-  return tokens.map(t => `"${t}"*`).join(' OR ');
+  // AND across tokens: typing "luna d" should require BOTH a "luna" prefix
+  // AND a "d" prefix in the same row, not "any record matching luna OR
+  // anything starting with d" (which previously returned every Davila /
+  // D'Souza / Detomasi alongside the actual Luna match).
+  return tokens.map(t => `"${t}"*`).join(' AND ');
 }
 
 // ---------------------------------------------------------------------------
@@ -765,14 +769,11 @@ router.post(
 // ENR-C1: Move all tickets, invoices, SMS, assets from merge_id → keep_id.
 //         Merge phone numbers and emails (avoid duplicates). Soft-delete merged.
 // SEC-H25: merge is a destructive bulk operation — gate behind customers.merge.
-// The inline role check below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.post(
   '/merge',
   requirePermission('customers.merge'),
   asyncHandler(async (req, res) => {
-    // Defence-in-depth: requirePermission above is authoritative.
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const { keep_id, merge_id } = req.body;
 
@@ -1054,14 +1055,11 @@ router.post(
 // POST /archive-inactive – Mark customers as inactive if no recent activity
 // ENR-C9: Inactive customer archival
 // SEC-H25: archiving customers is a bulk write — gate behind customers.archive.
-// The inline role check below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.post(
   '/archive-inactive',
   requirePermission('customers.archive'),
   asyncHandler(async (req, res) => {
-    // Defence-in-depth: requirePermission above is authoritative.
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const { months } = req.body;
 

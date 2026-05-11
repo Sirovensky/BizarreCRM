@@ -4562,21 +4562,14 @@ router.get('/:id/appointments', asyncHandler(async (req: Request, res: Response)
 }));
 
 // ===================================================================
-// POST /merge - Merge two tickets (admin-only)
+// POST /merge - Merge two tickets
 // ===================================================================
 // SEC-H25: ticket merge is a destructive bulk operation — gate behind
-// tickets.bulk_update permission. The inline role check below is kept as
-// defence-in-depth for deployments whose custom-role matrix doesn't restrict
-// this permission (admin always passes requirePermission due to SEC-H18 bypass).
+// tickets.bulk_update permission.
 router.post('/merge', requirePermission('tickets.bulk_update'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for audit helper
   const userId = req.user!.id;
-
-  // Admin bypass — matches the hard admin bypass in requirePermission().
-  if (req.user!.role !== 'admin') {
-    throw new AppError('Only admins can merge tickets', 403);
-  }
 
   const { keep_id, merge_id } = req.body;
   if (!keep_id || !merge_id) throw new AppError('keep_id and merge_id are required', 400);

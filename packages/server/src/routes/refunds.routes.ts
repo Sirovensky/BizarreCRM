@@ -248,7 +248,7 @@ router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(a
   res.status(201).json({ success: true, data: { id: refundId } });
 }));
 
-// PATCH /:id/approve — Approve refund (admin only)
+// PATCH /:id/approve — Approve refund
 // SC1: Replace SQLite MAX(0, ...) scalar inside UPDATE SET with a safe two-step
 //      SELECT-then-UPDATE. Even though sqlite supports MAX() as a variadic scalar
 //      we avoid version/parser flakiness by computing the clamped value in JS.
@@ -258,13 +258,10 @@ router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(a
 //      the refund UPDATE. This blocks the double-approve race: two concurrent
 //      admins used to both pass the precheck, then both fire UPDATEs, causing
 //      the invoice to be decremented twice.
-// SEC-H25: gate behind refunds.approve permission. The inline role check below
-// is kept as defence-in-depth.
+// SEC-H25: gate behind refunds.approve permission.
 router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
-  // Defence-in-depth: requirePermission above is authoritative.
-  if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid refund id', 400);
 
@@ -601,13 +598,10 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
 }));
 
 // PATCH /:id/decline — Decline refund
-// SEC-H25: declining a refund requires admin-tier access — gate behind
-// refunds.approve (same elevated permission as approve). The inline role check
-// below is kept as defence-in-depth.
+// SEC-H25: declining a refund requires elevated access — gate behind
+// refunds.approve (same elevated permission as approve).
 router.patch('/:id/decline', requirePermission('refunds.approve'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  // Defence-in-depth: requirePermission above is authoritative.
-  if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid refund id', 400);
 

@@ -23,6 +23,60 @@ function makeUser(overrides: Partial<AuthUser> = {}): AuthUser {
 }
 
 describe('effective permission resolution', () => {
+  it('keeps seeded cashier permissions broad enough for normal counter corrections without destructive grants', () => {
+    const cashier = makeUser({ role: 'cashier' });
+
+    for (const permission of [
+      PERMISSIONS.TICKETS_CREATE,
+      PERMISSIONS.TICKETS_EDIT,
+      PERMISSIONS.TICKETS_CHANGE_STATUS,
+      PERMISSIONS.TICKETS_ASSIGN,
+      PERMISSIONS.CUSTOMERS_EDIT,
+      PERMISSIONS.INVOICES_CREATE,
+      PERMISSIONS.INVOICES_EDIT,
+      PERMISSIONS.INVOICES_RECORD_PAYMENT,
+      PERMISSIONS.DEPOSITS_CREATE,
+      PERMISSIONS.GIFT_CARDS_REDEEM,
+    ]) {
+      expect(hasPermission(cashier, permission)).toBe(true);
+    }
+
+    for (const permission of [
+      PERMISSIONS.TICKETS_DELETE,
+      PERMISSIONS.CUSTOMERS_DELETE,
+      PERMISSIONS.INVOICES_DELETE,
+      PERMISSIONS.INVOICES_VOID,
+      PERMISSIONS.REFUNDS_APPROVE,
+      PERMISSIONS.USERS_MANAGE,
+      PERMISSIONS.IMPORT_EXPORT,
+    ]) {
+      expect(hasPermission(cashier, permission)).toBe(false);
+    }
+  });
+
+  it('lets seeded technicians create and edit estimates for repair quotes', () => {
+    const technician = makeUser({ role: 'technician' });
+
+    expect(hasPermission(technician, PERMISSIONS.ESTIMATES_VIEW)).toBe(true);
+    expect(hasPermission(technician, PERMISSIONS.ESTIMATES_CREATE)).toBe(true);
+    expect(hasPermission(technician, PERMISSIONS.ESTIMATES_EDIT)).toBe(true);
+    expect(hasPermission(technician, PERMISSIONS.CUSTOMERS_BULK_TAG)).toBe(false);
+    expect(hasPermission(technician, PERMISSIONS.INVOICES_EDIT)).toBe(false);
+  });
+
+  it('keeps seeded managers operational while reserving account-admin and GDPR powers', () => {
+    const manager = makeUser({ role: 'manager' });
+
+    expect(hasPermission(manager, PERMISSIONS.REFUNDS_APPROVE)).toBe(true);
+    expect(hasPermission(manager, PERMISSIONS.CUSTOMERS_MERGE)).toBe(true);
+    expect(hasPermission(manager, PERMISSIONS.CUSTOMERS_ARCHIVE)).toBe(true);
+    expect(hasPermission(manager, PERMISSIONS.INVOICES_BULK_ACTION)).toBe(true);
+    expect(hasPermission(manager, PERMISSIONS.TICKETS_BULK_UPDATE)).toBe(true);
+    expect(hasPermission(manager, PERMISSIONS.USERS_MANAGE)).toBe(false);
+    expect(hasPermission(manager, PERMISSIONS.IMPORT_EXPORT)).toBe(false);
+    expect(hasPermission(manager, PERMISSIONS.CUSTOMERS_GDPR_ERASE)).toBe(false);
+  });
+
   it('lets explicit user denies override admin and default role grants', () => {
     const admin = makeUser({
       role: 'admin',

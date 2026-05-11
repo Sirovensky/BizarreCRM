@@ -9,9 +9,213 @@ import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 
 const router = Router();
 type AnyRow = Record<string, any>;
+const CALCULATED_COGS_CATEGORY = 'Parts COGS (calculated)';
 
 function now(): string {
   return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+function sortExpenseRows(a: AnyRow, b: AnyRow): number {
+  const dateA = String(a.date || a.created_at || '');
+  const dateB = String(b.date || b.created_at || '');
+  const dateCmp = dateB.localeCompare(dateA);
+  if (dateCmp !== 0) return dateCmp;
+  return Number(b.id || 0) - Number(a.id || 0);
+}
+
+function shouldIncludeCalculatedCogs(category: string, statusFilter: string, subtypeFilter: string, includeRaw: string): boolean {
+  if (includeRaw === 'false' || includeRaw === '0') return false;
+  if (category && category !== CALCULATED_COGS_CATEGORY) return false;
+  if (statusFilter && statusFilter !== 'approved') return false;
+  if (subtypeFilter && subtypeFilter !== 'general') return false;
+  return true;
+}
+
+function buildCalculatedDateFilters(dateExpr: string, fromDate: string, toDate: string, params: any[]): string[] {
+  const conditions: string[] = [];
+  if (fromDate) {
+    conditions.push(`${dateExpr} >= ?`);
+    params.push(fromDate);
+  }
+  if (toDate) {
+    conditions.push(`${dateExpr} <= ?`);
+    params.push(toDate);
+  }
+  return conditions;
+}
+
+async function getCalculatedCogsExpenses(
+  adb: AsyncDb,
+  filters: { fromDate: string; toDate: string; keyword: string },
+): Promise<AnyRow[]> {
+  const keywordLike = filters.keyword ? `%${escapeLike(filters.keyword)}%` : '';
+
+  const partDateExpr = 'DATE(COALESCE(tdp.created_at, td.created_at, t.created_at))';
+  const partParams: any[] = [];
+  const partConditions = [
+    't.is_deleted = 0',
+    "COALESCE(tdp.status, 'available') != 'cancelled'",
+    "COALESCE(NULLIF(ii.cost_price, 0), NULLIF(sc_direct.price, 0), sku_cost.min_price, part_name_cost.min_price, 0) > 0",
+    ...buildCalculatedDateFilters(partDateExpr, filters.fromDate, filters.toDate, partParams),
+  ];
+  if (keywordLike) {
+    partConditions.push(`(
+      COALESCE(ii.name, sc_direct.name, '') LIKE ? ESCAPE '\\'
+      OR COALESCE(ii.sku, sc_direct.sku, '') LIKE ? ESCAPE '\\'
+      OR t.order_id LIKE ? ESCAPE '\\'
+      OR ? LIKE ? ESCAPE '\\'
+    )`);
+    partParams.push(keywordLike, keywordLike, keywordLike, CALCULATED_COGS_CATEGORY, keywordLike);
+  }
+
+  const invoiceDateExpr = 'DATE(COALESCE(i.created_at, ili.created_at))';
+  const invoiceParams: any[] = [];
+  const invoiceConditions = [
+    "COALESCE(i.status, '') != 'void'",
+    'COALESCE(ili.quantity, 0) > 0',
+    "COALESCE(ii.item_type, 'part') != 'service'",
+    "COALESCE(NULLIF(ii.cost_price, 0), sku_cost.min_price, line_name_cost.min_price, inv_name_cost.min_price, 0) > 0",
+    `NOT EXISTS (
+      SELECT 1
+      FROM ticket_device_parts existing_tdp
+      JOIN ticket_devices existing_td ON existing_td.id = existing_tdp.ticket_device_id
+      WHERE i.ticket_id IS NOT NULL
+        AND existing_td.ticket_id = i.ticket_id
+        AND (
+          (ili.inventory_item_id IS NOT NULL AND existing_tdp.inventory_item_id = ili.inventory_item_id)
+          OR LOWER(TRIM(COALESCE(ii.name, ili.description, ''))) = LOWER(TRIM(COALESCE((
+            SELECT existing_ii.name FROM inventory_items existing_ii WHERE existing_ii.id = existing_tdp.inventory_item_id
+          ), '')))
+        )
+    )`,
+    ...buildCalculatedDateFilters(invoiceDateExpr, filters.fromDate, filters.toDate, invoiceParams),
+  ];
+  if (keywordLike) {
+    invoiceConditions.push(`(
+      ili.description LIKE ? ESCAPE '\\'
+      OR COALESCE(ii.name, '') LIKE ? ESCAPE '\\'
+      OR COALESCE(ii.sku, '') LIKE ? ESCAPE '\\'
+      OR i.order_id LIKE ? ESCAPE '\\'
+      OR ? LIKE ? ESCAPE '\\'
+    )`);
+    invoiceParams.push(keywordLike, keywordLike, keywordLike, keywordLike, CALCULATED_COGS_CATEGORY, keywordLike);
+  }
+
+  const [ticketPartRows, invoiceLineRows] = await Promise.all([
+    adb.all<AnyRow>(`
+      WITH
+      sku_cost AS (
+        SELECT LOWER(TRIM(sku)) AS norm_sku, MIN(price) AS min_price
+        FROM supplier_catalog
+        WHERE price > 0 AND sku IS NOT NULL AND TRIM(sku) != ''
+        GROUP BY LOWER(TRIM(sku))
+      ),
+      part_name_cost AS (
+        SELECT LOWER(TRIM(name)) AS norm_name, MIN(price) AS min_price
+        FROM supplier_catalog
+        WHERE price > 0
+        GROUP BY LOWER(TRIM(name))
+      )
+      SELECT
+        (-1000000000 - tdp.id) AS id,
+        ? AS category,
+        ROUND(
+          COALESCE(tdp.quantity, 1) *
+          COALESCE(NULLIF(ii.cost_price, 0), NULLIF(sc_direct.price, 0), sku_cost.min_price, part_name_cost.min_price, 0),
+          2
+        ) AS amount,
+        'Calculated parts cost: ' || COALESCE(ii.name, sc_direct.name, 'Unknown part') ||
+          ' for ' || COALESCE(t.order_id, 'ticket #' || t.id) AS description,
+        ${partDateExpr} AS date,
+        NULL AS receipt_path,
+        NULL AS receipt_image_path,
+        1 AS user_id,
+        COALESCE(tdp.created_at, td.created_at, t.created_at) AS created_at,
+        COALESCE(tdp.updated_at, td.updated_at, t.updated_at) AS updated_at,
+        'approved' AS status,
+        'general' AS expense_subtype,
+        1 AS is_calculated,
+        0 AS can_edit,
+        'ticket_parts_cogs' AS expense_source,
+        CASE
+          WHEN NULLIF(ii.cost_price, 0) IS NOT NULL THEN 'inventory'
+          WHEN NULLIF(sc_direct.price, 0) IS NOT NULL THEN COALESCE(sc_direct.source, 'supplier_catalog')
+          WHEN sku_cost.min_price IS NOT NULL THEN 'supplier_catalog_sku'
+          WHEN part_name_cost.min_price IS NOT NULL THEN 'supplier_catalog_name'
+          ELSE 'unknown'
+        END AS cost_source,
+        'System' AS first_name,
+        'Calculated' AS last_name
+      FROM ticket_device_parts tdp
+      JOIN ticket_devices td ON td.id = tdp.ticket_device_id
+      JOIN tickets t ON t.id = td.ticket_id
+      LEFT JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+      LEFT JOIN supplier_catalog sc_direct ON sc_direct.id = tdp.catalog_item_id
+      LEFT JOIN sku_cost ON sku_cost.norm_sku = LOWER(TRIM(COALESCE(ii.sku, sc_direct.sku, '')))
+      LEFT JOIN part_name_cost ON part_name_cost.norm_name = LOWER(TRIM(COALESCE(ii.name, sc_direct.name, '')))
+      WHERE ${partConditions.join(' AND ')}
+    `, CALCULATED_COGS_CATEGORY, ...partParams),
+    adb.all<AnyRow>(`
+      WITH
+      sku_cost AS (
+        SELECT LOWER(TRIM(sku)) AS norm_sku, MIN(price) AS min_price
+        FROM supplier_catalog
+        WHERE price > 0 AND sku IS NOT NULL AND TRIM(sku) != ''
+        GROUP BY LOWER(TRIM(sku))
+      ),
+      line_name_cost AS (
+        SELECT LOWER(TRIM(name)) AS norm_name, MIN(price) AS min_price
+        FROM supplier_catalog
+        WHERE price > 0
+        GROUP BY LOWER(TRIM(name))
+      ),
+      inv_name_cost AS (
+        SELECT LOWER(TRIM(name)) AS norm_name, MIN(price) AS min_price
+        FROM supplier_catalog
+        WHERE price > 0
+        GROUP BY LOWER(TRIM(name))
+      )
+      SELECT
+        (-2000000000 - ili.id) AS id,
+        ? AS category,
+        ROUND(
+          COALESCE(ili.quantity, 1) *
+          COALESCE(NULLIF(ii.cost_price, 0), sku_cost.min_price, line_name_cost.min_price, inv_name_cost.min_price, 0),
+          2
+        ) AS amount,
+        'Calculated item cost: ' || COALESCE(NULLIF(ili.description, ''), ii.name, 'Unknown item') ||
+          ' for invoice ' || COALESCE(i.order_id, '#' || i.id) AS description,
+        ${invoiceDateExpr} AS date,
+        NULL AS receipt_path,
+        NULL AS receipt_image_path,
+        1 AS user_id,
+        COALESCE(i.created_at, ili.created_at) AS created_at,
+        COALESCE(ili.updated_at, i.updated_at) AS updated_at,
+        'approved' AS status,
+        'general' AS expense_subtype,
+        1 AS is_calculated,
+        0 AS can_edit,
+        'invoice_line_cogs' AS expense_source,
+        CASE
+          WHEN NULLIF(ii.cost_price, 0) IS NOT NULL THEN 'inventory'
+          WHEN sku_cost.min_price IS NOT NULL THEN 'supplier_catalog_sku'
+          WHEN line_name_cost.min_price IS NOT NULL THEN 'supplier_catalog_name'
+          WHEN inv_name_cost.min_price IS NOT NULL THEN 'supplier_catalog_name'
+          ELSE 'unknown'
+        END AS cost_source,
+        'System' AS first_name,
+        'Calculated' AS last_name
+      FROM invoice_line_items ili
+      JOIN invoices i ON i.id = ili.invoice_id
+      LEFT JOIN inventory_items ii ON ii.id = ili.inventory_item_id
+      LEFT JOIN sku_cost ON sku_cost.norm_sku = LOWER(TRIM(COALESCE(ii.sku, '')))
+      LEFT JOIN line_name_cost ON line_name_cost.norm_name = LOWER(TRIM(ili.description))
+      LEFT JOIN inv_name_cost ON inv_name_cost.norm_name = LOWER(TRIM(COALESCE(ii.name, '')))
+      WHERE ${invoiceConditions.join(' AND ')}
+    `, CALCULATED_COGS_CATEGORY, ...invoiceParams),
+  ]);
+
+  return [...ticketPartRows, ...invoiceLineRows];
 }
 
 // GET / — List expenses (paginated, filterable)
@@ -25,6 +229,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const keyword = (req.query.keyword as string || '').trim();
   const statusFilter = (req.query.status as string || '').trim();
   const subtypeFilter = (req.query.expense_subtype as string || '').trim();
+  const includeCalculatedRaw = (req.query.include_calculated as string || '').trim().toLowerCase();
 
   const conditions: string[] = [];
   const params: any[] = [];
@@ -54,29 +259,36 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
   const offset = (page - 1) * pageSize;
+  const includeCalculated = shouldIncludeCalculatedCogs(category, statusFilter, subtypeFilter, includeCalculatedRaw);
 
-  const [totalRow, expenses, summary, categories] = await Promise.all([
-    adb.get<AnyRow>(`SELECT COUNT(*) AS c FROM expenses e ${whereClause}`, ...params),
+  const [manualExpenses, calculatedExpenses] = await Promise.all([
     adb.all<AnyRow>(`
-      SELECT e.*, u.first_name, u.last_name
+      SELECT e.*, u.first_name, u.last_name, 0 AS is_calculated, 1 AS can_edit, 'manual' AS expense_source
       FROM expenses e
       LEFT JOIN users u ON u.id = e.user_id
       ${whereClause}
       ORDER BY e.date DESC, e.id DESC
-      LIMIT ? OFFSET ?
-    `, ...params, pageSize, offset),
-    adb.get<AnyRow>(`
-      SELECT COALESCE(SUM(amount), 0) AS total_amount, COUNT(*) AS total_count
-      FROM expenses e ${whereClause}
     `, ...params),
-    adb.all<AnyRow>(`
-      SELECT category, COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total
-      FROM expenses e ${whereClause}
-      GROUP BY category ORDER BY total DESC
-    `, ...params),
+    includeCalculated ? getCalculatedCogsExpenses(adb, { fromDate, toDate, keyword }) : Promise.resolve([]),
   ]);
 
-  const total = totalRow!.c;
+  const combinedExpenses = [...manualExpenses, ...calculatedExpenses].sort(sortExpenseRows);
+  const total = combinedExpenses.length;
+  const expenses = combinedExpenses.slice(offset, offset + pageSize);
+
+  const summary = {
+    total_amount: combinedExpenses.reduce((sum, exp) => sum + (Number(exp.amount) || 0), 0),
+    total_count: total,
+  };
+  const categoryMap = new Map<string, { category: string; count: number; total: number }>();
+  for (const exp of combinedExpenses) {
+    const key = String(exp.category || 'Other');
+    const existing = categoryMap.get(key) || { category: key, count: 0, total: 0 };
+    existing.count += 1;
+    existing.total += Number(exp.amount) || 0;
+    categoryMap.set(key, existing);
+  }
+  const categories = Array.from(categoryMap.values()).sort((a, b) => b.total - a.total);
 
   res.json({
     success: true,

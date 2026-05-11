@@ -156,16 +156,19 @@ router.get('/invoices/aging', asyncHandler(async (req: Request, res: Response) =
   // REAL float (criticalaudit.md §M7). Every subsequent operation works in
   // integer cents, so bucket totals cannot drift.
   const rows = await req.asyncDb.all<Row>(
+    // Column is `due_on` on the invoices table (see migration 013) — the
+    // legacy `due_date` alias never landed in the schema, so the query was
+    // hard-500ing on every aging request.
     `SELECT i.id, i.order_id, i.customer_id,
             CAST(ROUND(i.amount_due * 100) AS INTEGER) AS amount_due_cents,
             CAST(ROUND(i.total * 100) AS INTEGER)      AS total_cents,
-            i.due_date, i.status,
+            i.due_on AS due_date, i.status,
             c.first_name, c.last_name
        FROM invoices i
        LEFT JOIN customers c ON c.id = i.customer_id
       WHERE i.status IN ('unpaid','overdue','partial','draft')
         AND i.amount_due > 0
-      ORDER BY i.due_date ASC`,
+      ORDER BY i.due_on ASC`,
   );
 
   const now = Date.now();

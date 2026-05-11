@@ -4,10 +4,12 @@ import type { Request, Response, NextFunction } from 'express';
 import { config } from '../config.js';
 import {
   authMiddleware,
+  hasPermission,
   JWT_SIGN_OPTIONS,
   ACCESS_TOKEN_COOKIE_NAME,
   AUTH_CSRF_COOKIE_NAME,
 } from './auth.js';
+import { PERMISSIONS } from '@bizarre-crm/shared';
 
 function makeAccessToken(userId: number, sessionId: string): string {
   return jwt.sign(
@@ -75,6 +77,43 @@ describe('authMiddleware access token sources', () => {
     expect(res.status).not.toHaveBeenCalled();
     expect(req.user?.id).toBe(42);
     expect(req.user?.sessionId).toBe('cookie-session');
+  });
+
+  it('falls back to shared defaults when a built-in custom role has no materialized matrix rows', async () => {
+    const token = makeAccessToken(42, 'custom-cashier-session');
+    const asyncDb = {
+      get: vi.fn((sql: string, param: unknown) => {
+        if (sql.includes('FROM sessions')) return Promise.resolve({ id: param, last_active: new Date().toISOString() });
+        if (sql.includes('FROM users')) {
+          return Promise.resolve({
+            id: 42,
+            username: 'tech',
+            email: 'tech@example.com',
+            first_name: 'Terry',
+            last_name: 'Tech',
+            role: 'technician',
+            permissions: '{}',
+          });
+        }
+        if (sql.includes('FROM user_custom_roles')) {
+          return Promise.resolve({ role_id: 3, role_name: 'cashier', is_active: 1 });
+        }
+        return Promise.resolve(undefined);
+      }),
+      all: vi.fn(() => Promise.resolve([])),
+      run: vi.fn(() => Promise.resolve({ changes: 1, lastInsertRowid: 1 })),
+    };
+    const req = makeReq({
+      cookies: { [ACCESS_TOKEN_COOKIE_NAME]: token },
+      asyncDb,
+    } as unknown as Partial<Request> & { cookies: Record<string, string> });
+    const res = makeRes();
+
+    await runAuth(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.user?.customRolePermissions?.has(PERMISSIONS.INVOICES_EDIT)).toBe(true);
+    expect(hasPermission(req.user, PERMISSIONS.INVOICES_EDIT)).toBe(true);
   });
 
   it('continues accepting bearer tokens without CSRF for API clients', async () => {

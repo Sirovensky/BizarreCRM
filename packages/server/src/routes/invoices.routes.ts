@@ -1146,19 +1146,13 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
 });
 
 // ===================================================================
-// POST /bulk-action - Batch invoice actions (admin-only)
+// POST /bulk-action - Batch invoice actions
 // ===================================================================
 // SEC-H25: bulk invoice actions (mark_paid, void, send_reminder) are privileged
-// — gate behind invoices.bulk_action permission. The inline role check below is
-// kept as defence-in-depth.
+// — gate behind invoices.bulk_action permission.
 router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
-
-  // Defence-in-depth: requirePermission above is authoritative.
-  if (req.user!.role !== 'admin') {
-    throw new AppError('Only admins can perform bulk invoice actions', 403);
-  }
 
   const { invoice_ids, action } = req.body;
   if (!invoice_ids || !Array.isArray(invoice_ids) || invoice_ids.length === 0) {

@@ -9,6 +9,8 @@ import {
   factoryWipe,
   selectiveWipe,
   nuclearWipeSource,
+  backfillTicketInvoiceLinks,
+  synthesizePlaceholderInvoicesForUnlinkedTickets,
 } from '../services/repairDeskImport.js';
 import { runBackup, getBackupSettings } from '../services/backup.js';
 import {
@@ -107,12 +109,12 @@ function tryClaimImportLock(db: any, source: string, holderId: number): boolean 
     "INSERT OR IGNORE INTO import_locks (id, holder_id, source, claimed_at, expires_at) VALUES (1, NULL, NULL, NULL, NULL)"
   ).run();
 
-  const expiresAt = new Date(Date.now() + IMPORT_LOCK_TTL_MS).toISOString();
+  const expiresAt = new Date(Date.now() + IMPORT_LOCK_TTL_MS).toISOString().replace('T', ' ').substring(0, 19);
   const result = db.prepare(`
     UPDATE import_locks
     SET holder_id = ?, source = ?, claimed_at = datetime('now'), expires_at = ?
     WHERE id = 1
-      AND (holder_id IS NULL OR expires_at IS NULL OR expires_at < datetime('now'))
+      AND (holder_id IS NULL OR expires_at IS NULL OR datetime(expires_at) < datetime('now'))
   `).run(holderId, source, expiresAt);
 
   return result.changes > 0;
@@ -131,6 +133,31 @@ function releaseImportLock(db: any, holderId?: number): void {
     }
   } catch (err) {
     logger.warn('Failed to release import lock', { error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function failStaleImportRuns(db: any, source: string, excludeIds: number[] = []): number {
+  try {
+    const excludeClause = excludeIds.length > 0
+      ? `AND id NOT IN (${excludeIds.map(() => '?').join(',')})`
+      : '';
+    const message = 'Import was left running after the background worker stopped. Start a new import to resume.';
+    const result = db.prepare(`
+      UPDATE import_runs
+      SET status = 'failed',
+          completed_at = datetime('now'),
+          errors = CASE WHEN COALESCE(errors, 0) = 0 THEN 1 ELSE errors END,
+          error_log = json_array(json_object('record_id', 'stale_import', 'message', ?, 'timestamp', datetime('now')))
+      WHERE source = ?
+        AND status IN ('running', 'pending')
+        AND started_at IS NOT NULL
+        AND datetime(started_at) < datetime('now', '-1 hour')
+        ${excludeClause}
+    `).run(message, source, ...excludeIds);
+    return result.changes ?? 0;
+  } catch (err) {
+    logger.warn('Failed to mark stale import runs', { source, error: err instanceof Error ? err.message : String(err) });
+    return 0;
   }
 }
 
@@ -286,6 +313,8 @@ router.post(
       throw new AppError('An import is already in progress', 409);
     }
 
+    const staleRunsFailed = failStaleImportRuns(db, 'repairdesk', [seedId]);
+
     // Record the rate-limit row now that we hold the lock — a successful
     // claim counts against the ceiling even if the background import later
     // fails for its own reasons.
@@ -338,13 +367,14 @@ router.post(
       releaseImportLock(db, seedId);
     });
 
-    audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'repairdesk', entities });
+    audit(db, 'import_started', req.user!.id, req.ip || 'unknown', { source: 'repairdesk', entities, stale_runs_failed: staleRunsFailed });
 
     res.status(201).json({
       success: true,
       data: {
         message: `Import started for: ${entities.join(', ')}. Poll GET /api/v1/import/repairdesk/status for progress.`,
         runs,
+        stale_runs_failed: staleRunsFailed,
       },
     });
   }),
@@ -357,6 +387,7 @@ router.get(
   '/repairdesk/status',
   asyncHandler(async (req, res) => {
     if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+    failStaleImportRuns(req.db, 'repairdesk');
     const adb = req.asyncDb;
     const runs = await adb.all(`
       SELECT * FROM import_runs
@@ -436,6 +467,48 @@ router.post(
       data: {
         message: 'Cancel requested. Running imports will stop after the current batch.',
         cancelled_pending: result.changes,
+      },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /repairdesk/backfill-invoices — Reconcile imported tickets ↔ invoices.
+//
+// RD's invoice import wires `invoices.ticket_id` but never updates the reverse
+// `tickets.invoice_id` pointer; tickets that survived import without any RD
+// invoice (settled at the till on the source side) carry totals but are
+// invisible to revenue stats. This endpoint:
+//   1. Links every ticket whose invoice exists in `invoices.ticket_id`.
+//   2. Synthesizes placeholder unpaid invoices only after the RD invoice import
+//      has completed. This prevents tickets from being locked to fake unpaid
+//      invoices while the real invoice run is still pending or running.
+// Both passes are idempotent — safe to call repeatedly.
+// ---------------------------------------------------------------------------
+router.post(
+  '/repairdesk/backfill-invoices',
+  asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
+    }
+    const db = req.db;
+    const linked = backfillTicketInvoiceLinks(db);
+    const synth = synthesizePlaceholderInvoicesForUnlinkedTickets(db);
+    audit(db, 'import_backfill_invoices', req.user!.id, req.ip || 'unknown', {
+      source: 'repairdesk',
+      linked: linked.linked,
+      synthesized: synth.created,
+    });
+    res.json({
+      success: true,
+      data: {
+        linked: linked.linked,
+        synthesized: synth.created,
+        placeholder_synthesis_skipped: !!synth.skipped,
+        placeholder_synthesis_reason: synth.reason,
+        message: synth.skipped
+          ? `Linked ${linked.linked} tickets to existing invoices. Placeholder invoices were not created because ${synth.reason}.`
+          : `Linked ${linked.linked} tickets to existing invoices, synthesized ${synth.created} placeholder invoices.`,
       },
     });
   }),

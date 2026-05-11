@@ -15,6 +15,8 @@ import {
   issueAccessTokenCookie,
   JWT_SIGN_OPTIONS,
   JWT_VERIFY_OPTIONS,
+  resolveEffectivePermission,
+  type AuthUser,
 } from '../middleware/auth.js';
 import { verifyJwtWithRotation } from '../utils/jwtSecrets.js';
 import { audit } from '../utils/audit.js';
@@ -28,6 +30,7 @@ import { ERROR_CODES } from '../utils/errorCodes.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getMasterDb } from '../db/master-connection.js';
+import { PERMISSIONS, ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
 const logger = createLogger('auth');
 
@@ -44,6 +47,93 @@ function safeParsePermissions(raw: string | null | undefined): Record<string, bo
     }
     return safe;
   } catch { return null; }
+}
+
+const CANONICAL_PERMISSION_KEYS = Object.values(PERMISSIONS);
+
+function effectivePermissionMap(user: AuthUser): Record<string, boolean> {
+  const map: Record<string, boolean> = {};
+  for (const key of CANONICAL_PERMISSION_KEYS) {
+    map[key] = resolveEffectivePermission(user, key).allowed;
+  }
+  return map;
+}
+
+function safeUserFromAuthUser(user: AuthUser & { avatar_url?: string | null }): Record<string, unknown> {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    role: user.role,
+    avatar_url: user.avatar_url || null,
+    permissions: effectivePermissionMap(user),
+  };
+}
+
+async function loadCustomRolePermissions(adb: AsyncDb, userId: number): Promise<Set<string> | null> {
+  try {
+    const customRole = await adb.get<{ role_id: number }>(
+      'SELECT role_id FROM user_custom_roles WHERE user_id = ?',
+      userId,
+    );
+    if (!customRole?.role_id) return null;
+    const roleRow = await adb.get<{ is_active: number; name: string | null }>(
+      'SELECT is_active, name FROM custom_roles WHERE id = ?',
+      customRole.role_id,
+    );
+    if (roleRow?.is_active !== 1) return null;
+    const rows = await adb.all<{ permission_key: string; allowed: number }>(
+      'SELECT permission_key, allowed FROM role_permissions WHERE role_id = ?',
+      customRole.role_id,
+    );
+    const defaultRolePerms = roleRow.name ? ROLE_PERMISSIONS[roleRow.name] : undefined;
+    return rows.length > 0
+      ? new Set(rows.filter(row => row.allowed === 1).map(row => row.permission_key))
+      : new Set(defaultRolePerms || []);
+  } catch (err) {
+    if (String((err as Error)?.message || err).includes('no such table:')) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function loadPermissionOverrides(adb: AsyncDb, userId: number): Promise<Map<string, boolean> | null> {
+  try {
+    const rows = await adb.all<{ permission_key: string; allowed: number }>(
+      'SELECT permission_key, allowed FROM user_permissions WHERE user_id = ?',
+      userId,
+    );
+    if (rows.length === 0) return null;
+    return new Map(rows.map(row => [row.permission_key, row.allowed === 1]));
+  } catch (err) {
+    if (String((err as Error)?.message || err).includes('no such table: user_permissions')) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function safeUserForResponse(adb: AsyncDb, user: any, sessionId = ''): Promise<Record<string, unknown>> {
+  const [customRolePermissions, permissionOverrides] = await Promise.all([
+    loadCustomRolePermissions(adb, user.id),
+    loadPermissionOverrides(adb, user.id),
+  ]);
+  return safeUserFromAuthUser({
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    role: user.role,
+    avatar_url: user.avatar_url || null,
+    permissions: safeParsePermissions(user.permissions),
+    sessionId,
+    customRolePermissions,
+    permissionOverrides,
+  });
 }
 
 // SEC (A7): Max concurrent refresh-token sessions per user.
@@ -459,17 +549,9 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
     path: '/',
   });
 
-  // Strict allowlist — never leak internal fields
-  const safeUser = {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    first_name: user.first_name,
-    last_name: user.last_name,
-    role: user.role,
-    avatar_url: user.avatar_url || null,
-    permissions: safeParsePermissions(user.permissions),
-  };
+  // Strict allowlist — never leak internal fields. Send effective permissions
+  // so role-default grants and table-backed overrides are visible to the UI.
+  const safeUser = await safeUserForResponse(adb, user, sessionId);
   return { accessToken, refreshToken, user: safeUser };
 }
 
@@ -857,6 +939,23 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   // the 2FA challenge if 2FA isn't even required in the first place, AND
   // if 2FA is required we further validate a fingerprint bound to UA+IP.
   const requires2fa = !!user.totp_enabled;
+
+  // DEV-ONLY: when DISABLE_2FA=1 + NODE_ENV=development, short-circuit the
+  // 2FA challenge entirely for users that haven't enrolled TOTP yet, so
+  // admin/admin123 logs straight in. Hard-blocked in production via the
+  // nodeEnv check; never collapses 2FA for users who already enrolled.
+  if (
+    !requires2fa
+    && process.env.DISABLE_2FA === '1'
+    && config.nodeEnv !== 'production'
+  ) {
+    audit(db, 'login_success', user.id, ip, { method: 'dev_disable_2fa' });
+    logTenantAuthEvent('login_success', req, user.id, user.username, { method: 'dev_disable_2fa' });
+    const tokens = await issueTokens(adb, user, req, res, { trustDevice: false });
+    await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
+    res.json({ success: true, data: tokens });
+    return;
+  }
 
   if (requires2fa) {
     const deviceTrustCookie = req.cookies?.deviceTrust;
@@ -1463,12 +1562,7 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
       path: '/',
     });
 
-    const safeUser = {
-      id: user.id, username: user.username, email: user.email,
-      first_name: user.first_name, last_name: user.last_name,
-      role: user.role, avatar_url: user.avatar_url || null,
-      permissions: safeParsePermissions(user.permissions),
-    };
+    const safeUser = await safeUserForResponse(adb, user, payload.sessionId);
 
     // SEC-M10: Audit successful rotation so the full refresh lifecycle shows up
     // in the tenant audit trail (useful when tracing a compromised session's
@@ -1671,8 +1765,7 @@ router.post('/switch-user', authMiddleware, asyncHandler(async (req: Request, re
     { ...JWT_SIGN_OPTIONS, expiresIn: '8h' }
   );
 
-  // SCAN-646: Parse permissions without mutating user — use a response-only copy.
-  const userForResponse = { ...user, permissions: safeParsePermissions(user.permissions) };
+  const userForResponse = await safeUserForResponse(adb, user, sessionId);
 
   // SEC-H17: SameSite=Strict — matches main login flow. Impersonation sessions
   // are short-lived and should never cross origins.
@@ -2529,7 +2622,7 @@ router.post('/change-pin', authMiddleware, asyncHandler(async (req: Request, res
 
 // GET /me
 router.get('/me', authMiddleware, (req: Request, res: Response) => {
-  res.json({ success: true, data: req.user });
+  res.json({ success: true, data: safeUserFromAuthUser(req.user!) });
 });
 
 export default router;

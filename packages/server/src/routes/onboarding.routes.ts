@@ -27,6 +27,7 @@ import {
   removeSampleDataByEntities,
   type SampleEntity,
 } from '../services/sampleData.js';
+import { seedDeviceModels } from '../db/device-models-seed-runner.js';
 
 const router = Router();
 const logger = createLogger('onboarding');
@@ -498,6 +499,24 @@ router.post(
       `UPDATE onboarding_state SET shop_type = ?, updated_at = datetime('now') WHERE id = 1`,
       shopType,
     );
+    // Mirror to store_config so seedDeviceModels (and other lookups that read
+    // the canonical key) pick up the choice without a server restart.
+    await adb.run(
+      `INSERT INTO store_config (key, value) VALUES ('shop_type', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      shopType,
+    );
+    // Expand the device-models catalog to cover the newly-allowed categories
+    // (e.g. switching from phone_repair to general_electronics surfaces TVs +
+    // watches + XR). INSERT OR IGNORE keeps existing rows untouched.
+    try {
+      seedDeviceModels(req.db);
+    } catch (err) {
+      logger.warn('Failed to re-seed device models for new shop_type', {
+        shop_type: shopType,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     // Install starter SMS templates. Using INSERT OR IGNORE on a natural key
     // (name) keeps this idempotent — running set-shop-type twice is safe.
