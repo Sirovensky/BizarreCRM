@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, Link as LinkIcon } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, XCircle, Link as LinkIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { MembershipSettings } from '@/pages/settings/MembershipSettings';
@@ -636,13 +636,19 @@ export function SubscriptionsListPage() {
                           now gated with AdminOnly to match "Bill now" treatment. */}
                       {sub.status !== 'cancelled' && (
                         <AdminOnly>
+                          {/* WEB-UIUX-1495: explicit "Cancel membership" so a
+                              cashier doesn't read it as "cancel dialog".
+                              WEB-UIUX-1501: XCircle icon to match Pause icon. */}
                           <button
                             onClick={() => handleCancel(sub)}
                             disabled={cancellingId === sub.id}
                             className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                            title="Cancel membership (terminal — see confirm)"
                           >
-                            {cancellingId === sub.id && <Loader2 className="h-3 w-3 animate-spin" />}
-                            Cancel
+                            {cancellingId === sub.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <XCircle className="h-3 w-3" />}
+                            Cancel membership
                           </button>
                         </AdminOnly>
                       )}

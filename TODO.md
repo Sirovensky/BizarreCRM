@@ -6348,7 +6348,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:81-95`
   <!-- meta: fix=remove-RunBillingButton-OR-add-server-route-POST-/membership/admin/run-billing-cron+wire-button-to-call-it+show-progress-toast-with-counts -->
 
-- [ ] WEB-UIUX-1495. **[MINOR] Cancel button label is bare "Cancel" on both pages (`SubscriptionsListPage.tsx:282`, `CustomerDetailPage.tsx:1004`). Ambiguous — "cancel this dialog" vs "cancel membership", especially in CustomerDetailPage where there is no preceding modal. Convention for destructive subscription ops: "Cancel membership" / "End plan". Single-word "Cancel" next to "Pause" reads as parallel verbs but they're not — Pause is reversible, Cancel is terminal.** L1 truthfulness, L5 hierarchy.
+- [x] WEB-UIUX-1495. **[MINOR] Cancel button label is bare "Cancel" on both pages (`SubscriptionsListPage.tsx:282`, `CustomerDetailPage.tsx:1004`). Ambiguous — "cancel this dialog" vs "cancel membership", especially in CustomerDetailPage where there is no preceding modal. Convention for destructive subscription ops: "Cancel membership" / "End plan". Single-word "Cancel" next to "Pause" reads as parallel verbs but they're not — Pause is reversible, Cancel is terminal.** L1 truthfulness, L5 hierarchy. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Cancel button label spelled out to "Cancel membership" on both SubscriptionsListPage + CustomerDetailPage MembershipCard; title attribute warns terminal action.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:282`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1003-1004`
   <!-- meta: fix=label-'Cancel-membership'-OR-'End-plan'+keep-confirm-modal-confirmLabel-'Cancel-subscription' -->
@@ -6357,7 +6357,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920`
   <!-- meta: fix=pause-opens-small-modal-with-reason-textarea-(or-preset-pills:Vacation/Financial/Other)+pass-reason-to-pause-mutation -->
 
-- [ ] WEB-UIUX-1497. **[MINOR] No cancellation reason capture. Confirm dialog (`SubscriptionsListPage.tsx:158-161`) accepts only yes/no. Standard SaaS retention flow asks "Why are you cancelling?" with preset pills + optional comment — feeds the churn dashboard. Currently the only data point on cancel is the audit row (`:237`), which records `subscription_id, immediate` and nothing else.** L7 feedback, L9 empty/loading/error.
+- [!] WEB-UIUX-1497. **[MINOR] No cancellation reason capture. Confirm dialog (`SubscriptionsListPage.tsx:158-161`) accepts only yes/no. Standard SaaS retention flow asks "Why are you cancelling?" with preset pills + optional comment — feeds the churn dashboard. Currently the only data point on cancel is the audit row (`:237`), which records `subscription_id, immediate` and nothing else.** L7 feedback, L9 empty/loading/error. **[AUTOLOOP-T49 BLOCKED 2026-05-11: cancellation-reason capture needs a churn dashboard + reason-pill schema (cancel_reason column / cancel_reason_id FK) + retention modal. Multi-component.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:155-168`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   `packages/server/src/routes/membership.routes.ts:222-239`
@@ -6367,7 +6367,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:158-161`
   <!-- meta: fix=confirm-body-include-tier-name+last_charge_amount+current_period_end+'No-refund'-line+benefits-list -->
 
-- [ ] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness.
+- [!] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: immediate-cancel proration / refund flow needs a server `/membership/:id/cancel` flag + automatic credit-note path keyed to days remaining. Multi-component finance change.]**
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->
 
@@ -6376,7 +6376,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:104-111`
   <!-- meta: fix=server-accept-?include=cancelled+UI-toggle-'Show-cancelled'-default-off+sort-cancelled-to-bottom -->
 
-- [ ] WEB-UIUX-1501. **[NIT] Cancel and Pause icons missing on SubscriptionsListPage row actions (`:275-284`) but present on CustomerDetailPage (`Pause`, `X` icons `:995,1003`). List view shows just text buttons, customer-detail shows icon+text. Inconsistent visual weight; users scanning the list lose the affordance cue. Either both icon+text or both text-only.** L5 hierarchy, L11 visual consistency.
+- [x] WEB-UIUX-1501. **[NIT] Cancel and Pause icons missing on SubscriptionsListPage row actions (`:275-284`) but present on CustomerDetailPage (`Pause`, `X` icons `:995,1003`). List view shows just text buttons, customer-detail shows icon+text. Inconsistent visual weight; users scanning the list lose the affordance cue. Either both icon+text or both text-only.** L5 hierarchy, L11 visual consistency. **[AUTOLOOP-T49 RESOLVED 2026-05-11: SubscriptionsListPage Cancel button gains XCircle icon to match the Pause/Resume icon+text pattern (CustomerDetailPage already uses icons).]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:275-284`
   <!-- meta: fix=add-X-icon-before-Cancel-text+add-Pause-button-on-list-page-(missing-entirely)-with-Pause-icon -->
 
@@ -6384,7 +6384,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:275-284`
   <!-- meta: fix=add-Pause-button-row-action-mirror-CustomerDetailPage-pattern+pauseMut-with-reason-capture -->
 
-- [ ] WEB-UIUX-1503. **[NIT] CustomerDetailPage status pill (`:952-954`) renders raw enum value `{memberData.status}` — shows "past_due" verbatim instead of "Past due". SubscriptionsListPage uses `statusLabel(status)` helper (`:51-58`) for the same data. Same enum, two render paths, inconsistent capitalization.** L11 readability.
+- [x] WEB-UIUX-1503. **[NIT] CustomerDetailPage status pill (`:952-954`) renders raw enum value `{memberData.status}` — shows "past_due" verbatim instead of "Past due". SubscriptionsListPage uses `statusLabel(status)` helper (`:51-58`) for the same data. Same enum, two render paths, inconsistent capitalization.** L11 readability. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerDetailPage MembershipCard status pill humanizes the enum (replace underscores with spaces + Tailwind `capitalize`); "past_due" reads "Past due".]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:952-954`
   <!-- meta: fix=import-statusLabel-from-shared-helper-OR-inline-replace('_',' ')-+-titleCase -->
 
@@ -6412,7 +6412,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/inbox.routes.ts:693-703`
   <!-- meta: fix=update-onSuccess-handler-to-read-{attempted,sent,failed}+show-failure-aware-toast+keep-modal-open-when-failed>0-with-link-to-/inbox-retry-queue -->
 
-- [ ] WEB-UIUX-1505. **[BLOCKER] Admin never sees template body before blasting. Template `<select>` at `BulkSmsModal.tsx:171-185` shows name only ("Repair ready", "Promo Aug"). Preview banner at `:188-196` only shows recipient count + 5-min expiry, NEVER the SMS body. Admin picks "Repair ready", clicks Preview → "12,003 recipients", clicks "Send to 12,003" — wording could be "TEST {{customer_first_name}} ignore" from a half-finished template and 12k customers receive it before anyone notices. Render `templates.find(t => t.id === templateId)?.content` in a read-only preview block above the recipient banner; show variable substitution against a sample row.** L2 truthfulness, L7 feedback, L9 empty/loading/error states.
+- [!] WEB-UIUX-1505. **[BLOCKER] Admin never sees template body before blasting. Template `<select>` at `BulkSmsModal.tsx:171-185` shows name only ("Repair ready", "Promo Aug"). Preview banner at `:188-196` only shows recipient count + 5-min expiry, NEVER the SMS body. Admin picks "Repair ready", clicks Preview → "12,003 recipients", clicks "Send to 12,003" — wording could be "TEST {{customer_first_name}} ignore" from a half-finished template and 12k customers receive it before anyone notices. Render `templates.find(t => t.id === templateId)?.content` in a read-only preview block above the recipient banner; show variable substitution against a sample row.** L2 truthfulness, L7 feedback, L9 empty/loading/error states. **[AUTOLOOP-T49 STALE 2026-05-11: BulkSmsModal already renders the resolved template body + char/segment cost block under the select (WEB-UIUX-1112).]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-196`
   <!-- meta: fix=add-message-body-preview-block-with-variable-substitution-rendered-against-first-segment-row+character-count+segment-count-(SMS=160-chars-per-segment) -->
 

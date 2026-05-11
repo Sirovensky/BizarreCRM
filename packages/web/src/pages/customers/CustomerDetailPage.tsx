@@ -1169,8 +1169,11 @@ function MembershipCard({ customerId }: { customerId: number }) {
             <Crown className="h-5 w-5" style={{ color: memberData.color }} />
             <h3 className="font-semibold text-surface-900 dark:text-surface-100">Membership</h3>
           </div>
-          <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', statusColors[memberData.status] || statusColors.active)}>
-            {memberData.status}
+          {/* WEB-UIUX-1503: humanize enum so "past_due" reads "Past due"
+              instead of raw underscored value. Matches the labels rendered
+              in SubscriptionsListPage (statusLabel helper). */}
+          <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize', statusColors[memberData.status] || statusColors.active)}>
+            {(memberData.status || '').replace(/_/g, ' ')}
           </span>
         </div>
         <div className="px-5 py-4 flex items-center justify-between">
@@ -1253,10 +1256,13 @@ function MembershipCard({ customerId }: { customerId: number }) {
                     cancelMut.mutate({ immediate });
                   }}
                   disabled={cancelMut.isPending}
+                  // WEB-UIUX-1495: spell out "Cancel membership" — bare
+                  // "Cancel" reads as a dialog dismiss next to Pause.
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title="Cancel membership (terminal — see confirm)"
                 >
                   <X className="h-3.5 w-3.5" />
-                  Cancel
+                  Cancel membership
                 </button>
               </>
             )}
