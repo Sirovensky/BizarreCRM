@@ -3721,7 +3721,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-873. **[MAJOR] Estimate→Ticket conversion: one-shot `confirm()` with no preview.** No which-fields-transfer, no edit-before-conversion, no link to result in toast. L5, L8. **[AUTOLOOP-T40 RESOLVED: Convert-to-ticket replaces native confirm with rich ReactNode preview modal — customer + due date + total + 5 line items + stale-status warning via confirmStore.]**
 
-- [ ] WEB-UIUX-874. **[MINOR] DashboardPage refetches 10+ queries on 60-120s jittered interval + `refetchOnWindowFocus: true`.** Constrained shop tablet pinned. L15.
+- [!] WEB-UIUX-874. **[MINOR] DashboardPage refetches 10+ queries on 60-120s jittered interval + `refetchOnWindowFocus: true`.** Constrained shop tablet pinned. L15. **STALE 2026-05-11: global QueryClient defaults refetchOnWindowFocus=false (main.tsx:136); Dashboard does not override. Existing intervals already use refetchIntervalInBackground=false, so a closed tab does not poll. Constrained-tablet symptoms must trace to a different surface.**
 
 #### JOURNEY3: Angry Customer Dispute
 
