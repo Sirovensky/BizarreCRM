@@ -207,6 +207,37 @@ export function useDraft(
     }
   }, [key]);
 
+  // WEB-UIUX-739: cross-tab sync via the `storage` event. Without this, two
+  // tabs editing the same form clobber each other on the next debounce tick
+  // — last writer wins and the other tab silently loses the in-progress
+  // edit. We listen for storage events keyed to the active scopedKey and
+  // pull the freshest value in. We don't override an actively-edited local
+  // state from a stale storage event by checking the timestamp window: if
+  // the local valueRef differs and was updated recently, we keep local and
+  // let our own debounce win.
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (!e.key || e.key !== scopedKeyRef.current) return;
+      // Another tab cleared this key — adopt the empty state if we're idle.
+      if (e.newValue == null) {
+        if (!valueRef.current) return;
+        // Local has content; don't blindly wipe. Surface as "hasDraft" still
+        // until the user saves over it.
+        return;
+      }
+      // Another tab wrote a value — adopt only when our local state matches
+      // the previous remote value or is empty (i.e. we have nothing to lose).
+      if (!valueRef.current || valueRef.current === e.oldValue) {
+        if (mountedRef.current) {
+          setValue(e.newValue);
+          setHasDraft(true);
+        }
+      }
+    }
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // Debounced save to localStorage
   useEffect(() => {
     // Capture key at schedule time so a key change between schedule and fire

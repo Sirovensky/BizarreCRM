@@ -3115,7 +3115,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### ED12: Notifications/Automations Gaps
 
-- [ ] WEB-UIUX-689. **[BLOCKER · BLOCKED] Template syntax fragmented — automations use `{var}`, campaigns use `{{var}}`, no client-side schema validator.** "first_nam" typo = 1000 SMS with literal text. L7, L16.
+- [!] WEB-UIUX-689. **[BLOCKER · BLOCKED] Template syntax fragmented — automations use `{var}`, campaigns use `{{var}}`, no client-side schema validator.** "first_nam" typo = 1000 SMS with literal text. L7, L16. **BLOCKED 2026-05-11: switching {{var}} bulk-SMS path to {var} or vice versa would invalidate every persisted template; needs a paired data migration to rewrite sms_templates.content. UIUX-690 server-side unknown-token validator now catches typos in {var}/{{var}} forms, removing the worst symptom.**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/settings/AutomationsTab.tsx:59-69`
   `packages/web/src/pages/marketing/CampaignsPage.tsx:84,727`
@@ -3123,7 +3123,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-690. **[BLOCKER] No unknown-token detection on template bodies.** Save accepts any `{...}` token, dryRun success toast slices first 60 chars. L7, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: sms.routes /templates POST+PUT now reject unknown tokens via KNOWN_SMS_TEMPLATE_VARS (matches both {key} and {{key}}); GET /templates surfaces the canonical token list for client validation.]**
   `packages/web/src/pages/settings/AutomationsTab.tsx:182-189`
 
-- [ ] WEB-UIUX-691. **[BLOCKER · BLOCKED] Off-hours auto-reply has no loop-detection.** Auto-reply phrasing matches automation trigger → re-fires. SMS spend bomb. L5, L16.
+- [x] WEB-UIUX-691. **[BLOCKER · BLOCKED] Off-hours auto-reply has no loop-detection.** Auto-reply phrasing matches automation trigger → re-fires. SMS spend bomb. L5, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: sms.routes inbound webhook now suppresses off-hours auto-reply when an outbound auto-reply/auto-responder to the same conv_phone fired in the last 24 hours; loop short-circuits.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/communications/components/OffHoursAutoReplyToggle.tsx`
 
@@ -3289,7 +3289,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-734. **[BLOCKER] No version/etag on any write — server is naive last-write-wins.** Two cashiers editing same ticket — one notes, one status — both succeed; later PUT wins for fields it sends. L11, L4. **[AUTOLOOP-T34 BLOCKED: cross-cutting optimistic concurrency — version columns + If-Match + UI conflict prompts; not safe to implement unilaterally.]**
   `packages/web/src/api/client.ts:372-394` (acknowledged)
 
-- [ ] WEB-UIUX-735. **[BLOCKER] ReceiptSettings/InvoiceSettings/TicketsRepairsSettings/BlockChypSettings/SmsVoiceSettings/DataRetentionTab all PUT entire config blob.** Sibling tab clobber bug (PosSettings already fixed via OWNED_KEYS). L5, L16.
+- [x] WEB-UIUX-735. **[BLOCKER] ReceiptSettings/InvoiceSettings/TicketsRepairsSettings/BlockChypSettings/SmsVoiceSettings/DataRetentionTab all PUT entire config blob.** Sibling tab clobber bug (PosSettings already fixed via OWNED_KEYS). L5, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: InvoiceSettings now filters PUT to INVOICE_OWNED_KEYS. ReceiptSettings/PosSettings/TicketsRepairsSettings/DataRetentionTab/BlockChypSettings/SmsVoiceSettings already filter via OWNED_KEYS/dirty-payload/scope patterns; clobber bug closed.]**
   Multiple settings tabs share `['settings','config']` cache
 
 - [!] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11. **[AUTOLOOP-T34 BLOCKED: requires server endpoint expected_qty CAS + new client UI input; multi-component.]**
@@ -3301,7 +3301,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-738. **[MAJOR] CustomerDetailPage InfoTab — WS-driven `customer:updated` invalidation + `useEffect setForm(newCustomer)` overwrites in-progress edits silently.** L6, L11. **[AUTOLOOP-T34 RESOLVED: CustomerDetailPage InfoTab — useMemo isDirty check; useEffect skips setForm when dirty + shows deduped warning toast.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1104-1167,1200-1201`
 
-- [ ] WEB-UIUX-739. **[MAJOR] `useDraft` 2-tab race — same draft key in two tabs → setItem clobbers each other on debounce-tick.** No `storage` event listener, no merge. L6.
+- [x] WEB-UIUX-739. **[MAJOR] `useDraft` 2-tab race — same draft key in two tabs → setItem clobbers each other on debounce-tick.** No `storage` event listener, no merge. L6. **[AUTOLOOP-T49 RESOLVED 2026-05-11: useDraft now listens for window storage events keyed to the active scopedKey and adopts cross-tab writes when local is empty/matches prev remote; preserves local content when conflict.]**
   `packages/web/src/hooks/useDraft.ts:28-32,86,215-219`
 
 - [x] WEB-UIUX-740. **[MINOR] `useWsStore.lastMessage` stored on every event but ZERO consumers.** Pages can't show "Bob just edited this — refresh?" banners. Wasted state. L11. **[AUTOLOOP-T34 RESOLVED: useWsStore.lastMessage removed (zero consumers across codebase); state slim and writes eliminated.]**

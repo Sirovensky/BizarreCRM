@@ -217,6 +217,23 @@ function SectionHeader({ title }: { title: string }) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
+// WEB-UIUX-735: only PUT the keys this tab owns so a sibling tab editing
+// non-invoice config in another window doesn't get clobbered by a stale
+// blob from this tab's local cache (mirrors POS_OWNED_KEYS, RECEIPT_OWNED_KEYS
+// pattern). All values rendered above with `val('invoice_*')` map here.
+const INVOICE_OWNED_KEYS = [
+  'invoice_logo',
+  'invoice_title',
+  'invoice_payment_terms',
+  'invoice_slogan',
+  'invoice_footer',
+  'invoice_terms',
+  'invoice_review_url',
+  'invoice_auto_reminder',
+  'invoice_reminder_days',
+  'invoice_reminder_template',
+];
+
 export function InvoiceSettings() {
   const queryClient = useQueryClient();
   const [config, setConfig] = useState<Record<string, string>>({});
@@ -279,7 +296,14 @@ export function InvoiceSettings() {
       <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Invoice Settings</h3>
         <button
-          onClick={() => saveMutation.mutate(config)}
+          onClick={() => {
+            // WEB-UIUX-735: filter to owned keys before PUT.
+            const owned: Record<string, string> = {};
+            for (const k of INVOICE_OWNED_KEYS) {
+              if (config[k] !== undefined) owned[k] = config[k];
+            }
+            saveMutation.mutate(owned);
+          }}
           disabled={!dirty || saveMutation.isPending}
           className={cn(
             'btn btn-md',

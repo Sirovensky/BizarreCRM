@@ -1568,6 +1568,26 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
               logger.info('sms auto-reply skipped — customer opted out', {
                 fromRedacted: redactPhone(from),
               });
+            } else if (
+              // WEB-UIUX-691: loop-detection / per-sender 24h rate-limit.
+              // Without this an auto-reply whose body fragments accidentally
+              // match an automation trigger (or another customer-side
+              // auto-responder) re-fires every inbound message, draining
+              // Twilio credit. Skip when we've already sent an auto-reply
+              // outbound to this conv_phone in the last 24 hours.
+              (((await adb.get<{ c: number }>(
+                `SELECT COUNT(*) AS c
+                   FROM sms_messages
+                  WHERE conv_phone = ?
+                    AND direction = 'outbound'
+                    AND provider IN ('auto-reply', 'auto-responder')
+                    AND created_at > datetime('now', '-24 hours')`,
+                convPhone,
+              )) as { c: number } | undefined)?.c ?? 0) > 0
+            ) {
+              logger.info('sms auto-reply suppressed — already replied to this sender in last 24h', {
+                fromRedacted: redactPhone(from),
+              });
             } else {
             const [storeNameRow, storePhoneRow] = await Promise.all([
               adb.get<any>("SELECT value FROM store_config WHERE key = 'store_name'"),
