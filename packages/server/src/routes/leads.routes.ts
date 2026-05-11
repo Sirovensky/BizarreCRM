@@ -4,7 +4,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { broadcast } from '../ws/server.js';
-import { WS_EVENTS } from '@bizarre-crm/shared';
+import { WS_EVENTS, LEGAL_LEAD_TRANSITIONS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -23,24 +23,12 @@ const router = Router();
 
 /**
  * Transition map keyed by the SOURCE lead status.
- * Value is an array of allowed DESTINATION statuses.
- *
- * Only standard status names appear as keys; unrecognised source statuses
- * (custom tenant states) bypass the guard entirely (permissive fall-through).
+ * Now lives in `@bizarre-crm/shared/constants/statuses` (WEB-UIUX-1343) so
+ * the client status-pill picker can hide dead-end transitions instead of
+ * surfacing them and silently rolling back on a server reject. Only
+ * standard status names appear as keys; unrecognised sources (custom
+ * tenant states) bypass the guard entirely (permissive fall-through).
  */
-const LEGAL_LEAD_TRANSITIONS: Record<string, readonly string[]> = {
-  'new':       ['contacted', 'scheduled', 'qualified', 'lost'],
-  'contacted': ['scheduled', 'qualified', 'proposal', 'lost'],
-  'scheduled': ['contacted', 'qualified', 'proposal', 'lost'],
-  'qualified': ['proposal', 'contacted', 'scheduled', 'lost'],
-  'proposal':  ['converted', 'qualified', 'lost'],
-  'lost':      ['new', 'contacted'],      // allow re-opening a lost lead
-  // WEB-W2-036: 'converted' was previously terminal ([]).
-  // Allow re-opening a converted lead back to 'new' or 'contacted' so admins
-  // can recover from accidental conversions (e.g. ticket deleted, wrong lead).
-  // Intentionally does NOT allow 'converted' → 'converted' (no-op guard).
-  'converted': ['new', 'contacted'],
-};
 
 /**
  * Assert that transitioning a lead from `from` to `to` is legal.

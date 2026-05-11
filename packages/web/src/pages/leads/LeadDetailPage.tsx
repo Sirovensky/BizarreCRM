@@ -15,6 +15,7 @@ import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
+import { LEGAL_LEAD_TRANSITIONS } from '@bizarre-crm/shared';
 
 const LEAD_STATUSES = [
   { value: 'new', label: 'New', color: '#3b82f6' },
@@ -386,28 +387,41 @@ export function LeadDetailPage() {
               </h1>
               {editingStatus ? (
                 <div className="flex items-center gap-1 flex-wrap">
-                  {LEAD_STATUSES.map((s) => (
-                    <button
-                      key={s.value}
-                      onClick={() => {
-                        if (s.value === 'lost' && lead.status !== 'lost') {
-                          setShowLostModal(true);
-                          setEditingStatus(false);
-                        } else {
-                          scheduleStatusChange(s.value, lead.status);
-                        }
-                      }}
-                      className={cn(
-                        'rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition-colors',
-                        lead.status === s.value
-                          ? 'ring-2 ring-offset-1 ring-primary-500'
-                          : 'hover:opacity-80',
-                      )}
-                      style={{ backgroundColor: `${s.color}18`, color: s.color }}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
+                  {LEAD_STATUSES
+                    // WEB-UIUX-1343: hide pills that would dead-end on a
+                    // server-side LEGAL_LEAD_TRANSITIONS reject. Unknown
+                    // source statuses (custom tenant states) fall through
+                    // permissively — same contract the server uses — so
+                    // all pills still render in that case. The current
+                    // status itself stays visible so the cashier always
+                    // sees their starting point.
+                    .filter((s) => {
+                      const allowed = LEGAL_LEAD_TRANSITIONS[lead.status];
+                      if (!allowed) return true;
+                      return s.value === lead.status || allowed.includes(s.value);
+                    })
+                    .map((s) => (
+                      <button
+                        key={s.value}
+                        onClick={() => {
+                          if (s.value === 'lost' && lead.status !== 'lost') {
+                            setShowLostModal(true);
+                            setEditingStatus(false);
+                          } else {
+                            scheduleStatusChange(s.value, lead.status);
+                          }
+                        }}
+                        className={cn(
+                          'rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition-colors',
+                          lead.status === s.value
+                            ? 'ring-2 ring-offset-1 ring-primary-500'
+                            : 'hover:opacity-80',
+                        )}
+                        style={{ backgroundColor: `${s.color}18`, color: s.color }}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
                   <button onClick={() => setEditingStatus(false)} aria-label="Cancel status edit" className="p-0.5 text-surface-400"><X className="h-3.5 w-3.5" /></button>
                 </div>
               ) : (

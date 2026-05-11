@@ -62,6 +62,25 @@ export const DEFAULT_TICKET_STATUSES = [
 ] as const;
 
 export const LEAD_STATUSES = ['new', 'contacted', 'scheduled', 'converted', 'lost'] as const;
+
+/**
+ * WEB-UIUX-1343: lead status transition table — keyed by SOURCE status, value
+ * is the set of legal DESTINATION statuses. Shared so the server validator
+ * and the client status-pill picker never drift; the picker can hide pills
+ * that would dead-end on a server reject. Custom tenant statuses (anything
+ * not in this map) fall through permissively on the server, and the client
+ * still renders every pill for those unknown sources.
+ */
+export const LEGAL_LEAD_TRANSITIONS: Readonly<Record<string, readonly string[]>> = {
+  new:       ['contacted', 'scheduled', 'qualified', 'lost'],
+  contacted: ['scheduled', 'qualified', 'proposal', 'lost'],
+  scheduled: ['contacted', 'qualified', 'proposal', 'lost'],
+  qualified: ['proposal', 'contacted', 'scheduled', 'lost'],
+  proposal:  ['converted', 'qualified', 'lost'],
+  lost:      ['new', 'contacted'],
+  converted: ['new', 'contacted'],
+} as const;
+
 export const INVOICE_STATUSES = ['unpaid', 'partial', 'paid', 'refunded', 'void'] as const;
 export const ESTIMATE_STATUSES = ['draft', 'sent', 'approved', 'rejected', 'converted'] as const;
 export const PO_STATUSES = ['draft', 'sent', 'partial', 'received', 'cancelled'] as const;
