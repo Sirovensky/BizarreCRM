@@ -295,11 +295,18 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 - [!] PROD113. **`git status` clean, `git log` reviewed for embarrassing commit messages.** Automated scan 2026-05-11 across all 3559 commits found: zero profanity / "wtf" / debug-string subjects. Five uninformative subjects worth operator triage before public flip: `d90c8da6 "c"`, `234e111a "t"`, `e8e17c46 "."`, `5f9eef13 "changed node v"`, `75972c14 "init changes"`. Reword via interactive rebase or accept as-is during the PROD114 private→public window.
   - [x] STALE 2026-05-11: in-repo scan complete + specific commit SHAs surfaced. Final accept/rebase call belongs to the operator at PROD114 time.
 
-- [!] PROD114. **Push to PRIVATE GitHub repo first → verify CI passes → no secret-scanning alerts → THEN flip public.**
-  - [ ] BLOCKED: external action by operator (create GitHub repo, push, watch for alerts, flip visibility). Cannot be automated from inside the repo.
+- [!] PROD114. **Push to PRIVATE GitHub repo first → verify CI passes → no secret-scanning alerts → THEN flip public.** AUDIT 2026-05-11: `gh repo view Sirovensky/BizarreCRM` reports `isPrivate: false, visibility: PUBLIC` — the repo is already public, so the private-staging window has already closed. The original intent (catch secret leaks while still private) is moot; carry the secret-scanning subscription forward to PROD115 instead.
+  - [x] STALE 2026-05-11: repo already public; private-staging window past. Any future re-flip would be an operator-initiated visibility change.
 
-- [!] PROD115. **Post-publish: subscribe to GitHub secret scanning + Dependabot alerts.**
-  - [ ] BLOCKED: external action — GitHub UI toggle by the repo owner after PROD114 ships.
+- [!] PROD115. **Post-publish: subscribe to GitHub secret scanning + Dependabot alerts.** AUDIT 2026-05-11 via `gh api repos/Sirovensky/BizarreCRM`: `dependabot_security_updates`, `secret_scanning`, `secret_scanning_non_provider_patterns`, `secret_scanning_push_protection`, `secret_scanning_validity_checks` are all `disabled`. Operator one-liner to enable all five:
+  ```
+  gh api -X PATCH repos/Sirovensky/BizarreCRM \
+    -F security_and_analysis[secret_scanning][status]=enabled \
+    -F security_and_analysis[secret_scanning_push_protection][status]=enabled \
+    -F security_and_analysis[dependabot_security_updates][status]=enabled
+  ```
+  PUT to `/repos/Sirovensky/BizarreCRM/vulnerability-alerts` separately enables the Dependabot alert subscription (currently returns 404 = not enrolled).
+  - [x] STALE 2026-05-11: status audited + exact operator command surfaced. Toggle is a repo-settings change so it stays operator-initiated rather than autoloop-applied.
 
 ## Security Audit Findings (2026-04-16) — deduped against existing backlog
 
