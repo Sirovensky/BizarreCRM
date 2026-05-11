@@ -3165,11 +3165,11 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/settings/AuditLogsTab.tsx:60-70,161`
 
-- [!] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16. **STATUS: BLOCKED — already fixed: Sidebar.tsx auth-cleared listener sweeps recent_views + recent_views:* keys**
+- [x] WEB-UIUX-907. **Already fixed (STALE 2026-05-11).** Sidebar.tsx auth-cleared listener sweeps both the legacy unscoped `recent_views` key and every `recent_views:u*` per-user namespace key, closing the kiosk-handoff cross-user leak.
   `packages/web/src/stores/authStore.ts:185-200`
 
 
-- [!] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16. **STATUS: BLOCKED — already fixed: PinModal lockout uses localStorage since SCAN-1168/WEB-UIUX-752**
+- [x] WEB-UIUX-909. **Already fixed (STALE 2026-05-11).** PinModal lockout persists in `localStorage` (key `bizarre:pin-modal-lockout`) since SCAN-1168 / WEB-UIUX-752 — shared across every tab on the same origin; reload + second-tab evasion both closed.
   `packages/web/src/components/shared/PinModal.tsx:23-55`
 
 
@@ -3257,7 +3257,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:132-139`
   <!-- meta: fix=portal-Approve-must-route-through-signed-token-flow-OR-capture-signer-name-+-IP-+-UA-server-side -->
 
-- [!] WEB-UIUX-948. **[BLOCKER] No web UI for `POST /api/v1/estimates/:id/sign-url`.** `estimateSign.routes.ts:233-309` issues admin-side e-sign token + URL (`buildPublicSignUrl`) so staff can hand customer a secure copy-link or QR for in-shop signature pad. Zero callers in `packages/web/src` (grep `sign-url` → only authedRouter declaration in server). Desktop staff can't hand customer the e-sign URL — only mobile clients drive it. EstimateDetailPage has Send (SMS) but nothing for sign-link generation. L8, L3. **STATUS: BLOCKED — needs new Generate Sign Link modal + QR render + TTL picker + clipboard wiring; multi-component, defer to estimates sprint**
+- [x] WEB-UIUX-948. **Sign-link generation UI shipped (STALE 2026-05-11).** `estimateApi.createSignUrl(id, { ttl_minutes? })` is wired at `packages/web/src/api/endpoints.ts:1158` against `POST /api/v1/estimates/:id/sign-url`. `EstimateDetailPage.tsx:472-484` mutation calls it and opens `EstimateSignDialog` (`signSession` state) which renders the URL + QR + clipboard handoff for in-shop signature. Audit claim of zero callers is stale.
   `packages/server/src/routes/estimateSign.routes.ts:233-309`
   <!-- meta: fix=add-Generate-Sign-Link-button-on-EstimateDetailPage+modal-with-copy+QR+TTL-picker -->
 
@@ -3279,7 +3279,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 
   `packages/server/src/routes/estimates.routes.ts:984`
 
-- [!] WEB-UIUX-955. **[MAJOR] `send` flips `status='sent'` BEFORE SMS dispatch; SMS failure surfaces toast but status stays `'sent'`.** `estimates.routes.ts:949-955` UPDATEs status='sent' first, then SMS attempt at `:980-1003` may fail. Web treats `data.sent === false` as error toast (`EstimateDetailPage:76-77`) but the estimate's status persists as 'sent' — operator/customer/audit chain says "sent" even though nothing left the building. L7, L11. **STATUS: BLOCKED — server estimates.routes.ts must defer status update until SMS dispatch confirmed; backend change, defer to estimates sprint**
+- [x] WEB-UIUX-955. **Estimate-send status now conditional on SMS confirmation 2026-05-11.** `estimates.routes.ts` POST /:id/send refactored: SMS attempt runs FIRST, then a single UPDATE writes the new approval-token hash + sent_at unconditionally, but only flips `status='sent'` when `smsAttempted ? smsSent : true`. When SMS was attempted and failed, status stays at its prior value (audit + Detail page no longer claim "sent" when nothing left the building). Response carries the persisted `status` so the client can sync from server truth, and the warning copy directs the operator to retry Send or hand-deliver the token URL.
   `packages/server/src/routes/estimates.routes.ts:949-1003`
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:73-83`
 

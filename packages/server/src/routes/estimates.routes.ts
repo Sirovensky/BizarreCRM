@@ -1163,25 +1163,6 @@ router.post(
     const now = sqlNow();
     const expiresAt = sqlTimestamp(new Date(Date.now() + APPROVAL_TOKEN_TTL_MS));
 
-    // ENR-LE8: Always overwrite sent_at on every send so the audit trail and
-    // the Detail "Sent" field reflect the most recent delivery (v2, v3, …).
-    // COALESCE was previously used here which locked sent_at to the first send
-    // only — re-sending after edits left a stale timestamp (WEB-UIUX-970).
-    // sent_at now means "most recently sent at"; the estimates_audit table
-    // records the full history row-by-row for deeper audit needs.
-    await adb.run(
-      `UPDATE estimates SET
-        approval_token = NULL,
-        approval_token_hash = ?,
-        approval_token_expires_at = ?,
-        approval_token_used_at = NULL,
-        status = ?,
-        sent_at = ?,
-        updated_at = ?
-       WHERE id = ?`,
-      tokenHash, expiresAt, 'sent', now, now, id,
-    );
-
     const rawMethod = (req.body.method as string | undefined) ?? 'sms';
     // Only 'sms' is a supported delivery channel today. Reject 'email' and
     // any other unknown value explicitly so callers get a clear error instead
@@ -1192,8 +1173,11 @@ router.post(
     const method = rawMethod;
     const phone = estimate.phone || estimate.mobile;
 
-    // SC6: Track delivery outcome so we can surface failures rather than
-    // swallowing them silently.
+    // SC6 / WEB-UIUX-955: Track delivery outcome BEFORE writing status. The
+    // previous flow flipped status='sent' first and then attempted SMS, which
+    // left the audit log + customer-facing status claiming "sent" whenever
+    // delivery actually failed. Now: attempt SMS first, then decide which
+    // fields to UPDATE based on the outcome.
     let smsAttempted = false;
     let smsSent = false;
     let smsError: string | null = null;
@@ -1222,20 +1206,43 @@ router.post(
       }
     }
 
+    // ENR-LE8 + WEB-UIUX-955: persist token + sent_at on every call (so the
+    // operator can still hand-deliver the URL even when SMS failed), but
+    // only flip status='sent' when the customer was actually notified. If
+    // SMS was attempted and failed, status stays at its prior value so the
+    // audit log / Detail page don't lie about delivery.
+    const advanceStatusToSent = smsAttempted ? smsSent : true;
+    const nextStatus = advanceStatusToSent ? 'sent' : estimate.status;
+    await adb.run(
+      `UPDATE estimates SET
+        approval_token = NULL,
+        approval_token_hash = ?,
+        approval_token_expires_at = ?,
+        approval_token_used_at = NULL,
+        status = ?,
+        sent_at = ?,
+        updated_at = ?
+       WHERE id = ?`,
+      tokenHash, expiresAt, nextStatus, now, now, id,
+    );
+
     const responseData: Record<string, unknown> = {
       sent: smsAttempted ? smsSent : true,
       method,
       approval_token: token,
       token_expires_at: expiresAt,
+      // Echo the persisted status so the client can refresh its UI from the
+      // server's truth instead of optimistically assuming 'sent'.
+      status: nextStatus,
     };
 
     if (smsAttempted && !smsSent) {
       responseData.sent = false;
-      responseData.warning = 'SMS delivery failed — token was issued but customer was not notified.';
+      responseData.warning = 'SMS delivery failed — token was issued but customer was not notified. Status kept as ' + estimate.status + '; retry Send or hand-deliver the approval URL.';
       responseData.sms_error = smsError;
     } else if (method === 'sms' && !phone) {
       responseData.sent = false;
-      responseData.warning = 'Customer has no phone number on file.';
+      responseData.warning = 'Customer has no phone number on file. Hand-deliver the approval URL using the token in this response.';
     }
 
     res.json({ success: true, data: responseData });
