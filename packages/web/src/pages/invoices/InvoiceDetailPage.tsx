@@ -324,12 +324,29 @@ export function InvoiceDetailPage() {
       // WEB-UIUX-731: parse server-side field errors when available.
       // Server may return { fields: { amount?: string, reason?: string, note?: string } }
       const serverFields: Record<string, string> | undefined = e?.response?.data?.fields;
+      // WEB-UIUX-1389: when the server replies with the "already credited
+      // X of Y" cap-exceeded error, extract the numbers and surface a
+      // "Max remaining: $Z" inline hint + clamp the input so the operator
+      // doesn't have to mentally subtract.
+      let parsedMaxRemaining: number | null = null;
+      const capMatch = /already credited\s*\$?([\d.]+)\s*of\s*\$?([\d.]+)/i.exec(serverMsg);
+      if (capMatch) {
+        const credited = parseFloat(capMatch[1]);
+        const total = parseFloat(capMatch[2]);
+        if (Number.isFinite(credited) && Number.isFinite(total)) {
+          parsedMaxRemaining = Math.max(0, +(total - credited).toFixed(2));
+        }
+      }
       if (serverFields && typeof serverFields === 'object' && Object.keys(serverFields).length > 0) {
         setCreditNoteError(serverFields as { amount?: string; reason?: string; note?: string });
+      } else if (parsedMaxRemaining !== null) {
+        setCreditNoteError({ amount: `Server cap: max remaining ${formatCurrency(parsedMaxRemaining)} (prior credits already applied).` });
+        // Clamp the field to the cap so the next submit can succeed.
+        setCreditNoteForm((f) => ({ ...f, amount: parsedMaxRemaining!.toFixed(2) }));
       } else {
         setCreditNoteError({ _general: serverMsg });
       }
-      toast.error(serverMsg);
+      toast.error(parsedMaxRemaining !== null ? `Cap exceeded — max remaining ${formatCurrency(parsedMaxRemaining)}. Amount field has been adjusted.` : serverMsg);
     },
   });
 

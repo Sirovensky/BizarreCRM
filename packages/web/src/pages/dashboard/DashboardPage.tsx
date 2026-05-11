@@ -2399,7 +2399,10 @@ function AdminOrManagerDashboard() {
               // WEB-UIUX-929: clarify Net Profit math + Refunds sign so the
               // operator knows whether refunds are already subtracted.
               { label: 'Net Profit', value: kpis?.net_profit ?? 0, tooltip: 'Sales − COGS − discounts − refunds in the selected period', href: '/reports' },
-              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: 'Sum of credit-notes + returns in the selected period (positive value; already subtracted from Net Profit)', href: undefined },
+              // WEB-UIUX-1383: drill into the Credit Notes filter on the
+              // invoice list so an operator hunting "where did $X of refunds
+              // come from?" can see the underlying CN rows.
+              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: 'Sum of credit-notes + returns in the selected period (positive value; already subtracted from Net Profit). Click to see the underlying credit notes.', href: '/invoices?status=credit_note' },
               { label: 'Expenses', value: kpis?.expenses ?? 0, tooltip: 'Business expenses in period', href: '/expenses' },
               { label: 'Receivables', value: kpis?.receivables ?? 0, tooltip: 'Outstanding unpaid invoice amounts', href: '/invoices?status=unpaid' },
             ];

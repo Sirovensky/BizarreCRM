@@ -5882,7 +5882,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/App.tsx (no /refunds route)`
   <!-- meta: fix=add-refundsApi-(list+create+approve+decline+credits)+create-RefundsListPage-with-pending-approve-queue+create-NewRefundModal-on-InvoiceDetail+wire-Refunds-into-sidebar-under-Billing+expose-Refund-button-on-paid-invoices -->
 
-- [ ] WEB-UIUX-1383. **[BLOCKER] Dashboard "Refunds" KPI is dead clickthrough — `href: undefined` (`DashboardPage.tsx:2120`) while every sibling KPI links to a relevant page (Sales→/reports, Discounts→/invoices, COGS→/inventory, Receivables→/invoices?status=unpaid). Refunds drilldown promise is implicit in card layout but click does nothing. Operator hunting for "where did $1,247 of refunds come from?" gets a non-interactive number.** L1, L4, L7 feedback meaningfulness.
+- [x] WEB-UIUX-1383. **[BLOCKER] Dashboard "Refunds" KPI is dead clickthrough — `href: undefined` (`DashboardPage.tsx:2120`) while every sibling KPI links to a relevant page (Sales→/reports, Discounts→/invoices, COGS→/inventory, Receivables→/invoices?status=unpaid). Refunds drilldown promise is implicit in card layout but click does nothing. Operator hunting for "where did $1,247 of refunds come from?" gets a non-interactive number.** L1, L4, L7 feedback meaningfulness. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Refunds KPI card now hrefs to /invoices?status=credit_note so clicking the number drills into the underlying CN rows.]**
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=after-WEB-UIUX-1382-create-/refunds-page+set-href:'/refunds'+OR-/reports?metric=refunds-with-anchor -->
 
@@ -5892,7 +5892,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Blocker — POS return path unreachable
 
-- [ ] WEB-UIUX-1385. **[BLOCKER] `posApi.return` (`endpoints.ts:753`) POSTs `/pos/return` with idempotency key — never called from any UI. Cashier with a returning customer holding receipt #12345 has no "Process Return" path through POS. UnifiedPosPage has no return tab/mode; CashRegisterPage has only cash in/out (drawer events, not sales-returns). The endpoint is documented as "Cash refund on an existing sale" but is dead.** L4 flow, L6 discoverability.
+- [!] WEB-UIUX-1385. **[BLOCKER] `posApi.return` (`endpoints.ts:753`) POSTs `/pos/return` with idempotency key — never called from any UI. Cashier with a returning customer holding receipt #12345 has no "Process Return" path through POS. UnifiedPosPage has no return tab/mode; CashRegisterPage has only cash in/out (drawer events, not sales-returns). The endpoint is documented as "Cash refund on an existing sale" but is dead.** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on /pos return-flow UI (UIUX-1020). posApi.return is ready server-side.]**
   `packages/web/src/api/endpoints.ts:749-761`
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx`
   <!-- meta: fix=add-Returns-tab-to-UnifiedPosPage+receipt-lookup-by-order_id-or-scan+select-line-items-to-return+method-picker-(cash|card|store-credit)+POST-/pos/return-with-idempotency -->
@@ -5904,7 +5904,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/invoices.routes.ts:1186,1197-1201`
   <!-- meta: fix=decide-policy:-(a)-write-off-flow-needs-server+client=invoice.total-prior_credits+OR-(b)-document-credit-note-as-refund-only-and-keep-amount_paid-cap+server-aligns-to-amount_paid -->
 
-- [ ] WEB-UIUX-1387. **[MAJOR] No credit-note history shown on InvoiceDetail. Server creates a *separate negative invoice* row with `credit_note_for=invoiceId` (`invoices.routes.ts:1212-1230`) — these never surface on the original invoice's detail page. Operator returning to invoice INV-001 cannot see "Credit note CN-007 issued for $50 on 2026-04-12 by Jane (reason: defective)". They must search invoice list and discover the negative row. Payment Timeline (`InvoiceDetailPage.tsx:475-548`) shows payments only.** L7 feedback meaningfulness, L9 empty/loading/error.
+- [!] WEB-UIUX-1387. **[MAJOR] No credit-note history shown on InvoiceDetail. Server creates a *separate negative invoice* row with `credit_note_for=invoiceId` (`invoices.routes.ts:1212-1230`) — these never surface on the original invoice's detail page. Operator returning to invoice INV-001 cannot see "Credit note CN-007 issued for $50 on 2026-04-12 by Jane (reason: defective)". They must search invoice list and discover the negative row. Payment Timeline (`InvoiceDetailPage.tsx:475-548`) shows payments only.** L7 feedback meaningfulness, L9 empty/loading/error. **[AUTOLOOP-T49 STALE 2026-05-11: InvoiceDetailPage Payment Timeline now interleaves credit-note rows (UIUX-1307) AND a dedicated "Credit Notes Issued" panel renders below with order_id + date + reason + amount.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:475-548`
   <!-- meta: fix=GET-/invoices/:id-payload-include-credit_notes:[{order_id,amount,reason,created_by,created_at}]+render-as-Credit-Notes-section-or-merge-into-timeline-with-distinct-icon -->
 
@@ -5912,7 +5912,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-802 vs 807-817`
   <!-- meta: fix=switch-creditNoteMutation-to-ConfirmDialog-with-requireTyping=true+confirmText=invoice.order_id+danger=true -->
 
-- [ ] WEB-UIUX-1389. **[MAJOR] Credit-note error toasts dump server message verbatim — `e?.response?.data?.message || 'Failed to create credit note'` (`InvoiceDetailPage.tsx:176`). Server says "Credit note total would exceed invoice total (already credited 50.00 of 200.00)" — useful number but UI does not extract `priorCredits` to update the cap input or show a "Max remaining: $150" hint. Operator must read the toast, do mental math, retry.** L7 feedback meaningfulness, L4.
+- [x] WEB-UIUX-1389. **[MAJOR] Credit-note error toasts dump server message verbatim — `e?.response?.data?.message || 'Failed to create credit note'` (`InvoiceDetailPage.tsx:176`). Server says "Credit note total would exceed invoice total (already credited 50.00 of 200.00)" — useful number but UI does not extract `priorCredits` to update the cap input or show a "Max remaining: $150" hint. Operator must read the toast, do mental math, retry.** L7 feedback meaningfulness, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-11: credit-note onError parses server "already credited X of Y" cap-exceeded message, computes max-remaining, sets the field error to "Server cap: max remaining $Z (prior credits already applied)", and auto-clamps the amount input so the next submit can succeed.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:176`
   `packages/server/src/routes/invoices.routes.ts:1192-1201`
   <!-- meta: fix=server-returns-{message,already_credited,max_remaining}-structured+UI-special-cases-and-pre-fills-input-with-max_remaining+banner-"Already-credited:-$50.-Remaining:-$150" -->
@@ -5925,7 +5925,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-177, 594-733`
   <!-- meta: fix=onSuccess-show-prompt-modal-(reuse-receipt-prompt-pattern)+wire-notificationApi.sendCreditNoteReceipt+pre-fill-with-customer-email -->
 
-- [ ] WEB-UIUX-1392. **[MAJOR] Credit-note creates ledger entry but never adjusts customer's `store_credits` row when a refund-to-credit method is desired. Server only credits `store_credits` for *overflow* (credit > remaining due, `invoices.routes.ts:1259-1283`). Operator who wants "$50 credit note → put $50 on customer's store credit" with the invoice fully unpaid has no way to do this from credit-note flow. Refund route handles it (`refunds.routes.ts:383-396`) but refund route has no UI (WEB-UIUX-1382).** L4 flow, L6 discoverability.
+- [!] WEB-UIUX-1392. **[MAJOR] Credit-note creates ledger entry but never adjusts customer's `store_credits` row when a refund-to-credit method is desired. Server only credits `store_credits` for *overflow* (credit > remaining due, `invoices.routes.ts:1259-1283`). Operator who wants "$50 credit note → put $50 on customer's store credit" with the invoice fully unpaid has no way to do this from credit-note flow. Refund route handles it (`refunds.routes.ts:383-396`) but refund route has no UI (WEB-UIUX-1382).** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on /refunds UI (UIUX-1018/1207). refunds.routes already credits store_credits for the "refund-to-credit" path.]**
   `packages/server/src/routes/invoices.routes.ts:1259-1283`
   `packages/server/src/routes/refunds.routes.ts:383-396`
   <!-- meta: fix=add-method-picker-to-credit-note-modal-(refund-cash|refund-card|store-credit|ledger-only)+route-to-refund-route-when-money-actually-leaves -->
@@ -5936,7 +5936,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:253-412`
   <!-- meta: fix=on-refund-approve-set-invoice.status='refunded'-when-cumulative-refunds>=amount_paid+OR-remove-the-status-colour-decoration -->
 
-- [ ] WEB-UIUX-1394. **[MAJOR] No way to view, approve, or decline a pending refund. `PATCH /refunds/:id/approve` (admin-only) requires a queue/list to action. With no list page, an admin cannot complete the workflow even on existing pending rows seeded by tests/imports. `refunds.create` permission grants creation but not the path to push it through.** L4 flow, L5 hierarchy.
+- [!] WEB-UIUX-1394. **[MAJOR] No way to view, approve, or decline a pending refund. `PATCH /refunds/:id/approve` (admin-only) requires a queue/list to action. With no list page, an admin cannot complete the workflow even on existing pending rows seeded by tests/imports. `refunds.create` permission grants creation but not the path to push it through.** L4 flow, L5 hierarchy. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on /refunds list page + admin approval queue (UIUX-1018/1207). Server PATCH approve/decline ready.]**
   `packages/server/src/routes/refunds.routes.ts:253-412`
   <!-- meta: fix=ship-RefundsListPage-with-status-filter-(pending|completed|declined)+inline-Approve+Decline-buttons-for-pending-rows-(admin-only)+confirm-with-amount+reason+invoice-link -->
 
