@@ -70,6 +70,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   // WEB-UIUX-1124: Countdown timer for confirmation expiry
   const [previewedAt, setPreviewedAt] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<number>(300); // 5 minutes in seconds
+  // WEB-UIUX-1513: typed-confirm gate when preview_count >= 100.
+  const [typedConfirm, setTypedConfirm] = useState('');
+  // Reset typed confirm whenever the preview resets so a stale count
+  // can't unlock Send after segment/template change.
+  useEffect(() => { setTypedConfirm(''); }, [preview?.preview_count]);
 
   const { data: tplData } = useQuery({
     queryKey: ['sms-templates'],
@@ -134,6 +139,17 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
         const mins = Math.floor(seconds / 60);
         const human = mins >= 1 ? `${mins} min` : `${seconds}s`;
         toast.error(`Bulk send rate-limited — next bulk available in ${human}.`, { duration: 8000 });
+        return;
+      }
+      // WEB-UIUX-1511: segment-drift 409 ("Segment changed since preview").
+      // Clear the stale preview + auto-issue a fresh preview so the admin
+      // sees the new count and can re-confirm. Avoid the infinite-loop
+      // where Send → 409 → toast → Send → 409 trapped the previous flow.
+      if (status === 409 && /segment changed/i.test(raw)) {
+        toast.error('Audience changed since preview — refreshing recipient count.', { duration: 6000 });
+        setPreview(null);
+        setPreviewedAt(null);
+        if (templateId) previewMut.mutate();
         return;
       }
       toast.error(raw || 'Bulk send failed');
@@ -350,19 +366,56 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               >
                 {previewMut.isPending ? 'Refreshing…' : 'Re-Preview'}
               </button>
-              <button
-                onClick={() => sendMut.mutate()}
-                disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
-                title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
-                // WEB-UIUX-1116: drop red (destructive) — sending an opted-in
-                // marketing reminder is additive, not destructive. Primary
-                // tone matches Stripe/Klaviyo confident-send buttons; the
-                // explicit "Send to N" label already carries blast-radius.
-                className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-              >
-                <Send className="h-3.5 w-3.5" />
-                {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
-              </button>
+              {/* WEB-UIUX-1513: typed-confirm above threshold so single-
+                  click doesn't blast 12k recipients. Type the recipient
+                  count to enable the Send button. */}
+              {preview.preview_count >= 100 ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder={`Type ${preview.preview_count}`}
+                    value={typedConfirm}
+                    onChange={(e) => setTypedConfirm(e.target.value.replace(/[^0-9]/g, ''))}
+                    aria-label={`Type ${preview.preview_count} to confirm`}
+                    className="w-32 rounded border border-surface-300 bg-white px-2 py-1 text-xs dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                  />
+                  <button
+                    onClick={() => sendMut.mutate()}
+                    disabled={
+                      sendMut.isPending
+                      || preview.preview_count === 0
+                      || countdown === 0
+                      || typedConfirm !== String(preview.preview_count)
+                    }
+                    title={
+                      countdown === 0
+                        ? 'Confirmation expired — please re-preview'
+                        : typedConfirm !== String(preview.preview_count)
+                          ? `Type ${preview.preview_count} to confirm`
+                          : undefined
+                    }
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => sendMut.mutate()}
+                  disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
+                  title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
+                  // WEB-UIUX-1116: drop red (destructive) — sending an opted-in
+                  // marketing reminder is additive, not destructive. Primary
+                  // tone matches Stripe/Klaviyo confident-send buttons; the
+                  // explicit "Send to N" label already carries blast-radius.
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
+                </button>
+              )}
             </>
           )}
         </div>
