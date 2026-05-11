@@ -7,6 +7,7 @@ import { customerApi, geocodeApi, customFieldApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { BackButton } from '@/components/shared/BackButton';
+import { useDraft } from '@/hooks/useDraft';
 import type { CreateCustomerInput } from '@bizarre-crm/shared';
 
 interface FormState {
@@ -64,7 +65,25 @@ export function CustomerCreatePage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<FormState>(initialForm);
+  // WEB-UIUX-842: persist the in-progress form to useDraft so a server 500 or
+  // accidental browser-back doesn't wipe a 22-field entry. JSON-serialize the
+  // structured form into the single-string draft slot, restore on mount, and
+  // clear after successful submit. Per-user key prefix lives in useDraft.
+  const [draftJson, setDraftJson, clearDraft] = useDraft('customer-create');
+  const [form, setForm] = useState<FormState>(() => {
+    if (draftJson) {
+      try {
+        const parsed = JSON.parse(draftJson) as Partial<FormState>;
+        return { ...initialForm, ...parsed };
+      } catch { /* malformed draft — fall through */ }
+    }
+    return initialForm;
+  });
+  useEffect(() => {
+    // Skip wiring while the form is still initial — no need to persist empty.
+    if (form === initialForm) return;
+    setDraftJson(JSON.stringify(form));
+  }, [form, setDraftJson]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [duplicates, setDuplicates] = useState<any[]>([]);
   const [geocodeError, setGeocodeError] = useState('');
@@ -169,6 +188,8 @@ export function CustomerCreatePage() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      // WEB-UIUX-842: clear the saved draft once the record exists server-side.
+      clearDraft();
       if (customFieldsSaved) toast.success('Customer created');
       navigate(`/customers/${customer?.id}`);
     },

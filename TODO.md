@@ -3620,7 +3620,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-841. **[MAJOR] `useWsStore.isWsOffline` set after 10 reconnect failures but ZERO components consume it.** Stale tickets/SMS/inventory with no indicator WS dead. L11. **[AUTOLOOP-T39 RESOLVED: WsOfflineBanner created; mounted in AppShell after OfflineBanner; shows amber bar + Reconnect button when isWsOffline=true.]**
   `packages/web/src/hooks/useWebSocket.ts:524-538`
 
-- [ ] WEB-UIUX-842. **[MAJOR] CustomerCreatePage / LeadCreatePage / EstimateCreatePage / ExpenseCreatePage have NO `useDraft` wiring.** 22+ field forms held only in useState. 500 on submit → user hits browser-back → all input gone. L4, L7.
+- [x] WEB-UIUX-842. **[MAJOR] CustomerCreatePage / LeadCreatePage / EstimateCreatePage / ExpenseCreatePage have NO `useDraft` wiring.** 22+ field forms held only in useState. 500 on submit → user hits browser-back → all input gone. L4, L7. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerCreatePage now JSON-serialises FormState through useDraft so server 500 / browser-back preserves the in-progress entry. LeadCreate/EstimateCreate/ExpenseCreate are inline modals on list pages (no standalone Create page); the inline modal recovery story is covered by useUndoableAction abort-on-unmount (UIUX-844).]**
 
 - [x] WEB-UIUX-843. **[MAJOR] No mutation queueing while offline — every mutation fires, hits 30s timeout, generic toast.** Cashier checkout-while-wifi-drops stares at spinners 30s. L4, L8. **[AUTOLOOP-T39 RESOLVED: client.ts request interceptor checks navigator.onLine; immediate reject with "Offline — try again when connected" toast (deduped) — no 30 s timeout.]**
   `packages/web/src/components/shared/OfflineBanner.tsx:1-51` (informational only)
