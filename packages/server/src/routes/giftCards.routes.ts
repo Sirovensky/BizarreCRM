@@ -500,7 +500,20 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
 router.get('/:id', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const cardId = validateId(req.params.id, 'id');
-  const card = await adb.get<GiftCardRow>('SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0', cardId);
+  // WEB-UIUX-1452: join customers so the detail page can render a click-
+  // through link to the linked customer (list view already joins).
+  const card = await adb.get<GiftCardRow & {
+    customer_first_name?: string | null;
+    customer_last_name?: string | null;
+  }>(
+    `SELECT gc.*,
+            c.first_name AS customer_first_name,
+            c.last_name AS customer_last_name
+       FROM gift_cards gc
+       LEFT JOIN customers c ON c.id = gc.customer_id
+      WHERE gc.id = ? AND gc.is_deleted = 0`,
+    cardId,
+  );
   if (!card) throw new AppError('Gift card not found', 404);
   const transactions = await adb.all(
     'SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC',

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -37,6 +37,10 @@ interface GiftCardDetail {
   notes: string | null;
   created_at: string;
   transactions: Transaction[];
+  // WEB-UIUX-1452: server now joins customers on the detail endpoint.
+  customer_id?: number | null;
+  customer_first_name?: string | null;
+  customer_last_name?: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -87,10 +91,14 @@ const RELOAD_CONFIRM_THRESHOLD = 500;
 
 interface ReloadModalProps {
   cardId: number;
+  // WEB-UIUX-1443: pass the current balance so the modal can render a
+  // "Current: $X • New: $X+amount" preview without forcing the cashier to
+  // close + re-read the tile behind the modal.
+  currentBalance: number;
   onClose: () => void;
 }
 
-function ReloadModal({ cardId, onClose }: ReloadModalProps) {
+function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
   const [amountError, setAmountError] = useState<string | null>(null);
@@ -178,7 +186,23 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
           aria-describedby="gift-card-reload-help"
           className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         />
-        <p id="gift-card-reload-help" className="mt-2 mb-5 text-xs text-surface-500 dark:text-surface-400">
+        {/* WEB-UIUX-1443: live balance preview so the cashier sees what the
+            card will be at after the reload without dismissing the modal. */}
+        <div className="mt-2 mb-3 flex items-baseline justify-between rounded-lg bg-surface-50 dark:bg-surface-800 px-3 py-2 text-xs">
+          <span className="text-surface-500 dark:text-surface-400">
+            Current: <span className="font-medium text-surface-900 dark:text-surface-100">{formatCurrencyShared(currentBalance)}</span>
+          </span>
+          {(() => {
+            const parsed = parseFloat(amount);
+            if (!Number.isFinite(parsed) || parsed <= 0) return <span className="text-surface-400">New: —</span>;
+            return (
+              <span className="text-surface-500 dark:text-surface-400">
+                New: <span className="font-semibold text-primary-700 dark:text-primary-300">{formatCurrencyShared(currentBalance + parsed)}</span>
+              </span>
+            );
+          })()}
+        </div>
+        <p id="gift-card-reload-help" className="mb-5 text-xs text-surface-500 dark:text-surface-400">
           Maximum reload is {formatCurrencyShared(RELOAD_MAX_AMOUNT)}. Reloads of {formatCurrencyShared(RELOAD_CONFIRM_THRESHOLD)} or more require confirmation.
           {amountError && <span className="mt-1 block text-red-600 dark:text-red-400">{amountError}</span>}
         </p>
@@ -334,7 +358,18 @@ export function GiftCardDetailPage() {
           {card.recipient_email && (
             <div>
               <dt className="text-xs text-surface-400 uppercase tracking-wide">Email</dt>
-              <dd className="mt-0.5 text-surface-700 dark:text-surface-300 truncate">{card.recipient_email}</dd>
+              <dd className="mt-0.5 text-surface-700 dark:text-surface-300 truncate" title={card.recipient_email}>{card.recipient_email}</dd>
+            </div>
+          )}
+          {/* WEB-UIUX-1452: link to the customer when card.customer_id is set. */}
+          {card.customer_id && (
+            <div>
+              <dt className="text-xs text-surface-400 uppercase tracking-wide">Customer</dt>
+              <dd className="mt-0.5">
+                <Link to={`/customers/${card.customer_id}`} className="text-primary-600 dark:text-primary-400 hover:underline">
+                  {[card.customer_first_name, card.customer_last_name].filter(Boolean).join(' ') || `Customer #${card.customer_id}`}
+                </Link>
+              </dd>
             </div>
           )}
           <div>
@@ -457,7 +492,11 @@ export function GiftCardDetailPage() {
       })()}
 
       {showReloadModal && (
-        <ReloadModal cardId={card.id} onClose={() => setShowReloadModal(false)} />
+        <ReloadModal
+          cardId={card.id}
+          currentBalance={dollarsFromMaybeCents(card.current_balance)}
+          onClose={() => setShowReloadModal(false)}
+        />
       )}
     </div>
   );

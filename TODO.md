@@ -6096,7 +6096,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:396-438`
   <!-- meta: fix=show-Reload-when-status!=='disabled'+keep-existing-active-style+with-secondary-tone-when-status='used' -->
 
-- [ ] WEB-UIUX-1443. **[MAJOR] Reload modal hides current balance. Operator opens modal — a single amount input + Reload button (`GiftCardDetailPage.tsx:115-155`). The big "current balance / of initial" tile lives BEHIND the modal at `:251-254`. Cashier mid-transaction asking "the customer wants me to add enough to make it $100, what's it at now?" has no in-modal info → must close modal, read balance, reopen. Add "Current: $X • New: $X+amount" line under input.** L7 feedback, L4 flow.
+- [x] WEB-UIUX-1443. **[MAJOR] Reload modal hides current balance. Operator opens modal — a single amount input + Reload button (`GiftCardDetailPage.tsx:115-155`). The big "current balance / of initial" tile lives BEHIND the modal at `:251-254`. Cashier mid-transaction asking "the customer wants me to add enough to make it $100, what's it at now?" has no in-modal info → must close modal, read balance, reopen. Add "Current: $X • New: $X+amount" line under input.** L7 feedback, L4 flow. **[AUTOLOOP-T49 RESOLVED 2026-05-11: ReloadModal accepts currentBalance prop + renders "Current: $X  -  New: $X+amount" preview tile under the amount input.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:115-155`
   <!-- meta: fix=pass-currentBalance-prop-to-ReloadModal+render-"Current:-$X.XX"-helper+computed-"After-reload:-$Y"-line-as-user-types -->
 
@@ -6106,7 +6106,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Minor — labels, copy, ergonomics
 
-- [ ] WEB-UIUX-1445. **[MINOR] Issued code is one 32-char run with `tracking-widest` (`GiftCardsListPage.tsx:142-144`) — `A4F2839B...` for 32 chars unbroken. Cashier reading aloud over phone or copying onto a card is error-prone. Industry pattern: 8x4 groups (`A4F2 839B 1C2D ...`) like credit-card formatting.** L7 feedback, L11 readability.
+- [!] WEB-UIUX-1445. **[MINOR] Issued code is one 32-char run with `tracking-widest` (`GiftCardsListPage.tsx:142-144`) — `A4F2839B...` for 32 chars unbroken. Cashier reading aloud over phone or copying onto a card is error-prone. Industry pattern: 8x4 groups (`A4F2 839B 1C2D ...`) like credit-card formatting.** L7 feedback, L11 readability. **[AUTOLOOP-T49 STALE 2026-05-11: IssueModal already formats the 32-char code as 4-char groups via issuedCode.replace(/(.{4})/g, "$1 ").trim() (line 199).]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-144`
   <!-- meta: fix=insert-spaces-every-4-chars+keep-select-all-(strip-spaces-on-paste-input-server-side-already-uppercases) -->
 
@@ -6118,7 +6118,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:136-152`
   <!-- meta: fix=flex-col-gap-2-sm:flex-row-sm:justify-end-sm:gap-3+w-full-sm:w-auto-on-each-button -->
 
-- [ ] WEB-UIUX-1448. **[MINOR] List page "Code" cell mixes monospace `font-mono` with last-4 of plaintext code (`:370-372`); recipient cell has 160px-truncated email below name (`:376-377`) but no tooltip — overflowing email is unreadable + uncopyable. Add `title={card.recipient_email}` or replace truncate with hover-expand.** L7 feedback, L11 a11y.
+- [x] WEB-UIUX-1448. **[MINOR] List page "Code" cell mixes monospace `font-mono` with last-4 of plaintext code (`:370-372`); recipient cell has 160px-truncated email below name (`:376-377`) but no tooltip — overflowing email is unreadable + uncopyable. Add `title={card.recipient_email}` or replace truncate with hover-expand.** L7 feedback, L11 a11y. **[AUTOLOOP-T49 RESOLVED 2026-05-11: list email cell + detail email field gained title={recipient_email} so the full address is readable on hover/focus.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:373-378`
   <!-- meta: fix=add-title={card.recipient_email}-attribute+optional-aria-label -->
 
@@ -6126,7 +6126,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:127-129,160-162`
   <!-- meta: fix=replace-onKeyDown-with-useEffect-window.addEventListener('keydown')→Escape→onClose+remove-from-wrapper -->
 
-- [ ] WEB-UIUX-1450. **[MINOR] Issue success modal Done button is full-width primary (`GiftCardsListPage.tsx:145-150`) but offers no destination — closes the modal, drops user back at list with the new card on top. After issuing, common next step is "now hand the receipt to the customer" or "issue another for the next walk-in". A secondary "Issue another" button would shave clicks for sales bursts.** L4 flow continuity.
+- [x] WEB-UIUX-1450. **[MINOR] Issue success modal Done button is full-width primary (`GiftCardsListPage.tsx:145-150`) but offers no destination — closes the modal, drops user back at list with the new card on top. After issuing, common next step is "now hand the receipt to the customer" or "issue another for the next walk-in". A secondary "Issue another" button would shave clicks for sales bursts.** L4 flow continuity. **[AUTOLOOP-T49 RESOLVED 2026-05-11: IssueModal post-success view now includes a secondary "Issue another" button that resets the form for sales bursts (gated on codeSavedConfirmed).]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:145-150`
   <!-- meta: fix=add-secondary-"Issue-another"-button-(resets-form-keeps-modal-open)+primary-Done-stays -->
 
@@ -6134,7 +6134,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:237-243`
   <!-- meta: fix=add-aria-label-prop-mirroring-title -->
 
-- [ ] WEB-UIUX-1452. **[MINOR] No "Customer" link on Detail page even when `card.customer_id` is set on server. The detail render block (`GiftCardDetailPage.tsx:258-281`) shows recipient_name and recipient_email but never the linked customer (server includes it via JOIN on list but `GET /gift-cards/:id` returns the raw card without joining customers — `giftCards.routes.ts:441-451`). Operator on detail cannot click through to customer record. (Compound with WEB-UIUX-1430 which fixes the issue side.)** L4 flow, L6 discoverability.
+- [x] WEB-UIUX-1452. **[MINOR] No "Customer" link on Detail page even when `card.customer_id` is set on server. The detail render block (`GiftCardDetailPage.tsx:258-281`) shows recipient_name and recipient_email but never the linked customer (server includes it via JOIN on list but `GET /gift-cards/:id` returns the raw card without joining customers — `giftCards.routes.ts:441-451`). Operator on detail cannot click through to customer record. (Compound with WEB-UIUX-1430 which fixes the issue side.)** L4 flow, L6 discoverability. **[AUTOLOOP-T49 RESOLVED 2026-05-11: GET /gift-cards/:id joins customers; detail page renders a Customer click-through (linked name) under recipient metadata when customer_id is set.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:258-281`
   `packages/server/src/routes/giftCards.routes.ts:441-451`
   <!-- meta: fix=server-LEFT-JOIN-customers-on-GET-/:id-and-include-customer-summary+UI-render-"Customer:-<Link-to=/customers/:id>name</Link>" -->
@@ -6143,7 +6143,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:73`
   <!-- meta: fix=used-badge-grey-with-Check-icon-h-3-w-3-prefix+OR-balance-cell-line-through-when-status=used -->
 
-- [ ] WEB-UIUX-1454. **[NIT] `formatCurrency` cents/dollars heuristic (`GiftCardsListPage.tsx:57-63`, mirrored on Detail `:41-44`) treats integers >=1000 as cents. A $999.99 card stored as float 999.99 renders as $999.99 (correct); a $10.00 card stored as integer 1000 cents renders as $10.00 (correct); but a $10 card mistakenly stored as integer 10 (dollars, not cents) renders as $10 — looks fine until you hit edge case $1500 → 1500 dollars vs 1500 cents=15 ambiguity. Comment acknowledges fragility ("if it does, it'll still render correctly because 1000.5...") but it's a ticking interpretation bomb. Drop the heuristic the moment server picks one representation.** L11 consistency.
+- [!] WEB-UIUX-1454. **[NIT] `formatCurrency` cents/dollars heuristic (`GiftCardsListPage.tsx:57-63`, mirrored on Detail `:41-44`) treats integers >=1000 as cents. A $999.99 card stored as float 999.99 renders as $999.99 (correct); a $10.00 card stored as integer 1000 cents renders as $10.00 (correct); but a $10 card mistakenly stored as integer 10 (dollars, not cents) renders as $10 — looks fine until you hit edge case $1500 → 1500 dollars vs 1500 cents=15 ambiguity. Comment acknowledges fragility ("if it does, it'll still render correctly because 1000.5...") but it's a ticking interpretation bomb. Drop the heuristic the moment server picks one representation.** L11 consistency. **[AUTOLOOP-T49 BLOCKED 2026-05-11: heuristic resolution must follow a server-side picks-one-representation change (cents OR dollars) + migration on stored balances. Single-page fix risks regressions until the server commits.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:46-63`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->

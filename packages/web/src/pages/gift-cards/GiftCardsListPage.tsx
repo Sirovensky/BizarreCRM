@@ -227,6 +227,24 @@ function IssueModal({ onClose }: IssueModalProps) {
               I&apos;ve saved the code
             </button>
           </div>
+          {/* WEB-UIUX-1450: "Issue another" shortcut for sales bursts so the
+              cashier doesn't have to close + re-open the modal between
+              walk-ins. Resets form state to the initial blank values. */}
+          <button
+            onClick={() => {
+              if (!codeSavedConfirmed) {
+                toast.error('Confirm you saved the code before issuing another.');
+                return;
+              }
+              setIssuedCode(null);
+              setCodeSavedConfirmed(false);
+              setForm({ amount: '', recipient_name: '', recipient_email: '', expires_at: '', notes: '' });
+            }}
+            disabled={!codeSavedConfirmed}
+            className="mt-3 w-full px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-950/30 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Issue another
+          </button>
         </div>
       </div>
     );
@@ -605,7 +623,14 @@ export function GiftCardsListPage() {
                   <td className="px-4 py-3 text-surface-700 dark:text-surface-300">
                     {card.recipient_name ?? <span className="text-surface-400">—</span>}
                     {card.recipient_email && (
-                      <div className="text-xs text-surface-400 truncate max-w-[160px]">{card.recipient_email}</div>
+                      // WEB-UIUX-1448: title attribute exposes the full email
+                      // on hover/focus so truncated addresses remain readable.
+                      <div
+                        className="text-xs text-surface-400 truncate max-w-[160px]"
+                        title={card.recipient_email}
+                      >
+                        {card.recipient_email}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">
