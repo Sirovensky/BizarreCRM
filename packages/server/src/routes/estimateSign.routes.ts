@@ -633,10 +633,13 @@ publicRouter.post(
         ],
       },
       {
+        // BUGHUNT-2026-05-10-13: also stamp signed_at so reports + UI can
+        // distinguish today's signature from a 3-month-old one. Migration
+        // 176 adds the column.
         sql: `UPDATE estimates
-                 SET status = 'signed', updated_at = ?
+                 SET status = 'signed', signed_at = ?, updated_at = ?
                WHERE id = ? AND status NOT IN ('signed')`,
-        params: [nowSql, estimateId],
+        params: [nowSql, nowSql, estimateId],
       },
     ]);
 

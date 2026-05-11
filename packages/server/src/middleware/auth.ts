@@ -7,6 +7,7 @@ import { ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
 import { createLogger } from '../utils/logger.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { audit } from '../utils/audit.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -257,6 +258,22 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       // AUD-H2: if a custom_roles row is assigned, load its explicit matrix.
       // If a built-in role was assigned before role_permissions was lazily
       // materialized, fall back to the shared built-in defaults.
+      // BUGHUNT-2026-05-10-08: if user_custom_roles references a deleted
+      // custom_roles row, the LEFT JOIN yields role_name=null + is_active=null
+      // and we'd silently downgrade the user to legacy grants. Emit a
+      // warning + audit row so the operator can see the missing reference.
+      if (customRole?.role_id && (customRole.role_name == null || customRole.is_active == null)) {
+        logger.warn('auth: user_custom_roles references missing custom_role; user falling back to legacy grants', {
+          userId: payload.userId,
+          role_id: customRole.role_id,
+        });
+        try {
+          audit(req.db, 'auth_custom_role_missing', payload.userId, req.ip || 'unknown', {
+            role_id: customRole.role_id,
+            session_id: payload.sessionId,
+          });
+        } catch { /* non-fatal */ }
+      }
       let customRolePermissions: Set<string> | null = null;
       if (customRole?.role_id && customRole.is_active === 1) {
         const rows = await req.asyncDb.all<{ permission_key: string; allowed: number }>(

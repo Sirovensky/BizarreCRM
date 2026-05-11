@@ -938,6 +938,12 @@ export function UnifiedPosPage() {
   const [selectedTenderMethod, setSelectedTenderMethod] = useState<TenderMethod>('Cash');
   const [amountEntry, setAmountEntry] = useState('');
   const [processing, setProcessing] = useState(false);
+  // BUGHUNT-2026-05-10-17: synchronous in-flight guard. React batches the
+  // setProcessing(true) write; a rapid double-click on Charge can race
+  // both calls past the `if (processing) return` check before the
+  // re-render disables the button. inFlightRef toggles inside the
+  // handler synchronously so the second click short-circuits.
+  const checkoutInFlightRef = useRef(false);
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
   const [refundInvoiceId, setRefundInvoiceId] = useState('');
@@ -1954,6 +1960,10 @@ export function UnifiedPosPage() {
   }, [repairDraft, saveRepairToCart, setMeta]);
 
   const submitCheckout = useCallback(async (finalLeg: PaymentLeg) => {
+    // BUGHUNT-2026-05-10-17: synchronous re-entrancy guard. Stops rapid
+    // double-clicks from firing two POST /sales calls with the same
+    // idempotency key before React commits the processing flag.
+    if (checkoutInFlightRef.current) return;
     const legs = [...paidLegs, finalLeg].filter((leg) => leg.amount > 0);
     const finalPaidCents = legs.reduce((sum, leg) => sum + toCents(leg.amount), 0);
     if (finalPaidCents < totals.totalCents) {
@@ -1968,6 +1978,7 @@ export function UnifiedPosPage() {
       return;
     }
 
+    checkoutInFlightRef.current = true;
     setProcessing(true);
     setTerminalError(null);
     try {
@@ -2064,6 +2075,7 @@ export function UnifiedPosPage() {
       toast.error(err?.response?.data?.message || err?.message || 'Checkout failed');
     } finally {
       setProcessing(false);
+      checkoutInFlightRef.current = false;
     }
   }, [paidLegs, totals, blockchypConfigured, cartItems, customer, ensureIdempotencyKey, clearDraft, queryClient]);
 

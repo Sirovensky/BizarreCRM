@@ -241,7 +241,14 @@ router.get('/lookup/:code', asyncHandler(async (req, res) => {
     throw new AppError('Gift card expired', 400);
   }
 
-  // Success — do NOT record a failure, legitimate lookups should not hit the rate limit.
+  // BUGHUNT-2026-05-10-07: also burn the window counter on success so an
+  // authenticated attacker can't enumerate by inferring validity from
+  // 200/409 vs 404. Threshold (LOOKUP_RATE_LIMIT) is generous enough that
+  // legitimate cashier traffic (typically <2 lookups/minute per terminal)
+  // never trips it, but a scripted scanner with 50 known-good codes hits
+  // it on the same per-minute budget.
+  recordWindowFailure(db, 'gift_card_lookup', userKey, LOOKUP_RATE_WINDOW);
+  recordWindowFailure(db, 'gift_card_lookup_ip', ipKey, LOOKUP_RATE_WINDOW);
   res.json({ success: true, data: card });
 }));
 

@@ -96,13 +96,19 @@ const LEGAL_TICKET_TRANSITIONS: Record<string, readonly string[]> = {
   // A closed ticket may be moved to a hold/on-hold state for rework or
   // re-shipment, or cancelled if the job is disputed/voided post-pickup.
   // It may NOT jump to another closed state directly (use the hold state first).
+  // BUGHUNT-2026-05-10-11: removed direct 'In Progress' backtrack from
+  // terminal/near-terminal states. Reopening a Repaired job (e.g. warranty
+  // return) must route through 'Waiting for inspection' first so the
+  // workflow has an explicit review step + audit row instead of silently
+  // re-billing an already-collected ticket. Hold states stay open so a
+  // mid-handoff hiccup can still be parked without a full reopen.
   'Repaired': [
     'Repaired - Waiting for payment',
     'Approval required',
     'Waiting on customer',
     'Waiting for Parts',
-    'In Progress',
     'Repaired - Pending QC',
+    'Waiting for inspection',
     'Cancelled',
     'BER (Beyond Economical Repair)',
   ],
@@ -119,16 +125,16 @@ const LEGAL_TICKET_TRANSITIONS: Record<string, readonly string[]> = {
     'Waiting for asset',
     'Cancelled',
   ],
+  // BUGHUNT-2026-05-10-11: terminal collected states can only reopen via
+  // 'Waiting for inspection' so a warranty return is reviewed (and an
+  // audit row gets created) before the ticket re-enters the active queue.
   'Repaired & Collected': [
     'Cancelled',
-    // Allow reopening for warranty returns.
     'Waiting for inspection',
-    'In Progress',
   ],
   'Payment Received & Picked Up': [
     'Cancelled',
     'Waiting for inspection',
-    'In Progress',
   ],
 
   // ── Cancelled → conditional re-open ────────────────────────────────────────
