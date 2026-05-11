@@ -3295,7 +3295,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11. **[AUTOLOOP-T34 BLOCKED: requires server endpoint expected_qty CAS + new client UI input; multi-component.]**
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:101-112,127-131`
 
-- [ ] WEB-UIUX-737. **[MAJOR] Optimistic mutations cancel queries but never reconcile WS pushes mid-flight.** User flips status to Done → WS pushes "In Progress" from co-worker → invalidate fires → user's optimistic Done disappears mid-render. Pill flickers, no signal. L11, L4.
+- [x] WEB-UIUX-737. **[MAJOR] Optimistic mutations cancel queries but never reconcile WS pushes mid-flight.** User flips status to Done → WS pushes "In Progress" from co-worker → invalidate fires → user's optimistic Done disappears mid-render. Pill flickers, no signal. L11, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-11: useWebSocket invalidation handler now consults queryClient.getMutationCache() and defers WS invalidate when any pending mutation is in flight; the mutations own onSettled drives the canonical refresh.]**
   Tickets, sidebar, notes, kanban share pattern
 
 - [x] WEB-UIUX-738. **[MAJOR] CustomerDetailPage InfoTab — WS-driven `customer:updated` invalidation + `useEffect setForm(newCustomer)` overwrites in-progress edits silently.** L6, L11. **[AUTOLOOP-T34 RESOLVED: CustomerDetailPage InfoTab — useMemo isDirty check; useEffect skips setForm when dirty + shows deduped warning toast.]**
@@ -3483,7 +3483,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-795. **[MAJOR] Scan-no-match toasts but ZERO recovery path.** Scanned barcode lost, not pre-filled into "Quick add" form, not logged. Cashier must re-scan or re-type. L4, L8. **[AUTOLOOP-T37 RESOLVED: scan-no-match toast adds Quick Add button → sets pendingMiscName + switches to Misc tab + MiscTab pre-fills barcode.]**
 
-- [ ] WEB-UIUX-796. **[MAJOR] Two scans 200ms apart: second aborts first's API call. First scan's product NEVER added.** No queue, no toast-on-loss. L11, L8.
+- [x] WEB-UIUX-796. **[MAJOR] Two scans 200ms apart: second aborts first's API call. First scan's product NEVER added.** No queue, no toast-on-loss. L11, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: scan lookups now chain through scanQueueRef so back-to-back scans process in arrival order; the second cannot abort or clobber the first, every confirmed-hit reaches the cart.]**
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:160-163`
 
 - [!] WEB-UIUX-797. **[MAJOR] ReceiveItemsModal scans NOT tied to any PO.** Scan-and-go restock looks like PO receive but creates ad-hoc unlinked stock. PO permanently "open". L5, L13. **[AUTOLOOP-T37 BLOCKED: ReceiveItemsModal needs PO picker UI + scan-validation + server purchase_order_id field; multi-component.]**

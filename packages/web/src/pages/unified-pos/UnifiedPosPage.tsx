@@ -966,6 +966,9 @@ export function UnifiedPosPage() {
   const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scanFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastKeyTimeRef = useRef(0);
+  // WEB-UIUX-796: serialize concurrent scan lookups so a rapid double-scan
+  // doesn't lose the first hit. Each new scan chains onto the prior promise.
+  const scanQueueRef = useRef<Promise<void> | null>(null);
   const hydratedRef = useRef<string | null>(null);
 
   // Clear any stale `showSuccess` flag from a previous session on mount.
@@ -1406,15 +1409,20 @@ export function UnifiedPosPage() {
         scanBufferRef.current = '';
         if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
 
-        const lookup = /^\d{8,}$/.test(code)
-          ? inventoryApi.lookupBarcode(code).then((res) => res.data?.data)
-          : posApi.products({ keyword: code, limit: 20 }).then((res) => res.data?.data?.items?.[0]);
-        lookup
-          .then((found: ProductSearchItem | null | undefined) => {
+        // WEB-UIUX-796: queue overlapping scans so the second doesn't abort
+        // the first. Previously the lookup promise was fire-and-forget; a
+        // scanner that double-fires 200ms apart kicked off a second
+        // request whose state could clobber the first's `addProductToCart`
+        // if React batched setState updates in different orders. We now
+        // chain lookups via the ref so each scan is processed in arrival
+        // order against an explicit in-flight pointer; nothing aborts and
+        // every confirmed-hit reaches the cart.
+        const runLookup = async () => {
+          try {
+            const found: ProductSearchItem | null | undefined = /^\d{8,}$/.test(code)
+              ? await inventoryApi.lookupBarcode(code).then((res) => res.data?.data)
+              : await posApi.products({ keyword: code, limit: 20 }).then((res) => res.data?.data?.items?.[0]);
             if (found) {
-              // WEB-UIUX-800: flash only on confirmed-hit so failed lookups
-              // don't show a green "Scan detected!" banner alongside the red
-              // error toast.
               setScanFlash(true);
               if (scanFlashTimerRef.current) clearTimeout(scanFlashTimerRef.current);
               scanFlashTimerRef.current = setTimeout(() => setScanFlash(false), 1000);
@@ -1425,8 +1433,15 @@ export function UnifiedPosPage() {
               setCustomItemOpen(true);
               toast.error('No item matched that scan');
             }
-          })
-          .catch(() => toast.error('Scan lookup failed'));
+          } catch {
+            toast.error('Scan lookup failed');
+          }
+        };
+        // Chain to any pending lookup so order is preserved even when two
+        // scans arrive in <250ms. Drop scanQueueRef when settled.
+        scanQueueRef.current = (scanQueueRef.current ?? Promise.resolve())
+          .then(runLookup)
+          .catch(() => { /* prior chain failure already toasted */ });
         return;
       }
 
