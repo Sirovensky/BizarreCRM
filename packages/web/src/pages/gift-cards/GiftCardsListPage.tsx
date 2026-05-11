@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
-import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, dollarsFromMaybeCents } from '@/utils/format';
+import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents } from '@/utils/format';
 // WEB-UIUX-998: CSV export for outstanding liability — PII-gated
 import { toCsvRow, CSV_BOM } from '@/utils/csv';
 import { useHasRole } from '@/hooks/useHasRole';
@@ -579,7 +579,9 @@ export function GiftCardsListPage() {
         <div className="flex items-center gap-3">
           <Gift className="h-6 w-6 text-primary-600" />
           <div>
-            <h1 className="text-xl font-semibold text-surface-900 dark:text-surface-100">Gift Cards</h1>
+            {/* WEB-UIUX-1565: standardize on sentence case to match
+                "Issue gift card" / "Gift card issued" / "Reload gift card". */}
+            <h1 className="text-xl font-semibold text-surface-900 dark:text-surface-100">Gift cards</h1>
             {summary && (
               <p className="text-sm text-surface-500 dark:text-surface-400">
                 {summary.active_count} active &middot; {formatCurrency(summary.total_outstanding)} outstanding
@@ -708,7 +710,13 @@ export function GiftCardsListPage() {
                       {card.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-surface-500 dark:text-surface-400">
+                  {/* WEB-UIUX-1567: title tooltip surfaces full timestamp so
+                      multiple cards issued the same day stay reconcilable
+                      against shift logs even though the cell only shows date. */}
+                  <td
+                    className="px-4 py-3 text-surface-500 dark:text-surface-400"
+                    title={formatDateTime(card.created_at)}
+                  >
                     {formatDate(card.created_at)}
                   </td>
                   {/* WEB-UIUX-997: yellow warning icon when expiring within 30 days */}

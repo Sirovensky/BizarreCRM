@@ -283,7 +283,7 @@ export function GiftCardDetailPage() {
     return (
       <div className="p-6 max-w-3xl mx-auto">
         <button onClick={() => navigate('/gift-cards')} className="flex items-center gap-1.5 text-sm text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 mb-6">
-          <ArrowLeft className="h-4 w-4" /> Gift Cards
+          <ArrowLeft className="h-4 w-4" /> Gift cards
         </button>
         <div className="space-y-4">
           <SkeletonCard />
@@ -297,7 +297,7 @@ export function GiftCardDetailPage() {
     return (
       <div className="p-6 max-w-3xl mx-auto">
         <button onClick={() => navigate('/gift-cards')} className="flex items-center gap-1.5 text-sm text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 mb-6">
-          <ArrowLeft className="h-4 w-4" /> Gift Cards
+          <ArrowLeft className="h-4 w-4" /> Gift cards
         </button>
         <EmptyState
           icon={AlertCircle}
