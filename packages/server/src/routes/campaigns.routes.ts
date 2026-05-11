@@ -224,6 +224,21 @@ function buildEligibleRecipientQuery(
     whereParams.push(campaign.segment_id);
   }
 
+  // WEB-UIUX-879: never request a review from a customer who got a refund
+  // (credit-note invoice or refunds-table row) in the last 14 days. The
+  // automated "How was your repair?" SMS is the worst possible follow-up
+  // to a refund-issuing visit; risk = 1-star review + word-of-mouth churn.
+  // Heuristic uses credit-note invoice rows (positive signal a refund just
+  // happened); covers both native credit-note flow and POS-return flow.
+  if (campaign.type === 'review_request') {
+    where.push(`NOT EXISTS (
+      SELECT 1 FROM invoices i
+       WHERE i.customer_id = c.id
+         AND (i.credit_note_for IS NOT NULL OR i.status = 'credit_note' OR i.status = 'refunded')
+         AND julianday('now') - julianday(i.created_at) <= 14
+    )`);
+  }
+
   if (campaign.type === 'birthday') {
     const days = birthdayDaysBefore(campaign);
     where.push('c.birthday IS NOT NULL');
