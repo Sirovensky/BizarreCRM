@@ -714,12 +714,15 @@ async function dispatchStep(
     }
 
     // TCPA / SCAN-582: Dunning is transactional (debt collection).
-    // Require either global sms_opt_in OR explicit sms_consent_transactional.
-    // A NULL value (column absent on legacy rows) is treated as opted-in so
-    // existing customers are not silently suppressed after a deploy; new rows
-    // must be explicit (migration sets defaults to 1).
+    // BUGHUNT-2026-05-10-52: comment + invariant say EITHER flag set is
+    // sufficient — code used AND, which silently suppressed customers
+    // who had only one of the two consent columns ticked (e.g. opted
+    // in to marketing but legacy transactional flag null/zero). Switch
+    // to OR. Suppress only when BOTH flags explicitly = 0. NULL stays
+    // opted-in so existing legacy rows aren't silently dropped after
+    // deploy; new rows are explicit (migration default = 1).
     const smsAllowed =
-      customer.sms_opt_in !== 0 && customer.sms_consent_transactional !== 0;
+      customer.sms_opt_in !== 0 || customer.sms_consent_transactional !== 0;
     if (!smsAllowed) {
       logger.info('dunning SMS skipped — customer opted out of transactional SMS', {
         invoice_id: invoice.id,

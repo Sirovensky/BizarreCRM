@@ -530,11 +530,23 @@ publicRouter.post(
         400,
       );
     }
-    // Size check on the base64 payload portion
+    // Size check on the base64 payload portion.
     const base64Part = signatureDataUrl.slice(validPrefix.length);
-    // Base64 expands by ~4/3; approximate byte size of decoded blob.
-    const approxBytes = Math.ceil(base64Part.length * 3 / 4);
-    if (approxBytes > MAX_SIGNATURE_BYTES) {
+    // BUGHUNT-2026-05-10-51: decode-and-measure so a future regression
+    // that lets a longer-than-cap payload through length-of-string
+    // can't slip past. Buffer.from('base64') tolerates whitespace +
+    // padding, so this catches the actual blob size the row will hold.
+    let decodedBytes: number;
+    try {
+      decodedBytes = Buffer.byteLength(Buffer.from(base64Part, 'base64'));
+    } catch {
+      throw new AppError('signature_data_url is not valid base64', 400);
+    }
+    // Belt-and-suspenders: also cap the raw string length so a
+    // pathologically inflated input (e.g. base64 with megabytes of
+    // whitespace) can't drag the parser before the decode runs.
+    const rawCapBytes = Math.ceil(MAX_SIGNATURE_BYTES * 4 / 3) + 256;
+    if (signatureDataUrl.length > rawCapBytes || decodedBytes > MAX_SIGNATURE_BYTES) {
       throw new AppError(`signature_data_url exceeds maximum size of ${MAX_SIGNATURE_BYTES} bytes`, 400);
     }
 
