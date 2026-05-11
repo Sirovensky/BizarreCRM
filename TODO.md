@@ -3456,7 +3456,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-786. **[MINOR] InstallmentPlanWizard local-midnight + `.toISOString().slice(0,10)` — DST-crossing weekly plan can preview due-date one day earlier.** L6. **[AUTOLOOP-T36 RESOLVED: InstallmentPlanWizard line-55 startDate init swapped from `.toISOString().slice(0,10)` to `toLocalDateString(new Date())` helper.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:67-78`
 
-- [ ] WEB-UIUX-787. **[MINOR] PaymentLinks `expires_at` date-only sent as YYYY-MM-DD — server picks own end-of-day in own TZ.** Hawaii customer at 9pm sees "Expired" unexpectedly. L7, L14.
+- [!] WEB-UIUX-787. **[MINOR] PaymentLinks `expires_at` date-only sent as YYYY-MM-DD — server picks own end-of-day in own TZ.** Hawaii customer at 9pm sees "Expired" unexpectedly. L7, L14. **STALE 2026-05-10: PaymentLinksPage.tsx parses `form.expires_at` via `parseLocalDateTimeInput` and ships full ISO string `exp.toISOString()` (line 160); server gets the absolute instant, no end-of-day inference.**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:135-148,238-241`
 
 - [!] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
@@ -4543,7 +4543,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:128-134`
   <!-- meta: fix=if-file.size>10*1024*1024-toast.error+offer-client-side-resize-via-canvas -->
 
-- [ ] WEB-UIUX-1100. **[MINOR] Checklist `<input type="checkbox">` rows have no `<label htmlFor>` association.** `QcSignOffModal.tsx:227-243` renders checkbox + adjacent span. Screen reader announces "checkbox, unchecked" without reading item name unless the span is wrapped in a label. Tap target is also smaller — only the box is clickable, not the row. Reach test on tablet: row is 100% width but tap on item text doesn't toggle. L4, L12.
+- [!] WEB-UIUX-1100. **[MINOR] Checklist `<input type="checkbox">` rows have no `<label htmlFor>` association.** `QcSignOffModal.tsx:227-243` renders checkbox + adjacent span. Screen reader announces "checkbox, unchecked" without reading item name unless the span is wrapped in a label. Tap target is also smaller — only the box is clickable, not the row. Reach test on tablet: row is 100% width but tap on item text doesn't toggle. L4, L12. **STALE 2026-05-10: QcSignOffModal.tsx now uses Pass/Fail buttons with `aria-pressed`, not plain checkboxes; label-for-checkbox concern no longer applies.**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:227-244`
   <!-- meta: fix=wrap-row-in-<label-className=cursor-pointer>+keep-checkbox-and-span-as-children -->
 
