@@ -8,7 +8,6 @@
  * Cross-ref: criticalaudit.md §48 idea #1.
  */
 import { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -295,9 +294,23 @@ export function StocktakePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <Link to="/inventory" className="text-sm text-primary-600 hover:underline inline-flex items-center gap-1">
+          {/* WEB-UIUX-1380: preserve the user's tab/filter state on
+              Inventory by going back through history when the previous
+              route was /inventory; fall back to a fresh /inventory link
+              when this is a direct landing. */}
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof document !== 'undefined' && document.referrer && document.referrer.includes('/inventory')) {
+                window.history.back();
+              } else {
+                window.location.href = '/inventory';
+              }
+            }}
+            className="text-sm text-primary-600 hover:underline inline-flex items-center gap-1"
+          >
             <ChevronLeft className="h-4 w-4" /> Back to Inventory
-          </Link>
+          </button>
           <h1 className="text-2xl font-bold mt-2 flex items-center gap-2">
             <ClipboardList className="h-6 w-6" /> Stocktakes
           </h1>
@@ -344,7 +357,7 @@ export function StocktakePage() {
               disabled={!newName.trim() || createMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
-              {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Open
+              {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Start counting
             </button>
             {/* WEB-UIUX-1375: renamed from "Cancel" to "Discard" to disambiguate from the active-session cancel button */}
             <button
@@ -397,7 +410,27 @@ export function StocktakePage() {
             </div>
           )}
           {!sessionsIsPending && sessions.length === 0 && (
-            <p className="text-sm text-surface-400">No sessions yet</p>
+            // WEB-UIUX-1374: onboarding nudge instead of bare "No sessions yet".
+            <div className="rounded-lg border border-dashed border-surface-300 bg-surface-50 p-4 text-center dark:border-surface-700 dark:bg-surface-900/50">
+              <p className="text-sm font-medium text-surface-700 dark:text-surface-200">
+                {sessionStatusFilter || sessionSearch.trim() ? 'No sessions match those filters.' : 'No stocktakes yet'}
+              </p>
+              {!sessionStatusFilter && !sessionSearch.trim() && (
+                <>
+                  <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                    A stocktake is a physical count session — scan items, compare against
+                    `in_stock`, and commit the variance.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowNew(true)}
+                    className="mt-3 inline-flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-primary-950 hover:bg-primary-700"
+                  >
+                    Open your first stocktake
+                  </button>
+                </>
+              )}
+            </div>
           )}
           {sessions.map((s) => (
             <button
@@ -620,15 +653,21 @@ export function StocktakePage() {
                           </div>
                         );
 
+                        // WEB-UIUX-1369: Commit is the irreversible org-wide
+                        // write — danger-gate the confirm + a strong red ramp.
                         const ok = await useConfirmStore.getState().confirm({
                           message: diffNode,
-                          title: 'Commit stocktake',
-                          confirmLabel: 'Commit',
+                          title: 'Commit stocktake?',
+                          confirmLabel: 'Commit — rewrite stock',
+                          danger: true,
                         });
                         if (ok) commitMut.mutate();
                       }}
                       disabled={detailData.counts.length === 0 || commitMut.isPending}
-                      className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                      // WEB-UIUX-1369: red ramp matches the destructive
+                      // write semantics. Cancel/Abandon now wears the
+                      // neutral outline (safe abort).
+                      className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
                       <Check className="h-4 w-4" /> Commit ({detailData.counts.length})
                     </button>
@@ -665,7 +704,9 @@ export function StocktakePage() {
                         }
                         cancelMut.mutate();
                       }}
-                      className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
+                      // WEB-UIUX-1369: neutral outline since Abandon is the
+                      // safe abort (no stock writes); Commit owns the red ramp.
+                      className="inline-flex items-center gap-2 rounded-lg border border-surface-300 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
                     >
                       <X className="h-4 w-4" /> Abandon stocktake
                     </button>

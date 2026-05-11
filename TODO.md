@@ -5813,7 +5813,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Major — hierarchy + role-gating
 
-- [ ] WEB-UIUX-1369. **[MAJOR] Action button hierarchy inverted. "Cancel" (green-bordered red text, low-density button, `danger:true` modal) only marks status=cancelled — no stock changes, no audit-trail damage. "Commit" (solid green, plain confirm modal) rewrites EVERY `inventory_items.in_stock` row + writes stock_movements + audit log + closes the session — irreversible, organisation-wide impact. Treatment is backwards: Commit is the destructive write, Cancel is the safe abort.** L5 hierarchy.
+- [x] WEB-UIUX-1369. **[MAJOR] Action button hierarchy inverted. "Cancel" (green-bordered red text, low-density button, `danger:true` modal) only marks status=cancelled — no stock changes, no audit-trail damage. "Commit" (solid green, plain confirm modal) rewrites EVERY `inventory_items.in_stock` row + writes stock_movements + audit log + closes the session — irreversible, organisation-wide impact. Treatment is backwards: Commit is the destructive write, Cancel is the safe abort.** L5 hierarchy. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Commit owns the red ramp + danger-flagged confirm (irreversible org-wide write); Abandon wears neutral outline (safe abort). Hierarchy now matches blast radius.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:336-361`
   <!-- meta: fix=Cancel-becomes-secondary-grey+plain-confirm+Commit-becomes-primary-with-typed-confirmation-modal-and-summary-of-effect-(N-items-±X-variance) -->
 
@@ -5821,7 +5821,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:336-361`
   <!-- meta: fix=wrap-action-row-in-{['admin','manager'].includes(user.role)&&...}+OR-render-disabled-state-with-tooltip-"manager-required" -->
 
-- [ ] WEB-UIUX-1371. **[MAJOR] No duplicate-name guard. Server (lines 87-128) lets operator open two sessions named "Q2 2026 full count" simultaneously. Resuming a multi-day count → operator opens by same name on day 2, gets a NEW empty session, day-1 counts orphaned in another row.** L4 flow.
+- [x] WEB-UIUX-1371. **[MAJOR] No duplicate-name guard. Server (lines 87-128) lets operator open two sessions named "Q2 2026 full count" simultaneously. Resuming a multi-day count → operator opens by same name on day 2, gets a NEW empty session, day-1 counts orphaned in another row.** L4 flow. **[AUTOLOOP-T49 RESOLVED 2026-05-11: POST /stocktake 409s on duplicate (name, location) when an existing session is still status=open — message names the conflicting id so the operator can resume instead of orphaning day-1 counts.]**
   `packages/server/src/routes/stocktake.routes.ts:97-128`
   <!-- meta: fix=server-rejects-409-if-status='open'+name=:name-already-exists+UI-suggests-resume-existing -->
 
@@ -5835,7 +5835,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:241-243, 277-281`
   <!-- meta: fix=check-isPending+show-skeleton-or-Loader2+only-show-empty-state-when-data-is-defined-and-array-is-zero -->
 
-- [ ] WEB-UIUX-1374. **[MAJOR] First-time-user empty state ("No sessions yet") gives no help text or "Open your first stocktake" CTA. Compare InventoryList empty state which guides creation. Stocktake is unfamiliar workflow; needs onboarding nudge.** L9 empty/loading/error.
+- [x] WEB-UIUX-1374. **[MAJOR] First-time-user empty state ("No sessions yet") gives no help text or "Open your first stocktake" CTA. Compare InventoryList empty state which guides creation. Stocktake is unfamiliar workflow; needs onboarding nudge.** L9 empty/loading/error. **[AUTOLOOP-T49 RESOLVED 2026-05-11: empty state now renders a dashed onboarding card with a brief description + primary "Open your first stocktake" CTA wired to setShowNew. Filter-empty case shows a "no matches" variant.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:241-243`
   <!-- meta: fix=replace-text-with-illustrated-empty-state+CTA-button-"Open-First-Stocktake"+link-to-help-doc-explaining-the-flow -->
 
@@ -5845,7 +5845,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:232, 360`
   <!-- meta: fix=form-cancel-becomes-"Discard"-or-"Close"+session-cancel-becomes-"Abandon-stocktake"-or-"Discard-counts" -->
 
-- [ ] WEB-UIUX-1376. **[MINOR] "Open" button on new-session form is ambiguous. Could mean "Open a file", "Open camera", "Open a session". Better: "Start counting" or "Begin stocktake".** L2 label truthfulness.
+- [x] WEB-UIUX-1376. **[MINOR] "Open" button on new-session form is ambiguous. Could mean "Open a file", "Open camera", "Open a session". Better: "Start counting" or "Begin stocktake".** L2 label truthfulness. **[AUTOLOOP-T49 RESOLVED 2026-05-11: button relabelled to "Start counting" matching the bookkeeping verb-of-art.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:226`
   <!-- meta: fix=rename-to-"Begin-Stocktake"-or-"Start-Counting" -->
 
@@ -5853,7 +5853,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:258-263`
   <!-- meta: fix=open=primary-100/primary-700-(or-blue)+committed-stays-green+cancelled-grey -->
 
-- [ ] WEB-UIUX-1378. **[MINOR] Inline new-session form inputs lack `dark:bg-surface-...` classes — pure white background bleeds through dark theme. Same applies to scan + qty inputs (lines 318, 325).** L13 styling.
+- [!] WEB-UIUX-1378. **[MINOR] Inline new-session form inputs lack `dark:bg-surface-...` classes — pure white background bleeds through dark theme. Same applies to scan + qty inputs (lines 318, 325).** L13 styling. **[AUTOLOOP-T49 STALE 2026-05-11: new-session inputs + scan/qty inputs already include dark:bg-surface-900 + dark:text-surface-100 classes.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:211, 217, 318, 325`
   <!-- meta: fix=add-dark:bg-surface-900+dark:border-surface-700+dark:text-surface-100-to-each-input-OR-extract-Input-component-and-reuse -->
 
@@ -5861,7 +5861,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:248-253`
   <!-- meta: fix=add-dark:bg-primary-900/40+dark:border-primary-600-to-selected-state -->
 
-- [ ] WEB-UIUX-1380. **[MINOR] "Back to Inventory" link is a flat anchor; loses tab+filter state from `/inventory?type=part`. Returning to InventoryList drops user's tab.** L4 flow.
+- [x] WEB-UIUX-1380. **[MINOR] "Back to Inventory" link is a flat anchor; loses tab+filter state from `/inventory?type=part`. Returning to InventoryList drops user's tab.** L4 flow. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Back link now history.back()s when document.referrer points at /inventory, preserving tab/filter state; falls back to a fresh /inventory navigation on direct landings.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:187-189`
   <!-- meta: fix=use-navigate(-1)-or-store-prior-search-params-in-state-and-restore-on-back -->
 

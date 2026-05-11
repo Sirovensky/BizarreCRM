@@ -103,6 +103,27 @@ router.post(
       ? validateTextLength(req.body.notes, 1000, 'notes')
       : null;
 
+    // WEB-UIUX-1371: refuse to open a second OPEN session with the same name
+    // + location. Multi-day counts that "resume by name" would otherwise
+    // create a fresh empty session and orphan day-1 counts in the prior row.
+    // Cancelled / committed rows are fine to share a name — those are
+    // historical and won't be confused with the new session.
+    const dup = await adb.get<{ id: number }>(
+      `SELECT id FROM stocktakes
+        WHERE status = 'open'
+          AND LOWER(name) = LOWER(?)
+          AND COALESCE(LOWER(location), '') = COALESCE(LOWER(?), '')
+        LIMIT 1`,
+      name,
+      location,
+    );
+    if (dup) {
+      throw new AppError(
+        `An open stocktake named "${name}"${location ? ` at "${location}"` : ''} already exists (id=${dup.id}). Resume that session or close it before opening another.`,
+        409,
+      );
+    }
+
     const result = await adb.run(
       `INSERT INTO stocktakes (name, location, opened_by_user_id, notes)
        VALUES (?, ?, ?, ?)`,
