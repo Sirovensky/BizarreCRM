@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { X, AlertTriangle, Users, Send } from 'lucide-react';
+import { X, AlertTriangle, Users, Send, Minus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { smsApi } from '@/api/endpoints';
@@ -72,6 +72,18 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   const [countdown, setCountdown] = useState<number>(300); // 5 minutes in seconds
   // WEB-UIUX-1513: typed-confirm gate when preview_count >= 100.
   const [typedConfirm, setTypedConfirm] = useState('');
+  // WEB-UIUX-869: minimized-to-chip state so the cashier can answer inbound
+  // SMS during the 5-min token window. The modal pops back open via the
+  // chip's Reopen button or by clicking the chip body. Auto-reset to
+  // !minimized when the preview is cleared (e.g. after Send) so the
+  // chip doesn't linger.
+  const [minimized, setMinimized] = useState(false);
+  useEffect(() => {
+    if (!preview) setMinimized(false);
+  }, [preview]);
+  useEffect(() => {
+    if (!open) setMinimized(false);
+  }, [open]);
   // Reset typed confirm whenever the preview resets so a stale count
   // can't unlock Send after segment/template change.
   useEffect(() => { setTypedConfirm(''); }, [preview?.preview_count]);
@@ -201,6 +213,55 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
 
   if (!open) return null;
 
+  // WEB-UIUX-869: minimized chip. When a preview is active and the user
+  // minimizes, render a non-blocking fixed chip in the lower right with
+  // recipient count + countdown + Reopen button. The CommunicationPage
+  // behind it is fully interactive so the operator can answer inbound
+  // SMS during the 5-min token window without losing the token.
+  if (minimized && preview) {
+    const mins = Math.floor(countdown / 60);
+    const secs = countdown % 60;
+    return (
+      <div
+        role="region"
+        aria-label="Bulk SMS in progress (minimized)"
+        className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shadow-lg dark:border-amber-700 dark:bg-amber-900/40"
+      >
+        <Users className="h-4 w-4 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+        <div className="flex flex-col text-xs">
+          <span className="font-medium text-amber-900 dark:text-amber-100">
+            Bulk SMS · {preview.preview_count} recipients
+          </span>
+          <span className="text-amber-700 dark:text-amber-300 tabular-nums">
+            {countdown > 0
+              ? `Token expires in ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+              : 'Confirmation expired — reopen to re-preview'}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          className="rounded-md bg-amber-600 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-700"
+        >
+          Reopen
+        </button>
+        <button
+          type="button"
+          aria-label="Cancel bulk SMS"
+          onClick={() => {
+            setMinimized(false);
+            setPreview(null);
+            setPreviewedAt(null);
+            onClose();
+          }}
+          className="rounded p-1 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       role="dialog"
@@ -220,13 +281,28 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <Users className="h-5 w-5 text-primary-500" />
             Bulk SMS
           </h3>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700"
-          >
-            <X className="h-5 w-5 text-surface-500" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* WEB-UIUX-869: Minimize collapses to a chip so the cashier
+                can answer inbound SMS without burning the 5-min preview
+                token. Visible only once a preview exists. */}
+            {preview && (
+              <button
+                onClick={() => setMinimized(true)}
+                aria-label="Minimize"
+                title="Minimize — keep the preview token alive while answering inbound SMS"
+                className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700"
+              >
+                <Minus className="h-5 w-5 text-surface-500" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700"
+            >
+              <X className="h-5 w-5 text-surface-500" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-3 p-4">

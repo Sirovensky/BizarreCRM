@@ -3709,7 +3709,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-868. **[MAJOR] Customer search: 300ms debounce + 8-result hard cap + no fuzzy phone normalization.** Operator types 7-digit phone → ≥2.1s accumulated debounce. 100 walk-ins → 8 results truncated silently. L1, L7. **[AUTOLOOP-T59 RESOLVED: debounce 300→150ms; cap 8→25; phone-digits queries normalized via stripPhone; cap-hit footer 'Showing first 25 — refine search' added.]**
   `packages/web/src/pages/unified-pos/CustomerSelector.tsx:58-77`
 
-- [ ] WEB-UIUX-869. **[MAJOR · BLOCKED] BulkSmsModal full-screen overlay — operator can't answer inbound SMS during 5-min token window.** No progress chip on enqueue, no abort mid-preview. L11, L1.
+- [x] WEB-UIUX-869. **[MAJOR · BLOCKED] BulkSmsModal full-screen overlay — operator can't answer inbound SMS during 5-min token window.** No progress chip on enqueue, no abort mid-preview. L11, L1. **[AUTOLOOP-T49 RESOLVED 2026-05-11: BulkSmsModal gains a Minimize button (visible only with an active preview) that collapses the modal to a fixed bottom-right chip showing recipient count + live countdown + Reopen + Cancel. Token state survives so the cashier can answer inbound SMS during the 5-min window without forfeiting the preview.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
 - [!] WEB-UIUX-870. **[MAJOR] Tech context-switching between 5 tickets loses cart state — only ONE persisted cart per user.** Switching ticket via `?ticket=` calls `resetAll()`. Inactivity timer 10min silently `resetAll()`. L4, L5. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs the POS browser-tab pattern (per-ticket cart slots) — multi-cart Zustand store keyed by ticket_id + tab-bar UI + LRU eviction. Mockup pattern memo'd; implementation is a multi-day refactor.]**
@@ -3772,7 +3772,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-890. **[BLOCKER] PO receive doesn't invalidate inventory cache.** After receiving 50 phones, POS still says "0 in stock". L6, L13. **[AUTOLOOP-T41 RESOLVED: PurchaseOrdersPage ReceiveModal onSuccess invalidates ["inventory"] + ["pos-products"] caches.]**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:553-555`
 
-- [ ] WEB-UIUX-891. **[MAJOR · BLOCKED] SMS conversation linkage is by phone string, not customer_id.** Customer phone change → previous `conv_phone` becomes orphan stranger thread, new phone has no history. L5, L13.
+- [x] WEB-UIUX-891. **[MAJOR · BLOCKED] SMS conversation linkage is by phone string, not customer_id.** Customer phone change → previous `conv_phone` becomes orphan stranger thread, new phone has no history. L5, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-11: customers PUT route now snapshots existing phone/mobile and re-keys sms_messages.conv_phone + sms_conversation_reads.conv_phone from old numbers to the new primary so the SMS thread follows the customer instead of becoming an orphan. Future schema-side fix (customer_id on sms_messages) still pending but this closes the immediate continuity gap.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/communications/CommunicationPage.tsx:50,68,91,1440,1651-1655`
 

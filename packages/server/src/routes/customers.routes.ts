@@ -1723,6 +1723,39 @@ router.put(
       await adb.run(`UPDATE customers SET ${sets.join(', ')} WHERE id = ?`, ...values);
     }
 
+    // WEB-UIUX-891: when the primary phone or mobile changes, re-key any
+    // sms_messages.conv_phone rows that pointed at the OLD number to the
+    // NEW one so the SMS thread follows the customer instead of becoming
+    // an orphan "stranger" conversation. Old number is also recorded in
+    // customer_phones (history) below via the phones replace path; this
+    // re-key handles the inbox-side continuity gap.
+    {
+      const oldPhone = (existing as { phone?: string | null }).phone || null;
+      const oldMobile = (existing as { mobile?: string | null }).mobile || null;
+      const newPhone = 'phone' in input ? (input as { phone?: string | null }).phone || null : oldPhone;
+      const newMobile = 'mobile' in input ? (input as { mobile?: string | null }).mobile || null : oldMobile;
+      const newPrimary = newPhone || newMobile;
+      const rekeyFroms: string[] = [];
+      if (oldPhone && newPrimary && oldPhone !== newPrimary) rekeyFroms.push(oldPhone);
+      if (oldMobile && newPrimary && oldMobile !== newPrimary && oldMobile !== oldPhone) rekeyFroms.push(oldMobile);
+      for (const oldNumber of rekeyFroms) {
+        try {
+          await adb.run(
+            `UPDATE sms_messages SET conv_phone = ? WHERE conv_phone = ?`,
+            newPrimary,
+            oldNumber,
+          );
+          await adb.run(
+            `UPDATE sms_conversation_reads SET conv_phone = ? WHERE conv_phone = ?`,
+            newPrimary,
+            oldNumber,
+          );
+        } catch {
+          /* non-fatal — at worst the old thread stays orphaned. */
+        }
+      }
+    }
+
     // Replace phones
     if (input.phones !== undefined) {
       await adb.run('DELETE FROM customer_phones WHERE customer_id = ?', id);
