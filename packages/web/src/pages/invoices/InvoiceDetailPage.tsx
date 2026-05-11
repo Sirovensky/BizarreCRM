@@ -1245,6 +1245,10 @@ export function InvoiceDetailPage() {
               Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back.
             </p>
             <div className="flex gap-3 mt-4">
+              {/* WEB-UIUX-1041: give the primary action ~2× width so visual
+                  hierarchy matches importance (Issue is the action; Discard
+                  is the escape hatch). Both buttons keep grow:1 minimums to
+                  stay tappable on narrow viewports. */}
               <button onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '' }); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                 Discard
               </button>
@@ -1256,7 +1260,7 @@ export function InvoiceDetailPage() {
                 // WEB-UIUX-1308: bg-red-600 hover:bg-red-700 (matches Void destructive treatment; verified correct).
                 // WEB-UIUX-1390: also disabled while any field-level validation error is shown.
                 // WEB-UIUX-1405: verified — already bg-red-600 hover:bg-red-700 text-white, consistent with Void's destructive treatment.
-                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="flex-[2] px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {/* WEB-UIUX-1300: include amount in label when entered so operator can confirm before clicking */}
                 {creditNoteMutation.isPending

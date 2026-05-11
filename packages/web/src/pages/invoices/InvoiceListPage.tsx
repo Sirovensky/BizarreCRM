@@ -231,10 +231,17 @@ export function InvoiceListPage() {
 
   const rawInvoices = data?.data?.data?.invoices;
   const allInvoices: InvoiceRow[] = Array.isArray(rawInvoices) ? (rawInvoices as InvoiceRow[]) : [];
-  // WEB-UIUX-1287: apply credit-note client-side predicate when tab is active.
+  // WEB-UIUX-1287 / UIUX-1053: filter credit notes client-side based on
+  // active tab. When the Credit Notes tab is selected, show only credit
+  // notes. When the All tab is selected, hide them by default — they have
+  // a dedicated tab, and mixing negative-total rows into All confuses the
+  // sum-of-totals visual. Other status tabs (unpaid/partial/paid/void)
+  // already exclude credit notes by server filter; pass-through.
   const invoices: InvoiceRow[] = isCreditNoteTab
     ? allInvoices.filter((inv) => inv.credit_note_for != null || Number(inv.total) < 0)
-    : allInvoices;
+    : (status === '' || status == null)
+      ? allInvoices.filter((inv) => inv.credit_note_for == null && Number(inv.total) >= 0)
+      : allInvoices;
   const pagination = data?.data?.data?.pagination;
   const stats = statsData?.data?.data;
   // WEB-W2-023: overdue count now comes from the server (independent of current
