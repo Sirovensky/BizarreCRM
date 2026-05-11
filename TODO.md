@@ -3360,7 +3360,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/settings/ReceiptSettings.tsx:70-82`
   `packages/web/src/pages/settings/InvoiceSettings.tsx:135`
 
-- [ ] WEB-UIUX-756. **[MAJOR] PhotoCapturePage single multipart POST of all photos — connection drop = entire batch fails.** Re-upload 200MB on cellular. No chunking, no resumable, no AbortController. L4, L8.
+- [x] WEB-UIUX-756. **[MAJOR] PhotoCapturePage single multipart POST of all photos — connection drop = entire batch fails.** Re-upload 200MB on cellular. No chunking, no resumable, no AbortController. L4, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: PhotoCapturePage upload now uses AbortController + 5-minute timeout; explicit Cancel button surfaces while uploading; CanceledError is distinguished from network failure in error handling.]**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:94-123`
 
 - [x] WEB-UIUX-757. **[MAJOR] CommunicationPage `handleImageSelect` has ZERO pre-validation while QuickSmsAttachmentButton has 5MB+MIME guards.** 20MB photo blasts straight to server, generic "Upload failed" toast. L7, L8. **[AUTOLOOP-T35 RESOLVED: STALE — handleImageSelect already calls validateImageFile with SMALL_IMAGE_UPLOAD_MAX_BYTES (5MB) + MIME check matching QuickSmsAttachmentButton.]**
@@ -3558,7 +3558,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-820. **[MAJOR] Tenant suspended mid-session → 401 → generic "session expired" toast.** Real reason buried in `error.response.data.code`. Operator doesn't know why. L8, L4. **[AUTOLOOP-T38 RESOLVED: server adds ERR_TENANT_SUSPENDED code; refresh handler checks master DB; client 401 interceptor shows "Your account has been suspended. Contact support." + force-logs out.]**
   `packages/web/src/api/client.ts:320-349`
 
-- [ ] WEB-UIUX-821. **[MAJOR] Trial expiry mid-sale: 403 upgrade modal but cart NOT preserved.** Cashier mid-sale loses cart silently. L4, L8.
+- [!] WEB-UIUX-821. **[MAJOR] Trial expiry mid-sale: 403 upgrade modal but cart NOT preserved.** Cashier mid-sale loses cart silently. L4, L8. **STALE 2026-05-11: duplicate of UIUX-749, resolved via UnifiedPosPage store auto-persist + api/client.ts upgrade-required event.**
 
 - [x] WEB-UIUX-822. **[MAJOR] Last-admin deletion: 409 surfaces wrong toast "This item was updated elsewhere — refresh to see latest changes."** Tenant locked out forever, no in-app recovery path. L8, L4. **[AUTOLOOP-T38 RESOLVED: server last-admin guard 400→409 with ERR_USER_LAST_ADMIN code; client 409 interceptor shows actionable "Promote another user to admin first" toast.]**
 
