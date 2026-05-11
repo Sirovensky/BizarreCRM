@@ -118,6 +118,12 @@ export const authApi = {
       '/auth/recover-with-backup-code',
       data,
     ),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<{ success: boolean; data?: { message: string }; message?: string }>(
+      '/auth/change-password',
+      { current_password: currentPassword, new_password: newPassword },
+      { skipGlobal500Toast: true } as object,
+    ),
 };
 
 // ==================== Customers ====================

@@ -7,6 +7,7 @@ import {
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
   ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
   ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles, Rocket, FlaskConical,
+  KeyRound,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi, customerApi, ticketApi, invoiceApi, expenseApi, rolesApi } from '@/api/endpoints';
@@ -67,10 +68,11 @@ const MembershipSettings = lazy(() => import('./MembershipSettings').then(m => (
 const DataTab = lazy(() => import('./DataTab').then(m => ({ default: m.DataTab })));
 const AuditLogsTab = lazy(() => import('./AuditLogsTab').then(m => ({ default: m.AuditLogsTab })));
 const DangerZoneTab = lazy(() => import('./DangerZoneTab').then(m => ({ default: m.DangerZoneTab })));
+const AccountTab = lazy(() => import('./AccountTab').then(m => ({ default: m.AccountTab })));
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'bench-qc' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'danger-zone';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'bench-qc' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'account' | 'danger-zone';
 
 interface TicketStatus {
   id: number;
@@ -181,6 +183,7 @@ const TABS: TabConfig[] = [
   { key: 'membership', label: 'Membership', icon: Crown, proFeature: 'memberships' },
   { key: 'data', label: 'Data', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
+  { key: 'account', label: 'Account', icon: KeyRound },
   // PROD59: Danger Zone — multi-step self-service account termination.
   { key: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
@@ -2040,7 +2043,8 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'membership': ['membership', 'subscribe', 'tier', 'vip', 'pro', 'basic', 'recurring', 'discount', 'member'],
   'data': ['import', 'export', 'data', 'repairdesk', 'repairshopr', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'maintenance', 'retention', 'pii', 'gdpr', 'ccpa', 'sweeper', 'purge', 'sms', 'email', 'notes', 'privacy'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
-  'danger-zone': ['danger', 'zone', 'delete', 'terminate', 'close', 'account', 'cancel', 'shutdown'],
+  'account': ['account', 'password', 'change password', '2fa', 'two factor', 'security', 'profile', 'me'],
+  'danger-zone': ['danger', 'zone', 'delete', 'terminate', 'close', 'cancel', 'shutdown'],
 };
 
 export function SettingsPage() {
@@ -2347,6 +2351,7 @@ function SettingsPageInner() {
         {activeTab === 'membership' && <MembershipSettings />}
         {activeTab === 'data' && <DataTab importContent={<DataImportTab />} />}
         {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
+        {activeTab === 'account' && <AccountTab />}
         {activeTab === 'danger-zone' && <DangerZoneTab />}
       </Suspense>
       </div>

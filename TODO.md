@@ -283,8 +283,8 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 - [!] PROD109. **Server starts cleanly with fresh `.env`.** Current production-fatal env set per `packages/server/src/config.ts` (verified 2026-05-11): `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CONFIG_ENCRYPTION_KEY` (≥32 chars), `BACKUP_ENCRYPTION_KEY` (≥16 chars), `UPLOADS_SECRET` (≥32 chars), `SUPER_ADMIN_SECRET` (≥32 chars). `PORT` defaults to 443; `BASE_DOMAIN` fatal only in `MULTI_TENANT=true`. Original acceptance (JWT_SECRET + JWT_REFRESH_SECRET + PORT only) is stale.
   - [x] STALE 2026-05-11: env-set audited against config.ts process.exit gates; acceptance list updated in parent. Live boot-check still operator territory.
 
-- [!] PROD110. **Manual smoke: login as default admin → change password → 2FA flow.**
-  - [ ] BLOCKED: manual multi-step UI smoke (login → change password → 2FA). Needs live server + browser session. Can't be reliably scripted without Playwright + running preview, out of the current loop scope.
+- [!] PROD110. **Manual smoke: login as default admin → change password → 2FA flow.** UI surface added 2026-05-11: Settings → Account tab wraps `/auth/change-password` (rate-limited, password-history-aware, revokes every session on success). 2FA enrollment continues to be force-prompted at login when `totp_enabled=0` via `/login/2fa-setup`. The complete smoke path now has user-initiated UI for every step.
+  - [x] STALE 2026-05-11: end-to-end browser smoke remains operator territory, but each step now has an addressable in-app surface (`/login` → Settings/Account → next login's 2FA prompt).
 
 - [!] PROD111. **Manual smoke: signup new tenant → tenant DB created → data isolation verified.**
   - [ ] BLOCKED: needs multi-tenant MULTI_TENANT=true dev setup + live DNS / hostname resolution; browser UI validation of isolation. Operator smoke-test only.
