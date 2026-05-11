@@ -319,6 +319,13 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // requesting >= threshold lands a pending row that a second admin must
   // approve before the card is actually issued. Default 50000 ($500).
   'gift_card_dual_control_threshold_cents',
+  // WEB-UIUX-1227: discount cap + manager-gate policy. pos_max_discount_cents
+  // and pos_max_discount_pct (0-100) are an OR'd ceiling; either trips means
+  // the cart-wide discount is rejected at checkout. pos_require_manager_for_discount
+  // is a 0/1 flag; when '1' a non-admin/manager cashier cannot apply any
+  // discount without a manager PIN gate (UI side-effect lives in
+  // UnifiedPosPage discount-apply path).
+  'pos_max_discount_cents', 'pos_max_discount_pct', 'pos_require_manager_for_discount',
   // ENR-LE8: Estimate auto-follow-up days
   'estimate_followup_days',
   // ENR-A3: Notification digest mode

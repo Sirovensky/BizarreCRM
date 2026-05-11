@@ -1961,6 +1961,49 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   const manualDiscount = ticketData?.discount
     ? validatePrice(ticketData.discount, 'discount')
     : 0;
+  // WEB-UIUX-1227: pos_max_discount_cents + pos_max_discount_pct + manager
+  // gate. Either cap trips rejects the checkout outright; manager flag
+  // requires admin/manager role to apply any discount > 0. Membership-tier
+  // discounts bypass these caps (those are policy-driven, not operator
+  // discretion).
+  if (manualDiscount > 0) {
+    const [maxCentsRow, maxPctRow, requireManagerRow] = await Promise.all([
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_max_discount_cents'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_max_discount_pct'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_require_manager_for_discount'"),
+    ]);
+    const maxCents = Number(maxCentsRow?.value);
+    if (Number.isFinite(maxCents) && maxCents > 0) {
+      const manualCents = Math.round(manualDiscount * 100);
+      if (manualCents > maxCents) {
+        throw new AppError(
+          `Discount of $${manualDiscount.toFixed(2)} exceeds the configured cap of $${(maxCents / 100).toFixed(2)}.`,
+          400,
+        );
+      }
+    }
+    const maxPct = Number(maxPctRow?.value);
+    if (Number.isFinite(maxPct) && maxPct > 0 && maxPct <= 100 && invoiceSubtotal > 0) {
+      const appliedPct = (manualDiscount / invoiceSubtotal) * 100;
+      if (appliedPct > maxPct + 0.001) {
+        throw new AppError(
+          `Discount of ${appliedPct.toFixed(1)}% exceeds the configured cap of ${maxPct}%.`,
+          400,
+        );
+      }
+    }
+    const requireManager = String(requireManagerRow?.value ?? '').toLowerCase() === '1'
+      || String(requireManagerRow?.value ?? '').toLowerCase() === 'true';
+    if (requireManager) {
+      const role = req.user?.role;
+      if (role !== 'admin' && role !== 'manager') {
+        throw new AppError(
+          'Discounts require manager approval. Have a manager PIN-gate the discount before checkout.',
+          403,
+        );
+      }
+    }
+  }
   const membershipPct = await getMembershipDiscountPct(adb, customerId);
   const membershipDiscountAmt = membershipPct > 0
     ? roundCents(invoiceSubtotal * (membershipPct / 100))
