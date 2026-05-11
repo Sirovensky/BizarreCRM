@@ -2146,7 +2146,17 @@ export const refundApi = {
     }),
 
   approve: (id: number) =>
-    api.patch<{ success: boolean; data: { id: number } }>(`/refunds/${id}/approve`),
+    api.patch<{
+      success: boolean;
+      data: {
+        id: number;
+        // WEB-UIUX-1402: server signals when commission reversal was skipped
+        // because the payroll period is locked. UI must surface this so the
+        // operator knows the paid commission was NOT clawed back.
+        commission_reversal_skipped?: boolean;
+        commission_reversal_error?: string;
+      };
+    }>(`/refunds/${id}/approve`),
 
   decline: (id: number) =>
     api.patch<{ success: boolean; data: { id: number } }>(`/refunds/${id}/decline`),

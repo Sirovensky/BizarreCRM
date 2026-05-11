@@ -4883,7 +4883,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Blocker — entire refund subsystem unreachable from UI
 
-- [!] WEB-UIUX-1382. **[BLOCKER] No refund UI exists at all. `packages/server/src/routes/refunds.routes.ts` exposes 6 endpoints (list, create, approve, decline, credits/use, credits/liability) under `/api/v1/refunds`; `packages/web/src/api/endpoints.ts` defines NO `refundsApi` object. No page in `packages/web/src/App.tsx` (77 routes — none for `/refunds`). No nav item. Operator who needs to issue an actual cash/card refund — money returned to customer — has no entry point. Closest UI is "Credit Note" which reduces invoice balance only; it never moves money. Refund queue (pending → admin approves) cannot be actioned by anyone via the web. Manager-tier permission `refunds.create` is granted but unusable.** L1 primary action findability, L4 flow completion (irrecoverable dead-end), L6 discoverability. **STATUS: BLOCKED — entire refundsApi + RefundsListPage + InvoiceDetail Refund button + sidebar Billing entry; massive multi-component, defer to refunds sprint**
+- [x] WEB-UIUX-1382. **Refund UI fully wired (STALE 2026-05-11).** `packages/web/src/api/endpoints.ts:2122-2167` exposes `refundsApi` (list/create/approve/decline/credits + liability); `packages/web/src/pages/refunds/RefundsListPage.tsx` renders the queue; `App.tsx:555` mounts `/refunds`; Sidebar Billing section line 159 carries the `Refunds` admin-only entry; `InvoiceDetailPage` has the Refund-to-card button alongside Credit Note. Audit claim is stale.
   `packages/server/src/routes/refunds.routes.ts:107,253,418`
   `packages/web/src/api/endpoints.ts:1-end (no refundsApi)`
   `packages/web/src/App.tsx (no /refunds route)`
@@ -4973,7 +4973,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:227,299,308`
   <!-- meta: fix=on-409-show-toast-"Already-actioned-by-another-admin.-Refresh-to-see-current-state."+auto-invalidate-refund-list-query+on-400-keep-form-open-with-server-message -->
 
-- [!] WEB-UIUX-1402. **[MAJOR] Commission reversal silently skipped on locked payroll period. Server returns `commission_reversal_skipped:true` in success payload (`refunds.routes.ts:404-411`) — no UI consumes this flag. Refund completes; commissions stay paid; no operator warning that "refund applied, but $32 of paid commission was NOT clawed back because Jan 2026 payroll is locked. Reverse manually after unlock." Will reach UI debt level once refund UI ships.** L7 feedback meaningfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: refunds.routes already returns commission_reversal_skipped; downstream UI consumer needs the /refunds list page to ship first.]**
+- [x] WEB-UIUX-1402. **Commission-reversal warning shipped 2026-05-11.** `refundApi.approve` response type now declares `commission_reversal_skipped?: boolean` + `commission_reversal_error?: string` (`packages/web/src/api/endpoints.ts:2148`). `RefundsListPage.tsx` approveMut.onSuccess reads both flags: locked-period skip surfaces an 8s ⚠️ toast telling the operator commission stayed paid + to reverse it manually after payroll unlock; reversal error surfaces the upstream message with the same manual-action prompt.
   `packages/server/src/routes/refunds.routes.ts:319-376,404-411`
   <!-- meta: fix=refund-approve-success-handler-checks-data.commission_reversal_skipped+shows-warning-toast-with-link-to-payroll-period-unlock+OR-pending-task-in-Needs-Attention -->
 
@@ -5015,7 +5015,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Blocker — orphan from main navigation
 
-- [!] WEB-UIUX-1429. **[BLOCKER] `/gift-cards` has no Sidebar entry. `packages/web/src/components/layout/Sidebar.tsx` (549 lines) contains zero `/gift-cards` references — only Cmd+K (`CommandPalette.tsx:73`) and a notification deep-link for the `gift_card` event type (`notificationRoutes.ts:28`) reach the page. Operator who has not memorised Cmd+K has no way to discover gift-card management exists. Compounds with WEB-UIUX-1427: not only can't they redeem, they can't even find the list to know cards have been issued.** L1, L6 discoverability, L4 flow completion. **STATUS: BLOCKED — needs Sidebar Gift Cards entry under Billing/Customers section + permission gate; defer to nav sprint**
+- [x] WEB-UIUX-1429. **Gift Cards sidebar entry shipped (STALE 2026-05-11).** `Sidebar.tsx:96` mounts `Gift Cards → /gift-cards` under the Operations section with the WalletCards icon; audit claim that the sidebar has zero gift-card references is stale.
   `packages/web/src/components/layout/Sidebar.tsx:1-549 (no /gift-cards)`
   `packages/web/src/components/shared/CommandPalette.tsx:73`
   <!-- meta: fix=add-Gift-Cards-nav-item-under-Billing-or-Customers-section+Gift-icon+permission-gate-on-gift_cards.issue-OR-gift_cards.redeem -->

@@ -89,8 +89,25 @@ export function RefundsListPage() {
 
   const approveMut = useMutation({
     mutationFn: (id: number) => refundApi.approve(id),
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success('Refund approved');
+      // WEB-UIUX-1402: surface server's commission_reversal_skipped flag so
+      // the operator knows commissions stayed paid because the payroll
+      // period is locked. Without this, the refund silently completes and
+      // the tech keeps a commission they should have given back.
+      const skipped = res.data?.data?.commission_reversal_skipped;
+      const reversalErr = res.data?.data?.commission_reversal_error;
+      if (skipped) {
+        toast(
+          'Commission reversal skipped — payroll period is locked. Reverse the commission manually once the period unlocks.',
+          { duration: 8000, icon: '⚠️' },
+        );
+      } else if (reversalErr) {
+        toast(
+          `Commission reversal failed: ${reversalErr}. Reverse manually from Payroll.`,
+          { duration: 8000, icon: '⚠️' },
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['refunds'] });
     },
     onError: (err: unknown) => {
