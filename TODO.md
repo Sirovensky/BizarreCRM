@@ -4805,7 +4805,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:397`
   <!-- meta: fix=use-formatDateTime-helper-(already-imported)+OR-add-day-suffix-when-not-today -->
 
-- [!] WEB-UIUX-1362. **[MAJOR] Session list cards show `opened_at` only, no progress preview. Operator returning to a list of 5 open sessions must drill into each to remember "which one had I gotten to 200 items on". Compare invoices/estimates lists which surface counts/totals on the row.** L7 feedback. **STATUS: BLOCKED — server stocktake list payload must include items_counted + items_with_variance; backend, defer**
+- [x] WEB-UIUX-1362. **Stocktake session list now ships progress preview 2026-05-11.** Server `GET /stocktake` hydrates each row with `items_counted` + `items_with_variance` via two scoped subqueries on `stocktake_counts` (count, count-where-counted≠expected). Web `StocktakeSession` interface widens with both optional fields; `StocktakePage` session card renders "{N} counted" plus an amber `{N} variance` chip when any row drifts. Operator no longer has to drill into each open session to remember progress.
   `packages/web/src/pages/inventory/StocktakePage.tsx:244-273`
   <!-- meta: fix=add-items_counted+items_with_variance-to-/stocktake-list-payload+render-pill-"42-items-3-variance"-on-each-card -->
 

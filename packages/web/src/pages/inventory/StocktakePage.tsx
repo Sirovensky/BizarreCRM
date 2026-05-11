@@ -38,6 +38,11 @@ interface StocktakeSession {
   opened_at: string;
   committed_at: string | null;
   notes: string | null;
+  // WEB-UIUX-1362: hydrated by GET /stocktake list so the card shows
+  // progress without drilling into each session. Absent on legacy or
+  // GET /stocktake/:id detail responses.
+  items_counted?: number;
+  items_with_variance?: number;
 }
 
 interface StocktakeCount {
@@ -476,6 +481,22 @@ export function StocktakePage() {
               <div className="text-xs text-surface-400 mt-1">
                 {formatDateTime(s.opened_at)}
               </div>
+              {/* WEB-UIUX-1362: progress preview so the operator returning to
+                  a list of 5 open sessions sees where they got to without
+                  drilling into each. Hidden for legacy rows that predate the
+                  server-side hydration. */}
+              {typeof s.items_counted === 'number' && (
+                <div className="mt-1 flex items-center gap-2 text-xs text-surface-500 dark:text-surface-400">
+                  <span>
+                    {s.items_counted} counted
+                  </span>
+                  {typeof s.items_with_variance === 'number' && s.items_with_variance > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                      {s.items_with_variance} variance
+                    </span>
+                  )}
+                </div>
+              )}
             </button>
           ))}
         </div>

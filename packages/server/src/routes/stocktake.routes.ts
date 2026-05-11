@@ -73,8 +73,19 @@ router.get(
       : null;
     const where = status ? 'WHERE status = ?' : '';
     const params: unknown[] = status ? [status] : [];
-    const rows = await adb.all<StocktakeRow>(
-      `SELECT * FROM stocktakes ${where} ORDER BY opened_at DESC LIMIT 200`,
+    // WEB-UIUX-1362: hydrate each row with `items_counted` +
+    // `items_with_variance` so the session list can surface progress on the
+    // card itself. Without this the operator returning to 5 open sessions
+    // has to drill into each one to remember how far they had gotten.
+    // Subqueries scoped to the row keep the cost bounded — same pattern as
+    // POST /stocktake/:id's variance aggregator.
+    const rows = await adb.all<StocktakeRow & { items_counted?: number; items_with_variance?: number }>(
+      `SELECT s.*,
+              (SELECT COUNT(*) FROM stocktake_counts c
+                WHERE c.stocktake_id = s.id) AS items_counted,
+              (SELECT COUNT(*) FROM stocktake_counts c
+                WHERE c.stocktake_id = s.id AND c.counted_qty <> c.expected_qty) AS items_with_variance
+         FROM stocktakes s ${where} ORDER BY s.opened_at DESC LIMIT 200`,
       ...params,
     );
     res.json({ success: true, data: rows });
