@@ -626,7 +626,16 @@ function CreateAppointmentModal({
   existingAppointments: Appointment[];
 }) {
   const queryClient = useQueryClient();
-  const dateStr = defaultDate.toISOString().slice(0, 10);
+  // WEB-UIUX-1322: use the local date components, not toISOString(), so a
+  // user clicking "+New Appointment" at 5pm Dec 31 PST gets Dec 31, not
+  // Jan 1 (UTC). Off-by-one would otherwise fire at every edge hour.
+  const toLocalDateStr = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const dateStr = toLocalDateStr(defaultDate);
 
   const createInitialForm = useCallback(() => ({
     title: '',
@@ -657,7 +666,8 @@ function CreateAppointmentModal({
   // the date from the previous open.
   useEffect(() => {
     if (!open) return;
-    const newDateStr = defaultDate.toISOString().slice(0, 10);
+    // WEB-UIUX-1322: local-date components, not UTC.
+    const newDateStr = toLocalDateStr(defaultDate);
     setForm((f) => ({ ...f, start_date: newDateStr }));
   }, [open, defaultDate]);
 
@@ -786,7 +796,14 @@ function CreateAppointmentModal({
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Start Time</label>
               <div className="flex gap-1">
-                <select value={form.start_hour} onChange={(e) => setForm((f) => ({ ...f, start_hour: e.target.value }))}
+                {/* WEB-UIUX-1330: bumping start auto-slides end by +1h so an
+                    operator who picks 18:00 doesn't get blocked by the
+                    "End time must be after start time" toast. */}
+                <select value={form.start_hour} onChange={(e) => setForm((f) => {
+                  const newStartHour = e.target.value;
+                  const newEndHour = String((Number(newStartHour) + 1) % 24).padStart(2, '0');
+                  return { ...f, start_hour: newStartHour, end_hour: newEndHour, end_min: f.start_min };
+                })}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
                   {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
                     const n = Number(h);
@@ -795,7 +812,7 @@ function CreateAppointmentModal({
                   })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
-                <select value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value }))}
+                <select value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value, end_min: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
                   {['00', '15', '30', '45'].map((m) => (
                     <option key={m} value={m}>{m}</option>

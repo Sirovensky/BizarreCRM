@@ -756,7 +756,9 @@ export function LeadDetailPage() {
                   return (
                     <div key={a.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3 text-sm">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium text-surface-900 dark:text-surface-100">{a.title}</p>
+                        {/* WEB-UIUX-1332: match AppointmentDetailModal fallback so the
+                            same record renders identically across surfaces. */}
+                        <p className="font-medium text-surface-900 dark:text-surface-100">{a.title || 'Untitled'}</p>
                         <span
                           className="rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize"
                           style={{ backgroundColor: `${apptColor}18`, color: apptColor }}

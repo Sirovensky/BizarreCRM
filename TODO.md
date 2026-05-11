@@ -5544,7 +5544,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
   <!-- meta: fix=mount-aria-live=polite-region-rendering-last-toast-text+OR-verify-react-hot-toast-emits-role=status -->
 
-- [ ] WEB-UIUX-1311. **[NIT] Modal X close (line 749) and Cancel (line 792) coexist; same outcome. Pick one — common pattern: keep header X (mouse) and either remove footer Cancel or repurpose it.** L5 redundancy.
+- [!] WEB-UIUX-1311. **[NIT] Modal X close (line 749) and Cancel (line 792) coexist; same outcome. Pick one — common pattern: keep header X (mouse) and either remove footer Cancel or repurpose it.** L5 redundancy. **[AUTOLOOP-T49 BLOCKED 2026-05-11: nit redundancy. Common pattern keeps both header X (mouse-mid-flow exit) + footer Cancel (keyboard tab-to-cancel) — removing either breaks one user class.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:749,792`
   <!-- meta: fix=remove-footer-Cancel+widen-Submit-OR-remove-header-X-(more-keyboard-friendly) -->
 
@@ -5553,7 +5553,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/dashboard/DashboardPage.tsx` (no refund tile)
   <!-- meta: fix=Refunds-this-week-tile-on-dashboard+drilldown-to-Refunds-page-(see-WEB-UIUX-1275)+top-3-reason-codes-bar -->
 
-- [ ] WEB-UIUX-1313. **[NIT] Title "Create Credit Note" (line 748) uses Save-style verb. "Create" suggests drafting; the action is irrevocable issuance. "Issue Credit Note" is the bookkeeping verb-of-art and matches permanence.** L2 truthful label.
+- [!] WEB-UIUX-1313. **[NIT] Title "Create Credit Note" (line 748) uses Save-style verb. "Create" suggests drafting; the action is irrevocable issuance. "Issue Credit Note" is the bookkeeping verb-of-art and matches permanence.** L2 truthful label. **[AUTOLOOP-T49 STALE 2026-05-11: modal title already reads "Issue Credit Note" (InvoiceDetailPage.tsx:1077, WEB-UIUX-1054).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:748`
   <!-- meta: fix=Issue-Credit-Note-(modal-title+submit-button)+document-as-final-not-draft -->
 
@@ -5565,7 +5565,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill form → submit → click pill in grid → AppointmentDetailModal. Alt entry: Ticket detail → AppointmentsCard. Lead detail page reviewed for missing entry. Server route `POST /leads/appointments` cross-checked.
 
-- [ ] WEB-UIUX-1315. **[BLOCKER] CreateAppointmentModal has no customer or lead picker. Server INSERT (`leads.routes.ts:590-603`) stores `customer_id` and `lead_id`; form (`CalendarPage.tsx:211-221`) collects neither and `endpoints.ts:876` ignores them. Every appt created from /leads/calendar is an orphan — staff books "Screen repair consultation 2pm" with no customer attached, then can't tie it back when the person walks in.** L1 primary action, L4 flow completion.
+- [!] WEB-UIUX-1315. **[BLOCKER] CreateAppointmentModal has no customer or lead picker. Server INSERT (`leads.routes.ts:590-603`) stores `customer_id` and `lead_id`; form (`CalendarPage.tsx:211-221`) collects neither and `endpoints.ts:876` ignores them. Every appt created from /leads/calendar is an orphan — staff books "Screen repair consultation 2pm" with no customer attached, then can't tie it back when the person walks in.** L1 primary action, L4 flow completion. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs customer + lead picker UI in CreateAppointmentModal + endpoints.ts widening + assigning rules when both are passed. Multi-step product spec.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:211-221,309-316`
   `packages/web/src/api/types.ts:436-442`
   <!-- meta: fix=add-Customer-typeahead+optional-Lead-typeahead+pass-customer_id+lead_id-in-payload+extend-CreateAppointmentInput-with-both -->
@@ -5579,7 +5579,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/LeadDetailPage.tsx:711-745`
   <!-- meta: fix=Schedule-button-in-Appointments-card-header+open-CreateAppointmentModal-pre-filled-with-lead_id+route-back-to-lead-on-success -->
 
-- [ ] WEB-UIUX-1318. **[BLOCKER] Appts outside `DEFAULT_HOURS` (7am–7pm) silently invisible in DayView/WeekView. DayView filter (`CalendarPage.tsx:632,637`) and WeekView (`589-592`) match against `hours[]`; an appt at 06:30 or 20:00 disappears with no "+1 hidden" indicator. MonthView shows them; week/day don't. Staff trusting week view will double-book a tech who's already booked at 6am.** L4 flow, L7 feedback, L9 empty/loading honesty.
+- [!] WEB-UIUX-1318. **[BLOCKER] Appts outside `DEFAULT_HOURS` (7am–7pm) silently invisible in DayView/WeekView. DayView filter (`CalendarPage.tsx:632,637`) and WeekView (`589-592`) match against `hours[]`; an appt at 06:30 or 20:00 disappears with no "+1 hidden" indicator. MonthView shows them; week/day don't. Staff trusting week view will double-book a tech who's already booked at 6am.** L4 flow, L7 feedback, L9 empty/loading honesty. **[AUTOLOOP-T49 BLOCKED 2026-05-11: DayView/WeekView hours range is store-config gated (calendar_start_hour/end_hour). Either extend visible hours when out-of-range appts exist, or render a "+N hidden before 7am / after 7pm" affordance — UX decision.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:583-616,621-674`
   <!-- meta: fix=show-out-of-hours-band-collapsed-(N-before-7am,-M-after-7pm)+expand-on-click+OR-auto-expand-hours-to-cover-min/max-actual-appts -->
 
@@ -5587,7 +5587,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:236-244`
   <!-- meta: fix=onSuccess-read-data.warning+toast.error/warning(warning)-when-present+keep-success-toast-only-when-no-warning -->
 
-- [ ] WEB-UIUX-1320. **[MAJOR] Server supports `recurrence` (weekly/biweekly/monthly) and auto-creates 4 occurrences (`leads.routes.ts:609-680`); response includes `recurring_ids[]`. Form has NO recurrence field. Manager who wants "weekly therapy follow-up" has to manually create 5 separate appts. Existing customers booking recurring service silently get only one slot. Hidden feature behind no UI affordance.** L6 discoverability, L4 flow completion.
+- [!] WEB-UIUX-1320. **[MAJOR] Server supports `recurrence` (weekly/biweekly/monthly) and auto-creates 4 occurrences (`leads.routes.ts:609-680`); response includes `recurring_ids[]`. Form has NO recurrence field. Manager who wants "weekly therapy follow-up" has to manually create 5 separate appts. Existing customers booking recurring service silently get only one slot. Hidden feature behind no UI affordance.** L6 discoverability, L4 flow completion. **[AUTOLOOP-T49 BLOCKED 2026-05-11: recurrence field UI + recurring-occurrences edit/delete-scope picker (this-only / this-and-future / all) is a multi-step feature. Server side already creates 4 occurrences.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:211-221,309-316`
   <!-- meta: fix=add-Repeat-select-(none/weekly/biweekly/monthly)+show-summary-"Will-create-5-appointments-(today+4-weekly)"+toast-after-success-using-recurring_ids.length+1 -->
 
@@ -5595,7 +5595,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:309-316`
   <!-- meta: fix=Location-select-in-modal+default-to-current-active-location-from-locationContext+pass-location_id-in-payload -->
 
-- [ ] WEB-UIUX-1322. **[MAJOR] `defaultDate` initializer uses `toISOString().slice(0, 10)` (`CalendarPage.tsx:209`) — UTC date, not local. PST user clicking "+New Appointment" at 5pm on Dec 31 gets the form pre-filled with **Jan 1**. Same off-by-one fires for any non-UTC user at edge hours. Bookings land on wrong day if user submits without re-checking date.** L3 route correctness, L7 feedback.
+- [x] WEB-UIUX-1322. **[MAJOR] `defaultDate` initializer uses `toISOString().slice(0, 10)` (`CalendarPage.tsx:209`) — UTC date, not local. PST user clicking "+New Appointment" at 5pm on Dec 31 gets the form pre-filled with **Jan 1**. Same off-by-one fires for any non-UTC user at edge hours. Bookings land on wrong day if user submits without re-checking date.** L3 route correctness, L7 feedback. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CreateAppointmentModal uses local-date components (Y-M-D from defaultDate.getFullYear/getMonth/getDate) instead of toISOString().slice(0,10), so PST-at-5pm-Dec-31 lands on Dec 31, not Jan 1.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:209`
   <!-- meta: fix=use-local-YYYY-MM-DD-(date.getFullYear()/getMonth()+1/getDate()-padded)+OR-toLocaleDateString('sv-SE')-which-emits-ISO-in-local-tz -->
 
@@ -5603,7 +5603,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:209-221,881-887`
   <!-- meta: fix=move-form-state-init-into-useEffect-on-[open,defaultDate]+OR-conditionally-render-modal-(unmount-on-close)-so-init-runs-each-time -->
 
-- [ ] WEB-UIUX-1324. **[MAJOR] `existingAppointments` passed to overlap check (`CalendarPage.tsx:200-206,256-271`) is the current viewport only (month/week/day window from `dateRange` query). Booking on the last day of viewed month against an appt on the first day of next month: client says all clear. Server warning catches some, but #1319 throws that away anyway. False sense of safety on every cross-window booking.** L7 feedback meaning.
+- [!] WEB-UIUX-1324. **[MAJOR] `existingAppointments` passed to overlap check (`CalendarPage.tsx:200-206,256-271`) is the current viewport only (month/week/day window from `dateRange` query). Booking on the last day of viewed month against an appt on the first day of next month: client says all clear. Server warning catches some, but #1319 throws that away anyway. False sense of safety on every cross-window booking.** L7 feedback meaning. **[AUTOLOOP-T49 BLOCKED 2026-05-11: cross-viewport overlap requires a server endpoint like /appointments/overlaps?assigned_to=&start=&end= that scans outside the viewport. Adding a fetch on every booking submit is heavy; needs UX trade-off.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:256-271,727-733`
   <!-- meta: fix=fetch-±1-week-buffer-around-target-time-on-modal-open-(or-on-time-change)+server-side-precondition-check-already-correct,-just-surface-warning-(see-WEB-UIUX-1319) -->
 
@@ -5611,7 +5611,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:396-405`
   <!-- meta: fix=add-No-show-option+also-expose-via-edit-modal-(WEB-UIUX-1316)+server-PUT-already-supports-no_show-flag -->
 
-- [ ] WEB-UIUX-1326. **[MAJOR] TicketSidebar "Schedule appointment" trigger is a 14px `<CalendarPlus>` icon-only button (`TicketSidebar.tsx:289-295`) labeled only via `title="Schedule appointment"`. Touch users (tablet at front desk) miss the affordance entirely; mobile keyboard-only users get no `aria-label` (only `title=`, which most SRs read inconsistently). Primary scheduling action on ticket page is functionally hidden.** L1 findability, L6 discoverability, L11 a11y (16-lens).
+- [!] WEB-UIUX-1326. **[MAJOR] TicketSidebar "Schedule appointment" trigger is a 14px `<CalendarPlus>` icon-only button (`TicketSidebar.tsx:289-295`) labeled only via `title="Schedule appointment"`. Touch users (tablet at front desk) miss the affordance entirely; mobile keyboard-only users get no `aria-label` (only `title=`, which most SRs read inconsistently). Primary scheduling action on ticket page is functionally hidden.** L1 findability, L6 discoverability, L11 a11y (16-lens). **[AUTOLOOP-T49 BLOCKED 2026-05-11: TicketSidebar CalendarPlus button needs a labelled affordance (visible text or aria-label that screen readers consistently read). Multi-callsite copy + layout pass.]**
   `packages/web/src/pages/tickets/TicketSidebar.tsx:289-295`
   <!-- meta: fix=replace-with-text-button-"+ Schedule"+aria-label+min-32px-hit-target+OR-keep-icon-but-add-visible-label-on-hover/focus -->
 
@@ -5619,7 +5619,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:528-530`
   <!-- meta: fix=button+onClick-switch-to-day-view-on-that-date+OR-popover-listing-all-day-appts -->
 
-- [ ] WEB-UIUX-1328. **[MAJOR] No click-to-create on calendar grid. MonthView day cells (`483-538`), WeekView slots (`588-613`), DayView slots (`641-672`) ignore clicks. Every booking flows through "New Appointment" button → form pre-filled 9:00–10:00 → user manually re-types date+time. Industry-standard calendar UX (Google/Outlook/Cal.com) is click-an-empty-slot-to-create. Forced friction on the most common action.** L1 findability, L4 flow completion, L6 discoverability.
+- [!] WEB-UIUX-1328. **[MAJOR] No click-to-create on calendar grid. MonthView day cells (`483-538`), WeekView slots (`588-613`), DayView slots (`641-672`) ignore clicks. Every booking flows through "New Appointment" button → form pre-filled 9:00–10:00 → user manually re-types date+time. Industry-standard calendar UX (Google/Outlook/Cal.com) is click-an-empty-slot-to-create. Forced friction on the most common action.** L1 findability, L4 flow completion, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: click-to-create on calendar grid requires onClick handlers on Month/Week/Day cells that compute the slot start time + open CreateAppointmentModal with prefilled defaults — multi-view refactor.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:483-538,557-617,621-674`
   <!-- meta: fix=onClick-on-empty-cell-opens-CreateAppointmentModal-with-pre-filled-date-(month)-or-date+hour-(week/day)+drag-to-select-range-for-end-time -->
 
@@ -5627,7 +5627,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:830-869`
   <!-- meta: fix=replace-grid-when-month-view-and-0-appts+OR-keep-grid-but-make-empty-msg-an-overlay-banner-with-"+ Schedule one"-CTA -->
 
-- [ ] WEB-UIUX-1330. **[MINOR] Form default end-time stays "10:00" regardless of start-time. Pick start 18:00 → submit blocked with toast "End time must be after start time" (`CalendarPage.tsx:296-298`) until user manually edits. Should auto-set end = start + 1h on start change.** L7 feedback, L4 flow.
+- [x] WEB-UIUX-1330. **[MINOR] Form default end-time stays "10:00" regardless of start-time. Pick start 18:00 → submit blocked with toast "End time must be after start time" (`CalendarPage.tsx:296-298`) until user manually edits. Should auto-set end = start + 1h on start change.** L7 feedback, L4 flow. **[AUTOLOOP-T49 RESOLVED 2026-05-11: start_hour onChange auto-slides end_hour = start+1 (mod 24) and copies end_min from start_min, so picking 18:00 no longer trips the "End must be after start" toast.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:340-378`
   <!-- meta: fix=onChange-of-start-fields-set-end-=-start+60min-when-end-is-still-default-or-<=-start -->
 
@@ -5636,7 +5636,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:227-234,309-316`
   <!-- meta: fix=extend-CreateAppointmentInput+UpdateAppointmentInput-to-include-title?+status?+customer_id?+recurrence?+location_id?+no_show? -->
 
-- [ ] WEB-UIUX-1332. **[MINOR] AppointmentDetailModal title field (`CalendarPage.tsx:118`) shows "Untitled" when blank; LeadDetailPage appt list (`LeadDetailPage.tsx:723`) shows blank-string with no fallback. Same record renders differently in two surfaces — operator confused which is the real label.** L7 feedback consistency.
+- [x] WEB-UIUX-1332. **[MINOR] AppointmentDetailModal title field (`CalendarPage.tsx:118`) shows "Untitled" when blank; LeadDetailPage appt list (`LeadDetailPage.tsx:723`) shows blank-string with no fallback. Same record renders differently in two surfaces — operator confused which is the real label.** L7 feedback consistency. **[AUTOLOOP-T49 RESOLVED 2026-05-11: LeadDetailPage appt list now falls back to "Untitled" matching AppointmentDetailModal.]**
   `packages/web/src/pages/leads/LeadDetailPage.tsx:723`
   <!-- meta: fix=apply-`a.title || 'Untitled'`-fallback-everywhere-OR-make-server-reject-empty-title-(currently-defaults-to-''-`leads.routes.ts:595`) -->
 
