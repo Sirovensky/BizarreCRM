@@ -1046,7 +1046,30 @@ function WeekView({
   const today = new Date();
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
+  // WEB-UIUX-1318: count appts that fall outside the configured hours range
+  // for any day in this week. The grid only renders rows for `hours`, so
+  // out-of-range rows would silently disappear without this banner.
+  const minHour = hours.length ? hours[0] : 0;
+  const maxHour = hours.length ? hours[hours.length - 1] : 23;
+  const outOfRange = appointments.filter((a) => {
+    const d = new Date(a.start_time);
+    if (!days.some((day) => isSameDay(d, day))) return false;
+    const h = d.getHours();
+    return h < minHour || h > maxHour;
+  });
+
   return (
+    <>
+    {outOfRange.length > 0 && (
+      <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <span aria-hidden="true">⚠</span>
+        <span>
+          <strong>{outOfRange.length}</strong>{' '}
+          appointment{outOfRange.length === 1 ? '' : 's'} this week fall outside the visible hour window
+          ({minHour}:00–{maxHour + 1}:00). Switch to month view or widen <code className="font-mono">calendar_start_hour</code>/<code className="font-mono">calendar_end_hour</code> in Settings.
+        </span>
+      </div>
+    )}
     <div className="grid grid-cols-[60px_repeat(7,1fr)] border-l border-surface-200 dark:border-surface-700">
       {/* Header row */}
       <div className="border-b border-r border-surface-200 dark:border-surface-700" />
@@ -1106,6 +1129,7 @@ function WeekView({
         </Fragment>
       ))}
     </div>
+    </>
   );
 }
 
@@ -1125,7 +1149,27 @@ function DayView({
 }) {
   const dayAppts = appointments.filter((a) => isSameDay(new Date(a.start_time), currentDate));
 
+  // WEB-UIUX-1318: same out-of-range count for DayView.
+  const dayMinHour = hours.length ? hours[0] : 0;
+  const dayMaxHour = hours.length ? hours[hours.length - 1] : 23;
+  const dayOutOfRange = dayAppts.filter((a) => {
+    const h = new Date(a.start_time).getHours();
+    return h < dayMinHour || h > dayMaxHour;
+  });
+
   return (
+    <>
+    {dayOutOfRange.length > 0 && (
+      <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <span aria-hidden="true">⚠</span>
+        <span>
+          <strong>{dayOutOfRange.length}</strong>{' '}
+          appointment{dayOutOfRange.length === 1 ? '' : 's'} on this day fall outside the visible hour window
+          ({dayMinHour}:00–{dayMaxHour + 1}:00). Switch to month view or widen
+          {' '}<code className="font-mono">calendar_start_hour</code>/<code className="font-mono">calendar_end_hour</code> in Settings.
+        </span>
+      </div>
+    )}
     <div className="border-l border-surface-200 dark:border-surface-700">
       {hours.map((hour) => {
         const hourAppts = dayAppts.filter((a) => new Date(a.start_time).getHours() === hour);
@@ -1165,6 +1209,7 @@ function DayView({
         );
       })}
     </div>
+    </>
   );
 }
 
