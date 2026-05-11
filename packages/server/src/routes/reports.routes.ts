@@ -1139,7 +1139,7 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const today = new Date().toISOString().slice(0, 10);
 
-  const [stale_tickets, missingPartsRow, overdue_invoices, lowStockRow] = await Promise.all([
+  const [stale_tickets, missingPartsRow, overdue_invoices, lowStockRow, pendingRefundsRow] = await Promise.all([
     // Stale tickets: open, not updated in 3+ days
     adb.all<any>(`
       SELECT t.id, t.order_id,
@@ -1189,10 +1189,19 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
         AND low_stock_dismissed_at IS NULL
         AND in_stock <= reorder_level
     `),
+    // WEB-UIUX-1049: surface pending-refund count so admin landing page
+    // points at the approval queue instead of relying on operators to
+    // remember to navigate to /refunds. is_deleted scrubs the row only;
+    // the refund-status enum already excludes 'declined'/'completed' here.
+    adb.get<any>(`
+      SELECT COUNT(*) AS n FROM refunds
+      WHERE status = 'pending' AND is_deleted = 0
+    `),
   ]);
 
   const missing_parts_count = missingPartsRow?.n ?? 0;
   const low_stock_count = lowStockRow?.n ?? 0;
+  const pending_refunds_count = pendingRefundsRow?.n ?? 0;
 
   res.json({
     success: true,
@@ -1201,6 +1210,7 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
       missing_parts_count,
       overdue_invoices,
       low_stock_count,
+      pending_refunds_count,
     },
   });
 }));

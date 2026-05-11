@@ -739,6 +739,9 @@ interface NeedsAttentionData {
   missing_parts_count: number;
   overdue_invoices: { id: number; order_id: string; customer_name: string; amount_due: number; days_overdue: number }[];
   low_stock_count: number;
+  // WEB-UIUX-1049: pending-refund queue depth so admins find the approval
+  // queue from the landing page instead of having to remember to navigate.
+  pending_refunds_count?: number;
 }
 
 function AttentionSection({ title, icon: Icon, iconBg, iconColor, count, children, defaultExpanded = true }: {
@@ -849,8 +852,11 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
   const overdueInvoices = data.overdue_invoices.filter(inv => !isSnoozed(`inv-${inv.id}`));
   const showMissingParts = data.missing_parts_count > 0 && !isSnoozed('missing-parts');
   const showLowStock = data.low_stock_count > 0 && !isSnoozed('low-stock');
+  // WEB-UIUX-1049: surface pending-refund queue as its own snoozable row.
+  const pendingRefundsCount = data.pending_refunds_count ?? 0;
+  const showPendingRefunds = pendingRefundsCount > 0 && !isSnoozed('pending-refunds');
 
-  const totalIssues = staleTickets.length + (showMissingParts ? 1 : 0) + overdueInvoices.length + (showLowStock ? 1 : 0);
+  const totalIssues = staleTickets.length + (showMissingParts ? 1 : 0) + overdueInvoices.length + (showLowStock ? 1 : 0) + (showPendingRefunds ? 1 : 0);
   if (totalIssues === 0) return null;
 
   const visibleStale = showAllStale ? staleTickets : staleTickets.slice(0, SECTION_LIMIT);
@@ -997,6 +1003,33 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
               </span>
             </div>
           </AttentionSection>
+
+          {/* WEB-UIUX-1049: Pending refunds queue */}
+          {showPendingRefunds && (
+            <AttentionSection title="Pending Refunds" icon={Receipt} iconBg="bg-rose-50 dark:bg-rose-900/30" iconColor="text-rose-600" count={pendingRefundsCount}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/refunds?status=pending')}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/refunds?status=pending'); } }}
+                className="group flex items-center gap-3 px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer"
+              >
+                <div className="h-8 w-8 rounded-lg bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center flex-shrink-0">
+                  <Receipt className="h-4 w-4 text-rose-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-surface-900 dark:text-surface-100">
+                    {pendingRefundsCount} refund{pendingRefundsCount !== 1 ? 's' : ''} awaiting approval
+                  </p>
+                  <p className="text-xs text-surface-500">Review and approve or decline</p>
+                </div>
+                <SnoozeButtons itemKey="pending-refunds" />
+                <span className="text-xs font-medium px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 flex-shrink-0">
+                  {pendingRefundsCount}
+                </span>
+              </div>
+            </AttentionSection>
+          )}
 
           {/* Missing parts */}
           {showMissingParts && (
