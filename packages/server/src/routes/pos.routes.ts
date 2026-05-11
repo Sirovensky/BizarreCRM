@@ -2008,7 +2008,32 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   const membershipDiscountAmt = membershipPct > 0
     ? roundCents(invoiceSubtotal * (membershipPct / 100))
     : 0;
-  const discount = roundCents(Math.max(manualDiscount, membershipDiscountAmt));
+  // WEB-UIUX-1228: surface which discount path won + whether they could
+  // stack. Default still takes Math.max (membership wins when larger), but
+  // when `stack_membership` is passed we sum both, capped at invoiceSubtotal.
+  // The response payload below ships `discount_breakdown` so the cashier UI
+  // can render "membership ($30) replaced manual ($5)" instead of silently
+  // dropping the manual reason.
+  const stackMembership = req.body?.stack_membership === true;
+  let discount: number;
+  let discountSource: 'manual' | 'membership' | 'stacked' | 'none';
+  if (stackMembership) {
+    discount = roundCents(Math.min(manualDiscount + membershipDiscountAmt, invoiceSubtotal));
+    discountSource = discount > 0 ? 'stacked' : 'none';
+  } else if (membershipDiscountAmt > manualDiscount) {
+    discount = membershipDiscountAmt;
+    discountSource = membershipDiscountAmt > 0 ? 'membership' : 'none';
+  } else {
+    discount = manualDiscount;
+    discountSource = manualDiscount > 0 ? 'manual' : 'none';
+  }
+  const discountBreakdown = {
+    manual: manualDiscount,
+    membership: membershipDiscountAmt,
+    applied: discount,
+    source: discountSource,
+    manual_dropped: !stackMembership && membershipDiscountAmt > manualDiscount && manualDiscount > 0,
+  };
 
   // Round subtotal + tax, then cap discount, then compute total.
   const roundedSubtotal = roundCents(invoiceSubtotal);
@@ -2726,6 +2751,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       ...result,
       checkin_default_category: checkinCategory?.value ?? null,
       auto_print_label: autoPrintLabel?.value === '1' || autoPrintLabel?.value === 'true',
+      // WEB-UIUX-1228: discount path transparency so cashier UI can render
+      // "membership ($30) replaced your manual ($5)" instead of silently
+      // swallowing one side.
+      discount_breakdown: discountBreakdown,
       // Membership info for upsell prompt
       membership: customerMembership ? {
         active: true,
