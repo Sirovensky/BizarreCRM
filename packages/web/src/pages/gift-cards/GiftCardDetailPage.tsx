@@ -284,7 +284,7 @@ export function GiftCardDetailPage() {
             <div>
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="font-mono text-sm text-surface-700 dark:text-surface-300">
-                  {showCode ? card.code : `****${card.code.slice(-4)}`}
+                  {showCode ? card.code : `**** **** **** ${card.code.slice(-4)}`}
                 </span>
                 {/* WEB-UIUX-1451: aria-label for screen readers on eye-toggle */}
                 <button

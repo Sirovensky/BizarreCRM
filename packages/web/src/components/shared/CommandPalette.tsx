@@ -141,8 +141,22 @@ function getRecentSearches(): string[] {
   }
 }
 
+// WEB-UIUX-675: skip persisting plausibly-sensitive tokens.
+// We filter the obvious cases — long digit runs (SSN/card-shape), explicit
+// SSN format, and >=12-digit numerics — to avoid leaving PII / PCI in
+// session storage. Anything containing whitespace is left alone (multi-word
+// queries are vanishingly unlikely to be a card #).
+function isSensitiveQuery(q: string): boolean {
+  const trimmed = q.replace(/[\s-]/g, '');
+  if (/^\d{9,}$/.test(trimmed)) return true;         // bare numerics 9+ digits
+  if (/^\d{3}-\d{2}-\d{4}$/.test(q)) return true;    // SSN form
+  if (/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/.test(q)) return true; // 16-digit grouped (card)
+  return false;
+}
+
 function saveRecentSearch(query: string) {
   if (query.length < MIN_QUERY_LENGTH) return;
+  if (isSensitiveQuery(query)) return;
   try {
     const stored = sessionStorage.getItem(RECENT_SEARCHES_KEY);
     let existing: RecentSearchEntry[] = [];

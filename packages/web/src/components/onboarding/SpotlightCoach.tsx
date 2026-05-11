@@ -286,7 +286,7 @@ function TooltipCard({
             type="button"
             onClick={onSkipFlow}
             tabIndex={0}
-            className="rounded-md px-2 py-1 text-xs font-medium text-surface-500 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+            className="rounded-md px-2 py-1 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
           >
             Skip tutorial
           </button>
@@ -399,8 +399,28 @@ export function SpotlightCoach() {
       return;
     }
 
-    // Retry after TARGET_FIND_TIMEOUT_MS
+    // WEB-UIUX-577: replace single-shot 300ms retry with a MutationObserver that
+    // catches the target the moment it mounts. Fall back to the timeout only if
+    // the element never appears within the window.
+    let resolved = false;
+    const mo = new MutationObserver(() => {
+      if (resolved) return;
+      const retried = document.querySelector(selector);
+      if (retried) {
+        resolved = true;
+        targetElRef.current = retried;
+        updateRect();
+        const ro = new ResizeObserver(updateRect);
+        ro.observe(retried);
+        observerRef.current = ro;
+        mo.disconnect();
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+
     const timer = setTimeout(() => {
+      if (resolved) return;
+      mo.disconnect();
       const retried = document.querySelector(selector);
       if (retried) {
         targetElRef.current = retried;
@@ -409,13 +429,13 @@ export function SpotlightCoach() {
         ro.observe(retried);
         observerRef.current = ro;
       } else {
-        // Element not found — switch to floating fallback
         setIsFallback(true);
       }
     }, TARGET_FIND_TIMEOUT_MS);
 
     return () => {
       clearTimeout(timer);
+      mo.disconnect();
       observerRef.current?.disconnect();
     };
   }, [step, flowId, dismissed, updateRect]);

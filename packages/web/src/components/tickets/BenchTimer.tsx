@@ -331,6 +331,19 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
     onError: () => toast.error('Failed to stop timer'),
   });
 
+  // WEB-UIUX-652: admin/manager override-stop for another tech's running timer.
+  const currentUserRole = useAuthStore((s) => s.user?.role ?? null);
+  const canOverrideTimer = currentUserRole === 'admin' || currentUserRole === 'manager';
+  const forceStopOtherMut = useMutation({
+    mutationFn: (timerId: number) => benchApi.timer.stop(timerId),
+    onSuccess: () => {
+      toast.success('Other technician timer stopped');
+      invalidate();
+    },
+    onError: (e: { response?: { data?: { message?: string } } }) =>
+      toast.error(e?.response?.data?.message || 'Failed to stop timer'),
+  });
+
   if (cfgLoading) return null;
   if (!enabled) return null;
 
@@ -373,10 +386,24 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
               {otherTechName} running
             </div>
           </div>
-          {/* Start/Pause buttons hidden — another tech owns this timer */}
-          <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-center text-xs text-surface-500 dark:border-surface-700 dark:bg-surface-800/50">
-            Timer controlled by {otherTechName}
-          </div>
+          {/* WEB-UIUX-652: managers/admins get an override Stop on another tech's
+              timer to recover orphan-running timers (e.g. tech logged out without stopping). */}
+          {canOverrideTimer && otherActiveTimer ? (
+            <button
+              onClick={() => {
+                if (!window.confirm(`Force-stop ${otherTechName}'s timer? This will end their session and bill labor up to now.`)) return;
+                forceStopOtherMut.mutate(otherActiveTimer.id);
+              }}
+              disabled={forceStopOtherMut.isPending}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-red-700 dark:bg-surface-900 dark:text-red-300 dark:hover:bg-red-950/40"
+            >
+              <Square className="h-4 w-4" /> Force stop ({otherTechName})
+            </button>
+          ) : (
+            <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-center text-xs text-surface-500 dark:border-surface-700 dark:bg-surface-800/50">
+              Timer controlled by {otherTechName}
+            </div>
+          )}
         </>
       ) : (
         <>

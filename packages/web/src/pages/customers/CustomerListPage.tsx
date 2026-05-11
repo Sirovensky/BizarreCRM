@@ -43,7 +43,7 @@ import { useHasRole } from '@/hooks/useHasRole';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
-import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
+import { formatCurrency, formatPhone, formatDate, toLocalDateString } from '@/utils/format';
 import type { Customer } from '@bizarre-crm/shared';
 
 const DEVICE_NAME_REGEX = /\b(laptop|phone|iphone|ipad|samsung|dell|hp|macbook|lenovo|asus|acer|surface|pixel|galaxy|chromebook|thinkpad|tablet|kindle|airpod|watch|drone|xbox|playstation|nintendo|switch|console)\b/i;
@@ -644,11 +644,13 @@ export function CustomerListPage() {
           <div>
             <label htmlFor="clist-filter-from" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created From</label>
             <input id="clist-filter-from" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+              max={toLocalDateString(new Date())}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
             <label htmlFor="clist-filter-to" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created To</label>
             <input id="clist-filter-to" type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+              min={fromDate || undefined} max={toLocalDateString(new Date())}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>

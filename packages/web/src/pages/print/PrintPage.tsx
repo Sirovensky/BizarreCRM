@@ -1277,6 +1277,9 @@ function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintCon
         {devices.slice(0, 2).map((d: PrintDevice, i: number) => (
           <div key={i} style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
         ))}
+        {devices.length > 2 && (
+          <div style={{ fontWeight: 'bold', fontStyle: 'italic' }}>+{devices.length - 2} more</div>
+        )}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
         <div>{storeName}</div>

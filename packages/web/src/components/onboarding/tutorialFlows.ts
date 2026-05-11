@@ -230,18 +230,23 @@ export function firstStepKey(flowId: TutorialFlowId): string {
  * DangerZone that calls resetAllTutorials() below and patches the server state.
  */
 export async function dismissAllTutorials(navigate: NavigateFunction): Promise<void> {
-  try {
-    localStorage.setItem('tutorial.all.dismissed', '1');
-  } catch (err) {
-    // storage unavailable — still proceed (server flag below is the source of truth).
-    console.warn('[tutorialFlows] dismiss localStorage write failed', err);
-  }
-
+  // WEB-UIUX-579: persist server first; only set localStorage on success.
+  // Previously we wrote the local flag eagerly, so an API failure left a
+  // sticky client-only dismissal that the server never confirmed.
+  let serverPersisted = false;
   try {
     await onboardingApi.patchState({ checklist_dismissed: true });
+    serverPersisted = true;
   } catch (err) {
-    // non-fatal — local flag still set, retry on next dismiss attempt.
     console.warn('[tutorialFlows] patchState(checklist_dismissed) failed', err);
+  }
+
+  if (serverPersisted) {
+    try {
+      localStorage.setItem('tutorial.all.dismissed', '1');
+    } catch (err) {
+      console.warn('[tutorialFlows] dismiss localStorage write failed', err);
+    }
   }
 
   navigate('/', { replace: true });

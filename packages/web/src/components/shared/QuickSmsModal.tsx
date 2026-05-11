@@ -32,7 +32,10 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
   // below; we just don't need to track which template was picked once
   // the text has been pasted.
   const [showTemplates, setShowTemplates] = useState(false);
-  const MAX_CHARS = 160;
+  // Twilio concatenated GSM-7 segment is 153 chars (7 reserved for UDH).
+  // Single-message threshold remains 160 — only used when no concatenation.
+  const SINGLE_SEG_MAX = 160;
+  const MULTI_SEG_LEN = 153;
 
   // Focus trap + focus restore (SCAN-1164 / WEB-UIUX-23)
   useEffect(() => {
@@ -223,8 +226,8 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
             />
             <div className="flex items-center justify-between mt-1">
               <p className="text-xs text-surface-400">Reply STOP to opt out</p>
-              <p className={cn('text-xs font-mono', message.length > MAX_CHARS ? 'text-amber-500' : 'text-surface-400')}>
-                {message.length}/{MAX_CHARS}{message.length > MAX_CHARS && ` (${Math.ceil(message.length / MAX_CHARS)} msgs)`}
+              <p className={cn('text-xs font-mono', message.length > SINGLE_SEG_MAX ? 'text-amber-500' : 'text-surface-400')}>
+                {message.length}/{SINGLE_SEG_MAX}{message.length > SINGLE_SEG_MAX && ` (${Math.ceil(message.length / MULTI_SEG_LEN)} msgs)`}
               </p>
             </div>
           </div>

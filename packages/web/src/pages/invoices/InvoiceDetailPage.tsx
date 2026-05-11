@@ -33,6 +33,9 @@ const STATUS_COLORS: Record<string, string> = {
   partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   paid: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   void: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
+  // WEB-UIUX-732: matched against InvoiceListPage / CustomerDetailPage maps so
+  // imported RepairShopr/RepairDesk/MyRepairApp `refunded` invoices render a badge.
+  refunded: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
 export function InvoiceDetailPage() {
@@ -220,6 +223,8 @@ export function InvoiceDetailPage() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      // WEB-UIUX-715: status distribution donut chart reads ['invoice-stats'].
+      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
       // WEB-UIUX-431: build an informative refund destination message when
       // card info is available so operators can relay it to the customer.
       const cardPayment = invoice?.payments?.find(
@@ -244,7 +249,7 @@ export function InvoiceDetailPage() {
               className={`flex items-center gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg px-4 py-3 text-sm ${t.visible ? 'opacity-100' : 'opacity-0'} transition-opacity`}
             >
               <span className="flex-1 text-surface-800 dark:text-surface-100">
-                Credit note <span className="font-mono font-semibold">{cnOrderId}</span> created
+                Credit note <span className="font-mono font-semibold">{cnOrderId}</span> · {formatCurrency(variables.amount)} refunded
               </span>
               <button
                 onClick={() => { toast.dismiss(t.id); navigate(`/invoices/${cnId}`); }}

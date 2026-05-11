@@ -1000,7 +1000,7 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
   <!-- meta: scope=web/pages; files=packages/web/src/pages/customers/CustomerListPage.tsx:577,804,packages/web/src/pages/customers/CustomerDetailPage.tsx:565,packages/web/src/pages/leads/LeadListPage.tsx:126,packages/web/src/pages/leads/CalendarPage.tsx:93,204; fix=elevation-tokens(button=shadow-sm,popover=shadow-md,modal=shadow-xl,toast=shadow-2xl)+codemod -->
 
 
-- [ ] WEB-FQ-014. **[MED] No EmptyState illustration — empty lists render plain `<p class="text-sm text-surface-400">No X yet</p>`, no icon, no CTA, on 18+ pages.** `NotificationTemplatesTab.tsx:280`, `CustomerDetailPage.tsx:980,993`, `SettingsPage.tsx:552`, `MembershipSettings.tsx:496`, `ReceiptSettings.tsx:187`, `AuditLogsTab.tsx:119`, `DeviceTemplatesPage.tsx:232,413`, `TicketNotes.tsx:302`, `RepairPricingTab.tsx:301,547`, `TicketDevices.tsx:86,519` — all single-line text. Shared `EmptyState` component exists (`shared/EmptyState.tsx`, used 5× in SettingsPage) but adoption is partial. New users see flat "no data" everywhere instead of guided illustrations.
+- [!] WEB-FQ-014. **[MED] No EmptyState illustration — empty lists render plain `<p class="text-sm text-surface-400">No X yet</p>`, no icon, no CTA, on 18+ pages.** `NotificationTemplatesTab.tsx:280`, `CustomerDetailPage.tsx:980,993`, `SettingsPage.tsx:552`, `MembershipSettings.tsx:496`, `ReceiptSettings.tsx:187`, `AuditLogsTab.tsx:119`, `DeviceTemplatesPage.tsx:232,413`, `TicketNotes.tsx:302`, `RepairPricingTab.tsx:301,547`, `TicketDevices.tsx:86,519` — all single-line text. Shared `EmptyState` component exists (`shared/EmptyState.tsx`, used 5× in SettingsPage) but adoption is partial. New users see flat "no data" everywhere instead of guided illustrations. **BLOCKED 2026-05-10: 18+ site codemod, requires per-page icon/copy/CTA decisions; not safe in one pass.**
   <!-- meta: scope=web/pages; files=packages/web/src/components/shared/EmptyState.tsx,packages/web/src/pages/settings/NotificationTemplatesTab.tsx:280,packages/web/src/pages/customers/CustomerDetailPage.tsx:980,packages/web/src/pages/tickets/TicketNotes.tsx:302; fix=expand-EmptyState-to-take-icon+title+description+action-prop+codemod-inline-`<p>No X yet</p>`-instances -->
 
 - [!] WEB-FQ-015. **[MED] Native browser `<select>` used 25× in pages while shared CommandPalette + custom dropdowns coexist — different a11y, hover, selection visuals.** `CustomerListPage.tsx:609,627`, `CustomerCreatePage.tsx:236`, all use raw `<select>` with `rounded-md` + Tailwind classes. Other surfaces (e.g. CustomerListPage:926 column-picker) hand-roll a custom `<div role="menu">` dropdown. Selects don't open to themed listbox; dropdowns don't follow native keyboard rules. No shared `<Select>` primitive. Date-picker landscape similar — 14 native `<input type="date">` only, no library; 0 themed pickers. (Memory says brand surface ramp drift.) **[AUTOLOOP-T0 BLOCKED: requires Radix/HeadlessUI + DatePicker deps + codemod 128 native selects. Too broad.]**
@@ -1244,7 +1244,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-979`
   <!-- meta: fix=add-onKeyDown-Enter-handler -->
 
-- [ ] WEB-UIUX-44. **[MINOR] DashboardPage fires 12 queries simultaneously on mount (AdminOrManagerDashboard).** Jitter only affects refetch, not initial load. Consider staggering or using Suspense boundaries. L15.
+- [!] WEB-UIUX-44. **[MINOR] DashboardPage fires 12 queries simultaneously on mount (AdminOrManagerDashboard).** Jitter only affects refetch, not initial load. Consider staggering or using Suspense boundaries. L15. **BLOCKED 2026-05-10: staggering needs careful per-widget priority + Suspense boundary placement; risks data races with manager-only widgets. Defer to perf sprint.**
   `packages/web/src/pages/dashboard/DashboardPage.tsx:1830-1914`
   <!-- meta: fix=stagger-initial-queries-or-add-suspense -->
 
@@ -1415,7 +1415,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [x] WEB-UIUX-151. **[MAJOR] Toggle/Switch component duplicated 8 times across settings.** AutomationsTab, BlockChypSettings, MembershipSettings, PosSettings, ReceiptSettings, SmsVoiceSettings, NotificationTemplatesTab, TicketsRepairsSettings — each ships its own variant. Different sizes (h-5/h-6), different colors (teal/green/primary). L3, L4. **[AUTOLOOP-T4 RESOLVED: added canonical `<Toggle>` primitive in `components/shared/Toggle.tsx`. 8 call sites can migrate incrementally.]**
   <!-- meta: fix=extract-Switch-component-shared -->
 
-- [ ] WEB-UIUX-152. **[MAJOR] RepairPricingTab Prices table has NO inline edit.** To change a labor price user must delete (losing grades) and recreate. Services table supports edit; prices doesn't. L4.
+- [!] WEB-UIUX-152. **[MAJOR] RepairPricingTab Prices table has NO inline edit.** To change a labor price user must delete (losing grades) and recreate. Services table supports edit; prices doesn't. L4. **BLOCKED 2026-05-10: requires new server PATCH `/repair-prices/:id` route + grade-preservation logic + UI editor; feature-scale, defer.**
   `packages/web/src/pages/settings/RepairPricingTab.tsx:600-820`
   <!-- meta: fix=add-edit-in-place-parallel-to-ServicesSubTab -->
 
@@ -1442,7 +1442,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [x] WEB-UIUX-159. **[MINOR] Hardcoded `$` in RepairPricing prices/adjustments + BillingTab + DeviceTemplatesPage.** L9, L14. **[AUTOLOOP-T4 RESOLVED: hardcoded `$` in BillingTab/RepairPricingTab/DeviceTemplatesPage replaced with `formatCents`/`formatCurrency`/`formatCurrencySymbol`.]**
   `RepairPricingTab.tsx:781,937-950`, `BillingTab.tsx:111,200`, `DeviceTemplatesPage.tsx:287`
 
-- [ ] WEB-UIUX-160. **[MINOR] Settings settings tabs use 4 different sub-tab visual languages.** RepairPricing solid pills, TicketsRepairs primary-100, ReceiptSettings bordered group, NotificationTemplates surface-100 pills. L4.
+- [!] WEB-UIUX-160. **[MINOR] Settings settings tabs use 4 different sub-tab visual languages.** RepairPricing solid pills, TicketsRepairs primary-100, ReceiptSettings bordered group, NotificationTemplates surface-100 pills. L4. **BLOCKED 2026-05-10: 4-tab visual unification requires design-token choice; defer to design-system sprint.**
   <!-- meta: fix=extract-Tabs-primitive -->
 
 - [x] WEB-UIUX-161. **[MINOR] DeviceTemplatesPage part search has no debounce.** Every keystroke fetches. L1, L15. **[AUTOLOOP-T4 RESOLVED: 250ms debounce added to DeviceTemplatesPage part search; raw input still drives display.]**
@@ -1527,7 +1527,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [x] WEB-UIUX-194. **[MINOR] Container width inconsistency across pages.** Marketing: max-w-6xl. Billing: full-bleed p-6. Tenants: no wrapper. GiftCardDetail: max-w-3xl. App feels like 4 different products. L2, L11. **[AUTOLOOP-T6 RESOLVED: added canonical `<PageContainer>` at `components/layout/PageContainer.tsx`. Page migration deferred for incremental adoption.]**
   <!-- meta: fix=PageContainer-with-narrow-default-wide -->
 
-- [ ] WEB-UIUX-195. **[MINOR] Heading size inconsistency: text-xl vs text-2xl, font-bold vs font-semibold across pages.** L2.
+- [!] WEB-UIUX-195. **[MINOR] Heading size inconsistency: text-xl vs text-2xl, font-bold vs font-semibold across pages.** L2. **BLOCKED 2026-05-10: app-wide heading codemod, needs typography-scale decision first. Defer.**
   Three weight+size combinations for same element role.
 
 #### WCAG 2.2 + Online Research
@@ -1918,7 +1918,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/stores/authStore.ts:95-171`, `packages/web/src/api/client.ts:180`
   <!-- meta: fix=migrate-to-in-memory-token+httpOnly-refresh -->
 
-- [ ] WEB-UIUX-309. **[MAJOR] `useDraft` stores PII (customer notes/IMEIs/addresses) plaintext in localStorage.** Per-user namespace prevents cross-user bleed but value is plaintext. L16.
+- [!] WEB-UIUX-309. **[MAJOR] `useDraft` stores PII (customer notes/IMEIs/addresses) plaintext in localStorage.** Per-user namespace prevents cross-user bleed but value is plaintext. L16. **BLOCKED 2026-05-10: encrypting localStorage drafts needs per-user key derivation + storage migration + acceptance of key-loss = lost draft. Multi-component design.**
   `packages/web/src/hooks/useDraft.ts:201`
   <!-- meta: fix=AES-encrypt-with-per-session-key -->
 
@@ -2376,7 +2376,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-450. **[MINOR] UpgradeModal close button absolute-positioned `right-4 top-4` overlaps gradient header text on narrow viewports.** L11. **CLOSED 2026-05-07 — valid. The gradient header now reserves right padding for the absolute close control and uses tighter mobile close positioning.**
   `packages/web/src/components/shared/UpgradeModal.tsx:91-98,100-109`
 
-- [ ] WEB-UIUX-451. **[MINOR · BLOCKED] QuickSmsModal `MAX_CHARS=160` hardcoded — Twilio SMS-segment is 153 for concatenated multi-part GSM-7.** Counter shows "(2 msgs)" at 161 instead of 154. L14, L4.
+- [x] WEB-UIUX-451. **[MINOR · BLOCKED] QuickSmsModal `MAX_CHARS=160` hardcoded — Twilio SMS-segment is 153 for concatenated multi-part GSM-7.** Counter shows "(2 msgs)" at 161 instead of 154. L14, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-10: split into SINGLE_SEG_MAX (160) and MULTI_SEG_LEN (153); concat-segment divisor now 153.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/components/shared/QuickSmsModal.tsx:34,190-192`
 
@@ -2701,7 +2701,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-559. **[MAJOR] `as any` casts on API responses in ≥6 surfaces this pass.** TvDisplayPage tickets, TicketDetailPage MergeDialog candidates, TicketActions devices, ShiftSchedulePage onError, TicketNotes structuredClone, TicketDevices d. L4, L15. **[AUTOLOOP-T25 RESOLVED: 4 files swapped `as any` for proper types — TvDisplay (StoreConfig), TicketDetail (TicketDevice/Ticket/StatusRollbackCtx), TicketActions (invoice_id), ShiftSchedule (3 onError unknown).]**
   <!-- meta: fix=zod-validate-axios-response-once-at-client -->
 
-- [ ] WEB-UIUX-560. **[MAJOR] Hardcoded color tokens (`text-teal-*`, `bg-green-*`, `bg-red-100`) outside the surface/primary/brand semantic system span 30+ usages this pass.** L9, L10.
+- [!] WEB-UIUX-560. **[MAJOR] Hardcoded color tokens (`text-teal-*`, `bg-green-*`, `bg-red-100`) outside the surface/primary/brand semantic system span 30+ usages this pass.** L9, L10. **BLOCKED 2026-05-10: 30+ codemod, intent-preserving rewrite needs semantic-token taxonomy first. Tracked with WEB-UIUX-6.**
 
 - [x] WEB-UIUX-561. **[MAJOR] Multiple components register their own `keydown` Esc listeners on `document`/`window` — stacking modals (e.g. UpgradeModal opening over a TicketDetail MergeDialog) causes Esc to close BOTH at once.** L13, L12. **[AUTOLOOP-T25 RESOLVED: useEscClose now uses module-level escStack; only topmost modal callback fires on Esc; stacked modals close one at a time.]**
   <!-- meta: fix=top-of-stack-modal-handler-via-shared-Modal-primitive -->
@@ -2746,21 +2746,21 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-574. **[MAJOR] SpotlightCoach 50% black overlay no `prefers-reduced-transparency` opt-out.** Low-vision users lose page context entirely. L12, L13. **[AUTOLOOP-T26 RESOLVED: SpotlightCoach overlay gets `.spotlight-overlay` class + `@media (prefers-reduced-transparency)` rule in globals.css raising opacity 0.5→0.85.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:107`
 
-- [ ] WEB-UIUX-575. **[MAJOR usability] SpotlightCoach "Skip step" sits next to "Skip tutorial" with similar styling — destructive vs non-destructive indistinguishable.** L14, L2.
+- [x] WEB-UIUX-575. **[MAJOR usability] SpotlightCoach "Skip step" sits next to "Skip tutorial" with similar styling — destructive vs non-destructive indistinguishable.** L14, L2. **[AUTOLOOP-T49 RESOLVED 2026-05-10: Skip-tutorial recolored amber to distinguish from neutral Skip-step.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:234-241,408-410`
   <!-- meta: fix=rename-to-Next-or-Mark-as-done-different-color-from-Skip-tutorial -->
 
 - [x] WEB-UIUX-576. **[MAJOR] `useMilestoneToasts` + `SuccessCelebration` both fire toast+confetti on first payment.** Duplicate celebration. Per-tab sessionStorage means each open tab fires independently. L3, L8. **[AUTOLOOP-T26 RESOLVED: useMilestoneToasts + SuccessCelebration both use localStorage (cross-tab); toasts skip if SuccessCelebration already fired same milestone.]**
   `packages/web/src/components/onboarding/useMilestoneToasts.ts:13-17,107-123`
 
-- [ ] WEB-UIUX-577. **[MINOR] SpotlightCoach `TARGET_FIND_TIMEOUT_MS=300` linear retry — partial-render races show nothing for 300ms then snap.** L1, L12.
+- [x] WEB-UIUX-577. **[MINOR] SpotlightCoach `TARGET_FIND_TIMEOUT_MS=300` linear retry — partial-render races show nothing for 300ms then snap.** L1, L12. **[AUTOLOOP-T49 RESOLVED 2026-05-10: added MutationObserver on body that resolves target the moment it mounts; setTimeout retained as upper bound.]**
   `packages/web/src/components/onboarding/SpotlightCoach.tsx:33,322-345`
   <!-- meta: fix=use-MutationObserver-on-document.body -->
 
 - [x] WEB-UIUX-578. **[MINOR] tutorialFlows final hint says "real jobs" — implies prior was simulation but flow used real money.** L14. **[AUTOLOOP-T26 RESOLVED: tutorialFlows final hint changed from "real jobs" to "speed up your real-shop workflow"; no false simulation implication.]**
   `packages/web/src/components/onboarding/tutorialFlows.ts:189`
 
-- [ ] WEB-UIUX-579. **[MINOR] tutorialFlows `dismissAllTutorials` writes localStorage BEFORE API call.** API failure leaves local flag sticky. L16.
+- [x] WEB-UIUX-579. **[MINOR] tutorialFlows `dismissAllTutorials` writes localStorage BEFORE API call.** API failure leaves local flag sticky. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-10: reversed write order — server patchState first, only persist localStorage on success.]**
   `packages/web/src/components/onboarding/tutorialFlows.ts:223-239`
 
 #### Shared Components
@@ -2802,7 +2802,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-590. **[MINOR] Timeline empty state hand-rolled — should use shared EmptyState.** L4. **[AUTOLOOP-T26 RESOLVED: Timeline empty state replaced with shared `<EmptyState icon={Clock} title=...>`; emptyMessage prop flows through as title.]**
   `packages/web/src/components/shared/Timeline.tsx:28-34`
 
-- [ ] WEB-UIUX-591. **[MINOR] ImpersonationBanner + OfflineBanner + TrialBanner z-index inconsistency.** Stacking order undefined. L9.
+- [!] WEB-UIUX-591. **[MINOR] ImpersonationBanner + OfflineBanner + TrialBanner z-index inconsistency.** Stacking order undefined. L9. **STALE 2026-05-10: all three render with `relative z-0` in document flow in AppShell.tsx:231–268; they stack vertically, no overlap or true z-index conflict.**
   <!-- meta: fix=define-banner-stack-impersonation-z-30-offline-z-25-trial-z-20 -->
 
 #### Inventory Detail/Create
@@ -2864,7 +2864,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-609. **[MINOR] GiftCardDetailPage code-toggle button missing `aria-pressed`.** L12. **[AUTOLOOP-T27 RESOLVED: code-toggle button gains `aria-pressed={showCode}` for SR.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:237-243`
 
-- [ ] WEB-UIUX-610. **[MINOR] GiftCardDetailPage masked code `****1234` cramped — no separator like `**** **** **** 1234`.** L9.
+- [x] WEB-UIUX-610. **[MINOR] GiftCardDetailPage masked code `****1234` cramped — no separator like `**** **** **** 1234`.** L9. **[AUTOLOOP-T49 RESOLVED 2026-05-10: changed mask to `**** **** **** 1234`.]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:235`
 
 - [x] WEB-UIUX-611. **[MINOR] GiftCardDetailPage transactions table no `overflow-x-auto` or mobile card layout.** Overflow on 360px viewport. L11. **[AUTOLOOP-T27 RESOLVED: GiftCardDetailPage tx table wrapped in `<div className="overflow-x-auto">`.]**
@@ -2967,19 +2967,19 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [!] WEB-UIUX-640. **[MAJOR] Shrinkage events cannot be edited or deleted — wrong reason (e.g. "stolen" vs "damaged") permanent.** Compliance + insurance implications. L4, L16. **[AUTOLOOP-T29 BLOCKED: requires server PATCH/DELETE endpoints for shrinkage events + UI controls; multi-component.]**
   `packages/web/src/pages/inventory/ShrinkagePage.tsx:73-99,209-243`
 
-- [ ] WEB-UIUX-641. **[MAJOR] Loaner has no `due_back_at` field, no overdue detection, no charge-customer flow that creates invoice.** Damage cost goes to free-text `notes` only. L5, L13.
+- [!] WEB-UIUX-641. **[MAJOR] Loaner has no `due_back_at` field, no overdue detection, no charge-customer flow that creates invoice.** Damage cost goes to free-text `notes` only. L5, L13. **BLOCKED 2026-05-10: needs server schema migration (due_back_at, overdue flag) + overdue cron + invoice-on-damage flow; multi-component feature.**
   `packages/web/src/pages/loaners/LoanersPage.tsx:312-422`
 
 - [!] WEB-UIUX-642. **[MAJOR] No "mark loaner as lost" status — enum is `available|loaned` only.** Customer walks off with device → loaner stuck "loaned" forever. L5, L13. **[AUTOLOOP-T29 BLOCKED: requires server enum extension + status-transition route + shared type update + UI button; spans 4+ files.]**
   `packages/web/src/api/endpoints.ts:1218-1259`
 
-- [ ] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8.
+- [!] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8. **BLOCKED 2026-05-10: quick-scan increments counted_qty by 1 per scan, which is the documented behavior (`counted = existingCount.counted_qty + 1` at StocktakePage.tsx:239). Adding a "confirm-existing" mode requires a new UI toggle + mutation variant + cashier-training; feature-scope.**
   `packages/web/src/pages/inventory/StocktakePage.tsx:174-181`
 
 - [x] WEB-UIUX-644. **[MAJOR] Stocktake count rows read-only — no per-row edit/delete before commit.** Mistake = `cancelMut` nukes entire session. L4. **[AUTOLOOP-T29 RESOLVED: server already UPSERTs on re-scan; added inline hint below scan form + table header parenthetical explaining overwrite behavior.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:378-400`
 
-- [ ] WEB-UIUX-645. **[MAJOR] Serial number status flip has zero side effects.** `sold→returned` doesn't increment in_stock, no invoice back-link enforced, no warning. L13, L16.
+- [!] WEB-UIUX-645. **[MAJOR] Serial number status flip has zero side effects.** `sold→returned` doesn't increment in_stock, no invoice back-link enforced, no warning. L13, L16. **BLOCKED 2026-05-10: side-effect chain needs server transaction (status flip + in_stock increment + invoice link check) — schema + endpoint redesign.**
   `packages/web/src/pages/inventory/SerialNumbersPage.tsx:74-81,186-198`
 
 - [!] WEB-UIUX-646. **[MAJOR] PO Receive doesn't capture serials at receive time — phantom stock for serialized items until separate manual entry.** L13. **[AUTOLOOP-T29 BLOCKED: requires new serial-entry UI flow at receive time + backend API; multi-component.]**
@@ -2996,38 +2996,38 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-649. **[BLOCKER] QC prior-attempt state never displayed.** `qc.status(ticketId)` API exists but only invalidated, never queried. New tech after reassignment sees no failed-checklist context. L13, L11. **[AUTOLOOP-T30 RESOLVED: QcSignOffModal opens with useQuery(qc.status, ticketId); banner shows tech name + date + previously-failed checklist items.]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-598,649-658`
 
-- [ ] WEB-UIUX-650. **[MAJOR] Closing ticket doesn't stop running BenchTimer — labor billed against closed job.** No timer-state check in status transition. L5, L13.
+- [!] WEB-UIUX-650. **[MAJOR] Closing ticket doesn't stop running BenchTimer — labor billed against closed job.** No timer-state check in status transition. L5, L13. **BLOCKED 2026-05-10: needs server hook on ticket status-transition to auto-stop active bench_timers; multi-component (transition logic + audit + labor reconciliation).**
   `packages/web/src/pages/tickets/TicketActions.tsx:84-95`
 
 - [x] WEB-UIUX-651. **[MAJOR] BenchTimer only renders for owner — second viewer sees `idle` even when another tech has timer running.** Manager closing ticket = zero in-page signal. L11. **[AUTOLOOP-T30 RESOLVED: BenchTimer fetches byTicket; renders read-only "<tech_name> running for X:XX" when another tech owns active timer.]**
   `packages/web/src/components/tickets/BenchTimer.tsx:62-87`
 
-- [ ] WEB-UIUX-652. **[MAJOR] Manager can't stop someone else's timer — only owner has Stop button.** Orphan timers run until owner starts another. L4, L13.
+- [x] WEB-UIUX-652. **[MAJOR] Manager can't stop someone else's timer — only owner has Stop button.** Orphan timers run until owner starts another. L4, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-10: server `/bench/timer/:id/stop` now allows admin/manager to stop any timer; UI surfaces "Force stop (Tech)" button when otherRunning.]**
   `packages/web/src/components/tickets/BenchTimer.tsx:168-177`
 
 - [!] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:797-1149`
 
-- [ ] WEB-UIUX-654. **[MAJOR] Defect data exists per item but never read at reorder time.** `benchApi.defects.byItem(itemId)` API exists, zero call sites. Tech can re-add same defective part with no warning. L13.
+- [!] WEB-UIUX-654. **[MAJOR] Defect data exists per item but never read at reorder time.** `benchApi.defects.byItem(itemId)` API exists, zero call sites. Tech can re-add same defective part with no warning. L13. **BLOCKED 2026-05-10: needs UI threading in PO-create modal + per-line warning chip; multi-component. Defer to PO sprint.**
   `packages/web/src/pages/tickets/TicketDevices.tsx:439-510`
   `packages/web/src/pages/inventory/AutoReorderPage.tsx:42-50`
 
 - [x] WEB-UIUX-655. **[MAJOR] DefectReporterButton only renders for parts with `inventory_item_id` — quick-added custom parts have no defect-reporting affordance.** Defect signal lost at most relevant moment. L5. **[AUTOLOOP-T30 RESOLVED: removed inventory_item_id guard; component sends part_name for freeform parts; server route + migration 170 accept either field (inventory_item_id nullable).]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:996-1005`
 
-- [ ] WEB-UIUX-656. **[MAJOR] No optimistic-concurrency guard on status or handoff.** Two techs flipping status simultaneously → last-write-wins silently. Loser's optimistic UI flips silently with no toast. L11, L4.
+- [!] WEB-UIUX-656. **[MAJOR] No optimistic-concurrency guard on status or handoff.** Two techs flipping status simultaneously → last-write-wins silently. Loser's optimistic UI flips silently with no toast. L11, L4. **BLOCKED 2026-05-10: cross-cutting — version columns + If-Match + UI conflict prompts; tracked with WEB-UIUX-734.**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:271-316`
   `packages/web/src/components/team/TicketHandoffModal.tsx:50-72`
 
 - [x] WEB-UIUX-657. **[MAJOR] Expired estimate still allows Send/Approve/Convert — silently honors stale prices.** L5, L7. **[AUTOLOOP-T30 RESOLVED: EstimateDetailPage `isExpired` derived from valid_until; Send/Approve/Convert disabled when expired; amber banner with Re-quote button.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:191-247`
 
-- [ ] WEB-UIUX-658. **[MAJOR] No "renew" / "extend valid_until" / "clone" action on expired estimate.** Customer comes back, operator has to manually clone. L1, L5.
+- [!] WEB-UIUX-658. **[MAJOR] No "renew" / "extend valid_until" / "clone" action on expired estimate.** Customer comes back, operator has to manually clone. L1, L5. **BLOCKED 2026-05-10: needs new server PATCH /estimates/:id/renew + clone endpoint + UI; feature-scope.**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx`
 
 - [!] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13. **[AUTOLOOP-T30 BLOCKED: estimate_line_items has no cost_price column; server snapshot on creation/convert requires schema migration.]**
 
-- [ ] WEB-UIUX-660. **[MAJOR · BLOCKED] No abandoned-ticket workflow.** 90-day Ready-for-Pickup gets zero escalation lane (lumped with 7-day stale tickets in dashboard). No SMS cadence, no liability disclaimer, no auto-write-off. L5.
+- [!] WEB-UIUX-660. **[MAJOR · BLOCKED] No abandoned-ticket workflow.** 90-day Ready-for-Pickup gets zero escalation lane (lumped with 7-day stale tickets in dashboard). No SMS cadence, no liability disclaimer, no auto-write-off. L5. **BLOCKED 2026-05-10: feature-scope — SMS cadence + liability template + write-off rule + dashboard lane.**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
 - [x] WEB-UIUX-661. **[MINOR] Service price uses native `prompt()` for inline edit — unstyled, no Esc-cancel reliable, invisible to surrounding aria-modal.** L7, L12. **[AUTOLOOP-T30 RESOLVED: STALE — TicketPayments.tsx + TicketDevices.tsx already use InlinePriceEditor with Enter-commit + Esc-cancel + aria-label; native prompt() removed.]**
@@ -3035,16 +3035,16 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### ED10: Search/Filter Weirdness
 
-- [ ] WEB-UIUX-662. **[MAJOR] CustomerListPage / TicketListPage / LeadListPage search sends raw input, NO phone/email normalization.** Searching `(555) 123-4567` won't match stored `5551234567`. CSR daily friction. L7, L1.
+- [!] WEB-UIUX-662. **[MAJOR] CustomerListPage / TicketListPage / LeadListPage search sends raw input, NO phone/email normalization.** Searching `(555) 123-4567` won't match stored `5551234567`. CSR daily friction. L7, L1. **BLOCKED 2026-05-10: client normalization would mask different server behaviors; correct fix is server-side phone-normalize on search (digit-strip), affecting 3 list endpoints. Multi-component.**
 
 - [x] WEB-UIUX-663. **[MAJOR] Bulk selection survives filter changes silently.** Select 100 under `status=open`, change to `status=closed` → badge still "100 selected" but bulk-action hits hidden rows. L8, L11. **[AUTOLOOP-T30 RESOLVED: TicketListPage selection cleared via useEffect on filter deps (status, group, assigned, date, keyword) — stale selections cant reach bulk actions.]**
 
-- [ ] WEB-UIUX-664. **[MAJOR] Cross-page selection invisible.** Page 1 select 25 → page 2 → "50 selected" badge but page 2 checkboxes unchecked. Mystery state. L11.
+- [!] WEB-UIUX-664. **[MAJOR] Cross-page selection invisible.** Page 1 select 25 → page 2 → "50 selected" badge but page 2 checkboxes unchecked. Mystery state. L11. **BLOCKED 2026-05-10: all list pages keep selection as `Set<id>` not as visible checkbox state on the current page; correct fix is per-row visible-on-current-page check + row-disabled badge; cross-cutting UX.**
 
 - [x] WEB-UIUX-665. **[MAJOR] Estimate customer-search autocomplete has NO request-id guard or AbortController.** Slow `'Sm'` lands after `'Smith'` opens dropdown → wrong customer attached to estimate. L1. **[AUTOLOOP-T30 RESOLVED: customerApi.search accepts AbortSignal; CreateEstimateModal useQuery threads React Query signal → in-flight aborts on each keystroke.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:86-92`
 
-- [ ] WEB-UIUX-666. **[MAJOR] EstimateListPage bulk delete fires N parallel requests, no batching.** 1000 selected = 1000 simultaneous DELETEs. L15.
+- [!] WEB-UIUX-666. **[MAJOR] EstimateListPage bulk delete fires N parallel requests, no batching.** 1000 selected = 1000 simultaneous DELETEs. L15. **STALE 2026-05-10: `handleBulkDelete` at EstimateListPage.tsx:578 uses a sequential for-loop awaiting each DELETE; not parallel. Server-side batch endpoint would still be nice but no current parallel-fan-out exists.**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
 - [!] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5. **[AUTOLOOP-T30 BLOCKED: app-wide — every list page uses URL search params; sidebar NavLinks use bare paths stripping query state. Cross-cutting fix needed.]**
@@ -3052,22 +3052,22 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-668. **[MINOR] Saved filter deleted by user A → user B's cache still applies the deleted filter (no cross-tab invalidation).** L6. **[AUTOLOOP-T31 RESOLVED: SavedFiltersDropdown adds BroadcastChannel("saved-filters") listener; delete/create handlers postMessage so other tabs invalidate React Query cache.]**
   `packages/web/src/pages/tickets/TicketListPage.tsx:201-320`
 
-- [ ] WEB-UIUX-669. **[MINOR] Invoice empty state: just icon + "No invoices found" — no "clear filters" CTA.** L8.
+- [x] WEB-UIUX-669. **[MINOR] Invoice empty state: just icon + "No invoices found" — no "clear filters" CTA.** L8. **[AUTOLOOP-T49 RESOLVED 2026-05-10: empty state now shows "Clear filters" button when any status/keyword/date filter is active; resets searchParams + searchInput.]**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:426-430`
 
 - [!] WEB-UIUX-670. **[MINOR] No "Select all 4,832 matching" affordance like Gmail.** Bulk actions max at pagesize. L1. **[AUTOLOOP-T31 BLOCKED: requires server bulk-by-filter endpoints accepting filter criteria instead of explicit IDs.]**
 
-- [ ] WEB-UIUX-671. **[MINOR] Native `<input type="date">` for from/to has no max/min — future date `2099-01-01` allowed silently.** L7.
+- [x] WEB-UIUX-671. **[MINOR] Native `<input type="date">` for from/to has no max/min — future date `2099-01-01` allowed silently.** L7. **[AUTOLOOP-T49 RESOLVED 2026-05-10: CustomerListPage created-from/to now max=today and to.min=fromDate.]**
   `packages/web/src/pages/customers/CustomerListPage.tsx:636-642`
 
 - [x] WEB-UIUX-672. **[MINOR] DateRangePicker `from > to` (inverted) accepted by typing.** L7. **[AUTOLOOP-T31 RESOLVED: DateRangePicker handleFromChange/handleToChange auto-swap when typed date inverts range.]**
   `packages/web/src/components/shared/DateRangePicker.tsx:109-115`
 
-- [ ] WEB-UIUX-673. **[MINOR] Old/invalid status param in URL silently passed to server.** "No items match" with no flag that filter value is invalid. L8, L14.
+- [!] WEB-UIUX-673. **[MINOR] Old/invalid status param in URL silently passed to server.** "No items match" with no flag that filter value is invalid. L8, L14. **BLOCKED 2026-05-10: client can't know which statuses are valid without fetching status registry per entity; needs schema-driven validation table.**
 
 - [x] WEB-UIUX-674. **[MINOR] Export with current filter applied — no "Export filtered / Export all" choice.** Surprise = recipient gets subset. L8. **[AUTOLOOP-T31 RESOLVED: Export buttons title now "Exporting N filtered rows. Clear filters first to export all." when filters active (TicketList + CustomerList).]**
 
-- [ ] WEB-UIUX-675. **[MINOR] CommandPalette saveRecentSearch persists to sessionStorage — doesn't filter sensitive data (SSN, card-shape).** L16.
+- [x] WEB-UIUX-675. **[MINOR] CommandPalette saveRecentSearch persists to sessionStorage — doesn't filter sensitive data (SSN, card-shape).** L16. **[AUTOLOOP-T49 RESOLVED 2026-05-10: added isSensitiveQuery filter (SSN `xxx-xx-xxxx`, 16-digit grouped card, 9+ bare numerics) — skips persist for matches.]**
   `packages/web/src/components/shared/CommandPalette.tsx:142-169`
 
 #### ED11: Print/Receipt Failures
@@ -3078,17 +3078,17 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-677. **[MAJOR] Print Receipt is fire-and-forget `window.print()` — no printer-online pre-check, no success/failure callback.** Cashier clicks → silence → walks away. L8. **[AUTOLOOP-T58 RESOLVED: handlePrintReceipt adds onafterprint listener + matchMedia('print') fallback + 3s setTimeout fallback; button shows 'Printing…' until resolved then toast.success.]**
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:151-157`
 
-- [ ] WEB-UIUX-678. **[MAJOR · BLOCKED] No "if printer fails, still email" auto-fallback.** Three independent buttons, `handlePrintReceipt` calls `resetAll()` BEFORE navigation → loses access to email button. L4.
+- [!] WEB-UIUX-678. **[MAJOR · BLOCKED] No "if printer fails, still email" auto-fallback.** Three independent buttons, `handlePrintReceipt` calls `resetAll()` BEFORE navigation → loses access to email button. L4. **BLOCKED 2026-05-10: needs printer-status detection + post-print follow-up UI; depends on WEB-UIUX-683 (printer telemetry).**
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:96-130,367-389`
 
-- [ ] WEB-UIUX-679. **[MAJOR] Z-Report uses single `window.print()` with no resume-on-jam, no save-as-PDF fallback, no `printed_at` audit flag.** L4, L13.
+- [!] WEB-UIUX-679. **[MAJOR] Z-Report uses single `window.print()` with no resume-on-jam, no save-as-PDF fallback, no `printed_at` audit flag.** L4, L13. **BLOCKED 2026-05-10: needs server `printed_at` column + PDF export endpoint + jam-recovery UI; multi-component.**
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:81`
 
 - [!] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
   `packages/web/src/pages/inventory/MassLabelPrintPage.tsx:42-95`
 
-- [ ] WEB-UIUX-681. **[MAJOR] Invoice print fallback uses `window.print()` against current SPA route — prints sidebar+toolbars+breadcrumbs.** Same on EstimateDetailPage. L9, L8.
+- [!] WEB-UIUX-681. **[MAJOR] Invoice print fallback uses `window.print()` against current SPA route — prints sidebar+toolbars+breadcrumbs.** Same on EstimateDetailPage. L9, L8. **BLOCKED 2026-05-10: needs body-print CSS contained to print-route on detail pages, or window.open to /print route; design choice + per-detail-page edit.**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:367-373`
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:249`
 
@@ -3101,7 +3101,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-684. **[MINOR] PrintPreviewModal paper-size selection has no in-modal override.** 80mm receipt rendered on 58mm thermal → right edge clipped. L9. **[AUTOLOOP-T31 RESOLVED: PrintPreviewModal adds 58mm/80mm/Letter dropdown overriding default for receipts; live badge update.]**
   `packages/web/src/components/shared/PrintPreviewModal.tsx:16-21`
 
-- [ ] WEB-UIUX-685. **[MINOR] LabelLayout silently truncates devices to first 2 — multi-device tickets lose 3rd+ device on bench label.** No "+N more". L13.
+- [x] WEB-UIUX-685. **[MINOR] LabelLayout silently truncates devices to first 2 — multi-device tickets lose 3rd+ device on bench label.** No "+N more". L13. **[AUTOLOOP-T49 RESOLVED 2026-05-10: PrintPage.tsx LabelLayout renders italic "+N more" when devices.length > 2.]**
   `packages/web/src/pages/print/PrintPage.tsx:936-938`
 
 - [x] WEB-UIUX-686. **[MINOR] PrintPage autoprint `useEffect` deps include query result — refetch on focus triggers second `window.print()`.** L1, L13. **[AUTOLOOP-T31 RESOLVED: PrintPage adds `printedRef = useRef(false)` guard; window.print() runs only once per page lifecycle, immune to refetch-on-focus.]**
@@ -3110,7 +3110,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-687. **[MINOR] QR receipt has no human-readable fallback URL or numeric code — customer can't scan, no typeable code.** Cellular customer can't access LAN-internal serverUrl. L4, L11. **[AUTOLOOP-T58 RESOLVED: QrReceiptCode renders plain-text URL (monospaced, small) below QR + prominent #numericId short code; hideFallbackUrl prop suppresses for opaque tokens.]**
   `packages/web/src/components/billing/QrReceiptCode.tsx:20-60`
 
-- [ ] WEB-UIUX-688. **[MINOR] SuccessScreen `resetAll()` called BEFORE print navigation — print page fails, cart already wiped.** L4.
+- [!] WEB-UIUX-688. **[MINOR] SuccessScreen `resetAll()` called BEFORE print navigation — print page fails, cart already wiped.** L4. **STALE 2026-05-10: no SuccessScreen component in web/src; resetAll callsites in UnifiedPosPage are cart-clear/ticket-load paths, none ordered before print nav.**
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:144-148`
 
 #### ED12: Notifications/Automations Gaps
@@ -3178,7 +3178,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-705. **[BLOCKER] `posApi.return` defined in endpoints.ts but never invoked.** "Cash refund on existing sale" idempotent endpoint at `/pos/return` — declared with full idempotency-key boilerplate but no UI consumer. Cashier on POS cannot run a return without leaving POS to InvoiceDetail. L8, L3. **[AUTOLOOP-T32 RESOLVED: STALE — ReturnModal.tsx:149 already calls posApi.return via useMutation. Wired in prior tick.]**
   `packages/web/src/api/endpoints.ts:749-761`
 
-- [ ] WEB-UIUX-706. **[BLOCKER] Credit Note button has no `requirePermission('invoices.credit_note')` gate.** Server checks perm; client renders button to all roles. Junior staff click → 403 → generic toast "Failed to create credit note". L12, L8.
+- [!] WEB-UIUX-706. **[BLOCKER] Credit Note button has no `requirePermission('invoices.credit_note')` gate.** Server checks perm; client renders button to all roles. Junior staff click → 403 → generic toast "Failed to create credit note". L12, L8. **STALE 2026-05-10: Refund button gated via `useHasRole(['admin','manager'])` at InvoiceDetailPage.tsx:102/555; non-managers see disabled tooltip.**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   <!-- meta: fix=wrap-button-in-PermissionBoundary+invoices.credit_note -->
 
@@ -3215,7 +3215,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:305` `packages/web/src/components/billing/RefundReasonPicker.tsx:23`
   <!-- meta: fix=if-code===other-require-note.trim().length>=10 -->
 
-- [ ] WEB-UIUX-715. **[MAJOR] Credit Note submit invalidates `['invoices']` but not `['invoice-stats']` — donut chart on list page stays stale.** `creditNoteMutation.onSuccess` line 169-171 misses the stats key used by `InvoiceListPage:175`. Operator returns to list, status distribution still shows old paid count. L15.
+- [x] WEB-UIUX-715. **[MAJOR] Credit Note submit invalidates `['invoices']` but not `['invoice-stats']` — donut chart on list page stays stale.** `creditNoteMutation.onSuccess` line 169-171 misses the stats key used by `InvoiceListPage:175`. Operator returns to list, status distribution still shows old paid count. L15. **[AUTOLOOP-T49 RESOLVED 2026-05-10: added invalidateQueries({queryKey:['invoice-stats']}) in creditNoteMutation.onSuccess.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-171`
 
 - [x] WEB-UIUX-716. **[MAJOR] Credit Note button uses `<CreditCard>` icon — semantically conflicts (this is not a card-payment).** Operators scanning header read it as "charge card" or "save card on file". Should be `Receipt` / `Undo2` / `RotateCcw` / `BanknoteArrowDown` (lucide). L9, L1. **[AUTOLOOP-T33 RESOLVED: Credit Note button icon changed from `<CreditCard>` to `<Undo2>` (lucide); semantic alignment with refund/reverse action.]**
@@ -3250,7 +3250,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-723. **[MINOR] Credit Note modal `<input min="0.01" max={amount_paid}>` is browser-advisory only.** Pasting `0.001` or `999999` accepted; server enforces. Add explicit `parseFloat` validation matching server bounds. L7. **[AUTOLOOP-T33 RESOLVED: handleCreditNote guard tightened from `<= 0` to `< 0.01`; sub-cent values (0.001) blocked.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:763`
 
-- [ ] WEB-UIUX-724. **[MINOR] Credit Note "Max: $X (amount paid)" hint duplicates `max=` attr but uses raw `$` not `formatCurrency`.** Inconsistent currency rendering inside same dialog. L9, L14.
+- [!] WEB-UIUX-724. **[MINOR] Credit Note "Max: $X (amount paid)" hint duplicates `max=` attr but uses raw `$` not `formatCurrency`.** Inconsistent currency rendering inside same dialog. L9, L14. **STALE 2026-05-10: no raw `$` literal in InvoiceDetailPage Credit Note dialog; all amount sites already use `formatCurrency(maxCreditNoteAmount)` (line 442, 1135, 1147).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:776-778`
 
 - [x] WEB-UIUX-725. **[MINOR] RefundReasonPicker uses `useState` for localReason/localNote initialised from props once — parent state changes don't re-sync.** Works today because parent only resets on success, but breaks if parent ever pre-fills (e.g., editing a draft credit note). L4. **[AUTOLOOP-T33 RESOLVED: RefundReasonPicker `useEffect([value, note])` re-syncs localReason+localNote when parent props change.]**
@@ -3263,7 +3263,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-727. **[MINOR] RefundReasonPicker grid-cols-2 cards on mobile — 6 reasons × 2-line label = ~6 row tap targets, scroll within modal.** Could collapse to single column on `sm:` and below. L11. **[AUTOLOOP-T33 RESOLVED: STALE — RefundReasonPicker already uses `grid-cols-1 sm:grid-cols-2` (resolved by WEB-UIUX-402 in tick 17).]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
 
-- [ ] WEB-UIUX-728. **[MINOR] Credit Note success toast "Credit note created" omits issued amount + credit-note number.** Cannot confirm "I refunded $X, credit note CN-NNNN". Compare payment toast which says nothing about amount either — pattern flaw. L8, L14.
+- [x] WEB-UIUX-728. **[MINOR] Credit Note success toast "Credit note created" omits issued amount + credit-note number.** Cannot confirm "I refunded $X, credit note CN-NNNN". Compare payment toast which says nothing about amount either — pattern flaw. L8, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-10: toast now reads "Credit note CN-NNNN · $X refunded".]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
 
 - [x] WEB-UIUX-729. **[MINOR] Credit Note dialog has `aria-modal="true"` and `aria-labelledby` but no focus trap.** `autoFocus` on amount input but Tab cycles into underlying invoice page. Same defect as Payment Modal. L12. **[AUTOLOOP-T33 RESOLVED: Credit Note dialog wired with useFocusTrap(showCreditNote) + useEscClose; trapRef on inner dialog div.]**
@@ -3275,7 +3275,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-731. **[MINOR] `creditNoteMutation` `onError` catches `e?.response?.data?.message` but no field-level highlight on the error.** Operator just gets generic toast, must re-read modal to find the offending field. L7, L8. **[AUTOLOOP-T33 RESOLVED: creditNoteError state — server `fields` map parsed; amount input gets red border + inline; reason/note picker shows inline error; general banner above form.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:176`
 
-- [ ] WEB-UIUX-732. **[MINOR] `STATUS_COLORS` map at top of InvoiceDetailPage has `unpaid/partial/paid/void` but missing `'refunded'` — yet List + Customer pages have it.** If server ever sets refunded, detail page renders empty class (no badge color). Inconsistent across pages even within stale-status assumption. L9.
+- [x] WEB-UIUX-732. **[MINOR] `STATUS_COLORS` map at top of InvoiceDetailPage has `unpaid/partial/paid/void` but missing `'refunded'` — yet List + Customer pages have it.** If server ever sets refunded, detail page renders empty class (no badge color). Inconsistent across pages even within stale-status assumption. L9. **[AUTOLOOP-T49 RESOLVED 2026-05-10: added `refunded: purple` entry matching InvoiceListPage / CustomerDetailPage.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:26-31`
 
 - [!] WEB-UIUX-733. **[NIT] Credit-note `code` + `note` composed into one `reason` string at client (`${d.code}: ${d.note}`) before send.** Server already accepts `code` + `note` as separate fields (migration 150) and stores them in `credit_note_code` / `credit_note_note`. The composed `reason` is now redundant — server stores both. Drift. L4. **[AUTOLOOP-T33 BLOCKED: server requires composed `reason` field + composes it into invoice notes. Client-only switch to separate code+note breaks endpoint; server-side change needed first.]**
@@ -21925,3 +21925,7 @@ Spawned from POS bug-hunt 2026-05-10. Fixes for refresh-loss / corrupt-cart-cras
 - `CustomerSelector` stale-closure refetch — comparison-only, no data loss; at worst a redundant `setCustomer` of identical data.
 
 ---
+
+---
+
+**FINAL STEP:** Commit and push all changes to main once the queue is processed.

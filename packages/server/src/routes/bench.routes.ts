@@ -500,7 +500,11 @@ router.post(
       | BenchTimerRow
       | undefined;
     if (!row) throw new AppError('Timer not found', 404);
-    if (row.user_id !== req.user?.id) throw new AppError('Not your timer', 403);
+    // WEB-UIUX-652: admins/managers may stop another tech's timer (orphan recovery).
+    const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+    if (row.user_id !== req.user?.id && !isPrivileged) {
+      throw new AppError('Not your timer', 403);
+    }
     if (row.ended_at) throw new AppError('Timer already stopped', 400);
 
     // If the timer is still paused, close the pause segment first so the
