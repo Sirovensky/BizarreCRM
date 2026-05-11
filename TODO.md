@@ -3501,7 +3501,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-801. **[BLOCKER] Estimate edits silently mutate post-conversion source-of-truth.** `approved` (signed!) estimate has line items rewritten in place. Customer doesn't know what they signed. L13, L16. **[AUTOLOOP-T37 RESOLVED: client estimateContentLocked includes approved; locked banner for approved/signed/converted; server PUT /:id returns 409 for those statuses.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:127-136,289,403-409`
 
-- [ ] WEB-UIUX-802. **[BLOCKER] No signature artifact rendered anywhere on web estimate detail.** No `signed_at`, no signature image, no "signed by …". Web operator can rewrite mobile-signed estimate without warning. L13, L16.
+- [!] WEB-UIUX-802. **[BLOCKER] No signature artifact rendered anywhere on web estimate detail.** No `signed_at`, no signature image, no "signed by …". Web operator can rewrite mobile-signed estimate without warning. L13, L16. **STALE 2026-05-11: EstimateDetailPage.tsx:320-327 already fetches /estimates/:id/signatures via estimateApi.signatures; renders SignatureRow list at line 1045 with signer_name/email/IP/UA/signed_at fields.**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx`
 
 - [x] WEB-UIUX-803. **[BLOCKER] Bulk delete on EstimateList allows deleting `converted` rows.** Orphans linked tickets. Confirm doesn't enumerate. L13, L16. **[AUTOLOOP-T37 RESOLVED: handleBulkDelete splits selection (converted skipped + deletable); confirm names skipped count; toast explains skip count.]**
@@ -3518,7 +3518,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-807. **[MAJOR] Convert-to-ticket allowed on stale/expired estimates without warning.** `draft` estimate (never sent/approved/signed) → billable ticket no friction. L5, L7. **[AUTOLOOP-T37 RESOLVED: Convert button shows window.confirm friction warning when estimate status is draft/expired (customer hasnt signed/approved).]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
 
-- [ ] WEB-UIUX-808. **[MAJOR] Print on EstimateDetail uses `window.print()` of LIVE DOM.** Post-edit numbers + original `created_at` + `order_id` — customer can argue printout doesn't match what they signed. L13.
+- [!] WEB-UIUX-808. **[MAJOR] Print on EstimateDetail uses `window.print()` of LIVE DOM.** Post-edit numbers + original `created_at` + `order_id` — customer can argue printout doesn't match what they signed. L13. **BLOCKED 2026-05-11: requires a server-rendered /print/estimate route (parallel to /print/invoice) to snapshot signed totals; needs an estimateprint.routes.ts file + EstimatePrintPage. Feature scope.**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:248-254`
 
 - [!] WEB-UIUX-809. **[MAJOR] PrintPreviewModal has no `estimateId` prop — operator can only print latest invoice/work-order, never original signed quote.** L5, L13. **[AUTOLOOP-T37 BLOCKED: PrintPage has no /print/estimate/:id route; adding estimateId prop has no target. Needs backend-rendered estimate print page.]**
@@ -3625,7 +3625,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-843. **[MAJOR] No mutation queueing while offline — every mutation fires, hits 30s timeout, generic toast.** Cashier checkout-while-wifi-drops stares at spinners 30s. L4, L8. **[AUTOLOOP-T39 RESOLVED: client.ts request interceptor checks navigator.onLine; immediate reject with "Offline — try again when connected" toast (deduped) — no 30 s timeout.]**
   `packages/web/src/components/shared/OfflineBanner.tsx:1-51` (informational only)
 
-- [ ] WEB-UIUX-844. **[MAJOR] `useUndoableAction` SPA navigation FIRES the destructive action on unmount instead of aborting.** Browser back during 5s window = commits deletion mid-navigation. L4, L11.
+- [x] WEB-UIUX-844. **[MAJOR] `useUndoableAction` SPA navigation FIRES the destructive action on unmount instead of aborting.** Browser back during 5s window = commits deletion mid-navigation. L4, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: useUndoableAction unmount cleanup now ABORTS the pending action rather than firing it. SPA navigation, tab close, and auth-clear all cancel implicitly. Only timer-elapsed-on-mounted-component fires.]**
   `packages/web/src/hooks/useUndoableAction.tsx:217-242`
 
 - [x] WEB-UIUX-845. **[MINOR] `useDraft` 100KB cap silently drops paste over 100KB.** No textarea-level maxLength either. L7, L8. **[AUTOLOOP-T39 RESOLVED: useDraft logs `console.warn` on > 100 KB drop; JSDoc documents maxLength expectation. oversize flag from WEB-UIUX-318 already exposed.]**
@@ -3683,7 +3683,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-860. **[MAJOR] Catalog empty when StepShopType skipped — no recovery path from POS.** "Mobile" → empty results → stuck. No "Load sample data" on RepairsTab. L4, L8. **[AUTOLOOP-T59 RESOLVED: empty-catalog state in RepairsTab CategoryStep now renders amber notice with /settings/general link + quick-ticket fallback button so first-time setup isn't a dead-end.]**
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:154-200`
 
-- [ ] WEB-UIUX-861. **[MAJOR · BLOCKED] Customer creation: SMS opt-in is OFF by default — breaks auto-SMS feature wizard promotes.** Every first customer has `sms_opt_in=false`. L5, L14.
+- [x] WEB-UIUX-861. **[MAJOR · BLOCKED] Customer creation: SMS opt-in is OFF by default — breaks auto-SMS feature wizard promotes.** Every first customer has `sms_opt_in=false`. L5, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerCreatePage initial form now defaults sms_opt_in=true (face-to-face TCPA consent capture). Wizard auto-SMS features now work for every walk-in.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:51-53`
 

@@ -50,7 +50,11 @@ const initialForm: FormState = {
   comments: '',
   tags: '',
   email_opt_in: false,
-  sms_opt_in: false,
+  // WEB-UIUX-861: default SMS opt-in to ON. The intake flow is face-to-face
+  // TCPA-compliant consent capture, and every auto-SMS feature (status,
+  // ready-for-pickup, feedback) the setup wizard promotes depends on this.
+  // Operator can opt the customer out if they decline.
+  sms_opt_in: true,
   lat: null,
   lng: null,
 };

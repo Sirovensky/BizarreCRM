@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuthStore } from '@/stores/authStore';
 
 export interface UseUndoableActionOptions<TArgs> {
   /** Delay before the action fires, in milliseconds. Default 5000. */
@@ -198,48 +197,25 @@ export function useUndoableAction<TArgs = void>(
 
   const isPending = useCallback(() => timerRef.current !== null, []);
 
-  // If the component unmounts with a pending undo window, fire the action
-  // immediately so we do not silently drop the user's intent.
-  //
-  // SCAN-1088: if the user is closing the tab (document becoming hidden /
-  // pagehide firing the unmount) we should NOT commit a destructive action
-  // they were still considering. Before, a user who typed "delete ticket",
-  // saw the 5-second undo toast, changed their mind, and closed the tab
-  // would still have the deletion fire through the unmount cleanup. Skip
-  // the fire in that case — the timer is discarded silently. If the user
-  // navigates to another route inside the SPA (visibility === 'visible'),
-  // firing is still the right behavior so pending intent is preserved.
-  //
-  // WEB-FD-007 (Fixer-B7 2026-04-25): also skip the unmount fire when auth
-  // has been cleared (logout / forced logout / switch-user) inside the 5s
-  // window. AppShell unmounts the host on logout; firing the snapshot
-  // afterward issues a request whose token has already been invalidated —
-  // best case 401 + console error, worst case the request was queued before
-  // logout-cleanup and runs as the previous user. Drop the pending intent
-  // when the session is gone.
+  // WEB-UIUX-844: on unmount, ABORT the pending action instead of firing it.
+  // Rationale: SPA navigation (browser back, sidebar click, link follow)
+  // during the 5s undo window is best interpreted as "the user moved on" —
+  // an implicit cancel rather than a confirm. Previously the hook fired
+  // the snapshot through unmount cleanup, which meant a browser-back
+  // mid-window could commit a deletion the user thought they had escaped
+  // from. The explicit confirmation channels are: (a) the 5s timer
+  // expires while the component is still mounted, (b) the operator does
+  // nothing and stays on the page. Both still work. Tab close + auth
+  // clear already cancelled silently under the prior policy; that
+  // behavior is preserved by abort-on-unmount as a strict superset.
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
-        const runArgs = argsRef.current;
-        const runAction = frozenActionRef.current;
         argsRef.current = null;
         toastIdRef.current = null;
         frozenActionRef.current = null;
-        const tabHidden =
-          typeof document !== 'undefined' && document.visibilityState === 'hidden';
-        const authed = useAuthStore.getState().isAuthenticated;
-        if (runArgs !== null && runAction !== null && !tabHidden && authed) {
-          // Fire and forget — we are unmounting, no UI to update.
-          // Log the error so silent data-loss failures are still visible in
-          // browser console / error telemetry rather than vanishing entirely.
-          // WEB-FI-024: use the trigger-time snapshot, not whatever the latest
-          // render set into actionRef.current.
-          runAction(runArgs).catch((err) => {
-            console.error('[useUndoableAction] unmount-fired action failed', err);
-          });
-        }
       }
     };
   }, []);
