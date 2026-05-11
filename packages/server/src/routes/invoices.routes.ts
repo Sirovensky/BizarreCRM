@@ -1341,7 +1341,9 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
 // POST /:id/credit-note - Generate credit note for an invoice
 // ===================================================================
 // SEC-H25: credit notes modify the invoice ledger — gate behind invoices.credit_note.
-router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async (req: Request<{ id: string }>, res) => {
+// WEB-UIUX-1294: idempotent middleware coalesces duplicate POSTs (slow-network
+// double-click) onto a single CRN row + audit entry + broadcast.
+router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_note'), async (req: Request<{ id: string }>, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   // @audit-fixed: validate id and use radix 10. Previously parseInt("abc") = NaN

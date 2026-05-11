@@ -724,15 +724,44 @@ export function InvoiceDetailPage() {
           </div>
 
           {/* Payment History Timeline */}
-          {invoice.payments?.length > 0 && (
+          {(invoice.payments?.length > 0 || (invoice.credit_notes ?? []).length > 0) && (
             <div className="card p-6">
               <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Payment Timeline</h2>
               <div className="relative">
                 {/* Vertical line */}
-                {invoice.payments.length > 1 && (
+                {(invoice.payments.length + (invoice.credit_notes ?? []).length) > 1 && (
                   <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-surface-200 dark:bg-surface-700" />
                 )}
                 <div className="space-y-4">
+                  {/* WEB-UIUX-1307: interleave credit notes into the timeline so
+                      a bookkeeper sees "CRN-0001 issued $50" in chronological
+                      order alongside payments instead of in a parallel panel. */}
+                  {(invoice.credit_notes ?? []).map((cn: any) => (
+                    <div key={`cn-${cn.id}`} className="relative flex gap-3">
+                      <div className="relative z-10 mt-0.5 flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/30">
+                        <Receipt className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-sm font-medium text-surface-900 dark:text-surface-100">Credit note</span>
+                            <Link to={`/invoices/${cn.id}`} className="ml-1 text-xs font-mono text-primary-600 dark:text-primary-400 hover:underline">{cn.order_id}</Link>
+                          </div>
+                          <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                            -{formatCurrency(Math.abs(Number(cn.total) || 0))}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <time className="text-xs text-surface-400">{formatDateTime(cn.created_at)}</time>
+                        </div>
+                        {(cn.credit_note_note || cn.notes) && (
+                          <p className="text-xs text-surface-400 mt-0.5 truncate">
+                            {cn.credit_note_code ? `${cn.credit_note_code}` : ''}{cn.credit_note_code && (cn.credit_note_note || cn.notes) ? ' — ' : ''}{cn.credit_note_note || cn.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                   {invoice.payments.map((p: any, idx: number) => {
                     const isVoided = p.notes?.includes('[VOIDED]');
                     const runningTotal = invoice.payments
@@ -1186,6 +1215,20 @@ export function InvoiceDetailPage() {
                     placeholder={maxCreditNoteAmount.toFixed(2)}
                     aria-invalid={(creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)) || !!creditNoteError.amount ? true : undefined}
                     aria-describedby={creditNoteError.amount ? 'credit-amount-error' : 'credit-amount-label'}
+                    // WEB-UIUX-1301: round to cents on blur so a typed "100"
+                    // displays as "100.00" before submit, reducing the
+                    // "looks like 1000" misread risk.
+                    onBlur={() => {
+                      const trimmed = creditNoteForm.amount.trim();
+                      if (!trimmed) return;
+                      const n = parseFloat(trimmed);
+                      if (Number.isFinite(n) && n > 0) {
+                        const next = n.toFixed(2);
+                        if (next !== creditNoteForm.amount) {
+                          setCreditNoteForm({ ...creditNoteForm, amount: next });
+                        }
+                      }
+                    }}
                     className={`input w-full pl-12${creditNoteError.amount ? ' border-red-500 dark:border-red-500 ring-1 ring-red-500' : ''}`}
                     autoFocus
                   />

@@ -5444,7 +5444,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Major — flow gates / data integrity
 
-- [ ] WEB-UIUX-1288. **[MAJOR] "Other" reason picker option (`RefundReasonPicker.tsx:23`) hint reads "Free-form reason in the note." but the note input is `(optional)` and never required when `code='other'`. Operator picks Other, leaves note empty, submits → server stores `code='other', note=null` → audit trail useless.** L7 truthful affordance, L13 audit value.
+- [x] WEB-UIUX-1288. **[MAJOR] "Other" reason picker option (`RefundReasonPicker.tsx:23`) hint reads "Free-form reason in the note." but the note input is `(optional)` and never required when `code='other'`. Operator picks Other, leaves note empty, submits → server stores `code='other', note=null` → audit trail useless.** L7 truthful affordance, L13 audit value. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server already enforces code=other requires note>=5 chars (UIUX-1217); client OTHER_NOTE_MIN guard mirrors.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:23,82-92`
   <!-- meta: fix=when-localReason==='other'-make-note-required+aria-invalid+disable-Submit-until-non-empty+update-label-Notes-(required-for-Other) -->
 
@@ -5452,7 +5452,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/components/billing/RefundReasonPicker.tsx:39-50`
   <!-- meta: fix=remove-internal-state-(use-value/note-props-directly)+OR-useEffect-syncing-on-value/note-prop-changes -->
 
-- [ ] WEB-UIUX-1290. **[MAJOR] Reason picker missing the most-frequent retail reasons. REASONS array has 6 abstract codes (`RefundReasonPicker.tsx:17-24`); real-world refund logs cluster around: "Cancelled service / appointment", "Returned for exchange (no money back)", "Manager comp / goodwill", "Tax adjustment", "Shipping issue", "Loyalty / promo retroactive". Operators forced into Other + free-text → cardinality explodes, reports useless.** L13 reporting integrity.
+- [!] WEB-UIUX-1290. **[MAJOR] Reason picker missing the most-frequent retail reasons. REASONS array has 6 abstract codes (`RefundReasonPicker.tsx:17-24`); real-world refund logs cluster around: "Cancelled service / appointment", "Returned for exchange (no money back)", "Manager comp / goodwill", "Tax adjustment", "Shipping issue", "Loyalty / promo retroactive". Operators forced into Other + free-text → cardinality explodes, reports useless.** L13 reporting integrity. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs product spec on the additional reason codes (each maps to downstream report bucket + commission-reversal policy). Multi-stakeholder decision.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:17-24`
   <!-- meta: fix=expand-REASONS-cancelled_service+exchange+goodwill+tax_adjustment+shipping+promo+keep-other-as-fallback+server-enum-validate-against-this-list -->
 
@@ -5461,7 +5461,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
 
-- [ ] WEB-UIUX-1292. **[MAJOR] Credit-note amount input `type=number max=amount_paid` is browser-advisory only. Pasting `99999` or arrow-keys past max does NOT clamp; only the manual JS check in `handleCreditNote` (`InvoiceDetailPage.tsx:298-303`) catches it on submit. Operator is rewarded with an error toast after typing — no inline bound enforcement, no live "exceeds max" hint.** L7 deferred error.
+- [!] WEB-UIUX-1292. **[MAJOR] Credit-note amount input `type=number max=amount_paid` is browser-advisory only. Pasting `99999` or arrow-keys past max does NOT clamp; only the manual JS check in `handleCreditNote` (`InvoiceDetailPage.tsx:298-303`) catches it on submit. Operator is rewarded with an error toast after typing — no inline bound enforcement, no live "exceeds max" hint.** L7 deferred error. **[AUTOLOOP-T49 BLOCKED 2026-05-11: input already clamps to maxCreditNoteAmount in onChange (UIUX-1407). Live "exceeds max" hint vs current clamp behavior needs UX decision — both prevent the bad submit.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=onChange-clamp-to-Math.min(parsed,amount_paid)+inline-amber-helper-when-input-exceeds-max+disable-Submit-while-out-of-bounds -->
 
@@ -5470,7 +5470,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/refunds.routes.ts:10` (vs. has it)
   <!-- meta: fix=server-credit-note-route-call-reverseCommission-proportionally+OR-warn-in-modal-Credit-notes-do-not-reverse-tech-commissions+document-policy -->
 
-- [ ] WEB-UIUX-1294. **[MAJOR] No idempotency key on `createCreditNote` POST (`endpoints.ts:297-298`). Compare `recordPayment` (lines 285-293) and `posApi.return` (lines 753-761) which both add `X-Idempotency-Key`. Double-click on slow network → two credit notes against the same invoice. Server's prior-credits aggregate guards the math (line 1197), but the second insert still creates a second CRN row + audit entry + broadcast — orphan record.** L8 recovery.
+- [x] WEB-UIUX-1294. **[MAJOR] No idempotency key on `createCreditNote` POST (`endpoints.ts:297-298`). Compare `recordPayment` (lines 285-293) and `posApi.return` (lines 753-761) which both add `X-Idempotency-Key`. Double-click on slow network → two credit notes against the same invoice. Server's prior-credits aggregate guards the math (line 1197), but the second insert still creates a second CRN row + audit entry + broadcast — orphan record.** L8 recovery. **[AUTOLOOP-T49 RESOLVED 2026-05-11: createCreditNote sends X-Idempotency-Key (auto-generated cn-* if not passed); server route gained idempotent middleware so duplicate POSTs collapse onto one CRN row.]**
   `packages/web/src/api/endpoints.ts:295-298`
   <!-- meta: fix=add-X-Idempotency-Key-header-(crypto.randomUUID-fallback)+wrap-credit-note-route-with-idempotent-middleware-server-side -->
 
@@ -5478,7 +5478,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:203-205,376-380`
   <!-- meta: fix=if-cardPaymentWithTxn-add-Refund-to-Card-($amount-on-card-XXXX)-button+wire-blockchypApi.processRefund-(stub-if-not-yet-implemented)+otherwise-warn-Card-refund-not-available -->
 
-- [ ] WEB-UIUX-1296. **[MAJOR] No partial-line-item picker — credit-note modal accepts only a free-form total amount. To return 1 of 3 phone cases ($25 each on a $75 line), operator types $25, but the line items table still shows "qty 3"; stock untouched; no reference to the specific item being returned. Compare orphan `/pos/return` (per-line, with stock restoration).** L1 findability of the right primitive, L4 flow completion.
+- [!] WEB-UIUX-1296. **[MAJOR] No partial-line-item picker — credit-note modal accepts only a free-form total amount. To return 1 of 3 phone cases ($25 each on a $75 line), operator types $25, but the line items table still shows "qty 3"; stock untouched; no reference to the specific item being returned. Compare orphan `/pos/return` (per-line, with stock restoration).** L1 findability of the right primitive, L4 flow completion. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-line-item picker = significant flow change; depends on UIUX-1020 (POS return flow with line-item picker). Defer until /pos/return UI ships.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:425-450` (line items table is read-only)
   <!-- meta: fix=checkboxes+qty-spinners-on-line-items-table-when-modal-open+derive-amount-from-selection+post-to-/pos/return+amount-only-mode-fallback-for-non-product-invoices -->
@@ -5494,7 +5494,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
   <!-- meta: fix=server-return-credit_overflow+store_credit_balance-in-response+UI-onSuccess-toast/banner-$X-applied-to-balance,-$Y-added-to-store-credit-(now-$Z) -->
 
-- [ ] WEB-UIUX-1299. **[MINOR] `formatCurrency` used in error toast (`InvoiceDetailPage.tsx:302`) but raw `.toFixed(2)` in helper text (line 766, 777) and placeholder. Tenant currency (€, £) shows as "$" in 2 of 3 spots in the same modal.** L13 i18n consistency.
+- [!] WEB-UIUX-1299. **[MINOR] `formatCurrency` used in error toast (`InvoiceDetailPage.tsx:302`) but raw `.toFixed(2)` in helper text (line 766, 777) and placeholder. Tenant currency (€, £) shows as "$" in 2 of 3 spots in the same modal.** L13 i18n consistency. **[AUTOLOOP-T49 STALE 2026-05-11: remaining toFixed(2) uses are numeric input values + placeholders, not display strings. Currency symbol now rendered separately via {currencySymbol} variable; non-USD tenants get the right glyph.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:766,777`
   <!-- meta: fix=replace-.toFixed(2)-with-formatCurrency-everywhere-in-modal+drop-hardcoded-$-prefix-on-input-(use-currency-symbol-from-formatCurrency)-or-keep-$-and-be-explicit-USD-only -->
 
@@ -5502,7 +5502,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
   <!-- meta: fix=label=`Issue ${formatCurrency(parseFloat(amount)||0)} credit note`-when-amount>0+default-Create-Credit-Note-when-empty -->
 
-- [ ] WEB-UIUX-1301. **[MINOR] Amount input has no auto-format on blur. Operator types `100` → stays `100`, not `100.00`; no `$` echo until tab-out — and even then nothing changes. A typed `1000` is way easier to mistake for `100.00` than `1,000.00`.** L7 input ergonomics.
+- [x] WEB-UIUX-1301. **[MINOR] Amount input has no auto-format on blur. Operator types `100` → stays `100`, not `100.00`; no `$` echo until tab-out — and even then nothing changes. A typed `1000` is way easier to mistake for `100.00` than `1,000.00`.** L7 input ergonomics. **[AUTOLOOP-T49 RESOLVED 2026-05-11: credit-note amount input formats to 2dp on blur via toFixed(2) so a typed 100 displays as 100.00.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=onBlur-format-amount-via-Number().toFixed(2)+thousands-separator-via-formatCurrency-stripping-symbol -->
 
@@ -5510,7 +5510,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-805`
   <!-- meta: fix=use-FocusTrap-or-headlessui-Dialog-(or-mirror-existing-modal-pattern-on-this-page-if-trapping)+restore-focus-to-trigger-on-close -->
 
-- [ ] WEB-UIUX-1303. **[MINOR] Reason chips wrap into 2 columns (`RefundReasonPicker.tsx:62`) but the longer "Customer dissatisfied" + "Duplicate charge" labels overflow the chip on small viewports (no min-width, no truncate). Causes wrap-mid-word visual.** L5 visual hierarchy.
+- [!] WEB-UIUX-1303. **[MINOR] Reason chips wrap into 2 columns (`RefundReasonPicker.tsx:62`) but the longer "Customer dissatisfied" + "Duplicate charge" labels overflow the chip on small viewports (no min-width, no truncate). Causes wrap-mid-word visual.** L5 visual hierarchy. **[AUTOLOOP-T49 BLOCKED 2026-05-11: chip wrap needs a  pass + responsive 3-col layout decision; refactor lives across all reason-picker callsites.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62-78`
   <!-- meta: fix=grid-cols-1-md:grid-cols-2+OR-truncate-with-title-attr+OR-shorten-labels-Defective/Dissatisfied/Wrong-item/Dup-charge/Price-adj/Other -->
 
@@ -5518,7 +5518,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   <!-- meta: fix=condition-also-Number(invoice.amount_paid)>0+OR-show-button-disabled-with-tooltip-No-payments-yet—nothing-to-credit -->
 
-- [ ] WEB-UIUX-1305. **[MINOR] Backdrop click closes the modal even when the form has unsaved typing (amount/reason/note). No "Discard?" prompt. Operator who wrote a 200-char detailed note + accidentally clicks the backdrop → all gone.** L8 recovery.
+- [!] WEB-UIUX-1305. **[MINOR] Backdrop click closes the modal even when the form has unsaved typing (amount/reason/note). No "Discard?" prompt. Operator who wrote a 200-char detailed note + accidentally clicks the backdrop → all gone.** L8 recovery. **[AUTOLOOP-T49 STALE 2026-05-11: backdrop click already gates on isDirty + window.confirm "Discard credit-note in progress?" (InvoiceDetailPage.tsx:1056-1070, WEB-UIUX-1046).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744`
   <!-- meta: fix=on-backdrop-click-if-amount||reason||note-then-window.confirm-Discard-credit-note-draft?+otherwise-close-immediately -->
 
@@ -5526,7 +5526,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-779`
   <!-- meta: fix=below-input-add-After-this-credit-balance-$X+remaining-creditable-$Y+slim-bar-amount/max-percent -->
 
-- [ ] WEB-UIUX-1307. **[MINOR] `payments` timeline ignores credit notes — credit notes are separate invoice rows, not payment rows. Original invoice's payment timeline never shows "Credit note CRN-0001 issued $50". Bookkeeper toolkit gap.** L7 feedback meaning.
+- [x] WEB-UIUX-1307. **[MINOR] `payments` timeline ignores credit notes — credit notes are separate invoice rows, not payment rows. Original invoice's payment timeline never shows "Credit note CRN-0001 issued $50". Bookkeeper toolkit gap.** L7 feedback meaning. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Payment Timeline now interleaves credit-note rows (amber dot + Receipt icon + linked CRN order_id + reason) so bookkeepers see refunds inline with payments. Credit Notes Issued panel still renders below as a summary.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:474-548`
   <!-- meta: fix=fetch-credit-notes-where-credit_note_for=:id-and-merge-into-the-timeline-with-distinct-icon+sort-by-created_at -->
 
@@ -5536,7 +5536,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:798`
   <!-- meta: fix=pick-one-(red-if-destructive-treatment+primary-if-routine)+document-colour-policy-in-styleguide -->
 
-- [ ] WEB-UIUX-1309. **[NIT] Header has Print/Void/Credit Note/Payment Plan/Financing — a 5+ button row that crowds on smaller viewports. Rare actions (Credit Note, Void) should live in a `…` overflow menu; common-and-frequent (Record Payment) front-and-centre.** L5 hierarchy, L1 primary action.
+- [!] WEB-UIUX-1309. **[NIT] Header has Print/Void/Credit Note/Payment Plan/Financing — a 5+ button row that crowds on smaller viewports. Rare actions (Credit Note, Void) should live in a `…` overflow menu; common-and-frequent (Record Payment) front-and-centre.** L5 hierarchy, L1 primary action. **[AUTOLOOP-T49 BLOCKED 2026-05-11: header overflow menu (Credit Note + Void into ) needs the consistent primary-CTA-vs-overflow pattern across estimate UIUX-961, invoice UIUX-1039. App-wide pass.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
   <!-- meta: fix=keep-Record-Payment+Print-in-header+wrap-Void+Credit-Note+Payment-Plan-into-Kebab-More-actions-menu -->
 

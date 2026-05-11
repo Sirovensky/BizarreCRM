@@ -314,8 +314,15 @@ export const invoiceApi = {
   void: (id: number) => api.post(`/invoices/${id}/void`),
   // WEB-W2-018: migration 150 added credit_note_code + credit_note_note columns;
   // pages may pass these through alongside the legacy composed `reason` string.
-  createCreditNote: (id: number, data: { amount: number; reason: string; code?: string; note?: string }) =>
-    api.post(`/invoices/${id}/credit-note`, data),
+  // WEB-UIUX-1294: pass X-Idempotency-Key so a double-click on slow network
+  // doesn't produce two CRN rows + duplicate audit entries against the same
+  // invoice (server's prior-credits aggregate guards math but not the orphan).
+  createCreditNote: (id: number, data: { amount: number; reason: string; code?: string; note?: string }, idempotencyKey?: string) =>
+    api.post(`/invoices/${id}/credit-note`, data, {
+      headers: {
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('cn'),
+      },
+    }),
   bulkAction: (action: string, invoiceIds: number[]) =>
     api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
 };
