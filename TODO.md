@@ -289,8 +289,8 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 - [!] PROD111. **Manual smoke: signup new tenant → tenant DB created → data isolation verified.**
   - [ ] BLOCKED: needs multi-tenant MULTI_TENANT=true dev setup + live DNS / hostname resolution; browser UI validation of isolation. Operator smoke-test only.
 
-- [!] PROD112. **Backup → restore on scratch dir → data round-trips.**
-  - [ ] BLOCKED: needs a seeded DB + operator-driven backup-admin panel click-through. SEC-H60 added HMAC sidecar verification so the restore path has new dependencies; smoke-test should be run end-to-end by the operator once integrated.
+- [!] PROD112. **Backup → restore on scratch dir → data round-trips.** Round-trip + SQLite-shape + tamper-detection covered by `packages/server/src/services/__tests__/backup.roundtrip.test.ts` (encryptFile → .enc → decryptFile → byte-equal plaintext; AES-GCM auth-tag mismatch on flipped byte). End-to-end operator smoke against the backup-admin UI still recommended once SEC-H60 sidecar verification integrates.
+  - [x] STALE 2026-05-11: backup encrypt/decrypt programmatic round-trip is automated; the full admin-UI click-through remains operator territory but the crypto pipeline is no longer untested.
 
 - [!] PROD113. **`git status` clean, `git log` reviewed for embarrassing commit messages.**
   - [ ] BLOCKED: human review step — needs the operator to eyeball `git log --oneline -100` for messages they'd rather not publish. Not a scripted fix.
