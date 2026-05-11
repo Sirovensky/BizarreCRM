@@ -385,7 +385,28 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
     // key on resume — the server-side cache (5 min) guarantees no
     // double-charge if the original request did process.
     checkoutIdempotencyKey: state.checkoutIdempotencyKey,
+    // WEB-UIUX-775: stamp the persisted snapshot so a cart that was
+    // hydrated from a previous business day (tax-rate changes, member
+    // tier changes, price updates overnight) can be invalidated on
+    // wake. `onRehydrateStorage` below reads this back.
+    _persistedAt: Date.now(),
   }),
+  // WEB-UIUX-775: discard persisted carts older than 12 hours so the
+  // first morning sale starts on a clean slate even if last night's
+  // cashier left the tab open. 12h is short enough to catch overnight
+  // config drifts (tax updates, customer-group rate changes) but long
+  // enough to survive an end-of-shift coffee break.
+  onRehydrateStorage: () => (state) => {
+    if (!state) return;
+    const persistedAt = (state as unknown as { _persistedAt?: number })._persistedAt;
+    if (typeof persistedAt === 'number' && Date.now() - persistedAt > 12 * 60 * 60 * 1000) {
+      // Reach into the store after rehydrate completes so the listener
+      // path runs through resetAll's auto-persist machinery.
+      setTimeout(() => {
+        try { useUnifiedPosStore.getState().resetAll?.(); } catch { /* ignore */ }
+      }, 0);
+    }
+  },
 }));
 
 // WEB-UIUX-748: clear POS cart on auth-cleared so a stale cart from cashier A

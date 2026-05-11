@@ -3419,7 +3419,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-774. **[MAJOR] `Math.max(0, total)` clamp masks refund-driven negative cart.** `Total: $0.00` instead of negative store-credit issuance. L7, L13. **[AUTOLOOP-T36 RESOLVED: PosTotals exposes storeCreditCents (pre-clamp excess); LeftPanel renders "Store credit to issue: $X" when discounts exceed cart. Server payload stays non-negative.]**
   `packages/web/src/pages/unified-pos/totals.ts:95`
 
-- [ ] WEB-UIUX-775. **[MAJOR] Persisted cart in localStorage outlives tax-rate/customer-group config changes.** Reopen cart next morning → stale snapshot. L6.
+- [x] WEB-UIUX-775. **[MAJOR] Persisted cart in localStorage outlives tax-rate/customer-group config changes.** Reopen cart next morning → stale snapshot. L6. **[AUTOLOOP-T49 RESOLVED 2026-05-11: unified-pos store stamps _persistedAt on every snapshot; onRehydrateStorage discards any cart older than 12h and resetAll runs; overnight tax/member-rate drift no longer flows into a stale cart.]**
   `packages/web/src/pages/unified-pos/store.ts:289-304`
 
 - [x] WEB-UIUX-776. **[MINOR] `group_discount_pct` field overloaded — % when type='percent', $ when type='fixed'.** No UI distinction; $0.50 fixed auto-applies like 50% percent. L7, L4. **[AUTOLOOP-T36 RESOLVED: CustomerGroupsTab Add+Edit discount inputs render `$` prefix when type=fixed, `%` suffix when percentage; label updates dynamically.]**
