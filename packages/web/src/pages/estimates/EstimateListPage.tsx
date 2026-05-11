@@ -831,20 +831,38 @@ export function EstimateListPage() {
                   { label: 'Actions', col: null, right: true },
                 ] as Array<{ label: string; col: string | null; right?: boolean }>).map(({ label, col, right }) => (
                   col ? (
-                    <th
-                      key={label}
-                      onClick={() => toggleSort(col)}
-                      className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400 cursor-pointer hover:text-surface-700 dark:hover:text-surface-300 select-none${right ? ' text-right' : ''}`}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {label}
-                        {sortBy === col
-                          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
-                          : <ArrowUpDown className="h-3 w-3 opacity-30" />}
-                      </span>
-                    </th>
+                    (() => {
+                      const active = sortBy === col;
+                      const ariaSort: 'ascending' | 'descending' | 'none' = active
+                        ? (sortDir === 'asc' ? 'ascending' : 'descending')
+                        : 'none';
+                      return (
+                        <th
+                          key={label}
+                          scope="col"
+                          role="columnheader button"
+                          tabIndex={0}
+                          aria-sort={ariaSort}
+                          onClick={() => toggleSort(col)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleSort(col);
+                            }
+                          }}
+                          className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400 cursor-pointer hover:text-surface-700 dark:hover:text-surface-300 select-none${right ? ' text-right' : ''}`}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {label}
+                            {active
+                              ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+                              : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                          </span>
+                        </th>
+                      );
+                    })()
                   ) : (
-                    <th key={label} className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400${right ? ' text-right' : ''}`}>{label}</th>
+                    <th key={label} scope="col" className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400${right ? ' text-right' : ''}`}>{label}</th>
                   )
                 ))}
               </tr>

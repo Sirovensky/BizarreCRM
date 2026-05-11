@@ -791,9 +791,22 @@ export function InventoryListPage() {
                     {ALL_COLUMNS.filter(c => isColVisible(c.key)).map((c) => {
                       const sortCol = c.key === 'stock' ? 'in_stock' : c.key === 'cost' ? 'cost_price' : c.key === 'price' ? 'retail_price' : c.key;
                       const isSorted = sortBy === sortCol;
+                      const ariaSort: 'ascending' | 'descending' | 'none' = isSorted
+                        ? (sortOrder === 'ASC' ? 'ascending' : 'descending')
+                        : 'none';
                       return (
                         <th key={c.key}
+                          scope="col"
+                          role="columnheader button"
+                          tabIndex={0}
+                          aria-sort={ariaSort}
                           onClick={() => toggleSort(sortCol)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleSort(sortCol);
+                            }
+                          }}
                           className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50 cursor-pointer hover:text-surface-700 dark:hover:text-surface-200 select-none"
                         >
                           {c.label}
@@ -801,7 +814,7 @@ export function InventoryListPage() {
                         </th>
                       );
                     })}
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">Actions</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">

@@ -752,26 +752,48 @@ export function CustomerListPage() {
                 <thead className="sticky top-0 z-10 bg-white dark:bg-surface-900">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <tr key={headerGroup.id} className="border-b border-surface-200 dark:border-surface-700">
-                      {headerGroup.headers.map((header) => (
-                        <th key={header.id}
-                          className={cn(
-                            'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50',
-                            header.column.getCanSort() && 'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200',
-                          )}
-                          style={{ width: header.getSize() }}
-                          onClick={header.column.getToggleSortingHandler()}>
-                          <div className="flex items-center gap-1.5">
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            {header.column.getCanSort() && (
-                              <span className="text-surface-300 dark:text-surface-600">
-                                {header.column.getIsSorted() === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> :
-                                 header.column.getIsSorted() === 'desc' ? <ArrowDown className="h-3.5 w-3.5" /> :
-                                 <ArrowUpDown className="h-3.5 w-3.5" />}
-                              </span>
+                      {headerGroup.headers.map((header) => {
+                        const sorted = header.column.getIsSorted();
+                        const canSort = header.column.getCanSort();
+                        const ariaSort: 'ascending' | 'descending' | 'none' = sorted === 'asc'
+                          ? 'ascending'
+                          : sorted === 'desc'
+                            ? 'descending'
+                            : 'none';
+                        const sortHandler = header.column.getToggleSortingHandler();
+                        return (
+                          <th key={header.id}
+                            scope="col"
+                            aria-sort={canSort ? ariaSort : undefined}
+                            className={cn(
+                              'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50',
+                              canSort && 'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200',
                             )}
-                          </div>
-                        </th>
-                      ))}
+                            style={{ width: header.getSize() }}
+                            tabIndex={canSort ? 0 : -1}
+                            role={canSort ? 'columnheader button' : 'columnheader'}
+                            onClick={canSort ? sortHandler : undefined}
+                            onKeyDown={canSort
+                              ? (e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    sortHandler?.(e);
+                                  }
+                                }
+                              : undefined}>
+                            <div className="flex items-center gap-1.5">
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              {canSort && (
+                                <span className="text-surface-300 dark:text-surface-600">
+                                  {sorted === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> :
+                                   sorted === 'desc' ? <ArrowDown className="h-3.5 w-3.5" /> :
+                                   <ArrowUpDown className="h-3.5 w-3.5" />}
+                                </span>
+                              )}
+                            </div>
+                          </th>
+                        );
+                      })}
                     </tr>
                   ))}
                 </thead>

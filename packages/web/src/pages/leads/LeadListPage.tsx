@@ -334,10 +334,23 @@ function SortHeader({
   onSort: (col: string) => void;
 }) {
   const active = sortBy === column;
+  const ariaSort: 'ascending' | 'descending' | 'none' = active
+    ? (sortOrder === 'ASC' ? 'ascending' : 'descending')
+    : 'none';
   return (
     <th
+      scope="col"
+      role="columnheader button"
+      tabIndex={0}
+      aria-sort={ariaSort}
       className="cursor-pointer select-none px-4 py-3 font-medium text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
       onClick={() => onSort(column)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSort(column);
+        }
+      }}
     >
       <span className="inline-flex items-center gap-1">
         {label}
