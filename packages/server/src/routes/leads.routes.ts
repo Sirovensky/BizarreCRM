@@ -849,6 +849,18 @@ router.put(
     // SEC-H113: enforce state-machine transition before writing
     if (status !== undefined && status !== existing.status) {
       assertLeadTransition(existing.status, status);
+      // WEB-UIUX-1337: refuse 'converted' on the generic PUT path. The
+      // /convert endpoint is the canonical entry — it creates the ticket,
+      // dedupes/creates the customer, writes the lead_converted audit, and
+      // broadcasts. PUT-to-converted silently sets the badge with none of
+      // those side effects, leaving the operator believing a ticket exists
+      // when nothing downstream has fired.
+      if (status === 'converted') {
+        throw new AppError(
+          "Use POST /leads/:id/convert to mark a lead converted (it creates the ticket + customer). PUT cannot set status='converted' directly.",
+          400,
+        );
+      }
     }
 
     // V16: trim + enum check — rejects " price " and similar whitespace bypass attempts.
@@ -1068,15 +1080,38 @@ router.post(
       const convertedEmail = lead.email ? validateEmail(lead.email, 'email', false) : null;
       const convertedPhone = lead.phone ? normalizeAndValidatePhone(lead.phone, 'phone') : null;
 
-      const custResult = await adb.run(`
-        INSERT INTO customers (first_name, last_name, email, phone, source)
-        VALUES (?, ?, ?, ?, 'lead')
-      `, lead.first_name, lead.last_name, convertedEmail, convertedPhone);
-      customerId = custResult.lastInsertRowid as number;
-      const code = generateOrderId('C', customerId);
-      await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
-      // Link the new customer to the lead so retries are idempotent
-      await adb.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, id);
+      // WEB-UIUX-1339: dedupe against existing customer rows before INSERT.
+      // Match on email (case-insensitive) OR normalized phone. CustomerCreate
+      // already does this check; convert flow used to silently INSERT a
+      // duplicate, polluting loyalty + dedup + support history. Link the lead
+      // to the existing customer instead of creating a second row.
+      let existingCustomer: { id: number; is_deleted: number } | undefined;
+      if (convertedEmail) {
+        existingCustomer = await adb.get<{ id: number; is_deleted: number }>(
+          'SELECT id, is_deleted FROM customers WHERE LOWER(email) = LOWER(?) ORDER BY is_deleted ASC, id ASC LIMIT 1',
+          convertedEmail,
+        );
+      }
+      if (!existingCustomer && convertedPhone) {
+        existingCustomer = await adb.get<{ id: number; is_deleted: number }>(
+          'SELECT id, is_deleted FROM customers WHERE phone = ? ORDER BY is_deleted ASC, id ASC LIMIT 1',
+          convertedPhone,
+        );
+      }
+      if (existingCustomer && existingCustomer.is_deleted === 0) {
+        customerId = existingCustomer.id;
+        await adb.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, id);
+      } else {
+        const custResult = await adb.run(`
+          INSERT INTO customers (first_name, last_name, email, phone, source)
+          VALUES (?, ?, ?, ?, 'lead')
+        `, lead.first_name, lead.last_name, convertedEmail, convertedPhone);
+        customerId = custResult.lastInsertRowid as number;
+        const code = generateOrderId('C', customerId);
+        await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
+        // Link the new customer to the lead so retries are idempotent
+        await adb.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, id);
+      }
     }
 
     if (!customerId) throw new AppError('Cannot convert lead without customer information', 400);

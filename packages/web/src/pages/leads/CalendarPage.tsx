@@ -1267,7 +1267,12 @@ export function CalendarPage() {
     [viewMode],
   );
 
-  const goToToday = useCallback(() => setCurrentDate(new Date()), []);
+  // WEB-UIUX-1334: Today also swaps to day view so the operator lands on
+  // today's hour grid (the most common "show me right now" intent).
+  const goToToday = useCallback(() => {
+    setCurrentDate(new Date());
+    setViewMode('day');
+  }, []);
 
   // Title
   const title = useMemo(() => {
@@ -1338,9 +1343,13 @@ export function CalendarPage() {
               <ChevronRight className="h-5 w-5" />
             </button>
             <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">{title}</h2>
+            {/* WEB-UIUX-1334: aria-pressed flips when the calendar is
+                already showing today's day-view so SR users hear the active
+                state. */}
             <button
               onClick={goToToday}
-              className="rounded-lg border border-surface-200 px-3 py-1 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-700"
+              aria-pressed={viewMode === 'day' && isSameDay(currentDate, new Date())}
+              className="rounded-lg border border-surface-200 px-3 py-1 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-700 aria-pressed:bg-primary-100 aria-pressed:text-primary-800 dark:aria-pressed:bg-primary-900/40 dark:aria-pressed:text-primary-200"
             >
               Today
             </button>

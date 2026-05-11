@@ -429,7 +429,9 @@ export function LeadDetailPage() {
                   // surfaced via toast instead of silently bubbling to
                   // window.onunhandledrejection where ErrorBoundary cannot catch it.
                   try {
-                    if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) {
+                    // WEB-UIUX-1341: spell out every downstream write so the
+                    // operator knows a customer record may also be created.
+                    if (await confirm('Convert this lead to a ticket? This will:\n• Create a new ticket with the lead\'s data\n• Link the lead to an existing customer (matched by email/phone) OR create a new customer record\n• Stamp a lead_converted audit entry\n\nCannot be undone via the status pill — use the canonical Convert flow only.')) {
                       convertMut.mutate();
                     }
                   } catch {

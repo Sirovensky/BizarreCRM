@@ -848,7 +848,8 @@ export function LeadListPage() {
                               // WEB-FM-020 — Fixer-C28: try/catch swallows confirm-modal teardown rejection
                               e.stopPropagation();
                               try {
-                                if (await confirm('Convert this lead to a ticket?')) {
+                                // WEB-UIUX-1341: mention customer side effect.
+                                if (await confirm('Convert this lead to a ticket?\n\nThis will also link the lead to an existing customer (matched by email/phone) OR create a new customer record.')) {
                                   setPendingConvertId(lead.id);
                                   try {
                                     await convertMut.mutateAsync(lead.id);
