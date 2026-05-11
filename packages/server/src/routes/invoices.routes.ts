@@ -1417,20 +1417,33 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   const cnSeq = allocateCounter(db, 'credit_note_id');
   const orderId = formatCreditNoteId(cnSeq);
 
+  // WEB-UIUX-1277: split the refunded amount into subtotal + tax portions
+  // proportionally so the credit-note row mirrors the original invoice's
+  // tax composition. Previously `total_tax=0` left state sales-tax filings
+  // showing collected tax with no offsetting refund — customers ended up
+  // short by the tax amount or the till covered it. Pro-rata against the
+  // original invoice's tax/total ratio.
+  const origTotal = Number(original.total) || 0;
+  const origTax = Number(original.total_tax) || 0;
+  const taxFraction = origTotal > 0 ? Math.max(0, Math.min(1, origTax / origTotal)) : 0;
+  const cnTaxPortion = roundCents(amount * taxFraction);
+  const cnSubtotalPortion = roundCents(amount - cnTaxPortion);
+
   // Create the credit note as a negative invoice
   const cnResult = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
       amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id,
       credit_note_code, credit_note_note)
-    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?)
   `,
     orderId,
     original.customer_id,
     original.ticket_id,
-    -amount,       // negative subtotal
-    -amount,       // negative total
+    -cnSubtotalPortion,    // negative subtotal (pre-tax portion of refund)
+    -cnTaxPortion,         // negative tax (proportional share of refund)
+    -amount,               // negative total
     `Credit note: ${reason.trim()}`,
-    invoiceId,     // link to original
+    invoiceId,             // link to original
     req.user!.id,
     original.location_id ?? 1,
     cnCode,
