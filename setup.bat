@@ -11,9 +11,10 @@
 :: lives in setup.mjs (cross-platform) — see OPS-DEFERRED-001 in TODO.md
 :: and docs/dashboard-migration-plan.md Phase C-pre.
 ::
-:: For now, on Windows setup.mjs delegates back to scripts/setup-windows.bat
-:: which is a copy of the original setup.bat logic. The split keeps the
-:: gateway surface stable while the universal port is in progress.
+:: setup.mjs is the universal entry-point on every OS; the legacy
+:: scripts/setup-windows.bat is retained as a manual escape hatch only
+:: (no automatic delegation in either direction). Phase 2 of OPS-DEFERRED-001
+:: removes it after Windows-host soak confirms the universal flow.
 ::
 :: Required Node version: 22.11+ (matches packages/server engines field).
 
