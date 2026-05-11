@@ -1488,6 +1488,47 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
     return;
   }
 
+  // WEB-UIUX-947: write an estimate_signatures audit row for the portal-side
+  // one-click approve so the shop has compliance/chargeback evidence (signer
+  // name pulled from the authenticated portal customer; IP + UA from request).
+  // Pre-WEB-UIUX-947 the portal Approve set status='approved' without writing
+  // any signer attribution row, leaving zero proof the customer pressed
+  // approve. The detached `/public/api/v1/estimate-sign/:token` capture flow
+  // already writes this table; we mirror its shape (no signature_data_url
+  // since the portal click is not a drawn signature). signer_email comes
+  // from the customer record where available.
+  try {
+    const customer = await adb.get<AnyRow>(
+      'SELECT first_name, last_name, email FROM customers WHERE id = ?',
+      req.portalCustomerId,
+    );
+    const signerName = customer
+      ? [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'Portal customer'
+      : 'Portal customer';
+    const signerEmail = (customer?.email as string | null) ?? null;
+    const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? null;
+    const signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
+    const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+    await adb.run(
+      `INSERT INTO estimate_signatures
+         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?)`,
+      estimateId,
+      signerName,
+      signerEmail,
+      signerIp,
+      userAgent,
+    );
+  } catch (sigErr) {
+    // Don't block approval if the signatures table is unavailable in legacy
+    // tenants — log and continue so compliance gap is visible but recovery
+    // is graceful.
+    logger.warn('portal_estimate_approve_signature_write_failed', {
+      err: sigErr instanceof Error ? sigErr.message : String(sigErr),
+      estimate_id: estimateId,
+    });
+  }
+
   await adb.run(`
     UPDATE estimates SET status = 'approved', approved_at = datetime('now'), updated_at = datetime('now')
     WHERE id = ?

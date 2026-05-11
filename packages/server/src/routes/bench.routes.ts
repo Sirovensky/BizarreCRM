@@ -754,30 +754,47 @@ router.post(
       }))
       .filter((r) => Number.isFinite(r.item_id));
 
-    // Must-pass rule: every item in the active list for the ticket's device
-    // category must have a `passed = true` entry.
-    const device = (await adb.get<any>(
-      'SELECT device_type FROM ticket_devices WHERE ticket_id = ? ORDER BY id LIMIT 1',
-      ticketId,
-    )) as { device_type: string | null } | undefined;
-    const category = device?.device_type ?? null;
+    // WEB-UIUX-1083: accept an explicit outcome so techs can record QC fail
+    // (camera misaligned, port loose, etc.) without abandoning the modal.
+    // `pass` keeps the legacy must-pass rule. `fail` skips the must-pass
+    // rule and requires a failure_reason for the audit trail.
+    const outcome = validateEnum(
+      req.body?.outcome,
+      ['pass', 'fail'] as const,
+      'outcome',
+      false,
+    ) ?? 'pass';
+    const failureReason =
+      outcome === 'fail'
+        ? validateRequiredString(req.body?.failure_reason, 'failure_reason').slice(0, 1000)
+        : null;
 
-    const activeItems = (category
-      ? await adb.all(
-          'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND (device_category = ? OR device_category IS NULL)',
-          category,
-        )
-      : await adb.all(
-          'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND device_category IS NULL',
-        )) as Array<{ id: number }>;
+    if (outcome === 'pass') {
+      // Must-pass rule: every item in the active list for the ticket's device
+      // category must have a `passed = true` entry.
+      const device = (await adb.get<any>(
+        'SELECT device_type FROM ticket_devices WHERE ticket_id = ? ORDER BY id LIMIT 1',
+        ticketId,
+      )) as { device_type: string | null } | undefined;
+      const category = device?.device_type ?? null;
 
-    const passedSet = new Set(sanitized.filter((r) => r.passed).map((r) => r.item_id));
-    const missing = activeItems.filter((i) => !passedSet.has(i.id));
-    if (missing.length > 0) {
-      throw new AppError(
-        `QC failed: ${missing.length} checklist item(s) not passed. Every item must be ticked before sign-off.`,
-        400,
-      );
+      const activeItems = (category
+        ? await adb.all(
+            'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND (device_category = ? OR device_category IS NULL)',
+            category,
+          )
+        : await adb.all(
+            'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND device_category IS NULL',
+          )) as Array<{ id: number }>;
+
+      const passedSet = new Set(sanitized.filter((r) => r.passed).map((r) => r.item_id));
+      const missing = activeItems.filter((i) => !passedSet.has(i.id));
+      if (missing.length > 0) {
+        throw new AppError(
+          `QC failed: ${missing.length} checklist item(s) not passed. Every item must be ticked before sign-off, or submit with outcome=fail + a failure_reason.`,
+          400,
+        );
+      }
     }
 
     // Files
@@ -839,8 +856,8 @@ router.post(
     const result = await adb.run(
       `INSERT INTO qc_sign_offs
         (ticket_id, ticket_device_id, tech_user_id, checklist_results_json,
-         tech_signature_path, working_photo_path, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         tech_signature_path, working_photo_path, notes, outcome, failure_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ticketId,
       qcTicketDeviceId,
       userId,
@@ -848,11 +865,15 @@ router.post(
       signaturePath,
       workingPhotoPath,
       qcNotes || null,
+      outcome,
+      failureReason,
     );
 
-    audit(req.db, 'qc_sign_off', userId, req.ip ?? 'unknown', {
+    audit(req.db, outcome === 'fail' ? 'qc_sign_off_fail' : 'qc_sign_off', userId, req.ip ?? 'unknown', {
       ticket_id: ticketId,
       sign_off_id: Number(result.lastInsertRowid),
+      outcome,
+      failure_reason: failureReason,
     });
 
     const row = await adb.get(

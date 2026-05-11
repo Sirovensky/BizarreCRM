@@ -240,30 +240,85 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
   endDate.setMonth(endDate.getMonth() + 1);
   const end = endDate.toISOString().replace('T', ' ').substring(0, 19);
 
+  // WEB-UIUX-1071: prefer reactivating an existing cancelled row over
+  // creating a new one. Stripe pattern: a customer who churns and returns
+  // gets one row in the subscriptions table with full payment_history, not
+  // two rows that LTV/dunning reports must `GROUP BY customer_id` to merge.
+  // We pick the most recently cancelled row for this customer; if found we
+  // UPDATE it in place (preserving id + history), otherwise INSERT new.
+  const reactivatable = await adb.get<AnyRow>(
+    `SELECT id FROM customer_subscriptions
+      WHERE customer_id = ?
+        AND status = 'cancelled'
+      ORDER BY id DESC LIMIT 1`,
+    customer_id,
+  );
+
   // The UNIQUE partial index idx_customer_subscriptions_active_unique on
   // customer_subscriptions(customer_id) WHERE status IN ('active','past_due')
   // (migration 110) is the authoritative guard against concurrent duplicates.
   // A racing second INSERT hits the index and raises SQLITE_CONSTRAINT_UNIQUE,
   // which we catch here and surface as 409 Conflict.
   let result: Awaited<ReturnType<typeof adb.run>>;
-  try {
-    result = await adb.run(
-      `INSERT INTO customer_subscriptions (customer_id, tier_id, blockchyp_token, status,
-       current_period_start, current_period_end, signature_file, last_charge_at, last_charge_amount, payment_provider)
-       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
-      customer_id, tier_id, normalizedToken, start, end,
-      signature_file || null, isPaidTier ? null : start, isPaidTier ? null : monthlyPrice,
-      isPaidTier ? 'blockchyp' : 'none',
-    );
-  } catch (err: unknown) {
-    if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
-      res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
-      return;
+  let subscriptionId: number;
+  let reactivated = false;
+  if (reactivatable) {
+    try {
+      await adb.run(
+        `UPDATE customer_subscriptions
+            SET tier_id = ?, blockchyp_token = ?, status = 'active',
+                current_period_start = ?, current_period_end = ?,
+                signature_file = COALESCE(?, signature_file),
+                last_charge_at = ?, last_charge_amount = ?, payment_provider = ?,
+                cancelled_at = NULL, paused_at = NULL, pause_reason = NULL,
+                updated_at = ?
+          WHERE id = ?`,
+        tier_id,
+        normalizedToken,
+        start,
+        end,
+        signature_file || null,
+        isPaidTier ? null : start,
+        isPaidTier ? null : monthlyPrice,
+        isPaidTier ? 'blockchyp' : 'none',
+        now(),
+        reactivatable.id,
+      );
+    } catch (err: unknown) {
+      if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+        res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
+        return;
+      }
+      throw err;
     }
-    throw err;
+    subscriptionId = Number(reactivatable.id);
+    reactivated = true;
+    result = { lastInsertRowid: subscriptionId } as any;
+  } else {
+    try {
+      result = await adb.run(
+        `INSERT INTO customer_subscriptions (customer_id, tier_id, blockchyp_token, status,
+         current_period_start, current_period_end, signature_file, last_charge_at, last_charge_amount, payment_provider)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
+        customer_id, tier_id, normalizedToken, start, end,
+        signature_file || null, isPaidTier ? null : start, isPaidTier ? null : monthlyPrice,
+        isPaidTier ? 'blockchyp' : 'none',
+      );
+    } catch (err: unknown) {
+      if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+        res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
+        return;
+      }
+      throw err;
+    }
+    subscriptionId = Number(result.lastInsertRowid);
   }
-
-  const subscriptionId = Number(result.lastInsertRowid);
+  audit(db, reactivated ? 'membership_reactivated' : 'membership_subscribed', req.user!.id, req.ip || 'unknown', {
+    customer_id,
+    tier_id,
+    subscription_id: subscriptionId,
+    reactivated,
+  });
   let initialTransactionId: string | null = null;
 
   if (isPaidTier) {
