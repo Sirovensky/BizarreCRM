@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button
 import toast from 'react-hot-toast';
-import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
+import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi, refundApi } from '@/api/endpoints';
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
@@ -132,6 +132,18 @@ export function InvoiceDetailPage() {
     queryFn: () => blockchypApi.status(),
     staleTime: 60000,
   });
+
+  // WEB-UIUX-712: fetch the customer's outstanding store-credit balance so
+  // the Record Payment area can offer an "Apply credit" CTA. Server endpoint
+  // is /refunds/credits/:customerId. enabled only when we have a customer id
+  // and the invoice still has balance to redeem against.
+  const customerIdForCredits = data?.data?.data?.customer_id ?? null;
+  const { data: creditData } = useQuery({
+    queryKey: ['customer-credits', customerIdForCredits],
+    queryFn: () => refundApi.getCredits(customerIdForCredits as number),
+    enabled: !!customerIdForCredits,
+  });
+  const customerCreditBalance = Number(creditData?.data?.data?.balance ?? 0) || 0;
   const blockchypEnabled = bcData?.data?.data?.enabled ?? false;
   const [terminalProcessing, setTerminalProcessing] = useState(false);
 
@@ -181,6 +193,27 @@ export function InvoiceDetailPage() {
       setShowReceiptPrompt(true);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record payment'),
+  });
+
+  // WEB-UIUX-712: redeem store credit toward this invoice.
+  const applyCreditMut = useMutation({
+    mutationFn: (amount: number) =>
+      refundApi.useCredits(customerIdForCredits as number, { amount, invoice_id: invoiceId }),
+    onSuccess: (res) => {
+      const newBalance = Number(res.data?.data?.new_balance ?? 0);
+      toast.success(`Credit applied. Remaining store credit: ${formatCurrency(newBalance)}`);
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (customerIdForCredits) {
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', customerIdForCredits] });
+        queryClient.invalidateQueries({ queryKey: ['customer', customerIdForCredits] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message ?? 'Could not apply credit');
+    },
   });
 
   // Void is wrapped in a 5s undo window (D4-5). We optimistically show the
@@ -929,6 +962,32 @@ export function InvoiceDetailPage() {
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
               <button onClick={() => setShowPayment(true)} className="w-full mt-4 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors">
                 <DollarSign className="h-4 w-4" /> Record Payment
+              </button>
+            )}
+            {/* WEB-UIUX-712: Apply store credit — visible only when customer
+                has a positive balance AND invoice still has dues. Applies the
+                min of (balance, amount_due) by default; operator confirms. */}
+            {invoice.status !== 'void' && invoice.status !== 'paid' && customerCreditBalance > 0 && Number(invoice.amount_due) > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const cap = Math.min(customerCreditBalance, Number(invoice.amount_due));
+                  if (!Number.isFinite(cap) || cap <= 0) {
+                    toast.error('Nothing to apply');
+                    return;
+                  }
+                  const fixed = Math.round(cap * 100) / 100;
+                  if (!window.confirm(`Apply ${formatCurrency(fixed)} of store credit to this invoice? Customer's balance after: ${formatCurrency(customerCreditBalance - fixed)}.`)) {
+                    return;
+                  }
+                  applyCreditMut.mutate(fixed);
+                }}
+                disabled={applyCreditMut.isPending}
+                className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title={`Available store credit: ${formatCurrency(customerCreditBalance)}`}
+              >
+                {applyCreditMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />}
+                Apply store credit ({formatCurrency(customerCreditBalance)})
               </button>
             )}
           </div>
