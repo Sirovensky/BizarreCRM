@@ -19,8 +19,12 @@ interface ZReport {
   closed_at: string;
   opening_float_cents: number;
   expected_cents: number;
-  counted_cents: number;
-  variance_cents: number;
+  // WEB-UIUX-1162: null while the shift is in progress — no till count yet.
+  counted_cents: number | null;
+  variance_cents: number | null;
+  /** Server-tagged when the shift is still open. Client renders an
+   * "awaiting close" placeholder instead of a phantom variance banner. */
+  in_progress?: boolean;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
@@ -174,35 +178,50 @@ interface ZReportBodyProps {
 }
 
 function ZReportBody({ report }: ZReportBodyProps) {
-  const variance = report.variance_cents;
+  // WEB-UIUX-1162: when the shift is still open, the server returns
+  // counted_cents/variance_cents = null + in_progress=true. Render an
+  // "awaiting close" placeholder instead of the red phantom-short banner.
+  const inProgress = report.in_progress || report.variance_cents === null;
+  const variance = report.variance_cents ?? 0;
   const varianceClass =
-    variance === 0
-      ? 'text-green-600 dark:text-green-400'
-      : variance > 0
-        ? 'text-blue-600 dark:text-blue-400'
-        : 'text-red-600 dark:text-red-400';
-  const VarianceIcon = variance === 0 ? Minus : variance > 0 ? TrendingUp : TrendingDown;
+    inProgress
+      ? 'text-surface-500 dark:text-surface-400'
+      : variance === 0
+        ? 'text-green-600 dark:text-green-400'
+        : variance > 0
+          ? 'text-blue-600 dark:text-blue-400'
+          : 'text-red-600 dark:text-red-400';
+  const VarianceIcon = inProgress
+    ? AlertTriangle
+    : variance === 0 ? Minus : variance > 0 ? TrendingUp : TrendingDown;
 
   return (
     <>
       <div className="space-y-1 text-xs text-surface-500 dark:text-surface-400">
         <div>Opened: {formatDateTime(report.opened_at)}</div>
-        <div>Closed: {formatDateTime(report.closed_at)}</div>
+        <div>Closed: {inProgress ? 'In progress — shift not yet closed' : formatDateTime(report.closed_at)}</div>
       </div>
 
       <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
         <ReportRow label="Opening Float" value={formatSignedCents(report.opening_float_cents)} />
         <ReportRow label="Expected" value={formatSignedCents(report.expected_cents)} />
-        <ReportRow label="Counted" value={formatSignedCents(report.counted_cents)} />
+        <ReportRow
+          label="Counted"
+          value={report.counted_cents === null ? 'Awaiting close' : formatSignedCents(report.counted_cents)}
+        />
         <div className="mt-2 border-t border-surface-200 pt-2 dark:border-surface-700">
           <div className={`flex items-center justify-between text-sm font-semibold ${varianceClass}`}>
             <span className="flex items-center gap-1.5">
               <VarianceIcon className="h-4 w-4" />
               Variance
             </span>
-            <span>{variance === 0 ? 'Balanced' : variance > 0 ? `Over by ${formatCents(variance)}` : `Short by ${formatCents(Math.abs(variance))}`}</span>
+            <span>
+              {inProgress
+                ? 'Awaiting close'
+                : variance === 0 ? 'Balanced' : variance > 0 ? `Over by ${formatCents(variance)}` : `Short by ${formatCents(Math.abs(variance))}`}
+            </span>
           </div>
-          {Math.abs(variance) >= 500 && (
+          {!inProgress && Math.abs(variance) >= 500 && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
               <AlertTriangle className="h-3 w-3" />
               Variance ≥ $5 — investigate before next shift

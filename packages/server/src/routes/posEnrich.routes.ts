@@ -394,8 +394,11 @@ interface ZReport {
   closed_at: string;
   opening_float_cents: number;
   expected_cents: number;
-  counted_cents: number;
-  variance_cents: number;
+  // WEB-UIUX-1162: counted_cents/variance_cents are null while the shift is
+  // open (no till count exists yet); the client renders "in progress" instead
+  // of a phantom variance.
+  counted_cents: number | null;
+  variance_cents: number | null;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
@@ -409,9 +412,9 @@ async function buildZReport(
   adb: AsyncDb,
   shift: DrawerShiftRow,
   closedAt: string,
-  countedCents: number,
+  countedCents: number | null,
   expectedCents: number,
-  varianceCents: number,
+  varianceCents: number | null,
 ): Promise<ZReport> {
   // POST-ENRICH AUDIT §23.1: same fix as computeExpectedCents — payments.method
   // is a TEXT label (not an FK). Group by that column directly so the Z-report
@@ -482,15 +485,21 @@ router.get(
       }
     }
     const now = shift.closed_at ?? new Date().toISOString();
+    // WEB-UIUX-1162: when the shift is still open, an admin previewing the
+    // Z-report should see "in progress" not a phantom $X-short variance
+    // generated from `counted_cents=0`. Build the report without a counted
+    // value and tag it `in_progress=true` so the client can render an
+    // "awaiting close" placeholder instead of the red variance banner.
+    const isInProgress = !shift.closed_at;
     const report = await buildZReport(
       adb,
       shift,
       now,
-      shift.closing_counted_cents ?? 0,
+      isInProgress ? null : (shift.closing_counted_cents ?? 0),
       shift.expected_cents ?? shift.opening_float_cents,
-      shift.variance_cents ?? 0,
+      isInProgress ? null : (shift.variance_cents ?? 0),
     );
-    res.json({ success: true, data: report });
+    res.json({ success: true, data: { ...report, in_progress: isInProgress } });
   }),
 );
 

@@ -28,6 +28,28 @@ interface PayrollPeriod {
   notes: string | null;
 }
 
+// WEB-UIUX-1157: surface server-side Zod-style array errors instead of
+// collapsing them into the generic "Failed" toast. Accepts `{error}`,
+// `{errors: [{path,message}]}`, or `{message}` response shapes.
+function parseApiError(err: unknown): string | null {
+  if (!err || typeof err !== 'object' || !('response' in err)) return null;
+  const data = (err as { response?: { data?: unknown } }).response?.data as
+    | { error?: string; message?: string; errors?: Array<{ path?: string | string[]; message?: string }> }
+    | undefined;
+  if (!data) return null;
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
+    return data.errors
+      .map((e) => {
+        const path = Array.isArray(e.path) ? e.path.join('.') : e.path;
+        const msg = e.message || '';
+        return path ? `${path}: ${msg}` : msg;
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+  return data.error || data.message || null;
+}
+
 export function CommissionPeriodLock() {
   const queryClient = useQueryClient();
   const [showNew, setShowNew] = useState(false);
@@ -83,11 +105,7 @@ export function CommissionPeriodLock() {
       setNewEnd('');
     },
     onError: (e: unknown) => {
-      const msg =
-        e && typeof e === 'object' && 'response' in e
-          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
-          : null;
-      toast.error(msg || 'Failed to create period');
+      toast.error(parseApiError(e) || 'Failed to create period');
     },
   });
 
@@ -100,11 +118,7 @@ export function CommissionPeriodLock() {
       queryClient.invalidateQueries({ queryKey: ['team', 'payroll', 'periods'] });
     },
     onError: (e: unknown) => {
-      const msg =
-        e && typeof e === 'object' && 'response' in e
-          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
-          : null;
-      toast.error(msg || 'Lock failed');
+      toast.error(parseApiError(e) || 'Lock failed');
     },
   });
 
@@ -212,12 +226,18 @@ export function CommissionPeriodLock() {
                     </span>
                   </span>
                 ) : (
+                  // WEB-UIUX-1141: irreversible Lock action — red, not amber.
+                  // WEB-UIUX-1151: disable ONLY the row whose lock is in flight
+                  // (variables === p.id) so other rows stay live.
+                  // WEB-UIUX-1155: aria-label includes the period name so SR
+                  // users hear "Lock 2026-W14" rather than just "Lock, button".
                   <button
-                    className="px-2 py-1 bg-amber-600 text-white rounded text-xs inline-flex items-center hover:bg-amber-700"
-                    disabled={lockMut.isPending}
+                    className="px-2 py-1 bg-red-600 text-white rounded text-xs inline-flex items-center hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={lockMut.isPending && lockMut.variables === p.id}
                     onClick={() => handleLockPeriod(p)}
+                    aria-label={`Lock commission period ${p.name} (${p.start_date} to ${p.end_date})`}
                   >
-                    {lockMut.isPending ? (
+                    {lockMut.isPending && lockMut.variables === p.id ? (
                       <Loader2 className="w-3 h-3 animate-spin mr-1" />
                     ) : (
                       <LockOpen className="w-3 h-3 mr-1" />

@@ -4742,7 +4742,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:163-174`
   <!-- meta: fix=window.confirm(`Lock ${p.name}? This is permanent — commissions and time entries in ${p.start_date}→${p.end_date} can never be edited again.`)+show-typed-confirm-modal-with-name-echo+optionally-add-server-side-/payroll/unlock-admin+24h-window -->
 
-- [ ] WEB-UIUX-1141. **[BLOCKER] Lock button styled amber (mid-priority) — same visual weight as a "warning" badge. Refactoring UI / NN-G destructive-action guidance: irreversible operations must use red + bold treatment so the eye flags them as different from routine.** `CommissionPeriodLock.tsx:164` `bg-amber-600 text-white hover:bg-amber-700`. Sits next to a neutral Download icon button — operator scanning the row sees them as comparable affordances. L5 hierarchy of destructive vs safe actions.
+- [x] WEB-UIUX-1141. **[BLOCKER] Lock button styled amber (mid-priority) — same visual weight as a "warning" badge. Refactoring UI / NN-G destructive-action guidance: irreversible operations must use red + bold treatment so the eye flags them as different from routine.** `CommissionPeriodLock.tsx:164` `bg-amber-600 text-white hover:bg-amber-700`. Sits next to a neutral Download icon button — operator scanning the row sees them as comparable affordances. L5 hierarchy of destructive vs safe actions. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Lock button moved to bg-red-600/hover:bg-red-700 to flag irreversibility.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:164`
   <!-- meta: fix=use-bg-red-600-hover:bg-red-700+ShieldAlert-icon-or-keep-amber-only-if-paired-with-confirmation-modal-(WEB-UIUX-1140) -->
 
@@ -4777,7 +4777,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/server/src/routes/team.routes.ts:847-856`
   <!-- meta: fix=add-?year=YYYY-or-?before=ISO+limit/offset-pagination+client-year-picker-or-Load-more-link -->
 
-- [ ] WEB-UIUX-1149. **[MAJOR] Page title "Payroll" but page only locks periods + exports CSV — no payroll-run, no preview totals, no per-employee detail. User clicking "Payroll" looking for "run payroll" finds a lock toggle.** `PayrollPage.tsx:6` `<h1>Payroll</h1>` over a single `<CommissionPeriodLock />` card. Mismatch between sidebar label, page header, and actual functionality. L2 label truthfulness, L5 hierarchy.
+- [!] WEB-UIUX-1149. **[MAJOR] Page title "Payroll" but page only locks periods + exports CSV — no payroll-run, no preview totals, no per-employee detail. User clicking "Payroll" looking for "run payroll" finds a lock toggle.** `PayrollPage.tsx:6` `<h1>Payroll</h1>` over a single `<CommissionPeriodLock />` card. Mismatch between sidebar label, page header, and actual functionality. L2 label truthfulness, L5 hierarchy. **[AUTOLOOP-T49 STALE 2026-05-11: PayrollPage now renders saved-periods stat cards (count, locked, unlocked, export format) + recent-periods table + CommissionPeriodLock with subtitle "Periods, locks, and exports for commission and time-entry payroll review." Full payroll-run remains a separate product feature; the page title matches the period-review scope it owns.]**
   `packages/web/src/pages/team/PayrollPage.tsx:5-9`
   `packages/web/src/components/team/CommissionPeriodLock.tsx:128`
   <!-- meta: fix=rename-page-Payroll-Periods-OR-expand-page-to-include-per-employee-totals+pay-run-summary -->
@@ -4786,7 +4786,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:35-138`
   <!-- meta: fix=destructure-isLoading-and-render-3-skeleton-rows-or-Loader2-when-isLoading-before-the-empty-state -->
 
-- [ ] WEB-UIUX-1151. **[MAJOR] `lockMut.isPending` disables every unlocked row's Lock button while one mutation is in flight — visually all pending locks "go grey" though the operator only clicked one.** `CommissionPeriodLock.tsx:165` `disabled={lockMut.isPending}` with shared mutation hook across the whole list. Confusing on weekly periods where 4-5 unlocked rows are visible. L7 feedback specificity.
+- [x] WEB-UIUX-1151. **[MAJOR] `lockMut.isPending` disables every unlocked row's Lock button while one mutation is in flight — visually all pending locks "go grey" though the operator only clicked one.** `CommissionPeriodLock.tsx:165` `disabled={lockMut.isPending}` with shared mutation hook across the whole list. Confusing on weekly periods where 4-5 unlocked rows are visible. L7 feedback specificity. **[AUTOLOOP-T49 RESOLVED 2026-05-11: disabled now gated on `lockMut.isPending && lockMut.variables === p.id` so only the row being locked greys out; spinner replaces the LockOpen icon on that row alone.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:165-173`
   <!-- meta: fix=track-lockingId-state-(useState-number|null)+disable+spinner-only-on-the-row-whose-id-matches-OR-use-useMutation-with-variables-and-compare-lockMut.variables===p.id -->
 
@@ -4804,7 +4804,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:182-189`
   <!-- meta: fix=track-isDirty-(any-field-non-empty)+confirm(Discard-this-period?)-on-backdrop-or-Cancel-when-dirty -->
 
-- [ ] WEB-UIUX-1155. **[MINOR] `LockOpen` icon next to "Lock" label is iconographically ambiguous — open-padlock could read "this is open / unlocked" rather than "click to lock the open one". No `aria-label` on the button.** `CommissionPeriodLock.tsx:163-174`. Screen readers announce "Lock, button" without the period name. L4 accessibility, L5 visual clarity.
+- [x] WEB-UIUX-1155. **[MINOR] `LockOpen` icon next to "Lock" label is iconographically ambiguous — open-padlock could read "this is open / unlocked" rather than "click to lock the open one". No `aria-label` on the button.** `CommissionPeriodLock.tsx:163-174`. Screen readers announce "Lock, button" without the period name. L4 accessibility, L5 visual clarity. **[AUTOLOOP-T49 RESOLVED 2026-05-11: aria-label now reads "Lock commission period {name} ({start} to {end})" so SR users hear the period context. Icon kept since the visible "Lock" label provides the verb.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:163-174`
   <!-- meta: fix=aria-label=`Lock period ${p.name}`+title=`Permanently lock ${p.name}`+consider-Shield-or-Lock-icon-with-arrow -->
 
@@ -4812,7 +4812,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/server/src/routes/team.routes.ts:925-996`
   <!-- meta: fix=if-all-rows-zero-return-409-with-message-No-payroll-activity-or-client-pre-flight-via-/payroll/periods/:id/summary-(WEB-UIUX-1145) -->
 
-- [ ] WEB-UIUX-1157. **[MINOR] `onError` handler reads only `e.response.data.error` (string) — Zod-style array errors collapse to "Failed to create period" / "Lock failed".** `CommissionPeriodLock.tsx:70-77` and `:87-94`. Lose detail when server returns `{ errors: [{path, message}] }`. L7 actionable error.
+- [x] WEB-UIUX-1157. **[MINOR] `onError` handler reads only `e.response.data.error` (string) — Zod-style array errors collapse to "Failed to create period" / "Lock failed".** `CommissionPeriodLock.tsx:70-77` and `:87-94`. Lose detail when server returns `{ errors: [{path, message}] }`. L7 actionable error. **[AUTOLOOP-T49 RESOLVED 2026-05-11: parseApiError helper now handles `{errors:[{path,message}]}` (Zod-style), `{message}`, and `{error}` shapes and surfaces them in the toast.]**
   `packages/web/src/components/team/CommissionPeriodLock.tsx:70-94`
   <!-- meta: fix=fall-through-to-data?.errors[0]?.message-or-data?.message-before-string-fallback -->
 
@@ -4844,7 +4844,7 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
 
 #### Major — discoverability, label clarity, recovery, observability
 
-- [ ] WEB-UIUX-1162. **[MAJOR] `GET /pos-enrich/drawer/:id/z-report` on an OPEN shift falls through to `buildZReport` with `counted_cents=0` and `expected_cents=opening_float_cents` — admin previewing in-progress shift sees catastrophic phantom "short by $X" variance.** `posEnrich.routes.ts:484-494` defaults `counted_cents` to `shift.closing_counted_cents ?? 0` when shift is open, producing a -$expected variance the modal renders red with the "Variance ≥ $5 — investigate before next shift" warning. There's no "shift in progress" placeholder. Manager checking mid-shift health gets a fake panic. L9 loading/in-progress state, L7 truthful feedback. L7, L9.
+- [x] WEB-UIUX-1162. **[MAJOR] `GET /pos-enrich/drawer/:id/z-report` on an OPEN shift falls through to `buildZReport` with `counted_cents=0` and `expected_cents=opening_float_cents` — admin previewing in-progress shift sees catastrophic phantom "short by $X" variance.** `posEnrich.routes.ts:484-494` defaults `counted_cents` to `shift.closing_counted_cents ?? 0` when shift is open, producing a -$expected variance the modal renders red with the "Variance ≥ $5 — investigate before next shift" warning. There's no "shift in progress" placeholder. Manager checking mid-shift health gets a fake panic. L9 loading/in-progress state, L7 truthful feedback. L7, L9. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server passes `counted_cents=null` + `variance_cents=null` when shift is open; ZReport type widened; response gains `in_progress:true` so the client can render an "awaiting close" placeholder instead of the red variance banner.]**
   `packages/server/src/routes/posEnrich.routes.ts:461-495`
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:142-176`
   <!-- meta: fix=server-flag-in_progress=true-when-closed_at-IS-NULL+omit-counted/variance-or-set-to-null+client-render-In-progress-section-without-variance-row-and-warning -->
