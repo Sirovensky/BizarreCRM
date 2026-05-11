@@ -899,7 +899,13 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
   // Countdown timer while locked out — matches PinModal pattern.
   useEffect(() => {
     if (!lockedUntil) return;
+    // BUGHUNT-2026-05-10-32: stopped flag short-circuits any pending tick
+    // that fires between Date.now() check and the setState calls (e.g.
+    // tick was already queued at cleanup time). Guards the
+    // "setState-after-unmount" warning.
+    let stopped = false;
     const tick = () => {
+      if (stopped) return;
       const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
       if (remaining <= 0) {
         setLockedUntil(null);
@@ -913,7 +919,10 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
     };
     tick();
     const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
   }, [lockedUntil]);
 
   // WEB-UIUX-445: move focus to Cancel when lockout activates so the user

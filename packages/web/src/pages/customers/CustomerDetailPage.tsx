@@ -138,7 +138,14 @@ export function CustomerDetailPage() {
       const entry = { type: 'customer', id: customer.id, label, path: `/customers/${customer.id}` };
       const filtered = existing.filter((e) => !(e.type === 'customer' && e.id === customer.id));
       filtered.unshift(entry);
-      localStorage.setItem(key, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
+      const next = JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX));
+      // BUGHUNT-2026-05-10-30: react-query returns a fresh `customer`
+      // object identity on every refetch even when fields are identical;
+      // the deps trigger this effect each time. Compare the serialized
+      // payload before writing so we don't thrash localStorage + the
+      // dispatch event on every poll.
+      if (next === raw) return;
+      localStorage.setItem(key, next);
       // WEB-UIUX-470: notify Sidebar.RecentViews to refresh from cache without
       // re-parsing on every route nav; the event carries the key so multi-user
       // scenarios skip irrelevant refreshes.
@@ -223,6 +230,7 @@ export function CustomerDetailPage() {
       // the file off to the Wallet system intent. HTML wallet-pass response
       // (the dev/preview path) keeps the popup behaviour.
       const isPkpass = contentType.includes('application/vnd.apple.pkpass');
+      let popupWindow: Window | null = null;
       if (isPkpass) {
         const a = document.createElement('a');
         a.href = url;
@@ -232,14 +240,27 @@ export function CustomerDetailPage() {
         a.click();
         a.remove();
       } else {
-        const win = window.open(url, '_blank', 'noopener,noreferrer');
-        if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
+        popupWindow = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!popupWindow) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
       }
-      // WEB-FJ-017: bumped from 60s → 5min so staff have time to print or
-      // screenshot the loyalty pass before the blob URL is revoked. After
-      // revoke the popup's reload/back keys produce a broken page silently
-      // (no toast — popup window doesn't share the parent's <Toaster />).
-      setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
+      // WEB-FJ-017 / BUGHUNT-2026-05-10-34: bumped from 60s → 5min so staff
+      // have time to print or screenshot. After the 5min mark, only revoke
+      // when the popup is verifiably closed — otherwise check again every
+      // minute up to a 30-min hard ceiling. Keeps the blob alive while the
+      // user has the document open and prevents the silent "popup broke"
+      // class of report on long screenshot/print sessions.
+      const startedAt = Date.now();
+      const HARD_CAP_MS = 30 * 60_000;
+      const checkAndRevoke = () => {
+        const elapsed = Date.now() - startedAt;
+        const popupClosed = !popupWindow || popupWindow.closed === true;
+        if (popupClosed || elapsed >= HARD_CAP_MS) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        setTimeout(checkAndRevoke, 60_000);
+      };
+      setTimeout(checkAndRevoke, 5 * 60_000);
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'response' in err
