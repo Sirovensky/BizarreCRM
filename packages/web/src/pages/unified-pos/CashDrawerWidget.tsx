@@ -231,9 +231,11 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
               aria-describedby={`open-shift-hint${error ? ' open-shift-error' : ''}`}
             />
           </label>
-          {/* WEB-UIUX-1184: always-visible hint for screen readers + sighted users */}
+          {/* WEB-UIUX-1184: always-visible hint for screen readers + sighted users.
+              WEB-UIUX-1176: also surface the upper cap inline so a $60,000 typo
+              gets caught before submit instead of via a toast on click. */}
           <p id="open-shift-hint" className="text-xs text-surface-400 dark:text-surface-500">
-            Enter amount in dollars and cents
+            Enter amount in dollars and cents (max $50,000)
           </p>
           {error && (
             <p id="open-shift-error" role="alert" aria-live="polite" className="text-xs text-red-500">

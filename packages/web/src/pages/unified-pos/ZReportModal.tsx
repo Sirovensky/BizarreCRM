@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle, RotateCcw } from 'lucide-react';
 import { api } from '@/api/client';
+import { settingsApi } from '@/api/endpoints';
 import { formatCents, formatDateTime } from '@/utils/format';
 
 /**
@@ -25,6 +26,12 @@ interface ZReport {
   /** Server-tagged when the shift is still open. Client renders an
    * "awaiting close" placeholder instead of a phantom variance banner. */
   in_progress?: boolean;
+  // WEB-UIUX-1170: audit context surfaced on the Z-report — opener/closer
+  // name, total minutes on shift, and any manager notes captured at close.
+  opened_by_name?: string | null;
+  closed_by_name?: string | null;
+  duration_minutes?: number | null;
+  notes?: string | null;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
@@ -44,11 +51,13 @@ interface ZReportModalProps {
 }
 
 /**
- * Signed money formatter. Defers to formatCents() so the locale/currency
- * from store settings is respected — we can't just prepend "$" because
- * non-USD stores would see the wrong glyph.
+ * Locale-aware cents → currency formatter. Pre WEB-UIUX-1174 this helper was
+ * named `formatSignedCents` and implied +/- sign handling that it never did —
+ * locale formatCents() already encodes negatives via the locale's convention
+ * (parentheses or hyphen). Kept as a thin wrapper purely to coerce NaN/∞
+ * inputs to $0.00 instead of leaking "NaN" into the printable report.
  */
-function formatSignedCents(cents: number): string {
+function formatMoney(cents: number): string {
   if (!Number.isFinite(cents)) return formatCents(0);
   return formatCents(cents);
 }
@@ -61,6 +70,17 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
       return res.data.data;
     },
   });
+  // WEB-UIUX-1166: variance warn threshold lives in store_config so high-volume
+  // stores can raise it past $5 without code changes. Default 500 cents.
+  const { data: cfgData } = useQuery<Record<string, string>>({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const varianceWarnCents = Math.max(0, parseInt(cfgData?.['pos_variance_warn_cents'] ?? '500', 10) || 500);
   // Restore focus to the opener button after the modal unmounts so keyboard
   // users land back where they were.
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -166,7 +186,7 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
               </button>
             </div>
           )}
-          {data && <ZReportBody report={data} />}
+          {data && <ZReportBody report={data} varianceWarnCents={varianceWarnCents} />}
         </div>
       </div>
     </div>
@@ -175,9 +195,10 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
 
 interface ZReportBodyProps {
   report: ZReport;
+  varianceWarnCents: number;
 }
 
-function ZReportBody({ report }: ZReportBodyProps) {
+function ZReportBody({ report, varianceWarnCents }: ZReportBodyProps) {
   // WEB-UIUX-1162: when the shift is still open, the server returns
   // counted_cents/variance_cents = null + in_progress=true. Render an
   // "awaiting close" placeholder instead of the red phantom-short banner.
@@ -198,16 +219,31 @@ function ZReportBody({ report }: ZReportBodyProps) {
   return (
     <>
       <div className="space-y-1 text-xs text-surface-500 dark:text-surface-400">
-        <div>Opened: {formatDateTime(report.opened_at)}</div>
-        <div>Closed: {inProgress ? 'In progress — shift not yet closed' : formatDateTime(report.closed_at)}</div>
+        <div>
+          Opened: {formatDateTime(report.opened_at)}
+          {report.opened_by_name && <span> · by {report.opened_by_name}</span>}
+        </div>
+        <div>
+          Closed: {inProgress ? 'In progress — shift not yet closed' : formatDateTime(report.closed_at)}
+          {!inProgress && report.closed_by_name && <span> · by {report.closed_by_name}</span>}
+        </div>
+        {report.duration_minutes != null && (
+          <div>
+            Duration: {Math.floor(report.duration_minutes / 60)}h {report.duration_minutes % 60}m
+            <span className="ml-1 text-surface-400">(shift #{report.shift_id})</span>
+          </div>
+        )}
+        {report.notes && (
+          <div className="mt-1 italic text-surface-600 dark:text-surface-300">Note: {report.notes}</div>
+        )}
       </div>
 
       <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
-        <ReportRow label="Opening Float" value={formatSignedCents(report.opening_float_cents)} />
-        <ReportRow label="Expected" value={formatSignedCents(report.expected_cents)} />
+        <ReportRow label="Opening Float" value={formatMoney(report.opening_float_cents)} />
+        <ReportRow label="Expected" value={formatMoney(report.expected_cents)} />
         <ReportRow
           label="Counted"
-          value={report.counted_cents === null ? 'Awaiting close' : formatSignedCents(report.counted_cents)}
+          value={report.counted_cents === null ? 'Awaiting close' : formatMoney(report.counted_cents)}
         />
         <div className="mt-2 border-t border-surface-200 pt-2 dark:border-surface-700">
           <div className={`flex items-center justify-between text-sm font-semibold ${varianceClass}`}>
@@ -221,10 +257,10 @@ function ZReportBody({ report }: ZReportBodyProps) {
                 : variance === 0 ? 'Balanced' : variance > 0 ? `Over by ${formatCents(variance)}` : `Short by ${formatCents(Math.abs(variance))}`}
             </span>
           </div>
-          {!inProgress && Math.abs(variance) >= 500 && (
+          {!inProgress && varianceWarnCents > 0 && Math.abs(variance) >= varianceWarnCents && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
               <AlertTriangle className="h-3 w-3" />
-              Variance ≥ $5 — investigate before next shift
+              Variance ≥ {formatCents(varianceWarnCents)} — investigate before next shift
             </div>
           )}
         </div>
@@ -244,7 +280,7 @@ function ZReportBody({ report }: ZReportBodyProps) {
             <ReportRow
               key={p.method}
               label={`${p.method} (${p.count})`}
-              value={formatSignedCents(p.cents)}
+              value={formatMoney(p.cents)}
             />
           ))}
         </div>
@@ -255,9 +291,9 @@ function ZReportBody({ report }: ZReportBodyProps) {
           Shift Totals
         </div>
         <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
-          <ReportRow label="Gross Sales" value={formatSignedCents(report.totals.gross_cents)} />
-          <ReportRow label="Refunds" value={formatSignedCents(report.totals.refund_cents)} />
-          <ReportRow label="Net" value={formatSignedCents(report.totals.net_cents)} bold />
+          <ReportRow label="Gross Sales" value={formatMoney(report.totals.gross_cents)} />
+          <ReportRow label="Refunds" value={formatMoney(report.totals.refund_cents)} />
+          <ReportRow label="Net" value={formatMoney(report.totals.net_cents)} bold />
           <ReportRow label="Transactions" value={String(report.totals.transaction_count)} />
         </div>
       </div>

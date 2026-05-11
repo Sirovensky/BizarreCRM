@@ -206,6 +206,9 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'pos_show_out_of_stock', 'pos_show_invoice_notes', 'pos_show_outstanding_alert',
   'pos_show_images', 'pos_show_discount_reason', 'pos_show_cost_price',
   'pos_require_pin_sale', 'pos_require_pin_ticket', 'pos_require_referral',
+  // WEB-UIUX-1166: variance threshold (cents) for the "investigate before next
+  // shift" warning on Z-reports. Default 500 (==$5) preserved when unset.
+  'pos_variance_warn_cents',
   'checkin_default_category', 'checkin_auto_print_label',
   // Invoice/receipt settings
   'invoice_logo', 'invoice_title', 'invoice_payment_terms', 'invoice_slogan', 'invoice_footer',

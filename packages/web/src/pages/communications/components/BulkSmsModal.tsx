@@ -122,7 +122,22 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       }
       // If failed > 0 modal stays open so admin sees the count before dismissing
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Bulk send failed'),
+    onError: (e: any) => {
+      // WEB-UIUX-1120: surface server rate-limit hint with a precise wait
+      // window instead of the opaque "Bulk send failed" toast. Server reply
+      // shape is `Rate limit exceeded — try again in {N}s` from guardInboxRate.
+      const raw = String(e?.response?.data?.error ?? e?.response?.data?.message ?? '');
+      const status = e?.response?.status;
+      const m = /try again in (\d+)s/i.exec(raw);
+      if (status === 429 && m) {
+        const seconds = parseInt(m[1], 10);
+        const mins = Math.floor(seconds / 60);
+        const human = mins >= 1 ? `${mins} min` : `${seconds}s`;
+        toast.error(`Bulk send rate-limited — next bulk available in ${human}.`, { duration: 8000 });
+        return;
+      }
+      toast.error(raw || 'Bulk send failed');
+    },
   });
 
   // WEB-UIUX-1122: Check TCPA quiet hours (8am–9pm) on open and whenever modal is shown

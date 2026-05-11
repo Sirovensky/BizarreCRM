@@ -2,9 +2,14 @@
  * Commission period lock — criticalaudit.md §53 idea #7.
  *
  * Compact card that lists payroll periods with a Lock button. Once locked,
- * the row shows a lock icon and the locked-by user. The server-side check
- * (isCommissionLocked) refuses any subsequent commission edits in the locked
- * range — so this UI is a one-way switch on purpose.
+ * the row shows a lock icon and the locked-by user. The server-side checks
+ * refuse:
+ *   - commission edits in the locked range (`isCommissionLocked`)
+ *   - clock-in/out edits and timesheet adjustments in the locked range
+ *     (employees.routes :375,447-448)
+ *   - tip edits on payments inside the range (pos.routes :787)
+ * UI is a one-way switch on purpose — the inline copy below mirrors the
+ * same scope so the admin doesn't think they're only freezing commissions.
  *
  * Drop-in for the payroll page or settings; also re-used by GoalsPage in a
  * follow-up if needed.
@@ -154,10 +159,12 @@ export function CommissionPeriodLock() {
   }
 
   async function handleLockPeriod(period: PayrollPeriod) {
+    // WEB-UIUX-1143: spell out every downstream lock so the admin knows
+    // commission, clock-in/out, timesheet, and tip-edit paths all freeze.
     const ok = await confirm(
-      `Lock commission period "${period.name}" (${period.start_date} to ${period.end_date})? Commission edits in this range will be blocked after locking.`,
+      `Lock payroll period "${period.name}" (${period.start_date} to ${period.end_date})?\n\nAfter locking, the following edits in this date range will be blocked:\n• Commission entries\n• Time entries (clock-in/out)\n• Timesheet adjustments\n• Tip edits on payments\n\nThis cannot be undone.`,
       {
-        title: 'Lock commission period?',
+        title: 'Lock payroll period?',
         confirmLabel: 'Lock period',
         danger: true,
       },

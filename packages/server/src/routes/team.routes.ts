@@ -866,6 +866,28 @@ router.post(
     if (new Date(endDate).getTime() < new Date(startDate).getTime()) {
       throw new AppError('end_date must be on/after start_date', 400);
     }
+    // WEB-UIUX-1147: refuse duplicate names + overlapping ranges. Without this
+    // two periods covering the same calendar days both include the overlap
+    // rows in their CSVs (SUM-by-range, not dedup'd), double-counting payroll.
+    const nameClash = await adb.get<{ id: number; name: string }>(
+      'SELECT id, name FROM payroll_periods WHERE name = ?',
+      name,
+    );
+    if (nameClash) {
+      throw new AppError(`A payroll period named "${name}" already exists.`, 409);
+    }
+    const overlap = await adb.get<{ id: number; name: string; start_date: string; end_date: string }>(
+      `SELECT id, name, start_date, end_date FROM payroll_periods
+        WHERE start_date <= ? AND end_date >= ?
+        LIMIT 1`,
+      endDate, startDate,
+    );
+    if (overlap) {
+      throw new AppError(
+        `Date range overlaps existing period "${overlap.name}" (${overlap.start_date} to ${overlap.end_date}). Periods must not overlap — payroll CSVs would double-count rows in the overlap.`,
+        409,
+      );
+    }
     const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : null;
     const result = await adb.run(
       `INSERT INTO payroll_periods (name, start_date, end_date, notes) VALUES (?, ?, ?, ?)`,

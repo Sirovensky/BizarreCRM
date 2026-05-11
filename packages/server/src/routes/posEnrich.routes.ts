@@ -237,8 +237,21 @@ async function getCurrentShift(adb: AsyncDb): Promise<DrawerShiftRow | undefined
 router.get(
   '/drawer/current',
   asyncHandler(async (req, res) => {
+    // WEB-UIUX-1172: opening_float_cents + opener id are shop-confidential
+    // (burglary risk). Allow admin/manager unconditionally; allow a cashier
+    // ONLY if they are the opener of the currently open shift. Other
+    // authenticated users (techs, support) get null + a 200 so the POS UI
+    // still renders without leaking the float amount.
     const shift = await getCurrentShift(req.asyncDb);
-    res.json({ success: true, data: shift ?? null });
+    const role = (req as any)?.user?.role;
+    const userId = (req as any)?.user?.id;
+    const isPrivileged = role === 'admin' || role === 'manager';
+    const isOnShift = !!shift && shift.opened_by_user_id === userId;
+    if (!shift || isPrivileged || isOnShift) {
+      res.json({ success: true, data: shift ?? null });
+      return;
+    }
+    res.json({ success: true, data: null });
   }),
 );
 
@@ -399,6 +412,14 @@ interface ZReport {
   // of a phantom variance.
   counted_cents: number | null;
   variance_cents: number | null;
+  // WEB-UIUX-1170: include opener / closer name + shift duration + notes so
+  // the printed Z-report carries the audit context many jurisdictions require
+  // on EOD reports. Names are resolved by joining users on opened_by /
+  // closed_by user ids; absent rows fall back to null.
+  opened_by_name: string | null;
+  closed_by_name: string | null;
+  duration_minutes: number | null;
+  notes: string | null;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
@@ -448,6 +469,34 @@ async function buildZReport(
     closedAt,
   );
 
+  // WEB-UIUX-1170: resolve opener + closer names + compute shift duration so
+  // the Z-report can stamp who-opened / who-closed / minutes-on-shift.
+  const openedBy = shift.opened_by_user_id
+    ? await adb.get<{ first_name: string | null; last_name: string | null }>(
+        'SELECT first_name, last_name FROM users WHERE id = ?',
+        shift.opened_by_user_id,
+      )
+    : null;
+  const closedBy = shift.closed_by_user_id
+    ? await adb.get<{ first_name: string | null; last_name: string | null }>(
+        'SELECT first_name, last_name FROM users WHERE id = ?',
+        shift.closed_by_user_id,
+      )
+    : null;
+  const fmtName = (u: { first_name: string | null; last_name: string | null } | null | undefined) => {
+    if (!u) return null;
+    const n = `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim();
+    return n || null;
+  };
+  let durationMinutes: number | null = null;
+  if (shift.opened_at) {
+    const endMs = new Date(closedAt).getTime();
+    const startMs = new Date(shift.opened_at).getTime();
+    if (Number.isFinite(endMs) && Number.isFinite(startMs) && endMs >= startMs) {
+      durationMinutes = Math.round((endMs - startMs) / 60_000);
+    }
+  }
+
   return {
     shift_id: shift.id,
     opened_at: shift.opened_at,
@@ -456,6 +505,10 @@ async function buildZReport(
     expected_cents: expectedCents,
     counted_cents: countedCents,
     variance_cents: varianceCents,
+    opened_by_name: fmtName(openedBy),
+    closed_by_name: fmtName(closedBy),
+    duration_minutes: durationMinutes,
+    notes: shift.notes ?? null,
     payment_breakdown: breakdown,
     totals: totalsRow ?? { gross_cents: 0, refund_cents: 0, net_cents: 0, transaction_count: 0 },
   };
