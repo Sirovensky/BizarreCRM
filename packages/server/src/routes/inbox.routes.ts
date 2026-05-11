@@ -612,17 +612,12 @@ router.post(
     if (preview.count === 0) {
       res.json({
         success: true,
-        data: { attempted: 0, sent: 0, failed: 0, segment, confirmed: true },
+        data: { attempted: 0, sent: 0, failed: 0, segment, confirmed: true, job_id: null },
       });
       return;
     }
 
-    // Verify the SMS provider is actually real BEFORE claiming anything will
-    // be delivered. Previously we inserted every phone into `sms_retry_queue`
-    // and returned `{ enqueued: N }`, but no background worker drains that
-    // table — so the rows sat forever and the admin got a false "N sent"
-    // impression. Now we dispatch inline (capped at 500 rows per call by
-    // previewBulkSegment) and report truthful counts.
+    // Verify the SMS provider is actually real BEFORE creating a job row.
     const provider = getSmsProvider();
     const providerStatus = isProviderRealOrSimulated(provider);
     if (!providerStatus.real) {
@@ -634,71 +629,116 @@ router.post(
       );
     }
 
-    let sent = 0;
-    let failed = 0;
+    // WEB-UIUX-1117: create a tracked job row, return the id, run the send
+    // loop async via setImmediate. The synchronous 30-100s blocking response
+    // is gone — the modal polls GET /jobs/:id for progress and can fire
+    // POST /jobs/:id/abort. Keeps the inline-send semantics (no separate
+    // worker process to deploy); the loop checks abort_requested between
+    // sends so the cap stays bounded.
     const tenantSlug = (req as any).tenantSlug || null;
-    for (const phone of preview.phones) {
-      try {
-        const result = await sendSmsTenant(db, tenantSlug, phone, tpl.content);
-        if (result?.success) {
-          sent += 1;
-        } else {
-          failed += 1;
-          // Record the failure in sms_retry_queue with the real error reason
-          // so the existing retry UI surfaces it.
+    const insertResult = await adb.run(
+      `INSERT INTO bulk_sms_jobs (segment, template_id, template_name, total, status, created_by, started_at)
+        VALUES (?, ?, ?, ?, 'running', ?, datetime('now'))`,
+      segment,
+      templateId,
+      tpl.name,
+      preview.count,
+      req.user!.id,
+    );
+    const jobId = Number(insertResult.lastInsertRowid);
+
+    audit(db, 'inbox_bulk_send_started', req.user!.id, req.ip || 'unknown', {
+      segment,
+      template_id: templateId,
+      job_id: jobId,
+      total: preview.count,
+    });
+
+    // Fire-and-forget loop. Each iteration commits its delta to the job row
+    // and re-reads abort_requested so the operator's POST /abort lands within
+    // one SMS-send window. Errors are persisted to the job row + sms_retry_queue.
+    setImmediate(() => {
+      void (async () => {
+        let sent = 0;
+        let failed = 0;
+        for (const phone of preview.phones) {
+          const abortCheck = await adb.get<{ abort_requested: number }>(
+            'SELECT abort_requested FROM bulk_sms_jobs WHERE id = ?',
+            jobId,
+          );
+          if (abortCheck?.abort_requested) {
+            await adb.run(
+              `UPDATE bulk_sms_jobs SET status = 'aborted', finished_at = datetime('now'),
+                 sent = ?, failed = ? WHERE id = ?`,
+              sent, failed, jobId,
+            );
+            log.info('bulk-sms job aborted', { job_id: jobId, sent, failed });
+            return;
+          }
+          try {
+            const result = await sendSmsTenant(db, tenantSlug, phone, tpl.content);
+            if (result?.success) {
+              sent += 1;
+            } else {
+              failed += 1;
+              await adb.run(
+                `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
+                      VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
+                phone,
+                tpl.content,
+                result?.error ?? 'unknown SMS provider error',
+              );
+            }
+          } catch (err) {
+            failed += 1;
+            log.error('inbox bulk-send inner send threw', {
+              phone,
+              template_id: templateId,
+              job_id: jobId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            const safeMsg = sanitizeRetryError(err);
+            await adb.run(
+              `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
+                    VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
+              phone,
+              tpl.content,
+              safeMsg,
+            );
+          }
+          // Persist per-iteration progress so the poll endpoint sees live counts.
           await adb.run(
-            `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
-                  VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
-            phone,
-            tpl.content,
-            result?.error ?? 'unknown SMS provider error',
+            'UPDATE bulk_sms_jobs SET sent = ?, failed = ? WHERE id = ?',
+            sent, failed, jobId,
           );
         }
-      } catch (err) {
-        failed += 1;
-        // Log the full error server-side for operators; persist only a safe
-        // label. last_error is surfaced via GET /retry-queue and must not
-        // leak DB / stack / filesystem internals to clients.
-        log.error('inbox bulk-send inner send threw', {
-          phone,
-          template_id: templateId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        const safeMsg = sanitizeRetryError(err);
         await adb.run(
-          `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
-                VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
-          phone,
-          tpl.content,
-          safeMsg,
+          `UPDATE bulk_sms_jobs SET status = 'completed', finished_at = datetime('now'),
+            sent = ?, failed = ? WHERE id = ?`,
+          sent, failed, jobId,
         );
-      }
-    }
-
-    audit(db, 'inbox_bulk_send_dispatched', req.user!.id, req.ip || 'unknown', {
-      segment,
-      template_id: templateId,
-      attempted: preview.count,
-      sent,
-      failed,
-    });
-    log.info('bulk send dispatched', {
-      segment,
-      template_id: templateId,
-      attempted: preview.count,
-      sent,
-      failed,
+        log.info('bulk-sms job completed', { job_id: jobId, sent, failed });
+      })().catch((err) => {
+        log.error('bulk-sms job crashed', { job_id: jobId, error: err instanceof Error ? err.message : String(err) });
+        void adb.run(
+          `UPDATE bulk_sms_jobs SET status = 'failed', last_error = ?, finished_at = datetime('now') WHERE id = ?`,
+          err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+          jobId,
+        );
+      });
     });
 
     res.json({
       success: true,
       data: {
         attempted: preview.count,
-        sent,
-        failed,
+        sent: 0,
+        failed: 0,
         segment,
         template: { id: tpl.id, name: tpl.name },
         confirmed: true,
+        job_id: jobId,
+        status: 'running',
       },
     });
   }),
@@ -1156,6 +1196,70 @@ router.get(
         avg_first_response_minutes: Math.round((avgSeconds / 60) * 10) / 10,
       },
     });
+  }),
+);
+
+// WEB-UIUX-1117: bulk-send job progress + abort.
+router.get(
+  '/bulk-send/jobs/:id',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const adb = req.asyncDb;
+    const jobId = Number(req.params.id);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      throw new AppError('Invalid job id', 400);
+    }
+    const row = await adb.get<{
+      id: number; segment: string; template_id: number; template_name: string | null;
+      total: number; sent: number; failed: number; status: string;
+      abort_requested: number; last_error: string | null;
+      created_by: number; created_at: string; started_at: string | null; finished_at: string | null;
+    }>(
+      `SELECT id, segment, template_id, template_name, total, sent, failed, status,
+              abort_requested, last_error, created_by, created_at, started_at, finished_at
+         FROM bulk_sms_jobs WHERE id = ?`,
+      jobId,
+    );
+    if (!row) {
+      res.status(404).json({ success: false, message: 'Bulk SMS job not found.' });
+      return;
+    }
+    res.json({ success: true, data: row });
+  }),
+);
+
+router.post(
+  '/bulk-send/jobs/:id/abort',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const db = req.db;
+    const adb = req.asyncDb;
+    const jobId = Number(req.params.id);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      throw new AppError('Invalid job id', 400);
+    }
+    const job = await adb.get<{ id: number; status: string }>(
+      'SELECT id, status FROM bulk_sms_jobs WHERE id = ?',
+      jobId,
+    );
+    if (!job) {
+      res.status(404).json({ success: false, message: 'Bulk SMS job not found.' });
+      return;
+    }
+    if (job.status !== 'running' && job.status !== 'pending') {
+      res.status(409).json({
+        success: false,
+        code: 'ERR_BULK_SMS_NOT_RUNNING',
+        message: `Job is ${job.status} — cannot abort.`,
+      });
+      return;
+    }
+    await adb.run(
+      'UPDATE bulk_sms_jobs SET abort_requested = 1 WHERE id = ?',
+      jobId,
+    );
+    audit(db, 'inbox_bulk_send_aborted', req.user!.id, req.ip || 'unknown', { job_id: jobId });
+    res.json({ success: true, data: { abort_requested: true, job_id: jobId } });
   }),
 );
 

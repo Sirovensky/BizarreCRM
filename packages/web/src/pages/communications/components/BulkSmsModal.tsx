@@ -49,13 +49,28 @@ interface PreviewResponse {
 }
 
 // WEB-UIUX-1111: Updated to match server response shape from inbox.routes.ts:693-703
+// WEB-UIUX-1117: server now returns a job id + initial counts (sent=0, failed=0)
+// and the dispatch happens async on the server. Client polls /jobs/:id for
+// progress and can hit /jobs/:id/abort.
 interface ConfirmResponse {
   attempted: number;
   sent: number;
   failed: number;
   segment: string;
-  template: string;
+  template: string | { id: number; name: string };
   confirmed: true;
+  job_id: number | null;
+  status?: 'running' | 'completed' | 'aborted' | 'failed';
+}
+
+interface JobProgress {
+  id: number;
+  total: number;
+  sent: number;
+  failed: number;
+  status: 'pending' | 'running' | 'completed' | 'aborted' | 'failed';
+  abort_requested: number;
+  last_error: string | null;
 }
 
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
@@ -72,6 +87,10 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   const [countdown, setCountdown] = useState<number>(300); // 5 minutes in seconds
   // WEB-UIUX-1513: typed-confirm gate when preview_count >= 100.
   const [typedConfirm, setTypedConfirm] = useState('');
+  // WEB-UIUX-1117: track the running job for poll + abort.
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [jobProgress, setJobProgress] = useState<JobProgress | null>(null);
+  const [aborting, setAborting] = useState(false);
   // WEB-UIUX-869: minimized-to-chip state so the cashier can answer inbound
   // SMS during the 5-min token window. The modal pops back open via the
   // chip's Reopen button or by clicking the chip body. Auto-reset to
@@ -127,17 +146,30 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       return res.data.data;
     },
     onSuccess: (r) => {
-      // WEB-UIUX-1111: Use actual server fields; keep modal open when failures occurred
-      toast.success(
-        `Sent ${r.sent} of ${r.attempted}${r.failed > 0 ? ` (${r.failed} failed — see retry queue)` : ''}`,
-      );
-      setPreview(null);
-      setPreviewedAt(null);
-      setTemplateId(null);
-      if (r.failed === 0) {
+      // WEB-UIUX-1117: kick off poll on the returned job. Server dispatched
+      // the send loop async; the modal switches into "progress" view and
+      // polls /jobs/:id every 2s. Empty audiences come back with job_id=null.
+      if (r.job_id) {
+        setJobId(r.job_id);
+        setJobProgress({
+          id: r.job_id,
+          total: r.attempted,
+          sent: r.sent,
+          failed: r.failed,
+          status: 'running',
+          abort_requested: 0,
+          last_error: null,
+        });
+        toast.success(`Bulk send started — dispatching to ${r.attempted} recipient${r.attempted === 1 ? '' : 's'}.`);
+        setPreview(null);
+        setPreviewedAt(null);
+      } else {
+        toast.success(`No recipients matched segment ${r.segment}.`);
+        setPreview(null);
+        setPreviewedAt(null);
+        setTemplateId(null);
         onClose();
       }
-      // If failed > 0 modal stays open so admin sees the count before dismissing
     },
     onError: (e: any) => {
       // WEB-UIUX-1120: surface server rate-limit hint with a precise wait
@@ -167,6 +199,62 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       toast.error(raw || 'Bulk send failed');
     },
   });
+
+  // WEB-UIUX-1117: poll the active job every 2s; stop when terminal.
+  useEffect(() => {
+    if (!jobId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    async function tick() {
+      if (stopped) return;
+      try {
+        const res = await api.get<{ success: boolean; data: JobProgress }>(`/inbox/bulk-send/jobs/${jobId}`);
+        if (stopped) return;
+        const job = res.data?.data;
+        if (job) {
+          setJobProgress(job);
+          if (job.status === 'completed' || job.status === 'aborted' || job.status === 'failed') {
+            stopped = true;
+            const verb = job.status === 'completed' ? 'completed' : job.status === 'aborted' ? 'aborted' : 'failed';
+            toast.success(`Bulk send ${verb}: ${job.sent} sent, ${job.failed} failed${job.status === 'aborted' ? ` of ${job.total}` : ''}.`);
+            return;
+          }
+        }
+      } catch (err) {
+        // Transient error — keep polling.
+        // eslint-disable-next-line no-console
+        console.warn('[BulkSmsModal] poll failed', err);
+      }
+      if (!stopped) timer = setTimeout(tick, 2000);
+    }
+    void tick();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [jobId]);
+
+  async function handleAbort() {
+    if (!jobId || aborting) return;
+    setAborting(true);
+    try {
+      await api.post<{ success: boolean }>(`/inbox/bulk-send/jobs/${jobId}/abort`);
+      toast('Abort requested — finishing in-flight send.');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'Could not abort job.';
+      toast.error(msg);
+    } finally {
+      setAborting(false);
+    }
+  }
+
+  function clearJob() {
+    setJobId(null);
+    setJobProgress(null);
+    setTemplateId(null);
+    onClose();
+  }
 
   // WEB-UIUX-1122: Check TCPA quiet hours (8am–9pm) on open and whenever modal is shown
   useEffect(() => {
@@ -306,6 +394,55 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
         </div>
 
         <div className="space-y-3 p-4">
+          {/* WEB-UIUX-1117: in-flight job view — replaces the form once the
+              server returns a job_id. Polls every 2s, surfaces a progress
+              bar + Abort. */}
+          {jobProgress ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">
+                  Sending bulk SMS — {jobProgress.sent} sent
+                  {jobProgress.failed > 0 ? `, ${jobProgress.failed} failed` : ''} of {jobProgress.total}
+                </p>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
+                  <div
+                    className={`h-full transition-all ${jobProgress.status === 'aborted' ? 'bg-amber-500' : jobProgress.status === 'failed' ? 'bg-red-500' : 'bg-primary-500'}`}
+                    style={{ width: `${jobProgress.total > 0 ? Math.min(100, ((jobProgress.sent + jobProgress.failed) / jobProgress.total) * 100) : 0}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-surface-500">
+                  Status: <b>{jobProgress.status}</b>
+                  {jobProgress.abort_requested && jobProgress.status === 'running' ? ' (abort requested — finishing in-flight send)' : ''}
+                </p>
+              </div>
+              {jobProgress.last_error && (
+                <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                  {jobProgress.last_error}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                {jobProgress.status === 'running' && !jobProgress.abort_requested && (
+                  <button
+                    type="button"
+                    onClick={handleAbort}
+                    disabled={aborting}
+                    className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                  >
+                    {aborting ? 'Requesting abort…' : 'Abort send'}
+                  </button>
+                )}
+                {(jobProgress.status === 'completed' || jobProgress.status === 'aborted' || jobProgress.status === 'failed') && (
+                  <button
+                    type="button"
+                    onClick={clearJob}
+                    className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : <>
           {/* WEB-UIUX-1115: Consent-scope banner so admins know counts are opt-in filtered */}
           <p className="text-xs text-surface-500">Recipient counts include only customers who opted in to marketing SMS.</p>
           <div>
@@ -416,6 +553,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               </span>
             </div>
           )}
+          </>}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
