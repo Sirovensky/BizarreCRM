@@ -663,6 +663,115 @@ router.post('/:id/enable', requirePermission('gift_cards.reload'), asyncHandler(
 }));
 
 // ────────────────────────────────────────────────────────────────────
+// WEB-UIUX-1000: resend gift-card code to recipient email
+// ────────────────────────────────────────────────────────────────────
+// Customer lost the original delivery email or paper slip. Staff with the
+// gift_cards.issue permission can re-send the plaintext code via email,
+// using either the stored recipient_email or an override supplied in the
+// request body. Rate-limited at 5 sends per card per hour to make
+// brute-force enumeration unviable; audit-logged with the override email
+// when present so the trail captures who got the code.
+router.post('/:id/resend-code', requirePermission('gift_cards.issue'), asyncHandler(async (req, res) => {
+  const db = req.db;
+  const adb: AsyncDb = req.asyncDb;
+  const id = validateId(req.params.id, 'id');
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+
+  // Rate limit — 5 per card per hour. Reuses checkWindowRate so the cap is
+  // shared across multiple sessions of the same shop.
+  const rateKey = `resend:${id}`;
+  if (!checkWindowRate(db, 'gift_card_resend', rateKey, 5, 3600_000)) {
+    res.status(429).json({
+      success: false,
+      message: 'Too many resend attempts for this card. Try again in an hour.',
+    });
+    return;
+  }
+
+  const card = await adb.get<{
+    id: number;
+    code: string | null;
+    current_balance: number;
+    initial_balance: number;
+    status: string;
+    recipient_email: string | null;
+    recipient_name: string | null;
+    expires_at: string | null;
+  }>(
+    `SELECT id, code, current_balance, initial_balance, status,
+            recipient_email, recipient_name, expires_at
+       FROM gift_cards WHERE id = ?`,
+    id,
+  );
+  if (!card) throw new AppError('Gift card not found', 404);
+  if (card.status !== 'active') {
+    throw new AppError(`Cannot resend code for a ${card.status} card.`, 409);
+  }
+  if (!card.code) {
+    // SEC-H38 follow-up: post-rollover the plaintext column will be dropped
+    // and this path will need a different recovery flow (e.g. re-issue +
+    // void). Until then the plaintext is still on the row.
+    throw new AppError('Original plaintext code is no longer stored for this card.', 409);
+  }
+
+  const overrideEmailRaw = typeof req.body?.email === 'string' ? req.body.email.trim() : '';
+  const targetEmail = overrideEmailRaw
+    ? validateTextLength(overrideEmailRaw, 200, 'email')
+    : card.recipient_email;
+  if (!targetEmail) {
+    throw new AppError(
+      'No recipient email on file — pass `email` in the request body to resend.',
+      400,
+    );
+  }
+
+  if (!isEmailConfigured(db)) {
+    throw new AppError(
+      'Email is not configured for this shop — cannot resend the code.',
+      503,
+    );
+  }
+
+  const storeName = (db
+    .prepare("SELECT value FROM store_config WHERE key = 'store_name'")
+    .get() as { value: string } | undefined)?.value || 'Your repair shop';
+  const formattedAmount = (Math.round(card.current_balance * 100) / 100).toFixed(2);
+  const subject = `Your gift card code from ${storeName}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+      <h2>${storeName} gift card</h2>
+      <p>Hello${card.recipient_name ? ` ${card.recipient_name}` : ''},</p>
+      <p>Re-sending the code for your gift card. Current balance: <strong>$${formattedAmount}</strong>.</p>
+      <p>Present this code at checkout or quote it over the phone:</p>
+      <div style="font-family: 'Courier New', monospace; font-size: 24px; letter-spacing: 4px;
+                  background: #f3f4f6; padding: 16px; text-align: center; border-radius: 8px;">
+        ${card.code}
+      </div>
+      ${card.expires_at ? `<p>Expires: ${card.expires_at}</p>` : ''}
+      <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
+        Keep this code safe — anyone with it can redeem the card.
+      </p>
+    </div>
+  `;
+  const sent = await sendEmail(db, { to: targetEmail, subject, html });
+  if (!sent) {
+    recordWindowFailure(db, 'gift_card_resend', rateKey, 3600_000);
+    throw new AppError('Email send failed — check SMTP configuration.', 502);
+  }
+
+  audit(db, 'gift_card_code_resent', req.user!.id, req.ip || 'unknown', {
+    gift_card_id: id,
+    code_prefix: card.code.slice(0, 4),
+    delivered_to: targetEmail,
+    override: !!overrideEmailRaw,
+  });
+  res.json({ success: true, data: { gift_card_id: id, delivered_to: targetEmail } });
+}));
+
+// ────────────────────────────────────────────────────────────────────
 // WEB-UIUX-1001: dual-control pending-issuance queue
 // ────────────────────────────────────────────────────────────────────
 

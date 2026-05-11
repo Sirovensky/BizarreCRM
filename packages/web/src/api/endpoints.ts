@@ -1640,6 +1640,23 @@ export const giftCardApi = {
     api.post(`/gift-cards/${id}/disable`, data ?? {}),
   enable: (id: number) =>
     api.post(`/gift-cards/${id}/enable`),
+  // WEB-UIUX-1000: resend the plaintext code to recipient_email (or an
+  // override address); rate-limited 5/hr per card on the server.
+  resendCode: (id: number, override?: { email?: string }) =>
+    api.post<{ success: boolean; data: { gift_card_id: number; delivered_to: string }; message?: string }>(
+      `/gift-cards/${id}/resend-code`,
+      override ?? {},
+      { skipGlobal500Toast: true } as object,
+    ),
+  // WEB-UIUX-1001: dual-control pending-issuance queue.
+  pendingIssuances: (status?: 'pending' | 'approved' | 'declined' | 'cancelled' | 'all') =>
+    api.get<{ success: boolean; data: unknown[] }>('/gift-cards/pending-issuances', {
+      params: status ? { status } : undefined,
+    }),
+  approvePendingIssuance: (id: number) =>
+    api.post<{ success: boolean; data: { pending_issuance_id: number; gift_card_id: number; code: string; amount: number } }>(`/gift-cards/pending-issuances/${id}/approve`),
+  declinePendingIssuance: (id: number, reason?: string) =>
+    api.post<{ success: boolean; data: { pending_issuance_id: number } }>(`/gift-cards/pending-issuances/${id}/decline`, reason ? { reason } : {}),
 };
 
 // ==================== Membership ====================

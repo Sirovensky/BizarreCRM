@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift, ReceiptText } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift, ReceiptText, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
@@ -258,6 +258,19 @@ export function GiftCardDetailPage() {
     onError: (err: any) =>
       toast.error(err?.response?.data?.message || 'Failed to disable gift card'),
   });
+  // WEB-UIUX-1000: resend the plaintext code to recipient_email (or override).
+  const resendCodeMutation = useMutation({
+    mutationFn: (email?: string) => giftCardApi.resendCode(cardId, email ? { email } : undefined),
+    onSuccess: (res) => {
+      const to = res.data?.data?.delivered_to;
+      toast.success(`Code resent to ${to}`);
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message ?? 'Could not resend gift-card code');
+    },
+  });
+
   const enableMutation = useMutation({
     mutationFn: () => giftCardApi.enable(cardId),
     onSuccess: () => {
@@ -422,6 +435,41 @@ export function GiftCardDetailPage() {
           )}
         </dl>
 
+        {/* WEB-UIUX-1000: resend code by email — works on active cards only. */}
+        {canReload && card.status === 'active' && (
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={() => {
+                const defaultTo = card.recipient_email || '';
+                const target = window.prompt(
+                  defaultTo
+                    ? `Re-send code to which email?`
+                    : 'No recipient email on file. Enter an email to send the code to:',
+                  defaultTo,
+                );
+                if (target === null) return;
+                const trimmed = target.trim();
+                if (!trimmed) {
+                  toast.error('Email is required');
+                  return;
+                }
+                if (!window.confirm(`Send the gift-card code to ${trimmed}?`)) return;
+                resendCodeMutation.mutate(trimmed !== defaultTo ? trimmed : undefined);
+              }}
+              disabled={resendCodeMutation.isPending}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={card.recipient_email
+                ? `Resend code to ${card.recipient_email}`
+                : 'No email on file — you will be prompted for one'}
+            >
+              {resendCodeMutation.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Send className="h-4 w-4" />}
+              Resend code by email
+            </button>
+          </div>
+        )}
         {/* WEB-UIUX-1442: server allows reload on any status except disabled; show button for 'used' too (secondary tone indicates topping up a depleted card) */}
         {/* WEB-UIUX-1546: Disable button — reports-stolen / lost-card path. */}
         {canDisable && card.status === 'active' && (
