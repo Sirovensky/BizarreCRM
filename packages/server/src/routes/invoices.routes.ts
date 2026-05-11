@@ -989,24 +989,20 @@ async function recordInvoicePayment({
 
   if (overpayment > 0 && invoice.customer_id) {
     try {
-      // Upsert the customer's running store-credit balance
-      const existingCredit = await adb.get<{ id: number; amount: number }>(
-        'SELECT id, amount FROM store_credits WHERE customer_id = ?',
+      // BUGHUNT-2026-05-10-01: atomic UPSERT — previous SELECT-then-UPDATE
+      // pattern allowed two concurrent overpayments on the same customer
+      // to both read the same pre-state and the second UPDATE clobbered
+      // the first. Now use INSERT ON CONFLICT DO UPDATE so the +=
+      // happens inside a single SQLite statement (atomic per-row).
+      await adb.run(
+        `INSERT INTO store_credits (customer_id, amount)
+         VALUES (?, ?)
+         ON CONFLICT(customer_id) DO UPDATE SET
+           amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
+           updated_at = datetime('now')`,
         invoice.customer_id,
+        overpayment,
       );
-      if (existingCredit) {
-        await adb.run(
-          "UPDATE store_credits SET amount = ?, updated_at = datetime('now') WHERE id = ?",
-          roundCents((existingCredit.amount || 0) + overpayment),
-          existingCredit.id,
-        );
-      } else {
-        await adb.run(
-          'INSERT INTO store_credits (customer_id, amount) VALUES (?, ?)',
-          invoice.customer_id,
-          overpayment,
-        );
-      }
       // Ledger row for the credit transaction
       await adb.run(`
         INSERT INTO store_credit_transactions
@@ -1529,23 +1525,18 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   // as a store credit for this customer.
   if (creditOverflow > 0 && original.customer_id) {
     try {
-      const existingCredit = await adb.get<{ id: number; amount: number }>(
-        'SELECT id, amount FROM store_credits WHERE customer_id = ?',
+      // BUGHUNT-2026-05-10-02: atomic UPSERT — previous SELECT-then-UPDATE
+      // raced identically to the overpayment path. UNIQUE(customer_id)
+      // from migration 109 makes ON CONFLICT DO UPDATE safe.
+      await adb.run(
+        `INSERT INTO store_credits (customer_id, amount)
+         VALUES (?, ?)
+         ON CONFLICT(customer_id) DO UPDATE SET
+           amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
+           updated_at = datetime('now')`,
         original.customer_id,
+        creditOverflow,
       );
-      if (existingCredit) {
-        await adb.run(
-          "UPDATE store_credits SET amount = ?, updated_at = datetime('now') WHERE id = ?",
-          roundCents((existingCredit.amount || 0) + creditOverflow),
-          existingCredit.id,
-        );
-      } else {
-        await adb.run(
-          'INSERT INTO store_credits (customer_id, amount) VALUES (?, ?)',
-          original.customer_id,
-          creditOverflow,
-        );
-      }
       // SEC-M33: this transaction is specifically the OVERFLOW portion of a
       // credit note that exceeded the invoice balance — not a plain credit
       // applied to the invoice. reference_type previously said 'invoice'
