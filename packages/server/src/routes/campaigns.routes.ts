@@ -787,6 +787,27 @@ router.post(
     if (!campaign) throw new AppError('Campaign not found', 404);
     if (campaign.status === 'archived') throw new AppError('Cannot run an archived campaign', 400);
 
+    // WEB-UIUX-701: per-campaign dispatch lock. The existing per-user
+    // rateLimitCampaignDispatch guard caps 3/min/user, but two different
+    // operators clicking the same campaign within 30s would both fire,
+    // duplicating SMS to every recipient. Look at the last_run_at column
+    // (also written below by dispatch) and reject when it's within
+    // CAMPAIGN_RUN_LOCK_MS. Server-authoritative — no client coordination.
+    const CAMPAIGN_RUN_LOCK_MS = 30_000;
+    if (campaign.last_run_at) {
+      const lastRunMs = new Date(campaign.last_run_at).getTime();
+      if (Number.isFinite(lastRunMs)) {
+        const sinceMs = Date.now() - lastRunMs;
+        if (sinceMs >= 0 && sinceMs < CAMPAIGN_RUN_LOCK_MS) {
+          const waitS = Math.ceil((CAMPAIGN_RUN_LOCK_MS - sinceMs) / 1000);
+          throw new AppError(
+            `This campaign was dispatched ${Math.round(sinceMs / 1000)}s ago. Wait ${waitS}s before running again so recipients don't get duplicate messages.`,
+            429,
+          );
+        }
+      }
+    }
+
     const recipients = await fetchEligibleRecipients(adb, campaign);
     const result = await dispatchCampaign(
       db,

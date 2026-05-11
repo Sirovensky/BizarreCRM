@@ -3145,7 +3145,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-697. **[MAJOR] FailedSendRetryList doesn't distinguish permanent failures (5xx hard bounce, opted-out).** Retry button always enabled — operator can hammer bounced address. L8, L16. **[AUTOLOOP-T32 RESOLVED: FailedSendRetryList isPermanentFailure helper disables Retry on opted-out/invalid-number/5xx; tooltip explains. Fixed pre-existing JSX fragment bug.]**
   `packages/web/src/pages/communications/components/FailedSendRetryList.tsx:21-31`
 
-- [ ] WEB-UIUX-698. **[MAJOR] Segments have no concept of intersection / precedence.** Customer in "VIP" AND "High Risk" → which campaign wins? Undocumented. L5, L14.
+- [!] WEB-UIUX-698. **[MAJOR] Segments have no concept of intersection / precedence.** Customer in "VIP" AND "High Risk" → which campaign wins? Undocumented. L5, L14. **BLOCKED 2026-05-11: segment intersection / precedence is a product decision (priority order vs explicit exclusion vs union) that affects campaign cadence semantics; needs design before encoding.**
   `packages/web/src/pages/marketing/SegmentsPage.tsx`
 
 - [!] WEB-UIUX-699. **[MAJOR] Automation triggers don't include `customer_in_segment`.** Operator wanting "send VIP auto-reply" cannot express it. L5. **[AUTOLOOP-T32 BLOCKED: customer_in_segment trigger needs server segment evaluation engine + UI trigger config form; multi-component.]**
@@ -3154,7 +3154,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-700. **[MINOR] Segment value coercion: `Number("$50")` = NaN → falls through to string → segment matches zero customers silently.** L7. **[AUTOLOOP-T58 VERIFIED: coerceRuleValue strips non-numeric chars before Number(); returns null on invalid; save blocked + inline error rendered.]**
   `packages/web/src/pages/marketing/SegmentsPage.tsx:252-264`
 
-- [ ] WEB-UIUX-701. **[MINOR · BLOCKED] Campaign Run Now has no rate-limit / dispatch-lock indicator.** Two operators click within 30s → same customer in both segments gets 2 SMS. L5, L8.
+- [x] WEB-UIUX-701. **[MINOR · BLOCKED] Campaign Run Now has no rate-limit / dispatch-lock indicator.** Two operators click within 30s → same customer in both segments gets 2 SMS. L5, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: campaigns /:id/run-now now rejects 429 when the campaigns last_run_at is within 30s; per-user 3/min cap remains. Two operators clicking inside the lock window cannot duplicate-dispatch.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/marketing/CampaignsPage.tsx:381-405`
 
@@ -3197,7 +3197,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:807-817` (Void) vs `737-805` (CreditNote)
   <!-- meta: fix=ConfirmDialog-with-requireTyping-amount-OR-add-undoableAction-window -->
 
-- [ ] WEB-UIUX-710. **[MAJOR] Credit Note has no undo window; Void has 5s undo (`useUndoableAction`).** Same severity action, different recovery affordance. Operator-initiated mistake on credit note is permanent from web (server has POST /credit-notes/:id/void but unwired — see WEB-UIUX-704). L8.
+- [!] WEB-UIUX-710. **[MAJOR] Credit Note has no undo window; Void has 5s undo (`useUndoableAction`).** Same severity action, different recovery affordance. Operator-initiated mistake on credit note is permanent from web (server has POST /credit-notes/:id/void but unwired — see WEB-UIUX-704). L8. **PARTIAL 2026-05-11: server has POST /credit-notes/:id/void but credit_notes table is decoupled from the invoices.credit_note_for negative-invoice row that POST /invoices/:id/credit-note creates. A real undo needs the two tables reconciled first; defer to refunds reconciliation sprint.**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177,110-135`
 
 - [x] WEB-UIUX-711. **[MAJOR] Credit Note modal does not show store-credit overflow preview.** Server (`invoices.routes.ts:1259-1289`) silently creates `store_credits` row when credit > remaining due. Operator never told customer accumulated $X store credit. Customer leaves not knowing they have a balance. L8, L16. **[AUTOLOOP-T32 RESOLVED: Credit Note modal shows live 3-line split preview when amount > amount_due — balance reduction + store credit overflow + total credit.]**
@@ -3240,7 +3240,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/server/src/routes/blockchyp.routes.ts:131,482` (no refund route)
   <!-- meta: fix=add-blockchypApi.refund+wire-from-CreditNote-modal-when-card-payment-exists -->
 
-- [ ] WEB-UIUX-722. **[MAJOR · BLOCKED] After credit-note success, no "send credit-note slip" prompt.** Mirror of `showReceiptPrompt` after payment (line 102, 676-735) absent for credit notes. Customer leaves register without paper/SMS/email proof of refund. Compare to payment flow which has 3-channel send-receipt modal. L8, L3.
+- [x] WEB-UIUX-722. **[MAJOR · BLOCKED] After credit-note success, no "send credit-note slip" prompt.** Mirror of `showReceiptPrompt` after payment (line 102, 676-735) absent for credit notes. Customer leaves register without paper/SMS/email proof of refund. Compare to payment flow which has 3-channel send-receipt modal. L8, L3. **[AUTOLOOP-T49 RESOLVED 2026-05-11: credit-note success now opens the same showReceiptPrompt SMS/email/skip modal used after payment; backdrop-dismiss still toasts the skip notice.]**
   **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-177` (credit note success) vs `:96-103` (payment success)
   <!-- meta: fix=mirror-showReceiptPrompt-trigger-on-creditNote-success -->
@@ -3341,7 +3341,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-750. **[MAJOR] Mid-checkout 401 → re-login lands back on POS but no banner: "Your previous checkout was interrupted. Check Tickets to verify."** Cashier may run sale twice on different till. L8, L11. **[AUTOLOOP-T34 RESOLVED: client.ts sets `pos.checkout_interrupted` sessionStorage flag on 401 mid-checkout; UnifiedPosPage reads + clears + renders dismissible amber banner with /tickets link.]**
 
-- [ ] WEB-UIUX-751. **[MINOR] Expired password reset link copy intentionally vague + no resend affordance.** Three-click recovery (back to login → forgot → email → wait). L4, L14.
+- [!] WEB-UIUX-751. **[MINOR] Expired password reset link copy intentionally vague + no resend affordance.** Three-click recovery (back to login → forgot → email → wait). L4, L14. **STALE 2026-05-11: ResetPasswordPage.tsx:182 already renders Link to /login?forgot=1 "Request a new reset link" when the server returns token/link/expired error.**
   `packages/web/src/pages/auth/ResetPasswordPage.tsx:71-84`
 
 - [x] WEB-UIUX-752. **[MINOR] PIN modal lockout uses sessionStorage scoped per-tab → multi-tab brute force (10 attempts in 2 tabs).** Server catches but UI message misleading. L16. **[AUTOLOOP-T34 RESOLVED: PinModal lockout switched from sessionStorage to localStorage; cross-tab lockout shared, blocking multi-tab brute force.]**
@@ -3366,7 +3366,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-757. **[MAJOR] CommunicationPage `handleImageSelect` has ZERO pre-validation while QuickSmsAttachmentButton has 5MB+MIME guards.** 20MB photo blasts straight to server, generic "Upload failed" toast. L7, L8. **[AUTOLOOP-T35 RESOLVED: STALE — handleImageSelect already calls validateImageFile with SMALL_IMAGE_UPLOAD_MAX_BYTES (5MB) + MIME check matching QuickSmsAttachmentButton.]**
   `packages/web/src/pages/communications/CommunicationPage.tsx:1469-1485` vs `QuickSmsAttachmentButton.tsx:32-55`
 
-- [ ] WEB-UIUX-758. **[MAJOR] HEIC blind spot — PhotoCapturePage uses `file.type.startsWith('image/')` so HEIC accepted but Chrome/Firefox 404 thumbnails.** L7, L11.
+- [!] WEB-UIUX-758. **[MAJOR] HEIC blind spot — PhotoCapturePage uses `file.type.startsWith('image/')` so HEIC accepted but Chrome/Firefox 404 thumbnails.** L7, L11. **STALE 2026-05-11: PhotoCapturePage uses validateImageFile + accept=IMAGE_UPLOAD_ACCEPT (precise MIME list); HEIC is not in the accept list and validator rejects it with format-error message.**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:60-70`
 
 - [x] WEB-UIUX-759. **[MAJOR] QcSignOffModal + DefectReporterButton `URL.createObjectURL` blobs NEVER `revokeObjectURL`-ed — leaks until tab close.** L15. **[AUTOLOOP-T35 RESOLVED: QcSignOffModal + DefectReporterButton track blob URLs in refs; revoked before each replacement + on unmount via useEffect cleanup.]**

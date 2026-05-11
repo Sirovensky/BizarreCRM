@@ -274,6 +274,10 @@ export function InvoiceDetailPage() {
       setShowCreditNote(false);
       setCreditNoteForm({ amount: '', code: null, note: '' });
       setCreditNoteError({});
+      // WEB-UIUX-722: after credit note success, surface the same
+      // SMS/email/skip prompt the payment flow uses so the customer
+      // walks out with proof of refund.
+      setShowReceiptPrompt(true);
     },
     onError: (e: any) => {
       const serverMsg: string = e?.response?.data?.message || 'Failed to create credit note';
