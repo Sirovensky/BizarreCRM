@@ -189,6 +189,20 @@ export function StocktakePage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Scan failed'),
   });
 
+  // WEB-UIUX-1354: per-row delete so a typo'd scan can be removed without
+  // an inverse re-scan. Server gates on session.status='open'.
+  const deleteCountMut = useMutation({
+    mutationFn: async (inventoryItemId: number) => {
+      const res = await api.delete(`/stocktake/${selectedId}/counts/${inventoryItemId}`);
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success('Row removed');
+      queryClient.invalidateQueries({ queryKey: ['stocktake', selectedId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not remove row'),
+  });
+
   const commitMut = useMutation({
     mutationFn: async () => {
       const res = await api.post(`/stocktake/${selectedId}/commit`);
@@ -751,6 +765,7 @@ export function StocktakePage() {
                       <th className="text-right px-3 py-2">Counted</th>
                       <th className="text-right px-3 py-2">Variance</th>
                       <th className="text-left px-3 py-2">When <span className="font-normal text-surface-400">(re-scan to update)</span></th>
+                      {detailData.session.status === 'open' && <th className="px-3 py-2 w-12 sr-only">Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -775,6 +790,24 @@ export function StocktakePage() {
                         <td className="px-3 py-2 text-xs text-surface-500">
                           {formatDateTime(c.counted_at)}
                         </td>
+                        {detailData.session.status === 'open' && (
+                          <td className="px-3 py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Remove "${c.name ?? `#${c.inventory_item_id}`}" from this stocktake?`)) {
+                                  deleteCountMut.mutate(c.inventory_item_id);
+                                }
+                              }}
+                              disabled={deleteCountMut.isPending}
+                              aria-label={`Remove ${c.name ?? `item #${c.inventory_item_id}`} from stocktake`}
+                              title="Remove this row (typo cleanup)"
+                              className="rounded p-1 text-surface-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-900/20"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     {detailData.counts.length === 0 && (

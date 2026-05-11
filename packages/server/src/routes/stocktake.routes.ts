@@ -321,6 +321,59 @@ router.post(
 );
 
 // --------------------------------------------------------------------------
+// DELETE /stocktake/:id/counts/:itemId — remove a typo'd row (WEB-UIUX-1354)
+// --------------------------------------------------------------------------
+// Operator scanned the wrong SKU or fat-fingered a qty on a row mid-session.
+// Without a per-row remove, the typo persists until commit and corrupts the
+// variance report. Only allowed while the session is still in-progress —
+// committed/cancelled stocktakes are immutable.
+router.delete(
+  '/:id/counts/:itemId',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const stocktakeId = parseInt(req.params.id as string, 10);
+    const inventoryItemId = parseInt(req.params.itemId as string, 10);
+    if (!Number.isInteger(stocktakeId) || stocktakeId <= 0) {
+      res.status(400).json({ success: false, message: 'Invalid stocktake id.' });
+      return;
+    }
+    if (!Number.isInteger(inventoryItemId) || inventoryItemId <= 0) {
+      res.status(400).json({ success: false, message: 'Invalid inventory item id.' });
+      return;
+    }
+    const session = await adb.get<{ status: string }>(
+      'SELECT status FROM stocktakes WHERE id = ?',
+      stocktakeId,
+    );
+    if (!session) {
+      res.status(404).json({ success: false, message: 'Stocktake not found.' });
+      return;
+    }
+    if (session.status !== 'open') {
+      res.status(409).json({
+        success: false,
+        code: 'ERR_STOCKTAKE_LOCKED',
+        message: `Stocktake is ${session.status}; rows can no longer be removed.`,
+      });
+      return;
+    }
+    const result = await adb.run(
+      'DELETE FROM stocktake_counts WHERE stocktake_id = ? AND inventory_item_id = ?',
+      stocktakeId, inventoryItemId,
+    );
+    if (result.changes === 0) {
+      res.status(404).json({ success: false, message: 'Count row not found for this item.' });
+      return;
+    }
+    audit(req.db, 'stocktake_count_removed', req.user!.id, req.ip || 'unknown', {
+      stocktake_id: stocktakeId,
+      inventory_item_id: inventoryItemId,
+    });
+    res.json({ success: true, data: { stocktake_id: stocktakeId, inventory_item_id: inventoryItemId } });
+  }),
+);
+
+// --------------------------------------------------------------------------
 // POST /stocktake/:id/commit — apply variance, close session (manager/admin)
 // --------------------------------------------------------------------------
 router.post(

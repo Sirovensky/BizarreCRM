@@ -2054,12 +2054,12 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
   `packages/web/src/components/shared/CommandPalette.tsx:325-342,444-453`
 
-- [!] WEB-UIUX-438. **[BLOCKER] UpgradeModal no focus trap, no initial focus, no focus-restore.** Open via planStore from anywhere → Tab leaks behind backdrop, focus lands wherever it was before. L12. **CLOSED 2026-05-07 — stale as stated: the live component already had an inline focus-trap/initial-focus/restore `useEffect`; normalized it to canonical `useFocusTrap` + `useEscClose` + body scroll lock anyway.**
+- [x] WEB-UIUX-438. **CLOSED 2026-05-07 (flipped 2026-05-11):** UpgradeModal normalized to canonical `useFocusTrap` + `useEscClose` + body scroll lock — already done in tick 27; sub-bullet flipped from [!] to [x].
   `packages/web/src/components/shared/UpgradeModal.tsx:13-20,77-90`
 
   `packages/web/src/components/shared/PrintPreviewModal.tsx:62-68,69-78`
 
-- [!] WEB-UIUX-440. **[BLOCKER] QuickSmsModal no focus trap. `autoFocus` lands on textarea but Tab cycles out.** L12. **CLOSED 2026-05-07 — stale as stated: the live component already had an inline Tab trap, Escape handler, and focus restore; normalized it to canonical `useFocusTrap` + `useEscClose` + body scroll lock with textarea initial focus.**
+- [x] WEB-UIUX-440. **CLOSED 2026-05-07 (flipped 2026-05-11):** QuickSmsModal normalized to canonical `useFocusTrap` + `useEscClose` + body scroll lock with textarea initial focus — already done; sub-bullet flipped.
   `packages/web/src/components/shared/QuickSmsModal.tsx:101-114,179-187`
 
   9 sites
@@ -4773,7 +4773,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Blocker — recovery + irreversible state
 
-- [!] WEB-UIUX-1354. **[BLOCKER] No way to delete or amend a single count row from the UI. Server has UPSERT (and a row-delete is trivially adddable) but UI gives operator no per-row edit/remove. A typo on row 384 of a 1000-line stocktake is unrecoverable except by re-scanning the same SKU with a corrected qty AND knowing what the right qty is.** L8 recovery. **STATUS: BLOCKED — needs new server DELETE /stocktake/:id/counts/:countId route + per-row UI; multi-component, defer to inventory sprint**
+- [x] WEB-UIUX-1354. **Per-row count removal landed 2026-05-11.** Server: `DELETE /stocktake/:id/counts/:itemId` — rejects when `stocktakes.status !== 'open'` with `ERR_STOCKTAKE_LOCKED`, 404 when the count row is missing, audit-logs `stocktake_count_removed`. Web: counts table gets a trailing X-icon column on `open` sessions; click confirms via `window.confirm`, fires `deleteCountMut`, invalidates `['stocktake', selectedId]` so the row + variance disappear. Re-counting the corrected qty afterwards still works via the existing UPSERT path.
   `packages/web/src/pages/inventory/StocktakePage.tsx:378-400`
   <!-- meta: fix=add-row-actions-cell-with-edit-counted_qty-input+delete-button+wire-DELETE-/stocktake/:id/counts/:countId-route -->
 
