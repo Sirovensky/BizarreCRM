@@ -6227,7 +6227,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimates.routes.ts:1009-1012`
   <!-- meta: fix=on-no-phone-warning-toast-includes-action-button-"Add-phone"-opening-an-inline-PhoneEditModal-then-auto-retries-Send-on-save -->
 
-- [ ] WEB-UIUX-1469. **[MAJOR] `estimateApi.send(id, method?: 'sms' | 'email')` (`endpoints.ts:906`) advertises an `email` channel but server explicitly rejects it: `if (rawMethod !== 'sms') throw new AppError(...)` (`estimates.routes.ts:967-969`). Lying API surface — first time a future caller types `.send(id, 'email')` they get a runtime 400 instead of a TS error. Either implement email send (uses existing email provider in `sendEstimate` flow elsewhere) or narrow the type to `method?: 'sms'`.** L2 truthfulness, L11 consistency.
+- [!] WEB-UIUX-1469. **[MAJOR] `estimateApi.send(id, method?: 'sms' | 'email')` (`endpoints.ts:906`) advertises an `email` channel but server explicitly rejects it: `if (rawMethod !== 'sms') throw new AppError(...)` (`estimates.routes.ts:967-969`). Lying API surface — first time a future caller types `.send(id, 'email')` they get a runtime 400 instead of a TS error. Either implement email send (uses existing email provider in `sendEstimate` flow elsewhere) or narrow the type to `method?: 'sms'`.** L2 truthfulness, L11 consistency. **[AUTOLOOP-T49 STALE 2026-05-11: endpoints.ts:1137 already narrows method to `"sms"` (signature: `(id: number, method?: "sms")`); typing matches server enforcement.]**
   `packages/web/src/api/endpoints.ts:906`
   `packages/server/src/routes/estimates.routes.ts:963-970`
   <!-- meta: fix=narrow-method-type-to-'sms'-OR-implement-email-via-emailProvider+respect-customer.contact_preference -->
@@ -6238,7 +6238,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Minor — labels, copy, hierarchy
 
-- [ ] WEB-UIUX-1471. **[MINOR] Approve confirm copy `'Mark this estimate as approved?'` (`EstimateDetailPage.tsx:209`) doesn't disclose this is the *staff override* path — bypasses customer signature, customer ack, customer SMS-reply. In jurisdictions requiring written customer consent for repair work (CA BPC §9844, NY GBL §399-aa, etc.) this matters. Add subline: "This bypasses customer signature. Use only when customer has authorized in person and you have noted authorization in the work-order."** L2 truthfulness, L7 feedback.
+- [x] WEB-UIUX-1471. **[MINOR] Approve confirm copy `'Mark this estimate as approved?'` (`EstimateDetailPage.tsx:209`) doesn't disclose this is the *staff override* path — bypasses customer signature, customer ack, customer SMS-reply. In jurisdictions requiring written customer consent for repair work (CA BPC §9844, NY GBL §399-aa, etc.) this matters. Add subline: "This bypasses customer signature. Use only when customer has authorized in person and you have noted authorization in the work-order."** L2 truthfulness, L7 feedback. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Approve-on-behalf confirm now spells out the staff-override semantics + cites CA BPC §9844 / NY GBL §399-aa consent requirements; confirmLabel changed to "Approve on behalf".]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
   <!-- meta: fix=confirm-with-{title:'Approve-on-customer-behalf?',body:'This-bypasses-the-e-sign-flow.-Use-only-when-customer-has-authorized-in-person-and-you-have-recorded-authorization.',confirmLabel:'Approve-on-behalf'} -->
 
@@ -6247,7 +6247,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimates.routes.ts:865-873`
   <!-- meta: fix=on-convert-copy-signed_by/signed_at/signature_id-onto-tickets-table+render-"Customer-signed-on-Date-by-Name"-on-ticket-detail-when-source-estimate-was-signed -->
 
-- [ ] WEB-UIUX-1473. **[MINOR] Reject button shows on `'approved'` estimates without warning. UI gates Reject on `status !== 'converted' && status !== 'rejected'` (`EstimateDetailPage.tsx:233`) — so an approved estimate can be Rejected, silently nuking the customer authorization. Confirm copy doesn't mention "this estimate is currently approved by the customer". Add: when status==='approved', confirm body adds "Customer approved this on Mar 5. Rejecting will revoke their authorization."** L7 feedback, L8 recovery.
+- [x] WEB-UIUX-1473. **[MINOR] Reject button shows on `'approved'` estimates without warning. UI gates Reject on `status !== 'converted' && status !== 'rejected'` (`EstimateDetailPage.tsx:233`) — so an approved estimate can be Rejected, silently nuking the customer authorization. Confirm copy doesn't mention "this estimate is currently approved by the customer". Add: when status==='approved', confirm body adds "Customer approved this on Mar 5. Rejecting will revoke their authorization."** L7 feedback, L8 recovery. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Reject confirm flags customer-approved state ("Customer approved this estimate on DATE. Rejecting will revoke their authorization and cannot be undone — work cannot proceed unless a new revision is created and re-approved.") when status=approved.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:233-247`
   <!-- meta: fix=conditional-confirm-body-string-when-estimate.status==='approved'-or-'signed'-with-approved_at-formatted -->
 
@@ -6255,7 +6255,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-255`
   <!-- meta: fix=primary-CTA-is-context-dependent-(Send-when-draft;-Convert-when-approved);-secondary-outline-for-others;-Reject-pinned-right-with-`ml-auto`-divider+red-outline -->
 
-- [ ] WEB-UIUX-1475. **[MINOR] No pagination on portal estimate list (`PortalEstimatesView.tsx:94-152`). Server hard-caps at 50 (`portal.routes.ts:1384`). Customer with 51+ historical estimates sees only newest 50, no warning, no "Load more". Compare with staff `EstimateListPage` which has full pagination + per-page selector (`:840-913`).** L4 flow, L9 loading state.
+- [!] WEB-UIUX-1475. **[MINOR] No pagination on portal estimate list (`PortalEstimatesView.tsx:94-152`). Server hard-caps at 50 (`portal.routes.ts:1384`). Customer with 51+ historical estimates sees only newest 50, no warning, no "Load more". Compare with staff `EstimateListPage` which has full pagination + per-page selector (`:840-913`).** L4 flow, L9 loading state. **[AUTOLOOP-T49 BLOCKED 2026-05-11: portal pagination requires server endpoint to accept page+per_page (currently hard-cap 50) + UI prev/next + "Load more" handling on top of customer-portal layout. Multi-step.]**
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:94-152`
   `packages/server/src/routes/portal.routes.ts:1384`
   <!-- meta: fix=portal-route-takes-?page+?per_page-with-bounds+UI-renders-load-more-button-or-paginator -->
@@ -6264,7 +6264,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:132-140`
   <!-- meta: fix=button-label-includes-formatted-total+secondary-amber-tone+optional-icon-CreditCard-or-FileSignature -->
 
-- [ ] WEB-UIUX-1477. **[MINOR] No filter / sort options on staff estimate list for `'signed'`. `ESTIMATE_STATUSES` filter pills (`EstimateListPage.tsx:17-24`) cover `draft|sent|approved|rejected|converted` but not `signed`. After WEB-UIUX-1457 lands the pill must be added so operators can find recently-signed estimates pending conversion. Compare with the workflow expectation: customer e-signs → estimate.status='signed' → operator's queue should surface "ready to convert".** L1 findability, L6 discoverability.
+- [!] WEB-UIUX-1477. **[MINOR] No filter / sort options on staff estimate list for `'signed'`. `ESTIMATE_STATUSES` filter pills (`EstimateListPage.tsx:17-24`) cover `draft|sent|approved|rejected|converted` but not `signed`. After WEB-UIUX-1457 lands the pill must be added so operators can find recently-signed estimates pending conversion. Compare with the workflow expectation: customer e-signs → estimate.status='signed' → operator's queue should surface "ready to convert".** L1 findability, L6 discoverability. **[AUTOLOOP-T49 STALE 2026-05-11: ESTIMATE_STATUSES already includes the signed status pill (line 23, WEB-UIUX-946).]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
   <!-- meta: fix=add-{value:'signed',label:'Signed',color:'#0ea5e9'}-as-fifth-pill-AFTER-Approved -->
 
@@ -6274,7 +6274,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/stores/confirmStore.ts`
   <!-- meta: fix=confirm()-resolves-false-on-cancel/Esc/backdrop-(not-rejects)+remove-try/catch-or-narrow-catch-to-unexpected-throws -->
 
-- [ ] WEB-UIUX-1479. **[NIT] Approve mutation success toast says `'Estimate approved'` (`EstimateDetailPage.tsx:89`) but doesn't surface follow-on side effects: server auto-flips linked ticket status when `store_config.ticket_status_after_estimate` is set (`estimates.routes.ts:1187-1204`). Operator approves an estimate, ticket status silently changes from "Awaiting Estimate" to "Approved — Ready for Repair" — neither toast nor refetch invalidates the ticket query. Cross-page state drift. Toast: `'Estimate approved — ticket #1234 advanced to "Ready for Repair"'`.** L7 feedback, L11 consistency.
+- [x] WEB-UIUX-1479. **[NIT] Approve mutation success toast says `'Estimate approved'` (`EstimateDetailPage.tsx:89`) but doesn't surface follow-on side effects: server auto-flips linked ticket status when `store_config.ticket_status_after_estimate` is set (`estimates.routes.ts:1187-1204`). Operator approves an estimate, ticket status silently changes from "Awaiting Estimate" to "Approved — Ready for Repair" — neither toast nor refetch invalidates the ticket query. Cross-page state drift. Toast: `'Estimate approved — ticket #1234 advanced to "Ready for Repair"'`.** L7 feedback, L11 consistency. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server /approve returns ticket_id + ticket_status_advanced_to when the linked ticket flips per store_config.ticket_status_after_estimate; client invalidates [ticket, id] + [tickets] and toasts "Estimate approved — ticket advanced to \"NAME\"".]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:85-92`
   `packages/server/src/routes/estimates.routes.ts:1187-1204`
   <!-- meta: fix=server-returns-ticket_status_changed:{id,name}-in-approve-response+UI-toast-with-link+queryClient.invalidateQueries(['ticket',ticketId]) -->

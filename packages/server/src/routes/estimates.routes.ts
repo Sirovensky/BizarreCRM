@@ -1431,6 +1431,8 @@ router.post(
     }
 
     // SW-D7: Auto-change linked ticket status when estimate is approved
+    let advancedTicketId: number | null = null;
+    let advancedTicketStatusName: string | null = null;
     const statusAfterEstimate = await adb.get<any>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");
     if (statusAfterEstimate?.value) {
       const targetStatusId = parseInt(statusAfterEstimate.value);
@@ -1440,16 +1442,33 @@ router.post(
         const ticketId = est?.converted_ticket_id
           || (await adb.get<any>('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0', id))?.id;
         if (ticketId) {
-          const statusExists = await adb.get<any>('SELECT id FROM ticket_statuses WHERE id = ?', targetStatusId);
-          if (statusExists) {
-            await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ? AND is_deleted = 0',
+          const statusRow = await adb.get<{ id: number; name: string }>(
+            'SELECT id, name FROM ticket_statuses WHERE id = ?',
+            targetStatusId,
+          );
+          if (statusRow) {
+            const upd = await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ? AND is_deleted = 0',
               targetStatusId, now, ticketId);
+            if (upd.changes > 0) {
+              advancedTicketId = Number(ticketId);
+              advancedTicketStatusName = statusRow.name;
+            }
           }
         }
       }
     }
 
-    res.json({ success: true, data: { approved: true } });
+    // WEB-UIUX-1479: surface the ticket side-effect so the client can
+    // invalidate the ticket query + tell the operator which status the
+    // linked ticket advanced to.
+    res.json({
+      success: true,
+      data: {
+        approved: true,
+        ticket_id: advancedTicketId,
+        ticket_status_advanced_to: advancedTicketStatusName,
+      },
+    });
   }),
 );
 

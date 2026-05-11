@@ -359,11 +359,26 @@ export function EstimateDetailPage() {
 
   const approveMut = useMutation({
     mutationFn: () => estimateApi.approve(Number(id)),
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
       // WEB-UIUX-1480: keep list-page status badges in sync.
       queryClient.invalidateQueries({ queryKey: ['estimates'] });
-      toast.success('Estimate approved');
+      // WEB-UIUX-1479: server may auto-flip the linked ticket status when
+      // store_config.ticket_status_after_estimate is set. Invalidate the
+      // ticket query so the operator's other-tab view doesn't drift, and
+      // surface the new ticket status in the toast when the server
+      // includes it in the response payload.
+      const data = res?.data?.data ?? {};
+      const tid = data.ticket_id ?? estimate?.ticket_id ?? null;
+      const newTicketStatus: string | null = data.ticket_status_advanced_to ?? null;
+      if (tid) {
+        queryClient.invalidateQueries({ queryKey: ['ticket', String(tid)] });
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      }
+      const msg = newTicketStatus
+        ? `Estimate approved — ticket advanced to "${newTicketStatus}"`
+        : 'Estimate approved';
+      toast.success(msg);
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to approve'),
   });
@@ -595,7 +610,13 @@ export function EstimateDetailPage() {
               onClick={async () => {
                 try {
                   // WEB-UIUX-952: old copy hid audit gap — use danger confirm that surfaces the e-sign bypass
-                  const confirmed = await confirm("Approving on customer's behalf — this skips the customer e-sign and writes no signature row. Continue?", { confirmLabel: 'Approve', danger: true });
+                  // WEB-UIUX-1471: also flag that this is the staff override
+                  // path; jurisdictions like CA BPC §9844, NY GBL §399-aa
+                  // require written customer consent for repair work.
+                  const confirmed = await confirm(
+                    "Approving on customer's behalf — this is the staff override path. It skips the customer e-sign and writes no signature row.\n\nUse only when the customer has authorized in person AND you've noted authorization in the work-order. Many jurisdictions (CA BPC §9844, NY GBL §399-aa) require written customer consent before repair work.\n\nContinue?",
+                    { confirmLabel: 'Approve on behalf', danger: true },
+                  );
                   if (confirmed) { approveMut.mutate(); }
                   else { toast('Approval cancelled.'); }
                 }
@@ -691,7 +712,13 @@ export function EstimateDetailPage() {
             <button
               onClick={async () => {
                 try {
-                  if (await confirm('Mark this estimate as rejected? This cannot be undone.', { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true }))
+                  // WEB-UIUX-1473: when the customer already approved, the
+                  // reject confirm explicitly flags that we're revoking the
+                  // customer authorization — not just declining a draft.
+                  const rejectMsg = estimate.status === 'approved'
+                    ? `Customer approved this estimate${estimate.approved_at ? ` on ${formatDate(estimate.approved_at)}` : ''}. Rejecting will revoke their authorization and cannot be undone — work cannot proceed unless a new revision is created and re-approved.`
+                    : 'Mark this estimate as rejected? This cannot be undone.';
+                  if (await confirm(rejectMsg, { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true }))
                     rejectMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
