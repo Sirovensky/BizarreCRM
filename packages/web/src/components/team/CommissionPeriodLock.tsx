@@ -33,6 +33,71 @@ interface PayrollPeriod {
   notes: string | null;
 }
 
+interface PayrollPeriodSummary {
+  commission_count: number;
+  commission_total: number;
+  time_entry_count: number;
+  total_hours: number;
+  tip_count: number;
+  tip_total: number;
+  distinct_employee_count: number;
+  gross_total: number;
+}
+
+/**
+ * WEB-UIUX-1145: lazy-load the lock-consequences preview only when the row's
+ * <details> is expanded so we don't fan 100 summary queries on every page
+ * render. `enabled: open` keeps the query dormant until the operator opts in.
+ */
+function PeriodLockConsequencesPreview({ period }: { period: PayrollPeriod }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['team', 'payroll', 'period-summary', period.id],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: PayrollPeriodSummary }>(
+        `/team/payroll/periods/${period.id}/summary`,
+      );
+      return res.data.data;
+    },
+    enabled: open,
+    staleTime: 60_000,
+  });
+  return (
+    <details
+      className="mt-1 text-[11px] text-surface-600 dark:text-surface-400"
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer select-none hover:text-surface-800 dark:hover:text-surface-200">
+        What does locking this period affect?
+      </summary>
+      <div className="mt-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 p-2">
+        {isLoading && <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</span>}
+        {isError && <span className="text-red-600 dark:text-red-400">Could not load summary.</span>}
+        {data && (
+          <ul className="space-y-0.5">
+            <li>
+              <strong>{data.commission_count}</strong> commission row{data.commission_count === 1 ? '' : 's'}
+              {' '}(${(data.commission_total ?? 0).toFixed(2)})
+            </li>
+            <li>
+              <strong>{data.time_entry_count}</strong> time entr{data.time_entry_count === 1 ? 'y' : 'ies'}
+              {' '}({(data.total_hours ?? 0).toFixed(2)}h)
+            </li>
+            <li>
+              <strong>{data.tip_count}</strong> tip row{data.tip_count === 1 ? '' : 's'}
+              {' '}(${(data.tip_total ?? 0).toFixed(2)})
+            </li>
+            <li>Touches <strong>{data.distinct_employee_count}</strong> employee{data.distinct_employee_count === 1 ? '' : 's'}</li>
+            <li className="pt-1 border-t border-surface-200 dark:border-surface-700">
+              Gross subject to lock: <strong>${(data.gross_total ?? 0).toFixed(2)}</strong>
+            </li>
+          </ul>
+        )}
+      </div>
+    </details>
+  );
+}
+
 // WEB-UIUX-1157: surface server-side Zod-style array errors instead of
 // collapsing them into the generic "Failed" toast. Accepts `{error}`,
 // `{errors: [{path,message}]}`, or `{message}` response shapes.
@@ -212,9 +277,13 @@ export function CommissionPeriodLock() {
             className={`border dark:border-surface-700 rounded p-2 text-xs ${p.locked_at ? 'bg-surface-50 dark:bg-surface-800/50' : ''}`}
           >
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="font-semibold text-surface-800 dark:text-surface-100">{p.name}</div>
                 <div className="text-surface-500 dark:text-surface-400">{p.start_date} → {p.end_date}</div>
+                {/* WEB-UIUX-1145: only preview unlocked periods — locked rows
+                    are frozen, so the lock-consequences answer is "nothing
+                    new". Keeps the locked row visually compact. */}
+                {!p.locked_at && <PeriodLockConsequencesPreview period={p} />}
               </div>
               <div className="flex items-center gap-2">
                 <button

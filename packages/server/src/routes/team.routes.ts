@@ -901,6 +901,97 @@ router.post(
   }),
 );
 
+/**
+ * WEB-UIUX-1145: read-only preview of what a payroll-period lock will freeze.
+ * Drives the "X commissions, Y time entries, Z employees, $W gross" expander
+ * shown next to Lock so admin sees consequences before clicking. Mirrors the
+ * SUM-by-range scoping used by /payroll/export.csv so the preview matches the
+ * CSV that lock will eventually produce.
+ */
+router.get(
+  '/payroll/periods/:periodId/summary',
+  asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseId(req.params.periodId, 'period id');
+    const period = await adb.get<{
+      id: number; name: string; start_date: string; end_date: string; locked_at: string | null;
+    }>('SELECT id, name, start_date, end_date, locked_at FROM payroll_periods WHERE id = ?', id);
+    if (!period) throw new AppError('Payroll period not found', 404);
+
+    const periodStart = period.start_date;
+    const periodEnd = /^\d{4}-\d{2}-\d{2}$/.test(period.end_date)
+      ? `${period.end_date} 23:59:59`
+      : period.end_date;
+
+    // Counts per axis. Same range scoping as /payroll/export.csv (commissions
+    // via created_at, time entries via clock_in + clock_out IS NOT NULL).
+    const [commissionsAgg, timeAgg, tipsAgg] = await Promise.all([
+      adb.get<{ count: number; total: number; employees: number }>(
+        `SELECT COUNT(*) AS count,
+                COALESCE(SUM(amount), 0) AS total,
+                COUNT(DISTINCT user_id) AS employees
+           FROM commissions
+          WHERE created_at BETWEEN ? AND ?`,
+        periodStart, periodEnd,
+      ),
+      adb.get<{ count: number; total_hours: number; employees: number }>(
+        `SELECT COUNT(*) AS count,
+                COALESCE(SUM(total_hours), 0) AS total_hours,
+                COUNT(DISTINCT user_id) AS employees
+           FROM clock_entries
+          WHERE clock_in BETWEEN ? AND ? AND clock_out IS NOT NULL`,
+        periodStart, periodEnd,
+      ),
+      // employee_tips may not exist on older tenants; mirror the try/catch path
+      // already used in /payroll/export.csv so a missing table doesn't 500.
+      (async () => {
+        try {
+          return await adb.get<{ count: number; total: number; employees: number }>(
+            `SELECT COUNT(*) AS count,
+                    COALESCE(SUM(tip_amount), 0) AS total,
+                    COUNT(DISTINCT employee_id) AS employees
+               FROM employee_tips
+              WHERE created_at BETWEEN ? AND ?`,
+            periodStart, periodEnd,
+          );
+        } catch { return { count: 0, total: 0, employees: 0 }; }
+      })(),
+    ]);
+
+    // Distinct employees touched by ANY of the three axes — uses a UNION
+    // subquery so a tech who only worked hours (no commission, no tips) still
+    // counts toward the "Y employees" figure on the lock-consequences row.
+    const distinctRow = await adb.get<{ employees: number }>(
+      `SELECT COUNT(*) AS employees FROM (
+         SELECT user_id FROM commissions WHERE created_at BETWEEN ? AND ?
+         UNION
+         SELECT user_id FROM clock_entries WHERE clock_in BETWEEN ? AND ? AND clock_out IS NOT NULL
+         UNION
+         SELECT employee_id AS user_id FROM employee_tips WHERE created_at BETWEEN ? AND ?
+       )`,
+      periodStart, periodEnd, periodStart, periodEnd, periodStart, periodEnd,
+    );
+
+    const grossTotal = (commissionsAgg?.total ?? 0) + (tipsAgg?.total ?? 0);
+
+    res.json({
+      success: true,
+      data: {
+        period: { id: period.id, name: period.name, start_date: period.start_date, end_date: period.end_date, locked_at: period.locked_at },
+        commission_count: commissionsAgg?.count ?? 0,
+        commission_total: commissionsAgg?.total ?? 0,
+        time_entry_count: timeAgg?.count ?? 0,
+        total_hours: timeAgg?.total_hours ?? 0,
+        tip_count: tipsAgg?.count ?? 0,
+        tip_total: tipsAgg?.total ?? 0,
+        distinct_employee_count: distinctRow?.employees ?? 0,
+        gross_total: grossTotal,
+      },
+    });
+  }),
+);
+
 router.post(
   '/payroll/lock/:periodId',
   asyncHandler(async (req, res) => {
