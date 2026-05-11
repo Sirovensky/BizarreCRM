@@ -2766,7 +2766,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:26-31`
 
-- [!] WEB-UIUX-733. **[NIT] Credit-note `code` + `note` composed into one `reason` string at client (`${d.code}: ${d.note}`) before send.** Server already accepts `code` + `note` as separate fields (migration 150) and stores them in `credit_note_code` / `credit_note_note`. The composed `reason` is now redundant — server stores both. Drift. L4. **[AUTOLOOP-T33 BLOCKED: server requires composed `reason` field + composes it into invoice notes. Client-only switch to separate code+note breaks endpoint; server-side change needed first.]**
+- [x] WEB-UIUX-733. **Server derives `reason` from `code` + `note` when omitted (2026-05-11).** `POST /invoices/:id/credit-note` introduces a `resolvedReason` fallback: when the caller ships only `code` + `note` (or only one of them), the server composes `"code: note"` (or whichever is present) and uses it for the audit log + invoice notes + refunds-row reason. Legacy callers passing `reason` still work. Web `InvoiceDetailPage` drops the client-side composition and ships the structured fields only. `invoiceApi.createCreditNote.reason` is now optional.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-167`
 
 

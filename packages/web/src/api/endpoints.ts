@@ -323,7 +323,10 @@ export const invoiceApi = {
   // WEB-UIUX-1294: pass X-Idempotency-Key so a double-click on slow network
   // doesn't produce two CRN rows + duplicate audit entries against the same
   // invoice (server's prior-credits aggregate guards math but not the orphan).
-  createCreditNote: (id: number, data: { amount: number; reason: string; code?: string; note?: string }, idempotencyKey?: string) =>
+  // WEB-UIUX-733: `reason` is now derivable from `code` + `note` on the server
+  // (invoices.routes.ts resolvedReason fallback). Keep `reason` for legacy /
+  // integration callers, but new web callers should pass `code` + `note` only.
+  createCreditNote: (id: number, data: { amount: number; reason?: string; code?: string; note?: string }, idempotencyKey?: string) =>
     api.post(`/invoices/${id}/credit-note`, data, {
       headers: {
         'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('cn'),

@@ -272,14 +272,12 @@ export function InvoiceDetailPage() {
       // of a colon. A note like "see ticket #123 12:30pm" reintroduces the
       // colon and breaks any legacy `split(':')`-based reverse parser.
       // The dedicated credit_note_code + credit_note_note columns (migration
-      // 150) are still the canonical source; this composed string is only a
-      // legacy fallback.
-      const reason = d.note
-        ? `${d.code} — ${d.note}`
-        : d.code;
+      // WEB-UIUX-733: server now derives the audit-log `reason` from `code`
+      // + `note` when `reason` is omitted (invoices.routes.ts resolvedReason),
+      // so we no longer need the composed-string fallback. Ship the structured
+      // fields only; legacy callers can still pass `reason` if they like.
       return invoiceApi.createCreditNote(invoiceId, {
         amount: d.amount,
-        reason,
         code: d.code,
         note: d.note,
       });

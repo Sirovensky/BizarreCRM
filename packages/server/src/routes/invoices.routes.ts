@@ -1406,8 +1406,17 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
       400,
     );
   }
-  if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
-    throw new AppError('reason is required', 400);
+  // WEB-UIUX-733: server now derives `reason` from `code` + `note` when the
+  // caller ships only the structured fields. Composed-reason callers (legacy
+  // clients, curl callers) keep working unchanged. New clients no longer have
+  // to duplicate `"code: note"` into a `reason` string.
+  let resolvedReason: string;
+  if (reason && typeof reason === 'string' && reason.trim().length > 0) {
+    resolvedReason = reason.trim();
+  } else if (cnCode || cnNote) {
+    resolvedReason = [cnCode, cnNote].filter(Boolean).join(': ').trim() || 'Credit note';
+  } else {
+    throw new AppError('reason (or code + note) is required', 400);
   }
 
   // I5: Atomic counter for the credit-note ID. Replaces the MAX-based lookup
@@ -1440,7 +1449,7 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
     -cnSubtotalPortion,    // negative subtotal (pre-tax portion of refund)
     -cnTaxPortion,         // negative tax (proportional share of refund)
     -amount,               // negative total
-    `Credit note: ${reason.trim()}`,
+    `Credit note: ${resolvedReason}`,
     invoiceId,             // link to original
     req.user!.id,
     original.location_id ?? 1,
@@ -1454,7 +1463,7 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   await adb.run(`
     INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, notes)
     VALUES (?, ?, 1, ?, ?, ?)
-  `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, reason.trim());
+  `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, resolvedReason);
 
   // WEB-UIUX-1026: also write a refunds row of type='credit_note' so the
   // /refunds reporting surface and "show me all refunds processed today"
@@ -1470,7 +1479,7 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
       original.ticket_id ?? null,
       original.customer_id ?? null,
       amount,
-      reason.trim(),
+      resolvedReason,
       req.user!.id,
       req.user!.id,
     );
@@ -1604,7 +1613,7 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
     credit_note_id: Number(creditNoteId),
     original_invoice_id: invoiceId,
     amount,
-    reason: reason.trim(),
+    reason: resolvedReason,
     code: cnCode,
   });
 
