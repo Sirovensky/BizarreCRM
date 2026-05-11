@@ -47,11 +47,45 @@ portalClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Clear stale portal tokens on any 401/403 from a portal endpoint
+// Cache fresh CSRF tokens returned in any portal response body.
 portalClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response) => {
+    const fresh = (response.data as { csrf_token?: unknown } | undefined)?.csrf_token;
+    if (typeof fresh === 'string' && fresh.length > 0) {
+      rememberCsrfToken(fresh);
+    }
+    return response;
+  },
+  async (error) => {
     const status = error?.response?.status;
+    // BUGHUNT-2026-05-10-45: 403 with code CSRF_INVALID means the cached
+    // token is stale (server forgot to set the header on the prior
+    // response). Pull a fresh one from /portal/csrf and replay the
+    // original request ONCE; further 403s fall through to the existing
+    // session-clear path.
+    const config = error?.config as ({ __csrfRetry?: boolean; headers?: Record<string, string>; method?: string; url?: string } | undefined);
+    const code = error?.response?.data?.code;
+    const message = error?.response?.data?.message;
+    if (
+      status === 403
+      && config
+      && !config.__csrfRetry
+      && (code === 'CSRF_INVALID' || /csrf/i.test(String(message ?? '')))
+    ) {
+      try {
+        config.__csrfRetry = true;
+        const refresh = await axios.get('/api/v1/portal/csrf', { withCredentials: true });
+        const newToken = (refresh.data as { csrf_token?: string; data?: { csrf_token?: string } })?.csrf_token
+          ?? (refresh.data as { data?: { csrf_token?: string } })?.data?.csrf_token;
+        if (typeof newToken === 'string' && newToken.length > 0) {
+          rememberCsrfToken(newToken);
+          if (config.headers) config.headers['X-CSRF-Token'] = newToken;
+          return portalClient.request(config as never);
+        }
+      } catch {
+        /* fall through to default clear-and-reject */
+      }
+    }
     if (status === 401 || status === 403) {
       sessionStorage.removeItem('portal_token');
       clearPortalSecurityTokens();

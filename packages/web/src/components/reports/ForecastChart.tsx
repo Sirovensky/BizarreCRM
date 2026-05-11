@@ -65,14 +65,19 @@ export function ForecastChart() {
             </tr>
           </thead>
           <tbody>
-            {data.forecast.length === 0 && (
+            {/* BUGHUNT-2026-05-10-41: server can return `{forecast: null}`
+                when the dataset is empty post-sweep. Coerce to [] so the
+                empty-state row renders + the .slice() can't crash the
+                whole reports page on TypeError. */}
+            {(() => null)()}
+            {((data.forecast ?? []).length === 0) && (
               <tr>
                 <td colSpan={4} className="py-4 text-center text-gray-500 dark:text-surface-400">
                   Not enough history yet.
                 </td>
               </tr>
             )}
-            {data.forecast.slice(0, 10).map(f => (
+            {(data.forecast ?? []).slice(0, 10).map(f => (
               <tr key={f.category} className="border-b last:border-0 border-gray-200 dark:border-surface-700">
                 <td className="py-2 truncate">{f.category}</td>
                 <td className="py-2 text-right tabular-nums">{formatForecastValue(f.avg_monthly, data.metric)}</td>
