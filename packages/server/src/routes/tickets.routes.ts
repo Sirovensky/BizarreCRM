@@ -2451,6 +2451,77 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
     }).catch(err => logger.error('notification_import_failed', { err: err instanceof Error ? err.message : String(err) }));
   }
 
+  // WEB-UIUX-650: when a ticket transitions to a closed status, auto-stop any
+  // running bench timers on it. Labor billed against a closed job is the
+  // bug — the technician's wall-clock keeps ticking after the ticket is
+  // marked done. Stop ALL active rows (multi-tech case) using the shared
+  // bench math so totals match an explicit POST /bench/timer/:id/stop.
+  if (newStatus?.is_closed) {
+    try {
+      const {
+        computeElapsedSeconds: btmComputeElapsed,
+        computeLaborCostCents: btmComputeCost,
+        isCurrentlyPaused: btmPaused,
+        parseJson: btmParseJson,
+      } = await import('../services/benchTimerMath.js');
+      const activeTimers = await adb.all<AnyRow>(
+        `SELECT id, user_id, ticket_id, ticket_device_id, started_at, ended_at,
+                pause_log_json, total_seconds, labor_rate_cents, labor_cost_cents, notes
+         FROM bench_timers
+         WHERE ticket_id = ? AND ended_at IS NULL`,
+        ticketId,
+      );
+      for (const row of activeTimers) {
+        let pauseLogJson = row.pause_log_json as string | null;
+        if (btmPaused(row as any)) {
+          const pauses = btmParseJson<Array<{ pause_at: string; resume_at?: string }>>(
+            pauseLogJson,
+            [],
+          );
+          const last = pauses[pauses.length - 1];
+          if (last) last.resume_at = new Date().toISOString();
+          pauseLogJson = JSON.stringify(pauses);
+          (row as AnyRow).pause_log_json = pauseLogJson;
+        }
+        const elapsed = btmComputeElapsed(row as any);
+        const rate = (row.labor_rate_cents as number | null) ?? 0;
+        const cost = btmComputeCost(elapsed, rate);
+
+        await adb.run(
+          `UPDATE bench_timers
+             SET ended_at = datetime('now'),
+                 total_seconds = ?,
+                 labor_cost_cents = ?,
+                 pause_log_json = ?
+           WHERE id = ?`,
+          elapsed,
+          cost,
+          pauseLogJson,
+          row.id,
+        );
+
+        audit(db, 'bench_timer_auto_stopped_on_close', userId, req.ip ?? 'unknown', {
+          timer_id: row.id,
+          timer_user_id: row.user_id,
+          ticket_id: ticketId,
+          total_seconds: elapsed,
+          labor_cost_cents: cost,
+        });
+      }
+      if (activeTimers.length > 0) {
+        logger.info('bench_timers_auto_stopped_on_ticket_close', {
+          ticket_id: ticketId,
+          count: activeTimers.length,
+        });
+      }
+    } catch (err) {
+      logger.warn('bench_timer_auto_stop_failed', {
+        err: err instanceof Error ? err.message : String(err),
+        ticket_id: ticketId,
+      });
+    }
+  }
+
   // SW-D14: Schedule feedback SMS after ticket close (HTTP-only side-effect)
   if (newStatus?.is_closed) {
     const [feedbackAutoSms, feedbackTemplate, feedbackDelay] = await Promise.all([

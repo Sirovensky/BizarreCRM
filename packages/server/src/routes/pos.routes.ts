@@ -9,7 +9,7 @@ import {
   roundCents,
   toCents,
 } from '../utils/validate.js';
-import { writeCommission } from '../utils/commissions.js';
+import { writeCommission, reverseCommission } from '../utils/commissions.js';
 import { accruePaymentPoints } from '../services/notifications.js';
 import { generateOrderId } from '../utils/format.js';
 import { broadcast } from '../ws/server.js';
@@ -2996,6 +2996,40 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     refundExecution?.processor_transaction_id ?? null,
     userId,
   );
+
+  // WEB-UIUX-1022: reverse commissions for the returned portion. Fraction is
+  // creditTotal / invoice.total so partial returns claw back proportional
+  // commission only. Both invoice + ticket commission sources are reversed
+  // (commissions can attach to either). Payroll-lock conflict surfaces as 403.
+  try {
+    const invoiceTotal = Number(invoice.total) || 0;
+    if (invoiceTotal > 0) {
+      const fraction = Math.min(1, Math.max(0, creditTotal / invoiceTotal));
+      if (fraction > 0) {
+        await reverseCommission(adb, {
+          sourceType: 'invoice',
+          sourceId: invId,
+          fraction,
+          notes: `POS return ${creditOrderId} for invoice ${invoice.order_id}`,
+        });
+        if (invoice.ticket_id) {
+          await reverseCommission(adb, {
+            sourceType: 'ticket',
+            sourceId: invoice.ticket_id,
+            fraction,
+            notes: `POS return ${creditOrderId} for invoice ${invoice.order_id}`,
+          });
+        }
+      }
+    }
+  } catch (commErr) {
+    if (commErr instanceof AppError && commErr.statusCode === 403) throw commErr;
+    logger.warn('pos_return_commission_reversal_failed', {
+      error: commErr instanceof Error ? commErr.message : String(commErr),
+      invoice_id: invId,
+      credit_note_id: creditNoteId,
+    });
+  }
 
   // Audit log
   try {

@@ -377,6 +377,100 @@ router.post('/:id/return', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK)
   res.json({ success: true, data: { returned: true, return_charge: charge } });
 }));
 
+// WEB-UIUX-642: POST /:id/mark-lost — terminal transition for an outstanding
+// loan when the customer walked off with the device. Without this the only
+// state options were `available` / `loaned`, so a never-returned device sat
+// `loaned` forever and the loan history could not be closed. We resolve the
+// active loaner_history row (sets returned_at + condition_in='lost'), flip
+// the device to `status='lost'`, and let the operator optionally invoice the
+// customer for the unreturned device via the existing return-charge body
+// fields. The transition mirrors `/return` for atomicity guarantees.
+router.post('/:id/mark-lost', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
+  const db = req.db;
+  const adb = req.asyncDb;
+  const id = validateId(req.params.id, 'id');
+  const { notes, charge_amount, charge_paid, charge_payment_method, charge_payment_reference } = req.body || {};
+
+  const device = await adb.get('SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0', id) as any;
+  if (!device) throw new AppError('Loaner device not found', 404);
+  if (device.status === 'lost') throw new AppError('Device is already marked lost', 400);
+
+  // Resolve the active loan, if any. Loaner can be marked lost even if it
+  // was never loaned (e.g. shop inventory loss) — in that case we just flip
+  // the device status, no history row to close.
+  const active = await adb.get<any>(
+    'SELECT * FROM loaner_history WHERE loaner_device_id = ? AND returned_at IS NULL ORDER BY id DESC LIMIT 1',
+    id,
+  );
+
+  const chargeAmountNum = charge_amount === undefined || charge_amount === null
+    ? null
+    : Number(charge_amount);
+  if (chargeAmountNum !== null && (!Number.isFinite(chargeAmountNum) || chargeAmountNum < 0)) {
+    throw new AppError('charge_amount must be a non-negative number', 400);
+  }
+  const recordCharge = chargeAmountNum !== null && chargeAmountNum > 0;
+  const txNow = now();
+
+  const lostTx = db.transaction((): void => {
+    const u = db.prepare(
+      "UPDATE loaner_devices SET status = 'lost', updated_at = ? WHERE id = ? AND is_deleted = 0"
+    ).run(txNow, id);
+    if (u.changes === 0) throw new AppError('Loaner device not found', 404);
+
+    if (active) {
+      db.prepare(
+        `UPDATE loaner_history
+            SET returned_at = ?,
+                condition_in = COALESCE(condition_in, 'lost'),
+                notes = COALESCE(?, notes)
+          WHERE id = ?`,
+      ).run(txNow, notes ?? null, active.id);
+    }
+  });
+  lostTx();
+
+  // Optional invoice for the unreturned device — mirrors `/return` charge.
+  let charge: any = null;
+  if (recordCharge && active?.customer_id) {
+    try {
+      const orderId = `LOAN-LOST-${id}-${Date.now()}`;
+      const status = charge_paid ? 'paid' : 'unpaid';
+      const insertInv = await adb.run(
+        `INSERT INTO invoices
+           (order_id, customer_id, subtotal, total_tax, total,
+            amount_paid, amount_due, status, notes, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        orderId,
+        active.customer_id,
+        chargeAmountNum,
+        chargeAmountNum,
+        charge_paid ? chargeAmountNum : 0,
+        charge_paid ? 0 : chargeAmountNum,
+        status,
+        `Unreturned loaner device: ${device.name}`,
+        req.user!.id,
+      );
+      charge = { invoice_id: Number(insertInv.lastInsertRowid), amount: chargeAmountNum, status };
+    } catch (err) {
+      // Don't fail the whole mark-lost flow if invoice creation hits a
+      // schema quirk; surface in logs and return the status flip.
+      const msg = err instanceof Error ? err.message : String(err);
+      audit(db, 'loaner_lost_invoice_failed', req.user!.id, req.ip || 'unknown', {
+        loaner_id: id,
+        error: msg,
+      });
+    }
+  }
+
+  audit(db, 'loaner_device_marked_lost', req.user!.id, req.ip || 'unknown', {
+    loaner_id: id,
+    history_id: active?.id ?? null,
+    charge,
+  });
+  res.json({ success: true, data: { id, status: 'lost', charge } });
+}));
+
 // DELETE /:id — Soft-delete loaner device
 // SEC-H121: Replaces hard DELETE (and the prior loaner_history cascade) to
 // preserve audit trail. The device row is marked is_deleted = 1 so it
@@ -391,7 +485,7 @@ router.delete('/:id', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asy
   ) as any;
   if (!device) throw new AppError('Loaner device not found', 404);
   if (device.status === 'loaned') {
-    throw new AppError('Cannot delete a device that is currently loaned out. Return it first.', 400);
+    throw new AppError('Cannot delete a device that is currently loaned out. Return it or mark it lost first.', 400);
   }
 
   await adb.run(

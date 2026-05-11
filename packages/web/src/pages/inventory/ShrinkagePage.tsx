@@ -66,6 +66,43 @@ export function ShrinkagePage() {
   const [notes, setNotes] = useState('');
   const [photoName, setPhotoName] = useState('');
   const photoRef = useRef<HTMLInputElement>(null);
+  // WEB-UIUX-640: inline edit + delete state.
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<{
+    quantity: string;
+    reason: ShrinkageRow['reason'];
+    notes: string;
+  }>({ quantity: '', reason: 'damaged', notes: '' });
+
+  const updateMutation = useMutation({
+    mutationFn: async (vars: { id: number; quantity: number; reason: ShrinkageRow['reason']; notes: string }) => {
+      const res = await api.patch(`/inventory-enrich/shrinkage/${vars.id}`, {
+        quantity: vars.quantity,
+        reason: vars.reason,
+        notes: vars.notes || null,
+      });
+      return res.data.data;
+    },
+    onSuccess: () => {
+      toast.success('Shrinkage event updated');
+      queryClient.invalidateQueries({ queryKey: ['shrinkage'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      setEditingId(null);
+    },
+    onError: (e: unknown) => toast.error(formatApiError(e)),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await api.delete(`/inventory-enrich/shrinkage/${id}`);
+      return res.data.data;
+    },
+    onSuccess: () => {
+      toast.success('Shrinkage event deleted; stock restored');
+      queryClient.invalidateQueries({ queryKey: ['shrinkage'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+    onError: (e: unknown) => toast.error(formatApiError(e)),
+  });
 
   const { data: shrinkageData } = useQuery({
     queryKey: ['shrinkage'],
@@ -243,51 +280,135 @@ export function ShrinkagePage() {
               <th className="text-left px-3 py-2">Reason</th>
               <th className="text-left px-3 py-2">Notes</th>
               <th className="text-center px-3 py-2">Photo</th>
+              <th className="text-right px-3 py-2">Actions</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="text-center py-8 text-surface-400">
+                <td colSpan={7} className="text-center py-8 text-surface-400">
                   No shrinkage recorded yet
                 </td>
               </tr>
             )}
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
-                <td className="px-3 py-2 text-xs text-surface-500">
-                  {formatDateTime(r.reported_at)}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="font-medium">{r.name}</div>
-                  <div className="text-xs text-surface-500">{r.sku}</div>
-                </td>
-                <td className="text-right px-3 py-2 font-semibold">{r.quantity}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={cn(
-                      'px-2 py-0.5 rounded-full text-xs font-medium',
-                      REASON_COLORS[r.reason],
-                    )}
-                  >
-                    {r.reason}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-xs max-w-xs truncate">{r.notes || '—'}</td>
-                <td className="text-center px-3 py-2">
-                  {(() => {
-                    const href = safeHref(r.photo_path);
-                    return href ? (
-                      <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary-600 text-xs">
-                        View
-                      </a>
+            {rows.map((r) => {
+              const isEditing = editingId === r.id;
+              return (
+                <tr key={r.id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
+                  <td className="px-3 py-2 text-xs text-surface-500">
+                    {formatDateTime(r.reported_at)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{r.name}</div>
+                    <div className="text-xs text-surface-500">{r.sku}</div>
+                  </td>
+                  <td className="text-right px-3 py-2 font-semibold">
+                    {isEditing ? (
+                      <input
+                        type="number"
+                        min="1"
+                        value={editForm.quantity}
+                        onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                        className="w-20 text-right rounded border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1 text-sm"
+                      />
                     ) : (
-                      '—'
-                    );
-                  })()}
-                </td>
-              </tr>
-            ))}
+                      r.quantity
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {isEditing ? (
+                      <select
+                        value={editForm.reason}
+                        onChange={(e) => setEditForm({ ...editForm, reason: e.target.value as ShrinkageRow['reason'] })}
+                        className="rounded border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1 text-xs"
+                      >
+                        <option value="damaged">damaged</option>
+                        <option value="stolen">stolen</option>
+                        <option value="lost">lost</option>
+                        <option value="expired">expired</option>
+                        <option value="other">other</option>
+                      </select>
+                    ) : (
+                      <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', REASON_COLORS[r.reason])}>
+                        {r.reason}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs max-w-xs">
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editForm.notes}
+                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                        className="w-full rounded border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1 text-xs"
+                      />
+                    ) : (
+                      <span className="truncate inline-block max-w-xs">{r.notes || '—'}</span>
+                    )}
+                  </td>
+                  <td className="text-center px-3 py-2">
+                    {(() => {
+                      const href = safeHref(r.photo_path);
+                      return href ? (
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary-600 text-xs">
+                          View
+                        </a>
+                      ) : (
+                        '—'
+                      );
+                    })()}
+                  </td>
+                  <td className="text-right px-3 py-2 whitespace-nowrap">
+                    {isEditing ? (
+                      <div className="inline-flex gap-1">
+                        <button
+                          type="button"
+                          disabled={updateMutation.isPending}
+                          onClick={() => {
+                            const q = parseInt(editForm.quantity, 10);
+                            if (!Number.isFinite(q) || q < 1) { toast.error('Quantity must be a positive integer'); return; }
+                            updateMutation.mutate({ id: r.id, quantity: q, reason: editForm.reason, notes: editForm.notes });
+                          }}
+                          className="px-2 py-1 text-xs font-medium rounded bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                          className="px-2 py-1 text-xs font-medium rounded border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="inline-flex gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingId(r.id);
+                            setEditForm({ quantity: String(r.quantity), reason: r.reason, notes: r.notes ?? '' });
+                          }}
+                          className="text-primary-600 hover:underline"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete shrinkage event for ${r.name}? Stock of ${r.quantity} will be restored.`)) return;
+                            deleteMutation.mutate(r.id);
+                          }}
+                          className="text-red-600 hover:underline"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

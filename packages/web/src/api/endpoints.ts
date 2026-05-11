@@ -1546,6 +1546,16 @@ export const loanerApi = {
     return_charge_payment_reference?: string;
   }) =>
     api.post<{ success: boolean; data: { returned: boolean; return_charge: LoanerReturnCharge | null } }>(`/loaners/${id}/return`, body),
+  // WEB-UIUX-642: terminal "device walked off" transition. Optional charge
+  // fields create an unrecovered-device invoice on the active loan's customer.
+  markLost: (id: number, body?: {
+    notes?: string;
+    charge_amount?: number;
+    charge_paid?: boolean;
+    charge_payment_method?: string;
+    charge_payment_reference?: string;
+  }) =>
+    api.post<{ success: boolean; data: { id: number; status: 'lost'; charge: null | { invoice_id: number; amount: number; status: 'paid' | 'unpaid' } } }>(`/loaners/${id}/mark-lost`, body ?? {}),
 };
 
 export interface LoanerReturnCharge {
@@ -1567,7 +1577,7 @@ export interface LoanerDevice {
   serial: string | null;
   imei: string | null;
   condition: string;
-  status: 'available' | 'loaned';
+  status: 'available' | 'loaned' | 'lost';
   notes: string | null;
   created_at: string;
   updated_at: string;

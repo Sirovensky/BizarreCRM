@@ -151,11 +151,14 @@ export function SubscriptionsListPage() {
   const [pausingId, setPausingId] = useState<number | null>(null);
   const [resumingId, setResumingId] = useState<number | null>(null);
   const pauseMut = useMutation({
-    mutationFn: (id: number) => membershipApi.pause(id),
+    // WEB-UIUX-1066: capture a free-form pause reason so the win-back report
+    // can categorise paused-vs-cancelled cohorts. Server stores `pause_reason`.
+    mutationFn: (vars: { id: number; reason: string | null }) =>
+      membershipApi.pause(vars.id, vars.reason ? { reason: vars.reason } : undefined),
     // WEB-UIUX-1070: invalidate both query keys
-    onSuccess: (_result, id) => {
+    onSuccess: (_result, vars) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      const sub = (data ?? []).find((s) => s.id === id);
+      const sub = (data ?? []).find((s) => s.id === vars.id);
       if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
       toast.success('Subscription paused');
       setPausingId(null);
@@ -223,7 +226,8 @@ export function SubscriptionsListPage() {
     }
   }
 
-  // WEB-UIUX-1065: pause handler
+  // WEB-UIUX-1065 + WEB-UIUX-1066: pause handler — also prompts for a reason so
+  // pause_reason gets populated (used by win-back analytics).
   async function handlePause(sub: Subscription): Promise<void> {
     try {
       const ok = await confirm(
@@ -231,8 +235,10 @@ export function SubscriptionsListPage() {
         { title: 'Pause subscription?', confirmLabel: 'Pause' },
       );
       if (!ok) return;
+      const reasonRaw = window.prompt('Reason for pause? (optional — used in win-back reports)', '');
+      const reason = reasonRaw === null ? null : reasonRaw.trim() || null;
       setPausingId(sub.id);
-      pauseMut.mutate(sub.id);
+      pauseMut.mutate({ id: sub.id, reason });
     } catch (err) {
       toast.error(formatApiError(err));
     }

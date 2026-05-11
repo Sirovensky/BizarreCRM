@@ -1415,7 +1415,7 @@ creativenavy POS guides, Tailwind dark-mode docs.
 - [x] WEB-UIUX-151. **[MAJOR] Toggle/Switch component duplicated 8 times across settings.** AutomationsTab, BlockChypSettings, MembershipSettings, PosSettings, ReceiptSettings, SmsVoiceSettings, NotificationTemplatesTab, TicketsRepairsSettings — each ships its own variant. Different sizes (h-5/h-6), different colors (teal/green/primary). L3, L4. **[AUTOLOOP-T4 RESOLVED: added canonical `<Toggle>` primitive in `components/shared/Toggle.tsx`. 8 call sites can migrate incrementally.]**
   <!-- meta: fix=extract-Switch-component-shared -->
 
-- [!] WEB-UIUX-152. **[MAJOR] RepairPricingTab Prices table has NO inline edit.** To change a labor price user must delete (losing grades) and recreate. Services table supports edit; prices doesn't. L4. **BLOCKED 2026-05-10: requires new server PATCH `/repair-prices/:id` route + grade-preservation logic + UI editor; feature-scale, defer.**
+- [x] WEB-UIUX-152. **[MAJOR] RepairPricingTab Prices table has NO inline edit.** To change a labor price user must delete (losing grades) and recreate. Services table supports edit; prices doesn't. L4. **BLOCKED 2026-05-10: requires new server PATCH `/repair-prices/:id` route + grade-preservation logic + UI editor; feature-scale, defer.** **[AUTOLOOP-T49 RESOLVED 2026-05-11: server PUT /repair-pricing/prices/:id grade-preserving; inline-edit Edit/Save/Cancel wired in RepairPricingTab PricesSubTab; Enter saves, Esc cancels.]**
   `packages/web/src/pages/settings/RepairPricingTab.tsx:600-820`
   <!-- meta: fix=add-edit-in-place-parallel-to-ServicesSubTab -->
 
@@ -2964,13 +2964,13 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-639. **[MAJOR] Bulk price update preview truncated to 20 items.** 200 selected → user sees random 20, clicks Apply, no "view all" toggle. L8. **RESOLVED 2026-05-07: valid; the preview still starts compact at 20 rows but now exposes a "View all N price changes" toggle plus a "Show first 20" collapse path, so large selections are inspectable before Apply.**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:998`
 
-- [!] WEB-UIUX-640. **[MAJOR] Shrinkage events cannot be edited or deleted — wrong reason (e.g. "stolen" vs "damaged") permanent.** Compliance + insurance implications. L4, L16. **[AUTOLOOP-T29 BLOCKED: requires server PATCH/DELETE endpoints for shrinkage events + UI controls; multi-component.]**
+- [x] WEB-UIUX-640. **[MAJOR] Shrinkage events cannot be edited or deleted — wrong reason (e.g. "stolen" vs "damaged") permanent.** Compliance + insurance implications. L4, L16. **[AUTOLOOP-T29 BLOCKED: requires server PATCH/DELETE endpoints for shrinkage events + UI controls; multi-component.]** **[AUTOLOOP-T49 RESOLVED 2026-05-11: server PATCH+DELETE /inventory-enrich/shrinkage/:id; reconciles in_stock + writes corrective stock_movement; ShrinkagePage inline Edit+Delete.]**
   `packages/web/src/pages/inventory/ShrinkagePage.tsx:73-99,209-243`
 
 - [!] WEB-UIUX-641. **[MAJOR] Loaner has no `due_back_at` field, no overdue detection, no charge-customer flow that creates invoice.** Damage cost goes to free-text `notes` only. L5, L13. **BLOCKED 2026-05-10: needs server schema migration (due_back_at, overdue flag) + overdue cron + invoice-on-damage flow; multi-component feature.**
   `packages/web/src/pages/loaners/LoanersPage.tsx:312-422`
 
-- [!] WEB-UIUX-642. **[MAJOR] No "mark loaner as lost" status — enum is `available|loaned` only.** Customer walks off with device → loaner stuck "loaned" forever. L5, L13. **[AUTOLOOP-T29 BLOCKED: requires server enum extension + status-transition route + shared type update + UI button; spans 4+ files.]**
+- [x] WEB-UIUX-642. **[MAJOR] No "mark loaner as lost" status — enum is `available|loaned` only.** Customer walks off with device → loaner stuck "loaned" forever. L5, L13. **[AUTOLOOP-T29 BLOCKED: requires server enum extension + status-transition route + shared type update + UI button; spans 4+ files.]** **[AUTOLOOP-T49 RESOLVED 2026-05-11: POST /loaners/:id/mark-lost flips status=lost + closes active loaner_history; optional charge creates an unrecovered-device invoice; loanerApi.markLost client wrapper.]**
   `packages/web/src/api/endpoints.ts:1218-1259`
 
 - [!] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8. **BLOCKED 2026-05-10: quick-scan increments counted_qty by 1 per scan, which is the documented behavior (`counted = existingCount.counted_qty + 1` at StocktakePage.tsx:239). Adding a "confirm-existing" mode requires a new UI toggle + mutation variant + cashier-training; feature-scope.**
@@ -2996,7 +2996,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-649. **[BLOCKER] QC prior-attempt state never displayed.** `qc.status(ticketId)` API exists but only invalidated, never queried. New tech after reassignment sees no failed-checklist context. L13, L11. **[AUTOLOOP-T30 RESOLVED: QcSignOffModal opens with useQuery(qc.status, ticketId); banner shows tech name + date + previously-failed checklist items.]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-598,649-658`
 
-- [!] WEB-UIUX-650. **[MAJOR] Closing ticket doesn't stop running BenchTimer — labor billed against closed job.** No timer-state check in status transition. L5, L13. **BLOCKED 2026-05-10: needs server hook on ticket status-transition to auto-stop active bench_timers; multi-component (transition logic + audit + labor reconciliation).**
+- [x] WEB-UIUX-650. **[MAJOR] Closing ticket doesn't stop running BenchTimer — labor billed against closed job.** No timer-state check in status transition. L5, L13. **BLOCKED 2026-05-10: needs server hook on ticket status-transition to auto-stop active bench_timers; multi-component (transition logic + audit + labor reconciliation).** **[AUTOLOOP-T49 RESOLVED 2026-05-11: tickets PATCH /:id/status hook auto-stops every active bench_timer when new status is_closed=1; shared services/benchTimerMath.ts; audit `bench_timer_auto_stopped_on_close`.]**
   `packages/web/src/pages/tickets/TicketActions.tsx:84-95`
 
 - [x] WEB-UIUX-651. **[MAJOR] BenchTimer only renders for owner — second viewer sees `idle` even when another tech has timer running.** Manager closing ticket = zero in-page signal. L11. **[AUTOLOOP-T30 RESOLVED: BenchTimer fetches byTicket; renders read-only "<tech_name> running for X:XX" when another tech owns active timer.]**
@@ -4221,7 +4221,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/server/src/routes/refunds.routes.ts:107,229-234`
   <!-- meta: fix=force-pos-return-to-status=pending-OR-require-elevated-role-at-route-level -->
 
-- [ ] WEB-UIUX-1022. **[BLOCKER] Commission reversal SKIPPED on the only currently-reachable refund path (Credit Note).** `refunds.routes.ts:322-377` calls `reverseCommission` inside the approve handler — wired to `/refunds/:id/approve` only. Wired UI flow is `/invoices/:id/credit-note` (`invoices.routes.ts:1162-1317`) which never calls `reverseCommission`. Tech who fitted the device on a returned/credited ticket keeps full commission; payroll overpays. Same gap on `/pos/return` (also creates negative invoice without commission reversal). L8, L16.
+- [x] WEB-UIUX-1022. **[BLOCKER] Commission reversal SKIPPED on the only currently-reachable refund path (Credit Note).** `refunds.routes.ts:322-377` calls `reverseCommission` inside the approve handler — wired to `/refunds/:id/approve` only. Wired UI flow is `/invoices/:id/credit-note` (`invoices.routes.ts:1162-1317`) which never calls `reverseCommission`. Tech who fitted the device on a returned/credited ticket keeps full commission; payroll overpays. Same gap on `/pos/return` (also creates negative invoice without commission reversal). L8, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: both /invoices/:id/credit-note and /pos/return now call reverseCommission with fraction=amount/invoice.total against both invoice and ticket sources; payroll-lock 403 propagates.]**
   `packages/server/src/routes/invoices.routes.ts:1162-1317`
   `packages/server/src/routes/pos.routes.ts:2496-2637`
   <!-- meta: fix=invoke-reverseCommission-from-credit-note-and-pos-return-paths-with-original-invoice-fraction -->
@@ -4387,7 +4387,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:257-286`
   <!-- meta: fix=add-Pause/Resume-buttons-to-row-action-cell+row-level-state+optional-bulk-pause-checkbox-selection -->
 
-- [ ] WEB-UIUX-1066. **[MAJOR] Pause endpoint accepts `reason` but UI never sends one.** Server: `req.body.reason || null` written to `pause_reason` column (`membership.routes.ts:246-247`). UI: `pauseMut.mutate()` with no payload (`CustomerDetailPage.tsx:914`, `:991`). Column always NULL. List page even reads `sub.pause_reason` shape (line 33) but renders nothing. Lost telemetry for "why paused" → no win-back categorisation. L1, L4.
+- [x] WEB-UIUX-1066. **[MAJOR] Pause endpoint accepts `reason` but UI never sends one.** Server: `req.body.reason || null` written to `pause_reason` column (`membership.routes.ts:246-247`). UI: `pauseMut.mutate()` with no payload (`CustomerDetailPage.tsx:914`, `:991`). Column always NULL. List page even reads `sub.pause_reason` shape (line 33) but renders nothing. Lost telemetry for "why paused" → no win-back categorisation. L1, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-11: SubscriptionsListPage.handlePause prompts for reason after confirm; CustomerDetailPage already sent reason.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
   <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
 
@@ -4416,7 +4416,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:117`
   <!-- meta: fix=after-WEB-UIUX-1059-toast='Cancelled-immediately'-vs-'Will-cancel-on-{date}' -->
 
-- [ ] WEB-UIUX-1073. **[MINOR] No payment-history view from list page despite server endpoint existing.** `GET /membership/:id/payments` exists (`membership.routes.ts:262-270`), `endpoints.ts` has no wrapper. List page row has no expand/drill-down. To answer "did this card decline last month?" admin must SSH to the DB. L4, L8.
+- [!] WEB-UIUX-1073. **[MINOR] No payment-history view from list page despite server endpoint existing.** `GET /membership/:id/payments` exists (`membership.routes.ts:262-270`), `endpoints.ts` has no wrapper. List page row has no expand/drill-down. To answer "did this card decline last month?" admin must SSH to the DB. L4, L8. **STALE 2026-05-11: membershipApi.getPayments(id) wrapper already in endpoints.ts:1684; list-page drill-down UI defer to membership UX sprint.]**
   `packages/server/src/routes/membership.routes.ts:262-270`
   `packages/web/src/api/endpoints.ts:1289-1325`
   <!-- meta: fix=add-membershipApi.getPayments(id)-wrapper+row-expand-shows-last-3-payments+full-history-modal -->
@@ -22003,3 +22003,8 @@ Static audit across server, web POS, payments, React state, reports, settings, i
 ### Triage notes
 
 - **Already tracked, deliberately not re-listed:** SVG signature XSS (TODO §SEC-stored-XSS), expense receipt path traversal (TODO §expense_receipt_uploads), Stripe webhook tx-wrap (SEC-C3), BlockChyp void webhook receiver (SEC-H41), loaner deposit/damage hold-on-card (WEB-FK-003), CheckoutModal HTTP 202 in old modal (WEB-UIUX-825; -16 tracks the rewrite refresh), TCPA banner local-time (WEB-UIUX-1122; tz precision split out as -39), CommandPalette sensitive recents (WEB-UIUX-675), credit note `<input>` advisory bounds (WEB-UIUX-723), DeviceTemplatesPage focus trap (WEB-UIUX-149), invoice-stats invalidation in credit note (WEB-UIUX-715), tickets-status-noop repro (TICKETS-STATUS-NOOP-1).
+
+### Audit wave 2026-05-10 — fire #2 (cron 97ba6974)
+
+- [ ] BUGHUNT-2026-05-10-52. **[HIGH] Dunning SMS gate uses AND where comment specifies OR — legitimate dunning silently suppressed.** `packages/server/src/services/dunningScheduler.ts:689` — comment at line 174 reads "Dunning is transactional — requires this flag OR sms_opt_in", but code is `smsAllowed = sms_opt_in !== 0 && sms_consent_transactional !== 0`. Customers with only one consent column set (sms_opt_in=1 OR sms_consent_transactional=1, not both) have all dunning SMS silently skipped, hiding overdue collection from finance. Fix: change `&&` to `||` to match the documented invariant.
+- [ ] BUGHUNT-2026-05-10-53. **[HIGH] Installment plan cancel does not void pending schedule rows.** `packages/server/src/routes/installments.routes.ts:217-241` — `POST /:id/cancel` only updates `installment_plans.status='cancelled'`; `installment_schedule` rows for the plan remain `status='pending'` with future `due_date`s. Any current or future automation that selects pending schedule rows for charge or reminder will hit a cancelled plan's leftover installments. Distinct from the MED race-on-cancel finding already tracked at TODO.md:15508. Fix: in the same transaction, `UPDATE installment_schedule SET status='cancelled' WHERE plan_id = ? AND status = 'pending'`.

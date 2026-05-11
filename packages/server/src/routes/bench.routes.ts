@@ -49,6 +49,14 @@ import {
   sanitizedImageExtension,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
 } from '../utils/imageUploadPolicy.js';
+import {
+  type BenchTimerRow as SharedBenchTimerRow,
+  type PauseSegment as SharedPauseSegment,
+  parseJson as sharedParseJson,
+  computeElapsedSeconds as sharedComputeElapsedSeconds,
+  computeLaborCostCents as sharedComputeLaborCostCents,
+  isCurrentlyPaused as sharedIsCurrentlyPaused,
+} from '../services/benchTimerMath.js';
 
 // Post-enrichment audit §9: per-user cap on defect report POSTs. Every
 // report writes one row + optionally an image + optionally a notification.
@@ -144,14 +152,7 @@ const defectUpload = makeBenchUpload('defects');
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-function parseJson<T>(val: string | null | undefined, fallback: T): T {
-  if (!val) return fallback;
-  try {
-    return JSON.parse(val) as T;
-  } catch {
-    return fallback;
-  }
-}
+const parseJson = sharedParseJson;
 
 async function getStoreFlag(adb: any, key: string, fallback: string): Promise<string> {
   try {
@@ -164,24 +165,8 @@ async function getStoreFlag(adb: any, key: string, fallback: string): Promise<st
   }
 }
 
-interface BenchTimerRow {
-  id: number;
-  ticket_id: number;
-  ticket_device_id: number | null;
-  user_id: number;
-  started_at: string;
-  ended_at: string | null;
-  pause_log_json: string | null;
-  total_seconds: number | null;
-  labor_rate_cents: number | null;
-  labor_cost_cents: number | null;
-  notes: string | null;
-}
-
-interface PauseSegment {
-  pause_at: string;
-  resume_at?: string;
-}
+type BenchTimerRow = SharedBenchTimerRow;
+type PauseSegment = SharedPauseSegment;
 
 /**
  * Validate a rate in cents — whole non-negative integer, bounded to a
@@ -199,55 +184,12 @@ function validateRateCents(value: unknown, fieldName = 'labor_rate_cents'): numb
   return raw;
 }
 
-/**
- * Integer-safe labor cost: (seconds * rate_cents) / 3600, rounded to the
- * nearest whole cent. Order matters — multiplying first avoids the float
- * drift of `(seconds / 3600) * rate_cents` when the result is not an
- * exact multiple of an hour.
- */
-function computeLaborCostCents(seconds: number, rateCents: number): number {
-  if (!isFinite(seconds) || !isFinite(rateCents)) return 0;
-  if (seconds <= 0 || rateCents <= 0) return 0;
-  // seconds and rateCents are already integers — this stays safe until
-  // seconds * rateCents exceeds Number.MAX_SAFE_INTEGER (~9e15), which is
-  // ~1 billion years at $100/hr. Good enough.
-  return Math.round((seconds * rateCents) / 3600);
-}
-
-/**
- * Computes live elapsed seconds for a timer, subtracting any time spent
- * paused. Works for both finished timers and live ones (uses "now" when
- * ended_at is null).
- */
-function computeElapsedSeconds(row: BenchTimerRow): number {
-  const start = new Date(row.started_at).getTime();
-  const end = row.ended_at ? new Date(row.ended_at).getTime() : Date.now();
-  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
-
-  const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
-  let paused = 0;
-  for (const p of pauses) {
-    const pa = new Date(p.pause_at).getTime();
-    const pr = p.resume_at ? new Date(p.resume_at).getTime() : end;
-    if (Number.isFinite(pa) && Number.isFinite(pr) && pr > pa) paused += pr - pa;
-  }
-
-  const active = end - start - paused;
-  const seconds = Math.max(0, Math.round(active / 1000));
-  const MAX_SECONDS_PER_SESSION = 24 * 3600;
-  if (seconds > MAX_SECONDS_PER_SESSION) {
-    logger.warn('bench timer session exceeds 24h — capping', { start, end, seconds });
-    return MAX_SECONDS_PER_SESSION;
-  }
-  return seconds;
-}
-
-function isCurrentlyPaused(row: BenchTimerRow): boolean {
-  const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
-  if (pauses.length === 0) return false;
-  const last = pauses[pauses.length - 1];
-  return !!last && !last.resume_at;
-}
+// Shared bench-timer math lives in ../services/benchTimerMath so other
+// routes (tickets.routes.ts ticket-close hook, WEB-UIUX-650) compute the
+// same elapsed/labor numbers as the explicit POST /bench/timer/:id/stop.
+const computeLaborCostCents = sharedComputeLaborCostCents;
+const computeElapsedSeconds = sharedComputeElapsedSeconds;
+const isCurrentlyPaused = sharedIsCurrentlyPaused;
 
 async function requireBenchTimerEnabled(adb: any): Promise<void> {
   const flag = await getStoreFlag(adb, 'bench_timer_enabled', 'false');

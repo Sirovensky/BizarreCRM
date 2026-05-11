@@ -1473,6 +1473,44 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
       logger.warn('invoices_credit_note_overflow_store_credit_failed', { error: msg });
     }
   }
+  // WEB-UIUX-1022: reverse commissions for the credit-noted portion. The
+  // refunds.routes.ts approve path already calls reverseCommission;
+  // credit-note (the only currently-reachable refund flow from the web UI)
+  // skipped this, so techs kept full commission on returned/credited work
+  // and payroll overpaid. Reverse proportional to amount / original.total
+  // so partial credits don't claw back the full commission. Both ticket and
+  // invoice sources are reversed since commissions can attach to either.
+  try {
+    const originalTotal = Number(original.total) || 0;
+    if (originalTotal > 0) {
+      const fraction = Math.min(1, Math.max(0, amount / originalTotal));
+      if (fraction > 0) {
+        await reverseCommission(adb, {
+          sourceType: 'invoice',
+          sourceId: invoiceId,
+          fraction,
+          notes: `Credit note ${orderId} for invoice ${original.order_id}`,
+        });
+        if (original.ticket_id) {
+          await reverseCommission(adb, {
+            sourceType: 'ticket',
+            sourceId: original.ticket_id,
+            fraction,
+            notes: `Credit note ${orderId} for invoice ${original.order_id}`,
+          });
+        }
+      }
+    }
+  } catch (commErr) {
+    // Payroll-lock is a 403 we want to surface — otherwise log and continue.
+    if (commErr instanceof AppError && commErr.statusCode === 403) throw commErr;
+    logger.warn('invoices_credit_note_commission_reversal_failed', {
+      error: commErr instanceof Error ? commErr.message : String(commErr),
+      invoice_id: invoiceId,
+      credit_note_id: Number(creditNoteId),
+    });
+  }
+
   const creditNote = await getInvoiceDetail(adb, creditNoteId as number);
 
   audit(db, 'credit_note_created', req.user!.id, req.ip || 'unknown', {
