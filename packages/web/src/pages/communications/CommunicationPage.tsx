@@ -1464,8 +1464,27 @@ export function CommunicationPage() {
       queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
       toast.success(variables.send_at ? 'Message scheduled' : 'Message sent');
     },
-    onError: () => {
-      toast.error('Failed to send message');
+    onError: (err: unknown) => {
+      // WEB-UIUX-941: differentiate 429 rate-limit, invalid-number 400, and
+      // operator-config 401 from generic failure so the cashier gets an
+      // actionable next step. Falls back to the server message, then a
+      // generic toast. UIUX-942 partner: 401 invalid SMS provider key
+      // points the operator at Settings → SMS.
+      const e = err as { response?: { status?: number; data?: { message?: string; code?: string } } } | undefined;
+      const status = e?.response?.status;
+      const code = e?.response?.data?.code;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 429) {
+        toast.error('SMS rate limit hit. Wait a moment and retry.', { duration: 6000 });
+      } else if (status === 400 && (code === 'invalid_number' || /invalid.*number|not a valid/i.test(serverMsg ?? ''))) {
+        toast.error('Invalid phone number. Check the format and try again.', { duration: 6000 });
+      } else if (status === 401) {
+        toast.error('SMS provider not configured — open Settings → SMS to fix.', { duration: 8000 });
+      } else if (code === 'silent_drop' || /silent.*drop|carrier.*reject/i.test(serverMsg ?? '')) {
+        toast.error('Carrier silently dropped the message. Try email or call instead.', { duration: 6000 });
+      } else {
+        toast.error(serverMsg || 'Failed to send message');
+      }
     },
   });
 

@@ -3753,7 +3753,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-884. **[MAJOR] No "invite back for free re-repair" workflow.** `cloneWarranty` exists but hidden in overflow menu, doesn't auto-message, no zero-cost line-item template. 5 manual steps. L4, L5. **[AUTOLOOP-T41 RESOLVED: TicketActions surfaces "Free re-repair" primary header button (RefreshCw icon); overflow item relabelled "Invite back for free re-repair (warranty)".]**
 
-- [ ] WEB-UIUX-885. **[MAJOR · BLOCKED] No SMS/email follow-up scaffold from credit-note success.** Customer hangs up not knowing if refund landed. Receipt-prompt only fires after payment, not after refund. L8, L4.
+- [!] WEB-UIUX-885. **[MAJOR · BLOCKED] No SMS/email follow-up scaffold from credit-note success.** Customer hangs up not knowing if refund landed. Receipt-prompt only fires after payment, not after refund. L8, L4. **STALE 2026-05-11: credit-note onSuccess already opens the SMS/email receipt prompt (UIUX-722); customer gets the same proof-of-refund follow-up channel as a payment.**
   **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
 
 - [!] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
@@ -3909,10 +3909,10 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-940. **[MAJOR] Supplier-template-drift / selector-mismatch invisible to UI.** Server logs `selector mismatch` warnings — UI shows generic `error_message` text truncated. No "stale catalog" amber banner. L8, L13. **[AUTOLOOP-T61 RESOLVED: amber banner shown when any job error_message matches /selector[ _-]mismatch/i; job row error text amber for drift, red for other errors with title tooltip.]**
   `packages/web/src/pages/catalog/CatalogPage.tsx:660-676`
 
-- [ ] WEB-UIUX-941. **[MAJOR · BLOCKED] SMS send error path swallows 429/silent-drop/invalid-number distinctions.** Generic "Failed to send message" toast. L8, L14.
+- [x] WEB-UIUX-941. **[MAJOR · BLOCKED] SMS send error path swallows 429/silent-drop/invalid-number distinctions.** Generic "Failed to send message" toast. L8, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CommunicationPage send onError now branches on status 429/400(invalid_number)/401 and code silent_drop with operator-actionable copy; 401 points at Settings -> SMS (UIUX-942 partner).]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-942. **[MAJOR · BLOCKED] No path from operator-facing 401 (invalid SMS provider key) to settings page that fixes it.** Generic toast. CheckoutModal pattern (`Terminal not configured — go to Settings → Payments`) missing for SMS. L4, L8.
+- [x] WEB-UIUX-942. **[MAJOR · BLOCKED] No path from operator-facing 401 (invalid SMS provider key) to settings page that fixes it.** Generic toast. CheckoutModal pattern (`Terminal not configured — go to Settings → Payments`) missing for SMS. L4, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: 401 branch in CommunicationPage send onError surfaces "SMS provider not configured — open Settings -> SMS to fix." with 8s duration.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
 - [x] WEB-UIUX-943. **[MAJOR] VoiceCallsListPage swallows recording-fetch errors with generic "Could not load recording".** 401/404/410 indistinguishable. No retrigger webhook path. L8. **[AUTOLOOP-T60 RESOLVED: openRecordingSecure now dispatches status-specific toasts for 401/404/410 + status-code-included fallback for other errors.]**
