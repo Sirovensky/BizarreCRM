@@ -196,7 +196,18 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
       toast: () => 'New customer added',
     },
     'customer:updated': {
-      queryKeys: [['customers']],
+      // WEB-UIUX-893: customer name/email/phone surfaces denormalized into
+      // tickets, invoices, estimates, leads, sms-conversations row caches.
+      // Invalidate all of them so a rename doesn't leave "J Doe" on the
+      // ticket list while the detail page shows "Jane Doe-Smith".
+      queryKeys: [
+        ['customers'],
+        ['tickets'],
+        ['invoices'],
+        ['estimates'],
+        ['leads'],
+        ['sms-conversations'],
+      ],
       toast: undefined,
     },
     'payment:created': {

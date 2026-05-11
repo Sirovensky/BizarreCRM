@@ -1390,6 +1390,14 @@ function InfoTab({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      // WEB-UIUX-893: dependent list caches denormalize customer
+      // name/email/phone — drop them so a rename doesn't leave a stale
+      // label in tickets/invoices/estimates/leads/sms list rows.
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
       toast.success('Customer updated');
     },
     onError: () => toast.error('Failed to update customer'),

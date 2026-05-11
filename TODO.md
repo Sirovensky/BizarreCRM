@@ -3779,7 +3779,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-892. **[MAJOR] Customer phone change strands portal account.** Portal login uses phone as identity key. Front-desk update silently breaks portal access. L5, L16. **[AUTOLOOP-T41 RESOLVED: CustomerDetailPage InfoTab handleSave shows window.confirm when phone differs from original — blocks save if staff cancels (preserves portal-login identity).]**
   `packages/web/src/pages/portal/portalApi.ts:194-195`
 
-- [ ] WEB-UIUX-893. **[MAJOR] Customer name/email/phone edits don't invalidate dependent list caches.** `['tickets']`/`['invoices']`/`['estimates']`/`['sms-conversations']`/`['leads']` all show OLD name. WS `customer:updated` only invalidates `['customers']`. L6, L9.
+- [x] WEB-UIUX-893. **[MAJOR] Customer name/email/phone edits don't invalidate dependent list caches.** `['tickets']`/`['invoices']`/`['estimates']`/`['sms-conversations']`/`['leads']` all show OLD name. WS `customer:updated` only invalidates `['customers']`. L6, L9. **[AUTOLOOP-T49 RESOLVED 2026-05-11: customer:updated WS handler now invalidates tickets/invoices/estimates/leads/sms-conversations alongside customers; CustomerDetailPage updateMutation onSuccess mirrors the same set so local edits propagate without WS.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1154-1157`
 
 - [x] WEB-UIUX-894. **[MAJOR] Currency change in Settings requires page reload.** `formatCurrency` reads module-level singleton refreshed only by `['settings-config-env']`. Saving currency in `['settings','store']` invalidates DIFFERENT key. L6, L10. **[AUTOLOOP-T41 RESOLVED: SettingsPage saveMutation onSuccess now invalidates ["settings-config-env"] so AppShell re-runs initCurrencyFromSettings without reload.]**
@@ -3793,7 +3793,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### SEC1: Security UX
 
-- [ ] WEB-UIUX-898. **[MAJOR] BulkSmsModal trigger has NO client-side role gate.** Cashier sees Bulk button, opens modal, picks segment+template, sees recipient count (PII leak), only then 403. L12, L16.
+- [x] WEB-UIUX-898. **[MAJOR] BulkSmsModal trigger has NO client-side role gate.** Cashier sees Bulk button, opens modal, picks segment+template, sees recipient count (PII leak), only then 403. L12, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CommunicationPage gates the Bulk SMS trigger on admin/manager role via authStore; cashier never sees the modal, no segment/recipient-count PII pre-403.]**
   `packages/web/src/pages/communications/CommunicationPage.tsx:1546-1554`
 
 - [x] WEB-UIUX-899. **[MAJOR] `posPinVerified` flag never expires — only reset by `resetAll()`.** Cashier verifies, walks away, another staff steps up to checkout, reuses verification. L16. **[AUTOLOOP-T43 RESOLVED: posPinVerified now has 10-min TTL via posPinVerifiedAt timestamp + isPosPinVerified() helper. Stale verification expires; resetAll/clearDraft zero the timestamp.]**

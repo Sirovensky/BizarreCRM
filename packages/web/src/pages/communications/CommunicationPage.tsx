@@ -21,6 +21,7 @@ import {
 } from '@/utils/format';
 import { obfuscatePhoneForStorageKey } from '@/utils/phoneFormat';
 import { useDraft } from '@/hooks/useDraft';
+import { useAuthStore } from '@/stores/authStore';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
@@ -1116,6 +1117,11 @@ function ThreadSearchBar({
 export function CommunicationPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  // WEB-UIUX-898: role gate for the Bulk SMS trigger — server requires
+  // admin/manager; mirror client-side so cashiers never see the modal
+  // (which would leak segment recipient counts before the 403).
+  const userRole = useAuthStore((s) => s.user?.role);
+  const canBulkSms = userRole === 'admin' || userRole === 'manager';
   const reminderParam = searchParams.get('reminder_id');
   const reminderDeepLinkId = reminderParam ? Number(reminderParam) : null;
   const [mainView, setMainView] = useState<'messages' | 'calls' | 'email'>('messages');
@@ -1646,16 +1652,21 @@ export function CommunicationPage() {
             </button>
           </div>
           {/* WEB-UIUX-1119: Bulk SMS button visible across all views (not gated on messages tab).
-              Role-gate is enforced server-side (admin only). New message button remains messages-only. */}
+              WEB-UIUX-898: client-side role gate so a cashier doesn't see the
+              segment + template pickers (which leak recipient counts as PII
+              hints) before the server 403s on send. Server gate kept as the
+              authoritative line. New message button remains messages-only. */}
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowBulkSms(true)}
-              className="flex items-center gap-1 rounded-lg border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700"
-              title="Bulk SMS"
-            >
-              <Users className="h-3.5 w-3.5" />
-              Bulk
-            </button>
+            {canBulkSms && (
+              <button
+                onClick={() => setShowBulkSms(true)}
+                className="flex items-center gap-1 rounded-lg border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700"
+                title="Bulk SMS"
+              >
+                <Users className="h-3.5 w-3.5" />
+                Bulk
+              </button>
+            )}
             {mainView === 'messages' && (
               <button
                 onClick={() => setShowNewMessage(true)}
