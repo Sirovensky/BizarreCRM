@@ -267,7 +267,12 @@ function handleAuthBroadcastMessage(msg: AuthBroadcastMessage): void {
         toast.error('Logged out from another tab. Drafts saved locally — re-login to recover.');
         setTimeout(requestLoginNav, 700);
       } else {
-        requestLoginNav();
+        // WEB-UIUX-904: always surface a cross-tab logout toast even when
+        // there are no drafts, so the sibling tab doesn't just blink to the
+        // login screen with no explanation. The 700ms nav delay matches the
+        // hasSavedDrafts branch so the user has a chance to read the toast.
+        toast('Signed out from another tab.', { duration: 4000, id: 'cross-tab-logout' });
+        setTimeout(requestLoginNav, 700);
       }
     }
     return;

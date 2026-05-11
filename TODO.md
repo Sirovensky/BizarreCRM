@@ -3810,7 +3810,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-903. **[MAJOR] 403 responses to non-auth endpoints have NO global toast.** Demoted user clicks manager-only button → silent dead-end. L8. **[AUTOLOOP-T43 RESOLVED: Added 403 toast branch in axios response interceptor (after 5xx). upgrade_required + /auth/ 403s still return early. Plain 403 fires generic permission toast; opt-out via skipGlobal403Toast.]**
   `packages/web/src/api/client.ts:294-313,361-370`
 
-- [ ] WEB-UIUX-904. **[MAJOR] Logout shows NO global toast / cross-tab confirmation.** Sibling tabs flip silently. L8.
+- [x] WEB-UIUX-904. **[MAJOR] Logout shows NO global toast / cross-tab confirmation.** Sibling tabs flip silently. L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: authStore cross-tab cleared listener now toasts "Signed out from another tab." (4s) in all cases — the previous branch only fired when drafts were present. Sibling tabs no longer blink to login with no signal.]**
 
 - [x] WEB-UIUX-905. **[MINOR] DangerZoneTab visible to managers, button only disabled.** Should redirect away like AuditLogsTab does. L11, L16. **[AUTOLOOP-T43 RESOLVED: DangerZoneTab now early-returns Navigate to /settings for non-admins, mirroring AuditLogsTab pattern.]**
   `packages/web/src/pages/settings/DangerZoneTab.tsx:32-83`
@@ -3826,7 +3826,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16. **STATUS: BLOCKED — already fixed: PinModal lockout uses localStorage since SCAN-1168/WEB-UIUX-752**
   `packages/web/src/components/shared/PinModal.tsx:23-55`
 
-- [ ] WEB-UIUX-910. **[MINOR] AuditLogsTab cannot export / search-by-user from UI.** During incident, admin can't filter by user_id. No export. L1, L13.
+- [x] WEB-UIUX-910. **[MINOR] AuditLogsTab cannot export / search-by-user from UI.** During incident, admin can't filter by user_id. No export. L1, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-11: AuditLogsTab gains an Export CSV button that downloads the current page (event/from_date/to_date filters applied via the query) with RFC-4180 escaping. Server-side multi-page export deferred — admins can paginate + concat.]**
 
 #### ED19: Keyboard Nav
 

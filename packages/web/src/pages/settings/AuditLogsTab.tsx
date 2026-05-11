@@ -221,6 +221,44 @@ export function AuditLogsTab() {
           </button>
         )}
         <div className="ml-auto flex items-end gap-2 pb-1">
+          {/* WEB-UIUX-910: CSV export of the current page's logs so admins
+              can hand audit data to compliance / incident response without
+              SSH-ing to the DB. Client-side CSV from `logs` keeps the
+              server response shape unchanged; admins who need the full
+              filtered set can paginate + concat. */}
+          <button
+            type="button"
+            disabled={!data?.logs?.length}
+            onClick={() => {
+              const rows: AuditLog[] = data?.logs ?? [];
+              if (rows.length === 0) return;
+              const header = ['created_at', 'event', 'user_id', 'user_name', 'username', 'ip_address', 'details'];
+              const csvEscape = (v: unknown): string => {
+                const s = v == null ? '' : String(v);
+                return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+              };
+              const body = rows.map((r) => [
+                r.created_at, r.event, r.user_id, r.user_name ?? '', r.username ?? '',
+                r.ip_address ?? '', r.details ?? '',
+              ].map(csvEscape).join(','));
+              const csv = [header.join(','), ...body].join('\n');
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+              a.download = `audit-logs-page${page}-${stamp}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            }}
+            className="btn btn-ghost btn-xs !text-surface-600 hover:!text-surface-900 dark:!text-surface-300 dark:hover:!text-surface-100 disabled:opacity-50"
+            aria-label="Export filtered audit logs (current page) as CSV"
+            title="Export current page as CSV"
+          >
+            Export CSV
+          </button>
           <button
             type="button"
             onClick={() => refetch()}
