@@ -1,5 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
+
+// WEB-UIUX-846: throttle the quota-toast so we only nag the cashier once per
+// session even though useDraft persists on every keystroke debounce. Sticky
+// reminder until the user closes it.
+let _quotaToastShown = false;
 
 // Hard cap to stop a pathologically long draft from blowing the localStorage
 // quota (typically 5–10 MB total, shared across the whole app). 100 KB is
@@ -37,6 +43,12 @@ function buildScopedKey(rawKey: string): string {
  * useDraft instance behaves consistently — even the ones that already
  * unmounted before the user clicked Logout.
  */
+// WEB-UIUX-908: also sweep persisted POS cart state (`pos-store-u*` /
+// `pos-store-u*-r*` from unified-pos/store.ts), which previously survived
+// logout and left a fired employee's pending cart in localStorage with
+// customer name + items.
+const POS_STORE_KEY_RE = /^pos-store-u\d+/;
+
 function wipeAllDrafts(): void {
   if (typeof localStorage === 'undefined') return;
   try {
@@ -45,7 +57,8 @@ function wipeAllDrafts(): void {
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i += 1) {
       const k = localStorage.key(i);
-      if (k && DRAFT_NAMESPACE_LEGACY_RE.test(k)) toRemove.push(k);
+      if (!k) continue;
+      if (DRAFT_NAMESPACE_LEGACY_RE.test(k) || POS_STORE_KEY_RE.test(k)) toRemove.push(k);
     }
     toRemove.forEach((k) => {
       try { localStorage.removeItem(k); } catch { /* best-effort */ }
@@ -267,6 +280,18 @@ export function useDraft(
         // QuotaExceededError or storage disabled — best-effort fallback.
         console.warn('[useDraft] failed to persist draft', err);
         if (mountedRef.current) setHasDraft(false);
+        // WEB-UIUX-846: surface to the operator so a kiosk with saturated
+        // localStorage doesn't silently lose draft data on submit.
+        const isQuota =
+          (err instanceof Error && /quota/i.test(err.name)) ||
+          (typeof err === 'object' && err !== null && /quota/i.test((err as { name?: string }).name ?? ''));
+        if (isQuota && !_quotaToastShown) {
+          _quotaToastShown = true;
+          toast.error(
+            'Browser storage is full — drafts cannot be saved. Clear browser data or sign out and back in.',
+            { duration: 8000, id: 'usedraft-quota' },
+          );
+        }
       }
     }, debounceMs);
     return () => {

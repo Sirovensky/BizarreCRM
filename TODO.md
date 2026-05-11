@@ -3631,7 +3631,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-845. **[MINOR] `useDraft` 100KB cap silently drops paste over 100KB.** No textarea-level maxLength either. L7, L8. **[AUTOLOOP-T39 RESOLVED: useDraft logs `console.warn` on > 100 KB drop; JSDoc documents maxLength expectation. oversize flag from WEB-UIUX-318 already exposed.]**
   `packages/web/src/hooks/useDraft.ts:7,195-198`
 
-- [ ] WEB-UIUX-846. **[MINOR] `QuotaExceededError` on draft write → `console.warn` only.** Kiosk localStorage saturated → drafts silently fail. L8.
+- [x] WEB-UIUX-846. **[MINOR] `QuotaExceededError` on draft write → `console.warn` only.** Kiosk localStorage saturated → drafts silently fail. L8. **[AUTOLOOP-T49 RESOLVED 2026-05-10: useDraft catch now detects QuotaExceeded and toasts once per session with remediation guidance; sticky toast id prevents spam.]**
   `packages/web/src/hooks/useDraft.ts:200-207`
 
 - [x] WEB-UIUX-847. **[MINOR] Slow 3G: skeleton runs ~60s before user gets feedback (default `retry: 1` × 30s timeout).** No "Still loading..." nudge after 5-10s. L6, L8. **[AUTOLOOP-T39 RESOLVED: LoadingScreen useState + 8 s setTimeout shows "Still loading… this is taking longer than usual." nudge below spinner.]**
@@ -3821,7 +3821,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-907. **[MINOR] Recent_views localStorage keys not in auth-cleared sweep.** Kiosk handoff: cashier B sees admin's recent customers in CommandPalette. L16. **STATUS: BLOCKED — already fixed: Sidebar.tsx auth-cleared listener sweeps recent_views + recent_views:* keys**
   `packages/web/src/stores/authStore.ts:185-200`
 
-- [ ] WEB-UIUX-908. **[MINOR] `pos-store-u*` keys never swept.** Fired employee's pending cart sits forever in localStorage with customer name + items. L16.
+- [x] WEB-UIUX-908. **[MINOR] `pos-store-u*` keys never swept.** Fired employee's pending cart sits forever in localStorage with customer name + items. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-10: wipeAllDrafts now matches `^pos-store-u\\d+` in addition to draft namespace; logout/auth-clear sweeps POS cart state.]**
 
 - [!] WEB-UIUX-909. **[MINOR] PinModal lockout is `sessionStorage` per-tab — multi-tab evasion.** Open second tab → 5 fresh attempts. L16. **STATUS: BLOCKED — already fixed: PinModal lockout uses localStorage since SCAN-1168/WEB-UIUX-752**
   `packages/web/src/components/shared/PinModal.tsx:23-55`
@@ -3846,7 +3846,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-916. **[MAJOR] No focus-to-first-error after validation fail.** Sighted keyboard users have no idea where first broken field is. L12, L8. **[AUTOLOOP-T59 RESOLVED: validation fail now calls document.getElementById(firstErrorKey)?.focus() in both early-return blocks; uses existing id attrs (first_name/email/custom_N).]**
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:186-208`
 
-- [ ] WEB-UIUX-917. **[MINOR] Password-toggle eye buttons set `tabIndex={-1}` everywhere.** Forces blind typing with no peek-ahead. Material/GOV.UK convention is to keep in tab order. L12.
+- [!] WEB-UIUX-917. **[MINOR] Password-toggle eye buttons set `tabIndex={-1}` everywhere.** Forces blind typing with no peek-ahead. Material/GOV.UK convention is to keep in tab order. L12. **STALE 2026-05-10: no `tabIndex={-1}` on password-toggle buttons found across Header/PinModal/SettingsPage/Portal pages; eye buttons are in normal tab order.**
 
 - [!] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12. **STATUS: BLOCKED — cross-flow Esc-policy design touching ~12 search inputs; needs documented policy first; defer to design-system sprint**
 
