@@ -359,6 +359,8 @@ const CUSTOMER_COLUMNS = [
   'contact_person', 'contact_relation',
   'referred_by', 'customer_group_id',
   'tax_number', 'tax_class_id',
+  // WEB-UIUX-765: per-customer exempt flag + free-form reason (resale cert / state code).
+  'tax_exempt', 'tax_exempt_reason',
   'email_opt_in', 'sms_opt_in',
   'sms_consent_marketing', 'sms_consent_transactional',
   'sms_quiet_hours_start', 'sms_quiet_hours_end',
@@ -1368,7 +1370,7 @@ router.post(
          address1, address2, city, state, postcode, country,
          contact_person, contact_relation,
          referred_by, customer_group_id,
-         tax_number, tax_class_id,
+         tax_number, tax_class_id, tax_exempt, tax_exempt_reason,
          email_opt_in, sms_opt_in,
          comments, source, tags,
          lat, lng)
@@ -1378,7 +1380,7 @@ router.post(
          ?, ?, ?, ?, ?, ?,
          ?, ?,
          ?, ?,
-         ?, ?,
+         ?, ?, ?, ?,
          ?, ?,
          ?, ?, ?,
          ?, ?)`,
@@ -1402,6 +1404,11 @@ router.post(
       input.customer_group_id ?? null,
       input.tax_number ?? null,
       input.tax_class_id ?? null,
+      // WEB-UIUX-765: tax_exempt + reason (0/1 + free-form).
+      (input as { tax_exempt?: unknown }).tax_exempt ? 1 : 0,
+      (input as { tax_exempt_reason?: unknown }).tax_exempt_reason
+        ? String((input as { tax_exempt_reason?: unknown }).tax_exempt_reason).slice(0, 500)
+        : null,
       input.email_opt_in ? 1 : 0,
       input.sms_opt_in ? 1 : 0,
       input.comments ?? null,

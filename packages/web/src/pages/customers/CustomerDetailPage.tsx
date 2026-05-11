@@ -1426,6 +1426,9 @@ function customerToForm(c: Customer) {
     email_opt_in: c.email_opt_in,
     sms_opt_in: c.sms_opt_in,
     tax_number: c.tax_number || '',
+    // WEB-UIUX-765: tax-exempt + reason from server model.
+    tax_exempt: ((c as unknown as { tax_exempt?: number | boolean }).tax_exempt as number | boolean | undefined) ? true : false,
+    tax_exempt_reason: (c as unknown as { tax_exempt_reason?: string | null }).tax_exempt_reason ?? '',
   };
 }
 
@@ -1522,6 +1525,11 @@ function InfoTab({
       referred_by: form.referred_by.trim() || undefined,
       comments: form.comments.trim() || undefined,
       tax_number: form.tax_number.trim() || undefined,
+      // WEB-UIUX-765: per-customer tax-exempt flag.
+      tax_exempt: form.tax_exempt ? 1 : 0,
+      tax_exempt_reason: form.tax_exempt && form.tax_exempt_reason.trim()
+        ? form.tax_exempt_reason.trim()
+        : undefined,
       tags: form.tags
         .split(',')
         .map((t) => t.trim())
@@ -1587,6 +1595,30 @@ function InfoTab({
                 onChange={(e) => updateField('tax_number', e.target.value)}
                 className="input"
               />
+            </FieldBlock>
+            {/* WEB-UIUX-765: per-customer tax-exempt toggle + free-form reason
+                (resale cert id / state exemption number). POS / invoice
+                auto-apply still rides a follow-up; this commit covers the
+                CRUD half so resellers + non-profits aren't blocked. */}
+            <FieldBlock label="Tax-exempt">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.tax_exempt}
+                  onChange={(e) => updateField('tax_exempt', e.target.checked)}
+                />
+                Tax-exempt customer (resale / non-profit / govt)
+              </label>
+              {form.tax_exempt && (
+                <input
+                  type="text"
+                  value={form.tax_exempt_reason}
+                  onChange={(e) => updateField('tax_exempt_reason', e.target.value)}
+                  maxLength={500}
+                  placeholder="Reason or certificate id (optional)"
+                  className="input mt-2"
+                />
+              )}
             </FieldBlock>
           </div>
         </div>
