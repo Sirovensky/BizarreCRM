@@ -135,6 +135,15 @@ export function StepTax({
           almost everywhere) and labor (state-dependent). Override per-line on any
           invoice. Add more tax classes later in Settings &rarr; Tax.
         </p>
+        {/* WEB-UIUX-858: the 8.25% placeholder is a Texas/CA-style default that
+            will over- or under-collect for every other state. Warn the owner
+            to verify against their state revenue agency before going live. */}
+        <p className="mt-3 inline-block rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+          <strong>Verify your rate.</strong> The 8.25% placeholder is a national-average
+          ballpark — actual state + local rates range ~4% to ~10%.
+          Look up your jurisdiction at your state Department of Revenue site
+          (or salestaxhandbook.com) before you ring up a real sale.
+        </p>
       </div>
 
       <div className="space-y-5 rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">

@@ -172,11 +172,20 @@ export function StepShopType({ onNext, onBack }: StepProps) {
                   <span aria-hidden="true">·</span>
                   <span className="font-mono">{serviceCount} services</span>
                   {serviceCount < 10 ? (
-                    <span
-                      title="Service templates expand in a later release (DPI-12)"
-                      className="ml-auto rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
-                    >
-                      Thin
+                    <span className="ml-auto inline-flex flex-col items-end gap-0.5 text-right">
+                      <span
+                        aria-label="Thin starter catalog"
+                        title="Service templates expand in a later release (DPI-12)"
+                        className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+                      >
+                        Thin
+                      </span>
+                      {/* WEB-UIUX-866: surface the meaning of the Thin badge
+                          inline so tablet/iPad users (no hover) see why the
+                          category is flagged before picking it. */}
+                      <span className="text-[9px] text-amber-700 dark:text-amber-300">
+                        Few templates yet
+                      </span>
                     </span>
                   ) : null}
                 </div>

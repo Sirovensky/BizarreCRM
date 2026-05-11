@@ -3674,7 +3674,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/setup/steps/StepFirstEmployees.tsx:153-212`
 
-- [ ] WEB-UIUX-858. **[MAJOR] Tax step defaults to 8.25% blindly with no state lookup.** OR shop overcharges 8.25% silently. CO/CA/NY all different. L7, L16.
+- [x] WEB-UIUX-858. **[MAJOR] Tax step defaults to 8.25% blindly with no state lookup.** OR shop overcharges 8.25% silently. CO/CA/NY all different. L7, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: StepTax now surfaces a Verify Your Rate amber callout above the rate inputs, noting the 8.25% placeholder is a national-average ballpark and linking to state revenue lookups.]**
   `packages/web/src/pages/setup/steps/StepTax.tsx:38,56`
 
 - [x] WEB-UIUX-859. **[MAJOR] Repair pricing tier B/C use Preview placeholders that look like real options.** Owner clicks "Per-device matrix" → 5 rows of fake iPhone pricing → nothing saves. L5, L8. **[AUTOLOOP-T40 RESOLVED: web-setup-wizard mockup tier B/C cards get "Preview only" badge + opacity-60 dim + "Not yet configurable — coming soon"; B/C inputs disabled.]**
@@ -3699,7 +3699,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-865. **[MINOR · BLOCKED] StepDefaultStatuses (step 9) warns about auto-SMS BEFORE SMS configured (step 16).** Jargon-overload. L14.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-866. **[MINOR] StepShopType "Thin" badge hover-only — tablet/iPad users never see why.** Picking Console/PC traps shop in near-empty seed. L11, L14.
+- [x] WEB-UIUX-866. **[MINOR] StepShopType "Thin" badge hover-only — tablet/iPad users never see why.** Picking Console/PC traps shop in near-empty seed. L11, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Thin badge now renders alongside an always-visible "Few templates yet" caption so tablet/iPad users (no hover) see the meaning before picking the shop type.]**
 
 #### JOURNEY2: Busy Saturday
 
