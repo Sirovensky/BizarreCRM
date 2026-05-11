@@ -258,6 +258,19 @@ export function StepFirstEmployees({
     const toSend = rows.filter((r) => !isEmptyRow(r));
     if (toSend.length === 0) return;
 
+    // WEB-UIUX-857: explicit confirm before invite emails fire. Invites
+    // create real accounts and trigger real outbound email; mistyped
+    // addresses become orphaned accounts with no recall path. A single
+    // confirm with the recipient list lets the operator catch typos
+    // before the irreversible step.
+    const recipientList = toSend
+      .map((r) => `• ${r.name.trim()} <${r.email.trim()}> · ${r.role}`)
+      .join('\n');
+    const ok = window.confirm(
+      `Send invite emails now to:\n\n${recipientList}\n\nAccounts are created immediately and the invite email goes out. Typos cannot be undone from the wizard.`,
+    );
+    if (!ok) return;
+
     // 3. Fire requests. Continue past per-row failures so the user sees the
     //    full picture; the retry link in the failed badge re-tries that row.
     setSubmitting(true);

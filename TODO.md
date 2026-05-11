@@ -3670,7 +3670,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-856. **[MAJOR] Payment terminal "Test connection" is STUB pretending to work.** 400ms spinner → "unverified" status with tiny "Stub" pill. Owners proceed thinking terminal paired. L8, L16. **STALE 2026-05-11: blockchyp.routes /test-connection calls services/blockchyp.testConnection which fires a real BlockChyp.PingRequest through the configured client; not a stub. The 400ms spinner the TODO cited has been replaced by an actual ping round-trip.**
   `packages/web/src/pages/setup/steps/StepPaymentTerminal.tsx:153-172`
 
-- [ ] WEB-UIUX-857. **[MAJOR · BLOCKED] StepFirstEmployees sends invites BEFORE wizard finishes — IRREVERSIBLE.** Mistyped email → orphan account, no recall path, no confirmation. L7, L4.
+- [x] WEB-UIUX-857. **[MAJOR · BLOCKED] StepFirstEmployees sends invites BEFORE wizard finishes — IRREVERSIBLE.** Mistyped email → orphan account, no recall path, no confirmation. L7, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-11: StepFirstEmployees Send-invites button now prompts for confirmation with the full recipient list before firing setupInvite per row. Catches typos before the irreversible account-creation + email-out step.]**
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/setup/steps/StepFirstEmployees.tsx:153-212`
 
