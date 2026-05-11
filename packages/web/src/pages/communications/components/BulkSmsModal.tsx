@@ -256,6 +256,28 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                 </option>
               ))}
             </select>
+            {/* WEB-UIUX-1112: render the resolved template body + segment math
+                so the admin sees the exact text + cost before blasting. */}
+            {(() => {
+              if (!templateId) return null;
+              const tpl = templates.find((t) => t.id === templateId);
+              if (!tpl) return null;
+              const body = tpl.content || '';
+              const chars = body.length;
+              // GSM-7 single-segment = 160 chars; multi-segment = 153 each.
+              // Unicode (emoji) would be 70/67 but we under-count here — server
+              // is the source of truth on cost; this is a guidance heuristic.
+              const segments = chars === 0 ? 0 : chars <= 160 ? 1 : Math.ceil(chars / 153);
+              return (
+                <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-900/40">
+                  <div className="mb-1 flex items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-surface-500">
+                    <span>Body preview</span>
+                    <span>{chars} chars · {segments} segment{segments === 1 ? '' : 's'}/recipient</span>
+                  </div>
+                  <pre className="whitespace-pre-wrap break-words font-sans text-sm text-surface-800 dark:text-surface-200">{body || <span className="italic text-surface-400">No body set on this template.</span>}</pre>
+                </div>
+              );
+            })()}
           </div>
 
           {/* WEB-UIUX-1122: TCPA quiet-hours informational banner — does not block send */}
@@ -317,7 +339,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                 onClick={() => sendMut.mutate()}
                 disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
                 title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
-                className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                // WEB-UIUX-1116: drop red (destructive) — sending an opted-in
+                // marketing reminder is additive, not destructive. Primary
+                // tone matches Stripe/Klaviyo confident-send buttons; the
+                // explicit "Send to N" label already carries blast-radius.
+                className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 <Send className="h-3.5 w-3.5" />
                 {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}

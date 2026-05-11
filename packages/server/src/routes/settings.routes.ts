@@ -393,6 +393,12 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'backup_s3_endpoint', 'backup_s3_bucket', 'backup_s3_access_key', 'backup_s3_secret_key',
   // SaaS trial / tier metadata written by Agent 31 signup route + visible in Step 25 Review
   'trial_started_at', 'trial_expires_at', 'tier',
+  // WEB-UIUX-1079: bench timer + QC + defect-alert toggles. Migration 088
+  // seeds defaults ('bench_timer_enabled'='false', 'qc_required'='false',
+  // 'bench_labor_rate_cents', 'defect_alert_threshold_30d'); admin Settings →
+  // Bench/QC tab persists overrides here.
+  'bench_timer_enabled', 'qc_required',
+  'bench_labor_rate_cents', 'defect_alert_threshold_30d',
 ]);
 
 // ==================== Generic Config (key-value) ====================

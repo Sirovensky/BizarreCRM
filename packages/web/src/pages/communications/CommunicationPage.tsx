@@ -1677,13 +1677,17 @@ export function CommunicationPage() {
               authoritative line. New message button remains messages-only. */}
           <div className="flex items-center gap-1">
             {canBulkSms && (
+              // WEB-UIUX-1118: spell the channel out — "Bulk" alone reads as
+              // bulk-archive/tag on a comms screen; "Bulk SMS" matches the
+              // Postscript/Attentive convention and screen-reader expectation.
               <button
                 onClick={() => setShowBulkSms(true)}
                 className="flex items-center gap-1 rounded-lg border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700"
-                title="Bulk SMS"
+                title="Send a Bulk SMS to a segment of opted-in customers"
+                aria-label="Bulk SMS — send to a segment of opted-in customers"
               >
                 <Users className="h-3.5 w-3.5" />
-                Bulk
+                Bulk SMS
               </button>
             )}
             {mainView === 'messages' && (

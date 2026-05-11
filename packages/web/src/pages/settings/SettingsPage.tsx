@@ -59,6 +59,7 @@ const PosSettings = lazy(() => import('./PosSettings').then(m => ({ default: m.P
 const InvoiceSettings = lazy(() => import('./InvoiceSettings').then(m => ({ default: m.InvoiceSettings })));
 const ReceiptSettings = lazy(() => import('./ReceiptSettings').then(m => ({ default: m.ReceiptSettings })));
 const ConditionsTab = lazy(() => import('./ConditionsTab').then(m => ({ default: m.ConditionsTab })));
+const BenchQcTab = lazy(() => import('./BenchQcTab').then(m => ({ default: m.BenchQcTab })));
 const NotificationTemplatesTab = lazy(() => import('./NotificationTemplatesTab').then(m => ({ default: m.NotificationTemplatesTab })));
 const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ default: m.SmsVoiceSettings })));
 const AutomationsTab = lazy(() => import('./AutomationsTab').then(m => ({ default: m.AutomationsTab })));
@@ -69,7 +70,7 @@ const DangerZoneTab = lazy(() => import('./DangerZoneTab').then(m => ({ default:
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'danger-zone';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'bench-qc' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'danger-zone';
 
 interface TicketStatus {
   id: number;
@@ -165,6 +166,11 @@ const TABS: TabConfig[] = [
   { key: 'repair-pricing', label: 'Repair Pricing', icon: Wrench },
   { key: 'device-templates', label: 'Device Templates', icon: Wrench },
   { key: 'tickets-repairs', label: 'Tickets & Repairs', icon: ListChecks },
+  // WEB-UIUX-1079: Bench/QC admin controls (qc_required, bench_timer_enabled,
+  // bench_labor_rate_cents, defect_alert_threshold_30d). Previously only
+  // mutable via direct UPDATE store_config; the onboarding wizard promised
+  // a UI toggle that didn't exist.
+  { key: 'bench-qc', label: 'Bench & QC', icon: ClipboardCheck },
   { key: 'pos', label: 'POS', icon: ShoppingCart },
   { key: 'invoices', label: 'Invoices', icon: FileText },
   { key: 'receipts', label: 'Receipts', icon: Printer },
@@ -1987,6 +1993,7 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'repair-pricing': ['repair', 'pricing', 'grade', 'aftermarket', 'oem', 'premium', 'labor'],
   'device-templates': ['device', 'template', 'repair', 'job card', 'iphone', 'ipad', 'samsung', 'macbook', 'labor', 'part', 'reusable'],
   'tickets-repairs': ['ticket', 'repair', 'default', 'prefix', 'auto', 'assign'],
+  'bench-qc': ['bench', 'qc', 'quality', 'sign-off', 'signoff', 'timer', 'labor', 'defect', 'alert', 'threshold', 'tech', 'workflow'],
   'pos': ['pos', 'point of sale', 'checkout', 'receipt', 'cart'],
   'invoices': ['invoice', 'due', 'payment', 'terms', 'numbering'],
   'receipts': ['receipt', 'print', 'thermal', 'logo', 'template', 'header', 'footer'],
@@ -2293,6 +2300,7 @@ function SettingsPageInner() {
         {activeTab === 'repair-pricing' && <RepairPricingTab />}
         {activeTab === 'device-templates' && <DeviceTemplatesPage />}
         {activeTab === 'tickets-repairs' && <TicketsRepairsSettings />}
+        {activeTab === 'bench-qc' && <BenchQcTab />}
         {activeTab === 'pos' && <PosSettings />}
         {activeTab === 'invoices' && <InvoiceSettings />}
         {activeTab === 'receipts' && <ReceiptSettings />}
