@@ -292,8 +292,8 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 - [!] PROD112. **Backup → restore on scratch dir → data round-trips.** Round-trip + SQLite-shape + tamper-detection covered by `packages/server/src/services/__tests__/backup.roundtrip.test.ts` (encryptFile → .enc → decryptFile → byte-equal plaintext; AES-GCM auth-tag mismatch on flipped byte). End-to-end operator smoke against the backup-admin UI still recommended once SEC-H60 sidecar verification integrates.
   - [x] STALE 2026-05-11: backup encrypt/decrypt programmatic round-trip is automated; the full admin-UI click-through remains operator territory but the crypto pipeline is no longer untested.
 
-- [!] PROD113. **`git status` clean, `git log` reviewed for embarrassing commit messages.**
-  - [ ] BLOCKED: human review step — needs the operator to eyeball `git log --oneline -100` for messages they'd rather not publish. Not a scripted fix.
+- [!] PROD113. **`git status` clean, `git log` reviewed for embarrassing commit messages.** Automated scan 2026-05-11 across all 3559 commits found: zero profanity / "wtf" / debug-string subjects. Five uninformative subjects worth operator triage before public flip: `d90c8da6 "c"`, `234e111a "t"`, `e8e17c46 "."`, `5f9eef13 "changed node v"`, `75972c14 "init changes"`. Reword via interactive rebase or accept as-is during the PROD114 private→public window.
+  - [x] STALE 2026-05-11: in-repo scan complete + specific commit SHAs surfaced. Final accept/rebase call belongs to the operator at PROD114 time.
 
 - [!] PROD114. **Push to PRIVATE GitHub repo first → verify CI passes → no secret-scanning alerts → THEN flip public.**
   - [ ] BLOCKED: external action by operator (create GitHub repo, push, watch for alerts, flip visibility). Cannot be automated from inside the repo.
