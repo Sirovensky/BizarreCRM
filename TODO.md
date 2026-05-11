@@ -3423,7 +3423,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-144`
 
-- [!] WEB-UIUX-1006. **[MINOR] Detail page back-link is text + arrow only ("Gift Cards"), no breadcrumb path.** Pattern asymmetry vs Estimates/Tickets which expose breadcrumb. L9. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
+- [x] WEB-UIUX-1006. **Breadcrumb path lands on GiftCardDetailPage (2026-05-11).** Loaded-card render now uses the shared `Breadcrumb` (`components/shared/Breadcrumb.tsx`) with `Home › Gift Cards › #<id>`, matching the Estimates / Tickets / Invoices pattern. Loading + error / not-found branches keep the small ArrowLeft back-button since the card id isn't available to compose the final crumb yet.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:191-193,217-223`
 
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:50-62`

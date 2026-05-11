@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { SkeletonCard, SkeletonTable } from '@/components/shared/Skeleton';
+import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useConfirmStore } from '@/stores/confirmStore';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): inline `$${n.toFixed(2)}` ignored tenant currency. Use shared formatCurrency.
@@ -327,13 +328,14 @@ export function GiftCardDetailPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <button
-        onClick={() => navigate('/gift-cards')}
-        className="flex items-center gap-1.5 text-sm text-surface-500 hover:text-surface-800 dark:hover:text-surface-200 mb-6"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Gift Cards
-      </button>
+      {/* WEB-UIUX-1006: full breadcrumb path replaces the bare arrow link so
+          the navigation pattern matches Estimates / Tickets / Invoices. */}
+      <Breadcrumb
+        items={[
+          { label: 'Gift Cards', href: '/gift-cards' },
+          { label: `#${card.id}` },
+        ]}
+      />
 
       {/* Card Summary */}
       <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-5 mb-5">
