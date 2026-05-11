@@ -250,6 +250,18 @@ function isValidYmd(value: string | null | undefined): value is string {
     && date.getUTCDate() === day;
 }
 
+/**
+ * BUGHUNT-2026-05-10-37: returns true when the caller-supplied range has BOTH
+ * a valid `from` and `to` AND `from > to` — that's the case `normalizeDateRange`
+ * silently rewrites to the default 7-day window. Callers use this to surface
+ * a toast/banner instead of letting the rewrite happen invisibly.
+ */
+function isInvertedDateRange(value: DateRangeState): boolean {
+  const from = isValidYmd(value.from) ? value.from : undefined;
+  const to = isValidYmd(value.to) ? value.to : undefined;
+  return Boolean(from && to && from > to);
+}
+
 function normalizeDateRange(value: DateRangeState): DateRangeState {
   const preset = value.preset;
   const isKnownPreset = !!preset && (DATE_RANGE_PRESETS as readonly string[]).includes(preset);
@@ -1380,6 +1392,19 @@ export function ReportsPage() {
 
   useEffect(() => {
     const nextTab = isValidTabParam(searchParams.get('tab')) ? searchParams.get('tab') as Tab : 'sales';
+    // BUGHUNT-2026-05-10-37: also warn when a bookmarked / hand-typed URL
+    // carries an inverted range — readDateRangeParam silently drops it.
+    const rawDateRange: DateRangeState = {
+      preset: searchParams.get('preset') ?? undefined,
+      from: searchParams.get('from') ?? undefined,
+      to: searchParams.get('to') ?? undefined,
+    };
+    if (isInvertedDateRange(rawDateRange)) {
+      toast.error(
+        `URL range "${rawDateRange.from} → ${rawDateRange.to}" reversed — using default window instead.`,
+        { duration: 6000 },
+      );
+    }
     const nextDateRange = readDateRangeParam(searchParams);
     const nextGroupBy = readGroupByParam(searchParams);
     const nextInsightsSubTab = readInsightsSubTabParam(searchParams);
@@ -1400,6 +1425,17 @@ export function ReportsPage() {
     });
   }, [updateReportSearchParams]);
   const setDateRange = useCallback((next: DateRangeState) => {
+    // BUGHUNT-2026-05-10-37: previously a from > to range was silently
+    // rewritten to the default 7-day window, so fiscal/tax exports could
+    // run over a different period than the user typed without any signal.
+    // Surface the rewrite as an explicit toast and keep the normalize path
+    // intact so the rest of the page still sees a valid range.
+    if (isInvertedDateRange(next)) {
+      toast.error(
+        `Date range "${next.from} → ${next.to}" reversed — using default window instead. Set "from" before "to" and try again.`,
+        { duration: 6000 },
+      );
+    }
     const normalized = normalizeDateRange(next);
     setDateRangeState(normalized);
     updateReportSearchParams((sp) => writeDateRangeParam(sp, normalized));
