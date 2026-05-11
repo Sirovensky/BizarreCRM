@@ -2213,6 +2213,35 @@ export interface PairedDevice {
   created_at: string;
 }
 
+// WEB-UIUX-1252: wire the existing /api/v1/locations server surface so the
+// EmployeeListPage PIN modal can let the cashier pick the punch-in location
+// in multi-location stores (server-side clock-in/clock-out already accept
+// location_id at employees.routes.ts:313).
+export interface LocationRow {
+  id: number;
+  name: string;
+  address_line: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  timezone: string | null;
+  is_default: 0 | 1;
+  is_active: 0 | 1;
+}
+
+export const locationApi = {
+  list: (activeOnly = true) =>
+    api.get<{ success: boolean; data: LocationRow[] }>(
+      '/locations',
+      activeOnly ? { params: { active: 1 } } : undefined,
+    ),
+  defaultForMe: () =>
+    api.get<{ success: boolean; data: LocationRow | null }>('/locations/me/default-location'),
+};
+
 export const posHandoffApi = {
   startPairing: () =>
     api.post<{ success: boolean; data: { code: string; expires_in_seconds: number } }>('/pos/pair/start'),

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { employeeApi } from '@/api/endpoints';
+import { employeeApi, locationApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatTime } from '@/utils/format';
@@ -131,7 +131,10 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
   employee: Employee;
   action: 'clock-in' | 'clock-out';
   onClose: () => void;
-  onSubmit: (pin: string) => void;
+  // WEB-UIUX-1252: locationId is the operator's selected punch location;
+  // null when there is one active location (server falls back to user's
+  // home_location_id / global default).
+  onSubmit: (pin: string, locationId: number | null) => void;
   isPending: boolean;
   // WEB-UIUX-1262: parent passes lockout info parsed from server rate-limit error
   lockedUntilProp?: Date | null;
@@ -140,6 +143,27 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
   const [pin, setPin] = useState('');
   // WEB-UIUX-1257: need current user role to show the right no-PIN guidance
   const { user: currentUser } = useAuthStore();
+  // WEB-UIUX-1252: pull active locations so multi-location stores can pick
+  // the punch site. Single-location tenants skip the picker entirely. Cache
+  // for 5 min — locations rarely change inside a shift.
+  const { data: locationsData } = useQuery({
+    queryKey: ['locations', 'active'],
+    queryFn: () => locationApi.list(true).then((r) => r.data.data ?? []),
+    staleTime: 5 * 60_000,
+    enabled: !!employee.has_pin,
+  });
+  const locations = locationsData ?? [];
+  const showLocationPicker = locations.length > 1;
+  const defaultLocationId = (
+    locations.find((l) => l.is_default)?.id
+    ?? locations[0]?.id
+    ?? null
+  );
+  const [locationId, setLocationId] = useState<number | null>(defaultLocationId);
+  useEffect(() => {
+    // Re-default once locations resolve.
+    if (locationId == null && defaultLocationId != null) setLocationId(defaultLocationId);
+  }, [defaultLocationId, locationId]);
   // WEB-UIUX-902: canonical role gate via useHasRole.
   const isAdmin = useHasRole('admin');
   // WEB-UIUX-1262: rate-limit lockout countdown state (seeded from parent prop)
@@ -253,7 +277,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
                     // WEB-UIUX-1253: PIN is 4–6 digits; do NOT auto-submit at length 4 because
                     // the employee may still be typing a 5- or 6-digit PIN. Submit only on
                     // Enter when PIN is at max length (6); the explicit Submit button covers all lengths.
-                    if (e.key === 'Enter' && pin.length === 6) onSubmit(pin);
+                    if (e.key === 'Enter' && pin.length === 6) onSubmit(pin, locationId);
                   }}
                   placeholder="4-6 digit PIN"
                   autoFocus
@@ -276,6 +300,36 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
               <p id="pin-modal-hint" className="mt-1 text-xs text-surface-500 dark:text-surface-400">
                 4–6 digit PIN (digits only)
               </p>
+              {/* WEB-UIUX-1252: multi-location punch picker. Single-location
+                  stores never see this row; server falls back to the user's
+                  home_location_id when locationId is null. */}
+              {showLocationPicker && (
+                <div className="mt-3">
+                  <label
+                    htmlFor="pin-modal-location"
+                    className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300"
+                  >
+                    Punch location
+                  </label>
+                  <select
+                    id="pin-modal-location"
+                    value={locationId ?? ''}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setLocationId(next ? Number(next) : null);
+                    }}
+                    disabled={!!lockedUntil}
+                    className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  >
+                    {locations.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                        {l.is_default ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {/* WEB-UIUX-1262: rate-limit lockout feedback — live countdown + attempts remaining */}
               {lockedUntil && countdown && (
                 <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-300">
@@ -307,7 +361,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
             </Link>
           ) : null}
           <button type="button"
-            onClick={() => onSubmit(pin)}
+            onClick={() => onSubmit(pin, locationId)}
             disabled={!employee.has_pin || pin.length < 4 || isPending || !!lockedUntil}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
@@ -619,7 +673,10 @@ export function EmployeeListPage() {
 
   // Clock in mutation
   const clockInMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockIn(id, pin),
+    // WEB-UIUX-1252: thread the selected location_id through; server falls
+    // back to home_location_id when undefined.
+    mutationFn: ({ id, pin, locationId }: { id: number; pin: string; locationId: number | null }) =>
+      employeeApi.clockIn(id, pin, locationId ?? undefined),
     onSuccess: (response) => {
       toast.success('Clocked in successfully');
       // WEB-UIUX-1255: server sends auto_closed_entry when a stale open shift was
@@ -651,7 +708,8 @@ export function EmployeeListPage() {
 
   // Clock out mutation
   const clockOutMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockOut(id, pin),
+    mutationFn: ({ id, pin, locationId }: { id: number; pin: string; locationId: number | null }) =>
+      employeeApi.clockOut(id, pin, locationId ?? undefined),
     onSuccess: (res: any) => {
       // WEB-UIUX-1256: surface total hours banked + (when available)
       // clock-in time so the worker has explicit confirmation of what
@@ -683,12 +741,12 @@ export function EmployeeListPage() {
     },
   });
 
-  const handlePinSubmit = (pin: string) => {
+  const handlePinSubmit = (pin: string, locationId: number | null) => {
     if (!pinModal) return;
     if (pinModal.action === 'clock-in') {
-      clockInMutation.mutate({ id: pinModal.employee.id, pin });
+      clockInMutation.mutate({ id: pinModal.employee.id, pin, locationId });
     } else {
-      clockOutMutation.mutate({ id: pinModal.employee.id, pin });
+      clockOutMutation.mutate({ id: pinModal.employee.id, pin, locationId });
     }
   };
 
