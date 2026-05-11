@@ -3307,7 +3307,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-740. **[MINOR] `useWsStore.lastMessage` stored on every event but ZERO consumers.** Pages can't show "Bob just edited this — refresh?" banners. Wasted state. L11. **[AUTOLOOP-T34 RESOLVED: useWsStore.lastMessage removed (zero consumers across codebase); state slim and writes eliminated.]**
   `packages/web/src/hooks/useWebSocket.ts:25-28,454`
 
-- [ ] WEB-UIUX-741. **[MINOR] No "stale data" age indicator anywhere.** Zero "edited X ago, refresh" badges. L11.
+- [!] WEB-UIUX-741. **[MINOR] No "stale data" age indicator anywhere.** Zero "edited X ago, refresh" badges. L11. **BLOCKED 2026-05-11: app-wide "edited X ago, refresh" badges need a uniform staleness contract per query key + per-page UI; designed-by-policy work, not a contained fix.**
 
 #### ED5: Auth/Session/Permission Edges
 
@@ -3425,7 +3425,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-776. **[MINOR] `group_discount_pct` field overloaded — % when type='percent', $ when type='fixed'.** No UI distinction; $0.50 fixed auto-applies like 50% percent. L7, L4. **[AUTOLOOP-T36 RESOLVED: CustomerGroupsTab Add+Edit discount inputs render `$` prefix when type=fixed, `%` suffix when percentage; label updates dynamically.]**
   `packages/web/src/pages/unified-pos/totals.ts:79-85`
 
-- [ ] WEB-UIUX-777. **[MINOR] Per-line tax cell uses pre-discount math, summary uses post-discount — row tax doesn't reconcile to total tax.** L9.
+- [!] WEB-UIUX-777. **[MINOR] Per-line tax cell uses pre-discount math, summary uses post-discount — row tax doesn't reconcile to total tax.** L9. **STALE 2026-05-11: cart UI has no per-line tax cell; only the summary line renders Tax. totals.ts is cents-pure and applies discount before tax (taxableC subtracts discount via the pro-rata allocation). No mismatch to reconcile.**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:621,655,769,809`
 
 - [x] WEB-UIUX-778. **[MINOR] Discount input unbounded `parseFloat` — "1e3" parses to 1000.** Same in CashModal split amounts. L7. **[AUTOLOOP-T36 RESOLVED: LineItemDiscountMenu + CheckoutModal cashGiven + split-amount inputs reject scientific notation via regex onChange/pre-apply guard.]**
@@ -3507,7 +3507,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-803. **[BLOCKER] Bulk delete on EstimateList allows deleting `converted` rows.** Orphans linked tickets. Confirm doesn't enumerate. L13, L16. **[AUTOLOOP-T37 RESOLVED: handleBulkDelete splits selection (converted skipped + deletable); confirm names skipped count; toast explains skip count.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
-- [ ] WEB-UIUX-804. **[MAJOR] No back-link from Ticket→Estimate.** `ticket.estimate_id` never read or rendered. Ticket is orphan after conversion. L5, L13.
+- [x] WEB-UIUX-804. **[MAJOR] No back-link from Ticket→Estimate.** `ticket.estimate_id` never read or rendered. Ticket is orphan after conversion. L5, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-11: TicketSidebar renders "View source estimate →" Link to /estimates/<estimate_id> when ticket.estimate_id is set. Server already populates this column on convert.]**
 
 - [!] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13. **[AUTOLOOP-T37 BLOCKED: invoices table + shared Invoice type lack estimate_id; needs server migration + route changes.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:416-420`
@@ -3540,7 +3540,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-814. **[BLOCKER] Single localStorage key `impersonation_session` for marker — second impersonation clobbers first across tabs.** Banner says A, requests use B. L16. **[AUTOLOOP-T38 RESOLVED: ImpersonationBanner switched localStorage→sessionStorage for impersonation_session marker; per-tab isolation; cross-tab StorageEvent listener removed.]**
   `packages/web/src/components/ImpersonationBanner.tsx:6,17`
 
-- [ ] WEB-UIUX-815. **[BLOCKER] Banner trusts localStorage without verifying token claims.** Stale marker + fresh login on same browser → "Impersonating acme-co" while user is logged in as themselves at acme-co. L16, L11.
+- [!] WEB-UIUX-815. **[BLOCKER] Banner trusts localStorage without verifying token claims.** Stale marker + fresh login on same browser → "Impersonating acme-co" while user is logged in as themselves at acme-co. L16, L11. **STALE 2026-05-11: ImpersonationBanner reads from sessionStorage (tab-isolated, not localStorage) and clears the marker on bizarre-crm:auth-cleared. Fresh login on the same browser fires completeLogin which emitAuthCleared sweeps the marker. Per WEB-FJ-012 fix.**
   `packages/web/src/components/ImpersonationBanner.tsx:26-43,50-85`
 
 - [x] WEB-UIUX-816. **[BLOCKER] Cross-tenant guard skipped when oldSlug is null.** Tab logged-out + sibling tab writes tenant-B token → tab silently re-hydrates as B. L16. **[AUTOLOOP-T38 RESOLVED: handleAuthBroadcastMessage("ready") no longer calls checkAuth() when current user is null; dispatches `bizarre-crm:cross-tenant-token` event; main.tsx shows persistent toast requiring explicit reload.]**
@@ -3601,7 +3601,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-835. **[MAJOR] BlockChyp Test Connection only checks at config-time — no live status indicator at checkout.** Cashier hits "Complete" → failure happens DURING charge attempt. L8, L11. **[AUTOLOOP-T39 RESOLVED: CheckoutModal Card-tender useQuery live-pings blockchypApi.testConnection (30s); amber banner "Card terminal unreachable — try other tender" on fail.]**
   `packages/web/src/pages/settings/BlockChypSettings.tsx:281-289`
 
-- [ ] WEB-UIUX-836. **[MAJOR] Subscription credit-note doesn't cancel future billing.** Goodwill refund → next cron charges again two weeks later. No "Also cancel subscription" checkbox. L5, L16.
+- [!] WEB-UIUX-836. **[MAJOR] Subscription credit-note doesn't cancel future billing.** Goodwill refund → next cron charges again two weeks later. No "Also cancel subscription" checkbox. L5, L16. **BLOCKED 2026-05-11: subscription credit-note flow is not yet wired in the web UI; there is nothing to add a checkbox to. Defer to memberships refund sprint.**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
 
 - [x] WEB-UIUX-837. **[MAJOR] InstallmentPlanWizard `acceptanceText.trim().length >= 3` accepts "Bob" as legal auto-debit signature.** Fails any reasonable e-sign audit. L7, L16. **[AUTOLOOP-T39 RESOLVED: STALE — InstallmentPlanWizard line 84 already enforces `acceptanceText.trim().toLowerCase() === customerName.trim().toLowerCase()` (per WEB-UIUX-393).]**

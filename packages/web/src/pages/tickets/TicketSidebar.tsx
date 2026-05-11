@@ -736,6 +736,24 @@ export function TicketSidebar({
         </div>
       )}
 
+      {/* WEB-UIUX-804: surface the parent estimate when this ticket was
+          converted from one. Without the back-link the ticket reads as an
+          orphan and the operator can't trace the original quote during a
+          dispute. ticket.estimate_id is already set server-side by convert. */}
+      {(ticket as unknown as { estimate_id?: number | null }).estimate_id && (
+        <div className="card p-4">
+          <div className="mb-2 text-xs font-semibold uppercase text-surface-500 dark:text-surface-400">
+            Estimate
+          </div>
+          <Link
+            to={`/estimates/${(ticket as unknown as { estimate_id: number }).estimate_id}`}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-400"
+          >
+            View source estimate →
+          </Link>
+        </div>
+      )}
+
       {/* Linked Tickets (ENR-T8) */}
       <LinkedTicketsCard ticketId={ticketId} />
 
