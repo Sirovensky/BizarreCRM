@@ -75,6 +75,18 @@ export function RefundsListPage() {
     },
   });
 
+  // WEB-UIUX-712 / WEB-UIUX-703 follow-up: manager liability summary so an
+  // admin opening the queue can instantly see outstanding store-credit
+  // exposure. Hidden for non-admin users — the endpoint is admin-only too.
+  const { data: liabilityData } = useQuery({
+    queryKey: ['refunds', 'liability'],
+    enabled: canApprove,
+    queryFn: async () => {
+      const res = await refundApi.getCreditsLiability();
+      return res.data as { success: boolean; data: { total: number; credits: unknown[] } };
+    },
+  });
+
   const approveMut = useMutation({
     mutationFn: (id: number) => refundApi.approve(id),
     onSuccess: () => {
@@ -114,6 +126,18 @@ export function RefundsListPage() {
           </p>
         </div>
       </header>
+
+      {/* Manager liability snapshot — admins only. Hidden when zero so it doesn't add noise on fresh tenants. */}
+      {canApprove && liabilityData?.data?.total && liabilityData.data.total > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="font-medium text-amber-800 dark:text-amber-200">
+            Outstanding store-credit liability: {formatCurrency(liabilityData.data.total)}
+          </p>
+          <p className="text-xs text-amber-700/80 dark:text-amber-300/80">
+            {liabilityData.data.credits.length} customer{liabilityData.data.credits.length === 1 ? '' : 's'} hold unredeemed credit. Surfaced from <code className="font-mono">GET /refunds/credits/liability</code>.
+          </p>
+        </div>
+      )}
 
       <div role="tablist" aria-label="Refund status filter" className="flex flex-wrap gap-1 border-b border-surface-200 dark:border-surface-700">
         {TABS.map((t) => (

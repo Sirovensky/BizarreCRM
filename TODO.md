@@ -2680,7 +2680,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### Blockers — Unwired server APIs
 
-- [!] WEB-UIUX-703. **[BLOCKER] No web UI for `refunds.routes.ts` API surface.** Server exposes POST `/refunds` (idempotent + `refunds.create` perm), PATCH `/refunds/:id/approve` (+`refunds.approve`), PATCH `/refunds/:id/decline`, GET `/refunds/credits/:customerId`, POST `/refunds/credits/:customerId/use`, GET `/refunds/credits/liability`. Zero callers in `packages/web/src` (grep `/refunds`, `refundsApi` → 0). Operators have only Credit Note path — no approval workflow, no store-credit redemption at POS, no manager liability dashboard. L8, L3, L1. **[AUTOLOOP-T32 BLOCKED: refunds API has 7 endpoints (list/create/approve/decline/credit balance/use/liability) — multi-page feature implementation.]**
+- [!] WEB-UIUX-703. **Most of the refunds API now has UI (2026-05-11).** `RefundsListPage` consumes `refundApi.list` + `approve` + `decline` (paginated, status-tabbed, inline approve/decline). `StoreCreditCard` on `CustomerDetailPage` consumes `refundApi.getCredits` (balance + transactions). Sidebar entry under Billing. Still pending: an "Apply store credit" payment-method option on `InvoiceDetailPage` (consumes `refundApi.useCredits`) and a manager liability dashboard (consumes `refundApi.getCreditsLiability`). Stays `[!]` until those two surfaces land.
   `packages/server/src/routes/refunds.routes.ts:107,253,418,439,462,529`
   <!-- meta: fix=add-refundsApi-endpoint-shim+RefundsListPage+ApprovalQueue+StoreCreditRedeemModal -->
 
