@@ -8,6 +8,10 @@ export interface ImpersonationSession {
   tenant_slug: string;
   tenant_name?: string;
   started_at?: string;
+  // WEB-UIUX-819: server-issued impersonation token id. Persist so the
+  // banner can revoke the active token via POST /impersonate/:jti/end
+  // instead of waiting for TTL.
+  jti?: string;
 }
 
 const IMPERSONATION_CHANGED_EVENT = 'bizarre-crm:impersonation-changed';
@@ -31,10 +35,14 @@ export function getImpersonationSession(): ImpersonationSession | null {
     const obj = parsed as Record<string, unknown>;
     if (typeof obj.tenant_slug !== 'string' || obj.tenant_slug.length === 0) return null;
     if (!/^[a-z0-9-]{1,64}$/.test(obj.tenant_slug)) return null;
+    const jti = typeof obj.jti === 'string' && /^[A-Za-z0-9_\-]{1,128}$/.test(obj.jti)
+      ? obj.jti
+      : undefined;
     return {
       tenant_slug: obj.tenant_slug,
       tenant_name: typeof obj.tenant_name === 'string' ? obj.tenant_name : undefined,
       started_at: typeof obj.started_at === 'string' ? obj.started_at : undefined,
+      jti,
     };
   } catch {
     return null;
@@ -78,6 +86,23 @@ export function ImpersonationBanner() {
   if (!session) return null;
 
   function handleExit() {
+    // WEB-UIUX-819: server-revoke the impersonation token via the jti so a
+    // leaked or stolen impersonation cookie can't outlive the Exit click.
+    // We fire-and-forget — the local UI state clears immediately; server
+    // revocation is logged + audited even if it fails. Without the jti
+    // (legacy sessions, malformed storage) we just clear locally.
+    const jti = session?.jti;
+    const tenantSlug = session?.tenant_slug;
+    if (jti && tenantSlug) {
+      void (async () => {
+        try {
+          const { superAdminApi } = await import('@/api/endpoints');
+          await superAdminApi.endImpersonation(tenantSlug, jti);
+        } catch {
+          /* non-fatal — local cleanup still runs */
+        }
+      })();
+    }
     clearImpersonationSession();
     navigate('/super-admin/tenants');
   }

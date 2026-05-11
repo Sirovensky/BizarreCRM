@@ -185,7 +185,11 @@ function useTenantImpersonation(tenant: SuperAdminTenant) {
         toast.error('No token returned from impersonation');
         return;
       }
-      setImpersonationSession({ tenant_slug: data.tenant_slug });
+      // WEB-UIUX-819: persist the server-returned jti so the Exit button
+      // can call POST /tenants/:slug/impersonate/:jti/end and revoke the
+      // active token immediately instead of waiting for TTL expiry. The
+      // banner reads this back via getImpersonationSession.
+      setImpersonationSession({ tenant_slug: data.tenant_slug, jti: data.jti });
       const targetUser = data.target_user;
       const validRole = (['admin', 'manager', 'technician', 'cashier'] as const).includes(
         targetUser.role as 'admin' | 'manager' | 'technician' | 'cashier',

@@ -3552,7 +3552,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-818. **[MAJOR] Exit impersonation calls full `logout()` → bounces to tenant /login.** SA console not restored. SA must manually navigate back to /super-admin/tenants. L4, L1. **[AUTOLOOP-T38 RESOLVED: handleExit clears impersonation marker + navigate("/super-admin/tenants") instead of full logout; SA console restored.]**
   `packages/web/src/components/ImpersonationBanner.tsx:89-93`
 
-- [ ] WEB-UIUX-819. **[MAJOR] `jti` returned from /impersonate never persisted client-side.** `endImpersonation` API exists but unreachable — leaked token can't be revoked from UI. Only TTL expiry. L16.
+- [x] WEB-UIUX-819. **[MAJOR] `jti` returned from /impersonate never persisted client-side.** `endImpersonation` API exists but unreachable — leaked token can't be revoked from UI. Only TTL expiry. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: TenantsListPage impersonate.onSuccess now persists data.jti in the session blob; ImpersonationBanner type + parser accept jti; handleExit calls superAdminApi.endImpersonation(tenant_slug, jti) before clearing local state. Server-revoke instead of TTL wait.]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:179-212`
 
 - [x] WEB-UIUX-820. **[MAJOR] Tenant suspended mid-session → 401 → generic "session expired" toast.** Real reason buried in `error.response.data.code`. Operator doesn't know why. L8, L4. **[AUTOLOOP-T38 RESOLVED: server adds ERR_TENANT_SUSPENDED code; refresh handler checks master DB; client 401 interceptor shows "Your account has been suspended. Contact support." + force-logs out.]**
