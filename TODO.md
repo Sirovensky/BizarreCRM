@@ -2794,7 +2794,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED5: Auth/Session/Permission Edges
 
-- [!] WEB-UIUX-742. **[BLOCKER] SwitchUser is sticky forever — no auto-revert, no banner.** Manager switches in to override, walks away, cashier sells under manager identity. Only signal = name in Header avatar. L16, L11. **[AUTOLOOP-T34 BLOCKED: switchUser fully replaces auth state via emitAuthCleared(); no original-user snapshot exists for "Switch back" banner.]**
+- [x] WEB-UIUX-742. **Switch-User banner + Switch-back action (2026-05-11).** `authStore` now keeps an `actingAs: { id, name, role } | null` snapshot of the prior user whenever `switchUser(pin)` succeeds. New `switchBack()` action clears the snapshot, calls `/auth/logout`, wipes local state, emits `authCleared`, and redirects to `/login?switch_back=1` (PIN is intentionally NOT persisted to avoid a credential leak). `Header.tsx` renders an amber banner directly under the chrome whenever `actingAs && user` is non-null: `Acting as <new> — switched from <prev> (<role>)` with a `Switch back` button. Manager-override scenario can no longer stay sticky after the manager walks away.
   `packages/web/src/components/layout/Header.tsx:101,540-555`
   `packages/web/src/stores/authStore.ts:113-127`
   <!-- meta: fix=ImpersonationBanner-style-yellow-bar+auto-revert-after-N-min -->

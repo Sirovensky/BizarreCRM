@@ -115,13 +115,25 @@ export { AUTH_CLEAR_EVENT, AUTH_READY_EVENT };
 //   4. The warning should offer "Extend session" (calls /auth/refresh) or "Logout".
 //   5. Clear the interval on logout / unmount.
 
+// WEB-UIUX-742: snapshot of who was signed in *before* the current
+// switchUser PIN flow. Lets Header render a "Acting as X — switch back"
+// banner so the manager-override path doesn't stay sticky forever.
+export interface ActingAsSnapshot {
+  id: number;
+  name: string;
+  role: string;
+}
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  actingAs: ActingAsSnapshot | null;
   completeLogin: (accessToken: string, refreshToken: string, user: User) => void;
   logout: () => Promise<void>;
   switchUser: (pin: string) => Promise<void>;
+  switchBack: () => Promise<void>;
+  clearActingAs: () => void;
   checkAuth: () => Promise<void>;
   setUser: (user: User) => void;
 }
@@ -130,6 +142,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  actingAs: null,
 
   completeLogin: (_accessToken, _refreshToken, user) => {
     // Clear any previous tenant's cached data before storing new credentials.
@@ -167,13 +180,44 @@ export const useAuthStore = create<AuthState>((set) => ({
     // the outgoing user. Emit the clear BEFORE calling the API so listeners
     // tear down state while the PIN is still being validated.
     const prevUser = useAuthStore.getState().user;
+    // WEB-UIUX-742: snapshot the prior user so Header can render a
+    // "Acting as <new> — switch back to <prev>" banner. The PIN itself
+    // is not persisted (would be a credential-leak); switchBack falls
+    // through to a logout + redirect to /login.
+    const actingAs: ActingAsSnapshot | null = prevUser
+      ? {
+          id: prevUser.id,
+          name: [prevUser.first_name, prevUser.last_name].filter(Boolean).join(' ') || prevUser.username,
+          role: prevUser.role,
+        }
+      : null;
     emitAuthCleared(false, prevUser?.id ?? null);
     const res = await api.post('/auth/switch-user', { pin });
     const { user } = res.data.data;
     clearLegacyAccessToken();
-    set({ user, isAuthenticated: true });
+    set({ user, isAuthenticated: true, actingAs });
     emitAuthReady();
   },
+
+  switchBack: async () => {
+    // WEB-UIUX-742: full logout — we never persist the original PIN, so
+    // returning to the prior user requires their fresh credentials.
+    // Clearing actingAs first stops the banner from flashing during the
+    // /login redirect.
+    set({ actingAs: null });
+    const prevUser = useAuthStore.getState().user;
+    try { await api.post('/auth/logout'); } catch (err) {
+      console.warn('[auth] /auth/logout failed during switchBack; clearing local session anyway', err);
+    }
+    clearLegacyAccessToken();
+    set({ user: null, isAuthenticated: false, isLoading: false });
+    emitAuthCleared(true, prevUser?.id ?? null);
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login?switch_back=1';
+    }
+  },
+
+  clearActingAs: () => set({ actingAs: null }),
 
   checkAuth: async () => {
     clearLegacyAccessToken();

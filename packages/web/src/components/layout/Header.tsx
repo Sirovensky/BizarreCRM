@@ -91,7 +91,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const navigate = useNavigate();
   const location = useLocation();
   const { setCommandPaletteOpen, keyboardShortcutsEnabled } = useUiStore();
-  const { user, logout } = useAuthStore();
+  const { user, logout, actingAs, switchBack } = useAuthStore();
   // POS owns its own primary search bar (mockup Frame 03 search prominence).
   // Hide the shell command-palette button on /pos to avoid double search.
   const isPosRoute = location.pathname === '/pos' || location.pathname.startsWith('/pos/') || location.pathname === '/tickets/new';
@@ -458,6 +458,25 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       "relative z-40 flex shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80",
       isPosRoute ? "h-14" : "h-16",
     )} style={{ overflow: 'visible' }}>
+      {/* WEB-UIUX-742: Switch-User banner. Renders when an active switch flow
+          left a prior user on the snapshot — operator hits "Switch back" to
+          log out + redirect to /login so the original credentials can be
+          re-entered. PIN is intentionally NOT persisted. */}
+      {actingAs && user && (
+        <div className="absolute inset-x-0 top-full z-50 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
+            <strong className="capitalize">Acting as {user.first_name || user.username}</strong>
+            <span className="opacity-80">— switched from {actingAs.name} ({actingAs.role}).</span>
+            <button
+              type="button"
+              onClick={() => { void switchBack(); }}
+              className="ml-auto rounded-md border border-amber-400 px-2 py-0.5 text-[11px] font-semibold hover:bg-amber-100 dark:border-amber-500/40 dark:hover:bg-amber-500/15"
+            >
+              Switch back
+            </button>
+          </div>
+        </div>
+      )}
       {/* Left: Hamburger (mobile) + Breadcrumb area (placeholder) */}
       <div className={cn("flex items-center gap-2", isPosRoute ? "flex-none" : "flex-1")}>
         {hamburgerButton}
