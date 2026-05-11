@@ -31,20 +31,36 @@ const authBroadcastChannel = typeof window !== 'undefined' && 'BroadcastChannel'
 const REQUEST_LOGIN_NAV_EVENT = 'bizarre-crm:request-login-nav';
 function requestLoginNav(): void {
   if (typeof window === 'undefined') return;
+  // WEB-UIUX-813: when an impersonation session is/was active, bounce to
+  // the super-admin login instead of the tenant login. Without this, an
+  // SA who walks away mid-impersonation gets their token expired (15min),
+  // then their browser lands on /login — at which point the next person
+  // at the same kiosk can sign in as a *real* tenant admin and the UI
+  // looks normal, with no signal that the previous user was an SA. By
+  // routing to /super-admin/login (and surfacing a banner there) we keep
+  // the separation visible.
+  let target = '/login';
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const raw = sessionStorage.getItem('impersonation_session');
+      if (raw) target = '/super-admin/login?impersonation_ended=1';
+    }
+  } catch { /* sessionStorage may be disabled */ }
+
   // If nothing is listening yet (App not mounted, Suspense fallback), the
   // listener that DOES eventually mount won't help — fall back to a hard
   // nav after a microtask in that case so we never get stuck on a stale
   // protected page. Bridge handler sets `window.__bizarreLoginNavReady`
   // when it's wired up.
   try {
-    window.dispatchEvent(new CustomEvent(REQUEST_LOGIN_NAV_EVENT));
+    window.dispatchEvent(new CustomEvent(REQUEST_LOGIN_NAV_EVENT, { detail: { target } }));
   } catch (err) {
     console.warn('Failed to emit request-login-nav event', err);
   }
   setTimeout(() => {
-    if (window.location.pathname.startsWith('/login')) return;
+    if (window.location.pathname.startsWith('/login') || window.location.pathname.startsWith('/super-admin/login')) return;
     if (!(window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady) {
-      window.location.href = '/login';
+      window.location.href = target;
     }
   }, 0);
 }

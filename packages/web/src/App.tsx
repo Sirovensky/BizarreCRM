@@ -357,11 +357,18 @@ export default function App() {
 
   useEffect(() => {
     (window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady = true;
-    const handler = () => {
-      // Skip if we're already on the login page; avoids double-render and
-      // wiping the LoginForm's local state on every spurious re-fire.
-      if (window.location.pathname.startsWith('/login')) return;
-      navigate('/login', { replace: true });
+    const handler = (e: Event) => {
+      // WEB-UIUX-813: honor target from the event detail so impersonation
+      // session expiry can route to /super-admin/login instead of /login.
+      const detail = (e as CustomEvent<{ target?: string }>).detail;
+      const target = detail?.target || '/login';
+      // Skip if we're already on the resolved login page; avoids double-render
+      // and wiping the LoginForm's local state on every spurious re-fire.
+      if (
+        window.location.pathname.startsWith('/login') ||
+        window.location.pathname.startsWith('/super-admin/login')
+      ) return;
+      navigate(target, { replace: true });
     };
     window.addEventListener(REQUEST_LOGIN_NAV_EVENT, handler);
     return () => {

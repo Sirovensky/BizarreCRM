@@ -3534,7 +3534,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED18: Super-Admin / Multi-Tenant
 
-- [ ] WEB-UIUX-813. **[BLOCKER] Impersonation indistinguishable from real login at logout time.** SA walks away mid-session, token expires (15min), bounces to /login (tenant login) → next person at kiosk logs in as REAL tenant admin, looks normal. L16.
+- [x] WEB-UIUX-813. **[BLOCKER] Impersonation indistinguishable from real login at logout time.** SA walks away mid-session, token expires (15min), bounces to /login (tenant login) → next person at kiosk logs in as REAL tenant admin, looks normal. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: requestLoginNav now checks sessionStorage.impersonation_session and routes to /super-admin/login?impersonation_ended=1 when the prior session was an SA impersonation; App handler honors detail.target so SA logout is visually distinct from a tenant kick-out.]**
   `packages/web/src/pages/super-admin/TenantsListPage.tsx:185-211`
 
 - [x] WEB-UIUX-814. **[BLOCKER] Single localStorage key `impersonation_session` for marker — second impersonation clobbers first across tabs.** Banner says A, requests use B. L16. **[AUTOLOOP-T38 RESOLVED: ImpersonationBanner switched localStorage→sessionStorage for impersonation_session marker; per-tab isolation; cross-tab StorageEvent listener removed.]**
