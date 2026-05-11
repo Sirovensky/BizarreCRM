@@ -11,11 +11,12 @@
  * dedicated re-enroll-from-settings flow is not exposed here because
  * the current server contract has no /account/2fa/enable equivalent.
  */
-import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Loader2, KeyRound, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Loader2, KeyRound, AlertTriangle, Smartphone, Trash2, QrCode } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import toast from 'react-hot-toast';
-import { authApi } from '@/api/endpoints';
+import { authApi, posHandoffApi, type PairedDevice } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 
 const MIN_LEN = 8;
@@ -156,6 +157,179 @@ export function AccountTab() {
           a shop admin can clear it from the Users tab.
         </p>
       </section>
+
+      <PairedDevicesSection />
     </div>
+  );
+}
+
+function formatRelative(iso: string | null): string {
+  if (!iso) return 'never';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(ms) || ms < 0) return 'just now';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function PairedDevicesSection() {
+  const qc = useQueryClient();
+  const [pairing, setPairing] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [, forceTick] = useState(0);
+
+  const devicesQ = useQuery({
+    queryKey: ['paired-devices'],
+    queryFn: () => posHandoffApi.listDevices().then((r) => r.data.data),
+    staleTime: 15_000,
+  });
+
+  // Tick once per second while the pairing code is live so the countdown
+  // re-renders without keeping a separate timer hook on every section.
+  useEffect(() => {
+    if (!pairing) return;
+    const t = window.setInterval(() => {
+      if (Date.now() >= pairing.expiresAt) {
+        setPairing(null);
+      } else {
+        forceTick((n) => n + 1);
+      }
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [pairing]);
+
+  const startMut = useMutation({
+    mutationFn: () => posHandoffApi.startPairing(),
+    onSuccess: (res) => {
+      const code = res.data.data.code;
+      const ttl = res.data.data.expires_in_seconds * 1000;
+      setPairing({ code, expiresAt: Date.now() + ttl });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'Could not start pairing';
+      toast.error(msg);
+    },
+  });
+
+  const removeMut = useMutation({
+    mutationFn: (id: number) => posHandoffApi.removeDevice(id),
+    onSuccess: () => {
+      toast.success('Device unpaired');
+      qc.invalidateQueries({ queryKey: ['paired-devices'] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'Could not remove device';
+      toast.error(msg);
+    },
+  });
+
+  const devices: PairedDevice[] = devicesQ.data ?? [];
+  const remainingSeconds = pairing ? Math.max(0, Math.ceil((pairing.expiresAt - Date.now()) / 1000)) : 0;
+
+  return (
+    <section className="space-y-3 border-t border-surface-200 dark:border-surface-700 pt-4">
+      <header className="space-y-1">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Smartphone className="w-4 h-4" /> Paired devices
+        </h3>
+        <p className="text-sm text-surface-500 dark:text-surface-400">
+          A paired phone can take over Call / SMS actions tapped from POS or
+          the ticket list. Pair once on a device you trust; the pairing code
+          expires in 10 minutes and is single-use.
+        </p>
+      </header>
+
+      {pairing ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 p-4 space-y-3">
+          <div className="flex items-start gap-4">
+            <div className="bg-white p-2 rounded-md shrink-0">
+              <QRCodeSVG value={pairing.code} size={120} />
+            </div>
+            <div className="space-y-1 text-sm">
+              <p className="font-semibold">On the paired phone, enter:</p>
+              <p className="font-mono text-2xl tracking-widest">{pairing.code}</p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                Code expires in {Math.floor(remainingSeconds / 60)}:
+                {String(remainingSeconds % 60).padStart(2, '0')}. Single-use; a
+                new code is required for a second device.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPairing(null)}
+            className="btn-secondary text-xs"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => startMut.mutate()}
+          disabled={startMut.isPending}
+          className="btn-primary inline-flex items-center gap-2 text-sm"
+        >
+          {startMut.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <QrCode className="w-4 h-4" />
+          )}
+          Pair a phone
+        </button>
+      )}
+
+      <div className="space-y-2">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">
+          Currently paired
+        </h4>
+        {devicesQ.isLoading ? (
+          <p className="text-sm text-surface-500 dark:text-surface-400">Loading…</p>
+        ) : devices.length === 0 ? (
+          <p className="text-sm text-surface-500 dark:text-surface-400">
+            No paired devices.
+          </p>
+        ) : (
+          <ul className="divide-y divide-surface-200 dark:divide-surface-700 rounded-md border border-surface-200 dark:border-surface-700">
+            {devices.map((d) => (
+              <li
+                key={d.id}
+                className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">
+                    {d.device_label || `Device #${d.id}`}
+                  </p>
+                  <p className="text-xs text-surface-500 dark:text-surface-400">
+                    {d.platform || 'unknown platform'} · last seen {formatRelative(d.last_seen_at)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Unpair ${d.device_label || `device #${d.id}`}?`)) {
+                      removeMut.mutate(d.id);
+                    }
+                  }}
+                  disabled={removeMut.isPending}
+                  className="btn-ghost text-red-600 dark:text-red-400 inline-flex items-center gap-1 text-xs"
+                  aria-label={`Unpair ${d.device_label || `device ${d.id}`}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Unpair
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
