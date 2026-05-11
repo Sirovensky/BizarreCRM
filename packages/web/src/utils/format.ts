@@ -178,6 +178,31 @@ export function formatShortDateTime(iso: string | Date | null | undefined, tz?: 
  * High-traffic call-sites updated: Header notifications, Dashboard,
  * TicketListPage, InvoiceListPage, CustomerListPage.
  */
+/**
+ * WEB-UIUX-781: detect a non-existent local time picked from `<input
+ * type="datetime-local">`. JS `new Date(when)` silently rolls invalid
+ * DST spring-forward instants (e.g. 02:30 on a transition Sunday)
+ * forward to 03:30 without raising. Compare what the picker said to
+ * what the Date actually represents.
+ *
+ * Returns `'nonexistent'` when the requested wall-clock components
+ * disagree with the materialised Date components; `null` otherwise.
+ */
+export function dstSpringForwardAnomaly(localInput: string, parsed: Date): 'nonexistent' | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localInput);
+  if (!m) return null;
+  if (
+    parsed.getFullYear() !== Number(m[1]) ||
+    parsed.getMonth() !== Number(m[2]) - 1 ||
+    parsed.getDate() !== Number(m[3]) ||
+    parsed.getHours() !== Number(m[4]) ||
+    parsed.getMinutes() !== Number(m[5])
+  ) {
+    return 'nonexistent';
+  }
+  return null;
+}
+
 export function formatTime(iso: string | Date | null | undefined, tz?: string | null): string {
   if (iso == null) return '\u2014';
   const d = iso instanceof Date ? iso : new Date(iso);

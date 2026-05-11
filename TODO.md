@@ -3439,7 +3439,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-780. **[MAJOR] CalendarPage uses BROWSER TZ for input AND display, ignoring shop TZ entirely.** Receptionist in PST scheduling for shop in EST = 3 hours off. Zero "Times shown in [Shop TZ]" disclaimer. L6. **[AUTOLOOP-T36 RESOLVED: CalendarPage formatTimeTz uses Intl.DateTimeFormat with shopTz; banner shows current shop TZ + browser-mismatch warning.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:176-192,524,607,661,125-127`
 
-- [ ] WEB-UIUX-781. **[MAJOR] DST spring-forward gap silently materialised — picking 02:30 on March 8 lands at 03:30 MDT.** No "non-existent local time" check. 15-min select includes 4 invalid slots. L7.
+- [x] WEB-UIUX-781. **[MAJOR] DST spring-forward gap silently materialised — picking 02:30 on March 8 lands at 03:30 MDT.** No "non-existent local time" check. 15-min select includes 4 invalid slots. L7. **[AUTOLOOP-T49 RESOLVED 2026-05-11: dstSpringForwardAnomaly helper extracted from ScheduledSendModal into format.ts and wired into ShiftSchedulePage createMut — start_at/end_at non-existent local times now reject with a clear error instead of silently rolling forward.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:179-192`
 
 - [!] WEB-UIUX-782. **[MAJOR] DST fall-back ambiguity silently picks first occurrence.** Shift end 02:00 + start 01:00 on rollback day → undercount or silent overlap. Payroll bug. L7, L13. **[AUTOLOOP-T36 BLOCKED: DST fall-back ambiguity needs server-side TZ-aware duration math (dayjs/luxon with named TZ).]**
@@ -3472,13 +3472,13 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-791. **[BLOCKER] Stocktake "quick-scan default" sets counted_qty to `expected + 1` not actual physical count.** Scanning 5 units of `in_stock=3` → counted_qty=4, not 5. STOCKTAKE MATH WRONG. L7, L13. **[AUTOLOOP-T37 RESOLVED: handleScan finds existing counted row + counted_qty++; if no row, starts at 1. Manual entry unchanged.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:174-177`
 
-- [ ] WEB-UIUX-792. **[MAJOR] POS global scan handler bails on Enter only checks 2 modals (CheckoutModal, SuccessScreen).** DeviceTemplateNudge, UpsellPrompt, PinModal etc. don't block. Phantom line items added to next sale. L5, L11.
+- [x] WEB-UIUX-792. **[MAJOR] POS global scan handler bails on Enter only checks 2 modals (CheckoutModal, SuccessScreen).** DeviceTemplateNudge, UpsellPrompt, PinModal etc. don't block. Phantom line items added to next sale. L5, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: POS scan handler now also bails when document.querySelector role=dialog aria-modal=true matches; covers PinModal/DeviceTemplateNudge/UpsellPrompt/etc. INPUT/TEXTAREA/SELECT/contenteditable guards retained.]**
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:138-144`
 
 - [x] WEB-UIUX-793. **[MAJOR] Scanner "first match wins" silently picks wrong item on multi-match.** Server `name LIKE %12345%` matches "iPhone 12345 mAh battery" before exact UPC. `lookupBarcode` exact endpoint exists but unused. L1, L8. **[AUTOLOOP-T37 RESOLVED: digits-only 8+ char input routes to inventoryApi.lookupBarcode (exact) in StocktakePage + LeftPanel + UnifiedPosPage scanners.]**
   Multiple scan paths: `UnifiedPosPage.tsx:166`, `LeftPanel.tsx:453`, `StocktakePage.tsx:173`
 
-- [ ] WEB-UIUX-794. **[MAJOR] POS detection threshold `100ms/char` too lenient for fast typists (40+ wpm = ~75ms/char).** Fast-typed `1234⏎` qualifies as scan, silently adds wrong product. L1, L7.
+- [x] WEB-UIUX-794. **[MAJOR] POS detection threshold `100ms/char` too lenient for fast typists (40+ wpm = ~75ms/char).** Fast-typed `1234⏎` qualifies as scan, silently adds wrong product. L1, L7. **[AUTOLOOP-T49 RESOLVED 2026-05-11: scanner inter-keystroke threshold tightened from 100ms to 50ms; real HID scanners deliver sub-20ms, human typing rarely under 50ms.]**
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:190-198`
 
 - [x] WEB-UIUX-795. **[MAJOR] Scan-no-match toasts but ZERO recovery path.** Scanned barcode lost, not pre-filled into "Quick add" form, not logged. Cashier must re-scan or re-type. L4, L8. **[AUTOLOOP-T37 RESOLVED: scan-no-match toast adds Quick Add button → sets pendingMiscName + switches to Misc tab + MiscTab pre-fills barcode.]**
