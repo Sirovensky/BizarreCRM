@@ -2071,6 +2071,17 @@ export function UnifiedPosPage() {
       queryClient.invalidateQueries({ queryKey: ['reports'] });
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       toast.success('Sale complete');
+      // WEB-UIUX-1228: server may swap a smaller manual discount for a
+      // larger membership discount when the cashier didn't explicitly opt
+      // into stacking. Surface that swap so the cashier sees why the
+      // applied discount differs from what they typed.
+      const dbk = res.data?.data?.discount_breakdown;
+      if (dbk?.manual_dropped) {
+        toast(
+          `Membership discount ${formatCurrency(fromCents(dbk.membership))} replaced your manual ${formatCurrency(fromCents(dbk.manual))} (larger wins). Toggle "Stack with membership" to combine.`,
+          { duration: 6000, icon: 'ℹ️' },
+        );
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.message || err?.message || 'Checkout failed');
     } finally {
