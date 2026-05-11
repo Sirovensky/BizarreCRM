@@ -351,12 +351,19 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
             </span>
           )}
         </div>
+        {/* WEB-UIUX-1326: icon-only with title only is inconsistently
+            announced by screen readers and disappears on touch. aria-label
+            mirrors the title and a visible "Schedule" label renders on
+            tablet+ so the affordance reads at a glance. */}
         <button
           onClick={() => setShowForm(!showForm)}
-          className="inline-flex h-6 w-6 items-center justify-center rounded text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-700 dark:hover:text-surface-300"
+          aria-label="Schedule appointment"
+          aria-expanded={showForm}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-surface-500 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-300"
           title="Schedule appointment"
         >
-          <CalendarPlus className="h-3.5 w-3.5" />
+          <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="hidden sm:inline">Schedule</span>
         </button>
       </div>
 

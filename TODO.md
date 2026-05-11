@@ -4655,7 +4655,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:396-405`
   <!-- meta: fix=add-No-show-option+also-expose-via-edit-modal-(WEB-UIUX-1316)+server-PUT-already-supports-no_show-flag -->
 
-- [!] WEB-UIUX-1326. **[MAJOR] TicketSidebar "Schedule appointment" trigger is a 14px `<CalendarPlus>` icon-only button (`TicketSidebar.tsx:289-295`) labeled only via `title="Schedule appointment"`. Touch users (tablet at front desk) miss the affordance entirely; mobile keyboard-only users get no `aria-label` (only `title=`, which most SRs read inconsistently). Primary scheduling action on ticket page is functionally hidden.** L1 findability, L6 discoverability, L11 a11y (16-lens). **[AUTOLOOP-T49 BLOCKED 2026-05-11: TicketSidebar CalendarPlus button needs a labelled affordance (visible text or aria-label that screen readers consistently read). Multi-callsite copy + layout pass.]**
+- [x] WEB-UIUX-1326. **TicketSidebar Schedule trigger gets a labelled affordance (2026-05-11).** `aria-label="Schedule appointment"` mirrors the existing `title` attribute (screen readers consistently read aria-label), `aria-expanded` reflects `showForm`, the `CalendarPlus` icon carries `aria-hidden`, and a visible "Schedule" text label renders on `sm:` and wider so tablet/desk operators see the affordance instead of guessing at a 14px icon.
   `packages/web/src/pages/tickets/TicketSidebar.tsx:289-295`
   <!-- meta: fix=replace-with-text-button-"+ Schedule"+aria-label+min-32px-hit-target+OR-keep-icon-but-add-visible-label-on-hover/focus -->
 
