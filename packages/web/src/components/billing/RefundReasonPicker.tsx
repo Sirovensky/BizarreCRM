@@ -127,14 +127,18 @@ export function RefundReasonPicker({
               type="button"
               key={r.code}
               onClick={() => handleReasonChange(r.code)}
-              className={`min-h-[44px] rounded-md border px-3 py-2 text-left text-sm transition ${
+              // WEB-UIUX-1303: `min-w-0` lets the flex/grid track shrink the
+              // chip below its content's intrinsic width so long labels
+              // ("Customer dissatisfied", "Loyalty / promo retro") wrap at
+              // word boundaries instead of mid-word on narrow viewports.
+              className={`min-h-[44px] min-w-0 rounded-md border px-3 py-2 text-left text-sm transition ${
                 localReason === r.code
                   ? 'border-primary-500 bg-primary-50 text-primary-900 dark:bg-primary-900/30 dark:text-primary-200'
                   : 'border-surface-300 dark:border-surface-700 text-surface-900 dark:text-surface-100 hover:border-surface-400 dark:hover:border-surface-600'
               }`}
             >
-              <div className="font-medium">{r.label}</div>
-              <div className="text-xs text-surface-500 dark:text-surface-400">{r.hint}</div>
+              <div className="font-medium break-words">{r.label}</div>
+              <div className="text-xs text-surface-500 dark:text-surface-400 break-words">{r.hint}</div>
             </button>
           ))}
         </div>

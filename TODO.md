@@ -4572,7 +4572,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-805`
   <!-- meta: fix=use-FocusTrap-or-headlessui-Dialog-(or-mirror-existing-modal-pattern-on-this-page-if-trapping)+restore-focus-to-trigger-on-close -->
 
-- [!] WEB-UIUX-1303. **[MINOR] Reason chips wrap into 2 columns (`RefundReasonPicker.tsx:62`) but the longer "Customer dissatisfied" + "Duplicate charge" labels overflow the chip on small viewports (no min-width, no truncate). Causes wrap-mid-word visual.** L5 visual hierarchy. **[AUTOLOOP-T49 BLOCKED 2026-05-11: chip wrap needs a  pass + responsive 3-col layout decision; refactor lives across all reason-picker callsites.]**
+- [x] WEB-UIUX-1303. **Reason-chip wrap fixed 2026-05-11.** `RefundReasonPicker` chips now carry `min-w-0` so the grid track can shrink below content's intrinsic width, and the inner label + hint divs use `break-words` so long labels ("Customer dissatisfied", "Loyalty / promo retro") wrap at word boundaries instead of breaking mid-word on narrow viewports. Single-file CSS-token change; no API surface touched.
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62-78`
   <!-- meta: fix=grid-cols-1-md:grid-cols-2+OR-truncate-with-title-attr+OR-shorten-labels-Defective/Dissatisfied/Wrong-item/Dup-charge/Price-adj/Other -->
 
