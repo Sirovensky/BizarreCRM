@@ -2128,3 +2128,28 @@ export const refundApi = {
       '/refunds/credits/liability',
     ),
 };
+
+// WEB-UNWIRED-007: financing provider wrapper. Returns redirect_url when the
+// tenant has Affirm/Klarna creds wired; 503 + code='not_configured' otherwise.
+export interface FinancingCheckoutResponse {
+  redirect_url: string;
+  provider: 'affirm' | 'klarna';
+  provider_session_id: string;
+}
+export interface FinancingCheckoutInput {
+  invoice_id: number;
+  amount_cents: number;
+  customer_email?: string | null;
+  customer_first_name?: string | null;
+  customer_last_name?: string | null;
+  customer_phone?: string | null;
+}
+
+export const financingApi = {
+  createCheckoutSession: (data: FinancingCheckoutInput) =>
+    api.post<{ success: boolean; data: FinancingCheckoutResponse; code?: string; message?: string }>(
+      '/financing/checkout-session',
+      data,
+      { skipGlobal500Toast: true } as object,
+    ),
+};

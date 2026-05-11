@@ -305,6 +305,16 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // WEB-UIUX-945: cooldown window (hours) before the same sender gets
   // another auto-reply. Defaults to 24; bounded [1, 168] in sms.routes.
   'auto_reply_cooldown_hours',
+  // WEB-UNWIRED-007: financing provider config. Toggle + min + provider
+  // choice are public; the API key + webhook secret are
+  // ENCRYPTED_CONFIG_KEYS so a tenant-DB leak does not expose the
+  // merchant credentials. billing_financing_enabled + billing_financing_min_cents
+  // already land via migration 095_billing_enrichment; the rest are added here
+  // so the settings UI can write them.
+  'billing_financing_enabled', 'billing_financing_min_cents',
+  'billing_financing_provider', 'billing_financing_provider_key',
+  'billing_financing_webhook_secret', 'billing_financing_return_url',
+  'billing_financing_cancel_url',
   // ENR-LE8: Estimate auto-follow-up days
   'estimate_followup_days',
   // ENR-A3: Notification digest mode

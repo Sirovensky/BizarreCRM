@@ -115,6 +115,7 @@ import rmaRoutes from './routes/rma.routes.js';
 import giftCardRoutes from './routes/giftCards.routes.js';
 import tradeInRoutes from './routes/tradeIns.routes.js';
 import blockchypRoutes from './routes/blockchyp.routes.js';
+import financingRoutes from './routes/financing.routes.js';
 import accountRoutes from './routes/account.routes.js';
 import onboardingRoutes from './routes/onboarding.routes.js';
 import portalRoutes from './routes/portal.routes.js';
@@ -1697,6 +1698,12 @@ app.use('/api/v1/rma', authMiddleware, rmaRoutes);
 app.use('/api/v1/gift-cards', authMiddleware, giftCardRoutes);
 app.use('/api/v1/trade-ins', authMiddleware, tradeInRoutes);
 app.use('/api/v1/blockchyp', authMiddleware, blockchypRoutes);
+// WEB-UNWIRED-007: financing routes — checkout-session is staff-only (the
+// handler explicitly requires req.user); /webhook/:provider stays open so
+// providers can POST directly with HMAC-signed payloads. We deliberately
+// do NOT wrap this in authMiddleware so the webhook path isn't gated on a
+// session cookie the provider doesn't have.
+app.use('/api/v1/financing', financingRoutes);
 app.use('/api/v1/stripe', authMiddleware, tenantStripeRoutes);
 app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 // Audit 44 — Technician bench workflow (device templates + bench timer + QC + defects)

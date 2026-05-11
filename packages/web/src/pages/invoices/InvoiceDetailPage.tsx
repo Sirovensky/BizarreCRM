@@ -608,6 +608,7 @@ export function InvoiceDetailPage() {
                 {/* FA-L4 — Affirm/Klarna financing CTA. Only renders above
                     the provider min ($500). Stub modal until API keys land. */}
                 <FinancingButton
+                  invoiceId={invoice.id}
                   amountCents={Math.round(Number(invoice.amount_due) * 100)}
                   enabled={Number(invoice.amount_due) > 0}
                 />

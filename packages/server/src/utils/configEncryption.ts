@@ -40,6 +40,9 @@ export const ENCRYPTED_CONFIG_KEYS = new Set([
   'smtp_pass',
   'tcx_password',
   'backup_s3_access_key', 'backup_s3_secret_key',
+  // WEB-UNWIRED-007: financing provider credentials. Both are tenant-owned
+  // merchant secrets, not platform secrets — must stay per-tenant + encrypted.
+  'billing_financing_provider_key', 'billing_financing_webhook_secret',
   // NOTE: RepairDesk / RepairShopr / MyRepairApp import keys are deliberately
   // NOT in this set. They are never persisted to store_config — they are
   // passed via the request body and only live in memory for the duration of
