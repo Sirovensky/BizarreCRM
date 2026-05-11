@@ -351,24 +351,38 @@ export function GiftCardDetailPage() {
             </div>
           </div>
 
-          <div className="text-right">
-            <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{formatBalance(card.current_balance)}</p>
-            <p className="text-xs text-surface-500 dark:text-surface-400">of {formatBalance(card.initial_balance)} initial</p>
-            {/* WEB-UIUX-1011: progress bar of remaining-vs-initial so the
-                operator gets at-a-glance utilization without doing math. */}
-            {(() => {
-              const initial = Number(card.initial_balance) || 0;
-              const current = Number(card.current_balance) || 0;
-              if (initial <= 0) return null;
-              const pct = Math.max(0, Math.min(100, (current / initial) * 100));
-              const tone = pct >= 60 ? 'bg-emerald-500' : pct >= 20 ? 'bg-amber-500' : 'bg-red-500';
-              return (
-                <div className="mt-1 ml-auto h-1.5 w-32 rounded-full bg-surface-200 dark:bg-surface-700 overflow-hidden" title={`${pct.toFixed(0)}% remaining`}>
-                  <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
-                </div>
-              );
-            })()}
-          </div>
+          {(() => {
+            // WEB-UIUX-1559: when balance > initial it's because the card
+            // has been reloaded; sum the reload transactions to render
+            // "Loaded total $X" instead of the jarring "of $50 initial"
+            // line that under-states the lifetime amount.
+            const initial = dollarsFromMaybeCents(card.initial_balance);
+            const current = dollarsFromMaybeCents(card.current_balance);
+            const reloadSum = (card.transactions ?? []).reduce((acc, t) => {
+              if (t.type === 'adjustment' && (t.amount ?? 0) > 0) return acc + dollarsFromMaybeCents(t.amount);
+              return acc;
+            }, 0);
+            const loadedTotal = initial + reloadSum;
+            const reference = loadedTotal > initial ? loadedTotal : initial;
+            const pct = reference > 0 ? Math.max(0, Math.min(100, (current / reference) * 100)) : 0;
+            const tone = pct >= 60 ? 'bg-emerald-500' : pct >= 20 ? 'bg-amber-500' : 'bg-red-500';
+            return (
+              <div className="text-right">
+                <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{formatBalance(card.current_balance)}</p>
+                <p className="text-xs text-surface-500 dark:text-surface-400">
+                  {reloadSum > 0
+                    ? `of ${formatCurrencyShared(loadedTotal)} loaded total`
+                    : `of ${formatBalance(card.initial_balance)} initial`}
+                </p>
+                {/* WEB-UIUX-1011: progress bar of remaining-vs-reference. */}
+                {reference > 0 && (
+                  <div className="mt-1 ml-auto h-1.5 w-32 rounded-full bg-surface-200 dark:bg-surface-700 overflow-hidden" title={`${pct.toFixed(0)}% remaining`}>
+                    <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Meta */}

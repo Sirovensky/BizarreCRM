@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy } from 'lucide-react';
+import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, dollarsFromMaybeCents } from '@/utils/format';
@@ -210,19 +210,85 @@ function IssueModal({ onClose }: IssueModalProps) {
           </label>
           {/* WEB-UIUX-1004: "I've saved the code" reinforces the consequence of closing */}
           {/* WEB-UIUX-1552: Copy code button for quick clipboard access */}
-          <div className="flex gap-2">
+          {/* WEB-UIUX-1553: 4-action handoff bar so the cashier doesn't
+              transcribe the code by hand. Copy / Print / Email (mailto:) /
+              Done. Print writes a minimal printable doc to a hidden
+              iframe so the browser print dialog opens with just the
+              card detail. Email is mailto: — full server-side delivery
+              tracked under UIUX-1545 (separate gated feature). */}
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => {
                 navigator.clipboard.writeText(issuedCode!).then(() => toast.success('Code copied'));
               }}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium"
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium"
             >
               <Copy className="h-4 w-4" /> Copy code
             </button>
             <button
+              onClick={() => {
+                const amt = parseFloat(form.amount || '0') || 0;
+                const grouped = issuedCode!.replace(/(.{4})/g, '$1 ').trim();
+                const recipient = form.recipient_name || 'the recipient';
+                const html = `<!doctype html><html><head><title>Gift card ${grouped}</title>
+                  <style>body{font-family:system-ui,sans-serif;padding:24px;max-width:480px;margin:0 auto;color:#111}
+                  h1{font-size:18px;margin:0 0 8px}
+                  .code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:24px;letter-spacing:2px;background:#f4f4f5;padding:12px 16px;border-radius:8px;margin:16px 0;word-break:break-all}
+                  .amt{font-size:32px;font-weight:700;color:#16a34a;margin:8px 0}
+                  .meta{font-size:12px;color:#555;line-height:1.6}</style></head>
+                  <body>
+                    <h1>Gift card receipt</h1>
+                    <div class="amt">$${amt.toFixed(2)}</div>
+                    <div class="code">${grouped}</div>
+                    <div class="meta">
+                      Recipient: ${recipient}<br/>
+                      ${form.recipient_email ? `Email: ${form.recipient_email}<br/>` : ''}
+                      Issued: ${new Date().toLocaleString()}<br/>
+                      Save this code — it will not be shown again.
+                    </div>
+                  </body></html>`;
+                const w = window.open('', '_blank', 'width=520,height=600');
+                if (!w) {
+                  toast.error('Pop-up blocked — allow pop-ups to print.');
+                  return;
+                }
+                w.document.write(html);
+                w.document.close();
+                w.focus();
+                w.print();
+              }}
+              className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium"
+            >
+              <Printer className="h-4 w-4" /> Print receipt
+            </button>
+            {form.recipient_email ? (
+              <button
+                onClick={() => {
+                  const amt = parseFloat(form.amount || '0') || 0;
+                  const grouped = issuedCode!.replace(/(.{4})/g, '$1 ').trim();
+                  const subject = encodeURIComponent(`Your gift card — $${amt.toFixed(2)}`);
+                  const body = encodeURIComponent(
+                    `Hi ${form.recipient_name || ''},\n\nA $${amt.toFixed(2)} gift card has been issued for you:\n\nCode: ${grouped}\n\nPresent this code in-store to redeem. Keep it private.\n`,
+                  );
+                  window.location.href = `mailto:${form.recipient_email}?subject=${subject}&body=${body}`;
+                }}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium"
+              >
+                <Mail className="h-4 w-4" /> Email recipient
+              </button>
+            ) : (
+              <button
+                disabled
+                title="Add a recipient email when issuing to enable this"
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-400 dark:text-surface-500 cursor-not-allowed text-sm font-medium opacity-60"
+              >
+                <Mail className="h-4 w-4" /> Email recipient
+              </button>
+            )}
+            <button
               onClick={() => { setCodeSavedConfirmed(false); onClose(); }}
               disabled={!codeSavedConfirmed}
-              className="flex-1 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
               I&apos;ve saved the code
             </button>
