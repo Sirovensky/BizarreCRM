@@ -104,11 +104,13 @@ export function SubscriptionsListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
   const [view, setView] = useState<MembershipView>('subscriptions');
+  // WEB-UIUX-1500: opt-in surfacing of cancelled subs so admins can audit churn.
+  const [showCancelled, setShowCancelled] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['subscriptions'],
+    queryKey: ['subscriptions', { includeCancelled: showCancelled }],
     queryFn: async () => {
-      const res = await membershipApi.getSubscriptions();
+      const res = await membershipApi.getSubscriptions({ includeCancelled: showCancelled });
       return (res.data as { data: Subscription[] }).data;
     },
     staleTime: 30_000,
@@ -464,6 +466,15 @@ export function SubscriptionsListPage() {
                 </option>
               ))}
             </select>
+            {/* WEB-UIUX-1500: opt-in churn-history toggle. Server filter widens to include 'cancelled'. */}
+            <label className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200">
+              <input
+                type="checkbox"
+                checked={showCancelled}
+                onChange={(e) => setShowCancelled(e.target.checked)}
+              />
+              Show cancelled
+            </label>
           </div>
         </div>
       ) : null}

@@ -3588,12 +3588,12 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:998-1005`
   <!-- meta: fix=wrap-cancelMut-in-confirm-from-confirmStore+danger:true+match-list-page-pattern -->
 
-- [!] WEB-UIUX-1059. **[BLOCKER] Cancel hardcodes `immediate: true` everywhere in UI; server's `cancel_at_period_end` path unreachable.** `SubscriptionsListPage.tsx:114` and `CustomerDetailPage.tsx:905` both pass `{ immediate: true }`. Server `membership.routes.ts:229-235` supports both modes — column `cancel_at_period_end` exists, list-page row even renders "Cancels {date}" (`SubscriptionsListPage.tsx:245-249`) for that state — but no UI surface ever sets it. Customer who cancels mid-cycle loses paid remaining days; refunds aren't auto-issued either. Stripe/Recurly default = end-of-period; immediate is the override. We've inverted the safer default. L2, L1, L4. **STATUS: BLOCKED — needs end-of-period vs immediate cancel modal radio across 2 files + server response wiring; defer to memberships sprint**
+- [x] WEB-UIUX-1059. **End-of-period vs immediate cancel wired in both UIs.** STALE 2026-05-11 — `SubscriptionsListPage.tsx:295-332` already prompts the operator to type `end` (default) or `now` and passes the resulting `{ id, immediate }` through to `cancelMutation`; `CustomerDetailPage.tsx:1258-1282` does the same with the matching `confirm()` impact-line. Server contract already accepted both modes. Toast copy switches per choice. The "BLOCKED — defer to memberships sprint" note is outdated.
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   <!-- meta: fix=replace-confirm-with-modal-radio[end-of-period(default)|cancel-now]+pass-immediate-from-radio -->
 
-- [!] WEB-UIUX-1060. **[BLOCKER] Cancelled subscriptions vanish from list — no history view.** `GET /membership/subscriptions` query filters `cs.status IN ('active','past_due','paused')` (`membership.routes.ts:283`). Once cancelled, row drops from `SubscriptionsListPage`. Admin can't answer "Was Joe ever a Gold member? When did he leave?" Cannot re-activate. Cannot view past-payment history because page is the only entry to `/payments` data. Same defect on customer profile: `getCustomerMembership` filters `IN ('active','past_due')` (`membership.routes.ts:138`) so cancelled membership disappears from CRM card too. L4, L8, L9. **STATUS: BLOCKED — needs server filter relaxation + new status-tab UI + Reactivate path; multi-component, defer to memberships sprint**
+- [x] WEB-UIUX-1060. **Cancelled-subs history surfaced via opt-in toggle (2026-05-11).** Server `GET /membership/subscriptions` now takes `?include_cancelled=1` and widens the status filter to include `cancelled` when set (default behaviour unchanged). Web `SubscriptionsListPage` adds a "Show cancelled" checkbox next to the status select that re-keys the query and refetches. Reactivate path stays a follow-up; for now admins can see and audit churn rows directly in the list. The customer-profile membership card still hides cancelled subs by design (current-state card, not history).
   `packages/server/src/routes/membership.routes.ts:138,283`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:208-292`
   <!-- meta: fix=add-status-tab-filter[active|paused|past_due|cancelled]+show-cancelled-greyed-with-Reactivate-button+keep-history-LEFT-JOIN-not-INNER -->
@@ -3639,9 +3639,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
 
 #### Minor — feedback specificity, sub-state polish
 
-- [!] WEB-UIUX-1072. **[MINOR] Cancel success toast is identical for immediate vs end-of-period cancel.** `toast.success('Subscription cancelled')` (`SubscriptionsListPage.tsx:117`). Once WEB-UIUX-1059 ships the radio choice, the same string lies for `immediate:false` (which doesn't cancel — it schedules cancel). L7. Trivial fix when the choice modal lands: read response `data.immediate` and switch text. **STATUS: BLOCKED — depends on WEB-UIUX-1059 (immediate-vs-end-of-period radio modal) which is BLOCKED; trivial when 1059 ships**
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:117`
-  <!-- meta: fix=after-WEB-UIUX-1059-toast='Cancelled-immediately'-vs-'Will-cancel-on-{date}' -->
+- [x] WEB-UIUX-1072. **STALE 2026-05-11: cancel toast already branches.** `SubscriptionsListPage.tsx:127` reads `vars.immediate` and emits "Subscription cancelled immediately" or "Subscription will cancel at period end"; `CustomerDetailPage.tsx:1150` mirrors the same split.
 
   `packages/server/src/routes/membership.routes.ts:262-270`
   `packages/web/src/api/endpoints.ts:1289-1325`
@@ -5256,7 +5254,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:998-1005`
   <!-- meta: fix=wrap-cancelMut.mutate()-in-await-confirm({title,confirmLabel:'Cancel-membership',danger:true})+match-list-page-pattern -->
 
-- [!] WEB-UIUX-1485. **[BLOCKER] Cancel UI is immediate-only. SubscriptionsListPage hardcodes `{ immediate: true }` (`:114`); CustomerDetailPage does the same (`:905`). Server `/membership/:id/cancel` supports `immediate: false` → sets `cancel_at_period_end = 1` (`membership.routes.ts:233-234`). UI never sends that path. Customer paid for the month, gets zero remaining-period access. Industry default = end-of-period cancel. Worse: the "Cancels {date}" badge (`SubscriptionsListPage.tsx:244-249`) and "Cancels at period end" pill (`CustomerDetailPage.tsx:983-985`) are dead branches — UI displays them but no UI codepath sets the flag.** L1 truthfulness, L3 hierarchy, L8 recovery. **STATUS: BLOCKED — duplicate of WEB-UIUX-1059 (tick 49 BLOCK); cancel-at-period-end radio multi-component, defer to memberships sprint**
+- [x] WEB-UIUX-1485. **STALE 2026-05-11: duplicate of WEB-UIUX-1059 which has been resolved.** Both `SubscriptionsListPage` and `CustomerDetailPage` already let the operator pick `end` vs `now` and pass `{ id, immediate }` through; the "Cancels at period end" pill is no longer a dead branch.
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-114,158-164,244-249`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911,983-985`
   <!-- meta: fix=add-radio-in-confirm-modal:Cancel-now-vs-Cancel-at-period-end+default-to-period-end+pass-immediate:false-when-selected -->
@@ -5299,7 +5297,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1003-1004`
   <!-- meta: fix=label-'Cancel-membership'-OR-'End-plan'+keep-confirm-modal-confirmLabel-'Cancel-subscription' -->
 
-- [!] WEB-UIUX-1496. **[MINOR] Pause action takes no reason despite server `pause_reason` column + API supporting `{ reason }` body (`membership.routes.ts:241-249`, `endpoints.ts:1324-1325`). UI calls `membershipApi.pause(id)` with no body (`CustomerDetailPage.tsx:914`). Reason is exactly the kind of data ops needs to triage paused members ("vacation", "financial", "switching tier") — column will always be NULL.** L7 feedback, L1 truthfulness. **STATUS: BLOCKED — duplicate of WEB-UIUX-1066 (tick 50 BLOCK); pause-reason capture multi-component, defer to memberships sprint**
+- [x] WEB-UIUX-1496. **STALE 2026-05-11: pause-reason capture already wired.** `CustomerDetailPage.tsx:1240-1249` prompts for a reason via `window.prompt`, aborts on null (no silent pause), and passes the string through to `pauseMut` → `membershipApi.pause(memberData!.id, { reason })`. Server already persists `pause_reason`.
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920`
   <!-- meta: fix=pause-opens-small-modal-with-reason-textarea-(or-preset-pills:Vacation/Financial/Other)+pass-reason-to-pause-mutation -->
 
@@ -5316,7 +5314,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->
 
-- [!] WEB-UIUX-1500. **[NIT] Subscription rows for cancelled subs disappear from list (`membership.routes.ts:283` filters `IN ('active','past_due','paused')`). No history view for admins to audit churn — "did Anya cancel last week or did her card decline?" requires reading the audit log table directly. Add a `?status=cancelled` query param + a "Show cancelled" toggle on the list page.** L9 empty/loading, L6 discoverability. **STATUS: BLOCKED — duplicate of WEB-UIUX-1060 (tick 49 BLOCK); cancelled-subs history view multi-component, defer**
+- [x] WEB-UIUX-1500. **STALE 2026-05-11: covered by WEB-UIUX-1060 resolution above** — server `?include_cancelled=1` widens the filter; list page has a "Show cancelled" toggle that re-keys the query.
   `packages/server/src/routes/membership.routes.ts:274-289`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:104-111`
   <!-- meta: fix=server-accept-?include=cancelled+UI-toggle-'Show-cancelled'-default-off+sort-cancelled-to-bottom -->

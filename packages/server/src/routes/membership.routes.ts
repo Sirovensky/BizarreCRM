@@ -492,15 +492,24 @@ router.get('/:id/payments', asyncHandler(async (req: Request, res: Response) => 
 router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) => {
   requireAdmin(req);
   const adb = req.asyncDb;
+  // WEB-UIUX-1500: optional ?include_cancelled=1 surfaces churn history so the
+  // admin can answer "did Anya cancel last week or did her card decline?"
+  // without reading audit_logs. Default behaviour (active/past_due/paused) is
+  // unchanged so existing callers see no shift.
+  const includeCancelled = String(req.query.include_cancelled ?? '').trim() === '1';
+  const statuses = includeCancelled
+    ? ['active', 'past_due', 'paused', 'cancelled']
+    : ['active', 'past_due', 'paused'];
+  const placeholders = statuses.map(() => '?').join(', ');
   const subs = await adb.all<AnyRow>(`
     SELECT cs.*, mt.name AS tier_name, mt.monthly_price, mt.color,
            c.first_name, c.last_name, c.phone, c.email
     FROM customer_subscriptions cs
     JOIN membership_tiers mt ON mt.id = cs.tier_id
     JOIN customers c ON c.id = cs.customer_id
-    WHERE cs.status IN ('active', 'past_due', 'paused')
+    WHERE cs.status IN (${placeholders})
     ORDER BY cs.created_at DESC
-  `);
+  `, ...statuses);
   res.json({ success: true, data: subs });
 }));
 

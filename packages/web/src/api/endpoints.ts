@@ -1706,9 +1706,11 @@ export const membershipApi = {
   getPayments: (id: number) =>
     api.get(`/membership/${id}/payments`),
 
-  // Admin: all active subscriptions
-  getSubscriptions: () =>
-    api.get('/membership/subscriptions'),
+  // Admin: all active subscriptions; pass {includeCancelled:true} for churn history
+  getSubscriptions: (options?: { includeCancelled?: boolean }) =>
+    api.get('/membership/subscriptions', {
+      params: options?.includeCancelled ? { include_cancelled: '1' } : undefined,
+    }),
   // WEB-W3-020: admin-triggered immediate charge for a subscription
   runBilling: (id: number, options?: { force?: boolean }) =>
     api.post(`/membership/${id}/run-billing`, { force: options?.force === true }, {
