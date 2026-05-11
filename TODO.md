@@ -3574,7 +3574,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-826. **[BLOCKER] `subscribeMut` calls `membershipApi.subscribe` with NO `blockchyp_token` and NO `signature_file`.** Activation never captures card on file. Every nightly renewal will fail by definition. L5, L7, L16. **[AUTOLOOP-T38 BLOCKED: needs BlockChyp tokenize step + signature pad UI in CheckoutModal/CustomerDetailPage; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:891-902`
 
-- [ ] WEB-UIUX-827. **[BLOCKER] Cancel hard-codes `{ immediate: true }` — no end-of-period option.** Customer paid through end of month → forfeits remaining time. CustomerDetailPage variant has NO confirmation at all. L5, L8, L16.
+- [x] WEB-UIUX-827. **[BLOCKER] Cancel hard-codes `{ immediate: true }` — no end-of-period option.** Customer paid through end of month → forfeits remaining time. CustomerDetailPage variant has NO confirmation at all. L5, L8, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: cancel flows on CustomerDetailPage + SubscriptionsListPage prompt for end vs now, parametrize membershipApi.cancel({ immediate }), and show appropriate impact copy + toast for each path.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124,155-168`
 

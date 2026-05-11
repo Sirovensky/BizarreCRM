@@ -1066,12 +1066,16 @@ function MembershipCard({ customerId }: { customerId: number }) {
   };
 
   const cancelMut = useMutation({
-    mutationFn: () => membershipApi.cancel(memberData!.id, { immediate: true }),
+    // WEB-UIUX-827: parametrize `immediate` so the operator can pick
+    // end-of-period cancel (default — customer keeps paid days) vs
+    // immediate (instant termination). Server already accepts the flag.
+    mutationFn: (vars: { immediate: boolean }) =>
+      membershipApi.cancel(memberData!.id, { immediate: vars.immediate }),
     // WEB-UIUX-1070: also invalidate SubscriptionsListPage cache
-    onSuccess: () => {
+    onSuccess: (_res, vars) => {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      toast.success('Membership cancelled');
+      toast.success(vars.immediate ? 'Membership cancelled immediately' : 'Membership will cancel at period end');
     },
     onError: (err: unknown) => toast.error(formatApiError(err)),
   });
@@ -1176,12 +1180,30 @@ function MembershipCard({ customerId }: { customerId: number }) {
                 </button>
                 <button
                   onClick={async () => {
+                    // WEB-UIUX-827: two-stage confirm so the operator picks the
+                    // cancel semantics deliberately. Default = end-of-period
+                    // (customer keeps paid days). Native window.prompt with the
+                    // two explicit choices avoids a multi-step modal redesign
+                    // while still capturing intent.
+                    const choice = window.prompt(
+                      'Cancel membership?\nType "end" to cancel at the end of the current period (customer keeps paid days).\nType "now" to cancel immediately (customer forfeits remaining days).\nLeave blank to abort.',
+                      'end',
+                    );
+                    if (!choice) return;
+                    const trimmed = choice.trim().toLowerCase();
+                    if (trimmed !== 'end' && trimmed !== 'now') {
+                      toast.error('Type "end" or "now" to confirm.');
+                      return;
+                    }
+                    const immediate = trimmed === 'now';
                     const ok = await confirm(
-                      'Cancel this membership? Customer loses paid remaining days unless period-end-cancel is chosen.',
-                      { title: 'Cancel membership?', confirmLabel: 'Cancel membership', danger: true },
+                      immediate
+                        ? 'Cancel this membership immediately? Customer forfeits remaining paid days.'
+                        : 'Schedule cancellation at the end of the current paid period?',
+                      { title: 'Cancel membership?', confirmLabel: immediate ? 'Cancel now' : 'Cancel at period end', danger: immediate },
                     );
                     if (!ok) return;
-                    cancelMut.mutate();
+                    cancelMut.mutate({ immediate });
                   }}
                   disabled={cancelMut.isPending}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"

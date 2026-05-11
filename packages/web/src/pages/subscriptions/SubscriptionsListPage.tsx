@@ -114,13 +114,16 @@ export function SubscriptionsListPage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: number) => membershipApi.cancel(id, { immediate: true }),
+    // WEB-UIUX-827: pass `immediate` through so the operator can choose
+    // immediate vs end-of-period cancellation. Server already supports both.
+    mutationFn: (vars: { id: number; immediate: boolean }) =>
+      membershipApi.cancel(vars.id, { immediate: vars.immediate }),
     // WEB-UIUX-1070: also invalidate customer membership cache so CustomerDetailPage stays in sync
-    onSuccess: (_data, id) => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      const sub = (data ?? []).find((s) => s.id === id);
+      const sub = (data ?? []).find((s) => s.id === vars.id);
       if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
-      toast.success('Subscription cancelled');
+      toast.success(vars.immediate ? 'Subscription cancelled immediately' : 'Subscription will cancel at period end');
       setCancellingId(null);
     },
     onError: (err: unknown) => {
@@ -262,19 +265,37 @@ export function SubscriptionsListPage() {
   async function handleCancel(sub: Subscription): Promise<void> {
     // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
     try {
+      // WEB-UIUX-827: prompt for cancel semantics first (end-of-period vs now).
+      const choice = window.prompt(
+        'Cancel subscription?\nType "end" to cancel at the end of the current period (customer keeps paid days).\nType "now" to cancel immediately (customer forfeits remaining days).\nLeave blank to abort.',
+        'end',
+      );
+      if (!choice) return;
+      const trimmed = choice.trim().toLowerCase();
+      if (trimmed !== 'end' && trimmed !== 'now') {
+        toast.error('Type "end" or "now" to confirm.');
+        return;
+      }
+      const immediate = trimmed === 'now';
       // WEB-UIUX-1498: surface cancellation impact so staff know what the customer loses
       const chargeAmt = sub.last_charge_amount ?? sub.monthly_price;
       const chargeDate = sub.current_period_end ? formatDate(sub.current_period_end) : null;
-      const impactLine = `Customer loses ${sub.tier_name} discount + benefits today.`
-        + (chargeDate && chargeAmt != null ? ` Last charge ${chargeDate}, ${formatCurrency(chargeAmt)}.` : '')
-        + ' No refund issued — see Refund flow if needed.';
+      const impactLine = immediate
+        ? `Customer loses ${sub.tier_name} discount + benefits today.`
+          + (chargeDate && chargeAmt != null ? ` Last charge ${chargeDate}, ${formatCurrency(chargeAmt)}.` : '')
+          + ' No refund issued — see Refund flow if needed.'
+        : `Customer keeps ${sub.tier_name} discount + benefits until ${chargeDate ?? 'period end'}. No further charges.`;
       const ok = await confirm(
         `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership?\n\n${impactLine}`,
-        { title: 'Cancel subscription?', confirmLabel: 'Cancel subscription', danger: true },
+        {
+          title: 'Cancel subscription?',
+          confirmLabel: immediate ? 'Cancel now' : 'Cancel at period end',
+          danger: immediate,
+        },
       );
       if (!ok) return;
       setCancellingId(sub.id);
-      cancelMutation.mutate(sub.id);
+      cancelMutation.mutate({ id: sub.id, immediate });
     } catch (err) {
       toast.error(formatApiError(err));
     }
