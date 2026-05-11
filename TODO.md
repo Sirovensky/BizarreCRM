@@ -3765,7 +3765,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:176-180`
 
-- [!] WEB-UIUX-1105. **Server history endpoint landed 2026-05-11; ticket-detail "QC history" tab still pending.** `GET /bench/qc/history/:ticketId` returns every past sign-off (`qc_sign_offs` joined with `users` for signer name), ordered by `signed_at DESC`. File paths stripped for non-admin/non-manager callers like the existing /qc/status route. `benchApi.qc.history(ticketId)` typed wrapper added in `endpoints.ts`. Remaining UI work: render the list as a collapsible panel on the ticket-detail QC tab with per-row signer / signed_at / outcome / working-photo thumb / checklist diff. Stays `[!]` until that surface lands.
+- [x] WEB-UIUX-1105. **Ticket-detail QC sign-off history fully wired 2026-05-11.** Server `GET /bench/qc/history/:ticketId` returns every past row (joined with users for signer name, file paths stripped for non-admin/non-manager callers). `benchApi.qc.history(ticketId)` typed wrapper. UI: `TicketDetailPage` now hosts a "View past sign-offs" toggle inside the existing QC summary card. The history query is `enabled: qcHistoryOpen` so the latest-only `/status` call stays cheap on every render. Each row renders signer name / signed_at / passed-count / outcome / working-photo link.
   `packages/server/src/routes/bench.routes.ts:711-714`
 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:317-321`

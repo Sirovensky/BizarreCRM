@@ -355,6 +355,17 @@ export function TicketDetailPage() {
     enabled: isValidId,
     retry: false,
   });
+
+  // WEB-UIUX-1105: fetch QC history on demand (when user toggles the panel)
+  // so the latest-only /status query stays cheap on every render.
+  const [qcHistoryOpen, setQcHistoryOpen] = useState(false);
+  const { data: qcHistoryData, isLoading: qcHistoryLoading } = useQuery({
+    queryKey: ['qc-history', ticketId],
+    queryFn: () => benchApi.qc.history(ticketId),
+    enabled: isValidId && qcHistoryOpen,
+    retry: false,
+  });
+  const qcHistory = qcHistoryData?.data?.data?.sign_offs ?? [];
   interface QcSignOffRow {
     id: number;
     tech_user_id: number;
@@ -800,6 +811,57 @@ export function TicketDetailPage() {
                   <p className="mt-1.5 text-xs text-surface-600 dark:text-surface-300 border-t border-surface-200 dark:border-surface-700 pt-1.5">
                     {so.notes}
                   </p>
+                )}
+                {/* WEB-UIUX-1105: history panel */}
+                <button
+                  type="button"
+                  onClick={() => setQcHistoryOpen((v) => !v)}
+                  className="mt-2 text-xs font-medium text-primary-600 hover:underline dark:text-primary-400"
+                >
+                  {qcHistoryOpen ? 'Hide past sign-offs' : 'View past sign-offs'}
+                </button>
+                {qcHistoryOpen && (
+                  <div className="mt-2 space-y-1.5 border-t border-surface-200 pt-2 dark:border-surface-700">
+                    {qcHistoryLoading ? (
+                      <p className="text-xs text-surface-500">Loading history…</p>
+                    ) : qcHistory.length === 0 ? (
+                      <p className="text-xs text-surface-500">No prior sign-offs.</p>
+                    ) : (
+                      qcHistory.map((row) => {
+                        const histTech = employees.find((e) => e.id === row.tech_user_id);
+                        const histTechName = histTech
+                          ? (histTech.full_name || `${histTech.first_name ?? ''} ${histTech.last_name ?? ''}`.trim())
+                          : [row.first_name, row.last_name].filter(Boolean).join(' ') || `Tech #${row.tech_user_id}`;
+                        const histDate = row.signed_at
+                          ? new Date(row.signed_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                          : '—';
+                        const histPassed = row.checklist_results.filter((c) => c.passed).length;
+                        const histTotal = row.checklist_results.length;
+                        return (
+                          <div key={row.id} className="rounded border border-surface-200 bg-white px-2 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">{histTechName}</span>
+                              <span className="text-surface-500">{histDate}</span>
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-surface-500 dark:text-surface-400">
+                              <span>{histPassed}/{histTotal} passed</span>
+                              {row.outcome && <span className="capitalize">· {row.outcome}</span>}
+                              {row.working_photo_path && (
+                                <a
+                                  href={`/uploads/${row.working_photo_path}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary-600 hover:underline dark:text-primary-400"
+                                >
+                                  photo
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 )}
               </div>
             );
