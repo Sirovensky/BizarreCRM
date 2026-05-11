@@ -77,17 +77,35 @@ export function StocktakePage() {
   const [newNotes, setNewNotes] = useState('');
   const [scanInput, setScanInput] = useState('');
   const [manualCountedQty, setManualCountedQty] = useState('');
+  // WEB-UIUX-1357: per-count notes — large variance ("surplus +50") needs
+  // a reason for the auditor; server already persists notes on the row.
+  const [scanNote, setScanNote] = useState('');
+  // WEB-UIUX-1365: search + variance-filter for the counts table.
+  const [countsSearch, setCountsSearch] = useState('');
+  const [varianceFilter, setVarianceFilter] = useState<'all' | 'variance' | 'shortage' | 'surplus' | 'match'>('all');
+  // WEB-UIUX-1367: session list filters — server already accepts ?status=.
+  const [sessionStatusFilter, setSessionStatusFilter] = useState<'' | 'open' | 'committed' | 'cancelled'>('');
+  const [sessionSearch, setSessionSearch] = useState('');
   const scanRef = useRef<HTMLInputElement>(null);
 
   // WEB-UIUX-1373: capture isPending to drive loading skeleton
   const { data: sessionsData, isPending: sessionsIsPending } = useQuery({
-    queryKey: ['stocktakes'],
+    queryKey: ['stocktakes', sessionStatusFilter],
     queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: StocktakeSession[] }>('/stocktake');
+      const params: Record<string, string> = {};
+      if (sessionStatusFilter) params.status = sessionStatusFilter;
+      const res = await api.get<{ success: boolean; data: StocktakeSession[] }>('/stocktake', { params });
       return res.data.data;
     },
   });
-  const sessions: StocktakeSession[] = sessionsData || [];
+  const sessions: StocktakeSession[] = (sessionsData || []).filter((s) => {
+    if (sessionSearch.trim()) {
+      const q = sessionSearch.trim().toLowerCase();
+      return String(s.name ?? '').toLowerCase().includes(q)
+        || String(s.location ?? '').toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   const { data: detailData } = useQuery({
     queryKey: ['stocktake', selectedId],
@@ -99,6 +117,22 @@ export function StocktakePage() {
       return res.data.data;
     },
     enabled: !!selectedId,
+  });
+
+  // WEB-UIUX-1365: filtered + searched counts list. Recomputed on every
+  // render; cheap enough at 1k rows.
+  const filteredCounts = (detailData?.counts ?? []).filter((c) => {
+    if (countsSearch.trim()) {
+      const q = countsSearch.trim().toLowerCase();
+      if (!String(c.name ?? '').toLowerCase().includes(q) && !String(c.sku ?? '').toLowerCase().includes(q)) {
+        return false;
+      }
+    }
+    if (varianceFilter === 'variance' && c.variance === 0) return false;
+    if (varianceFilter === 'shortage' && c.variance >= 0) return false;
+    if (varianceFilter === 'surplus' && c.variance <= 0) return false;
+    if (varianceFilter === 'match' && c.variance !== 0) return false;
+    return true;
   });
 
   useEffect(() => {
@@ -129,7 +163,7 @@ export function StocktakePage() {
   });
 
   const scanMut = useMutation({
-    mutationFn: async (body: { inventory_item_id: number; counted_qty: number }) => {
+    mutationFn: async (body: { inventory_item_id: number; counted_qty: number; notes?: string }) => {
       const res = await api.post(`/stocktake/${selectedId}/counts`, body);
       return res.data.data;
     },
@@ -244,7 +278,14 @@ export function StocktakePage() {
         // quick-scan: increment physical count by 1
         counted = existingCount ? existingCount.counted_qty + 1 : 1;
       }
-      scanMut.mutate({ inventory_item_id: item.id, counted_qty: counted });
+      // WEB-UIUX-1357: include note + reset on submit so each count carries
+      // its own context to the stock_movements audit row.
+      scanMut.mutate({
+        inventory_item_id: item.id,
+        counted_qty: counted,
+        notes: scanNote.trim() || undefined,
+      });
+      setScanNote('');
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Lookup failed');
     }
@@ -319,6 +360,28 @@ export function StocktakePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-2">
           <h2 className="font-semibold text-sm uppercase text-surface-500">Sessions</h2>
+          {/* WEB-UIUX-1367: session list filters — server accepts ?status= */}
+          <div className="space-y-2">
+            <input
+              type="search"
+              value={sessionSearch}
+              onChange={(e) => setSessionSearch(e.target.value)}
+              placeholder="Search name or location…"
+              className="w-full rounded-md border border-surface-300 bg-white px-3 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+              aria-label="Search stocktake sessions by name or location"
+            />
+            <select
+              value={sessionStatusFilter}
+              onChange={(e) => setSessionStatusFilter(e.target.value as '' | 'open' | 'committed' | 'cancelled')}
+              aria-label="Filter stocktake sessions by status"
+              className="w-full rounded-md border border-surface-300 bg-white px-3 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+            >
+              <option value="">All statuses</option>
+              <option value="open">Open</option>
+              <option value="committed">Committed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
           {/* WEB-UIUX-1373: show skeleton rows while fetch is in-flight; only show empty state after resolve */}
           {sessionsIsPending && (
             <div className="space-y-2">
@@ -401,32 +464,65 @@ export function StocktakePage() {
                 </div>
               </div>
 
+              {/* WEB-UIUX-1363: read-only banner so a committed/cancelled
+                  session doesn't render as "empty with no actions and no
+                  context". */}
+              {detailData.session.status !== 'open' && (
+                <div className={cn(
+                  'rounded-lg border p-3 text-sm',
+                  detailData.session.status === 'committed'
+                    ? 'border-green-300 bg-green-50 text-green-900 dark:border-green-700 dark:bg-green-900/30 dark:text-green-200'
+                    : 'border-surface-300 bg-surface-50 text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300',
+                )}>
+                  <p className="font-medium">
+                    Read-only — this session is {detailData.session.status}
+                    {detailData.session.committed_at ? ` (${formatDateTime(detailData.session.committed_at)})` : ''}.
+                  </p>
+                  <p className="text-xs opacity-80 mt-1">
+                    {detailData.session.status === 'committed'
+                      ? 'Stock adjustments have been applied to inventory; counts cannot be re-edited.'
+                      : 'No stock changes were applied. Open a new stocktake to start over.'}
+                  </p>
+                </div>
+              )}
+
               {detailData.session.status === 'open' && (
                 <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
                   <h3 className="font-semibold mb-3 flex items-center gap-2">
                     <ScanBarcode className="h-4 w-4" /> Scan / enter SKU
                   </h3>
-                  <form onSubmit={handleScan} className="flex gap-2">
+                  <form onSubmit={handleScan} className="space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        ref={scanRef}
+                        value={scanInput}
+                        onChange={(e) => setScanInput(e.target.value)}
+                        placeholder="Scan barcode or type SKU..."
+                        className="flex-1 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
+                      />
+                      <input
+                        value={manualCountedQty}
+                        onChange={(e) => setManualCountedQty(e.target.value)}
+                        placeholder="Qty (blank = +1)"
+                        type="number"
+                        className="w-32 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
+                      />
+                      <button
+                        type="submit"
+                        className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950"
+                      >
+                        Count
+                      </button>
+                    </div>
+                    {/* WEB-UIUX-1357: per-count note (e.g. "surplus from open box")
+                        so the auditor can reconstruct unusual variances. */}
                     <input
-                      ref={scanRef}
-                      value={scanInput}
-                      onChange={(e) => setScanInput(e.target.value)}
-                      placeholder="Scan barcode or type SKU..."
-                      className="flex-1 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
+                      value={scanNote}
+                      onChange={(e) => setScanNote(e.target.value)}
+                      placeholder="Note for this count (optional — explains variance)"
+                      maxLength={500}
+                      className="w-full rounded-md border border-surface-300 bg-white px-3 py-2 text-xs text-surface-700 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-300 dark:placeholder:text-surface-500"
                     />
-                    <input
-                      value={manualCountedQty}
-                      onChange={(e) => setManualCountedQty(e.target.value)}
-                      placeholder="Qty (blank = +1)"
-                      type="number"
-                      className="w-32 rounded-md border border-surface-300 bg-white px-3 py-2 text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:placeholder:text-surface-500"
-                    />
-                    <button
-                      type="submit"
-                      className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950"
-                    >
-                      Count
-                    </button>
                   </form>
 
                   <p className="mt-3 text-xs text-surface-500 dark:text-surface-400">
@@ -578,6 +674,33 @@ export function StocktakePage() {
                 </div>
               )}
 
+              {/* WEB-UIUX-1365: search/filter for large sessions. */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  type="search"
+                  value={countsSearch}
+                  onChange={(e) => setCountsSearch(e.target.value)}
+                  placeholder="Search SKU or name…"
+                  className="flex-1 rounded-md border border-surface-300 bg-white px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+                  aria-label="Filter counts by SKU or item name"
+                />
+                <select
+                  value={varianceFilter}
+                  onChange={(e) => setVarianceFilter(e.target.value as 'all' | 'variance' | 'shortage' | 'surplus' | 'match')}
+                  aria-label="Filter counts by variance type"
+                  className="rounded-md border border-surface-300 bg-white px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+                >
+                  <option value="all">All counts</option>
+                  <option value="variance">Any variance (≠ 0)</option>
+                  <option value="shortage">Shortage (variance &lt; 0)</option>
+                  <option value="surplus">Surplus (variance &gt; 0)</option>
+                  <option value="match">Match (variance = 0)</option>
+                </select>
+                <span className="text-xs text-surface-500 whitespace-nowrap">
+                  {filteredCounts.length} of {detailData.counts.length}
+                </span>
+              </div>
+
               <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto dark:bg-surface-800 dark:border-surface-700">
                 <table className="w-full text-sm">
                   <thead className="bg-surface-50 border-b border-surface-200 dark:bg-surface-900 dark:border-surface-700">
@@ -590,7 +713,7 @@ export function StocktakePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {detailData.counts.map((c) => (
+                    {filteredCounts.map((c) => (
                       <tr key={c.id} className="border-b border-surface-100 last:border-0 dark:border-surface-700">
                         <td className="px-3 py-2">
                           <div className="font-medium">{c.name}</div>

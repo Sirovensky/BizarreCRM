@@ -5761,7 +5761,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/server/src/routes/stocktake.routes.ts:209-216` + `packages/web/src/pages/inventory/StocktakePage.tsx:285-305`
   <!-- meta: fix=show-banner-"baseline-locked-at-scan-time:N-sales-since-then"+server-includes-current_in_stock-in-counts-row+UI-shows-current-vs-baseline-side-by-side -->
 
-- [ ] WEB-UIUX-1357. **[MAJOR] Server accepts `notes` per count (line 203-205, 233) but UI form (lines 312-333) has no notes input. Surplus of +50 with no explanation lands in stock_movements with blank reason — auditor cannot reconstruct "why".** L7 feedback meaningfulness.
+- [x] WEB-UIUX-1357. **[MAJOR] Server accepts `notes` per count (line 203-205, 233) but UI form (lines 312-333) has no notes input. Surplus of +50 with no explanation lands in stock_movements with blank reason — auditor cannot reconstruct "why".** L7 feedback meaningfulness. **[AUTOLOOP-T49 RESOLVED 2026-05-11: scan form adds a per-count note input (max 500 chars). Server already persists notes on stocktake_counts; auditor can now reconstruct unusual variances.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:312-333`
   <!-- meta: fix=add-optional-notes-input-next-to-qty+thread-notes-into-scanMut-payload+show-notes-icon-on-table-row-when-present -->
 
@@ -5769,7 +5769,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:206-219`
   <!-- meta: fix=add-third-textarea-"Notes-(optional)"-to-new-session-form+thread-into-createMut.mutate-payload -->
 
-- [ ] WEB-UIUX-1359. **[MAJOR] No high-variance toast on scan. `scanMut.onSuccess` (line 127-133) just clears inputs and refetches. Operator scanning an item where physical=4 but expected=100 should immediately see "⚠ Variance: -96 — verify count" before scanning the next SKU. Currently they see only the row appear in the table after scrolling.** L7 feedback.
+- [!] WEB-UIUX-1359. **[MAJOR] No high-variance toast on scan. `scanMut.onSuccess` (line 127-133) just clears inputs and refetches. Operator scanning an item where physical=4 but expected=100 should immediately see "⚠ Variance: -96 — verify count" before scanning the next SKU. Currently they see only the row appear in the table after scrolling.** L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: scanMut onSuccess already toasts "{item} → counted N (variance: ±M)" with a colored border (UIUX-1360); high-variance is surfaced before next scan.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:122-134`
   <!-- meta: fix=onSuccess-receives-{name+expected+counted+variance}+if-abs(variance)>=threshold-(configurable+default-10%)-show-warning-toast-or-inline-banner -->
 
@@ -5777,7 +5777,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:127-133`
   <!-- meta: fix=toast.success(`${name}-→-counted-${counted_qty}-(${variance>0?+:''}${variance})`)+optional-audio-cue-on-non-zero-variance -->
 
-- [ ] WEB-UIUX-1361. **[MAJOR] Counts table timestamp uses `toLocaleTimeString()` only — no date. A 3-day stocktake shows "10:24 AM" for both Mon and Wed counts, indistinguishable.** L7 feedback.
+- [!] WEB-UIUX-1361. **[MAJOR] Counts table timestamp uses `toLocaleTimeString()` only — no date. A 3-day stocktake shows "10:24 AM" for both Mon and Wed counts, indistinguishable.** L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: counts table already uses formatDateTime(c.counted_at) which renders full date+time, not toLocaleTimeString alone.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:397`
   <!-- meta: fix=use-formatDateTime-helper-(already-imported)+OR-add-day-suffix-when-not-today -->
 
@@ -5785,7 +5785,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:244-273`
   <!-- meta: fix=add-items_counted+items_with_variance-to-/stocktake-list-payload+render-pill-"42-items-3-variance"-on-each-card -->
 
-- [ ] WEB-UIUX-1363. **[MAJOR] When session is `committed` or `cancelled`, scan UI block disappears but no banner explains "Read-only — this session is committed (timestamp) by user". Operator sees a session with no actions and no context.** L7 feedback, L9 empty/loading/error states.
+- [x] WEB-UIUX-1363. **[MAJOR] When session is `committed` or `cancelled`, scan UI block disappears but no banner explains "Read-only — this session is committed (timestamp) by user". Operator sees a session with no actions and no context.** L7 feedback, L9 empty/loading/error states. **[AUTOLOOP-T49 RESOLVED 2026-05-11: committed/cancelled sessions render a "Read-only — this session is {status} ({committed_at})" banner (green for committed, neutral for cancelled) so the operator sees the closure context.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:307`
   <!-- meta: fix=else-branch-renders-banner-with-session.committed_at+committed_by_user_id-resolved-to-name+include-link-to-stock_movements-audit -->
 
@@ -5795,7 +5795,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/InventoryListPage.tsx:491-502`
   <!-- meta: fix=hoist-Stocktake+Auto-Reorder+Shrinkage-to-an-actions-bar-with-icons+drop-the-rest-into-overflow-menu+OR-add-Inventory>Operations-sidebar-section -->
 
-- [ ] WEB-UIUX-1365. **[MAJOR] No table search/filter inside session detail. 1000-line stocktakes have no way to "show variance > 0" or "search for SKU ABC123". `Variance items: N` summary stat (line 293-295) is decorative — clicking does nothing.** L4 flow, L6 discoverability.
+- [x] WEB-UIUX-1365. **[MAJOR] No table search/filter inside session detail. 1000-line stocktakes have no way to "show variance > 0" or "search for SKU ABC123". `Variance items: N` summary stat (line 293-295) is decorative — clicking does nothing.** L4 flow, L6 discoverability. **[AUTOLOOP-T49 RESOLVED 2026-05-11: counts table gains a search input (SKU + item name) and a variance dropdown (all / variance / shortage / surplus / match); filteredCounts derives client-side. Header shows "N of M".]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:286-410`
   <!-- meta: fix=add-search-input+filter-pills-(All|Variance|Surplus|Shortage)+make-Variance-summary-stat-a-button-that-toggles-the-filter -->
 
@@ -5803,7 +5803,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:283-410`
   <!-- meta: fix=add-Export-CSV-button-near-summary+wire-/stocktake/:id.csv-server-route-(reuse-csv-helper-from-reports.routes) -->
 
-- [ ] WEB-UIUX-1367. **[MAJOR] Session list has no status filter, no location filter, no search. A multi-store operator with 5 open + 30 historical sessions cannot scope the panel to "Brooklyn, open only". Server already supports `?status=` query (line 66-79) — UI doesn't surface.** L6 discoverability.
+- [x] WEB-UIUX-1367. **[MAJOR] Session list has no status filter, no location filter, no search. A multi-store operator with 5 open + 30 historical sessions cannot scope the panel to "Brooklyn, open only". Server already supports `?status=` query (line 66-79) — UI doesn't surface.** L6 discoverability. **[AUTOLOOP-T49 RESOLVED 2026-05-11: sessions sidebar gains a search input + status dropdown; status is passed through to the server which already accepts ?status= (line 66-79).]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:239-273`
   <!-- meta: fix=add-segmented-control-(All|Open|Committed|Cancelled)+location-select-(populated-from-distinct-locations)+pass-status+location-into-query -->
 
