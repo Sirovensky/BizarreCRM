@@ -280,8 +280,8 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 - [!] PROD107. **All security tests pass.** Original shell scripts (`security-tests.sh` + `-phase2` + `-phase3`) were deleted in commit 5cd709fc due to Windows Defender false positives. Coverage migrated to Vitest suites under `packages/server/src/**/*.test.ts` (auth/csrf/jwt/tenant-isolation/portal-captcha/blockchyp-reversals/super-admin-tenant-action). README updated 2026-05-11 to point contributors at `npm test --workspace=packages/server`.
   - [x] STALE 2026-05-11: shell-script reference removed from README + sub-bullet rewritten to reflect actual test surface.
 
-- [!] PROD109. **Server starts cleanly with fresh `.env`** (only `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`).
-  - [ ] BLOCKED: post-SEC-H105 this now also requires `SUPER_ADMIN_SECRET` in production. Human smoke-test step — spin up a fresh `.env`, boot server, confirm no fatal. Not reproducible in the worktree without a port-443 bind + live PM2/systemd context.
+- [!] PROD109. **Server starts cleanly with fresh `.env`.** Current production-fatal env set per `packages/server/src/config.ts` (verified 2026-05-11): `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CONFIG_ENCRYPTION_KEY` (≥32 chars), `BACKUP_ENCRYPTION_KEY` (≥16 chars), `UPLOADS_SECRET` (≥32 chars), `SUPER_ADMIN_SECRET` (≥32 chars). `PORT` defaults to 443; `BASE_DOMAIN` fatal only in `MULTI_TENANT=true`. Original acceptance (JWT_SECRET + JWT_REFRESH_SECRET + PORT only) is stale.
+  - [x] STALE 2026-05-11: env-set audited against config.ts process.exit gates; acceptance list updated in parent. Live boot-check still operator territory.
 
 - [!] PROD110. **Manual smoke: login as default admin → change password → 2FA flow.**
   - [ ] BLOCKED: manual multi-step UI smoke (login → change password → 2FA). Needs live server + browser session. Can't be reliably scripted without Playwright + running preview, out of the current loop scope.
