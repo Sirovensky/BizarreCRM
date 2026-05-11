@@ -277,8 +277,8 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
 - [!] PROD106. **Phase 1–6 (all PROD items above) complete and clean.**
   - [ ] BLOCKED: meta-gate — depends on PROD102-105 and human-smoke items PROD109-112 being closed. Vacuously BLOCKED until every predecessor is either migrated or has its own BLOCKED note.
 
-- [!] PROD107. **All security tests pass:** `bash security-tests.sh && bash security-tests-phase2.sh && bash security-tests-phase3.sh` (60 tests, 3 phases per CLAUDE.md).
-  - [ ] BLOCKED: the three security-tests shell scripts require a running server on port 443 with seeded tenant DB. No live server in this worktree; cannot invoke. Operator must run post-deploy.
+- [!] PROD107. **All security tests pass.** Original shell scripts (`security-tests.sh` + `-phase2` + `-phase3`) were deleted in commit 5cd709fc due to Windows Defender false positives. Coverage migrated to Vitest suites under `packages/server/src/**/*.test.ts` (auth/csrf/jwt/tenant-isolation/portal-captcha/blockchyp-reversals/super-admin-tenant-action). README updated 2026-05-11 to point contributors at `npm test --workspace=packages/server`.
+  - [x] STALE 2026-05-11: shell-script reference removed from README + sub-bullet rewritten to reflect actual test surface.
 
 - [!] PROD109. **Server starts cleanly with fresh `.env`** (only `JWT_SECRET`, `JWT_REFRESH_SECRET`, `PORT`).
   - [ ] BLOCKED: post-SEC-H105 this now also requires `SUPER_ADMIN_SECRET` in production. Human smoke-test step — spin up a fresh `.env`, boot server, confirm no fatal. Not reproducible in the worktree without a port-443 bind + live PM2/systemd context.

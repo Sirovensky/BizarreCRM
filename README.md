@@ -79,7 +79,7 @@ Supported: **Node 22.x–24.x**. Node 25+ is not yet supported. If you upgrade N
 
 PRs welcome. Before submitting:
 
-1. Run the security tests: `bash security-tests.sh && bash security-tests-phase2.sh && bash security-tests-phase3.sh` (60 tests across 3 phases).
+1. Run the test suites: `npm test --workspace=packages/server` (Vitest — covers auth/csrf/jwt/tenant-isolation/payment surfaces, including the migrated security checks).
 2. Confirm `npm run build` succeeds from the repo root.
 3. Confirm `npx tsc --noEmit` is clean in `packages/server` and `packages/web`.
 4. If your change touches a request or response shape, update the server route, the web API wrapper, the Android Retrofit/DTO code, and the related contract doc in `packages/contracts/` in the same PR.
