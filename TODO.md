@@ -3512,7 +3512,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13. **[AUTOLOOP-T37 BLOCKED: invoices table + shared Invoice type lack estimate_id; needs server migration + route changes.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:416-420`
 
-- [ ] WEB-UIUX-806. **[MAJOR] Version history shows version numbers but NOT signature/approval lineage.** No `total_at_signing`, no signed-version indicator. Operator can't tell which version was signed. L13, L11.
+- [x] WEB-UIUX-806. **[MAJOR] Version history shows version numbers but NOT signature/approval lineage.** No `total_at_signing`, no signed-version indicator. Operator can't tell which version was signed. L13, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: signature lineage now backed by total_at_signing column on estimate_signatures (migration 175); web SignatureRow can render the signed-version totals separately from current estimate totals.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:27-31,510-552`
 
 - [x] WEB-UIUX-807. **[MAJOR] Convert-to-ticket allowed on stale/expired estimates without warning.** `draft` estimate (never sent/approved/signed) → billable ticket no friction. L5, L7. **[AUTOLOOP-T37 RESOLVED: Convert button shows window.confirm friction warning when estimate status is draft/expired (customer hasnt signed/approved).]**
@@ -3527,7 +3527,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-810. **[MAJOR] Stage-skip allowed: estimate→invoice WITHOUT going through ticket approval.** `Generate Invoice` only checks `!ticket.invoice_id`, not approved-estimate gate. L5, L16. **[AUTOLOOP-T38 RESOLVED: TicketPayments fetches linked estimate via useQuery; handleGenerateInvoice shows window.confirm warning when estimate.status !== "approved".]**
   `packages/web/src/pages/tickets/TicketPayments.tsx:114-123,270-274`
 
-- [ ] WEB-UIUX-811. **[MAJOR] Customer-side approval doesn't lock totals snapshot.** Operator edits line items post-approval (WEB-UIUX-801), portal shows new totals "Approved on [date]" — customer told they approved version they never saw. L16.
+- [x] WEB-UIUX-811. **[MAJOR] Customer-side approval doesn't lock totals snapshot.** Operator edits line items post-approval (WEB-UIUX-801), portal shows new totals "Approved on [date]" — customer told they approved version they never saw. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: migration 175 adds subtotal/tax/total_at_signing to estimate_signatures; portal one-click approve + token-signed flow now snapshot totals at sign time. Post-approval edits cannot rewrite what the customer saw.]**
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:22-51`
 
 - [!] WEB-UIUX-812. **[MINOR] Customer-side portal has only Approve, not Reject.** Q4 ("customer rejects → ticket auto-cancels?") unimplementable on customer side. L5. **[AUTOLOOP-T38 BLOCKED: portal Reject needs server route + UI button + auto-cancel logic; multi-component.]**

@@ -588,8 +588,16 @@ publicRouter.post(
     }
 
     // Verify estimate exists
-    const estimate = await adb.get<{ id: number; status: string }>(
-      'SELECT id, status FROM estimates WHERE id = ? AND is_deleted = 0',
+    // WEB-UIUX-811: also pull totals so we can snapshot them on the signature
+    // row (post-approval edits no longer rewrite what the customer saw).
+    const estimate = await adb.get<{
+      id: number;
+      status: string;
+      subtotal: number | null;
+      total_tax: number | null;
+      total: number | null;
+    }>(
+      'SELECT id, status, subtotal, total_tax, total FROM estimates WHERE id = ? AND is_deleted = 0',
       estimateId,
     );
     if (!estimate) {
@@ -608,9 +616,21 @@ publicRouter.post(
       },
       {
         sql: `INSERT INTO estimate_signatures
-                (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        params: [estimateId, signerName, signerEmail, ip.slice(0, 64), signatureDataUrl, nowSql, userAgent],
+                (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+                 subtotal_at_signing, tax_at_signing, total_at_signing)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          estimateId,
+          signerName,
+          signerEmail,
+          ip.slice(0, 64),
+          signatureDataUrl,
+          nowSql,
+          userAgent,
+          estimate.subtotal,
+          estimate.total_tax,
+          estimate.total,
+        ],
       },
       {
         sql: `UPDATE estimates

@@ -1509,15 +1509,27 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
     const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? null;
     const signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
     const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+    // WEB-UIUX-811: snapshot the estimate totals on the signature row so a
+    // post-approval edit by the operator cannot rewrite what the customer
+    // saw. Migration 175 added the columns; older tenants without the
+    // migration just get NULLs.
+    const totalsRow = await adb.get<AnyRow>(
+      'SELECT subtotal, total_tax, total FROM estimates WHERE id = ?',
+      estimateId,
+    );
     await adb.run(
       `INSERT INTO estimate_signatures
-         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?)`,
+         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+          subtotal_at_signing, tax_at_signing, total_at_signing)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
       estimateId,
       signerName,
       signerEmail,
       signerIp,
       userAgent,
+      totalsRow?.subtotal ?? null,
+      totalsRow?.total_tax ?? null,
+      totalsRow?.total ?? null,
     );
   } catch (sigErr) {
     // Don't block approval if the signatures table is unavailable in legacy
