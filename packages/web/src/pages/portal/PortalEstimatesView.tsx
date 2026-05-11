@@ -22,6 +22,21 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
   }, []);
 
   async function handleApprove(id: number) {
+    // WEB-UIUX-1458: portal Approve is the highest-stakes action (customer
+    // authorizing the bill). Guard the single-tap path with an explicit
+    // confirm so a stray thumb on the wrong row doesn't commit the
+    // customer to thousands of dollars. Surface the row total + order id.
+    const est = estimates.find((e) => e.id === id);
+    if (est) {
+      const total = Number(est.total ?? 0);
+      const totalStr = total.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm(
+        `Approve estimate ${est.order_id ?? '#' + id} for ${totalStr}?\n\n` +
+        `This authorizes the shop to begin work and bill you for the amount above. You will not be able to revoke this through the portal once submitted.`,
+      );
+      if (!ok) return;
+    }
     setApprovingId(id);
     setError(null);
     // Snapshot the current row so we can roll back on server failure — without
@@ -40,14 +55,26 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
       await api.approveEstimate(id);
       // WEB-UIUX-1470: toast + next-step prompt so customer knows what happens next.
       toast.success('Estimate approved. Shop has been notified — expect a call within 24h.');
-    } catch {
-      // Roll back to the captured snapshot so the row reverts to its prior
-      // (typically "sent") status and the Approve button reappears.
+    } catch (err: any) {
+      // WEB-UIUX-1467: surface the server's intent. 404 with
+      // ERR_RESOURCE_NOT_FOUND typically means another tab already
+      // approved this estimate — keep the optimistic flip and refresh
+      // the list so the row sticks. For other errors roll back to the
+      // captured snapshot and surface the server message.
+      const status = err?.response?.status;
+      const code = err?.response?.data?.code;
+      const serverMsg: string | undefined = err?.response?.data?.message;
+      if (status === 404 && (code === 'ERR_RESOURCE_NOT_FOUND' || /already processed/i.test(serverMsg ?? ''))) {
+        // Already processed elsewhere — keep optimistic flip and refetch.
+        try { await (api as any).listEstimates?.(); } catch { /* noop */ }
+        toast.success(serverMsg || 'Estimate already processed.');
+        return;
+      }
       if (previous) {
         const snapshot = previous;
         setEstimates(prev => prev.map(e => (e.id === id ? snapshot : e)));
       }
-      setError('Failed to approve estimate. Please try again.');
+      setError(serverMsg || 'Failed to approve estimate. Please try again.');
     } finally {
       setApprovingId(null);
     }

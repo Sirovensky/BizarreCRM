@@ -1137,6 +1137,16 @@ router.post(
       FROM estimates e LEFT JOIN customers c ON c.id = e.customer_id WHERE e.id = ? AND e.is_deleted = 0
     `, id);
     if (!estimate) throw new AppError('Estimate not found', 404);
+    // WEB-UIUX-1456: refuse to re-send a rejected estimate. Sending mints a
+    // new approval token + flips status='sent' on success, effectively
+    // reviving the row that the "This cannot be undone" Reject copy
+    // promised was final. Operator must create a new revision instead.
+    if (estimate.status === 'rejected') {
+      throw new AppError("Estimate is rejected — create a new revision before sending.", 409);
+    }
+    if (estimate.status === 'converted') {
+      throw new AppError('Cannot send a converted estimate.', 409);
+    }
 
     // SC4: Issue a fresh, time-limited token on each send. Clear any prior
     // used_at marker since this is a re-send and the new token is unused.
@@ -1193,7 +1203,12 @@ router.post(
       try {
         const { sendSmsTenant } = await import('../services/smsProvider.js');
         const tenantSlug = (req as any).tenantSlug ?? null;
-        const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Reply YES to approve or view details at your repair shop.`;
+        // WEB-UIUX-1462: dropped "Reply YES to approve" — no inbound SMS
+        // handler maps YES→approve, so the previous copy was a false
+        // promise that left customers texting into the void. Direct them
+        // to the portal link instead (returned in the response body so
+        // the operator can include it manually if needed).
+        const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Open the link your repair shop sent you to review and approve.`;
         await sendSmsTenant(req.db, tenantSlug, phone, msg);
         smsSent = true;
       } catch (err: unknown) {
@@ -1237,14 +1252,27 @@ router.post(
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
 
-    const existing = await adb.get<{ id: number; status: string }>(
-      'SELECT id, status FROM estimates WHERE id = ? AND is_deleted = 0',
+    const existing = await adb.get<{ id: number; status: string; created_by: number | null }>(
+      'SELECT id, status, created_by FROM estimates WHERE id = ? AND is_deleted = 0',
       id,
     );
     if (!existing) throw new AppError('Estimate not found', 404);
 
     if (existing.status === 'rejected') throw new AppError('Estimate is already rejected', 400);
     if (existing.status === 'converted') throw new AppError('Cannot reject a converted estimate', 400);
+    // WEB-UIUX-1464: symmetric with Approve — the creator may not reject
+    // their own estimate. Two-party authorization is the policy on
+    // Approve (self-approval guard); without this an angry creator can
+    // silently kill their own quote without peer review. Admins always
+    // bypass since they are the override path.
+    const role = req.user?.role;
+    if (
+      role !== 'admin'
+      && existing.created_by != null
+      && existing.created_by === req.user!.id
+    ) {
+      throw new AppError('You cannot reject your own estimate. Ask another team member or an admin.', 403);
+    }
 
     await adb.run(
       "UPDATE estimates SET status = 'rejected', updated_at = datetime('now') WHERE id = ?",
@@ -1279,6 +1307,12 @@ router.post(
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'approved') throw new AppError('Already approved', 400);
     if (estimate.status === 'converted') throw new AppError('Already converted', 400);
+    // WEB-UIUX-1456: honor the "This cannot be undone" Reject confirm copy
+    // by refusing to flip a rejected estimate back to approved via the API.
+    // Operators who genuinely want to revive a rejected estimate must
+    // create a new revision (the existing edits-locked-after-reject path
+    // from UIUX-964 already nudges them there).
+    if (estimate.status === 'rejected') throw new AppError("Estimate is rejected — create a new revision instead of re-approving.", 409);
 
     // Validate token if provided (for unauthenticated approval)
     // S20-E1 + SEC-H52: prefer hash lookup (`approval_token_hash`). For rows
