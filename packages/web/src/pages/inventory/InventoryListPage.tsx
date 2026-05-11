@@ -390,12 +390,33 @@ export function InventoryListPage() {
     const lines = text.trim().split('\n');
     if (lines.length < 2) { toast.error('CSV must have a header row and at least one data row'); return; }
     const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+    // WEB-UIUX-760: enforce required-column validation up-front so the
+    // operator gets a clear toast instead of a 400 after submit. `name` +
+    // `retail_price` are the two columns inventory_items requires; sku is
+    // strongly recommended but optional (server auto-generates).
+    const REQUIRED = ['name', 'retail_price'];
+    const missing = REQUIRED.filter((c) => !headers.includes(c));
+    if (missing.length > 0) {
+      toast.error(`CSV missing required column(s): ${missing.join(', ')}. Header row must include: ${REQUIRED.join(', ')}.`);
+      return;
+    }
     const rows = lines.slice(1).map(line => {
       const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
       return obj;
     });
+    // WEB-UIUX-760: also flag rows with bad numeric retail_price so the
+    // operator sees the problem in the preview table before submit.
+    const badRows = rows.filter((r) => {
+      const v = (r.retail_price ?? '').trim();
+      if (!v) return true;
+      const n = Number(v);
+      return !Number.isFinite(n) || n < 0;
+    });
+    if (badRows.length > 0) {
+      toast.error(`${badRows.length} row(s) have a missing or invalid retail_price. Fix and re-import.`);
+    }
     // Loosely-typed dictionary cast to the InventoryImportRow shape — the row
     // editor in the modal fills any missing required keys before submit.
     setImportPreview(rows as InventoryImportRow[]);

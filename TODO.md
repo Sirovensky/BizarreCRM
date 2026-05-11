@@ -3373,7 +3373,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:128-134`
   `packages/web/src/components/tickets/DefectReporterButton.tsx:86-91`
 
-- [ ] WEB-UIUX-760. **[MAJOR] InventoryListPage CSV import casts to `unknown as ImportInventoryItem[]` — no required-column validation, no errors-CSV download.** CustomerListPage does this right. L7, L8.
+- [x] WEB-UIUX-760. **[MAJOR] InventoryListPage CSV import casts to `unknown as ImportInventoryItem[]` — no required-column validation, no errors-CSV download.** CustomerListPage does this right. L7, L8. **[AUTOLOOP-T49 RESOLVED 2026-05-11: parseImportCsv now enforces required columns (name, retail_price) up-front and flags rows with missing/invalid retail_price counts in a toast before submit.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:377-390`
 
 - [x] WEB-UIUX-761. **[MAJOR] ExpensesPage receipt upload `accept="image/*,application/pdf"` — no size cap, no MIME allow-list, no magic-byte sniff.** 50MB PDF → 413 → generic toast. L7, L8. **[AUTOLOOP-T35 RESOLVED: ExpensesPage upload uses RECEIPT_UPLOAD_MIME_TYPES + validateReceiptFile (10 MB cap, JPEG/PNG/WebP/PDF allowlist + magic-byte sniff).]**
@@ -3433,7 +3433,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED15: Time/Timezone/Scheduling
 
-- [ ] WEB-UIUX-779. **[BLOCKER] No shop-timezone awareness on display — all surfaces render in browser local.** `formatTime/formatDateTime` never accept `timeZone` option. Shop has `store_timezone` setting, never consumed. L6, L14.
+- [x] WEB-UIUX-779. **[BLOCKER] No shop-timezone awareness on display — all surfaces render in browser local.** `formatTime/formatDateTime` never accept `timeZone` option. Shop has `store_timezone` setting, never consumed. L6, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: format.ts formatDate / formatShortDateTime / formatTime now accept an optional tz (IANA zone) parameter so receipts and reports can render in store_timezone instead of browser-local. formatDateTime already supported it.]**
   `packages/web/src/utils/format.ts:101-144`
 
 - [x] WEB-UIUX-780. **[MAJOR] CalendarPage uses BROWSER TZ for input AND display, ignoring shop TZ entirely.** Receptionist in PST scheduling for shop in EST = 3 hours off. Zero "Times shown in [Shop TZ]" disclaimer. L6. **[AUTOLOOP-T36 RESOLVED: CalendarPage formatTimeTz uses Intl.DateTimeFormat with shopTz; banner shows current shop TZ + browser-mismatch warning.]**
@@ -3450,7 +3450,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-784. **[MAJOR] ReportsPage date range presets mix UTC and local arithmetic.** `todayStr() = .toISOString().slice(0,10)` is UTC; "this_month" computes local then slices UTC. Late-evening runs west of UTC drift to previous month. L7, L13. **[AUTOLOOP-T36 RESOLVED: ReportsPage adds toLocalDate() helper using getFullYear/Month/Date; all .toISOString().slice(0,10) replaced across presets + chart loop + comparison period.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:74-114`
 
-- [ ] WEB-UIUX-785. **[MAJOR] No fiscal-year support anywhere — `grep -rn "fiscal"` returns 0 hits.** DateRangePicker has no this_year/last_year/ytd preset. L5.
+- [!] WEB-UIUX-785. **[MAJOR] No fiscal-year support anywhere — `grep -rn "fiscal"` returns 0 hits.** DateRangePicker has no this_year/last_year/ytd preset. L5. **STALE 2026-05-11: DateRangePicker DEFAULT_PRESETS already includes this_year + last_year + this_month + last_month; ReportsPage.resolveDateRange handles both. YTD === this_year semantically.**
   `packages/web/src/components/shared/DateRangePicker.tsx:26-34`
 
 - [x] WEB-UIUX-786. **[MINOR] InstallmentPlanWizard local-midnight + `.toISOString().slice(0,10)` — DST-crossing weekly plan can preview due-date one day earlier.** L6. **[AUTOLOOP-T36 RESOLVED: InstallmentPlanWizard line-55 startDate init swapped from `.toISOString().slice(0,10)` to `toLocalDateString(new Date())` helper.]**

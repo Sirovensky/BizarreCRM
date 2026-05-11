@@ -121,15 +121,19 @@ export function formatCents(cents: number | null | undefined, currencyOverride?:
 // arg mirroring `formatCurrency` so portal pages \u2014 which run before AppShell ever
 // calls `initCurrencyFromSettings` \u2014 can format dates against a visitor-supplied
 // locale (`usePortalI18n`) instead of falling back to the module default.
-export function formatDate(iso: string | null | undefined, localeOverride?: string): string {
+export function formatDate(iso: string | null | undefined, localeOverride?: string, tz?: string | null): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleDateString(localeOverride ?? _locale, {
+  // WEB-UIUX-779: accept an optional IANA tz so reports + receipts can render
+  // dates in the shop's `store_timezone` instead of the browser-local zone.
+  const opts: Intl.DateTimeFormatOptions = {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleDateString(localeOverride ?? _locale, opts);
 }
 
 export function formatDateTime(iso: string | null | undefined, localeOverride?: string, tz?: string | null): string {
@@ -151,16 +155,18 @@ export function formatDateTime(iso: string | null | undefined, localeOverride?: 
 // across detail pages (Leads, Customer chat, Portal, etc.). Each had its own
 // hardcoded `toLocaleString('en-US', { month: 'short', ... })`. Centralised
 // here so locale flows from `initCurrencyFromSettings` instead of being pinned.
-export function formatShortDateTime(iso: string | Date | null | undefined): string {
+export function formatShortDateTime(iso: string | Date | null | undefined, tz?: string | null): string {
   if (iso == null) return '\u2014';
   const d = iso instanceof Date ? iso : new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleString(_locale, {
+  const opts: Intl.DateTimeFormatOptions = {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  });
+  };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleString(_locale, opts);
 }
 
 /**
@@ -172,11 +178,13 @@ export function formatShortDateTime(iso: string | Date | null | undefined): stri
  * High-traffic call-sites updated: Header notifications, Dashboard,
  * TicketListPage, InvoiceListPage, CustomerListPage.
  */
-export function formatTime(iso: string | Date | null | undefined): string {
+export function formatTime(iso: string | Date | null | undefined, tz?: string | null): string {
   if (iso == null) return '\u2014';
   const d = iso instanceof Date ? iso : new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleTimeString(_locale, { hour: 'numeric', minute: '2-digit' });
+  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleTimeString(_locale, opts);
 }
 
 /** Locale-aware integer formatter \u2014 replaces ad-hoc `n.toLocaleString()`. */
