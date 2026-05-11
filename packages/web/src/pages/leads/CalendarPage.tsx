@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { leadApi, settingsApi } from '@/api/endpoints';
+import { leadApi, settingsApi, customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useSettings } from '@/hooks/useSettings';
 import { formatTime } from '@/utils/format';
@@ -648,9 +648,21 @@ function CreateAppointmentModal({
     status: 'scheduled',
     notes: '',
     location_id: '1', // WEB-UIUX-1321: default location; overridable via select below
+    customer_id: '' as string,
+    customer_label: '' as string,
+    recurrence: 'none' as 'none' | 'weekly' | 'biweekly' | 'monthly',
   }), [dateStr]);
 
   const [form, setForm] = useState(() => createInitialForm());
+  // WEB-UIUX-1315: customer picker — typeahead against /customers/search.
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const { data: customerSearchData } = useQuery({
+    queryKey: ['appt-customer-search', customerQuery],
+    queryFn: ({ signal }) => customerApi.search(customerQuery, signal),
+    enabled: customerQuery.length >= 2 && customerDropdownOpen,
+  });
+  const customerResults = (customerSearchData?.data?.data as Array<{ id: number; first_name?: string; last_name?: string; phone?: string; email?: string }>) ?? [];
   // WEB-FK-015: overlap warning state
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
 
@@ -681,6 +693,8 @@ function CreateAppointmentModal({
     status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
     notes?: string;
     location_id?: number; // WEB-UIUX-1321
+    customer_id?: number; // WEB-UIUX-1315
+    recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly'; // WEB-UIUX-1320
   }
   const createMut = useMutation({
     mutationFn: (data: CreateAppointmentPayload) => leadApi.createAppointment(data),
@@ -770,6 +784,8 @@ function CreateAppointmentModal({
               status: form.status as 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show',
               notes: form.notes || undefined,
               location_id: form.location_id ? Number(form.location_id) : 1, // WEB-UIUX-1321
+              customer_id: form.customer_id ? Number(form.customer_id) : undefined, // WEB-UIUX-1315
+              recurrence: form.recurrence !== 'none' ? form.recurrence : undefined, // WEB-UIUX-1320
             });
           }}
         >
@@ -782,6 +798,56 @@ function CreateAppointmentModal({
               placeholder="e.g. Screen repair consultation"
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
             />
+          </div>
+          {/* WEB-UIUX-1315: customer picker. Optional but pre-filled when present
+              avoids the "orphan appointment" failure mode where staff book a
+              repair consultation with no customer attached and lose the link. */}
+          <div className="relative">
+            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Customer (optional)</label>
+            {form.customer_id ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm dark:border-primary-700 dark:bg-primary-900/20">
+                <span className="truncate">{form.customer_label}</span>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, customer_id: '', customer_label: '' }))}
+                  className="text-xs text-primary-700 hover:underline dark:text-primary-300"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <input
+                type="search"
+                value={customerQuery}
+                onChange={(e) => { setCustomerQuery(e.target.value); setCustomerDropdownOpen(true); }}
+                onFocus={() => setCustomerDropdownOpen(true)}
+                placeholder="Search by name, phone, or email"
+                className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+              />
+            )}
+            {customerDropdownOpen && !form.customer_id && customerResults.length > 0 && (
+              <ul role="listbox" className="absolute z-10 mt-1 max-h-44 w-full overflow-y-auto rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+                {customerResults.slice(0, 8).map((c) => {
+                  const label = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.phone || c.email || `#${c.id}`;
+                  return (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((f) => ({ ...f, customer_id: String(c.id), customer_label: label }));
+                          setCustomerDropdownOpen(false);
+                          setCustomerQuery('');
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-100 dark:hover:bg-surface-700"
+                      >
+                        <div className="font-medium text-surface-900 dark:text-surface-100">{label}</div>
+                        <div className="text-xs text-surface-500">{c.phone || c.email || ''}</div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Date</label>
@@ -891,6 +957,21 @@ function CreateAppointmentModal({
               rows={2}
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
             />
+          </div>
+          {/* WEB-UIUX-1320: recurrence picker. Server auto-creates 4 occurrences
+              for weekly/biweekly/monthly; leave as "none" for a single appt. */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Recurrence</label>
+            <select
+              value={form.recurrence}
+              onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as 'none' | 'weekly' | 'biweekly' | 'monthly' }))}
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+            >
+              <option value="none">One-time only</option>
+              <option value="weekly">Weekly (creates 4 occurrences)</option>
+              <option value="biweekly">Bi-weekly (creates 4 occurrences)</option>
+              <option value="monthly">Monthly (creates 4 occurrences)</option>
+            </select>
           </div>
           {/* WEB-FK-015: overlap warning — shown after first submit attempt if conflict found */}
           {overlapWarning && (
