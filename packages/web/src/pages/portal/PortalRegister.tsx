@@ -132,6 +132,8 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
     setCaptchaToken('');
     setCaptchaError('');
     captchaWidgetIdRef.current = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let pollTimeout: ReturnType<typeof setTimeout> | null = null;
     if (getCaptchaApi(provider)) {
       renderWidget();
     } else {
@@ -149,15 +151,44 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
       script.addEventListener('load', onLoad, { once: true });
       script.addEventListener('error', onError, { once: true });
       if (!existingScript) {
+        // Listener MUST be wired before src triggers the network request so
+        // synchronous cache hits still fire `load`. (BUGHUNT-2026-05-10-29
+        // earlier reading.)
         script.src = CAPTCHA_SCRIPTS[provider];
         script.async = true;
         script.defer = true;
         document.head.appendChild(script);
+      } else {
+        // BUGHUNT-2026-05-10-29: an existing <script> tag may have already
+        // fired its `load` event before this effect attached its listener
+        // (another component on the same page mounted earlier). `once: true`
+        // never re-fires, so we'd sit forever waiting. Poll the global API
+        // until it appears, with a 10s ceiling that flips to the error
+        // surface so the user sees a deterministic failure instead of an
+        // empty widget area.
+        pollTimer = setInterval(() => {
+          if (cancelled) return;
+          if (getCaptchaApi(provider)) {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null; }
+            renderWidget();
+          }
+        }, 200);
+        pollTimeout = setTimeout(() => {
+          if (cancelled) return;
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          if (!getCaptchaApi(provider)) {
+            setCaptchaReady(false);
+            setCaptchaError('Verification check failed to load. Please refresh and try again.');
+          }
+        }, 10_000);
       }
     }
 
     return () => {
       cancelled = true;
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (pollTimeout) { clearTimeout(pollTimeout); pollTimeout = null; }
       const widget = getCaptchaApi(provider);
       if (captchaWidgetIdRef.current !== null && widget?.remove) {
         widget.remove(captchaWidgetIdRef.current);
