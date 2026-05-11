@@ -641,15 +641,22 @@ async function dispatchStep(
   const action = (step.action || '').toLowerCase();
 
   // Non-sending actions — operator handles manually.
-  if (action === 'call_queue' || action === 'escalate') {
+  if (action === 'call_queue' || action === 'escalate' || action === 'request_card_update') {
     logger.info('dunning step is non-dispatch action — recorded only', {
       invoice_id: invoice.id,
       order_id: invoice.order_id,
       action,
     });
+    // WEB-UIUX-838: 'request_card_update' surfaces the payment-method-on-
+    // file workflow without dispatching itself. The admin sees the queued
+    // step in dunning_runs and follows up via Settings → Customers →
+    // Payment Method (or sends a Payment Link from the customer's invoice).
+    const warning = action === 'request_card_update'
+      ? `Step action 'request_card_update' is non-dispatch — admin should send a Payment Method update link to ${invoice.customer_id ?? 'this customer'}.`
+      : `Step action '${action}' is non-dispatch; admin must follow up manually.`;
     return {
       outcome: 'pending_dispatch',
-      warning: `Step action '${action}' is non-dispatch; admin must follow up manually.`,
+      warning,
     };
   }
 

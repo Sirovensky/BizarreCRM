@@ -276,6 +276,10 @@ export function DunningPage() {
                   <option value="sms">SMS</option>
                   <option value="call_queue">Call queue</option>
                   <option value="escalate">Escalate</option>
+                  {/* WEB-UIUX-838: card-on-file expired workflow — non-dispatch,
+                      logs a step the admin follows up with via Payment Method
+                      update link or the BillingTab portal. */}
+                  <option value="request_card_update">Request card update</option>
                 </select>
                 {(step.action === 'email' || step.action === 'sms') && (
                   <select

@@ -3607,7 +3607,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-837. **[MAJOR] InstallmentPlanWizard `acceptanceText.trim().length >= 3` accepts "Bob" as legal auto-debit signature.** Fails any reasonable e-sign audit. L7, L16. **[AUTOLOOP-T39 RESOLVED: STALE — InstallmentPlanWizard line 84 already enforces `acceptanceText.trim().toLowerCase() === customerName.trim().toLowerCase()` (per WEB-UIUX-393).]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:81`
 
-- [ ] WEB-UIUX-838. **[MINOR] Dunning step builder lacks `request_card_update` action.** Only email/sms/call_queue/escalate. Exact workflow needed for card-on-file expired. L5.
+- [x] WEB-UIUX-838. **[MINOR] Dunning step builder lacks `request_card_update` action.** Only email/sms/call_queue/escalate. Exact workflow needed for card-on-file expired. L5. **[AUTOLOOP-T49 RESOLVED 2026-05-11: dunningScheduler recognizes request_card_update as a non-dispatch action with admin-followup guidance; DunningPage step-action dropdown gains "Request card update" option.]**
   `packages/web/src/pages/billing/DunningPage.tsx:64-68`
 
 - [x] WEB-UIUX-839. **[MINOR] MembershipSettings tier deactivation copy misleading: "Existing subscribers will keep their membership until cancellation".** No way to migrate to another tier first. L14. **[AUTOLOOP-T39 RESOLVED: tier-deactivation confirm copy updated to honestly say "subscribers stay until they cancel; no built-in migration exists".]**
