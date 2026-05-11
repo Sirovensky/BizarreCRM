@@ -986,7 +986,8 @@ export function EstimateListPage() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  if (await confirm('Convert this estimate to a ticket?')) {
+                                  // WEB-UIUX-1483: verb-matching confirmLabel
+                                  if (await confirm('Convert this estimate to a ticket?', { title: 'Convert estimate?', confirmLabel: 'Convert' })) {
                                     convertMut.mutate(est.id);
                                   }
                                 } catch (err) {
@@ -1029,7 +1030,8 @@ export function EstimateListPage() {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
-                                if (await confirm('Delete this estimate?', { danger: true })) {
+                                // WEB-UIUX-1483: verb-matching confirmLabel
+                                if (await confirm('Delete this estimate?', { title: 'Delete estimate?', confirmLabel: 'Delete', danger: true })) {
                                   deleteMut.mutate(est.id);
                                 }
                               } catch (err) {

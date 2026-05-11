@@ -38,6 +38,7 @@ import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 // WEB-FAE-003: write recent_views under a per-user key so signing in as a
 // different user on the same browser can't read another user's recent
 // customer labels (PII). Reader is `Sidebar.RecentViews`.
@@ -1012,6 +1013,9 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
 
 function MembershipCard({ customerId }: { customerId: number }) {
   const queryClient = useQueryClient();
+  // WEB-UIUX-1490: server requireAdmin gates cancel/pause/resume — hide
+  // the buttons from non-admin staff so they don't click to a 403 toast.
+  const isAdmin = useHasRole('admin');
 
   // Check if membership system is enabled
   const { data: configData } = useQuery({
@@ -1200,7 +1204,8 @@ function MembershipCard({ customerId }: { customerId: number }) {
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            {memberData.status === 'active' && (
+            {/* WEB-UIUX-1490: hide cancel/pause/resume from non-admins. */}
+            {memberData.status === 'active' && isAdmin && (
               <>
                 <button
                   onClick={() => {
@@ -1255,7 +1260,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
                 </button>
               </>
             )}
-            {memberData.status === 'paused' && (
+            {memberData.status === 'paused' && isAdmin && (
               <button
                 onClick={() => resumeMut.mutate()}
                 disabled={resumeMut.isPending}

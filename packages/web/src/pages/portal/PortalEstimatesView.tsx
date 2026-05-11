@@ -202,7 +202,11 @@ function EstimateStatusBadge({ status }: { status: string }) {
     converted: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300',
     converting: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   };
-  const label = STATUS_LABELS[status] ?? (status.charAt(0).toUpperCase() + status.slice(1));
+  // WEB-UIUX-1481: handle multi-word statuses (`partially_paid`,
+  // `awaiting_signature`, etc.) — replace underscores with spaces then
+  // title-case each word instead of returning "Partially_paid".
+  const label = STATUS_LABELS[status]
+    ?? status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] || colors.draft}`}>
       {status === 'converting' && <Loader2 className="h-3 w-3 animate-spin" />}

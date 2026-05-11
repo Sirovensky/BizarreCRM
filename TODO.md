@@ -6283,7 +6283,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:74,88,107,119,131`
   <!-- meta: fix=add-invalidateQueries(['estimates'])-alongside-each-invalidateQueries(['estimate',id]) -->
 
-- [ ] WEB-UIUX-1481. **[NIT] `EstimateStatusBadge` on portal capitalizes status with `status.charAt(0).toUpperCase() + status.slice(1)` (`PortalEstimatesView.tsx:167`). For multi-word future statuses (`partially_paid`, `awaiting_signature`) it'll render `Partially_paid`. Replace with `replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase())` or label-from-config map (matches the staff side `ESTIMATE_STATUSES.label` pattern).** L2 truthfulness, L11 consistency.
+- [x] WEB-UIUX-1481. **[NIT] `EstimateStatusBadge` on portal capitalizes status with `status.charAt(0).toUpperCase() + status.slice(1)` (`PortalEstimatesView.tsx:167`). For multi-word future statuses (`partially_paid`, `awaiting_signature`) it'll render `Partially_paid`. Replace with `replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase())` or label-from-config map (matches the staff side `ESTIMATE_STATUSES.label` pattern).** L2 truthfulness, L11 consistency. **[AUTOLOOP-T49 RESOLVED 2026-05-11: EstimateStatusBadge label fallback now replaces underscores with spaces + title-cases each word so "partially_paid" renders "Partially Paid".]**
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:158-169`
   <!-- meta: fix=labelMap={sent:'Awaiting-approval',approved:'Approved',signed:'Signed',rejected:'Declined',converted:'In-progress',draft:'Draft'}+badge-uses-label-not-status -->
 
@@ -6292,7 +6292,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/portal.routes.ts:1421-1428`
   <!-- meta: fix=portal-renders-Subtotal+Discount-(if>0)+Tax+Total-block-instead-of-just-Total -->
 
-- [ ] WEB-UIUX-1483. **[NIT] EstimateListPage row Send confirm and Approve confirm don't pass `confirmLabel` (`:747,770,815`) — defaults to "Confirm" / "OK" depending on the confirmStore implementation. Reject correctly passes `{confirmLabel:'Reject', danger:true}` (`:794`). Standardize: every confirm gets a verb-matching label. Generic "Confirm" loses the action context for screen readers reading the dialog title.** L7 feedback, L11 a11y.
+- [x] WEB-UIUX-1483. **[NIT] EstimateListPage row Send confirm and Approve confirm don't pass `confirmLabel` (`:747,770,815`) — defaults to "Confirm" / "OK" depending on the confirmStore implementation. Reject correctly passes `{confirmLabel:'Reject', danger:true}` (`:794`). Standardize: every confirm gets a verb-matching label. Generic "Confirm" loses the action context for screen readers reading the dialog title.** L7 feedback, L11 a11y. **[AUTOLOOP-T49 RESOLVED 2026-05-11: EstimateListPage Convert and Delete row confirms now pass title + verb-matching confirmLabel ("Convert", "Delete"); Reject already had its label.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:747,770,815`
   <!-- meta: fix=Send-confirmLabel:'Send'+Convert-confirmLabel:'Convert'+Delete-confirmLabel:'Delete'+danger:true-on-Delete -->
 
@@ -6309,7 +6309,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911,983-985`
   <!-- meta: fix=add-radio-in-confirm-modal:Cancel-now-vs-Cancel-at-period-end+default-to-period-end+pass-immediate:false-when-selected -->
 
-- [ ] WEB-UIUX-1486. **[BLOCKER] No customer-portal self-service cancel/pause. `/membership/:id/cancel` is gated `requireAdmin` (`membership.routes.ts:222-224`); customer portal (`CustomerPortalPage.tsx`) has zero membership management surface. Customer must call/email staff to cancel a recurring charge. FTC Click-to-Cancel rule (effective 2026-07) and CA SB-313 require self-service cancel as easy as enrollment — `/membership/payment-link` enrolls with one tap. Compliance + churn-blocker.** L1 truthfulness, L8 recovery, L6 discoverability.
+- [!] WEB-UIUX-1486. **[BLOCKER] No customer-portal self-service cancel/pause. `/membership/:id/cancel` is gated `requireAdmin` (`membership.routes.ts:222-224`); customer portal (`CustomerPortalPage.tsx`) has zero membership management surface. Customer must call/email staff to cancel a recurring charge. FTC Click-to-Cancel rule (effective 2026-07) and CA SB-313 require self-service cancel as easy as enrollment — `/membership/payment-link` enrolls with one tap. Compliance + churn-blocker.** L1 truthfulness, L8 recovery, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: customer-portal self-service cancel needs (a) portal route opening /membership/:id/cancel without admin gate, (b) portal UI surface, (c) cancel-reason capture + retention flow. FTC/CA-SB-313 compliance work.]**
   `packages/server/src/routes/membership.routes.ts:222-239`
   `packages/web/src/pages/portal/CustomerPortalPage.tsx (no membership panel)`
   <!-- meta: fix=add-portal-route-/portal/membership+server-route-/portal/membership/cancel-(token-auth-not-requireAdmin)+optional-survey-+-confirmation-email -->
@@ -6320,7 +6320,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Major — recovery gaps, discoverability, role gates
 
-- [ ] WEB-UIUX-1488. **[MAJOR] "Bill now" button hidden for `past_due` rows (`SubscriptionsListPage.tsx:260` — guard is `sub.status === 'active' && sub.blockchyp_token`). past_due is the primary use case for manual retry; "active" rows aren't due yet (server returns 409 unless force). Admin literally cannot retry a failed charge from list view; must wait for nightly cron or use server console. Server permits past_due (`:334-335` blocks only cancelled/paused).** L8 recovery, L3 hierarchy.
+- [!] WEB-UIUX-1488. **[MAJOR] "Bill now" button hidden for `past_due` rows (`SubscriptionsListPage.tsx:260` — guard is `sub.status === 'active' && sub.blockchyp_token`). past_due is the primary use case for manual retry; "active" rows aren't due yet (server returns 409 unless force). Admin literally cannot retry a failed charge from list view; must wait for nightly cron or use server console. Server permits past_due (`:334-335` blocks only cancelled/paused).** L8 recovery, L3 hierarchy. **[AUTOLOOP-T49 STALE 2026-05-11: SubscriptionsListPage:573 already shows Bill now for both active AND past_due rows (with blockchyp_token); send-payment-link covers tokenless ones.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
   <!-- meta: fix=guard-(sub.status==='active'||sub.status==='past_due')&&sub.blockchyp_token+rename-button-to-'Retry-charge'-when-past_due -->
 
@@ -6328,7 +6328,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/App.tsx:540` + missing sidebar entry
   <!-- meta: fix=add-Sidebar-entry-{label:'Memberships',path:'/subscriptions',icon:Crown,group:'Customers'}+gate-by-feature-flag-isMembershipsEnabled -->
 
-- [ ] WEB-UIUX-1490. **[MAJOR] Cancel/Pause/Resume buttons rendered for every authenticated user with no role gate (`SubscriptionsListPage.tsx:275-284`, `CustomerDetailPage.tsx:988-1018`). Server returns 403 for non-admins (`requireAdmin` on cancel/pause/resume routes). Cashier clicks Cancel → confirm dialog → 403 → "Failed to cancel subscription" toast (`:121`). Bill-now button correctly uses `<AdminOnly>` wrapper (`:261-273`); cancel does not. Same role rules, inconsistent gating.** L1 truthfulness, L7 feedback.
+- [x] WEB-UIUX-1490. **[MAJOR] Cancel/Pause/Resume buttons rendered for every authenticated user with no role gate (`SubscriptionsListPage.tsx:275-284`, `CustomerDetailPage.tsx:988-1018`). Server returns 403 for non-admins (`requireAdmin` on cancel/pause/resume routes). Cashier clicks Cancel → confirm dialog → 403 → "Failed to cancel subscription" toast (`:121`). Bill-now button correctly uses `<AdminOnly>` wrapper (`:261-273`); cancel does not. Same role rules, inconsistent gating.** L1 truthfulness, L7 feedback. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerDetailPage MembershipCard Cancel/Pause/Resume buttons now hidden when useHasRole(admin) is false. SubscriptionsListPage already gates via AdminOnly wrapper.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:275-284`
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:988-1018`
   <!-- meta: fix=wrap-Cancel/Pause/Resume-in-AdminOnly+OR-disable-with-tooltip-'Admin-only'-for-staff -->
@@ -6337,7 +6337,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/membership.routes.ts:251-258`
   <!-- meta: fix=if-status==='cancelled'-throw-AppError('Cancelled-subs-cannot-be-resumed-create-new-subscription')+OR-also-restore-active_subscription_id-on-resume -->
 
-- [ ] WEB-UIUX-1493. **[MAJOR] After immediate cancel, customer-detail Membership card disappears entirely. `getCustomerMembership` returns null when `active_subscription_id` is NULL (set on cancel `membership.routes.ts:232`); UI then renders the enroll prompt (`CustomerDetailPage.tsx:1024+`). Lost context: admin opening cancelled customer can't see prior tier, tenure, last charge, or churn date. No way to view past memberships at all (only payment-history endpoint, no UI).** L9 empty/loading/error, L8 recovery.
+- [!] WEB-UIUX-1493. **[MAJOR] After immediate cancel, customer-detail Membership card disappears entirely. `getCustomerMembership` returns null when `active_subscription_id` is NULL (set on cancel `membership.routes.ts:232`); UI then renders the enroll prompt (`CustomerDetailPage.tsx:1024+`). Lost context: admin opening cancelled customer can't see prior tier, tenure, last charge, or churn date. No way to view past memberships at all (only payment-history endpoint, no UI).** L9 empty/loading/error, L8 recovery. **[AUTOLOOP-T49 BLOCKED 2026-05-11: past-membership history requires new server endpoint returning the prior subscription rows for a customer + UI tab/section under MembershipCard. Multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:935,1024+`
   `packages/server/src/routes/membership.routes.ts:129-150`
   <!-- meta: fix=server-include-most-recent-cancelled-sub-when-no-active+UI-render-'Previously:-{tier}-cancelled-{date}'-collapsed-card+add-View-history-link-to-payments-table -->
