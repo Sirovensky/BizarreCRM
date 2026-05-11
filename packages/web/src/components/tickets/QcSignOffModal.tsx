@@ -558,7 +558,7 @@ export function QcSignOffModal({
               <>
                 <div className="mb-4">
                   <p className="mb-2 text-xs font-semibold uppercase text-surface-500">
-                    Working device photo
+                    Photo of working device
                   </p>
                   {/* WEB-UIUX-1090: Include HEIC/HEIF so iPhone Safari users are not blocked.
                       NOTE: server ALLOWED_MIMES may need a parallel update to accept

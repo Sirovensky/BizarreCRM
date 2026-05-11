@@ -336,21 +336,30 @@ export function GiftCardDetailPage() {
         </dl>
 
         {/* WEB-UIUX-1442: server allows reload on any status except disabled; show button for 'used' too (secondary tone indicates topping up a depleted card) */}
-        {card.status !== 'disabled' && canReload && (
-          <div className="mt-4 pt-4 border-t border-surface-100 dark:border-surface-800">
-            <button
-              onClick={() => setShowReloadModal(true)}
-              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border ${
-                card.status === 'used'
-                  ? 'border-surface-200 dark:border-surface-700 text-surface-400 dark:text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-800'
-                  : 'border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800'
-              }`}
-            >
-              <RefreshCw className="h-4 w-4" />
-              Reload balance
-            </button>
-          </div>
-        )}
+        {card.status !== 'disabled' && canReload && (() => {
+          // WEB-UIUX-999: server-side `GIFT_CARD_MAX_AMOUNT = 10_000` rejects
+          // any reload that would push balance over $10k. Pre-disable here so
+          // the cashier doesn't type, submit, then get a generic toast.
+          const GIFT_CARD_MAX_BALANCE = 10_000;
+          const atCap = dollarsFromMaybeCents(card.current_balance) >= GIFT_CARD_MAX_BALANCE;
+          return (
+            <div className="mt-4 pt-4 border-t border-surface-100 dark:border-surface-800">
+              <button
+                onClick={() => setShowReloadModal(true)}
+                disabled={atCap}
+                title={atCap ? `Card at maximum balance ${formatCurrencyShared(GIFT_CARD_MAX_BALANCE)}` : undefined}
+                className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border disabled:opacity-50 disabled:cursor-not-allowed ${
+                  card.status === 'used'
+                    ? 'border-surface-200 dark:border-surface-700 text-surface-400 dark:text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-800'
+                    : 'border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800'
+                }`}
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reload balance
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Transaction History */}

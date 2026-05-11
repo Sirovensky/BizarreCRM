@@ -148,7 +148,7 @@ export function RefundReasonPicker({
               toast(`Note was truncated — ${dropped} characters dropped (500 max).`, { icon: '⚠️' });
             }
           }}
-          placeholder={isOtherSelected ? 'Please describe the reason…' : 'Free-form context to help with reporting…'}
+          placeholder={isOtherSelected ? 'Please describe the reason…' : 'What happened? (optional)'}
           className={`w-full rounded-md border bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
             isOtherSelected && noteTouched && noteIsShort
               ? 'border-red-500 dark:border-red-400'
