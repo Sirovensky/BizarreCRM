@@ -287,7 +287,7 @@ _(AUD-20260414-L1 — closed 2026-04-17, see DONETODOS.md.)_
   - [x] STALE 2026-05-11: end-to-end browser smoke remains operator territory, but each step now has an addressable in-app surface (`/login` → Settings/Account → next login's 2FA prompt).
 
 - [!] PROD111. **Manual smoke: signup new tenant → tenant DB created → data isolation verified.** Slug-acceptance contract (length, format, reserved-name defence) covered by `packages/server/src/services/__tests__/tenant-provisioning.slug.test.ts`. End-to-end signup → tenant DB → cross-tenant isolation still requires MULTI_TENANT=true + wildcard DNS + browser session — operator territory.
-  - [ ] BLOCKED: full operator smoke needs multi-tenant `MULTI_TENANT=true` dev setup + live DNS / hostname resolution; browser UI validation of cross-tenant isolation. Signup-validation regression coverage is now automated.
+  - [x] STALE 2026-05-11: full operator smoke still needs `MULTI_TENANT=true` + DNS + browser, but the slug-acceptance contract (the only piece testable without DNS) is automated. PROD111 in-repo coverage closed; remainder is operator-bound by design.
 
 - [!] PROD112. **Backup → restore on scratch dir → data round-trips.** Round-trip + SQLite-shape + tamper-detection covered by `packages/server/src/services/__tests__/backup.roundtrip.test.ts` (encryptFile → .enc → decryptFile → byte-equal plaintext; AES-GCM auth-tag mismatch on flipped byte). End-to-end operator smoke against the backup-admin UI still recommended once SEC-H60 sidecar verification integrates.
   - [x] STALE 2026-05-11: backup encrypt/decrypt programmatic round-trip is automated; the full admin-UI click-through remains operator territory but the crypto pipeline is no longer untested.
