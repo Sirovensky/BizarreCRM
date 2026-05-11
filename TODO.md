@@ -3316,7 +3316,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/stores/authStore.ts:113-127`
   <!-- meta: fix=ImpersonationBanner-style-yellow-bar+auto-revert-after-N-min -->
 
-- [ ] WEB-UIUX-743. **[BLOCKER] Permission downgrade mid-session never re-renders gates.** `performRefresh()` writes new accessToken but doesn't parse JWT or re-fetch /auth/me. Demoted user keeps using manager-only pages until manual logout. L16.
+- [x] WEB-UIUX-743. **[BLOCKER] Permission downgrade mid-session never re-renders gates.** `performRefresh()` writes new accessToken but doesn't parse JWT or re-fetch /auth/me. Demoted user keeps using manager-only pages until manual logout. L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: api/client.ts performRefresh now follows refresh with /auth/me fetch + authStore.setUser so role/permission downgrades propagate mid-session.]**
   `packages/web/src/api/client.ts:78-108`
   `packages/web/src/components/shared/PermissionBoundary.tsx:18-25`
 
@@ -3444,7 +3444,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [!] WEB-UIUX-782. **[MAJOR] DST fall-back ambiguity silently picks first occurrence.** Shift end 02:00 + start 01:00 on rollback day → undercount or silent overlap. Payroll bug. L7, L13. **[AUTOLOOP-T36 BLOCKED: DST fall-back ambiguity needs server-side TZ-aware duration math (dayjs/luxon with named TZ).]**
 
-- [ ] WEB-UIUX-783. **[MAJOR] ShiftSchedulePage `start_at: newStart` sends `<input type="datetime-local">` value RAW with no offset.** Server interprets as UTC vs local vs shop-TZ — undefined. L7, L14.
+- [!] WEB-UIUX-783. **[MAJOR] ShiftSchedulePage `start_at: newStart` sends `<input type="datetime-local">` value RAW with no offset.** Server interprets as UTC vs local vs shop-TZ — undefined. L7, L14. **STALE 2026-05-11: ShiftSchedulePage.tsx:117 already wraps newStart/newEnd in new Date(...).toISOString() before POST.**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:108-113`
 
 - [x] WEB-UIUX-784. **[MAJOR] ReportsPage date range presets mix UTC and local arithmetic.** `todayStr() = .toISOString().slice(0,10)` is UTC; "this_month" computes local then slices UTC. Late-evening runs west of UTC drift to previous month. L7, L13. **[AUTOLOOP-T36 RESOLVED: ReportsPage adds toLocalDate() helper using getFullYear/Month/Date; all .toISOString().slice(0,10) replaced across presets + chart loop + comparison period.]**

@@ -113,6 +113,29 @@ async function performRefresh(): Promise<void> {
       if (res.data?.success !== true) {
         throw new Error('Refresh response was not successful');
       }
+      // WEB-UIUX-743: after a successful refresh, re-fetch /auth/me so the
+      // client picks up role/permission downgrades that happened mid-session.
+      // Without this a demoted user keeps using manager-only pages until they
+      // manually log out, because the React state still holds the pre-refresh
+      // user record. Failure here is non-fatal — the auth-ready event still
+      // fires; the next request that needs a stricter scope will 403 and the
+      // axios interceptor will re-enter the refresh + fetch cycle.
+      try {
+        const meRes = await axios.get(`${API_BASE}/auth/me`, {
+          withCredentials: true,
+          timeout: 10_000,
+        });
+        const user = meRes.data?.data;
+        if (user) {
+          const { useAuthStore } = await import('@/stores/authStore.js').catch(
+            () => import('@/stores/authStore'),
+          );
+          useAuthStore.getState().setUser?.(user);
+        }
+      } catch (meErr) {
+        // Best-effort — proactive refresh still succeeded, just no fresh /me.
+        devWarn('Refresh /auth/me follow-up failed:', meErr);
+      }
       emitAuthReady();
       scheduleTokenRefresh();
     } finally {
