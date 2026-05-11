@@ -46,6 +46,10 @@ interface PreviewResponse {
   preview_count: number;
   confirmation_token: string;
   confirmed: false;
+  // WEB-UIUX-1113: server ships up to 5 masked sample phones so the operator
+  // can sanity-check WHO before confirming a marketing blast.
+  sample_phones?: Array<{ masked: string }>;
+  sample_size?: number;
 }
 
 // WEB-UIUX-1111: Updated to match server response shape from inbox.routes.ts:693-703
@@ -551,6 +555,19 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                   <> <strong className="text-red-700 dark:text-red-400">Confirmation expired.</strong> Please re-preview.</>
                 )}
               </span>
+            </div>
+          )}
+          {/* WEB-UIUX-1113: masked sample recipients so operator sanity-checks WHO. */}
+          {preview && preview.sample_phones && preview.sample_phones.length > 0 && (
+            <div className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-800/50">
+              <p className="font-medium text-surface-700 dark:text-surface-300 mb-1">
+                Sample recipients (first {preview.sample_phones.length} of {preview.preview_count})
+              </p>
+              <ul className="space-y-0.5 font-mono text-surface-600 dark:text-surface-400">
+                {preview.sample_phones.map((p, i) => (
+                  <li key={i}>· {p.masked}</li>
+                ))}
+              </ul>
             </div>
           )}
           </>}

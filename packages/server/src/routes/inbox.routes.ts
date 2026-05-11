@@ -560,12 +560,29 @@ router.post(
         preview.phonesHash,
         preview.count,
       );
+      // WEB-UIUX-1113: ship a 5-recipient sample to the UI so the operator
+      // can sanity-check WHO will receive the blast before confirming. The
+      // first 5 phones in the deterministic segment order are enough for
+      // a "is this the right segment" check without leaking the whole list
+      // — full phone-list export would be a separate compliance review.
+      const sampleSize = Math.min(5, preview.phones.length);
+      const samplePhones = preview.phones.slice(0, sampleSize).map((p) => ({
+        // Mask the middle four digits in the sample preview — enough for
+        // the operator to recognise their own format ("555-•••-1234")
+        // without putting raw phones in the response if the modal is
+        // screen-recorded / accidentally shared.
+        masked: p.length >= 7
+          ? `${p.slice(0, 3)}•••${p.slice(-4)}`
+          : p,
+      }));
       res.json({
         success: true,
         data: {
           preview_count: preview.count,
           confirmation_token: freshToken,
           confirmed: false,
+          sample_phones: samplePhones,
+          sample_size: sampleSize,
         },
       });
       return;
