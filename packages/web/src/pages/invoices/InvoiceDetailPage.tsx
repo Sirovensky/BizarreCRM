@@ -663,6 +663,57 @@ export function InvoiceDetailPage() {
                   <Undo2 className="h-4 w-4" /> Refund
                 </button>
               ) : canVoidOrCreditNote ? (
+                <>
+                {/* WEB-UIUX-721: refund-to-original-card path. Creates a pending
+                    refund row with method='blockchyp' so the existing approve
+                    flow auto-fires processRefund against the original txn.
+                    Visible only when BlockChyp is enabled AND a captured card
+                    payment with a processor_transaction_id exists on this
+                    invoice. Operator approves from /refunds. */}
+                {blockchypEnabled && cardPaymentWithTxn && Number(invoice.amount_paid) > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const cap = Math.round(Number(invoice.amount_paid) * 100) / 100;
+                      const input = window.prompt(
+                        `Refund to original card.\nMaximum: ${formatCurrency(cap)}.\nEnter amount to refund:`,
+                        cap.toFixed(2),
+                      );
+                      if (input === null) return;
+                      const amt = parseFloat(input);
+                      if (!Number.isFinite(amt) || amt <= 0) {
+                        toast.error('Amount must be a positive number');
+                        return;
+                      }
+                      if (amt > cap) {
+                        toast.error(`Amount exceeds maximum refundable (${formatCurrency(cap)})`);
+                        return;
+                      }
+                      if (!window.confirm(`Queue ${formatCurrency(amt)} card refund? It will appear in /refunds for an admin to approve before the processor fires.`)) {
+                        return;
+                      }
+                      try {
+                        await refundApi.create({
+                          invoice_id: invoiceId,
+                          customer_id: invoice.customer_id as number,
+                          amount: amt,
+                          type: 'refund',
+                          method: 'blockchyp',
+                          reason: 'Card refund requested from invoice detail',
+                        });
+                        toast.success('Refund queued — open Refunds to approve.');
+                        queryClient.invalidateQueries({ queryKey: ['refunds'] });
+                      } catch (err) {
+                        const e = err as { response?: { data?: { message?: string } } };
+                        toast.error(e?.response?.data?.message ?? 'Could not queue card refund');
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                    title="Create a refund row that, on approval, refunds the original card via BlockChyp."
+                  >
+                    <Undo2 className="h-4 w-4" /> Refund to card
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     // WEB-UIUX-877: require manager PIN for refunds above threshold.
@@ -682,6 +733,7 @@ export function InvoiceDetailPage() {
                 >
                   <ReceiptText className="h-4 w-4" /> Refund
                 </button>
+                </>
               ) : (
                 <button
                   disabled
