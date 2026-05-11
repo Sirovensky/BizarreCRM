@@ -56,6 +56,7 @@ const AbcAnalysisPage = lazy(() => import('./pages/inventory/AbcAnalysisPage').t
 const InventoryAgePage = lazy(() => import('./pages/inventory/InventoryAgePage').then(m => ({ default: m.InventoryAgePage })));
 const MassLabelPrintPage = lazy(() => import('./pages/inventory/MassLabelPrintPage').then(m => ({ default: m.MassLabelPrintPage })));
 const InvoiceListPage = lazy(() => import('./pages/invoices/InvoiceListPage').then(m => ({ default: m.InvoiceListPage })));
+const RefundsListPage = lazy(() => import('./pages/refunds/RefundsListPage').then(m => ({ default: m.RefundsListPage })));
 const InvoiceDetailPage = lazy(() => import('./pages/invoices/InvoiceDetailPage').then(m => ({ default: m.InvoiceDetailPage })));
 const PhotoCapturePage = lazy(() => import('./pages/photo-capture/PhotoCapturePage').then(m => ({ default: m.PhotoCapturePage })));
 const LeadListPage = lazy(() => import('./pages/leads/LeadListPage').then(m => ({ default: m.LeadListPage })));
@@ -551,6 +552,7 @@ export default function App() {
                         <Route path="/inventory/:id" element={<InventoryDetailPage />} />
                         <Route path="/invoices" element={<InvoiceListPage />} />
                         <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+                        <Route path="/refunds" element={<RefundsListPage />} />
                         {/* WEB-FL-008 (Fixer-B7 2026-04-25): dead `/checkin` alias removed.
                             No menu link, no <Link>, no navigate caller — `grep -rn "/checkin"`
                             returned only the route declaration itself. `/pos` is the live entry. */}

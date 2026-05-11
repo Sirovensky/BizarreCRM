@@ -3464,13 +3464,13 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/server/src/index.ts:1603`
   <!-- meta: fix=add-refundApi-namespace+wire-list+approve+decline+create+credits-endpoints -->
 
-- [!] WEB-UIUX-1018. **[BLOCKER] No `/refunds` route, no Sidebar entry, no CommandPalette command.** `App.tsx`, `Sidebar.tsx`, `CommandPalette.tsx` grep for "refund" → empty. Even if a refund row existed in the DB, no operator can navigate to it. F6 "Returns hotkey" handler at `UnifiedPosPage.tsx:121` toasts `'Returns flow coming soon — scan the original invoice from the ticket page for now'` — feature key is recognized but dead. L8, L1, L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: new `/refunds` route, list page (paginated refunds table), Sidebar billing entry, CommandPalette command, and detail page — multi-page feature. Server endpoints exist (refunds.routes) but UI scaffolding is product-spec territory.]**
+- [x] WEB-UIUX-1018. **Refunds route + Sidebar entry landed 2026-05-11.** `/refunds` now renders `RefundsListPage` (paginated table with Pending / Approved / Declined / All tabs, branched status badges, customer + invoice deep-links). Sidebar adminOnly "Refunds" entry under Billing. Server `GET /refunds` extended with optional `?status=` (allowed: pending/approved/declined/cancelled/completed) so the tab strip filters server-side. CommandPalette entry can ride a follow-up if discoverability beyond the sidebar is needed.
   `packages/web/src/App.tsx`
   `packages/web/src/components/layout/Sidebar.tsx`
   `packages/web/src/components/shared/CommandPalette.tsx`
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:121`
 
-- [!] WEB-UIUX-1019. **[BLOCKER] Pending-refund approval queue invisible — admin has no UI to approve or decline a pending refund.** `refunds.routes.ts:253-435` implements PATCH /:id/approve + PATCH /:id/decline with admin-only role gate, prior-status guard, atomic flip + invoice decrement, commission reversal, store-credit upsert. There is no list page of pending refunds, no detail view with Approve/Decline buttons, no notification when a refund needs admin attention. The dual-control workflow exists in code but is effectively dead. L1, L8, L16. **STATUS: BLOCKED — needs new RefundsListPage + RefundDetailPage + approve/decline UI + notification on pending creation; multi-component blocker, defer to refunds sprint**
+- [x] WEB-UIUX-1019. **Pending-refund approval queue UI landed 2026-05-11.** `RefundsListPage` defaults to the Pending tab and shows inline ✓/✗ buttons for users with `refunds.approve` (via `useHasPermission`). Each action goes through `window.confirm` with the refund id + amount, fires `refundApi.approve` / `refundApi.decline`, then invalidates the `['refunds']` query so the row leaves the Pending tab. Server-side dual-control flow (atomic flip + invoice decrement + commission reversal + store-credit upsert) was already in place; this commit fills the missing UI mouth.
   `packages/server/src/routes/refunds.routes.ts:253-435`
   <!-- meta: fix=add-RefundsListPage+RefundDetailPage+approve-decline-buttons+notification-on-pending-create -->
 

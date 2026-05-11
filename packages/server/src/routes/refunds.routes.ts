@@ -87,8 +87,22 @@ router.get('/', asyncHandler(async (req, res) => {
   const pageSize = parsePageSize(req.query.pagesize, 25);
   const offset = validatePaginationOffset((page - 1) * pageSize, 'offset');
 
+  // WEB-UIUX-1018/1019: optional status filter — admin approval queue calls
+  // ?status=pending; the list page also offers approved/declined views.
+  const statusRaw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+  const allowedStatuses = ['pending', 'approved', 'declined', 'cancelled', 'completed'];
+  const status = allowedStatuses.includes(statusRaw) ? statusRaw : '';
+
+  const whereClauses: string[] = [];
+  const whereArgs: unknown[] = [];
+  if (status) {
+    whereClauses.push('r.status = ?');
+    whereArgs.push(status);
+  }
+  const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
   const [countRow, refunds] = await Promise.all([
-    adb.get<{ c: number }>('SELECT COUNT(*) as c FROM refunds'),
+    adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM refunds r ${where}`, ...whereArgs),
     adb.all(`
       SELECT r.*, c.first_name, c.last_name, i.order_id AS invoice_order_id,
              u.first_name AS created_first, u.last_name AS created_last
@@ -96,8 +110,9 @@ router.get('/', asyncHandler(async (req, res) => {
       LEFT JOIN customers c ON c.id = r.customer_id
       LEFT JOIN invoices i ON i.id = r.invoice_id
       LEFT JOIN users u ON u.id = r.created_by
+      ${where}
       ORDER BY r.created_at DESC LIMIT ? OFFSET ?
-    `, pageSize, offset),
+    `, ...whereArgs, pageSize, offset),
   ]);
   const total = countRow!.c;
 

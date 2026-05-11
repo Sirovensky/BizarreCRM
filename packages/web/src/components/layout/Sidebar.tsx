@@ -154,6 +154,9 @@ const navSections: NavSection[] = [
       { label: 'Payment Links', path: '/billing/payment-links', icon: Link2, adminOnly: true },
       { label: 'Aging', path: '/billing/aging', icon: Clock3, adminOnly: true },
       { label: 'Dunning', path: '/billing/dunning', icon: BellRing, adminOnly: true },
+      // WEB-UIUX-1018: refunds approval queue + history. Server enforces
+      // refunds.approve permission; sidebar gate is admin/manager.
+      { label: 'Refunds', path: '/refunds', icon: Receipt, adminOnly: true },
     ],
   },
   {
