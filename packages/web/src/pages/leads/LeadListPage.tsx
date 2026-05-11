@@ -9,6 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
+import { usePlanStore } from '@/stores/planStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatPhone, formatDate } from '@/utils/format';
@@ -369,6 +370,8 @@ export function LeadListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  // WEB-UIUX-1349: open the canonical UpgradeModal on 403 upgrade_required.
+  const openUpgradeModal = usePlanStore((s) => s.openUpgradeModal);
 
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('leads_pagesize') || '25');
@@ -474,7 +477,19 @@ export function LeadListPage() {
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
     onError: (err: unknown) => {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      // WEB-UIUX-1349: tier-limit reject (`leads.routes.ts:1066-1076`) is a 403
+      // with `upgrade_required:true` + structured `feature` field. Open the
+      // canonical UpgradeModal so the manager lands on a real CTA instead of
+      // a generic toast that dead-ends on monetization.
+      const e = err as {
+        response?: { status?: number; data?: { message?: string; upgrade_required?: boolean; feature?: string } };
+        message?: string;
+      };
+      if (e?.response?.status === 403 && e.response?.data?.upgrade_required) {
+        const feature = (e.response.data.feature ?? 'ticket_limit') as Parameters<typeof openUpgradeModal>[0];
+        openUpgradeModal(feature);
+        return;
+      }
       const msg = e?.response?.data?.message
         || e?.message
         || 'Failed to convert lead. Please try again.';

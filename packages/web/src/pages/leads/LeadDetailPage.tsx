@@ -9,6 +9,7 @@ import { useEffect, useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
+import { usePlanStore } from '@/stores/planStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
@@ -165,6 +166,8 @@ export function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // WEB-UIUX-1349: open the canonical UpgradeModal on a tier-limit 403.
+  const openUpgradeModal = usePlanStore((s) => s.openUpgradeModal);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notes, setNotes] = useState('');
   const [editingStatus, setEditingStatus] = useState(false);
@@ -207,12 +210,18 @@ export function LeadDetailPage() {
       const ticketId = res.data?.data?.ticket?.id || res.data?.data?.ticket_id;
       if (ticketId) navigate(`/tickets/${ticketId}`);
     },
-    // WEB-UIUX-1338: surface server error messages instead of swallowing them;
-    // if the server signals a tier/plan limit, prepend a clear upgrade prompt.
+    // WEB-UIUX-1338 / WEB-UIUX-1349: tier-limit 403 → open the canonical
+    // UpgradeModal so the manager lands on a real CTA + Stripe checkout path
+    // instead of a toast that dead-ends on monetization. Non-tier errors
+    // continue to surface as a normal toast.
     onError: (err: any) => {
       const upgradeRequired = err?.response?.data?.upgrade_required === true;
-      const base = formatApiError(err);
-      toast.error(upgradeRequired ? `Tier limit reached: ${base} — Upgrade →` : base);
+      if (upgradeRequired && err?.response?.status === 403) {
+        const feature = (err.response.data?.feature ?? 'ticket_limit') as Parameters<typeof openUpgradeModal>[0];
+        openUpgradeModal(feature);
+        return;
+      }
+      toast.error(formatApiError(err));
     },
   });
 
