@@ -443,6 +443,32 @@ export function EstimateDetailPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to reject'),
   });
 
+  // WEB-UIUX-658: renew (extend valid_until + flip to draft) and clone (new
+  // draft, same line items + customer). Server permission checks: estimates.edit
+  // / estimates.create.
+  const renewMut = useMutation({
+    mutationFn: () => estimateApi.renew(Number(id), 30),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      const newValid = res.data?.data?.valid_until;
+      toast.success(`Renewed — valid until ${newValid ?? '+30 days'}.`);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message || 'Failed to renew'),
+  });
+  const cloneMut = useMutation({
+    mutationFn: () => estimateApi.clone(Number(id), 30),
+    onSuccess: (res) => {
+      const newId = res.data?.data?.id;
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      toast.success('Cloned. Opening new draft.');
+      if (newId) navigate(`/estimates/${newId}`);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message || 'Failed to clone'),
+  });
+
   const createSignUrlMut = useMutation({
     mutationFn: () => estimateApi.createSignUrl(Number(id)),
     onSuccess: (res) => {
@@ -748,15 +774,33 @@ export function EstimateDetailPage() {
       {isExpired && (
         <div className="mb-6 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700 dark:bg-amber-950/30">
           <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-            Estimate expired on {formatDate(estimate.valid_until)} — pricing may be stale. Re-quote to update.
+            Estimate expired on {formatDate(estimate.valid_until)} — pricing may be stale. Renew to extend by 30 days, clone for a fresh draft, or re-quote from scratch.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate('/estimates/new')}
-            className="shrink-0 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
-          >
-            Re-quote
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              disabled={renewMut.isPending || anyMutationPending}
+              onClick={() => renewMut.mutate()}
+              className="rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+            >
+              {renewMut.isPending ? 'Renewing…' : 'Renew +30d'}
+            </button>
+            <button
+              type="button"
+              disabled={cloneMut.isPending || anyMutationPending}
+              onClick={() => cloneMut.mutate()}
+              className="rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+            >
+              {cloneMut.isPending ? 'Cloning…' : 'Clone'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/estimates/new')}
+              className="rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+            >
+              Re-quote
+            </button>
+          </div>
         </div>
       )}
 

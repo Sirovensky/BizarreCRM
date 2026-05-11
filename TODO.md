@@ -2564,7 +2564,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:191-247`
 
-- [!] WEB-UIUX-658. **[MAJOR] No "renew" / "extend valid_until" / "clone" action on expired estimate.** Customer comes back, operator has to manually clone. L1, L5. **BLOCKED 2026-05-10: needs new server PATCH /estimates/:id/renew + clone endpoint + UI; feature-scope.**
+- [x] WEB-UIUX-658. **Renew + clone endpoints + UI landed 2026-05-11.** Server: `POST /estimates/:id/renew` (extends `valid_until` by N days, defaults 30, refuses approved/rejected/converted — operator must clone instead) flips status back to draft. `POST /estimates/:id/clone` (creates a fresh draft with the same customer / discount / notes / line items, returns new id + order_id). Both audit-logged. Web: `estimateApi.renew(id, days?)` + `estimateApi.clone(id, days?)` wrappers; expired-estimate banner now shows three buttons — `Renew +30d`, `Clone`, `Re-quote` — wired to the matching mutations. Renew toasts the new valid_until; Clone navigates to the new draft.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx`
 
 - [!] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13. **[AUTOLOOP-T30 BLOCKED: estimate_line_items has no cost_price column; server snapshot on creation/convert requires schema migration.]**

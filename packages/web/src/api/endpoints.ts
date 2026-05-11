@@ -1172,6 +1172,12 @@ export const estimateApi = {
       success: boolean;
       data: { signed: boolean; estimate_id: number; signed_at: string };
     }>(`/${encodeURIComponent(token)}`, data),
+  // WEB-UIUX-658: renew (flip back to draft + extend valid_until) and clone
+  // (new draft, same line items + customer) for stale or expired estimates.
+  renew: (id: number, days?: number) =>
+    api.post<{ success: boolean; data: { id: number; valid_until: string; status: 'draft' } }>(`/estimates/${id}/renew`, days ? { days } : {}),
+  clone: (id: number, days?: number) =>
+    api.post<{ success: boolean; data: { id: number; order_id: string; source_id: number; valid_until: string; line_count: number } }>(`/estimates/${id}/clone`, days ? { days } : {}),
 };
 
 // ==================== Employees ====================

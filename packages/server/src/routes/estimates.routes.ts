@@ -1472,4 +1472,104 @@ router.post(
   }),
 );
 
+// ---------------------------------------------------------------------------
+// WEB-UIUX-658: renew + clone — operator-friendly recovery for expired estimates
+// ---------------------------------------------------------------------------
+// /:id/renew  : extend valid_until + flip status back to draft so customer
+//               can re-approve. Same row, new expiry. Approval token rotated
+//               on the next /:id/send call (existing behaviour).
+// /:id/clone  : creates a fresh draft with the same line items + same
+//               customer; valid_until defaults to +30 days. Original stays
+//               untouched (audit trail / customer-history clarity).
+router.post(
+  '/:id/renew',
+  requirePermission('estimates.edit'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+    const days = Number.isFinite(Number(req.body?.days)) ? Math.max(1, Math.min(365, Number(req.body.days))) : 30;
+    const existing = await adb.get<{ id: number; status: string }>(
+      'SELECT id, status FROM estimates WHERE id = ?', id,
+    );
+    if (!existing) throw new AppError('Estimate not found', 404);
+    const LOCKED_STATUSES = new Set(['approved', 'rejected', 'converted']);
+    if (LOCKED_STATUSES.has(existing.status)) {
+      throw new AppError(`Estimate is ${existing.status}; clone it instead of renewing.`, 409);
+    }
+    const newValidUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await adb.run(
+      `UPDATE estimates
+          SET valid_until = ?, status = 'draft', updated_at = datetime('now')
+        WHERE id = ?`,
+      newValidUntil, id,
+    );
+    audit(req.db, 'estimate_renewed', req.user!.id, req.ip || 'unknown', {
+      estimate_id: id, new_valid_until: newValidUntil, days,
+    });
+    res.json({ success: true, data: { id, valid_until: newValidUntil, status: 'draft' } });
+  }),
+);
+
+router.post(
+  '/:id/clone',
+  requirePermission('estimates.create'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+    const days = Number.isFinite(Number(req.body?.days)) ? Math.max(1, Math.min(365, Number(req.body.days))) : 30;
+    const source = await adb.get<{
+      id: number; customer_id: number; discount: number; notes: string | null;
+    }>(
+      'SELECT id, customer_id, discount, notes FROM estimates WHERE id = ?',
+      id,
+    );
+    if (!source) throw new AppError('Estimate not found', 404);
+    const newOrderId = `EST-${Date.now().toString(36).toUpperCase()}`;
+    const newValidUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const insertResult = await adb.run(
+      `INSERT INTO estimates (order_id, customer_id, status, discount, notes, valid_until, created_by, created_at, updated_at)
+         VALUES (?, ?, 'draft', ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      newOrderId,
+      source.customer_id,
+      source.discount ?? 0,
+      source.notes,
+      newValidUntil,
+      req.user!.id,
+    );
+    const newId = Number(insertResult.lastInsertRowid);
+    // Copy line items as-is; pricing snapshot stays current at clone time.
+    const items = await adb.all<{
+      inventory_item_id: number | null;
+      description: string;
+      quantity: number;
+      unit_price: number;
+      tax_amount: number;
+      tax_class_id: number | null;
+      line_subtotal: number;
+      line_total: number;
+    }>(
+      `SELECT inventory_item_id, description, quantity, unit_price, tax_amount,
+              tax_class_id, line_subtotal, line_total
+         FROM estimate_line_items WHERE estimate_id = ?`,
+      id,
+    );
+    for (const it of items) {
+      await adb.run(
+        `INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description,
+            quantity, unit_price, tax_amount, tax_class_id, line_subtotal, line_total)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        newId, it.inventory_item_id, it.description, it.quantity, it.unit_price,
+        it.tax_amount, it.tax_class_id, it.line_subtotal, it.line_total,
+      );
+    }
+    audit(req.db, 'estimate_cloned', req.user!.id, req.ip || 'unknown', {
+      source_estimate_id: id, new_estimate_id: newId, line_count: items.length,
+    });
+    res.status(201).json({
+      success: true,
+      data: { id: newId, order_id: newOrderId, source_id: id, valid_until: newValidUntil, line_count: items.length },
+    });
+  }),
+);
+
 export default router;
