@@ -137,7 +137,14 @@ export function InvoiceDetailPage() {
 
   // Server: res.json({ success: true, data: <flat invoice> }) — no extra .invoice nesting.
   const invoice: InvoiceDetail | undefined = data?.data?.data;
-  const paymentMethods: any[] = pmData?.data?.data?.payment_methods || [];
+  // WEB-UIUX-1524: server returns `{ success: true, data: <array> }` (see
+  // settings.routes.ts:840-841 and SettingsPage which already reads
+  // res.data.data correctly). The previous `pmData?.data?.data?.payment_methods`
+  // chain looked for a `.payment_methods` key that the array doesn't have,
+  // so this fell through to the hardcoded fallback every time and every
+  // tenant-added method (Zelle, Wire, Cashier's Check, etc.) was invisible
+  // on Record Payment.
+  const paymentMethods: any[] = Array.isArray(pmData?.data?.data) ? pmData!.data!.data : [];
   const currencySymbol = formatCurrencySymbol();
 
   // WEB-UIUX-1537: align paymentForm.method with the first enabled payment method when
@@ -1059,7 +1066,27 @@ export function InvoiceDetailPage() {
                   onClick={() => {
                     const phone = invoice.customer_phone;
                     if (!phone) return;
-                    const msg = `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Thank you for your business!`;
+                    // WEB-UIUX-1528: include the most-recent payment amount
+                    // + method + remaining balance so a partial payment
+                    // doesn't read like the invoice is paid in full.
+                    // Falls back to the legacy copy if payment data is
+                    // unavailable (shouldn't happen on this receipt path,
+                    // but defensive).
+                    const payments = (invoice as any).payments ?? [];
+                    const lastPayment = payments[payments.length - 1];
+                    const balanceDue = Number(invoice.amount_due) || 0;
+                    let msg: string;
+                    if (lastPayment) {
+                      const paid = Number(lastPayment.amount) || 0;
+                      const method = String(lastPayment.method || 'payment').replace(/_/g, ' ');
+                      msg = balanceDue > 0
+                        ? `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Balance remaining: ${formatCurrency(balanceDue)}.`
+                        : `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Paid in full — thank you!`;
+                    } else {
+                      msg = balanceDue > 0
+                        ? `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Balance remaining: ${formatCurrency(balanceDue)}.`
+                        : `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Paid in full — thank you!`;
+                    }
                     smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: invoiceId })
                       .then(() => toast.success('Receipt sent via SMS'))
                       .catch(() => toast.error('Failed to send SMS'));
