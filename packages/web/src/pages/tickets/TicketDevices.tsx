@@ -994,11 +994,21 @@ export function TicketDevices({
                       onCommit={(price) => updateDeviceMut.mutate({ deviceId: device.id, data: { price } })}
                       className="text-lg font-bold text-surface-900 dark:text-surface-100 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
                     />
-                    <a href={getIFixitUrl(device.device_name, device.ifixit_url)} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 hover:underline"
-                      title="iFixit Repair Guide">
-                      <Wrench className="h-3 w-3" /> iFixit
-                    </a>
+                    {/* iFixit guide makes no sense for "Other" / unknown
+                        devices — the URL builder falls back to a generic
+                        search that always misses. Hide the link unless the
+                        device is a recognised category. The freeform-name
+                        check catches "Other Lenovo Laptop", "Other Repair",
+                        etc. that flow through Quick check-in. */}
+                    {device.device_type
+                      && !/^other\b/i.test(device.device_type)
+                      && !/^other\b/i.test(device.device_name ?? '') && (
+                      <a href={getIFixitUrl(device.device_name, device.ifixit_url)} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 hover:underline"
+                        title="iFixit Repair Guide">
+                        <Wrench className="h-3 w-3" /> iFixit
+                      </a>
+                    )}
                     {(device.imei || device.serial) && (
                       <DeviceHistoryPopover imei={device.imei} serial={device.serial} currentTicketId={ticketId} />
                     )}

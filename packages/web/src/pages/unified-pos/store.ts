@@ -258,9 +258,19 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
   updateProductQty: (id, delta) => set((s) => ({
     cartItems: s.cartItems
       .map((c) => {
-        if (c.id !== id || c.type !== 'product') return c;
-        const newQty = (c as ProductCartItem).quantity + delta;
-        return newQty <= 0 ? null : { ...c, quantity: newQty } as ProductCartItem;
+        if (c.id !== id) return c;
+        // Both product and misc lines carry a `quantity` and surface the
+        // +/- buttons in the cart UI. Repair lines are 1:1 services and
+        // intentionally skip qty controls.
+        if (c.type === 'product') {
+          const newQty = c.quantity + delta;
+          return newQty <= 0 ? null : { ...c, quantity: newQty } as ProductCartItem;
+        }
+        if (c.type === 'misc') {
+          const newQty = c.quantity + delta;
+          return newQty <= 0 ? null : { ...c, quantity: newQty } as MiscCartItem;
+        }
+        return c;
       })
       .filter(Boolean) as CartItem[],
   })),

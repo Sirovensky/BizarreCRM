@@ -51,6 +51,24 @@
     --surface-800:  22  21  19;
     --surface-900:  15  14  12;
     --surface-950:   8   7   6;
+
+    /* Chart palette — anchored on caramel primary, with warm-spectrum accents
+     * (sage/teal/terracotta/clay) so multi-series charts stay coherent with
+     * the brand instead of falling back to Recharts' clashing primaries.
+     * Recharts can't read Tailwind utilities at runtime, so palette tokens
+     * live as CSS vars consumed by chartColors.ts. Light variants here. */
+    --chart-color-1: #a66d1f;   /* caramel-500 — primary series */
+    --chart-color-2: #4f7d6a;   /* sage */
+    --chart-color-3: #d4a05a;   /* tan */
+    --chart-color-4: #b85c3c;   /* terracotta */
+    --chart-color-5: #6f7a4a;   /* olive */
+    --chart-color-6: #c4823a;   /* warm amber */
+    --chart-color-7: #8c4a2a;   /* rust */
+    --chart-color-8: #5e6f72;   /* smoke */
+    --chart-color-9: #a8895a;   /* khaki */
+    --chart-color-10: #93513a;  /* clay */
+    --chart-color-neutral: rgb(var(--surface-400));
+    --chart-color-muted:   rgb(var(--surface-300));
   }
 
   /* Dark mode shares the Option F warm-graphite ramp; the variants below
@@ -79,6 +97,22 @@
     --primary-900:  43  20   0;
     --primary-950:  26  11   0;
     --text-on-primary: 26 11 0;
+
+    /* Dark-mode chart palette — anchor flips to cream so the primary series
+     * reads on dark surfaces; secondary tones brightened a step for contrast
+     * on surface-900 without tipping into neon territory. */
+    --chart-color-1: #fdeed0;   /* cream-500 — primary series on dark */
+    --chart-color-2: #7fb39c;   /* sage (lifted) */
+    --chart-color-3: #e6b878;   /* tan (lifted) */
+    --chart-color-4: #d97a5a;   /* terracotta (lifted) */
+    --chart-color-5: #9aa66f;   /* olive (lifted) */
+    --chart-color-6: #e0a05a;   /* amber (lifted) */
+    --chart-color-7: #c47a55;   /* rust (lifted) */
+    --chart-color-8: #8a9aa0;   /* smoke (lifted) */
+    --chart-color-9: #c9aa7a;   /* khaki (lifted) */
+    --chart-color-10: #c47558;  /* clay (lifted) */
+    --chart-color-neutral: rgb(var(--surface-500));
+    --chart-color-muted:   rgb(var(--surface-600));
   }
 
   /* Smooth theme transitions

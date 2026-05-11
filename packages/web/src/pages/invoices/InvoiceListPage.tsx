@@ -63,6 +63,23 @@ function getDateRange(key: string): { from_date?: string; to_date?: string } {
   return { from_date: from.toISOString().slice(0, 10), to_date };
 }
 
+function isYmd(value: string | null | undefined): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getCustomDateRange(from: string | null, to: string | null): { from_date?: string; to_date?: string } {
+  const from_date = isYmd(from) ? from : undefined;
+  const to_date = isYmd(to) ? to : undefined;
+  if (from_date && to_date && from_date > to_date) {
+    return { from_date: to_date, to_date: from_date };
+  }
+  return { from_date, to_date };
+}
+
+function formatUrlDateLabel(value: string): string {
+  return formatDate(`${value}T00:00:00`);
+}
+
 function formatInvoiceId(orderId: string | number | null | undefined): string {
   if (!orderId) return '\u2014';
   const s = String(orderId);
@@ -123,6 +140,8 @@ export function InvoiceListPage() {
 
   const status = searchParams.get('status') || '';
   const dateRange = searchParams.get('date_range') || '';
+  const customFromDate = searchParams.get('from_date') || searchParams.get('from');
+  const customToDate = searchParams.get('to_date') || searchParams.get('to');
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('invoices_pagesize') || '25');
   const keyword = searchParams.get('keyword') || '';
@@ -148,11 +167,31 @@ export function InvoiceListPage() {
     setSearchParams(p, { replace: true });
   };
 
-  const dateParams = useMemo(() => getDateRange(dateRange), [dateRange]);
+  const dateParams = useMemo(() => (
+    dateRange ? getDateRange(dateRange) : getCustomDateRange(customFromDate, customToDate)
+  ), [customFromDate, customToDate, dateRange]);
+  const hasCustomDateRange = !dateRange && !!(dateParams.from_date || dateParams.to_date);
+  const customDateLabel = useMemo(() => {
+    if (!hasCustomDateRange) return '';
+    if (dateParams.from_date && dateParams.to_date) {
+      if (dateParams.from_date === dateParams.to_date) {
+        return formatUrlDateLabel(dateParams.from_date);
+      }
+      return `${formatUrlDateLabel(dateParams.from_date)} - ${formatUrlDateLabel(dateParams.to_date)}`;
+    }
+    if (dateParams.from_date) return `From ${formatUrlDateLabel(dateParams.from_date)}`;
+    return `Through ${formatUrlDateLabel(dateParams.to_date!)}`;
+  }, [dateParams.from_date, dateParams.to_date, hasCustomDateRange]);
 
   const setParam = (key: string, val: string) => {
     const p = new URLSearchParams(searchParams);
     if (val) p.set(key, val); else p.delete(key);
+    if (key === 'date_range') {
+      p.delete('from');
+      p.delete('to');
+      p.delete('from_date');
+      p.delete('to_date');
+    }
     p.set('page', '1');
     setSearchParams(p, { replace: true });
   };
@@ -175,14 +214,14 @@ export function InvoiceListPage() {
   const serverStatus = isCreditNoteTab ? undefined : (status || undefined);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', { page, pageSize, status, keyword, dateRange, sortBy, sortDir }],
+    queryKey: ['invoices', { page, pageSize, status, keyword, dateRange, fromDate: dateParams.from_date, toDate: dateParams.to_date, sortBy, sortDir }],
     queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: serverStatus, keyword: keyword || undefined, sort_by: sortBy, sort_dir: sortDir, ...dateParams }),
   });
 
   const { data: statsData } = useQuery({
     // WEB-W2-022: include active filters in both cache key and the API call so
     // stats KPIs reflect the same subset as the current list view.
-    queryKey: ['invoice-stats', { status, dateRange, keyword }],
+    queryKey: ['invoice-stats', { status, dateRange, fromDate: dateParams.from_date, toDate: dateParams.to_date, keyword }],
     queryFn: () => invoiceApi.stats({
       status: status || undefined,
       keyword: keyword || undefined,
@@ -289,6 +328,51 @@ export function InvoiceListPage() {
         <span className="text-xs text-surface-400 dark:text-surface-500 italic">Invoices are created from tickets</span>
       </div>
 
+      {/* Controls — filters live above the KPI / chart results they affect */}
+      <div className="mb-4 shrink-0 space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {/* Date Range Tabs */}
+          <div className="flex flex-wrap gap-2">
+            {DATE_TABS.map((t) => (
+              <button key={t.key} onClick={() => setParam('date_range', t.key)}
+                className={cn('px-3 py-1.5 text-xs font-medium rounded-full border transition-colors',
+                  dateRange === t.key && !(t.key === '' && hasCustomDateRange)
+                    ? 'border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-700'
+                    : 'border-surface-200 text-surface-500 hover:text-surface-700 dark:border-surface-700 dark:text-surface-400 dark:hover:text-surface-200'
+                )}>
+                {t.label}
+              </button>
+            ))}
+            {customDateLabel && (
+              <span className="px-3 py-1.5 text-xs font-medium rounded-full border border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-700">
+                {customDateLabel}
+              </span>
+            )}
+          </div>
+
+          {/* Search */}
+          <div className="relative w-full lg:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
+            <input type="text" placeholder="Search invoices..." value={searchInput} onChange={(e) => handleSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors" />
+          </div>
+        </div>
+
+        {/* Status tabs */}
+        <div className="flex gap-0 overflow-x-auto border-b border-surface-200 dark:border-surface-700">
+          {STATUS_TABS.map((t) => (
+            <button key={t.key} onClick={() => setParam('status', t.key)}
+              className={cn('px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors',
+                status === t.key
+                  ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                  : 'border-transparent text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200'
+              )}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* KPI Cards — always visible */}
       {/* @audit-fixed: hardcoded "$" + .toFixed(2) replaced with formatCurrency to honor store currency setting */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 shrink-0">
@@ -359,43 +443,6 @@ export function InvoiceListPage() {
           )}
         </div>
       )}
-
-      {/* Status tabs */}
-      <div className="flex gap-0 mb-3 border-b border-surface-200 dark:border-surface-700 shrink-0">
-        {STATUS_TABS.map((t) => (
-          <button key={t.key} onClick={() => setParam('status', t.key)}
-            className={cn('px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-              status === t.key
-                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
-                : 'border-transparent text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200'
-            )}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Date Range Tabs */}
-      <div className="flex gap-2 mb-3 shrink-0">
-        {DATE_TABS.map((t) => (
-          <button key={t.key} onClick={() => setParam('date_range', t.key)}
-            className={cn('px-3 py-1.5 text-xs font-medium rounded-full border transition-colors',
-              dateRange === t.key
-                ? 'border-primary-500 bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400 dark:border-primary-700'
-                : 'border-surface-200 text-surface-500 hover:text-surface-700 dark:border-surface-700 dark:text-surface-400 dark:hover:text-surface-200'
-            )}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="mb-3 shrink-0">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
-          <input type="text" placeholder="Search invoices..." value={searchInput} onChange={(e) => handleSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors" />
-        </div>
-      </div>
 
       <div className="card overflow-hidden flex-1 flex flex-col min-h-0">
         {/* Bulk action bar */}

@@ -31,6 +31,9 @@ const DEFAULT_PRESETS: Preset[] = [
   { label: 'Last 30 Days', value: 'last_30' },
   { label: 'This Month', value: 'this_month' },
   { label: 'Last Month', value: 'last_month' },
+  { label: 'This Year', value: 'this_year' },
+  { label: 'Last Year', value: 'last_year' },
+  { label: 'All Time', value: 'all_time' },
   { label: 'Custom', value: 'custom' },
 ];
 

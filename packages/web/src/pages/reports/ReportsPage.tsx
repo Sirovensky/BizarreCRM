@@ -27,6 +27,12 @@ import {
   CHART_COLOR_MUTED,
   CHART_TOOLTIP_STYLE,
 } from './components/chartColors';
+import { BusyHoursHeatmap } from '@/components/reports/BusyHoursHeatmap';
+import { ChurnAlert } from '@/components/reports/ChurnAlert';
+import { ForecastChart } from '@/components/reports/ForecastChart';
+import { TechLeaderboard } from '@/components/reports/TechLeaderboard';
+import { RepeatCustomersCard } from '@/components/reports/RepeatCustomersCard';
+import { CashTrappedCard } from '@/components/reports/CashTrappedCard';
 import { WarrantyClaimsTab } from './components/WarrantyClaimsTab';
 import { DeviceModelsTab } from './components/DeviceModelsTab';
 import { PartsUsageTab } from './components/PartsUsageTab';
@@ -137,6 +143,21 @@ function resolveDateRange(value: { from?: string; to?: string; preset?: string }
         to: toLocalDate(new Date(now.getFullYear(), now.getMonth(), 0)),
       };
     }
+    case 'this_year': {
+      const now = new Date();
+      return { from: toLocalDate(new Date(now.getFullYear(), 0, 1)), to: today };
+    }
+    case 'last_year': {
+      const now = new Date();
+      return {
+        from: toLocalDate(new Date(now.getFullYear() - 1, 0, 1)),
+        to: toLocalDate(new Date(now.getFullYear() - 1, 11, 31)),
+      };
+    }
+    case 'all_time':
+      // Lower bound chosen to predate any plausible repair-shop record while
+      // staying above the SQLite epoch, so server date validators don't choke.
+      return { from: '2000-01-01', to: today };
     default:
       return { from: value.from || defaultFrom(), to: value.to || today };
   }
@@ -212,7 +233,7 @@ const TABS: ReportTabConfig[] = [
 ];
 
 const REPORT_TAB_KEYS = TABS.map((tab) => tab.key);
-const DATE_RANGE_PRESETS = ['today', 'yesterday', 'last_7', 'last_30', 'this_month', 'last_month', 'custom'] as const;
+const DATE_RANGE_PRESETS = ['today', 'yesterday', 'last_7', 'last_30', 'this_month', 'last_month', 'this_year', 'last_year', 'all_time', 'custom'] as const;
 const DEFAULT_REPORT_DATE_RANGE: DateRangeState = { preset: 'last_30' };
 const REPORT_CHART_AXIS_TICK_FILL = 'var(--reports-chart-axis-tick, rgb(var(--surface-500)))';
 
@@ -318,7 +339,6 @@ function SalesTab({
   onGroupByChange: (groupBy: SalesGroupBy) => void;
 }) {
   const navigate = useNavigate();
-  const [pdfLoading, setPdfLoading] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'sales', from, to, groupBy],
@@ -329,20 +349,6 @@ function SalesTab({
     staleTime: 30_000,
   });
 
-  const openPdf = async () => {
-    setPdfLoading(true);
-    try {
-      const url = reportApi.salesReportPdfUrl(from, to);
-      await api.get(url, { responseType: 'text' });
-      window.open(url, '_blank', 'noopener');
-    } catch (err: any) {
-      const msg = extractErrorMessage(err, 'Failed to generate PDF');
-      toast.error(msg);
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
   if (isLoading) return <LoadingState />;
   if (isError || !data) return <ErrorState message={extractErrorMessage(error, 'Failed to load sales report')} />;
 
@@ -350,22 +356,6 @@ function SalesTab({
 
   return (
     <div className="space-y-6">
-      {/* PDF export action */}
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={openPdf}
-          disabled={pdfLoading}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
-          title="Open print-ready PDF in a new tab"
-        >
-          {pdfLoading
-            ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
-            : <><FileText className="h-4 w-4" /> PDF</>
-          }
-        </button>
-      </div>
-
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card flex items-center gap-4 p-5">
@@ -453,14 +443,14 @@ function SalesTab({
               // Fill in gaps with $0 for all grouping modes
               const rawChartData = (() => {
                 const revenueMap = new Map(rows.map(r => [r.period, r.revenue]));
-                const result: { period: string; revenue: number; rawDate: string }[] = [];
+                const result: { period: string; revenue: number; rawFrom: string; rawTo: string }[] = [];
                 const current = new Date(from + 'T00:00:00');
                 const end = new Date(to + 'T00:00:00');
 
                 if (groupBy === 'day') {
                   while (current <= end) {
                     const key = toLocalDate(current);
-                    result.push({ period: formatDate(key), revenue: revenueMap.get(key) || 0, rawDate: key });
+                    result.push({ period: formatDate(key), revenue: revenueMap.get(key) || 0, rawFrom: key, rawTo: key });
                     current.setDate(current.getDate() + 1);
                   }
                 } else if (groupBy === 'week') {
@@ -471,8 +461,11 @@ function SalesTab({
                     const key = toLocalDate(current);
                     const weekEnd = new Date(current);
                     weekEnd.setDate(weekEnd.getDate() + 6);
-                    const label = `${formatDate(key)} – ${formatDate(toLocalDate(weekEnd))}`;
-                    result.push({ period: label, revenue: revenueMap.get(key) || 0, rawDate: key });
+                    const weekTo = toLocalDate(weekEnd);
+                    const rawFrom = key < from ? from : key;
+                    const rawTo = weekTo > to ? to : weekTo;
+                    const label = `${formatDate(rawFrom)} – ${formatDate(rawTo)}`;
+                    result.push({ period: label, revenue: revenueMap.get(key) || 0, rawFrom, rawTo });
                     current.setDate(current.getDate() + 7);
                   }
                 } else {
@@ -480,8 +473,13 @@ function SalesTab({
                   current.setDate(1);
                   while (current <= end) {
                     const key = current.toISOString().slice(0, 7); // YYYY-MM
+                    const monthStart = `${key}-01`;
+                    const monthEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+                    const monthTo = toLocalDate(monthEnd);
+                    const rawFrom = monthStart < from ? from : monthStart;
+                    const rawTo = monthTo > to ? to : monthTo;
                     const label = current.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                    result.push({ period: label, revenue: revenueMap.get(key) || 0, rawDate: key });
+                    result.push({ period: label, revenue: revenueMap.get(key) || 0, rawFrom, rawTo });
                     current.setMonth(current.getMonth() + 1);
                   }
                 }
@@ -489,9 +487,13 @@ function SalesTab({
               })();
 
               const handleChartClick = (data: any) => {
-                if (data?.activePayload?.[0]?.payload?.rawDate) {
-                  const date = data.activePayload[0].payload.rawDate;
-                  navigate(`/invoices?from=${date}&to=${date}`);
+                const payload = data?.activePayload?.[0]?.payload;
+                if (payload?.rawFrom && payload?.rawTo) {
+                  const params = new URLSearchParams({
+                    from_date: payload.rawFrom,
+                    to_date: payload.rawTo,
+                  });
+                  navigate(`/invoices?${params.toString()}`);
                 }
               };
 
@@ -1367,6 +1369,7 @@ export function ReportsPage() {
   const [insightsSubTab, setInsightsSubTabState] = useState<InsightsSubTab>(() => readInsightsSubTabParam(searchParams));
   const [compareInsights, setCompareInsightsState] = useState(() => readCompareParam(searchParams));
   const [exportLoading, setExportLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const updateReportSearchParams = useCallback((write: (params: URLSearchParams) => void) => {
     setSearchParams((prev) => {
       const sp = new URLSearchParams(prev);
@@ -1650,6 +1653,21 @@ export function ReportsPage() {
     }
   }
 
+  async function handleSalesPdf() {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const url = reportApi.salesReportPdfUrl(fromDate, toDate);
+      await api.get(url, { responseType: 'text' });
+      window.open(url, '_blank', 'noopener');
+    } catch (err: any) {
+      const msg = extractErrorMessage(err, 'Failed to generate PDF');
+      toast.error(msg);
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   return (
     <div className="[--reports-chart-axis-tick:rgb(var(--surface-500))] dark:[--reports-chart-axis-tick:rgb(var(--surface-400))]">
       {/* Header */}
@@ -1658,33 +1676,57 @@ export function ReportsPage() {
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Reports</h1>
           <p className="text-surface-500 dark:text-surface-400">Analyze your business performance</p>
         </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exportLoading}
-          aria-busy={exportLoading}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
-        >
-          {exportLoading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Exporting...
-            </>
-          ) : (
-            <>
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Export
-            </>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exportLoading}
+            aria-busy={exportLoading}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+          >
+            {exportLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Export
+              </>
+            )}
+          </button>
+          {activeTab === 'sales' && (
+            <button
+              type="button"
+              onClick={handleSalesPdf}
+              disabled={pdfLoading}
+              aria-busy={pdfLoading}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+              title="Open print-ready PDF in a new tab"
+            >
+              {pdfLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  PDF
+                </>
+              )}
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
       {/* Date Range — applies to all tabs except Inventory */}
       {activeTab !== 'inventory' && (
-        <div className="card mb-4">
-          <div className="flex items-center gap-3 p-3">
-            <Clock className="h-4 w-4 text-surface-400 mr-1 shrink-0" />
-            <span className="text-xs font-medium text-surface-500 dark:text-surface-400 mr-1 shrink-0">Period:</span>
+        <div className="card mb-2">
+          <div className="flex items-center gap-2 px-3 py-1.5">
+            <Clock className="h-3.5 w-3.5 text-surface-400 shrink-0" />
+            <span className="text-xs font-medium text-surface-500 dark:text-surface-400 shrink-0">Period:</span>
             <DateRangePicker
               value={dateRange}
               onChange={setDateRange}
@@ -1702,12 +1744,12 @@ export function ReportsPage() {
       )}
 
       {/* Tab navigation */}
-      <div className="card mb-6">
-        <div className="p-4">
+      <div className="card mb-3">
+        <div className="p-1.5">
           <div
             role="tablist"
             aria-label="Report sections"
-            className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2 rounded-lg bg-surface-100 p-1 dark:bg-surface-800"
+            className="flex flex-wrap gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-800"
           >
             {TABS.map((tab) => {
               const Icon = tab.icon;
@@ -1728,7 +1770,7 @@ export function ReportsPage() {
                     setActiveTab(tab.key);
                   }}
                   className={cn(
-                    'flex min-h-10 min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-2 text-sm font-medium transition-colors sm:px-3',
+                    'flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors sm:text-sm',
                     selected
                       ? 'bg-white dark:bg-surface-700 text-surface-900 dark:text-surface-100 shadow-sm'
                       : locked
@@ -1766,14 +1808,29 @@ export function ReportsPage() {
       {activeTab === 'inventory' && <InventoryTab />}
       {activeTab === 'tax' && <TaxTab from={fromDate} to={toDate} />}
       {activeTab === 'insights' && (
-        <InsightsTab
-          from={fromDate}
-          to={toDate}
-          subTab={insightsSubTab}
-          onSubTabChange={setInsightsSubTab}
-          compare={compareInsights}
-          onCompareChange={setCompareInsights}
-        />
+        <>
+          <InsightsTab
+            from={fromDate}
+            to={toDate}
+            subTab={insightsSubTab}
+            onSubTabChange={setInsightsSubTab}
+            compare={compareInsights}
+            onCompareChange={setCompareInsights}
+          />
+          {/* Heavy BI widgets relocated here from the dashboard 2026-05-09
+              so the home page stays glance-friendly. Insights tab is the
+              right home for deep customer / staffing / forecast surfaces. */}
+          <div className="mt-6 space-y-4">
+            <CashTrappedCard />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <RepeatCustomersCard />
+              <ChurnAlert />
+            </div>
+            <TechLeaderboard />
+            <BusyHoursHeatmap days={30} />
+            <ForecastChart />
+          </div>
+        </>
       )}
       {activeTab === 'warranty' && <WarrantyClaimsTab from={fromDate} to={toDate} />}
       {activeTab === 'devices' && <DeviceModelsTab from={fromDate} to={toDate} />}

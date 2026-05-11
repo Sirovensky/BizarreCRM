@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
+import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle, RotateCcw } from 'lucide-react';
 import { api } from '@/api/client';
 import { formatCents, formatDateTime } from '@/utils/format';
 
@@ -50,13 +50,25 @@ function formatSignedCents(cents: number): string {
 }
 
 export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['pos-enrich', 'z-report', shiftId],
     queryFn: async () => {
       const res = await api.get<ZReportResponse>(`/pos-enrich/drawer/${shiftId}/z-report`);
       return res.data.data;
     },
   });
+  // Restore focus to the opener button after the modal unmounts so keyboard
+  // users land back where they were.
+  const triggerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    triggerRef.current = (document.activeElement as HTMLElement) ?? null;
+    return () => {
+      const el = triggerRef.current;
+      if (el && document.contains(el)) {
+        try { el.focus({ preventScroll: true }); } catch { /* noop */ }
+      }
+    };
+  }, []);
 
   // WEB-W3-016: inject a print-only <style> that hides everything on the page
   // EXCEPT the modal content, then call window.print(). The style tag is
@@ -126,8 +138,30 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
           </div>
         </div>
         <div className="space-y-4 p-5">
-          {isLoading && <div className="text-center text-sm text-surface-500">Loading…</div>}
-          {isError && <div className="text-center text-sm text-red-500">Failed to load Z-report</div>}
+          {isLoading && (
+            <div aria-busy="true" aria-label="Loading Z-report" className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} aria-hidden="true" className="h-8 motion-safe:animate-pulse rounded bg-surface-100 dark:bg-surface-800" />
+              ))}
+            </div>
+          )}
+          {isError && (
+            <div role="alert" aria-live="assertive" className="space-y-3 text-center">
+              <div className="inline-flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                Failed to load Z-report
+              </div>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="inline-flex items-center gap-1 rounded-md border border-surface-200 bg-white px-3 py-1.5 text-xs font-semibold text-surface-700 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+              >
+                <RotateCcw className={`h-3 w-3 ${isFetching ? 'motion-safe:animate-spin' : ''}`} aria-hidden="true" />
+                {isFetching ? 'Retrying…' : 'Retry'}
+              </button>
+            </div>
+          )}
           {data && <ZReportBody report={data} />}
         </div>
       </div>

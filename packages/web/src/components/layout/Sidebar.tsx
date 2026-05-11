@@ -105,6 +105,16 @@ const navSections: NavSection[] = [
     items: [
       { label: 'Messages', path: '/communications', icon: MessageSquare },
       { label: 'Voice Calls', path: '/voice', icon: Phone },
+    ],
+  },
+  {
+    // Sales-flow surfaces: Leads → Pipeline → Estimates is the conversion
+    // funnel; Calendar lives here because it's almost always tied to a lead
+    // appointment. Splitting from Communications stops the inbox surfaces
+    // (Messages / Voice) from blending with sales pipeline rows in the same
+    // group — user feedback 2026-05-09.
+    title: 'Sales',
+    items: [
       { label: 'Leads', path: '/leads', icon: UserPlus },
       { label: 'Pipeline', path: '/pipeline', icon: Kanban },
       { label: 'Calendar', path: '/calendar', icon: Calendar },
@@ -193,7 +203,15 @@ export function Sidebar() {
       aria-label="Application sidebar"
       data-app-chrome="true"
       className={cn(
-        'fixed inset-y-0 left-0 z-30 flex flex-col border-r border-surface-200 bg-white transition-all duration-200 dark:border-surface-800 dark:bg-surface-900',
+        // Two-phase jank fix: prior `transition-all` animated everything
+        // including child-driven layout, so width started shrinking on the
+        // right while labels reflowed instantly — looked like the sidebar
+        // collapsed in two beats. Now only width transitions; child labels
+        // clip via overflow-hidden so the visible chrome stays anchored
+        // as the right edge slides in. ease-out + 250ms reads as one
+        // continuous motion in step with the main column's margin slide
+        // (AppShell.tsx).
+        'fixed inset-y-0 left-0 z-30 flex flex-col overflow-hidden border-r border-surface-200 bg-white transition-[width] duration-[250ms] ease-out dark:border-surface-800 dark:bg-surface-900',
         sidebarCollapsed ? 'w-16' : 'w-64'
       )}
     >
@@ -341,7 +359,20 @@ type RecentViewEntry = { type: string; id: number; label: string; path: string }
 
 const ALLOWED_TYPES = new Set(['ticket', 'customer', 'invoice', 'estimate', 'lead', 'product', 'employee']);
 
-function parseRecentViews(userId: number | null | undefined): RecentViewEntry[] {
+// Viewport-height → visible-recents budget. Tall screens (24" desktop)
+// get 6 entries; standard laptops 4; cramped windows 2. Tied to vh so a
+// shop on a small POS monitor never gets a rail that pushes Settings off
+// screen, and a workshop owner on a 4K display sees more without
+// reaching for Cmd-K. The full history stays in localStorage; this only
+// trims the visible surface.
+function recentLimitForHeight(h: number): number {
+  if (h >= 1200) return 6;
+  if (h >= 900) return 4;
+  if (h >= 720) return 3;
+  return 2;
+}
+
+function parseRecentViews(userId: number | null | undefined, limit: number): RecentViewEntry[] {
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(recentViewsKey(userId)) || '[]');
     if (!Array.isArray(stored)) return [];
@@ -352,7 +383,7 @@ function parseRecentViews(userId: number | null | undefined): RecentViewEntry[] 
     // cap `label` length + strip control chars so a malicious localStorage
     // writer cannot phish via the truncated collapsed-mode label.
     const safe: RecentViewEntry[] = [];
-    for (const raw of stored.slice(0, 5)) {
+    for (const raw of stored.slice(0, Math.max(1, limit))) {
       if (!raw || typeof raw !== 'object') continue;
       const it = raw as Record<string, unknown>;
       const path = it.path;
@@ -384,15 +415,27 @@ function parseRecentViews(userId: number | null | undefined): RecentViewEntry[] 
 
 function RecentViews({ collapsed }: { collapsed: boolean }) {
   const userId = useAuthStore((s) => s.user?.id);
+  // Track viewport height so the visible-recents budget grows on tall
+  // displays and shrinks on short ones. Throttle is unnecessary —
+  // resize handler is cheap and React only re-renders when the bucket
+  // actually flips (state setter compares).
+  const [vh, setVh] = useState(() => (typeof window === 'undefined' ? 900 : window.innerHeight));
+  useEffect(() => {
+    const onResize = () => setVh(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const limit = recentLimitForHeight(vh);
+
   // WEB-UIUX-470: cache parsed list in state so route navigations (pathname changes)
   // never trigger another JSON.parse + validation pass. Parse only on userId change
   // (login / logout / user switch) or when a writer page signals a storage update.
-  const [items, setItems] = useState<RecentViewEntry[]>(() => parseRecentViews(userId));
+  const [items, setItems] = useState<RecentViewEntry[]>(() => parseRecentViews(userId, limit));
 
-  // Re-parse only when the logged-in user changes.
+  // Re-parse when user changes OR the limit bucket flips (window resize).
   useEffect(() => {
-    setItems(parseRecentViews(userId));
-  }, [userId]);
+    setItems(parseRecentViews(userId, limit));
+  }, [userId, limit]);
 
   // Listen for in-app writes so the sidebar refreshes when a writer page
   // (CustomerDetailPage, TicketDetailPage, etc.) updates recent_views storage.
@@ -403,14 +446,38 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
     const handleUpdate = (e: Event) => {
       const detail = (e as CustomEvent<{ key?: string }>).detail;
       if (!detail?.key || detail.key === storageKey) {
-        setItems(parseRecentViews(userId));
+        setItems(parseRecentViews(userId, limit));
       }
     };
     window.addEventListener('bizarre-crm:recent-views-updated', handleUpdate);
     return () => window.removeEventListener('bizarre-crm:recent-views-updated', handleUpdate);
-  }, [userId]);
+  }, [userId, limit]);
 
   if (items.length === 0) return null;
+
+  // Group by entity type so the eye lands on the right kind quickly. Was
+  // a single flat list interleaving T-#### IDs with raw customer names —
+  // user feedback 2026-05-09 ("recents are not separated in any
+  // meaningful way"). Tickets first because they're the most-clicked
+  // recent row in the day-to-day shop flow; everything else falls under
+  // "Other" with the canonical icon.
+  const TYPE_META: Record<string, { label: string; icon: React.ElementType; order: number }> = {
+    ticket:   { label: 'Tickets',   icon: Wrench,        order: 1 },
+    customer: { label: 'Customers', icon: Users,         order: 2 },
+    invoice:  { label: 'Invoices',  icon: FileText,      order: 3 },
+    lead:     { label: 'Leads',     icon: UserPlus,      order: 4 },
+    inventory:{ label: 'Inventory', icon: Package,       order: 5 },
+  };
+  const groups: Record<string, RecentViewEntry[]> = {};
+  for (const item of items) {
+    const key = item.type in TYPE_META ? item.type : 'other';
+    (groups[key] ||= []).push(item);
+  }
+  const groupKeys = Object.keys(groups).sort((a, b) => {
+    const ao = TYPE_META[a]?.order ?? 99;
+    const bo = TYPE_META[b]?.order ?? 99;
+    return ao - bo;
+  });
 
   return (
     <div className="shrink-0 border-t border-surface-200 dark:border-surface-800 px-2 py-2">
@@ -419,34 +486,50 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
           Recent
         </p>
       )}
-      <ul className="space-y-0.5">
-        {items.map((item) => (
-          <li key={`${item.type}-${item.id}`}>
-            <NavLink
-              to={item.path}
-              className={({ isActive }) =>
-                cn(
-                  'group relative flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                  isActive
-                    ? 'bg-surface-100 text-surface-900 dark:bg-surface-800 dark:text-surface-50'
-                    : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-200',
-                  collapsed && 'justify-center px-0'
-                )
-              }
-            >
+      <div className="space-y-1.5">
+        {groupKeys.map((key) => {
+          const meta = TYPE_META[key] ?? { label: 'Other', icon: ListTodo, order: 99 };
+          const Icon = meta.icon;
+          return (
+            <div key={key}>
               {!collapsed && (
-                <span className="truncate">{item.label}</span>
+                <p className="flex items-center gap-1.5 px-3 pt-1 text-[9px] font-mono uppercase tracking-[0.14em] text-surface-400 dark:text-surface-500">
+                  <Icon className="h-3 w-3" />
+                  {meta.label}
+                </p>
               )}
-              {collapsed && (
-                <>
-                  <span className="text-[10px]">{item.label.slice(0, 6)}</span>
-                  <SidebarTooltipWrapper label={item.label} />
-                </>
-              )}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
+              <ul className="space-y-0.5">
+                {groups[key].map((item) => (
+                  <li key={`${item.type}-${item.id}`}>
+                    <NavLink
+                      to={item.path}
+                      className={({ isActive }) =>
+                        cn(
+                          'group relative flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                          isActive
+                            ? 'bg-surface-100 text-surface-900 dark:bg-surface-800 dark:text-surface-50'
+                            : 'text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-800/60 dark:hover:text-surface-200',
+                          collapsed && 'justify-center px-0'
+                        )
+                      }
+                    >
+                      {!collapsed && (
+                        <span className="truncate">{item.label}</span>
+                      )}
+                      {collapsed && (
+                        <>
+                          <span className="text-[10px]">{item.label.slice(0, 6)}</span>
+                          <SidebarTooltipWrapper label={item.label} />
+                        </>
+                      )}
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

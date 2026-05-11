@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, Link as LinkIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
+import { MembershipSettings } from '@/pages/settings/MembershipSettings';
 import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
 import { formatCurrency, formatDate } from '@/utils/format';
@@ -35,6 +36,7 @@ interface Subscription {
 }
 
 type StatusFilter = 'all' | Exclude<SubStatus, 'cancelled'>;
+type MembershipView = 'subscriptions' | 'tiers';
 
 const PAGE_SIZE = 10;
 const STATUS_FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
@@ -100,6 +102,7 @@ export function SubscriptionsListPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
+  const [view, setView] = useState<MembershipView>('subscriptions');
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['subscriptions'],
@@ -317,11 +320,19 @@ export function SubscriptionsListPage() {
     setPage(1);
   }
 
+  const viewButtonClass = (target: MembershipView) =>
+    [
+      'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+      view === target
+        ? 'bg-primary-500 text-on-primary'
+        : 'text-surface-500 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-100',
+    ].join(' ');
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header — WEB-UIUX-1061: removed decoy "Run billing now" header button;
           billing runs nightly via cron. Per-row "Bill now" remains the manual trigger. */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Crown className="h-6 w-6 text-primary-600" />
           <div>
@@ -334,8 +345,38 @@ export function SubscriptionsListPage() {
             )}
           </div>
         </div>
+        <div
+          className="inline-flex w-fit rounded-xl border border-surface-200 bg-white p-1 dark:border-surface-800 dark:bg-surface-900"
+          role="tablist"
+          aria-label="Membership view"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'subscriptions'}
+            onClick={() => setView('subscriptions')}
+            className={viewButtonClass('subscriptions')}
+          >
+            Subscriptions
+          </button>
+          <AdminOnly>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'tiers'}
+              onClick={() => setView('tiers')}
+              className={viewButtonClass('tiers')}
+            >
+              Tiers
+            </button>
+          </AdminOnly>
+        </div>
       </div>
 
+      {view === 'tiers' ? (
+        <MembershipSettings showActiveSubscribers={false} />
+      ) : (
+        <>
       {!isLoading && !isError && (subs.length > 0 || filtersActive) ? (
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-md">
@@ -389,8 +430,8 @@ export function SubscriptionsListPage() {
               ? 'Try a different search or status.'
               : 'Open a customer profile and tap Enroll in Membership'}
           </p>
-          {/* WEB-UIUX-1064: old copy pointed to settings tab; enrollment lives on
-              customer profile. Added /customers CTA + secondary settings link. */}
+          {/* WEB-UIUX-1064: enrollment lives on customer profiles; tier setup
+              stays inline on this page instead of detouring through Settings. */}
           {filtersActive ? (
             <button
               type="button"
@@ -403,16 +444,19 @@ export function SubscriptionsListPage() {
             <div className="mt-4 flex items-center gap-3">
               <Link
                 to="/customers"
-                className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+                className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-semibold text-on-primary hover:bg-primary-400"
               >
                 Go to Customers
               </Link>
-              <Link
-                to="/settings/memberships"
-                className="rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
-              >
-                Configure tiers
-              </Link>
+              <AdminOnly>
+                <button
+                  type="button"
+                  onClick={() => setView('tiers')}
+                  className="rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+                >
+                  Configure tiers
+                </button>
+              </AdminOnly>
             </div>
           )}
         </div>
@@ -580,6 +624,8 @@ export function SubscriptionsListPage() {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

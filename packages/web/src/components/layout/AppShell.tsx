@@ -219,7 +219,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div
         className={cn(
-          'flex flex-1 flex-col min-w-0 transition-all duration-200',
+          // Match the sidebar's transition exactly (width on aside, margin
+          // on this column) so they slide as one motion instead of the
+          // sidebar shrinking first and the main column catching up.
+          'flex flex-1 flex-col min-w-0 transition-[margin-left] duration-[250ms] ease-out',
           // On desktop, offset by sidebar width; on mobile, no offset
           sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'
         )}

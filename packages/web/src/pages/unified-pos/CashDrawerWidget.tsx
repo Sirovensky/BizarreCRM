@@ -80,7 +80,12 @@ export function CashDrawerWidget() {
   // does not shift (returning null collapses the widget's reserved space).
   if (isLoading) {
     return (
-      <button disabled className="btn btn-sm border border-surface-300 bg-surface-50 text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-500 opacity-60 cursor-not-allowed">
+      <button
+        disabled
+        aria-busy="true"
+        aria-label="Loading cash-drawer status"
+        className="btn btn-sm border border-surface-300 bg-surface-50 text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-500 opacity-60 cursor-not-allowed"
+      >
         Loading…
       </button>
     );

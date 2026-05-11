@@ -59,7 +59,7 @@ export default defineConfig(({ mode }) => {
     // which keeps local auth cookies usable on the HTTP browser origin.
     proxy: {
       '/api': {
-        target: 'https://localhost:443',
+        target: 'https://localhost:8443',
         changeOrigin: false, // Preserve original Host header for multi-tenant subdomain routing
         secure: false,
         xfwd: true,
@@ -68,21 +68,21 @@ export default defineConfig(({ mode }) => {
         headers: tenantProxyHeaders,
       },
       '/uploads': {
-        target: 'https://localhost:443',
+        target: 'https://localhost:8443',
         changeOrigin: false,
         secure: false,
         xfwd: true,
         headers: tenantProxyHeaders,
       },
       '/super-admin': {
-        target: 'https://localhost:443',
+        target: 'https://localhost:8443',
         changeOrigin: false,
         secure: false,
         xfwd: true,
         headers: devHttpHeader,
       },
       '/portal/api': {
-        target: 'https://localhost:443',
+        target: 'https://localhost:8443',
         changeOrigin: false,
         secure: false,
         xfwd: true,

@@ -1228,7 +1228,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             Enroll in Membership
           </button>
           {tiers.length === 0 && (
-            <p className="text-xs text-surface-400 mt-2">No membership tiers configured. Go to Settings to add tiers.</p>
+            <p className="text-xs text-surface-400 mt-2">No membership tiers configured. Use Memberships &gt; Tiers to add tiers.</p>
           )}
         </div>
       ) : (

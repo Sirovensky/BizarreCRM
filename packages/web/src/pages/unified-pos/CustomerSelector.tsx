@@ -24,6 +24,9 @@ async function fetchOrCreateWalkinCustomer(): Promise<CustomerResult | null> {
       : Array.isArray((data as { customers?: CustomerResult[] })?.customers)
         ? (data as { customers: CustomerResult[] }).customers
         : [];
+    // ONLY accept a customer that explicitly looks like the walk-in record.
+    // Previous fallback (`list[0]`) could silently attach a real customer to
+    // a "walk-in" sale when the search returned no walk-in row.
     const match = list.find(
       (c) =>
         (c.first_name + ' ' + c.last_name).toLowerCase().includes('walk') ||
@@ -34,10 +37,7 @@ async function fetchOrCreateWalkinCustomer(): Promise<CustomerResult | null> {
       walkinCustomerCache = match;
       return match;
     }
-    // Fallback: use the first result or a synthetic object with id=0
-    const fallback = list[0] ?? null;
-    walkinCustomerCache = fallback;
-    return fallback;
+    return null;
   } catch {
     return null;
   }
@@ -58,6 +58,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [walkInLoading, setWalkInLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const RESULT_CAP = 25;
@@ -66,9 +67,11 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
   useEffect(() => {
     if (query.length < 2) {
       setResults([]);
+      setSearchError(false);
       return;
     }
     setLoading(true);
+    setSearchError(false);
     // Normalize mostly-digit queries (phone numbers) by stripping non-digit chars
     // so the server's fuzzy phone match works regardless of dashes/spaces/parens.
     const normalizedQuery = /^\d[\d\s\-().]{2,}$/.test(query) ? stripPhone(query) : query;
@@ -78,8 +81,11 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
         const data = res.data?.data;
         setResults(Array.isArray(data) ? data.slice(0, RESULT_CAP) : []);
       } catch {
-        // Search failed — handled by empty results
+        // Distinguish a network/server failure from a genuine zero-hit
+        // search: previously both rendered "No customers found" so the
+        // cashier had no signal that the lookup actually broke.
         setResults([]);
+        setSearchError(true);
       } finally {
         setLoading(false);
       }
@@ -267,7 +273,9 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
           value={query}
           onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => { if (results.length) setIsOpen(true); }}
+          autoFocus={!inline}
           placeholder="Search by name, phone, or email…"
+          aria-label="Search customers by name, phone, or email"
           className={cn(
             'w-full rounded-lg border border-surface-200 dark:border-surface-700',
             'bg-white dark:bg-surface-800 pl-9 pr-3 py-2 text-sm',
@@ -313,6 +321,9 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
                 {c.group_name && (
                   <span className="shrink-0 rounded bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
                     {c.group_name}
+                    {typeof c.group_discount_pct === 'number' && c.group_discount_pct > 0 && (
+                      <span className="ml-1 opacity-80">· {c.group_discount_pct}%</span>
+                    )}
                   </span>
                 )}
               </button>
@@ -328,10 +339,41 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
 
       {isOpen && query.length >= 2 && results.length === 0 && !loading && (
         <div className={cn(
-          'z-30 w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-lg p-3 text-center text-sm text-surface-500',
+          'z-30 w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-lg p-3',
           inline ? 'relative' : 'absolute mt-1',
         )}>
-          No customers found
+          {searchError ? (
+            <p className="text-center text-sm text-rose-600 dark:text-rose-400">
+              Search failed — check connection and try again
+            </p>
+          ) : (
+            <p className="text-center text-sm text-surface-500">
+              No customers match &ldquo;{query}&rdquo;
+            </p>
+          )}
+          {!searchError && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {onNewCustomer && (
+                <button
+                  type="button"
+                  onClick={onNewCustomer}
+                  className="btn btn-sm w-full bg-primary-600 !font-semibold text-primary-950 hover:bg-primary-700"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Create &ldquo;{query.trim()}&rdquo;
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleWalkIn}
+                disabled={walkInLoading}
+                className="btn btn-sm w-full border border-surface-200 text-surface-600 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800/60 disabled:opacity-50"
+              >
+                <UserX className="h-3.5 w-3.5" />
+                {walkInLoading ? 'Loading…' : 'Walk-in · no profile'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -354,7 +396,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
           className="btn btn-sm w-full border border-transparent text-surface-500 hover:border-surface-200 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:border-surface-700 dark:hover:bg-surface-800/60 dark:hover:text-surface-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           <UserX className="h-4 w-4" />
-          {walkInLoading ? 'Loading…' : 'Walk-in (no customer info)'}
+          {walkInLoading ? 'Loading…' : 'Walk-in · no profile'}
         </button>
       </div>
     </div>

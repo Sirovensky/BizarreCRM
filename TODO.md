@@ -7,6 +7,70 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## Repair templates: device-keyed seeding with multi-tier parts (REPAIR-TEMPLATES-SEED)
+
+- **Partial done 2026-05-09:** migration `173_seed_device_model_templates.sql` ships 72 templates across 15 devices (iPhone 11–16, Galaxy S21–S24, Pixel 7/8, OnePlus 12, iPad Pro 11" M4, MacBook Pro 14" M3) with multi-tier screens (Original OEM / FOG / Soft OLED / Aftermarket) plus battery, charging port, back glass, camera, keyboard. Suggested prices keyed off the same medians the setup wizard uses. Picker now non-empty for the top devices.
+- [ ] REPAIR-TEMPLATES-SEED-2. **Hydrate parts_json from real inventory + supplier scrape.** The 173 seed leaves `parts_json: '[]'` — templates apply labor + suggested_price but don't pre-attach the SKU. Wire a follow-up that joins device_models → inventory_device_compatibility → inventory_items by tier label, and falls back to live Mobilesentrix / PhoneLCDParts scrape when the shop doesn't yet stock the SKU. Acceptance: opening "iPhone 13 — Screen (Original OEM)" auto-attaches the matching inventory line on apply.
+- [ ] REPAIR-TEMPLATES-SEED-1. **Original Seed task — extend coverage beyond the top 15 devices.** Reported 2026-05-09 — current Repair Templates picker on the ticket detail shows "No templates yet" for the most common devices (e.g. iPhone 13). User wants every popular phone/tablet to come pre-seeded with templates such as "iPhone 13 — Screen replacement" with multiple part-tier options the tech can pick at intake:
+  - Tier A: Original OEM panel
+  - Tier B: Refurbished OEM ("Original FOG" — third-party assembled with original glass)
+  - Tier C: Soft OLED (XO7 / QV8)
+  - Tier D: Aftermarket LCD
+  Templates should also exist for battery, charging port, back glass, camera, speaker.
+  Prices must respect the shop's pricing-tier configuration (`store_config.pricing_tiers`, set during the setup wizard's Repair Pricing step) — i.e. the seeder fans defaults through `seedDefaults.ts` so the auto-margin + tier thresholds the owner already configured win. Inventory rows should link via `inventory_device_compatibility` so the template line can pre-fill the inventory item id.
+  Sources to scrape and reconcile:
+  - Mobilesentrix product catalogue (existing `scrape_jobs` infrastructure exists in catalog routes)
+  - PhoneLCDParts (PLP)
+  - iFixit BOM data for OEM identification
+  Acceptance: opening Repair Templates picker on iPhone 13 / Galaxy S21 / Pixel 7 etc. shows ≥4 templates each with tier-tagged parts pre-attached, prices respect tier_a/b/c medians, no manual seeding required.
+
+## Dashboard simplification (DASHBOARD-SIMPLIFY) — DONE 2026-05-09
+
+Dashboard now shows ProfitHeroCard + CashTrappedCard + a "View full reports →" link. Heavy widgets (BusyHoursHeatmap, ChurnAlert, ForecastChart, TechLeaderboard, RepeatCustomersCard) moved to the Insights tab on `/reports`. See [DashboardPage.tsx:2284](packages/web/src/pages/dashboard/DashboardPage.tsx) and [ReportsPage.tsx:1768](packages/web/src/pages/reports/ReportsPage.tsx).
+
+## Demand Forecast / charts not pulling RD-imported data (CHARTS-RD-IMPORT)
+
+- **Diagnosed 2026-05-09 — root cause is import data gap, not chart code.** SQL inspection shows the imported tenant DB has 1204 tickets but **0 ticket_device_parts rows** and only 2 invoices. The Demand Forecast endpoint aggregates from `ticket_device_parts.created_at` (`reports.routes.ts:2510`) — empty because parts weren't imported. Revenue chart aggregates `invoices` — only 2 rows. Chart endpoints + SQL are correct.
+- [ ] CHARTS-RD-IMPORT-1. **Fix the RepairDesk import path so it populates ticket_device_parts + invoices.** [services/repairDeskImport.ts:571](packages/server/src/services/repairDeskImport.ts) has the INSERT for `ticket_device_parts`; line 610 inserts `invoices`. Verify: does the user's RD export CSV include parts/invoice data, and if so why isn't the importer hydrating those rows? Check the CSV column mapping + reproduce the import locally with the same dataset.
+
+## Nav restructure: separate Communications and Leads (NAV-COMMS-LEADS-SPLIT) — DONE 2026-05-09
+
+Sidebar split into: Communications (Messages, Voice Calls) and Sales (Leads, Pipeline, Calendar, Estimates). See [Sidebar.tsx:103](packages/web/src/components/layout/Sidebar.tsx).
+
+## Sidebar Recents grouping (NAV-RECENTS-GROUPING) — DONE 2026-05-09
+
+RecentViews now groups by entity type with mono-uppercase subheaders (Tickets / Customers / Invoices / Leads / Inventory / Other), each with its lucide icon. See [Sidebar.tsx:385](packages/web/src/components/layout/Sidebar.tsx).
+
+## Calendar UX: vertical timeline + appointment cancel X (CAL-TIMELINE-CANCEL) — DONE 2026-05-09
+
+- CAL-TIMELINE-CANCEL-1 — Gate "+N more · view all" routes to `/calendar?view=day` which renders the existing vertical day view. CalendarPage reads `?view=` on mount.
+- CAL-TIMELINE-CANCEL-2 — Hover-revealed X on each gate appointment row. Confirms then PUTs `status: 'cancelled'` via leadApi.updateAppointment + toast + invalidate.
+- CAL-TIMELINE-CANCEL-3 — Body line no longer falls back to status label (already shown in the right pill). Drops the duplicate text the user flagged.
+
+## Payroll periods readability (PAYROLL-CONTRAST) — DONE 2026-05-09
+
+Period table uses font-semibold + text-surface-700/200, mono for date columns, brighter table head. See [PayrollPage.tsx:223](packages/web/src/pages/team/PayrollPage.tsx).
+
+## POS held-cart switch returns 500 (POS-HELDCART-BUSY) — DONE 2026-05-09
+
+Root: `consumeWindowRate` ran in DEFERRED transaction mode; rapid tab POSTs hit SQLITE_BUSY_SNAPSHOT. Fix: `.immediate()` mode + 5-attempt retry on BUSY/BUSY_SNAPSHOT with sync back-off. See [rateLimiter.ts:215](packages/server/src/utils/rateLimiter.ts).
+
+## Messages page: broken / hidden buttons (MESSAGES-BROKEN-BUTTONS)
+
+- [ ] MESSAGES-BROKEN-BUTTONS-1. **Audit the Messages page for hidden / non-functional buttons.** Reported 2026-05-09 — user "can't read; messages have broken (hidden) buttons" with a screenshot showing the page mostly blank. Still needs a reproduction with browser dev-tools open: confirm SMS provider config, check for elements with `opacity-0` / `display:none` / `pointer-events-none` that should be visible, verify routes don't 404. Suspect either an unconfigured provider stripping the action bar, or the recent dark-mode token migration missing this page. Page is `packages/web/src/pages/communications/CommunicationPage.tsx` (~2700 lines).
+
+## Catalog tenancy access gating (CATALOG-TENANCY-GATE) — RESOLVED 2026-05-09
+
+Confirmed single-tenant via `MULTI_TENANT=false` in `packages/server/.env` (server boots without `config.multiTenant`). Catalog access is fine at present. If the deployment ever flips to MULTI_TENANT=true, revisit `catalog.routes.ts` to scope queries by tenant slug.
+
+## POS / tickets phone-tap integrations (POS-PHONE-TAP)
+
+- [!] POS-PHONE-TAP-1. **Mobile-phone handoff for the in-app phone-tap dialog.** Blocked 2026-05-09 — when the cashier has a paired mobile (e.g. companion phone or wireless headset), tapping a customer phone number in the ticket list / SMS app / POS gate should be able to push a "call this number" or "send this SMS draft" command to that mobile rather than only opening the desktop dialer. Needs: device-pairing flow, pairing tokens stored against the user, a transport (likely WebPush + companion mobile app handler, or a polled /pos/handoff/poll endpoint), and a fallback when the paired device is offline. The desktop popover already covers the Call (tel:) / SMS (in-app) / Copy paths added 2026-05-09 ([TicketListPage.tsx PhoneActionPopover](../packages/web/src/pages/tickets/TicketListPage.tsx)); this item only tracks the additional mobile-handoff button.
+
+## Ticket list status-change PATCH no-op investigation (TICKETS-STATUS-NOOP)
+
+- [ ] TICKETS-STATUS-NOOP-1. **Diagnose why the inline StatusDropdown click never reaches the server.** Reported 2026-05-09 — user changes a ticket status from the list dropdown and "nothing happens" — no PATCH request reaches `/api/v1/tickets/:id/status` according to live `/tmp/srv.log`, no toast fires either way. Code path looks intact: [TicketListPage.tsx StatusDropdown](../packages/web/src/pages/tickets/TicketListPage.tsx) onClick → handleChangeStatus → `changeStatusMut.mutate({ ticketId, statusId })` → `ticketApi.changeStatus` → PATCH. Possible culprits to investigate: outside-click handler firing on mousedown before option click registers, requirePermission gating returning a 403 silently swallowed by an axios interceptor, optimistic update masking a server error, or rendering through the Kanban board (different code path). Repro on a logged-in dev session and check Network tab + console.
+
 ## Cookie consent / privacy compliance (LEGAL-COOKIE-CONSENT)
 
 - [ ] LEGAL-COOKIE-CONSENT-1. **Add cookie consent banner before introducing analytics / marketing / fingerprinting cookies.** Today's cookies (auth: refreshToken/csrf_token; preference: theme) are exempt under ePrivacy Directive (strictly necessary + explicitly user-requested). The exemption does NOT cover Sentry session-replay, Google Analytics, ad pixels, or third-party fingerprinting. When any of those land we MUST ship a banner with categories (necessary / preferences / analytics / marketing), default-deny for non-necessary, persisted choice, easy revoke. CCPA "Do Not Sell" link if any data sale starts. See uiStore.ts `LEGAL-COOKIE-CONSENT` marker for theme-cookie reasoning.

@@ -360,7 +360,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
 
 // ─── Main Component ──────────────────────────────────────────────
 
-export function MembershipSettings() {
+export function MembershipSettings({ showActiveSubscribers = true }: { showActiveSubscribers?: boolean } = {}) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingTier, setEditingTier] = useState<MembershipTier | null>(null);
@@ -576,7 +576,7 @@ export function MembershipSettings() {
       )}
 
       {/* Active Subscribers */}
-      <ActiveSubscribers />
+      {showActiveSubscribers && <ActiveSubscribers />}
     </div>
   );
 }

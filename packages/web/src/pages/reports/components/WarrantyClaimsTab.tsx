@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldAlert, DollarSign, Hash } from 'lucide-react';
 import { reportApi } from '@/api/endpoints';
@@ -32,7 +31,7 @@ export function WarrantyClaimsTab({ from, to }: { from: string; to: string }) {
   const { rows } = reportState.data;
   const totalClaims = rows.reduce((sum, r) => sum + r.claim_count, 0);
   const totalCost = rows.reduce((sum, r) => sum + r.total_cost, 0);
-  const maxClaims = useMemo(() => Math.max(...rows.map((x) => x.claim_count), 1), [rows]);
+  const maxClaims = Math.max(...rows.map((x) => x.claim_count), 1);
 
   return (
     <div className="space-y-6">

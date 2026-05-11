@@ -32,7 +32,7 @@ import {
   Plus, ArrowRight, Loader2, Info, Download, TrendingUp,
   Receipt, BadgeDollarSign, CreditCard, Wallet, FileText,
   Calendar, PackageX, FileWarning, BoxSelect,
-  Settings2, ChevronUp, ChevronDown, RotateCcw, X, Eye, EyeOff, CalendarClock, Lightbulb, Check,
+  Settings2, ChevronUp, ChevronDown, RotateCcw, X, Eye, EyeOff, CalendarClock, Lightbulb, Check, BarChart3,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi, onboardingApi, repairPricingApi, type OnboardingState } from '@/api/endpoints';
@@ -53,7 +53,6 @@ import { ProfitHeroCard } from '@/components/reports/ProfitHeroCard';
 import { BusyHoursHeatmap } from '@/components/reports/BusyHoursHeatmap';
 import { TechLeaderboard } from '@/components/reports/TechLeaderboard';
 import { RepeatCustomersCard } from '@/components/reports/RepeatCustomersCard';
-import { CashTrappedCard } from '@/components/reports/CashTrappedCard';
 import { ChurnAlert } from '@/components/reports/ChurnAlert';
 import { ForecastChart } from '@/components/reports/ForecastChart';
 
@@ -2282,22 +2281,24 @@ function AdminOrManagerDashboard() {
       )}
 
       {/* ─── Business Intelligence hero (audit 47) ────────────────────────
-           Profit margin is the #1 thing owners should see. Rendered BEFORE
-           the date range filter so it is the first data on the page.
-           Phase B1: gated behind first_payment_at (isDayOne = false). */}
+           Owner glances here for revenue / profit + cash trapped. Heavier
+           reporting widgets (heatmap, churn, demand forecast, leaderboard,
+           repeat customers) moved to /reports per user feedback 2026-05-09 —
+           dashboard was too dense to scan. The "View full reports →" CTA
+           below opens the deep-dive surface. */}
       {showFinancials && !isDayOne && (
         <div className="mb-6 space-y-4">
           <ProfitHeroCard />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <CashTrappedCard />
-            <ChurnAlert />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <RepeatCustomersCard />
-            <TechLeaderboard />
-          </div>
-          <BusyHoursHeatmap days={30} />
-          <ForecastChart />
+          <Link
+            to="/reports"
+            className="flex items-center justify-between rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm font-semibold text-surface-700 transition hover:border-primary-500 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200 dark:hover:bg-surface-800"
+          >
+            <span className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary-500" />
+              Cash trapped, repeat customers, churn, demand forecast, busy hours, tech leaderboard
+            </span>
+            <span className="font-mono text-xs text-primary-600 dark:text-primary-400">View full reports →</span>
+          </Link>
         </div>
       )}
 

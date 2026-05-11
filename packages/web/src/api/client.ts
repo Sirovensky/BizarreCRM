@@ -183,6 +183,19 @@ client.interceptors.request.use((config) => {
     if (!ct) {
       config.headers['Content-Type'] = 'application/json';
     }
+    // Axios v1 drops Content-Type from the outgoing request when `data` is
+    // undefined — the header gets set above but never reaches the wire on
+    // body-less DELETE/POST, so the server's CSRF guard rejects with
+    // "State-changing requests must use application/json or multipart/form-
+    // data". Force a real body ("{}") whenever the header is JSON so the
+    // header survives serialisation. Multipart paths set their own data
+    // before this interceptor runs and aren't affected.
+    if (
+      (config.data === undefined || config.data === null)
+      && (config.headers['Content-Type'] === 'application/json' || config.headers['content-type'] === 'application/json')
+    ) {
+      config.data = {};
+    }
   }
   return config;
 });

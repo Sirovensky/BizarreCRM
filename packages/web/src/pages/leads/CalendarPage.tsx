@@ -1155,7 +1155,15 @@ function DayView({
 
 // ─── Main Component ─────────────────────────────────────────────
 export function CalendarPage() {
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  // Honor `?view=day|week|month` so deep-links from the POS gate land on
+  // the right view (gate "+N more · view all" routes to ?view=day for a
+  // vertical timeline). Falls back to month on unknown / missing values.
+  const initialView = (() => {
+    if (typeof window === 'undefined') return 'month' as ViewMode;
+    const param = new URLSearchParams(window.location.search).get('view');
+    return param === 'day' || param === 'week' || param === 'month' ? (param as ViewMode) : 'month';
+  })();
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -1186,24 +1194,37 @@ export function CalendarPage() {
   const users: { id: number; first_name: string; last_name: string }[] =
     usersData?.data?.data?.users || usersData?.data?.data || [];
 
-  // Compute date range for query
+  // Compute date range for query.
+  // appointments.start_time is stored as a naive `YYYY-MM-DD HH:MM:SS`
+  // string in shop-local time. Passing `toISOString()` (UTC w/ Z suffix)
+  // makes SQLite's lex compare disagree with chronological order — a
+  // PT-shop's `2026-05-08 12:27:51` row falls outside a window that opens
+  // at `2026-05-09T00:00:00.000Z` ("tomorrow" in UTC) even though the
+  // appointment is today. Format the boundary as the same naive shape so
+  // the lex compare matches the wall clock the shop actually uses.
+  const fmtNaive = (d: Date, suffix = '00:00:00') => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day} ${suffix}`;
+  };
   const dateRange = useMemo(() => {
     const y = currentDate.getFullYear();
     const m = currentDate.getMonth();
     if (viewMode === 'month') {
-      const from = new Date(y, m, 1).toISOString();
-      const to = new Date(y, m + 1, 0, 23, 59, 59).toISOString();
+      const from = fmtNaive(new Date(y, m, 1));
+      const to = fmtNaive(new Date(y, m + 1, 0), '23:59:59');
       return { from_date: from, to_date: to };
     }
     if (viewMode === 'week') {
       const ws = startOfWeek(currentDate);
-      const from = ws.toISOString();
-      const to = addDays(ws, 7).toISOString();
+      const from = fmtNaive(ws);
+      const to = fmtNaive(addDays(ws, 6), '23:59:59');
       return { from_date: from, to_date: to };
     }
     // day
-    const from = new Date(y, m, currentDate.getDate()).toISOString();
-    const to = new Date(y, m, currentDate.getDate(), 23, 59, 59).toISOString();
+    const from = fmtNaive(new Date(y, m, currentDate.getDate()));
+    const to = fmtNaive(new Date(y, m, currentDate.getDate()), '23:59:59');
     return { from_date: from, to_date: to };
   }, [currentDate, viewMode]);
 
