@@ -5562,7 +5562,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-191`
   <!-- meta: fix=presets=[25,50,100,200,500];-render-grid-of-buttons-that-setForm({amount:String(v)});-keep-input-as-Custom-fallback -->
 
-- [!] WEB-UIUX-1555. **[MAJOR] Status filter has no `expired` option. `GiftCardsListPage.tsx:325-329` offers active/used/disabled. Server doesn't persist an `expired` status — `isExpired` is computed at lookup/redeem only. Manager wants to email customers whose cards expire next month — no UI path. Either (a) persist a `gift_card_expired` daemon (the `giftCardExpirySweep` service exists at `packages/server/src/services/giftCardExpirySweep.ts` — wire its output to the status column), or (b) add a virtual `expired` filter that translates to `expires_at < datetime('now')` on the server.** L6 discoverability. **STATUS: BLOCKED — needs server POST /gift-cards/bulk + CSV upload modal + result CSV download; multi-component, defer**
+- [x] WEB-UIUX-1555. **Virtual `expired` filter shipped (option-b path) 2026-05-11.** `GiftCardsListPage.tsx` already exposed the Expired status option (1438). Server `GET /gift-cards` now translates `status=expired` to `expires_at IS NOT NULL AND expires_at < datetime('now') AND status NOT IN ('used','disabled')` so the filter actually returns rows (`giftCards.routes.ts:118-130`). Real persisted statuses keep their direct equality match. The expiry-sweep daemon path remains a separate future option if persisted state is ever needed for reports.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
   `packages/server/src/services/giftCardExpirySweep.ts`
   `packages/server/src/routes/giftCards.routes.ts:117`

@@ -115,7 +115,21 @@ router.get('/', asyncHandler(async (req, res) => {
     const k = `%${escapeLike(keyword)}%`;
     params.push(k, k);
   }
-  if (status) { conditions.push('gc.status = ?'); params.push(status); }
+  // WEB-UIUX-1555: 'expired' is a derived (virtual) status — the column never
+  // stores 'expired' because expiry is computed at lookup/redeem time. Without
+  // this branch the client option "Expired" returns zero rows. Translate it
+  // to a date predicate that surfaces every still-active row whose window has
+  // passed (excluding disabled/used so cards aren't double-counted under two
+  // filters). Real persisted statuses ('active','used','disabled') stay as
+  // direct equality matches.
+  if (status === 'expired') {
+    conditions.push("gc.expires_at IS NOT NULL");
+    conditions.push("gc.expires_at < datetime('now')");
+    conditions.push("gc.status NOT IN ('used','disabled')");
+  } else if (status) {
+    conditions.push('gc.status = ?');
+    params.push(status);
+  }
 
   const whereClause = 'WHERE ' + conditions.join(' AND ');
 
