@@ -306,6 +306,20 @@ export function GiftCardDetailPage() {
           <div className="text-right">
             <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{formatBalance(card.current_balance)}</p>
             <p className="text-xs text-surface-500 dark:text-surface-400">of {formatBalance(card.initial_balance)} initial</p>
+            {/* WEB-UIUX-1011: progress bar of remaining-vs-initial so the
+                operator gets at-a-glance utilization without doing math. */}
+            {(() => {
+              const initial = Number(card.initial_balance) || 0;
+              const current = Number(card.current_balance) || 0;
+              if (initial <= 0) return null;
+              const pct = Math.max(0, Math.min(100, (current / initial) * 100));
+              const tone = pct >= 60 ? 'bg-emerald-500' : pct >= 20 ? 'bg-amber-500' : 'bg-red-500';
+              return (
+                <div className="mt-1 ml-auto h-1.5 w-32 rounded-full bg-surface-200 dark:bg-surface-700 overflow-hidden" title={`${pct.toFixed(0)}% remaining`}>
+                  <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
+                </div>
+              );
+            })()}
           </div>
         </div>
 

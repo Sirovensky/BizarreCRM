@@ -215,8 +215,14 @@ export function InvoiceDetailPage() {
     // columns to invoices. Send code + note as dedicated fields; also keep
     // a composed `reason` string in case older server builds are still running.
     mutationFn: (d: { amount: number; code: RefundReasonCode; note: string }) => {
+      // WEB-UIUX-1034: use ` — ` (en-dash) as the code/note separator instead
+      // of a colon. A note like "see ticket #123 12:30pm" reintroduces the
+      // colon and breaks any legacy `split(':')`-based reverse parser.
+      // The dedicated credit_note_code + credit_note_note columns (migration
+      // 150) are still the canonical source; this composed string is only a
+      // legacy fallback.
       const reason = d.note
-        ? `${d.code}: ${d.note}`
+        ? `${d.code} — ${d.note}`
         : d.code;
       return invoiceApi.createCreditNote(invoiceId, {
         amount: d.amount,
