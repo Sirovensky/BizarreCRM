@@ -5947,7 +5947,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Major — discoverability + nav gaps
 
-- [ ] WEB-UIUX-1396. **[MAJOR] Permissions matrix exposes `refunds.create`, `refunds.approve`, `refunds.decline` (all wired in `refunds.routes.ts:107,253,418`) but Settings > Roles UI has no way to test what these permissions actually unlock — the surface they protect is invisible (WEB-UIUX-1382). Admin assigns "manager can refund" then no manager can find a refund button. Permission feels broken.** L6 discoverability, L7 feedback.
+- [!] WEB-UIUX-1396. **[MAJOR] Permissions matrix exposes `refunds.create`, `refunds.approve`, `refunds.decline` (all wired in `refunds.routes.ts:107,253,418`) but Settings > Roles UI has no way to test what these permissions actually unlock — the surface they protect is invisible (WEB-UIUX-1382). Admin assigns "manager can refund" then no manager can find a refund button. Permission feels broken.** L6 discoverability, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs the /refunds UI to ship (UIUX-1018/1207) so the permission strings actually gate visible affordances. Tooltips inside Settings → Roles would be the bridge, not a fix.]**
   `packages/server/src/routes/refunds.routes.ts:107,253,418`
   <!-- meta: fix=blocker-on-WEB-UIUX-1382-(ship-UI)-OR-add-Settings-banner-"Refund-routes-currently-have-no-UI;-permissions-take-effect-once-/refunds-page-ships" -->
 
@@ -5956,7 +5956,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=add-Refunds-Detail-tab-to-/reports+table-with-date+invoice+customer+amount+reason+method+approver -->
 
-- [ ] WEB-UIUX-1398. **[MAJOR] Card-method refund cap exists in server (`refunds.routes.ts:177-202` — `cardCollected - cardAlreadyRefunded`) but no UI surface ever sends `method:'card'`. The whole branch is dead defence-in-depth. Once UI is added, the method picker must default to the *original payment method* of the invoice (lookup last payment.method) — otherwise operator hand-picks "cash" and bypasses card cap.** L4 flow, L7 feedback.
+- [!] WEB-UIUX-1398. **[MAJOR] Card-method refund cap exists in server (`refunds.routes.ts:177-202` — `cardCollected - cardAlreadyRefunded`) but no UI surface ever sends `method:'card'`. The whole branch is dead defence-in-depth. Once UI is added, the method picker must default to the *original payment method* of the invoice (lookup last payment.method) — otherwise operator hand-picks "cash" and bypasses card cap.** L4 flow, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on the /refunds list/inbox UI (UIUX-1018/1207) shipping. Default-method-to-original-payment requires a method picker in that future modal.]**
   `packages/server/src/routes/refunds.routes.ts:177-202`
   <!-- meta: fix=NewRefundModal-prefill-method-from-invoice.payments[0].method+disable-non-card-options-when-original-was-card+show-card-cap-inline-($X-card-collected,-$Y-already-refunded) -->
 
@@ -5964,7 +5964,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:133-153`
   <!-- meta: fix=Refund-button-disabled-with-tooltip-"Capture-pending-authorization-first"-when-any-payment.capture_state!='captured'+CTA-link-to-capture-flow -->
 
-- [ ] WEB-UIUX-1400. **[MAJOR] Store-credit balance never shown to cashier at sale time. `GET /refunds/credits/:customerId` returns balance + 50-row history; UI has no equivalent to "this customer has $X store credit available, apply now?" prompt at checkout. UnifiedPosPage CheckoutModal does not query credit. Issued credits become invisible — customer holds it, cashier doesn't know.** L6 discoverability, L4 flow.
+- [!] WEB-UIUX-1400. **[MAJOR] Store-credit balance never shown to cashier at sale time. `GET /refunds/credits/:customerId` returns balance + 50-row history; UI has no equivalent to "this customer has $X store credit available, apply now?" prompt at checkout. UnifiedPosPage CheckoutModal does not query credit. Issued credits become invisible — customer holds it, cashier doesn't know.** L6 discoverability, L4 flow. **[AUTOLOOP-T49 STALE 2026-05-11: UnifiedPosPage already exposes the customer's live store-credit balance via a usePOSStoreCredit-style query (UnifiedPosPage.tsx:6032-6051) — "No store-credit on file" / amount tile renders inline.]**
   `packages/server/src/routes/refunds.routes.ts:439-454`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx`
   <!-- meta: fix=at-customer-select-fetch-credits.balance+show-pill-"Store-credit:-$X"+payment-method-includes-store_credit-with-cap-at-balance+POST-/refunds/credits/:id/use-on-apply -->
@@ -5975,7 +5975,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:227,299,308`
   <!-- meta: fix=on-409-show-toast-"Already-actioned-by-another-admin.-Refresh-to-see-current-state."+auto-invalidate-refund-list-query+on-400-keep-form-open-with-server-message -->
 
-- [ ] WEB-UIUX-1402. **[MAJOR] Commission reversal silently skipped on locked payroll period. Server returns `commission_reversal_skipped:true` in success payload (`refunds.routes.ts:404-411`) — no UI consumes this flag. Refund completes; commissions stay paid; no operator warning that "refund applied, but $32 of paid commission was NOT clawed back because Jan 2026 payroll is locked. Reverse manually after unlock." Will reach UI debt level once refund UI ships.** L7 feedback meaningfulness.
+- [!] WEB-UIUX-1402. **[MAJOR] Commission reversal silently skipped on locked payroll period. Server returns `commission_reversal_skipped:true` in success payload (`refunds.routes.ts:404-411`) — no UI consumes this flag. Refund completes; commissions stay paid; no operator warning that "refund applied, but $32 of paid commission was NOT clawed back because Jan 2026 payroll is locked. Reverse manually after unlock." Will reach UI debt level once refund UI ships.** L7 feedback meaningfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: refunds.routes already returns commission_reversal_skipped; downstream UI consumer needs the /refunds list page to ship first.]**
   `packages/server/src/routes/refunds.routes.ts:319-376,404-411`
   <!-- meta: fix=refund-approve-success-handler-checks-data.commission_reversal_skipped+shows-warning-toast-with-link-to-payroll-period-unlock+OR-pending-task-in-Needs-Attention -->
 
@@ -5985,7 +5985,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:378`
   <!-- meta: fix=swap-CreditCard-for-ReceiptText-or-Undo2 -->
 
-- [ ] WEB-UIUX-1404. **[MINOR] "Voiding this invoice will restore stock and mark all payments as voided. This cannot be undone." — Void disclaimer says "restore stock". Credit Note disclaimer ("Issue a credit note against invoice X. This will reduce the outstanding balance.") says nothing about stock. Server credit-note path never restores stock either (`invoices.routes.ts:1213-1230` — only inserts negative invoice). For a credit note covering the *full* invoice in a return scenario, stock is left as sold. No UI hint, no server hook.** L7 feedback, L4 flow.
+- [x] WEB-UIUX-1404. **[MINOR] "Voiding this invoice will restore stock and mark all payments as voided. This cannot be undone." — Void disclaimer says "restore stock". Credit Note disclaimer ("Issue a credit note against invoice X. This will reduce the outstanding balance.") says nothing about stock. Server credit-note path never restores stock either (`invoices.routes.ts:1213-1230` — only inserts negative invoice). For a credit note covering the *full* invoice in a return scenario, stock is left as sold. No UI hint, no server hook.** L7 feedback, L4 flow. **[AUTOLOOP-T49 RESOLVED 2026-05-11: credit-note dialog disclaimer (amount_due > 0 + no amount entered) now appends "Note: stock is not restored. Use Void if the customer is returning the item to the shelf."]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:807-817 vs 753-755`
   `packages/server/src/routes/invoices.routes.ts:1213-1283`
   <!-- meta: fix=add-checkbox-"Restore-line-item-stock"-(default-off-since-credit-note-is-ledger-only;-on-when-physical-return)+server-honours-flag+adjusts-inventory_items.in_stock+stock_movements -->
@@ -5994,7 +5994,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:377,386,798`
   <!-- meta: fix=elevate-credit-note-CTA-to-red-border+amber-fill-(or-borrow-Void-treatment)+document-the-pattern-in-tokens -->
 
-- [ ] WEB-UIUX-1406. **[MINOR] `RefundReasonPicker` "Other" option pairs with optional notes textarea. When operator picks Other and leaves note empty, server stores reason "other:" — meaningless reporting bucket. Picker should require notes when reason='other'. UI does not enforce.** L7 feedback, L4 flow integrity.
+- [!] WEB-UIUX-1406. **[MINOR] `RefundReasonPicker` "Other" option pairs with optional notes textarea. When operator picks Other and leaves note empty, server stores reason "other:" — meaningless reporting bucket. Picker should require notes when reason='other'. UI does not enforce.** L7 feedback, L4 flow integrity. **[AUTOLOOP-T49 STALE 2026-05-11: RefundReasonPicker enforces OTHER_NOTE_MIN=5 client-side + onValidityChange; server credit-note POST also rejects code=other with note<5 chars (UIUX-1217).]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:23,42-50,80-93`
   <!-- meta: fix=if-localReason==='other'-mark-Notes-required+disable-onChange-emit-until-note.length>=3+show-error-text -->
 

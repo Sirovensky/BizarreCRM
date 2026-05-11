@@ -1174,7 +1174,16 @@ export function InvoiceDetailPage() {
                   // No amount entered yet
                   // WEB-UIUX-1222: copy is accurate for amount_due > 0; the else branch below
                   // handles amount_due = 0 so "reduce the outstanding balance" is never shown falsely.
-                  return <p>Issue a credit note against invoice {invoice.order_id}. This will reduce the outstanding balance.</p>;
+                  // WEB-UIUX-1404: spell out that stock is NOT restored — only
+                  // Void restores stock. Credit-note flow leaves inventory as
+                  // sold, which is correct for "customer keeps the item with a
+                  // refund/credit" but surprises operators expecting return-to-shelf.
+                  return (
+                    <>
+                      <p>Issue a credit note against invoice {invoice.order_id}. This will reduce the outstanding balance.</p>
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Note: stock is not restored. Use Void if the customer is returning the item to the shelf.</p>
+                    </>
+                  );
                 }
 
                 // Fully paid (amount_due = 0) — credit goes to store credit, not balance reduction
