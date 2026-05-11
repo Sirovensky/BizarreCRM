@@ -204,6 +204,14 @@ router.post(
       ? validateTextLength(req.body.notes, 500, 'notes')
       : null;
 
+    // WEB-UIUX-1352: when the caller is scanning single units (each scan
+    // represents +1 physical unit), pass `mode='increment'` so the server
+    // ADDS counted_qty to any prior count instead of replacing it. The
+    // default `mode='set'` preserves the existing "operator counts a bin
+    // then types the total" semantics so existing integrations keep
+    // working.
+    const mode: 'set' | 'increment' = req.body?.mode === 'increment' ? 'increment' : 'set';
+
     // expected_qty is captured at the moment of scan — we don't re-read it
     // on commit because in_stock may have drifted from concurrent sales.
     const item = await adb.get<{ in_stock: number; name: string }>(
@@ -213,25 +221,55 @@ router.post(
     if (!item) throw new AppError('Inventory item not found', 404);
 
     const expectedQty = item.in_stock;
-    const variance = countedQty - expectedQty;
 
-    await adb.run(
-      `INSERT INTO stocktake_counts
-         (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
-         expected_qty = excluded.expected_qty,
-         counted_qty  = excluded.counted_qty,
-         variance     = excluded.variance,
-         notes        = excluded.notes,
-         counted_at   = datetime('now')`,
-      id,
-      inventoryItemId,
-      expectedQty,
-      countedQty,
-      variance,
-      notes,
+    if (mode === 'increment') {
+      // Atomic add — combines INSERT-new-row with UPDATE-existing-row by
+      // using COALESCE on stocktake_counts.counted_qty.
+      await adb.run(
+        `INSERT INTO stocktake_counts
+           (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+           expected_qty = excluded.expected_qty,
+           counted_qty  = stocktake_counts.counted_qty + excluded.counted_qty,
+           variance     = (stocktake_counts.counted_qty + excluded.counted_qty) - excluded.expected_qty,
+           notes        = COALESCE(excluded.notes, stocktake_counts.notes),
+           counted_at   = datetime('now')`,
+        id,
+        inventoryItemId,
+        expectedQty,
+        countedQty,
+        countedQty - expectedQty,
+        notes,
+      );
+    } else {
+      const variance = countedQty - expectedQty;
+      await adb.run(
+        `INSERT INTO stocktake_counts
+           (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+           expected_qty = excluded.expected_qty,
+           counted_qty  = excluded.counted_qty,
+           variance     = excluded.variance,
+           notes        = excluded.notes,
+           counted_at   = datetime('now')`,
+        id,
+        inventoryItemId,
+        expectedQty,
+        countedQty,
+        variance,
+        notes,
+      );
+    }
+    // Re-fetch the row so the audit + response carry the authoritative
+    // counted_qty after a possible increment (delta vs final total).
+    const stored = await adb.get<{ counted_qty: number; variance: number }>(
+      'SELECT counted_qty, variance FROM stocktake_counts WHERE stocktake_id = ? AND inventory_item_id = ?',
+      id, inventoryItemId,
     );
+    const finalCountedQty = stored?.counted_qty ?? countedQty;
+    const variance = stored?.variance ?? (countedQty - expectedQty);
 
     // Per-scan audit so variance-inflating writes can be traced back to an
     // operator. Commit() audits the whole session, but that's too coarse for
@@ -240,8 +278,10 @@ router.post(
       stocktake_id: id,
       inventory_item_id: inventoryItemId,
       expected_qty: expectedQty,
-      counted_qty: countedQty,
+      counted_qty: finalCountedQty,
+      delta: mode === 'increment' ? countedQty : null,
       variance,
+      mode,
     });
 
     res.json({
@@ -251,8 +291,9 @@ router.post(
         inventory_item_id: inventoryItemId,
         name: item.name,
         expected_qty: expectedQty,
-        counted_qty: countedQty,
+        counted_qty: finalCountedQty,
         variance,
+        mode,
       },
     });
   }),

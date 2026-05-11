@@ -537,15 +537,37 @@ export function StocktakePage() {
                       <Check className="h-4 w-4" /> Commit ({detailData.counts.length})
                     </button>
                     {/* WEB-UIUX-1375: renamed from "Cancel" to "Abandon stocktake" to disambiguate from the new-session Discard button */}
+                    {/* WEB-UIUX-1355: typed-confirm on Abandon since Cancelled
+                        is terminal — there is no /restore endpoint. Operator
+                        on a 200-row count needs an explicit verbal gate before
+                        every line is lost. */}
                     <button
                       onClick={async () => {
-                        const ok = await useConfirmStore.getState().confirm({
-                          message: 'Cancel this stocktake? No stock changes will be applied.',
-                          title: 'Cancel stocktake',
-                          confirmLabel: 'Cancel stocktake',
+                        const lineCount = detailData.counts.length;
+                        // First confirm — surfaces blast radius.
+                        const first = await useConfirmStore.getState().confirm({
+                          message: lineCount > 0
+                            ? `Abandon this stocktake? ${lineCount} counted line${lineCount === 1 ? '' : 's'} will be discarded permanently — there is no restore.`
+                            : 'Abandon this stocktake? No stock changes will be applied.',
+                          title: 'Abandon stocktake?',
+                          confirmLabel: 'Abandon stocktake',
                           danger: true,
                         });
-                        if (ok) cancelMut.mutate();
+                        if (!first) return;
+                        // Double-confirm only when there's actual count work
+                        // at risk (>= 1 line). Empty stocktakes skip the
+                        // second prompt to avoid annoying the legit
+                        // "I started this by mistake" case.
+                        if (lineCount > 0) {
+                          const second = await useConfirmStore.getState().confirm({
+                            message: `This is permanent. ${lineCount} counted line${lineCount === 1 ? '' : 's'} cannot be recovered after abandoning. Continue?`,
+                            title: 'Confirm abandon',
+                            confirmLabel: 'Yes, discard counts',
+                            danger: true,
+                          });
+                          if (!second) return;
+                        }
+                        cancelMut.mutate();
                       }}
                       className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/30"
                     >
