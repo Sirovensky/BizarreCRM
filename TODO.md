@@ -4620,7 +4620,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/api/types.ts:436-442`
   <!-- meta: fix=add-Customer-typeahead+optional-Lead-typeahead+pass-customer_id+lead_id-in-payload+extend-CreateAppointmentInput-with-both -->
 
-- [!] WEB-UIUX-1316. **[BLOCKER] No edit, reschedule, cancel, or mark-no-show path anywhere in UI. `leadApi.updateAppointment` and `leadApi.deleteAppointment` (`endpoints.ts:877-878`) exist; **zero call sites** in `packages/web/src`. AppointmentDetailModal (`CalendarPage.tsx:82-173`) is read-only — no buttons. Once created, status frozen at "scheduled" forever; customer reschedule = staff has to recreate (and orphan the old one since they can't delete it either).** L8 recovery, L4 flow completion. **STATUS: BLOCKED — needs Edit/Reschedule/Cancel/Mark-No-show buttons + AppointmentDetailModal expansion; multi-action UI, defer to scheduling sprint**
+- [x] WEB-UIUX-1316. **STALE 2026-05-11: AppointmentDetailModal is no longer read-only.** Current `CalendarPage.tsx` `AppointmentDetailModal` (~line 174) already wires `editing` state + `Edit / Reschedule` button (line 370), full inline edit form via `editFormFromAppointment`, `updateMut` calling `leadApi.updateAppointment`, `deleteMut` calling `leadApi.deleteAppointment`, status select including `no-show` / `cancelled` / `completed` (line 74), overlap-warning re-confirm flow, and a `confirm-cancel` ConfirmDialog (line 571). Audit note describing it as read-only is outdated.
   `packages/web/src/pages/leads/CalendarPage.tsx:82-173`
   `packages/web/src/api/endpoints.ts:877-878`
   <!-- meta: fix=add-Edit/Reschedule/Cancel/Mark-No-show-buttons-in-AppointmentDetailModal+wire-updateAppointment+deleteAppointment+confirm-modal-on-cancel/delete -->
