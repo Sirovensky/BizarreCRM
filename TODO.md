@@ -3433,7 +3433,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [!] WEB-UIUX-1009. **[MINOR] List status filter chip not visually grouped with keyword search — separate `<select>` is plain styled, no chip pattern.** Most filter UIs in this app use chip toggles (LeadPipelinePage etc). Inconsistency. L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: chip refactor needs a shared FilterChipGroup component to avoid duplicating LeadPipelinePage's bespoke styling across all list pages. Not a one-page change.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
 
-- [!] WEB-UIUX-1010. **[MINOR] Detail "Reload balance" button sized small + outline — same surface as primary buttons elsewhere on the page; no obvious primary CTA.** L1, L11. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
+- [x] WEB-UIUX-1010. **Reload promoted to primary CTA on active cards (2026-05-11).** Active-status cards render Reload balance as the standard `bg-primary-600` filled button (`px-4 py-2 text-sm font-semibold text-white shadow-sm`). Used-status cards keep the muted outline so the visual cue stays "topping up a depleted card, not the main flow." Disable / Resend / Re-enable buttons stay outline tone, restoring the hierarchy.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:285-291`
 
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:251-255`

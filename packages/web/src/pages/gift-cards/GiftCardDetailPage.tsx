@@ -517,15 +517,20 @@ export function GiftCardDetailPage() {
           const atCap = dollarsFromMaybeCents(card.current_balance) >= GIFT_CARD_MAX_BALANCE;
           return (
             <div className="mt-4 pt-4 border-t border-surface-100 dark:border-surface-800">
+              {/* WEB-UIUX-1010: promote Reload balance to the primary CTA on
+                  active cards — it's the most common action and was visually
+                  indistinguishable from Disable/Resend secondary buttons.
+                  Used-status cards keep the muted outline since reload is
+                  topping up a depleted card, not the main flow. */}
               <button
                 onClick={() => setShowReloadModal(true)}
                 disabled={atCap}
                 title={atCap ? `Card at maximum balance ${formatCurrencyShared(GIFT_CARD_MAX_BALANCE)}` : undefined}
-                className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={
                   card.status === 'used'
-                    ? 'border-surface-200 dark:border-surface-700 text-surface-400 dark:text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-800'
-                    : 'border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800'
-                }`}
+                    ? 'inline-flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-3 py-1.5 text-sm text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed'
+                    : 'inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed'
+                }
               >
                 <RefreshCw className="h-4 w-4" />
                 Reload balance
