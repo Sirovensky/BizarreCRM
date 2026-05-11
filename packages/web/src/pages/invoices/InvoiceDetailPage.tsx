@@ -162,6 +162,19 @@ export function InvoiceDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+      // WEB-UIUX-1538: server `recordCustomerInteraction` updates customer
+      // LTV + outstanding balance on payment. Invalidate the customer
+      // queries so the profile page reflects the new state instead of
+      // waiting for staleTime or a manual nav-away-and-back.
+      if (invoice?.customer_id) {
+        queryClient.invalidateQueries({ queryKey: ['customer', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-analytics', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', invoice.customer_id] });
+      }
+      // AR aging + dashboard receivables tiles read from these keys.
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       toast.success('Payment recorded');
       setShowPayment(false);
       setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
@@ -1043,13 +1056,29 @@ export function InvoiceDetailPage() {
         // so the cashier knows the receipt was skipped and can re-send from Payment Timeline.
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowReceiptPrompt(false); toast('Receipt skipped — re-send from Payment Timeline'); }}>
           <div className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">Send Receipt?</h3>
-              <button aria-label="Close" onClick={() => setShowReceiptPrompt(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">Payment recorded successfully. How would you like to send the receipt?</p>
+            {/* WEB-UIUX-1541: partial-payment acknowledgement so the cashier
+                deliberately picks SMS/Email/Skip with full context. */}
+            {(() => {
+              const balance = Number(invoice.amount_due) || 0;
+              const partial = balance > 0;
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+                      {partial ? 'Send Partial Receipt?' : 'Send Receipt?'}
+                    </h3>
+                    <button aria-label="Close" onClick={() => setShowReceiptPrompt(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
+                    {partial
+                      ? <>Payment recorded. <strong className="text-amber-700 dark:text-amber-300">Balance remaining: {formatCurrency(balance)}</strong>. How would you like to send the receipt?</>
+                      : 'Payment recorded successfully. How would you like to send the receipt?'}
+                  </p>
+                </>
+              );
+            })()}
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
