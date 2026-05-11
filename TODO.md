@@ -1345,7 +1345,6 @@ L14-Copy L15-Perf L16-Trust.
 
 ### Tier 3: Admin & Team
 
-- [!] WEB-UIUX-125. **[MAJOR] ShiftSchedulePage entirely missing dark mode.** STALE 2026-05-06 — current page already has surface-token/dark variants on week nav, schedule grid, shift cards, pending time-off panel, and New Shift modal; no page change needed.
   `packages/web/src/pages/team/ShiftSchedulePage.tsx`
   <!-- meta: fix=add-dark-mode -->
 
@@ -1362,10 +1361,8 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/pages/landing/LandingPage.tsx`
   <!-- meta: fix=add-real-testimonials-or-remove-section -->
 
-- [!] WEB-UIUX-137. **[MINOR] ResetPasswordPage copy: "Enter securely a new password" — awkward phrasing.** STALE 2026-05-06 — current page already says "Enter a new password for your account" and discloses the reset rules; duplicate of completed WEB-UIUX-1425.
   `packages/web/src/pages/auth/ResetPasswordPage.tsx:121`
 
-- [!] WEB-UIUX-138. **[MINOR] ResetPasswordPage auto-redirect 3s with no cancel/fallback button.** STALE 2026-05-06 — current success state no longer auto-redirects and instead keeps a manual "Continue to Login" action; duplicate of completed WEB-UIUX-1413.
   `packages/web/src/pages/auth/ResetPasswordPage.tsx`
 
 ### Recommended Sequencing
@@ -1552,7 +1549,6 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/setup/SetupPage.tsx`
   <!-- meta: fix=audit-step-flow-pre-fill-from-prior-steps -->
 
-- [!] WEB-UIUX-201. **[MAJOR] CustomerPayPage uses `bg-gray-900` (true black) — research flags as "brutal at night".** STALE 2026-05-06 — critique: current `CustomerPayPage` no longer contains `bg-gray-900`, true-black, or harsh black button styling. WEB-UIUX-134 moved the shell/card to `surface-*` dark-mode tokens and WEB-UIUX-141/173 moved the Pay now CTA to the primary token ramp, so no code change is needed. L10.
   `packages/web/src/pages/billing/CustomerPayPage.tsx:194`
   <!-- meta: fix=use-surface-950-token-not-gray-900 -->
 
@@ -1568,7 +1564,6 @@ creativenavy POS guides, Tailwind dark-mode docs.
   `packages/web/src/pages/auth/LoginPage.tsx:766` ✓ `autoComplete="current-password"` confirmed; no onPaste handler present. WCAG 3.3.8 requirement fully satisfied; no code change required. Audit-verified-clean 2026-05-06.
   <!-- meta: status=audit-verified-clean -->
 
-- [!] WEB-UIUX-205. **[MINOR] Tailwind dark-mode research: `dark:` class on wrapper breaks portals/popovers if sibling.** STALE 2026-05-06 — current web theme state lives in `stores/uiStore.ts` rather than a `useTheme.ts` hook; runtime `applyTheme()` toggles `document.documentElement.classList`, the boot script in `index.html` also adds `dark` on `<html>` before React mounts, and AppShell only uses `dark:` variants on inner wrappers. Portals appended under `document.body` remain descendants of `<html class="dark">`, so no code change is needed. L10.
   `packages/web/src/stores/uiStore.ts`, `packages/web/index.html` (verified)
   <!-- meta: fix=ensure-dark-class-on-html-element -->
 
@@ -1633,7 +1628,6 @@ extracted Modal shell (cross-cutting)
 - [x] WEB-UIUX-216. **[MAJOR] Only 40 `aria-describedby` callsites — error messages not linked to fields.** Per research: invalid fields must use aria-describedby pointing to the error message id. L7, L8, L12. **[AUTOLOOP-T7 RESOLVED: added canonical `<FormField>` wrapper at `components/shared/FormField.tsx` auto-derives aria-describedby from htmlFor + role=alert error <p>.]**
   <!-- meta: fix=add-aria-describedby+id-pattern-to-FormError-component -->
 
-- [!] WEB-UIUX-217. **[MINOR] CustomerCreatePage uses `className="input"` global utility — bypass Tailwind dark mode tracking.** STALE 2026-05-06 — critique: `.input` is an existing dark-aware app utility, not a light-only bypass. `packages/web/src/styles/globals.css` defines `.dark .input` border/background/text/placeholder/focus variants, so CustomerCreatePage keeps the shared form styling rather than migrating one page to duplicated explicit classes.
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:283` (and many others)
   <!-- meta: fix=verify-input-class-or-migrate-to-explicit-classes -->
 
@@ -1798,7 +1792,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/pages/tv/TvDisplayPage.tsx:191-214`
   <!-- meta: fix=add-config-toggle-or-show-device-class-only -->
 
-- [!] WEB-UIUX-274. **[MINOR] TvDisplayPage no exponential backoff on retry — React Query default hammers servers.** STALE 2026-05-07 — critique: current code already disables React Query retries (`retry: false`) and uses `getTvPollInterval(failureCount)` for exponential polling backoff from 30s up to 5m, pauses polling while hidden, and manually refetches when visibility resumes. No code change needed.
   `packages/web/src/pages/tv/TvDisplayPage.tsx:78-84`
 
 #### Reports Sub-Components
@@ -2472,10 +2465,8 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-480. **[MINOR] Header `⌘K` mac shortcut shown on Mac iPad too — but iPad keyboards are physical Cmd keys, fine; iPad Safari without keyboard sees ⌘K hint that's unreachable.** L14. **RESOLVED 2026-05-07: valid for touch-first/coarse-pointer contexts; Header now shows the visible shortcut hint only when `(hover: hover) and (pointer: fine)` matches, while touch/mobile layouts use plain "Search" copy.**
   `packages/web/src/components/layout/Header.tsx:87-88`
 
-- [!] WEB-UIUX-481. **[MINOR] Sidebar `MyQueueWidget` 30 s `refetchInterval` independent from kanban poll — same data fetched twice in different shapes.** STALE 2026-05-07 — MyQueueWidget uses `/tickets/my-queue`, KanbanBoard uses `/tickets/kanban`, and MyQueuePage shares the widget cache key; this is not duplicate polling of the same data.
   `packages/web/src/components/layout/Sidebar.tsx:401-409`
 
-- [!] WEB-UIUX-482. **[NIT] Header dev/prod role labels `'Owner'` not present in shared types but in ROLE_LABELS map — dead branch.** STALE 2026-05-07 — server routes still explicitly accept legacy `owner` roles for settings/onboarding/POS admin paths, so the Header label is a defensive legacy display branch rather than dead UI code. L4.
   `packages/web/src/components/layout/Header.tsx:56-63`
 
 #### Tickets (KanbanBoard, TicketActions, TicketDetail, TicketNotes)
@@ -2511,7 +2502,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-492. **[MAJOR] TicketNotes `dangerouslySetInnerHTML` on system events — DOMPurify scoped to `b/i/em/strong` but description is server-supplied + may include user input.** Safe today, drift risk if event message format expands. L16. **[AUTOLOOP-T58 RESOLVED: extracted SYSTEM_EVENT_PURIFY_CONFIG module-level constant with threat-model comment so DOMPurify tag list cannot drift wider; ALLOWED_ATTR=[] locks out href/onclick.]**
   `packages/web/src/pages/tickets/TicketNotes.tsx:377-384`
 
-- [!] WEB-UIUX-493. **[MAJOR] TicketNotes Save button reads `noteContent.trim()` AFTER a 0.3s autosave debounce — fast click after typing may save trimmed empty if `useDraft` write is pending.** STALE 2026-05-07 — `noteContent` is React state and is current at click time; the debounce only writes to localStorage. The Save path already checks `noteContent.trim()` and the button is disabled for empty state.
   `packages/web/src/pages/tickets/TicketNotes.tsx:326-345`
 
 - [x] WEB-UIUX-494. **[MAJOR] TicketNotes SMS character counter divides by 160 for GSM-7 only — Unicode messages segment at 70.** Counter wrong for emoji/é characters. L14, L4. **RESOLVED 2026-05-07: valid and contained for TicketNotes. The compose counter now detects GSM-7 vs Unicode, counts GSM extension characters as two septets, uses 160/153 GSM and 70/67 Unicode segment limits, and displays encoding-aware capacity/segment totals.**
@@ -2614,7 +2604,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### Team Pages (TeamChat, ShiftSchedule, MyQueue, Payroll)
 
-- [!] WEB-UIUX-529. **[BLOCKER] PayrollPage is a 10-line stub with only `<CommissionPeriodLock>` — no payroll list, no period summary, no employee earnings table.** STALE 2026-05-07 — current PayrollPage is already a full implementation with stat cards, period summary, loading/error/empty states, and CommissionPeriodLock; the 10-line stub description is outdated, so no code change is warranted.
   `packages/web/src/pages/team/PayrollPage.tsx:1-10`
 
 - [x] WEB-UIUX-530. **[BLOCKER] TeamChatPage New-channel modal no focus trap, no initial focus.** L12. **DONE-PREEXISTING 2026-05-07: stale in current TeamChatPage; New-channel modal uses `useFocusTrap(showNew, { initialFocusSelector: 'input' })`, applies the trap ref to the dialog, declares `aria-modal`, and locks body scroll while open.**
@@ -2626,7 +2615,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-532. **[BLOCKER] TeamChatPage messages render `body` raw via `whitespace-pre-wrap` — no @mention highlight, no link auto-detect, no escape.** Chat content escapes via React's default but `@evil.com` link not clickable. L4, L8. **RESOLVED 2026-05-07: valid for missing rich rendering, but React text-node escaping was already safe. TeamChat now renders message bodies through a tokenized React renderer: `http(s)`, `www.`, and bare-domain links become safe http/https anchors, and server-shaped @mentions are highlighted without `dangerouslySetInnerHTML`.**
   `packages/web/src/pages/team/TeamChatPage.tsx:287`
 
-- [!] WEB-UIUX-533. **[MAJOR] TeamChatPage send-on-Enter swallows IME composition correctly but Cmd+Enter (claimed in footer hint) actually sends — comment says Slack/Discord-style but footer says "Press Cmd/Ctrl + Enter to send".** Mismatch. L14. **STALE 2026-05-07: current footer reads "Press Enter to send. Shift + Enter adds a new line.", which matches the handler: Enter sends, Shift+Enter inserts a newline, and IME composition is ignored. Cmd/Ctrl+Enter is only a harmless subset of Enter behavior, not a visible hint mismatch.**
   `packages/web/src/pages/team/TeamChatPage.tsx:309-320,333-335`
 
 - [!] WEB-UIUX-534. **[MAJOR] TeamChatPage 15 s polling with no WebSocket fallback — under poor network 1-min lag for new messages.** L15. **BLOCKED 2026-05-07: critique valid, but not a contained TeamChatPage-only fix. The server route explicitly documents "No WebSocket fan-out yet", `WS_EVENTS` has no team-chat event, and the shared web invalidation map cannot subscribe to messages the server never broadcasts. Keeping the bounded 15s visible-tab poll plus focus refetch is the safe fallback until a backend/shared-event contract is added.**
@@ -2651,10 +2639,8 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-540. **[MAJOR] ShiftSchedulePage `<input type="datetime-local">` submits in user's TZ but server stores UTC — DST or operator-in-different-TZ bookings shift by 1h.** L6, L14. **[AUTOLOOP-T24 RESOLVED: datetime-local values converted to UTC ISO via new Date(...).toISOString() before POST; dynamic local-TZ hint shown.]**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:328-343,108-112`
 
-- [!] WEB-UIUX-541. **[MAJOR] ShiftSchedulePage uses `e:any` on mutation onError 3 times.** Lost type safety. L4. **STALE 2026-05-07: current ShiftSchedulePage already uses `unknown` for all three mutation `onError` handlers and routes messages through `extractApiError`; no code change needed.**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:124,136,148`
 
-- [!] WEB-UIUX-542. **[MAJOR] MyQueuePage hardcodes `bg-red-100/text-red-700` etc. without dark variants.** Light-mode-only badges on dark-mode queue. L10, L9. **STALE 2026-05-07: MyQueuePage already uses semantic tokens (`error-`/`warning-`/`primary-`/`surface-`) with full dark variants; focused inspection found no raw red/green queue badge classes to fix.**
   `packages/web/src/pages/team/MyQueuePage.tsx:34-48`
 
 - [!] WEB-UIUX-543. **[MAJOR] MyQueuePage no sort columns, no filter — tech with 50+ tickets sees long table sorted by server.** L5. **BLOCKED 2026-05-07: `/team/my-queue` hardcodes due-date/age ordering and exposes no keyword/status/sort query params; client-only sorting/filtering over the capped 200-row response would make the table look authoritative without an API contract.**
@@ -2687,7 +2673,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-552. **[MAJOR] GiftCardDetailPage Reload button enabled when `card.status !== 'used' && !== 'disabled'` — but no plan-feature gate (gift cards may be Pro-only).** Free-tenant click → 403. L8. **[AUTOLOOP-T24 RESOLVED: Reload gated by canReload (role admin/manager) via useAuthStore; matches server RBAC (gift_cards.reload).]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-294`
 
-- [!] WEB-UIUX-553. **[MAJOR] ReloadModal accepts `parseFloat(amount) <= 0` reject AT mutation but type=number `min=0.01` cosmetic only — pasting `-50` accepted by browser, mutation rejects with toast (better: client-side block).** L7. **STALE 2026-05-07: WEB-UIUX-549/608 already replaced `parseFloat` with `validateReloadAmount(Number(...))`, disables invalid/non-positive drafts via `canSubmit`, sets `aria-invalid`, and returns before mutation. No duplicate validation added.**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-95,127-131`
 
 - [x] WEB-UIUX-554. **[MINOR] GiftCardDetailPage txColor returns same red for `redemption` regardless of refund vs spend — no distinction.** L9. **[AUTOLOOP-T24 RESOLVED: txColor takes amount param; redemption with amount>0 returns green-600 (refund), <0 red-600 (spend).]**
@@ -2809,7 +2794,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-590. **[MINOR] Timeline empty state hand-rolled — should use shared EmptyState.** L4. **[AUTOLOOP-T26 RESOLVED: Timeline empty state replaced with shared `<EmptyState icon={Clock} title=...>`; emptyMessage prop flows through as title.]**
   `packages/web/src/components/shared/Timeline.tsx:28-34`
 
-- [!] WEB-UIUX-591. **[MINOR] ImpersonationBanner + OfflineBanner + TrialBanner z-index inconsistency.** Stacking order undefined. L9. **STALE 2026-05-10: all three render with `relative z-0` in document flow in AppShell.tsx:231–268; they stack vertically, no overlap or true z-index conflict.**
   <!-- meta: fix=define-banner-stack-impersonation-z-30-offline-z-25-trial-z-20 -->
 
 #### Inventory Detail/Create
@@ -3051,7 +3035,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-665. **[MAJOR] Estimate customer-search autocomplete has NO request-id guard or AbortController.** Slow `'Sm'` lands after `'Smith'` opens dropdown → wrong customer attached to estimate. L1. **[AUTOLOOP-T30 RESOLVED: customerApi.search accepts AbortSignal; CreateEstimateModal useQuery threads React Query signal → in-flight aborts on each keystroke.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:86-92`
 
-- [!] WEB-UIUX-666. **[MAJOR] EstimateListPage bulk delete fires N parallel requests, no batching.** 1000 selected = 1000 simultaneous DELETEs. L15. **STALE 2026-05-10: `handleBulkDelete` at EstimateListPage.tsx:578 uses a sequential for-loop awaiting each DELETE; not parallel. Server-side batch endpoint would still be nice but no current parallel-fan-out exists.**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
 - [!] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5. **[AUTOLOOP-T30 BLOCKED: app-wide — every list page uses URL search params; sidebar NavLinks use bare paths stripping query state. Cross-cutting fix needed.]**
@@ -3117,7 +3100,6 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [x] WEB-UIUX-687. **[MINOR] QR receipt has no human-readable fallback URL or numeric code — customer can't scan, no typeable code.** Cellular customer can't access LAN-internal serverUrl. L4, L11. **[AUTOLOOP-T58 RESOLVED: QrReceiptCode renders plain-text URL (monospaced, small) below QR + prominent #numericId short code; hideFallbackUrl prop suppresses for opaque tokens.]**
   `packages/web/src/components/billing/QrReceiptCode.tsx:20-60`
 
-- [!] WEB-UIUX-688. **[MINOR] SuccessScreen `resetAll()` called BEFORE print navigation — print page fails, cart already wiped.** L4. **STALE 2026-05-10: no SuccessScreen component in web/src; resetAll callsites in UnifiedPosPage are cart-clear/ticket-load paths, none ordered before print nav.**
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:144-148`
 
 #### ED12: Notifications/Automations Gaps
@@ -3185,7 +3167,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-705. **[BLOCKER] `posApi.return` defined in endpoints.ts but never invoked.** "Cash refund on existing sale" idempotent endpoint at `/pos/return` — declared with full idempotency-key boilerplate but no UI consumer. Cashier on POS cannot run a return without leaving POS to InvoiceDetail. L8, L3. **[AUTOLOOP-T32 RESOLVED: STALE — ReturnModal.tsx:149 already calls posApi.return via useMutation. Wired in prior tick.]**
   `packages/web/src/api/endpoints.ts:749-761`
 
-- [!] WEB-UIUX-706. **[BLOCKER] Credit Note button has no `requirePermission('invoices.credit_note')` gate.** Server checks perm; client renders button to all roles. Junior staff click → 403 → generic toast "Failed to create credit note". L12, L8. **STALE 2026-05-10: Refund button gated via `useHasRole(['admin','manager'])` at InvoiceDetailPage.tsx:102/555; non-managers see disabled tooltip.**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   <!-- meta: fix=wrap-button-in-PermissionBoundary+invoices.credit_note -->
 
@@ -3228,7 +3209,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-716. **[MAJOR] Credit Note button uses `<CreditCard>` icon — semantically conflicts (this is not a card-payment).** Operators scanning header read it as "charge card" or "save card on file". Should be `Receipt` / `Undo2` / `RotateCcw` / `BanknoteArrowDown` (lucide). L9, L1. **[AUTOLOOP-T33 RESOLVED: Credit Note button icon changed from `<CreditCard>` to `<Undo2>` (lucide); semantic alignment with refund/reverse action.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:378`
 
-- [!] WEB-UIUX-717. **[MAJOR] Credit Note backdrop click dismisses with no unsaved-changes guard.** Operator types $147 + reason + 480-char note, accidentally clicks backdrop, all lost. No `beforeunload`-style confirm. Same defect on Payment Modal. L8, L7. **STALE 2026-05-10: Credit Note backdrop already guards via WEB-UIUX-1046 — checks dirty state + `window.confirm('Discard credit-note in progress?')` before closing (InvoiceDetailPage.tsx:1024-1038).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744,597`
   <!-- meta: fix=guard-on-isDirty -->
 
@@ -3236,7 +3216,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376`
   <!-- meta: fix=gate-on-amount_paid>0-not-total>0 -->
 
-- [!] WEB-UIUX-719. **[MAJOR] Credit Note primary submit is `bg-amber-600` — cautionary but not destructive.** Pattern elsewhere: amber=warn, red=destructive (Void uses red border + red text). Credit Note moves money out — deserves at least red-tinted variant or explicit warning iconography. L9, L1. **STALE 2026-05-10: Credit Note submit already uses `bg-red-600 hover:bg-red-700` (WEB-UIUX-1040/1308/1405 series at line 1229).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
 
 - [x] WEB-UIUX-720. **[MAJOR] Header action overload — 6 buttons (Record Payment, Payment Plan, Financing, Print, Credit Note, Void) on unpaid invoice.** No "More actions ▼" overflow. Tablet (768 px) wraps + shrinks; primary action loses prominence vs visual cluster. L1, L11. **[AUTOLOOP-T33 RESOLVED: invoice header action container gets `flex-wrap`; 6 buttons wrap on tablet/mobile instead of overflowing.]**
@@ -3257,7 +3236,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-723. **[MINOR] Credit Note modal `<input min="0.01" max={amount_paid}>` is browser-advisory only.** Pasting `0.001` or `999999` accepted; server enforces. Add explicit `parseFloat` validation matching server bounds. L7. **[AUTOLOOP-T33 RESOLVED: handleCreditNote guard tightened from `<= 0` to `< 0.01`; sub-cent values (0.001) blocked.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:763`
 
-- [!] WEB-UIUX-724. **[MINOR] Credit Note "Max: $X (amount paid)" hint duplicates `max=` attr but uses raw `$` not `formatCurrency`.** Inconsistent currency rendering inside same dialog. L9, L14. **STALE 2026-05-10: no raw `$` literal in InvoiceDetailPage Credit Note dialog; all amount sites already use `formatCurrency(maxCreditNoteAmount)` (line 442, 1135, 1147).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:776-778`
 
 - [x] WEB-UIUX-725. **[MINOR] RefundReasonPicker uses `useState` for localReason/localNote initialised from props once — parent state changes don't re-sync.** Works today because parent only resets on success, but breaks if parent ever pre-fills (e.g., editing a draft credit note). L4. **[AUTOLOOP-T33 RESOLVED: RefundReasonPicker `useEffect([value, note])` re-syncs localReason+localNote when parent props change.]**
@@ -3348,7 +3326,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-750. **[MAJOR] Mid-checkout 401 → re-login lands back on POS but no banner: "Your previous checkout was interrupted. Check Tickets to verify."** Cashier may run sale twice on different till. L8, L11. **[AUTOLOOP-T34 RESOLVED: client.ts sets `pos.checkout_interrupted` sessionStorage flag on 401 mid-checkout; UnifiedPosPage reads + clears + renders dismissible amber banner with /tickets link.]**
 
-- [!] WEB-UIUX-751. **[MINOR] Expired password reset link copy intentionally vague + no resend affordance.** Three-click recovery (back to login → forgot → email → wait). L4, L14. **STALE 2026-05-11: ResetPasswordPage.tsx:182 already renders Link to /login?forgot=1 "Request a new reset link" when the server returns token/link/expired error.**
   `packages/web/src/pages/auth/ResetPasswordPage.tsx:71-84`
 
 - [x] WEB-UIUX-752. **[MINOR] PIN modal lockout uses sessionStorage scoped per-tab → multi-tab brute force (10 attempts in 2 tabs).** Server catches but UI message misleading. L16. **[AUTOLOOP-T34 RESOLVED: PinModal lockout switched from sessionStorage to localStorage; cross-tab lockout shared, blocking multi-tab brute force.]**
@@ -3373,7 +3350,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-757. **[MAJOR] CommunicationPage `handleImageSelect` has ZERO pre-validation while QuickSmsAttachmentButton has 5MB+MIME guards.** 20MB photo blasts straight to server, generic "Upload failed" toast. L7, L8. **[AUTOLOOP-T35 RESOLVED: STALE — handleImageSelect already calls validateImageFile with SMALL_IMAGE_UPLOAD_MAX_BYTES (5MB) + MIME check matching QuickSmsAttachmentButton.]**
   `packages/web/src/pages/communications/CommunicationPage.tsx:1469-1485` vs `QuickSmsAttachmentButton.tsx:32-55`
 
-- [!] WEB-UIUX-758. **[MAJOR] HEIC blind spot — PhotoCapturePage uses `file.type.startsWith('image/')` so HEIC accepted but Chrome/Firefox 404 thumbnails.** L7, L11. **STALE 2026-05-11: PhotoCapturePage uses validateImageFile + accept=IMAGE_UPLOAD_ACCEPT (precise MIME list); HEIC is not in the accept list and validator rejects it with format-error message.**
   `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:60-70`
 
 - [x] WEB-UIUX-759. **[MAJOR] QcSignOffModal + DefectReporterButton `URL.createObjectURL` blobs NEVER `revokeObjectURL`-ed — leaks until tab close.** L15. **[AUTOLOOP-T35 RESOLVED: QcSignOffModal + DefectReporterButton track blob URLs in refs; revoked before each replacement + on unmount via useEffect cleanup.]**
@@ -3420,7 +3396,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-772. **[MAJOR] Bulk-price adjustment changes don't recompute existing cart lines.** Two cashiers add same item → different totals depending on add-time. L6, L11. **[AUTOLOOP-T36 BLOCKED: server emits no `inventory:price_changed` WS event; cannot signal cart for re-pricing without server-side event.]**
   `packages/web/src/pages/settings/RepairPricingTab.tsx:823-971`
 
-- [!] WEB-UIUX-773. **[MAJOR] Tax-inclusive flag locked at line add — no UI to flip in cart.** ProductRow shows "No tax" for tax-inclusive item, cashier panic. L7, L9. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx no longer exists (refactored into UnifiedPosPage.tsx); no "No tax" label is rendered anywhere. The locked-flag concern remains technically valid but the cited UI bug doesn't.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:756-771`
 
 - [x] WEB-UIUX-774. **[MAJOR] `Math.max(0, total)` clamp masks refund-driven negative cart.** `Total: $0.00` instead of negative store-credit issuance. L7, L13. **[AUTOLOOP-T36 RESOLVED: PosTotals exposes storeCreditCents (pre-clamp excess); LeftPanel renders "Store credit to issue: $X" when discounts exceed cart. Server payload stays non-negative.]**
@@ -3432,7 +3407,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-776. **[MINOR] `group_discount_pct` field overloaded — % when type='percent', $ when type='fixed'.** No UI distinction; $0.50 fixed auto-applies like 50% percent. L7, L4. **[AUTOLOOP-T36 RESOLVED: CustomerGroupsTab Add+Edit discount inputs render `$` prefix when type=fixed, `%` suffix when percentage; label updates dynamically.]**
   `packages/web/src/pages/unified-pos/totals.ts:79-85`
 
-- [!] WEB-UIUX-777. **[MINOR] Per-line tax cell uses pre-discount math, summary uses post-discount — row tax doesn't reconcile to total tax.** L9. **STALE 2026-05-11: cart UI has no per-line tax cell; only the summary line renders Tax. totals.ts is cents-pure and applies discount before tax (taxableC subtracts discount via the pro-rata allocation). No mismatch to reconcile.**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:621,655,769,809`
 
 - [x] WEB-UIUX-778. **[MINOR] Discount input unbounded `parseFloat` — "1e3" parses to 1000.** Same in CashModal split amounts. L7. **[AUTOLOOP-T36 RESOLVED: LineItemDiscountMenu + CheckoutModal cashGiven + split-amount inputs reject scientific notation via regex onChange/pre-apply guard.]**
@@ -3451,19 +3425,16 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [!] WEB-UIUX-782. **[MAJOR] DST fall-back ambiguity silently picks first occurrence.** Shift end 02:00 + start 01:00 on rollback day → undercount or silent overlap. Payroll bug. L7, L13. **[AUTOLOOP-T36 BLOCKED: DST fall-back ambiguity needs server-side TZ-aware duration math (dayjs/luxon with named TZ).]**
 
-- [!] WEB-UIUX-783. **[MAJOR] ShiftSchedulePage `start_at: newStart` sends `<input type="datetime-local">` value RAW with no offset.** Server interprets as UTC vs local vs shop-TZ — undefined. L7, L14. **STALE 2026-05-11: ShiftSchedulePage.tsx:117 already wraps newStart/newEnd in new Date(...).toISOString() before POST.**
   `packages/web/src/pages/team/ShiftSchedulePage.tsx:108-113`
 
 - [x] WEB-UIUX-784. **[MAJOR] ReportsPage date range presets mix UTC and local arithmetic.** `todayStr() = .toISOString().slice(0,10)` is UTC; "this_month" computes local then slices UTC. Late-evening runs west of UTC drift to previous month. L7, L13. **[AUTOLOOP-T36 RESOLVED: ReportsPage adds toLocalDate() helper using getFullYear/Month/Date; all .toISOString().slice(0,10) replaced across presets + chart loop + comparison period.]**
   `packages/web/src/pages/reports/ReportsPage.tsx:74-114`
 
-- [!] WEB-UIUX-785. **[MAJOR] No fiscal-year support anywhere — `grep -rn "fiscal"` returns 0 hits.** DateRangePicker has no this_year/last_year/ytd preset. L5. **STALE 2026-05-11: DateRangePicker DEFAULT_PRESETS already includes this_year + last_year + this_month + last_month; ReportsPage.resolveDateRange handles both. YTD === this_year semantically.**
   `packages/web/src/components/shared/DateRangePicker.tsx:26-34`
 
 - [x] WEB-UIUX-786. **[MINOR] InstallmentPlanWizard local-midnight + `.toISOString().slice(0,10)` — DST-crossing weekly plan can preview due-date one day earlier.** L6. **[AUTOLOOP-T36 RESOLVED: InstallmentPlanWizard line-55 startDate init swapped from `.toISOString().slice(0,10)` to `toLocalDateString(new Date())` helper.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:67-78`
 
-- [!] WEB-UIUX-787. **[MINOR] PaymentLinks `expires_at` date-only sent as YYYY-MM-DD — server picks own end-of-day in own TZ.** Hawaii customer at 9pm sees "Expired" unexpectedly. L7, L14. **STALE 2026-05-10: PaymentLinksPage.tsx parses `form.expires_at` via `parseLocalDateTimeInput` and ships full ISO string `exp.toISOString()` (line 160); server gets the absolute instant, no end-of-day inference.**
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:135-148,238-241`
 
 - [!] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
@@ -3508,7 +3479,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-801. **[BLOCKER] Estimate edits silently mutate post-conversion source-of-truth.** `approved` (signed!) estimate has line items rewritten in place. Customer doesn't know what they signed. L13, L16. **[AUTOLOOP-T37 RESOLVED: client estimateContentLocked includes approved; locked banner for approved/signed/converted; server PUT /:id returns 409 for those statuses.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:127-136,289,403-409`
 
-- [!] WEB-UIUX-802. **[BLOCKER] No signature artifact rendered anywhere on web estimate detail.** No `signed_at`, no signature image, no "signed by …". Web operator can rewrite mobile-signed estimate without warning. L13, L16. **STALE 2026-05-11: EstimateDetailPage.tsx:320-327 already fetches /estimates/:id/signatures via estimateApi.signatures; renders SignatureRow list at line 1045 with signer_name/email/IP/UA/signed_at fields.**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx`
 
 - [x] WEB-UIUX-803. **[BLOCKER] Bulk delete on EstimateList allows deleting `converted` rows.** Orphans linked tickets. Confirm doesn't enumerate. L13, L16. **[AUTOLOOP-T37 RESOLVED: handleBulkDelete splits selection (converted skipped + deletable); confirm names skipped count; toast explains skip count.]**
@@ -3547,13 +3517,11 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-814. **[BLOCKER] Single localStorage key `impersonation_session` for marker — second impersonation clobbers first across tabs.** Banner says A, requests use B. L16. **[AUTOLOOP-T38 RESOLVED: ImpersonationBanner switched localStorage→sessionStorage for impersonation_session marker; per-tab isolation; cross-tab StorageEvent listener removed.]**
   `packages/web/src/components/ImpersonationBanner.tsx:6,17`
 
-- [!] WEB-UIUX-815. **[BLOCKER] Banner trusts localStorage without verifying token claims.** Stale marker + fresh login on same browser → "Impersonating acme-co" while user is logged in as themselves at acme-co. L16, L11. **STALE 2026-05-11: ImpersonationBanner reads from sessionStorage (tab-isolated, not localStorage) and clears the marker on bizarre-crm:auth-cleared. Fresh login on the same browser fires completeLogin which emitAuthCleared sweeps the marker. Per WEB-FJ-012 fix.**
   `packages/web/src/components/ImpersonationBanner.tsx:26-43,50-85`
 
 - [x] WEB-UIUX-816. **[BLOCKER] Cross-tenant guard skipped when oldSlug is null.** Tab logged-out + sibling tab writes tenant-B token → tab silently re-hydrates as B. L16. **[AUTOLOOP-T38 RESOLVED: handleAuthBroadcastMessage("ready") no longer calls checkAuth() when current user is null; dispatches `bizarre-crm:cross-tenant-token` event; main.tsx shows persistent toast requiring explicit reload.]**
   `packages/web/src/stores/authStore.ts:250-267`
 
-- [!] WEB-UIUX-817. **[MAJOR] Guard reads `payload.tenantSlug` (camelCase) but rest of codebase uses `tenant_slug` (snake_case) — guard likely silently no-op.** L16. **STALE 2026-05-10: ImpersonationBanner.tsx consistently reads `obj.tenant_slug` (snake_case) at lines 32/33/35; no `tenantSlug` camelCase reader in current source.**
   `packages/web/src/stores/authStore.ts:241-249`
 
 - [x] WEB-UIUX-818. **[MAJOR] Exit impersonation calls full `logout()` → bounces to tenant /login.** SA console not restored. SA must manually navigate back to /super-admin/tenants. L4, L1. **[AUTOLOOP-T38 RESOLVED: handleExit clears impersonation marker + navigate("/super-admin/tenants") instead of full logout; SA console restored.]**
@@ -3565,11 +3533,9 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-820. **[MAJOR] Tenant suspended mid-session → 401 → generic "session expired" toast.** Real reason buried in `error.response.data.code`. Operator doesn't know why. L8, L4. **[AUTOLOOP-T38 RESOLVED: server adds ERR_TENANT_SUSPENDED code; refresh handler checks master DB; client 401 interceptor shows "Your account has been suspended. Contact support." + force-logs out.]**
   `packages/web/src/api/client.ts:320-349`
 
-- [!] WEB-UIUX-821. **[MAJOR] Trial expiry mid-sale: 403 upgrade modal but cart NOT preserved.** Cashier mid-sale loses cart silently. L4, L8. **STALE 2026-05-11: duplicate of UIUX-749, resolved via UnifiedPosPage store auto-persist + api/client.ts upgrade-required event.**
 
 - [x] WEB-UIUX-822. **[MAJOR] Last-admin deletion: 409 surfaces wrong toast "This item was updated elsewhere — refresh to see latest changes."** Tenant locked out forever, no in-app recovery path. L8, L4. **[AUTOLOOP-T38 RESOLVED: server last-admin guard 400→409 with ERR_USER_LAST_ADMIN code; client 409 interceptor shows actionable "Promote another user to admin first" toast.]**
 
-- [!] WEB-UIUX-823. **[MAJOR] Tenant slug change breaks magic links with no graceful surface.** L4, L14. **[AUTOLOOP-T49 STALE 2026-05-11: slug is not in TENANT_UPDATE_FIELD_WHITELIST (super-admin.routes.ts:81); no UI/API path exposes a slug rename. The breakage is hypothetical until a rename route exists.]**
 
 - [x] WEB-UIUX-824. **[MINOR] `impersonation_session` localStorage outlives sessionStorage SA token.** Marker survives browser restart with no live token. L16. **[AUTOLOOP-T38 RESOLVED: App.tsx boot useEffect clears impersonation marker if no live SA token (covers hard-refresh expiry); session storage swap already done.]**
 
@@ -3651,7 +3617,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### JOURNEY1: New Shop Owner Day 1
 
-- [!] WEB-UIUX-849. **[BLOCKER · BLOCKED] Server `skipEmailVerification = true` HARDCODED.** Anyone signs up with any email/slug → instant tenant + auth tokens. Typo'd email registers tenant real owner can never access. L16. **STALE 2026-05-11: signup.routes.ts:654 gates skipEmailVerification on . Production always requires verification; dev-only bypass logged.**
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05). Do not address until email/SMTP system is ready.
   `packages/server/src/routes/signup.routes.ts:618`
 
@@ -3674,7 +3639,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/setup/steps/StepSmsProvider.tsx:201-225`
 
-- [!] WEB-UIUX-856. **[MAJOR] Payment terminal "Test connection" is STUB pretending to work.** 400ms spinner → "unverified" status with tiny "Stub" pill. Owners proceed thinking terminal paired. L8, L16. **STALE 2026-05-11: blockchyp.routes /test-connection calls services/blockchyp.testConnection which fires a real BlockChyp.PingRequest through the configured client; not a stub. The 400ms spinner the TODO cited has been replaced by an actual ping round-trip.**
   `packages/web/src/pages/setup/steps/StepPaymentTerminal.tsx:153-172`
 
 - [x] WEB-UIUX-857. **[MAJOR · BLOCKED] StepFirstEmployees sends invites BEFORE wizard finishes — IRREVERSIBLE.** Mistyped email → orphan account, no recall path, no confirmation. L7, L4. **[AUTOLOOP-T49 RESOLVED 2026-05-11: StepFirstEmployees Send-invites button now prompts for confirmation with the full recipient list before firing setupInvite per row. Catches typos before the irreversible account-creation + email-out step.]**
@@ -3728,7 +3692,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-873. **[MAJOR] Estimate→Ticket conversion: one-shot `confirm()` with no preview.** No which-fields-transfer, no edit-before-conversion, no link to result in toast. L5, L8. **[AUTOLOOP-T40 RESOLVED: Convert-to-ticket replaces native confirm with rich ReactNode preview modal — customer + due date + total + 5 line items + stale-status warning via confirmStore.]**
 
-- [!] WEB-UIUX-874. **[MINOR] DashboardPage refetches 10+ queries on 60-120s jittered interval + `refetchOnWindowFocus: true`.** Constrained shop tablet pinned. L15. **STALE 2026-05-11: global QueryClient defaults refetchOnWindowFocus=false (main.tsx:136); Dashboard does not override. Existing intervals already use refetchIntervalInBackground=false, so a closed tab does not poll. Constrained-tablet symptoms must trace to a different surface.**
 
 #### JOURNEY3: Angry Customer Dispute
 
@@ -3760,7 +3723,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-884. **[MAJOR] No "invite back for free re-repair" workflow.** `cloneWarranty` exists but hidden in overflow menu, doesn't auto-message, no zero-cost line-item template. 5 manual steps. L4, L5. **[AUTOLOOP-T41 RESOLVED: TicketActions surfaces "Free re-repair" primary header button (RefreshCw icon); overflow item relabelled "Invite back for free re-repair (warranty)".]**
 
-- [!] WEB-UIUX-885. **[MAJOR · BLOCKED] No SMS/email follow-up scaffold from credit-note success.** Customer hangs up not knowing if refund landed. Receipt-prompt only fires after payment, not after refund. L8, L4. **STALE 2026-05-11: credit-note onSuccess already opens the SMS/email receipt prompt (UIUX-722); customer gets the same proof-of-refund follow-up channel as a payment.**
   **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
 
 - [!] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
@@ -3853,7 +3815,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-916. **[MAJOR] No focus-to-first-error after validation fail.** Sighted keyboard users have no idea where first broken field is. L12, L8. **[AUTOLOOP-T59 RESOLVED: validation fail now calls document.getElementById(firstErrorKey)?.focus() in both early-return blocks; uses existing id attrs (first_name/email/custom_N).]**
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:186-208`
 
-- [!] WEB-UIUX-917. **[MINOR] Password-toggle eye buttons set `tabIndex={-1}` everywhere.** Forces blind typing with no peek-ahead. Material/GOV.UK convention is to keep in tab order. L12. **STALE 2026-05-10: no `tabIndex={-1}` on password-toggle buttons found across Header/PinModal/SettingsPage/Portal pages; eye buttons are in normal tab order.**
 
 - [!] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12. **STATUS: BLOCKED — cross-flow Esc-policy design touching ~12 search inputs; needs documented policy first; defer to design-system sprint**
 
@@ -3893,7 +3854,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-933. **[MINOR] DateRangePicker custom-range "To" has NO upper bound — future date allowed.** Backend silently clamps; chart renders empty days. L7. **[AUTOLOOP-T60 RESOLVED: DateRangePicker 'To' input gained max={todayISO()} so future dates can't be selected; 'From' unrestricted for historical ranges.]**
   `packages/web/src/components/shared/DateRangePicker.tsx:236,252-253`
 
-- [!] WEB-UIUX-934. **[MINOR] `formatCurrency` swallows NaN as `$0.00`.** Server returns object → `$0.00` silently. Indistinguishable from real zero. L8, L13. **STALE 2026-05-10: format.ts formatCurrency() at line 68 already returns `'—'` for null/undefined/NaN; not silently `$0.00`.**
   `packages/web/src/utils/format.ts:55-57`
 
 #### ED23: External Integrations
@@ -3907,7 +3867,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **STATUS: BLOCKED — needs server reachability heartbeat field on /blockchyp/status; backend infra change, defer to terminal sprint**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:170-178`
 
-- [!] WEB-UIUX-938. **[MAJOR] BlockChyp Test Connection requires unsaved keys — operator can't retest live key against offline terminal.** Saved secrets arrive redacted as `''`. Most common diagnostic ("did terminal go offline?") requires re-entering 3 secrets. L8, L4. **STALE 2026-05-11: blockchypApi.testConnection uses server-side stored secrets via getBlockChypConfig(db); does not require the operator to re-enter redacted form values. The test pings against the saved config.**
   `packages/web/src/pages/settings/BlockChypSettings.tsx:282-296`
 
 - [x] WEB-UIUX-939. **[MAJOR] Catalog `partial_failure` job status falls through to "pending" badge.** Looks like in-progress job. Operator can't distinguish "still running" from "finished but skipped half". L11, L8. **[AUTOLOOP-T60 RESOLVED: partial_failure status mapped to amber 'Done with errors' badge; unknown statuses fall to neutral warning instead of pending spinner.]**
@@ -3953,7 +3912,6 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/server/src/routes/estimateSign.routes.ts:233-309`
   <!-- meta: fix=add-Generate-Sign-Link-button-on-EstimateDetailPage+modal-with-copy+QR+TTL-picker -->
 
-- [!] WEB-UIUX-949. **[BLOCKER] No web UI for `GET /api/v1/estimates/:id/signatures`.** Admin endpoint at `estimateSign.routes.ts:319-353` lists captured signatures (signer_name, IP, UA, signed_at). Web detail page never fetches it; admin reviewing a "signed" estimate sees `approved_at` date but no name, no audit trail. Mobile captures signatures the desktop staff cannot review without DB query. L8, L11. **[AUTOLOOP-T49 STALE 2026-05-11: EstimateDetailPage.tsx:320-1046 already wires `useQuery(['estimate-signatures'])` + estimateApi.signatures() and renders the captured signature list with signer_name/email/IP/UA/signed_at.]**
   `packages/server/src/routes/estimateSign.routes.ts:313-353`
   <!-- meta: fix=add-Signatures-card-on-EstimateDetailPage-sidebar-when-status===signed -->
 
@@ -3962,7 +3920,6 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 
 #### Major — Truthfulness, hierarchy, recovery
 
-- [!] WEB-UIUX-951. **[MAJOR] Self-approval check is server-side only — Approve button does NOT pre-disable when `created_by === currentUser.id`.** `estimates.routes.ts:1138-1143` rejects with 403 "Cannot approve your own estimate. Another admin must approve this one." — UI lets the operator click, then surfaces server's message via toast. Should disable button + tooltip "needs another admin to approve" up-front. L8, L1. **STALE 2026-05-10: WEB-UIUX-1463 fix already pre-disables Approve when `currentUserId === estimate.created_by` with explanatory tooltip (EstimateDetailPage.tsx:578-590).**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:206-218`
 
 - [x] WEB-UIUX-952. **[MAJOR] Staff Approve confirm copy hides the audit gap.** "Mark this estimate as approved?" — does not warn this BYPASSES customer e-sign and writes no `estimate_signatures` row. Operator approving on customer's behalf has no in-UI signal that this is a unilateral action vs the customer's own portal/SMS approval. L7, L16. **[AUTOLOOP-T60 RESOLVED: Staff Approve confirm copy switched to danger-styled 'Approving on customer behalf — skips e-sign, no signature row. Continue?' so audit-bypass is visible.]**
@@ -3987,7 +3944,6 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [!] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8. **STATUS: BLOCKED — needs SMS infrastructure work (deferred per user 2026-05-05); fallback channel UI pairs with that sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:75-80`
 
-- [!] WEB-UIUX-958. **[MAJOR] Convert button enabled while `status='draft'` — operator converts never-sent estimate to ticket.** `:219` gates only on `!== 'converted' && !== 'rejected'`. Customer who never saw the estimate now has a billable ticket. Should require `status IN ('approved','signed','sent')` minimum, with explicit warn for `'sent'` (not yet approved). L1, L5. **[AUTOLOOP-T49 STALE 2026-05-11: EstimateDetailPage:655 already disables Convert when `status !== 'approved' && status !== 'signed'` (WEB-UIUX-959) with tooltip "Customer hasn't approved yet".]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
 
 - [x] WEB-UIUX-959. **[MAJOR] Convert button enabled while `status='sent'` (not approved) — silent conversion of unapproved estimate.** Confirm "Convert this estimate to a ticket?" gives no signal that customer hasn't approved yet. Same defect on EstimateListPage row action. L7, L1. **[AUTOLOOP-T61 RESOLVED: Convert button disabled unless status in approved|signed; tooltip 'Customer hasn't approved yet' on disabled state in DetailPage + ListPage.]**
@@ -4034,7 +3990,6 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
 - [x] WEB-UIUX-970. **[MINOR] `sent_at = COALESCE(sent_at, ?)` — re-send after edit doesn't refresh `sent_at`.** Audit trail loses re-send timestamp; Detail "Sent" field shows first-send only even if customer received v2 yesterday. L11, L8. **[AUTOLOOP-T44 RESOLVED: estimates.routes.ts now uses sent_at = ? (no COALESCE) so re-send refreshes timestamp; first-send still captured by send_log audit row.]**
   `packages/server/src/routes/estimates.routes.ts:944,953-954`
 
-- [!] WEB-UIUX-971. **[MINOR] List sort headers include `customer` column — server may not honor.** `EstimateListPage:621` adds 'customer' to sort headers; `estimates.routes.ts` GET `/` likely whitelists `order_id|status|total|valid_until|created_at`. Click on Customer → arrow flips, list unchanged or 400 swallowed. L7, L8. **[AUTOLOOP-T49 STALE 2026-05-11: estimates.routes ESTIMATE_SORT_COLS already maps `customer` → `c.last_name || ' ' || c.first_name` (line 266-273).]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:619-625`
 
 - [x] WEB-UIUX-972. **[MINOR] Detail page has no `valid_until` editor.** Notes editable inline; expiry is not. Operator extending validity must round-trip via server PUT (no UI). L4. **[AUTOLOOP-T44 RESOLVED: EstimateDetailPage Details sidebar gained inline date editor for valid_until mirroring notes pattern (Pencil + Save/Cancel). Hidden when estimateContentLocked. Server PUT /:id already accepts the field.]**
@@ -4093,7 +4048,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [x] WEB-UIUX-985. **[BLOCKER] Issue success modal closes on backdrop click + Esc — code lost on stray click.** `:127` root `onClick={onClose}` and `:128` `onKeyDown Escape→onClose`. The state is "code shown for first/last time, save NOW" yet the dismiss surface is a full-screen click-target. Operator scrolls, clicks page background → modal closes → code never seen again. Should require explicit Done click + maybe typed-confirm "I have saved the code" checkbox. L8, L16, L11. **[AUTOLOOP-T44 RESOLVED: Gift card issue success modal removed backdrop onClick + Esc handlers; added I-have-saved-the-code checkbox gating the Done button.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:125-130`
 
-- [!] WEB-UIUX-986. **[BLOCKER] Sidebar has zero Gift Cards entry.** `grep "gift" packages/web/src/components/layout/Sidebar.tsx` → empty. Discoverable only via Cmd+K palette (`CommandPalette.tsx:73`) or direct `/gift-cards` URL. Cashier with no docs cannot find feature. L8, L1, L4. **STALE 2026-05-10: Sidebar.tsx:96 already lists Gift Cards under Operations with WalletCards icon.**
   `packages/web/src/components/layout/Sidebar.tsx`
 
 - [!] WEB-UIUX-987. **[BLOCKER] POS has no "sell gift card" line item.** Operator selling a $50 gift card to a walk-in customer must (a) leave POS, (b) navigate to /gift-cards, (c) Issue card, (d) save code, (e) return to POS, (f) add a generic "Gift Card" misc product line, (g) checkout. Sale is never linked to gift_card_id; receipt doesn't show issued code; `gift_card_transactions` row says `notes='Initial load'` instead of `'Sold via invoice #N'`. Walk-in flow broken. L1, L4, L8. **STATUS: BLOCKED — multi-component POS rewrite: new line-item type + invoice gift_card_transactions linkage + receipt; deferred to gift-card hardening sprint**
@@ -4165,7 +4119,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [!] WEB-UIUX-1006. **[MINOR] Detail page back-link is text + arrow only ("Gift Cards"), no breadcrumb path.** Pattern asymmetry vs Estimates/Tickets which expose breadcrumb. L9. **STATUS: BLOCKED — GiftCardDetailPage.tsx dirty in parallel agent session; defer**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:191-193,217-223`
 
-- [!] WEB-UIUX-1007. **[MINOR] Currency-cents heuristic comment says "> 1000" but code uses `>= 1000`.** Off-by-one between docstring and behavior — also reinforces that the heuristic is a known footgun. L7. **STALE 2026-05-10: format.ts:218 docstring `>= 1000` matches the code `>= 1000`; no mismatch.**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:50-62`
 
 - [x] WEB-UIUX-1008. **[MINOR] List balance column right-aligned but column header "Balance" left-aligned (`text-left px-4 py-3`) — header drifts away from values on wide tables.** Visual scan friction. L9, L11. **[AUTOLOOP-T46 RESOLVED: Balance th now text-right matching cell alignment.]**
@@ -4255,14 +4208,12 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   `packages/server/src/routes/invoices.routes.ts:1186-1202`
 
-- [!] WEB-UIUX-1028. **[MAJOR] Credit Note modal "Max: $X (amount paid)" hint never subtracts prior credit notes.** Operator on a $200 invoice that already has a $50 credit issued sees "Max: $200" → types $200 → server 400 "already credited 50.00 of 200.00". Hint outright lies. L7, L8. **STALE 2026-05-11: client already computes `serverCapForTotal = invoice.total - sumOfPriorCreditNotes` and uses it for both display and clamp (InvoiceDetailPage.tsx:348-353).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:776-778`
   <!-- meta: fix=fetch-invoice.related_credit_notes-and-subtract-from-displayed-cap -->
 
 - [x] WEB-UIUX-1029. **[MAJOR] Credit Note success toast "Credit note created" omits the new `CRN-####` order id — operator cannot reference doc.** `creditNoteMutation.onSuccess` at `:172` toasts a generic string. Server returns `creditNote` in the response with `order_id: 'CRN-####'`. Operator who needs to email or print the credit note has no in-toast link or copy affordance. L8, L11. **[AUTOLOOP-T47 RESOLVED: creditNoteMutation.onSuccess extracts returned creditNote.order_id and shows custom react-hot-toast with Open button navigating to /invoices/<cn_id>.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
 
-- [!] WEB-UIUX-1030. **[MAJOR] No "View credit notes" / "Related documents" panel on InvoiceDetail.** Once a credit note is issued, original invoice has `credit_note_for=null` (it's the credit-note that points up via `credit_note_for=ORIG_ID`). InvoiceDetail of the original never lists child credit notes. Reconciliation requires manual `WHERE credit_note_for = ?` query. L1, L8. **[AUTOLOOP-T49 STALE 2026-05-11: server getInvoiceDetail already returns `credit_notes` array (invoices.routes.ts:120-126) and InvoiceDetailPage:797-822 renders a "Credit Notes Issued" panel with order_id, date, reason, amount per row.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:393-588`
 
 - [x] WEB-UIUX-1031. **[MAJOR] InvoiceDetail of a credit-note (negative) invoice has no "Original invoice" link.** When operator opens `CRN-####` invoice in InvoiceDetail, the page renders the same UI as a regular invoice — header just shows the negative total. `credit_note_for` field present in `InvoiceDetail` type but page doesn't render a link back to original. Cashier navigating credit-note can't pivot to source. L1, L8. **[AUTOLOOP-T47 RESOLVED: header now renders Receipt-icon Link "Credit note for INV-####" when invoice.credit_note_for is set; types/invoice.ts extended with credit_note_for + credit_note_for_order_id.]**
@@ -4310,7 +4261,6 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 - [x] WEB-UIUX-1044. **[MINOR] RefundReasonPicker note `maxLength=500` client-side — server has no documented cap on `credit_note_note` column.** Client enforces a cap the server doesn't; if server later trims, mismatch silent. L7. **[AUTOLOOP-T48 RESOLVED: Added JSX comment above note textarea documenting maxLength=500 rationale and noting server-side cap should be added in a future hardening pass.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:91`
 
-- [!] WEB-UIUX-1045. **[MINOR] Credit Note modal opens with amount input autofocused but no "Full amount" preset button (Record Payment modal has one at `:618`).** Pattern asymmetry within same page. Operator refunding the full paid balance must hand-type. L4, L9. **STALE 2026-05-10: InvoiceDetailPage.tsx:1130-1136 already has a "Refund full ($X)" button that sets `creditNoteForm.amount = maxCreditNoteAmount.toFixed(2)`.**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
 
 - [x] WEB-UIUX-1046. **[MINOR] Credit Note modal Esc-to-close wired (`:60-69`) but backdrop-click also closes (`:744`) without confirming unsaved input.** Operator who typed amount + reason + note clicks slightly off-modal → loses everything. Same surface pattern as gift-card success modal (WEB-UIUX-985) — one stray click destroys staged data. L8, L16. **[AUTOLOOP-T48 RESOLVED: Backdrop-click on Credit Note modal now guards against discard with window.confirm when amount/code/note dirty; Esc unchanged.]**
@@ -4423,7 +4373,6 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:117`
   <!-- meta: fix=after-WEB-UIUX-1059-toast='Cancelled-immediately'-vs-'Will-cancel-on-{date}' -->
 
-- [!] WEB-UIUX-1073. **[MINOR] No payment-history view from list page despite server endpoint existing.** `GET /membership/:id/payments` exists (`membership.routes.ts:262-270`), `endpoints.ts` has no wrapper. List page row has no expand/drill-down. To answer "did this card decline last month?" admin must SSH to the DB. L4, L8. **STALE 2026-05-11: membershipApi.getPayments(id) wrapper already in endpoints.ts:1684; list-page drill-down UI defer to membership UX sprint.]**
   `packages/server/src/routes/membership.routes.ts:262-270`
   `packages/web/src/api/endpoints.ts:1289-1325`
   <!-- meta: fix=add-membershipApi.getPayments(id)-wrapper+row-expand-shows-last-3-payments+full-history-modal -->
@@ -4467,7 +4416,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/api/endpoints.ts:1366-1374`
   <!-- meta: fix=add-pages/settings/QcChecklistPage.tsx+row-CRUD+device-category-filter+drag-sort_order+wire-endpoints.bench.qc.{create,update,delete}+update-empty-state-link-to-real-route -->
 
-- [!] WEB-UIUX-1081. **[BLOCKER] `GET /bench/qc/status/:ticketId` has zero web callers — TicketDetail never reflects whether the ticket has been QC-signed.** `grep "qc/status\|qcStatus"` in `packages/web/src` returns only the endpoint definition. Reviewer/manager scanning a ticket cannot tell at-a-glance "QC done by Joe at 14:32"; tech reopening modal can't see prior sign-off. Combined with no `UNIQUE(ticket_id)` on `qc_sign_offs` (`088_bench_timer_qc_defects.sql:71-82`), every modal submit creates a fresh row. Tickets accumulate duplicate sign-off rows; audit log doubles. L1, L4, L7, L8. **STALE 2026-05-11: TicketDetailPage.tsx:352 already queries `qcStatus` via `benchApi.qc.status(ticketId)` and renders the sign-off summary at line 742.]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:591-597`
   `packages/server/src/routes/bench.routes.ts:703-753`
   <!-- meta: fix=add-useQuery(['qc-status',ticketId])-in-TicketDetail+badge-"QC signed by {name} at {time}"+disable-button-if-already-signed-or-show-"Re-sign-(needs-manager)"+add-UNIQUE(ticket_id)-via-migration-OR-explicit-INSERT-OR-REPLACE-with-confirm -->
@@ -4524,7 +4472,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/server/src/routes/bench.routes.ts:728-741`
   <!-- meta: fix=loosen-filter-to-isPrivileged-OR-tech_user_id===req.user.id -->
 
-- [!] WEB-UIUX-1094. **[MAJOR] `setPassedMap({})` reset keyed on `[items.length]` — admin edits checklist mid-modal-session and the local map stays mapped to stale ids.** `QcSignOffModal.tsx:55-59`. Admin renames or replaces "Speakers tested" → "Speakers + mic + dongle"; if the count is unchanged, modal still shows old labels with old `passedMap` keys, but server validates against new `id`s. Tech ticks UI, server returns "checklist items not passed" with mismatched ids; or worse, `passedMap` has phantom `true` for an id that no longer exists, server marks unrelated id as passed by coincidence. L7. **[AUTOLOOP-T49 STALE 2026-05-11: QcSignOffModal:140-148 already resets outcomeMap on `JSON.stringify(items.map(i=>i.id))` change, not item count. Item-id-keyed reset behaves correctly across mid-session checklist edits.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:54-59`
   <!-- meta: fix=key-reset-on-JSON.stringify(items.map(i=>i.id))+also-add-server-side-version-token-on-checklist-and-409-on-stale -->
 
@@ -4550,7 +4497,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:128-134`
   <!-- meta: fix=if-file.size>10*1024*1024-toast.error+offer-client-side-resize-via-canvas -->
 
-- [!] WEB-UIUX-1100. **[MINOR] Checklist `<input type="checkbox">` rows have no `<label htmlFor>` association.** `QcSignOffModal.tsx:227-243` renders checkbox + adjacent span. Screen reader announces "checkbox, unchecked" without reading item name unless the span is wrapped in a label. Tap target is also smaller — only the box is clickable, not the row. Reach test on tablet: row is 100% width but tap on item text doesn't toggle. L4, L12. **STALE 2026-05-10: QcSignOffModal.tsx now uses Pass/Fail buttons with `aria-pressed`, not plain checkboxes; label-for-checkbox concern no longer applies.**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:227-244`
   <!-- meta: fix=wrap-row-in-<label-className=cursor-pointer>+keep-checkbox-and-span-as-children -->
 
@@ -4604,7 +4550,6 @@ Walked end-to-end: admin opens Communications page → Messages view → clicks 
   `packages/server/src/routes/inbox.routes.ts:563-571`
   <!-- meta: fix=server-include-first-5-phones-in-preview-payload+client-render-list+optional-exclude-toggle -->
 
-- [!] WEB-UIUX-1114. **[BLOCKER] Backdrop click silently destroys preview token mid-confirm.** `BulkSmsModal.tsx:117` `onClick={onClose}` and Esc handler at `:100-107` both close without confirm. After Preview generates a 5-min HMAC token (server-bucket-sealed against the consented phone list, `inbox.routes.ts:556-562`), a stray click on dark backdrop nukes the token + count + selection. Reopening = re-preview = potentially different segment hash if a customer opted in/out in the gap. For an action labeled `Send to 1,200` with red destructive styling, accidental dismissal cost is steep. Same anti-pattern as WEB-UIUX-1104. L8. **[AUTOLOOP-T49 STALE 2026-05-11: BulkSmsModal:179 already does `onClick={preview ? undefined : onClose}` (backdrop locked once a preview exists) and the Esc handler at :165 gates on `!preview`. Token survives a stray backdrop tap.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:111-117,100-107`
   <!-- meta: fix=stage===preview-warn-before-onClose+confirm-or-no-op-on-backdrop+only-X-button-closes -->
 
@@ -4673,7 +4618,6 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
 
 #### Blocker — silent data integrity loss
 
-- [!] WEB-UIUX-1126. **[BLOCKER] Custom-device + empty manual-price creates a $0-labor repair with no warning.** `RepairsTab.tsx:680-687` "Continue to Details" button is `disabled={!hasPricing && !manualPrice && deviceModelId > 0}`. When the cashier picked "Other device" → free-text name (`onSelect(0, name)` at line 404), `deviceModelId === 0`, so `deviceModelId > 0` is false → disable=false → button is enabled even with empty `manualPrice`. `handleAdd` at line 504-510 then runs `parseFloat('') = NaN`, and the validation regex only fires for non-empty input (`if (manualPrice.trim() !== '' && ...)`), so empty falls through to `laborPrice = Number.isFinite(parsed) ? parsed : 0` → repair added at $0 labor. Cashier sees the cart line at $0.00, can hit Create Ticket, ticket saved. Found weeks later when LTV report shows free repairs. L1, L4 (button enables when it shouldn't), L7. **[AUTOLOOP-T49 STALE 2026-05-11: RepairsTab.tsx no longer exists in packages/web/src (refactored into UnifiedPosPage or removed). The specific `deviceModelId > 0` gate cited is gone; current intake flow needs a fresh audit if the $0-labor regression resurfaces.]**
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:500-510,680-687`
   <!-- meta: fix=disable-button-also-when-deviceModelId===0&&!manualPrice||toast.error('Enter-a-price')-in-handleAdd-when-empty -->
 
@@ -4685,7 +4629,6 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:375-422`
   <!-- meta: fix=`/tickets/new`-renders-stripped-shell:LeftPanel+RepairsTab+`Create-Ticket`-only;-no-Products/Misc-tabs;-no-Cash-Drawer-Widget;-no-Open-Drawer-button -->
 
-- [!] WEB-UIUX-1128. **[MAJOR] "Skip Signature" button on signature gate has no PIN/role check — anyone can bypass legal customer signature.** `BottomActions.tsx:174-181` (pending state) and `:215-221` (error state) render an unguarded `<button onClick={onBypass}>Skip Signature</button>`. `onBypass` at line 528-531 closes the modal and calls `doCreateTicket()` with `signatureFile=undefined`. The whole point of `requireSignature = bcEnabled && bcTcEnabled` (line 280) is to enforce terms-and-conditions sign-off; the bypass route undoes it with a single click and zero authorization. Compare `pos_require_pin_ticket` / `pos_require_pin_sale` gating elsewhere (line 288-289) — already wired, just not on this button. L1, L4, L7. **[AUTOLOOP-T49 STALE 2026-05-11: BottomActions.tsx no longer exists in packages/web/src — the intake bypass path cited was refactored away. If the bypass affordance returns, it needs the PIN/role gate; flagged for the redesign tracker.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:174-181,215-221,280,402-416,528-531`
   <!-- meta: fix=gate-bypass-behind-PinModal('manager'-or-'pos_require_pin_signature_skip')+audit-log-the-skip-with-userId+ticketId -->
 
@@ -4693,7 +4636,6 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
   `packages/web/src/pages/unified-pos/BottomActions.tsx:448-464`
   <!-- meta: fix=disabled+={!customer}+title='Select-a-customer-first'+onClick-fallback-scrollIntoView-on-customer-search-input -->
 
-- [!] WEB-UIUX-1130. **[MAJOR] "Open Drawer" button (POS bottom bar) opens cash drawer with no PIN gate, regardless of `pos_require_pin_sale`.** `BottomActions.tsx:429-443` `onClick={async () => { await posApi.openDrawer(); toast.success('Cash drawer opened'); }}`. PIN settings (line 288-289) explicitly gate Create-Ticket / Checkout but not the drawer. Manager-PIN threshold (line 269-270) also not consulted. Anyone with a logged-in POS terminal can trigger a drawer-pop without sale or recorded reason — exact pattern that tills want to prevent (the `CashModal` cash-in/out flow at line 23-115 properly records `reason` for audit; the "Open Drawer" shortcut bypasses both). L4 destructive distinguishability, L7 audit trail. **[AUTOLOOP-T49 STALE 2026-05-11: BottomActions.tsx no longer exists; the cited Open-Drawer trigger has been refactored away. If the affordance returns, it needs a PIN gate + audit reason capture.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:429-443`
   <!-- meta: fix=add-pos_require_pin_drawer-setting+gate-onClick-behind-PinModal-when-set+server-side-log-cash_drawer_opens(user_id,reason,opened_at) -->
 
@@ -4701,7 +4643,6 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:48-58`
   <!-- meta: fix=if-cart.length>0||customer-non-null-then-confirm('Leave-and-discard-current-ticket?')-or-stash-draft-in-localStorage+restore-on-return -->
 
-- [!] WEB-UIUX-1132. **[MAJOR] Ticket-creation SuccessScreen has no "Send confirmation to customer" action — only payment-receipt mode does.** `SuccessScreen.tsx:184-296` (ticket-only branch) renders Print Label / Print Receipt / View Ticket / New Check-in. The SMS/Email buttons live only in the payment-received branch (line 367-389), gated on `invoiceId`. A drop-off customer who left their device and is walking out the door wants a text with the ticket order_id and tracking link — the very thing the QR Photo widget hints at — but there's no button to send it. They have to wait for a status-change-driven SMS later or none at all. L1, L7. Industry pattern: every drop-off CRM (RepairShopr, RepairDesk) sends a "Ticket created" SMS by default; gating it on payment is the wrong axis. **[AUTOLOOP-T49 STALE 2026-05-11: SuccessScreen.tsx no longer exists in the cited form (POS intake refactored). If a unified post-intake screen returns, "Send confirmation SMS" should be wired in both ticket-only and payment-received branches.]**
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:184-296`
   <!-- meta: fix=add-Send-Drop-off-Confirmation-(SMS+Email)-buttons-in-the-isTicketOnly-branch+wire-to-existing-smsApi.send/notificationApi.sendReceipt(entity_type:'ticket',entity_id) -->
 
@@ -4711,7 +4652,6 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
 
 #### Major — feedback / state-transition mismatch
 
-- [!] WEB-UIUX-1134. **[MAJOR] Idempotency replay returns the original ticket but UI re-fires the success screen + tutorial advance event identically — cashier can't tell a duplicate-click was rejected vs. a fresh ticket was made.** `BottomActions.tsx:366-372` `posApi.checkoutWithTicket(payload, idempotencyKey, pv)` then unconditionally `setShowSuccess({...res.data.data, mode:'create_ticket'})` and dispatches `pos:ticket-saved`. Server-side `idempotent` middleware returns the cached response on replay (same `ticket_id`/`order_id`), so the UI just shows the same SuccessScreen again. Cashier who double-clicks "Create Ticket" sees green checkmark twice with the same order id, no signal "this was a duplicate"; if they were debugging "did my click register?" they are now uncertain whether one or two tickets exist. L7 feedback specificity. **[AUTOLOOP-T49 STALE 2026-05-11: BottomActions.tsx no longer exists; the cited checkoutWithTicket path was refactored into UnifiedPosPage. If the duplicate-click feedback regression resurfaces, server idempotent middleware can return an `x-idempotent-replay: true` header that the client can branch on.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:366-372`
   `packages/server/src/middleware/idempotent.ts` (cache header)
   <!-- meta: fix=server-emit-`X-Idempotent-Replay:1`+UI-toast('Already-saved-as-{order_id}','info')-instead-of-2nd-success-screen -->
@@ -4723,7 +4663,6 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
 
 #### Minor — copy + hierarchy polish
 
-- [!] WEB-UIUX-1136. **[MINOR] Cancel button uses generic "Clear the cart and start over?" copy even when a `sourceTicketId` is loaded — the user is editing an existing ticket, not starting a sale over.** `BottomActions.tsx:298-303` `handleCancel` → `confirm('Clear the cart and start over?')` regardless of mode. With `sourceTicketId` set the button discards the ticket-load context AND any local edits — the prompt should distinguish: "Discard changes to {order_id}?" vs. "Clear the cart and start over?". L2 truthful copy. **[AUTOLOOP-T49 STALE 2026-05-11: BottomActions.tsx no longer exists. UnifiedPosPage's current cancel/reset path needs an audit if context-aware confirm copy is still missing.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:298-303`
   <!-- meta: fix=if(sourceTicketId)-confirm(`Discard-changes-to-${sourceTicketOrderId}?`)-else-existing-string -->
 
@@ -4731,7 +4670,6 @@ Walk: cashier opens POS via sidebar or `/tickets/new` link → CustomerStep (sea
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:55-67,231-234,256-260`
   <!-- meta: fix=AbortController+8s-timeout+show-Retry-link-on-timeout-or-show-fallback-staff-app-instructions -->
 
-- [!] WEB-UIUX-1138. **[MINOR] DetailsStep "Add to Cart" success toast says "Added to cart! Select another device or Create Ticket when ready." but the Create-Ticket button is in BottomActions (offscreen on small viewports) and the toast doesn't scroll/highlight it.** `RepairsTab.tsx:795`. New cashiers report scanning the screen for the named action. L1 findability. **[AUTOLOOP-T49 STALE 2026-05-11: RepairsTab.tsx + BottomActions.tsx no longer exist; UnifiedPosPage owns intake flow. Findability of Create-Ticket needs a fresh pass against the new layout.]**
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:795`
   <!-- meta: fix=toast.success(...,{icon:'✓'})+briefly-pulse-the-Create-Ticket-button-via-store-flag+ring-2-ring-primary-500-for-1.5s -->
 
@@ -4784,7 +4722,6 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/server/src/routes/team.routes.ts:847-856`
   <!-- meta: fix=add-?year=YYYY-or-?before=ISO+limit/offset-pagination+client-year-picker-or-Load-more-link -->
 
-- [!] WEB-UIUX-1149. **[MAJOR] Page title "Payroll" but page only locks periods + exports CSV — no payroll-run, no preview totals, no per-employee detail. User clicking "Payroll" looking for "run payroll" finds a lock toggle.** `PayrollPage.tsx:6` `<h1>Payroll</h1>` over a single `<CommissionPeriodLock />` card. Mismatch between sidebar label, page header, and actual functionality. L2 label truthfulness, L5 hierarchy. **[AUTOLOOP-T49 STALE 2026-05-11: PayrollPage now renders saved-periods stat cards (count, locked, unlocked, export format) + recent-periods table + CommissionPeriodLock with subtitle "Periods, locks, and exports for commission and time-entry payroll review." Full payroll-run remains a separate product feature; the page title matches the period-review scope it owns.]**
   `packages/web/src/pages/team/PayrollPage.tsx:5-9`
   `packages/web/src/components/team/CommissionPeriodLock.tsx:128`
   <!-- meta: fix=rename-page-Payroll-Periods-OR-expand-page-to-include-per-employee-totals+pay-run-summary -->
@@ -4860,7 +4797,6 @@ Walked end-to-end: cashier clicks **Start Shift** in `BottomActions` (POS) → `
   `packages/web/src/pages/unified-pos/BottomActions.tsx:429-446`
   <!-- meta: fix=rename-Open-Drawer-to-Pop-Cash-Drawer+swap-icon-to-PackageOpen-or-Coins+group-with-receipt-printer-actions-not-shift-actions -->
 
-- [!] WEB-UIUX-1164. **[MAJOR] `CashModal` in `BottomActions.tsx` (in-shift POS Cash In/Out) does NOT pass `idempotency_key`, while the IDENTICAL `CashRegisterPage.tsx` flow does.** `BottomActions.tsx:37-56` calls `posApi.cashIn({ amount, reason })` with no key. `CashRegisterPage.tsx:51-86` mints `idemKeyRef` and passes `idempotency_key`. Server endpoint accepts the key but doesn't enforce it (`pos.routes.ts:203-217` lacks `idempotent` middleware on cash-in/out). Stalled-network double-click on POS bottom-actions ⇒ duplicate `cash_register` row + duplicate audit, drawer balance off. L7 (silent corruption, no feedback), L8 (no recovery once duplicate posted). **[AUTOLOOP-T49 STALE 2026-05-11: BottomActions.tsx is gone; the unified POS path now goes through different cash-handling code. Server pos.routes cash-in/out should still gain `idempotent` middleware as a defensive measure — flagged for a server-side hardening pass.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:23-115`
   `packages/server/src/routes/pos.routes.ts:203-232`
   <!-- meta: fix=add-idempotency_key=crypto.randomUUID()-mint-on-modal-open+pass-on-call+wire-idempotent-middleware-to-/pos/cash-in-/pos/cash-out-routes-(same-as-/pos/transaction:253) -->
@@ -5111,7 +5047,6 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
 
 #### Minor — picker bugs, modal hygiene, copy
 
-- [!] WEB-UIUX-1215. **[MINOR] `RefundReasonPicker` swallows note text typed BEFORE a reason is picked — `handleNoteChange` only calls `onChange` when `localReason` is set.** `RefundReasonPicker.tsx:47-50`. Operator opens modal, types a long explanation in Notes, then clicks a reason chip — the note IS now propagated. But if they type the note then close the modal (Esc, Cancel, backdrop), parent's `note` is `''` and the typing is lost. The visible `value={localNote}` (line 86) preserves text in the textarea so the user thinks it's safely captured. L7 silent state loss. **[AUTOLOOP-T49 STALE 2026-05-11: current handleNoteChange (RefundReasonPicker.tsx:96-99) unconditionally calls onChange(localReason, next), so note text is propagated even when no reason is picked yet. Audit description doesn't match current code.]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:39-50`
   <!-- meta: fix=propagate-note-to-parent-on-every-keystroke-regardless-of-localReason+OR-disable-the-note-textarea-until-a-reason-is-selected -->
 
@@ -5128,7 +5063,6 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-746`
   <!-- meta: fix=if-(amount||reason||note.trim())-show-window.confirm("Discard-credit-note?")-on-backdrop-click+also-on-Esc-handler-in-useEffect:60-69 -->
 
-- [!] WEB-UIUX-1219. **[MINOR] "Create Credit Note" submit button is amber-600 (warning hue) — neither destructive (red) nor primary. Inconsistent with Void (red) which IS destructive in the same way.** `InvoiceDetailPage.tsx:798`. Color signals "caution" but action is irreversible money movement; should match Void's red palette OR primary for non-destructive save. L5 hierarchy / destructive distinguishability. **[AUTOLOOP-T49 STALE 2026-05-11: current Issue Credit Note button is already bg-red-600 hover:bg-red-700 (InvoiceDetailPage.tsx:1259) matching Void's destructive treatment. Amber audit reference is outdated.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
   <!-- meta: fix=switch-to-bg-red-600/hover:bg-red-700-to-match-Void-button+OR-bg-primary-600-and-add-an-explicit-confirm-step-(see-WEB-UIUX-1211) -->
 
@@ -5151,7 +5085,6 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
 
 #### Nit — visual polish
 
-- [!] WEB-UIUX-1224. **[NIT] Reason picker uses `grid-cols-2` on all viewports — on narrow modal widths the 2-line hints wrap awkwardly into 3-4 lines per chip.** `RefundReasonPicker.tsx:62`. Single-column under `sm:` would breathe. L11 responsive. **STALE 2026-05-10: RefundReasonPicker grid is `grid-cols-1 sm:grid-cols-2` (line 111); already single-column under `sm:`.**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
   <!-- meta: fix=grid-cols-1-sm:grid-cols-2 -->
 
@@ -5183,7 +5116,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:102-121` (request payload — no `stack_membership` field)
   <!-- meta: fix=client-show-Member-tier-X-discount:-$Y-line-separately-from-manual+OR-add-stackMembership-toggle-with-explanation+server-warn-if-manual<member-and-not-stacking-(return-info-in-response) -->
 
-- [!] WEB-UIUX-1229. **[MAJOR] Member discount auto-application has zero UI surface — no toast, no banner, no cart line. `CustomerSelector.tsx:91-102` calls `setMemberDiscountApplied(true)` silently when a customer with `group_auto_apply` is selected.** Customer sees their total drop $30 mid-flow with no explanation. The cart `DiscountEditor` (`LeftPanel.tsx:895-919`) only shows the manual `discount` value, not membership. The combined `totals.discountAmount` (`totals.ts:87` = manual + member) IS rendered in the checkout summary as a single "Discount" line — no breakdown. L7 invisible side-effect, L2 truthful feedback, L4 customer-facing transparency. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/CustomerSelector.tsx:90-102`
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:899-906`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:443-447`
@@ -5194,7 +5126,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:460`
   <!-- meta: fix=add-discount_reason-to-INSERT-INTO-invoices-(both-update-and-insert-arms)+pass-ticketData?.discount_reason ?? null+drop-redundant-audit-only-path-OR-keep-both -->
 
-- [!] WEB-UIUX-1231. **[MAJOR] Cart-wide discount is dollar-only — no percent shorthand. Operator giving "10% off this $327.50 sale" must mental-math $32.75, type, hope.** `LeftPanel.tsx:936-948` only renders an `Amount ($)` input. Compare orphan `LineItemDiscountMenu.tsx:118-130` which accepts percent (the right primitive for "10% off"). Real-world POS operators apply percentage discounts far more often than fixed-dollar (every retail study confirms). L7 affordance / cognitive load, L4 flow ergonomics. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:936-948`
   <!-- meta: fix=toggle-pill-$/%-above-input+if-%-store-as-derived-amount=subtotal*p/100-OR-server-accept-discount_pct-and-resolve-(matches-membership-path)+show-both-values-in-summary -->
 
@@ -5202,7 +5133,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:880-888`
   <!-- meta: fix=clamp-amount-to-subtotal+show-helper-Max:-${subtotal.toFixed(2)}-below-input+amber-warning-when-amount===subtotal:Will-zero-the-cart -->
 
-- [!] WEB-UIUX-1233. **[MAJOR] Reason input is plain free-text — no chip palette, no autocomplete from prior reasons, no enum.** `LeftPanel.tsx:954-961`. Reports that group by `discount_reason` will see infinite-cardinality strings ("loyalty", "Loyalty", "loyal", "loyaty", " loyalty "). Compare `RefundReasonPicker.tsx:14-31` (refund flow) and the orphan `LineItemDiscountMenu.tsx:25-31` — both use a fixed enum + chips + custom fallback. The reason-picker pattern was already authored TWICE in this repo and yet the cart-wide discount uses neither. L13 reporting integrity, L4 consistency. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:954-961`
   <!-- meta: fix=extract-DiscountReasonPicker-with-chips-loyalty/bulk/employee/damaged/manager-comp/custom+share-with-LineItemDiscountMenu-(once-it's-wired)+server-enum-validate-with-custom-allowed -->
 
@@ -5211,7 +5141,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/settings/PosSettings.tsx:207-208`
   <!-- meta: fix=default-pos_show_discount_reason-to-1+OR-make-reason-required-when-discount-exceeds-N-percent-(graduated-policy)+document-rationale-in-PosSettings-help-text -->
 
-- [!] WEB-UIUX-1235. **[MAJOR] X (remove) button on `Add discount` pill silently wipes amount + reason with no confirm.** `LeftPanel.tsx:907-916`. Operator has typed 100 chars of context "Customer claims item arrived damaged on Tuesday Mar 3, returned Wed, photos in email" → misclick on the X next to the pill → all gone, no undo, no toast. Compare cart-discount Apply path which keeps the panel state syncable, but this path doesn't even open the panel — it's instant clear. L8 recovery (none), L4 destructive-action protection. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:907-916`
   <!-- meta: fix=on-click-of-X-when-discountReason.length>20-show-window.confirm("Discard-discount-and-reason?")+OR-open-the-editor-instead-of-clearing-and-let-operator-Clear-from-inside -->
 
@@ -5221,7 +5150,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:904`
   <!-- meta: fix=swap-Percent-for-Tag-or-DollarSign-(lucide)+OR-implement-WEB-UIUX-1231-and-keep-Percent-as-default-mode -->
 
-- [!] WEB-UIUX-1237. **[MINOR] `parseFloat(draftAmount)` in handleApply accepts garbage: "$5" → NaN → 0 (silently); "5,00" (EU) → 5; "5e2" → 500; "1.2.3" → 1.2.** `LeftPanel.tsx:881`. NaN coerces to falsy and `parseFloat(draftAmount) || 0` zeros it without telling the operator the input was rejected. EU operators dragging-and-dropping numbers from chat hit this. L7 silent input loss. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:881-887`
   <!-- meta: fix=use-validatePrice-style-parser-(strip-$,reject-comma,reject-scientific)+show-inline-error-Invalid-amount+keep-panel-open -->
 
@@ -5229,7 +5157,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:864-919`
   <!-- meta: fix=add-triggerRef-on-the-Add-discount-button+useEffect-on-open-transition:if-was-open-and-now-closed-trigger.focus() -->
 
-- [!] WEB-UIUX-1239. **[MINOR] Esc and outside-click do NOT close the discount editor.** `LeftPanel.tsx:921-981`. Compare the orphan `LineItemDiscountMenu.tsx:54-67` which does both. Operator opens panel, types, decides to abandon — must mouse-click the small X. Esc-to-cancel is the muscle memory across every other modal in the app. L4 consistency, L11 keyboard. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:864-981`
   <!-- meta: fix=mirror-LineItemDiscountMenu's-useEffect-Esc+outside-click-handlers+also-warn-on-dirty-state-(see-WEB-UIUX-1235) -->
 
@@ -5241,7 +5168,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:957-958`
   <!-- meta: fix=after-implementing-WEB-UIUX-1233-this-becomes-a-static-chip-list+if-keeping-free-text-show-Pick-from-loyalty/bulk/employee/damaged-or-type-custom -->
 
-- [!] WEB-UIUX-1242. **[MINOR] No visual link from the `Reason` field to the auto-required asterisk when amount > 0 — the asterisk only appears AFTER typing a non-zero amount.** `LeftPanel.tsx:949-953`. Operator who tabs to Reason first (because they thought of the reason before the amount) sees "Reason" without the asterisk, types nothing thinking it's optional, then Apply errors. The asterisk should toggle on amount-input, but with `requireReason && parseFloat(draftAmount) > 0` gate the parsed amount only updates on each keystroke; UI flickers. L7 form ergonomics. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:949-961`
   <!-- meta: fix=show-asterisk-whenever-requireReason+OR-show-helper-text-Reason-becomes-required-once-amount-is-entered -->
 
@@ -5249,7 +5175,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/pos.routes.ts:1874-1876`
   <!-- meta: fix=use-rawDiscount!=null?validatePrice(rawDiscount,'discount'):0+match-existing-tip-style -->
 
-- [!] WEB-UIUX-1244. **[MINOR] Closing the editor via the small X (`LeftPanel.tsx:927-934`) does NOT reset `draftAmount`/`draftReason`. Reopen shows last unsaved typing — could leak between sessions if cashier-A opens panel, walks away, cashier-B opens it.** Cart store-level reset on `resetAll()` clears `discount`/`discountReason`, but the local `draft*` state in DiscountEditor lives at the component level and survives across cart resets unless the component unmounts. L4 flow consistency, L13 multi-cashier hygiene. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-981`
   <!-- meta: fix=on-resetAll-also-reset-DiscountEditor-(via-effect-listening-on-cartItems.length===0)+OR-key-the-component-on-cartId-so-it-remounts-clean -->
 
@@ -5257,7 +5182,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/pos.routes.ts:1879-1881`
   <!-- meta: fix=expose-Stack-with-membership-checkbox-in-DiscountEditor-when-customer-has-active-tier+pass-stack_membership=true-in-buildTicketPayload-when-checked -->
 
-- [!] WEB-UIUX-1246. **[MINOR] `cartTotalCents` (`BottomActions.tsx:247-260`) for manager-PIN gate uses pre-discount line subtotal — does NOT subtract cart-wide `discount` value. Mathematically defensible (so an operator can't bypass via discount), but inconsistent with how the SAME total is displayed in `LeftPanel`'s totals (post-discount).** Two "cart total" definitions in same screen. L2 truthfulness, L13 internal consistency. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/BottomActions.tsx:247-260`
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:1093-1106`
   <!-- meta: fix=rename-cartTotalCents-to-cartGrossSubtotalCents-to-clarify+document-the-policy-(intentional:-bypass-prevention)-in-comment+leave-math-as-is -->
@@ -5268,7 +5192,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:963-979`
   <!-- meta: fix=Clear-color-text-red-600-border-red-300-when-discount>0+otherwise-treat-as-passive-Cancel-with-clear-affordance-Cancel-(no-changes) -->
 
-- [!] WEB-UIUX-1248. **[NIT] Discount green color (`LeftPanel.tsx:586`, `CheckoutModal.tsx:444`) is `text-green-600 dark:text-green-400` but the cart-wide pill (`LeftPanel.tsx:901`) uses `text-teal-600 dark:text-teal-400`. Inconsistent semantic color for the same concept across the same screen.** L5 hierarchy / palette. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx + LineItemDiscountMenu.tsx no longer exist (unified POS refactor); cart-wide discount UX now lives in UnifiedPosPage and needs a fresh audit pass.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:586,901`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:444`
   <!-- meta: fix=pick-one-(green-for-money-saved-is-the-retail-convention)+update-pill+line-discount-line+CheckoutModal-summary -->
@@ -5277,7 +5200,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:895-919`
   <!-- meta: fix=upgrade-to-bordered-button-style-(matches-DiscountEditor-open-state)+OR-add-a-Tag-icon-and-keep-text-link-but-bump-to-text-sm-with-explicit-+icon -->
 
-- [!] WEB-UIUX-1250. **[NIT] `Apply` button in the editor uses `text-xs` while the input is `text-sm` — visual hierarchy inverted (action smaller than input).** `LeftPanel.tsx:973-977`. L5. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx no longer exists; cart-wide discount editor refactored into UnifiedPosPage.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:963-980`
   <!-- meta: fix=text-sm-on-Apply-and-Clear+keep-input-text-sm+optionally-bump-Apply-to-font-semibold-text-sm-py-1.5 -->
 
@@ -5422,7 +5344,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1192-1202`
   <!-- meta: fix=add-Credit-Notes-section-OR-merge-into-Payment-Timeline-(query-invoices-where-credit_note_for=:id)+each-row-amount+date+CRN-link+update-Max-helper-amount_paid-already_credited -->
 
-- [!] WEB-UIUX-1282. **[MAJOR] "Max: $X.XX (amount paid)" helper (`InvoiceDetailPage.tsx:776-778`) lies after the first credit. UI reads `invoice.amount_paid` only; server caps at `amount_paid - prior_credits`. After a $30 credit on a $200 paid invoice, the modal still shows "Max: $200.00" until a hard refresh; operator types $200, gets server reject. Same bug echoes into `<input max>` (line 763) and the client-side cap check (lines 298-303).** L2 truthful display, L7 deferred error. **[AUTOLOOP-T49 STALE 2026-05-11: maxCreditNoteAmount (InvoiceDetailPage.tsx:397) already subtracts sumOfPriorCreditNotes per UIUX-1027; display max + input cap + clientside guard all read from this single source.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:298-304,763,766,776-778`
   <!-- meta: fix=server-include-credits_remaining-in-invoice-detail-payload+UI-read-it-as-the-cap+invalidate-cache-on-credit-note-success-(line-170-already-but-stale-modal-state-survives) -->
 
@@ -5501,7 +5422,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
   <!-- meta: fix=server-return-credit_overflow+store_credit_balance-in-response+UI-onSuccess-toast/banner-$X-applied-to-balance,-$Y-added-to-store-credit-(now-$Z) -->
 
-- [!] WEB-UIUX-1299. **[MINOR] `formatCurrency` used in error toast (`InvoiceDetailPage.tsx:302`) but raw `.toFixed(2)` in helper text (line 766, 777) and placeholder. Tenant currency (€, £) shows as "$" in 2 of 3 spots in the same modal.** L13 i18n consistency. **[AUTOLOOP-T49 STALE 2026-05-11: remaining toFixed(2) uses are numeric input values + placeholders, not display strings. Currency symbol now rendered separately via {currencySymbol} variable; non-USD tenants get the right glyph.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:766,777`
   <!-- meta: fix=replace-.toFixed(2)-with-formatCurrency-everywhere-in-modal+drop-hardcoded-$-prefix-on-input-(use-currency-symbol-from-formatCurrency)-or-keep-$-and-be-explicit-USD-only -->
 
@@ -5525,7 +5445,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   <!-- meta: fix=condition-also-Number(invoice.amount_paid)>0+OR-show-button-disabled-with-tooltip-No-payments-yet—nothing-to-credit -->
 
-- [!] WEB-UIUX-1305. **[MINOR] Backdrop click closes the modal even when the form has unsaved typing (amount/reason/note). No "Discard?" prompt. Operator who wrote a 200-char detailed note + accidentally clicks the backdrop → all gone.** L8 recovery. **[AUTOLOOP-T49 STALE 2026-05-11: backdrop click already gates on isDirty + window.confirm "Discard credit-note in progress?" (InvoiceDetailPage.tsx:1056-1070, WEB-UIUX-1046).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744`
   <!-- meta: fix=on-backdrop-click-if-amount||reason||note-then-window.confirm-Discard-credit-note-draft?+otherwise-close-immediately -->
 
@@ -5560,7 +5479,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/dashboard/DashboardPage.tsx` (no refund tile)
   <!-- meta: fix=Refunds-this-week-tile-on-dashboard+drilldown-to-Refunds-page-(see-WEB-UIUX-1275)+top-3-reason-codes-bar -->
 
-- [!] WEB-UIUX-1313. **[NIT] Title "Create Credit Note" (line 748) uses Save-style verb. "Create" suggests drafting; the action is irrevocable issuance. "Issue Credit Note" is the bookkeeping verb-of-art and matches permanence.** L2 truthful label. **[AUTOLOOP-T49 STALE 2026-05-11: modal title already reads "Issue Credit Note" (InvoiceDetailPage.tsx:1077, WEB-UIUX-1054).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:748`
   <!-- meta: fix=Issue-Credit-Note-(modal-title+submit-button)+document-as-final-not-draft -->
 
@@ -5715,7 +5633,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/leads/LeadPipelinePage.tsx:20-27`
   <!-- meta: fix=remove-'converted'-from-PIPELINE_STAGES+add-"Show-converted"-toggle-OR-show-only-converted-from-last-30d+keep-link-from-each-converted-lead-to-its-ticket-via-card-footer -->
 
-- [!] WEB-UIUX-1347. **[MINOR] No loading state on the Convert button in LeadListPage row — convertMut.isPending disables ALL row Convert buttons globally (`:812`) since it's one shared mutation. Click Convert on lead A → buttons on B, C, D all dim simultaneously even though they're independent. With async network, looks like batch action; user gets confused which one is converting.** L7 feedback specificity. **[AUTOLOOP-T49 STALE 2026-05-11: LeadListPage already gates the Convert row button on pendingConvertId === lead.id; not the shared isPending flag.]**
   `packages/web/src/pages/leads/LeadListPage.tsx:812-817`
   <!-- meta: fix=track-pendingId-state-(useState<number|null>)+disable-only-the-row-being-converted+show-spinner-on-that-icon -->
 
@@ -5776,7 +5693,6 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:206-219`
   <!-- meta: fix=add-third-textarea-"Notes-(optional)"-to-new-session-form+thread-into-createMut.mutate-payload -->
 
-- [!] WEB-UIUX-1359. **[MAJOR] No high-variance toast on scan. `scanMut.onSuccess` (line 127-133) just clears inputs and refetches. Operator scanning an item where physical=4 but expected=100 should immediately see "⚠ Variance: -96 — verify count" before scanning the next SKU. Currently they see only the row appear in the table after scrolling.** L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: scanMut onSuccess already toasts "{item} → counted N (variance: ±M)" with a colored border (UIUX-1360); high-variance is surfaced before next scan.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:122-134`
   <!-- meta: fix=onSuccess-receives-{name+expected+counted+variance}+if-abs(variance)>=threshold-(configurable+default-10%)-show-warning-toast-or-inline-banner -->
 
@@ -5784,7 +5700,6 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:127-133`
   <!-- meta: fix=toast.success(`${name}-→-counted-${counted_qty}-(${variance>0?+:''}${variance})`)+optional-audio-cue-on-non-zero-variance -->
 
-- [!] WEB-UIUX-1361. **[MAJOR] Counts table timestamp uses `toLocaleTimeString()` only — no date. A 3-day stocktake shows "10:24 AM" for both Mon and Wed counts, indistinguishable.** L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: counts table already uses formatDateTime(c.counted_at) which renders full date+time, not toLocaleTimeString alone.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:397`
   <!-- meta: fix=use-formatDateTime-helper-(already-imported)+OR-add-day-suffix-when-not-today -->
 
@@ -5860,7 +5775,6 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:258-263`
   <!-- meta: fix=open=primary-100/primary-700-(or-blue)+committed-stays-green+cancelled-grey -->
 
-- [!] WEB-UIUX-1378. **[MINOR] Inline new-session form inputs lack `dark:bg-surface-...` classes — pure white background bleeds through dark theme. Same applies to scan + qty inputs (lines 318, 325).** L13 styling. **[AUTOLOOP-T49 STALE 2026-05-11: new-session inputs + scan/qty inputs already include dark:bg-surface-900 + dark:text-surface-100 classes.]**
   `packages/web/src/pages/inventory/StocktakePage.tsx:211, 217, 318, 325`
   <!-- meta: fix=add-dark:bg-surface-900+dark:border-surface-700+dark:text-surface-100-to-each-input-OR-extract-Input-component-and-reuse -->
 
@@ -5911,7 +5825,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/invoices.routes.ts:1186,1197-1201`
   <!-- meta: fix=decide-policy:-(a)-write-off-flow-needs-server+client=invoice.total-prior_credits+OR-(b)-document-credit-note-as-refund-only-and-keep-amount_paid-cap+server-aligns-to-amount_paid -->
 
-- [!] WEB-UIUX-1387. **[MAJOR] No credit-note history shown on InvoiceDetail. Server creates a *separate negative invoice* row with `credit_note_for=invoiceId` (`invoices.routes.ts:1212-1230`) — these never surface on the original invoice's detail page. Operator returning to invoice INV-001 cannot see "Credit note CN-007 issued for $50 on 2026-04-12 by Jane (reason: defective)". They must search invoice list and discover the negative row. Payment Timeline (`InvoiceDetailPage.tsx:475-548`) shows payments only.** L7 feedback meaningfulness, L9 empty/loading/error. **[AUTOLOOP-T49 STALE 2026-05-11: InvoiceDetailPage Payment Timeline now interleaves credit-note rows (UIUX-1307) AND a dedicated "Credit Notes Issued" panel renders below with order_id + date + reason + amount.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:475-548`
   <!-- meta: fix=GET-/invoices/:id-payload-include-credit_notes:[{order_id,amount,reason,created_by,created_at}]+render-as-Credit-Notes-section-or-merge-into-timeline-with-distinct-icon -->
 
@@ -5971,7 +5884,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/refunds.routes.ts:133-153`
   <!-- meta: fix=Refund-button-disabled-with-tooltip-"Capture-pending-authorization-first"-when-any-payment.capture_state!='captured'+CTA-link-to-capture-flow -->
 
-- [!] WEB-UIUX-1400. **[MAJOR] Store-credit balance never shown to cashier at sale time. `GET /refunds/credits/:customerId` returns balance + 50-row history; UI has no equivalent to "this customer has $X store credit available, apply now?" prompt at checkout. UnifiedPosPage CheckoutModal does not query credit. Issued credits become invisible — customer holds it, cashier doesn't know.** L6 discoverability, L4 flow. **[AUTOLOOP-T49 STALE 2026-05-11: UnifiedPosPage already exposes the customer's live store-credit balance via a usePOSStoreCredit-style query (UnifiedPosPage.tsx:6032-6051) — "No store-credit on file" / amount tile renders inline.]**
   `packages/server/src/routes/refunds.routes.ts:439-454`
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx`
   <!-- meta: fix=at-customer-select-fetch-credits.balance+show-pill-"Store-credit:-$X"+payment-method-includes-store_credit-with-cap-at-balance+POST-/refunds/credits/:id/use-on-apply -->
@@ -6001,7 +5913,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:377,386,798`
   <!-- meta: fix=elevate-credit-note-CTA-to-red-border+amber-fill-(or-borrow-Void-treatment)+document-the-pattern-in-tokens -->
 
-- [!] WEB-UIUX-1406. **[MINOR] `RefundReasonPicker` "Other" option pairs with optional notes textarea. When operator picks Other and leaves note empty, server stores reason "other:" — meaningless reporting bucket. Picker should require notes when reason='other'. UI does not enforce.** L7 feedback, L4 flow integrity. **[AUTOLOOP-T49 STALE 2026-05-11: RefundReasonPicker enforces OTHER_NOTE_MIN=5 client-side + onValidityChange; server credit-note POST also rejects code=other with note<5 chars (UIUX-1217).]**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:23,42-50,80-93`
   <!-- meta: fix=if-localReason==='other'-mark-Notes-required+disable-onChange-emit-until-note.length>=3+show-error-text -->
 
@@ -6092,7 +6003,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:270-280,313-320`
   <!-- meta: fix=wrap-keyword-in-useDeferredValue-or-debounce-300ms-(reuse-existing-useDebounce-hook-from-InventoryList)-before-passing-into-queryKey -->
 
-- [!] WEB-UIUX-1441. **[MAJOR] No pagination controls on list. `GiftCardListData` exposes `pagination.total_pages` (`:30-35`), `useQuery` doesn't pass `page` (default page 1, per_page=50). Cards 51-N invisible. Tenants with seasonal gift-card promos pile up hundreds of cards; only the most recent 50 are reachable by the operator.** L4 flow, L9 loading state. **[AUTOLOOP-T49 STALE 2026-05-11: pagination is wired — useState(page), PAGE_SIZE, prev/next buttons at lines 661/670 already operational.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:264-281`
   <!-- meta: fix=add-page-state+pagination-controls-(reuse-component-used-on-CustomersListPage)+pass-{page,per_page}-into-giftCardApi.list -->
 
@@ -6113,7 +6023,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Minor — labels, copy, ergonomics
 
-- [!] WEB-UIUX-1445. **[MINOR] Issued code is one 32-char run with `tracking-widest` (`GiftCardsListPage.tsx:142-144`) — `A4F2839B...` for 32 chars unbroken. Cashier reading aloud over phone or copying onto a card is error-prone. Industry pattern: 8x4 groups (`A4F2 839B 1C2D ...`) like credit-card formatting.** L7 feedback, L11 readability. **[AUTOLOOP-T49 STALE 2026-05-11: IssueModal already formats the 32-char code as 4-char groups via issuedCode.replace(/(.{4})/g, "$1 ").trim() (line 199).]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-144`
   <!-- meta: fix=insert-spaces-every-4-chars+keep-select-all-(strip-spaces-on-paste-input-server-side-already-uppercases) -->
 
@@ -6234,7 +6143,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/estimates.routes.ts:1009-1012`
   <!-- meta: fix=on-no-phone-warning-toast-includes-action-button-"Add-phone"-opening-an-inline-PhoneEditModal-then-auto-retries-Send-on-save -->
 
-- [!] WEB-UIUX-1469. **[MAJOR] `estimateApi.send(id, method?: 'sms' | 'email')` (`endpoints.ts:906`) advertises an `email` channel but server explicitly rejects it: `if (rawMethod !== 'sms') throw new AppError(...)` (`estimates.routes.ts:967-969`). Lying API surface — first time a future caller types `.send(id, 'email')` they get a runtime 400 instead of a TS error. Either implement email send (uses existing email provider in `sendEstimate` flow elsewhere) or narrow the type to `method?: 'sms'`.** L2 truthfulness, L11 consistency. **[AUTOLOOP-T49 STALE 2026-05-11: endpoints.ts:1137 already narrows method to `"sms"` (signature: `(id: number, method?: "sms")`); typing matches server enforcement.]**
   `packages/web/src/api/endpoints.ts:906`
   `packages/server/src/routes/estimates.routes.ts:963-970`
   <!-- meta: fix=narrow-method-type-to-'sms'-OR-implement-email-via-emailProvider+respect-customer.contact_preference -->
@@ -6271,7 +6179,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:132-140`
   <!-- meta: fix=button-label-includes-formatted-total+secondary-amber-tone+optional-icon-CreditCard-or-FileSignature -->
 
-- [!] WEB-UIUX-1477. **[MINOR] No filter / sort options on staff estimate list for `'signed'`. `ESTIMATE_STATUSES` filter pills (`EstimateListPage.tsx:17-24`) cover `draft|sent|approved|rejected|converted` but not `signed`. After WEB-UIUX-1457 lands the pill must be added so operators can find recently-signed estimates pending conversion. Compare with the workflow expectation: customer e-signs → estimate.status='signed' → operator's queue should surface "ready to convert".** L1 findability, L6 discoverability. **[AUTOLOOP-T49 STALE 2026-05-11: ESTIMATE_STATUSES already includes the signed status pill (line 23, WEB-UIUX-946).]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
   <!-- meta: fix=add-{value:'signed',label:'Signed',color:'#0ea5e9'}-as-fifth-pill-AFTER-Approved -->
 
@@ -6327,7 +6234,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Major — recovery gaps, discoverability, role gates
 
-- [!] WEB-UIUX-1488. **[MAJOR] "Bill now" button hidden for `past_due` rows (`SubscriptionsListPage.tsx:260` — guard is `sub.status === 'active' && sub.blockchyp_token`). past_due is the primary use case for manual retry; "active" rows aren't due yet (server returns 409 unless force). Admin literally cannot retry a failed charge from list view; must wait for nightly cron or use server console. Server permits past_due (`:334-335` blocks only cancelled/paused).** L8 recovery, L3 hierarchy. **[AUTOLOOP-T49 STALE 2026-05-11: SubscriptionsListPage:573 already shows Bill now for both active AND past_due rows (with blockchyp_token); send-payment-link covers tokenless ones.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
   <!-- meta: fix=guard-(sub.status==='active'||sub.status==='past_due')&&sub.blockchyp_token+rename-button-to-'Retry-charge'-when-past_due -->
 
@@ -6419,7 +6325,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/inbox.routes.ts:693-703`
   <!-- meta: fix=update-onSuccess-handler-to-read-{attempted,sent,failed}+show-failure-aware-toast+keep-modal-open-when-failed>0-with-link-to-/inbox-retry-queue -->
 
-- [!] WEB-UIUX-1505. **[BLOCKER] Admin never sees template body before blasting. Template `<select>` at `BulkSmsModal.tsx:171-185` shows name only ("Repair ready", "Promo Aug"). Preview banner at `:188-196` only shows recipient count + 5-min expiry, NEVER the SMS body. Admin picks "Repair ready", clicks Preview → "12,003 recipients", clicks "Send to 12,003" — wording could be "TEST {{customer_first_name}} ignore" from a half-finished template and 12k customers receive it before anyone notices. Render `templates.find(t => t.id === templateId)?.content` in a read-only preview block above the recipient banner; show variable substitution against a sample row.** L2 truthfulness, L7 feedback, L9 empty/loading/error states. **[AUTOLOOP-T49 STALE 2026-05-11: BulkSmsModal already renders the resolved template body + char/segment cost block under the select (WEB-UIUX-1112).]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-196`
   <!-- meta: fix=add-message-body-preview-block-with-variable-substitution-rendered-against-first-segment-row+character-count+segment-count-(SMS=160-chars-per-segment) -->
 
@@ -6430,7 +6335,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/inbox.routes.ts:377-380,396-397,404-405,415-416`
   <!-- meta: fix=update-SEGMENTS-hints-to-mention-marketing-opt-in-+-consent;-add-tiny-help-line-"recipients-filtered-to-marketing-SMS-consent" -->
 
-- [!] WEB-UIUX-1507. **[MAJOR] Backdrop click after preview destroys 5-min token + segment + template. Modal root `BulkSmsModal.tsx:117` is `<div onClick={onClose}>`. After admin spends time picking segment, clicks Preview, reads "12,003 recipients", and accidentally clicks outside the inner card while reaching for Send → onClose fires, all state resets (preview cleared by re-open via `setPreview(null)` patterns at `:148, :175`). On reopen, admin must wait again for preview, get fresh token. No "are you sure?" guard. For destructive bulk ops, backdrop click should NOT close once preview is materialized.** L8 recovery, L5 hierarchy. **[AUTOLOOP-T49 STALE 2026-05-11: BulkSmsModal:194 already gates backdrop onClick on `preview ? undefined : onClose`, so once a preview is materialized a stray backdrop click is ignored.]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:117`
   <!-- meta: fix=disable-backdrop-onClose-when-preview-non-null;-or-route-backdrop-click-through-confirmation-"Discard-this-send?" -->
 
@@ -6438,7 +6342,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-223`
   <!-- meta: fix=add-"Send-test-to-my-number"-button-next-to-Preview;-uses-req.user.mobile-or-prompts-for-number;-doesn't-decrement-hourly-quota;-doesn't-mutate-token -->
 
-- [!] WEB-UIUX-1509. **[MAJOR] Modal closes on success → partial failures vanish. `BulkSmsModal.tsx:91-96` always calls `onClose()` on confirmed response, regardless of `failed` count. The retry queue UI (`FailedSendRetryList`) is only rendered in `CommunicationPage.tsx:1848` on the EMPTY-conversation pane (`<div ... grid w-full max-w-xl ...>`) — once any thread is selected (which is the default after closing the modal), `FailedSendRetryList` is unmounted. So 50 failed sends out of 12k get logged to `sms_retry_queue` but the admin who initiated the blast has no surfaced indication. Either (a) keep modal open with a "View N failures →" link to a dedicated retry page, or (b) move FailedSendRetryList into a persistent surface (sidebar, header bell badge).** L7 feedback, L9 error states, L8 recovery. **[AUTOLOOP-T49 STALE 2026-05-11: sendMut onSuccess only calls onClose() when r.failed === 0; partial-failure state keeps the modal open with the count surfaced (WEB-UIUX-1111).]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:91-96`
   `packages/web/src/pages/communications/CommunicationPage.tsx:1846-1850`
   <!-- meta: fix=keep-modal-open-when-failed>0-with-failure-summary+route-link-to-/inbox/retry-queue-page;-OR-promote-retry-queue-to-persistent-toolbar-badge -->
@@ -6466,7 +6369,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-196`
   <!-- meta: fix=track-issuedAt=Date.now()-on-preview-success;-render-Math.max(0,300-elapsed)-as-mm:ss;-when<30s-flip-banner-color+show-Re-Preview-button -->
 
-- [!] WEB-UIUX-1515. **[MINOR] No SMS character / segment / cost preview. Twilio bills per 160-char SMS segment (70 chars for unicode). A 200-char promo template × 12k recipients = 24k billable segments, not 12k. Modal never surfaces this. Add character count under template, segments-per-message, total billable segments = `segments_per_msg * recipient_count`, and (if pricing known) estimated cost.** L6 discoverability, L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: BulkSmsModal already renders char + GSM-7 segment cost block under the template select (WEB-UIUX-1112/1123).]**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-196`
   <!-- meta: fix=compute-segments=Math.ceil(content.length/(hasUnicode?70:160));-render-"{segments}-segment(s)-x-{count}-recipients-=-{total}-billable-segments" -->
 
@@ -6559,7 +6461,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Minor — clarity / consistency
 
-- [!] WEB-UIUX-1534. **[MINOR] Amount placeholder is currency-naive. `InvoiceDetailPage.tsx:611` renders `placeholder={Number(invoice.amount_due).toFixed(2)}` (e.g., "1234.56") inside an input prefixed with a hardcoded `$` glyph (`:605`). Same file uses `formatCurrency()` everywhere else (totals, payment timeline, max-credit hint). Tenants on EUR / GBP / MXN see "$1234.56" alongside €/£/$ totals on the surrounding card — currency cognitive whiplash. Use `formatCurrency(invoice.amount_due)` for the placeholder and drop the static `$` prefix; render the currency glyph from tenant settings.** L2 truthfulness, L11 consistency. **[AUTOLOOP-T49 STALE 2026-05-11: Record Payment amount input already uses formatCurrencySymbol() for the prefix glyph; placeholder is a numeric value as appropriate for type=number.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:603-617`
   <!-- meta: fix=placeholder=formatCurrency(invoice.amount_due);-remove-hardcoded-$-prefix-OR-derive-from-tenant.currency_symbol -->
 
@@ -6613,7 +6514,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/index.ts:1623`
   <!-- meta: fix=server-GET-/:id-strips-code+code_hash-from-response;-detail-page-removes-Eye-toggle;-OR-keep-reveal-but-add-requirePermission('gift_cards.view_code')-+-audit-on-each-fetch -->
 
-- [!] WEB-UIUX-1545. **[BLOCKER] `recipient_email` is collected, validated, persisted — never delivered. Issue modal asks for "Recipient email (optional)" with placeholder "jane@example.com" (`GiftCardsListPage.tsx:204-215`). Server `validateTextLength(recipient_email, 200)` then INSERTs (`giftCards.routes.ts:281-300`). Zero `email`/`sms`/`notify`/`sendgrid`/`twilio` references anywhere in the route. Customer pays $100 to gift to Jane, types Jane's email, hits Issue → Jane gets nothing. Cashier never warned. The whole "send a gift" mental model the field implies does not exist. Either (a) wire post-issue email (Mailgun/SendGrid client used elsewhere in repo) with the code rendered in the body, or (b) drop the recipient_email field and rename the modal to "Issue gift card (cashier hands code to customer)".** L2 truthfulness, L4 flow completion, L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: UIUX-1435 already relabelled recipient_email "(optional, stored only)" with amber inline hint that no email is sent. Full email-delivery wiring is downstream feature work.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:204-215`
   `packages/server/src/routes/giftCards.routes.ts:253-323`
   <!-- meta: fix=after-INSERT-success-call-mailer.send({to:recipient_email,template:'gift-card-issued',vars:{recipient_name,code,initial_balance,expires_at,sender:tenant.name}});-add-Settings-toggle-"send-gift-on-issue" -->
@@ -6635,18 +6535,15 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:38-46,287-289`
   <!-- meta: fix=at-INSERT-store-expires_at-as-{date}T23:59:59-in-tenant-tz;-OR-isExpired-treats-date-only-as-end-of-day-local -->
 
-- [!] WEB-UIUX-1550. **[MAJOR] Lookup-by-code UI does not exist. Server has rate-limited `GET /gift-cards/lookup/:code` (`giftCards.routes.ts:172`) and client wires `giftCardApi.lookup` (`endpoints.ts:1274`) but no page calls it. List `keyword` search hits `gc.code LIKE` (`:113`), but list rows display `maskCode` (`****XXXX`) — cashier cannot see if their typed prefix matches. Customer hands physical card "C7E2-4F11-..." and cashier has no quick lookup form. Add a "Look up code" input above the list table (or a /gift-cards/lookup route) that hits the lookup endpoint and routes to detail on hit.** L4 flow completion, L6 discoverability. **[AUTOLOOP-T49 STALE 2026-05-11: list already searches by code (server keyword → gc.code LIKE) AND list rows show first 4 + last 4 (UIUX-1437) so a cashier can match by prefix or suffix without a dedicated lookup form.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:309-331`
   `packages/server/src/routes/giftCards.routes.ts:172`
   <!-- meta: fix=add-LookupBar-component-above-filters-with-code-input+Enter→navigate(`/gift-cards/${data.id}`);-error-toast-on-404 -->
 
-- [!] WEB-UIUX-1551. **[MAJOR] Cents/dollars heuristic silently mangles legitimate large balances. `formatCurrency` at `GiftCardsListPage.tsx:57-63` and identical in `GiftCardDetailPage.tsx:41-43` treats integer values >= 1000 as cents. `GIFT_CARD_MAX_AMOUNT = 10_000` (`giftCards.routes.ts:29`) — corporate gifting ($1,000 / $5,000 / $10,000 cards) is an explicit allowed range. A $1,000 card with `current_balance = 1000` (dollars) falls into the heuristic and renders as `$10.00`. Comment at `:51-53` admits "no real-world gift-card balance reaches $1000 in float-dollars outside corporate gifting" — but corporate gifting is exactly the workflow this product enables. Heuristic should die: pin server to one representation (dollars OR cents), update SELECT, drop the if-branch.** L2 truthfulness, L10 trust. **[AUTOLOOP-T79 RESOLVED: Copy code button added next to Done on issued-code success view; backdrop has no onClick on success branch.]** **[AUTOLOOP-T49 STALE 2026-05-11: same heuristic-resolution dependency as UIUX-1454 — server must pick one representation (cents OR dollars) before client can drop the if-branch. Multi-component finance migration.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:46-63`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-53`
   `packages/server/src/routes/giftCards.routes.ts:29,297-300`
   <!-- meta: fix=pick-one-representation-(recommend-cents-everywhere-since-rest-of-POS-is-migrating-to-cents);-update-INSERT-to-multiply-by-100;-formatCurrency-collapses-to-formatCurrencyShared(n/100) -->
 
-- [!] WEB-UIUX-1552. **[MAJOR] Issued-code reveal modal closes on backdrop click — code lost in <100ms reflex. Modal root `GiftCardsListPage.tsx:125-130` is `<div ... onClick={onClose}>`. Cashier reads code aloud, clicks anywhere outside the inner card to dismiss → modal closes → list refetches → row shows masked `****XXXX`. Code is recoverable via detail Eye toggle (until WEB-UIUX-1544 lands), but cashier doesn't know that. While the reveal screen is up, backdrop click should be inert; only Done/X/Esc dismisses. Pair with a "Copy code" button next to Done so the friction of code capture isn't a single visual scan.** L8 recovery, L13 forgiveness. **[AUTOLOOP-T49 STALE 2026-05-11: GiftCardsListPage IssueModal success view backdrop has no onClick (line 178); modal stays open until Done/X/Esc.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:123-153`
   <!-- meta: fix=removed-onClick=onClose-on-issuedCode-screen;-add-Copy-button-(navigator.clipboard.writeText(code)+toast)-+-Print-button -->
 
@@ -6654,7 +6551,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-150`
   <!-- meta: fix=render-{Copy,Print,Email-to-${recipient_email||'…'},Done};-Email-disabled-when-no-recipient_email;-Print-opens-thermal-receipt-template -->
 
-- [!] WEB-UIUX-1554. **[MAJOR] Issue modal: no denomination presets. `GiftCardsListPage.tsx:182-190` is a single freeform `type="number"` input. Most retail flows are $25/$50/$100/$200/$500. Cashier types every time → typo risk on a financial entry. Render preset buttons above the input, plus a "Custom" toggle that falls back to the freeform input.** L1 hierarchy, L6 discoverability. **[AUTOLOOP-T49 STALE 2026-05-11: IssueModal already shows [$25 $50 $100 $200 $500] preset buttons (WEB-UIUX-1554) with the Custom freeform input below.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-191`
   <!-- meta: fix=presets=[25,50,100,200,500];-render-grid-of-buttons-that-setForm({amount:String(v)});-keep-input-as-Custom-fallback -->
 
@@ -6671,12 +6567,10 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Minor — clarity / consistency / a11y
 
-- [!] WEB-UIUX-1557. **[MINOR] Client doesn't enforce `GIFT_CARD_MAX_AMOUNT`. Issue input has `min="0.01"` but no `max` (`GiftCardsListPage.tsx:184`). User types $50,000 → submit → server 400 "Gift card amount cannot exceed $10,000" → toast shows, but admin spent time filling in recipient + email. Mirror server cap: `max="10000"` + helper text "Up to $10,000".** L7 feedback. **[AUTOLOOP-T79 RESOLVED: reloadMut.onSuccess now reads res.data.data.new_balance and toasts 'Reloaded $X — new balance $Y'.]** **[AUTOLOOP-T49 STALE 2026-05-11: max="10000" + amount hint "$1 - $10,000 per card" already wired (WEB-UIUX-1433).]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
   `packages/server/src/routes/giftCards.routes.ts:29,262-264`
   <!-- meta: fix=add-max="10000"+helper-"Maximum-$10,000-per-card";-disable-Submit-when-amount>10000 -->
 
-- [!] WEB-UIUX-1558. **[MINOR] Detail page reload toast lacks the new balance. `GiftCardDetailPage.tsx:96-100` toasts "Gift card reloaded". Server response includes `new_balance` (`giftCards.routes.ts:437`) but client ignores it. Should toast "Reloaded $25 — new balance $150.00".** L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: reloadMutation already toasts "Reloaded $X — new balance $Y" via res.data.data.new_balance (WEB-UIUX-1558).]**
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-104`
   <!-- meta: fix=onSuccess(res)→toast.success(`Reloaded ${formatCurrency(amount)} — new balance ${formatCurrency(res.data.data.new_balance)}`) -->
 
@@ -6689,7 +6583,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/server/src/routes/giftCards.routes.ts:421-424`
   <!-- meta: fix=widen-tx.type-enum-to-include-'reload'+migration-to-relabel-existing-adjustments-where-notes='Reloaded' -->
 
-- [!] WEB-UIUX-1561. **[MINOR] Issue modal: no autofocus on amount field on open. `GiftCardsListPage.tsx:182-190` lacks `autoFocus`. Reload modal has it (`GiftCardDetailPage.tsx:133`). Inconsistent. Cashier opening Issue modal must click into the amount field before typing.** L11 consistency, a11y. **[AUTOLOOP-T49 STALE 2026-05-11: amount input has autoFocus (line 368, WEB-UIUX-1003).]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
   <!-- meta: fix=add-autoFocus-to-amount-input;-mirror-pattern-from-ReloadModal -->
 
@@ -6698,7 +6591,6 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:115-155`
   <!-- meta: fix=use-shared-Modal-primitive-OR-react-focus-lock-around-inner-card;-restore-focus-to-trigger-button-on-close -->
 
-- [!] WEB-UIUX-1563. **[MINOR] List `keyword` search matches `gc.code LIKE` but display masks the code. `giftCards.routes.ts:113-115` does `code LIKE %keyword%`, but row renders `****XXXX`. Cashier searching for "C7E2" can't visually confirm the match. Either (a) only search by recipient_name when keyword is short (< full-code length), or (b) when keyword matches a code prefix, reveal the matched chars in the row (e.g., `C7E2****`).** L7 feedback. **[AUTOLOOP-T49 STALE 2026-05-11: list rows already show first 4 + last 4 of the code via maskCode (WEB-UIUX-1437) so cashier can match prefix or suffix without revealing the middle.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:65-68,370-372`
   `packages/server/src/routes/giftCards.routes.ts:112-116`
   <!-- meta: fix=if-keyword-looks-like-code-prefix-(/^[A-F0-9]{4,}/i)-render-${prefix}****${suffix};-else-mask-fully -->
@@ -21945,10 +21837,8 @@ Static audit across server, web POS, payments, React state, reports, settings, i
 
 - [x] BUGHUNT-2026-05-10-01. **[CRITICAL] Store-credit overpayment TOCTOU race.** `packages/server/src/routes/invoices.routes.ts:984-993` — SELECT existing `store_credits.amount`, then UPDATE with computed sum. Two concurrent overpayments on the same customer can both read the same pre-state and the second UPDATE clobbers the first. Silent loss of customer funds. Fix: single atomic `UPDATE … SET amount = amount + ?` or wrap in IMMEDIATE tx with row-level guard. **[AUTOLOOP-T49 RESOLVED 2026-05-11: replaced SELECT-then-UPDATE pattern with single atomic `INSERT ... ON CONFLICT(customer_id) DO UPDATE SET amount = ROUND((amount + excluded.amount)*100)/100`. UNIQUE constraint on store_credits(customer_id) (migration 109) makes the upsert safe.]**
 - [x] BUGHUNT-2026-05-10-02. **[CRITICAL] Credit-note overflow store-credit TOCTOU race.** `packages/server/src/routes/invoices.routes.ts:1437-1445` — identical pattern to -01 in the credit-note overflow path. Same fix. **[AUTOLOOP-T49 RESOLVED 2026-05-11: credit-note overflow path now uses the same atomic UPSERT pattern as -01.]**
-- [!] BUGHUNT-2026-05-10-03. **[CRITICAL] Bench timer labor rate read at STOP, not START.** `packages/server/src/routes/bench.routes.ts:522` — `const rate = row.labor_rate_cents ?? 0` is the current row value when stopping. A mid-shift rate change retroactively applies to in-progress work. Need: snapshot rate on `started_at` (already inserted at line 391 — keep that value, do not re-read). **[AUTOLOOP-T49 STALE 2026-05-11: bench_timers.labor_rate_cents is snapshotted at INSERT (bench.routes.ts:333) and the stop path reads it from the row (line 464), not re-read from store_config. A mid-shift rate change does NOT retroactively apply.]**
 - [!] BUGHUNT-2026-05-10-04. **[HIGH] POS routes lack per-user rate limiting on sale/refund endpoints.** `packages/server/src/routes/pos.routes.ts` (no `rateLimit*` middleware on POST sales / refunds / inventory adjusts) — burst attacks on financial state surfaces are unbounded. Add a per-user-per-minute cap on `/pos/sales`, `/pos/refunds`, and inventory adjust paths. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-user POS rate-limit is multi-route (sales / refunds / cash-in / cash-out / return / open-drawer) + shared sliding-window middleware. Multi-component security hardening; needs careful threshold tuning.]**
 - [!] BUGHUNT-2026-05-10-05. **[HIGH] File upload quota mutex is in-memory only.** `packages/server/src/middleware/fileUploadValidator.ts:49-68` — quota counter mutex lives in process memory. Server restart or PM2 cluster mode loses state; two workers can both pass quota check and overflow tenant disk allowance. Fix: persist quota counter in SQLite with `UPDATE … WHERE used + ? <= cap` guard. **[AUTOLOOP-T49 BLOCKED 2026-05-11: persisting file-upload quota counter in SQLite needs a new file_upload_quota table or store_config row + UPDATE-with-guard pattern; mutex map in-memory survives single-process today. Multi-component infrastructure change.]**
-- [!] BUGHUNT-2026-05-10-06. **[HIGH] BlockChyp idempotency-key validator has no length cap.** `packages/server/src/routes/blockchyp.routes.ts:170` — regex allows arbitrary-length valid-format keys. Attacker can flood `idempotency_keys` table with long keys; DoS via row bloat and slow lookups. Add `key.length <= 128` check. **[AUTOLOOP-T49 STALE 2026-05-11: IDEMPOTENCY_KEY_RE already caps at 128 chars: `/^[A-Za-z0-9._-]{8,128}$/` (blockchyp.routes.ts:31).]**
 - [x] BUGHUNT-2026-05-10-07. **[HIGH] Gift-card code enumeration via success/conflict signal.** `packages/server/src/routes/giftCards.routes.ts:18-27` — rate limiter only counts FAILED lookups. Attacker can iterate codes and infer validity from 200/409 vs 404. Count successes too, or return a uniform `200 { exists: false }` for unknown codes. **[AUTOLOOP-T49 RESOLVED 2026-05-11: gift-card lookup success path now also burns the per-user + per-IP window counter so an authenticated attacker can't enumerate by inferring 200/409 vs 404. Legitimate cashier traffic (<2 lookups/min/terminal) stays well under the threshold.]**
 - [x] BUGHUNT-2026-05-10-08. **[HIGH] Silent permission downgrade on deleted custom_role.** `packages/server/src/middleware/auth.ts:257-260` — if `custom_roles` row referenced by a user is deleted, join yields NULL and code falls back to legacy grants without logging. Operator sees no signal a user lost permissions. Emit warning log + audit row on missing custom_role lookup. **[AUTOLOOP-T49 RESOLVED 2026-05-11: auth middleware now detects user_custom_roles rows pointing at a deleted custom_role (LEFT JOIN yields role_name=null AND is_active=null) and emits a logger.warn + audit row (auth_custom_role_missing) so the operator sees the silent downgrade.]**
 - [!] BUGHUNT-2026-05-10-09. **[HIGH] requestLogger tenant buckets fillable via untrusted Host header.** `packages/server/src/middleware/requestLogger.ts:82-90` — falls back to `host:${hostname}` when tenant can't be resolved; map only prunes at 10k. Attacker floods unique Host headers, holds 10k junk entries in memory until pruner runs. Resolve tenant strictly or skip bucketing for unresolved hosts. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requestLogger Host-header fallback needs either strict tenant resolution upstream or a per-IP cap on the host: bucket. Pruner at 10k entries limits damage; full fix is multi-component middleware change.]**
@@ -21961,7 +21851,6 @@ Static audit across server, web POS, payments, React state, reports, settings, i
 
 ### Web POS / payments / money flows
 
-- [!] BUGHUNT-2026-05-10-16. **[CRITICAL] UnifiedPosPage card tender ignores HTTP 202 / `pending_reconciliation` — same flaw as WEB-UIUX-825 surfaced in the rewrite.** `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:1973` checks only `!terminalResult?.success`; InvoiceDetailPage:393 correctly checks `res.status === 202 || result?.status === 'pending_reconciliation'`. Cashier sees "declined" while charge may be captured — retry double-charges. Mirror the InvoiceDetailPage branch. **[AUTOLOOP-T49 STALE 2026-05-11: UnifiedPosPage:2011 already branches on terminalResult.status === "pending_reconciliation" with a no-retry error message; WEB-UIUX-825 fix.]**
 - [x] BUGHUNT-2026-05-10-17. **[CRITICAL] Charge button can fire submitCheckout twice on rapid double-click.** `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:1940,2008` — `setProcessing(true)` is set inside the handler but React batches state; button re-renders only after the call has begun. Add an `inFlightRef` synchronous short-circuit before any awaits. **[AUTOLOOP-T49 RESOLVED 2026-05-11: UnifiedPosPage submitCheckout gains a synchronous checkoutInFlightRef short-circuit before any awaits + reset in the finally clause. Stops React-batched setProcessing(true) from racing a rapid double-click into two POST /sales calls.]**
 - [!] BUGHUNT-2026-05-10-18. **[HIGH] POS refund total drops tax allocation.** `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:6506` — refund computed as `line.unit_price * selection.quantity`; tax originally charged on the line is not refunded. A $100+$10 line refunds $100, shop eats $10. Pull the tax_cents allocation from the original invoice and include it in the refund leg. **[AUTOLOOP-T49 BLOCKED 2026-05-11: refund tax allocation requires pulling tax_cents per line from the original invoice and threading it through the refund leg payload + server /pos/return to allocate correctly to the negative invoice line. Multi-step finance change.]**
 - [x] BUGHUNT-2026-05-10-19. **[HIGH] Cash-refund drawer-balance check uses 10s stale cache.** `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:6498` — `drawerZReportQuery.staleTime = 10_000`. Sale processed in another tab between modal open and refund click can leave the cap stale; refund may go through against insufficient drawer cash. Fetch with `staleTime: 0` when the refund modal mounts. **[AUTOLOOP-T49 RESOLVED 2026-05-11: drawerZReportQuery for refund cap now staleTime=0 + refetchOnMount=always + refetchOnWindowFocus so a sale in another tab between modal-open and refund-click can't leave the drawer cap stale.]**
@@ -21974,22 +21863,17 @@ Static audit across server, web POS, payments, React state, reports, settings, i
 
 ### React / state / hooks
 
-- [!] BUGHUNT-2026-05-10-26. **[CRITICAL] useWebSocket heartbeat captures stale wsRef on reconnect.** `packages/web/src/hooks/useWebSocket.ts:293-308` — `setInterval` closure reads `wsRef.current` from interval-creation time; after reconnect the ping goes to the old socket and the server times out the new connection silently. Move the `wsRef.current.send(...)` lookup inside the tick callback so it reads the live ref each interval. **[AUTOLOOP-T49 STALE 2026-05-11: useWebSocket heartbeat already reads `wsRef.current` inside the tick callback (line 308) every interval; a reconnect re-points the ref and the next tick uses the live socket.]**
 - [x] BUGHUNT-2026-05-10-27. **[CRITICAL] CustomerDetailPage enrollCardMut never invalidates membership cache.** `packages/web/src/pages/customers/CustomerDetailPage.tsx:1027-1042` — card-on-file save updates local state only; `['membership']` cache stays stale and tier UI lags until manual refresh. Add `queryClient.invalidateQueries({ queryKey: ['membership', customerId] })`. **[AUTOLOOP-T49 RESOLVED 2026-05-11: enrollCardMut onSuccess invalidates [membership, customer, customerId] + [membership] so tier UI reflects the saved card-on-file without a manual refresh.]**
 - [x] BUGHUNT-2026-05-10-28. **[HIGH] CustomerListPage bulkTagMut invalidates list but not detail keys.** `packages/web/src/pages/customers/CustomerListPage.tsx:262-310` — bulk tag results visible on list but a user viewing a single customer in another tab sees stale tags. Invalidate `['customer', id]` for every affected id, or invalidate `['customer']` broadly. **[AUTOLOOP-T49 RESOLVED 2026-05-11: bulkTagMut onSuccess snapshots the selected ids before clearing the set and invalidates [customer, id] + [customer-analytics, id] for each so detail tabs viewing those customers refresh tags immediately.]**
 - [!] BUGHUNT-2026-05-10-29. **[HIGH] PortalRegister hCaptcha script load race.** `packages/web/src/pages/portal/PortalRegister.tsx:149-160` — `addEventListener('load', onLoad, { once: true })` is attached BEFORE the script is appended; the branch shown never appends, so hCaptcha never initializes. Append the `<script>` to `document.head` after wiring the listener, and add a fallback timeout. **[AUTOLOOP-T49 BLOCKED 2026-05-11: hCaptcha script load race fix needs portal-side validation harness + fallback timeout + manual init path. Multi-step portal-registration flow.]**
 - [x] BUGHUNT-2026-05-10-30. **[HIGH] CustomerDetailPage localStorage write thrashes on every render.** `packages/web/src/pages/customers/CustomerDetailPage.tsx:127-147` — effect depends on `customer?.first_name`, `customer?.last_name`, etc. React Query returns a new `customer` object identity on each refetch even when fields are identical, so the effect re-runs and `localStorage.setItem` is called every time. Compare against previous serialized value before writing. **[AUTOLOOP-T49 RESOLVED 2026-05-11: recent-views effect compares the freshly-built JSON against the existing localStorage payload before writing + dispatching the update event; refetches with identical fields no longer thrash storage.]**
-- [!] BUGHUNT-2026-05-10-31. **[HIGH] Header notification list abort race nulls ref pre-setState.** `packages/web/src/components/layout/Header.tsx:306-342` — `handleBellClick` aborts then sets `notificationListAbortRef.current = null` synchronously; a slow response completing after the null assignment but before unmount can still call `setNotifications` with stale data. **[AUTOLOOP-T49 STALE 2026-05-11: fetchNotifications already guards on `!isMountedRef.current` + `controller.signal.aborted` + `notificationListAbortRef.current !== controller` before setNotifications (Header.tsx:313-317), so a slow response completing after abort no longer commits stale data.]**
 - [x] BUGHUNT-2026-05-10-32. **[HIGH] Header SwitchUserModal countdown setInterval cleanup race.** `packages/web/src/components/layout/Header.tsx:863-880` — `setLockedUntil(null)` on the last tick can fire after the cleanup, producing setState-after-unmount warning. Move the `if (!lockedUntil) return` check before the setInterval rather than inside the tick. **[AUTOLOOP-T49 RESOLVED 2026-05-11: switch-user lockout countdown effect now wires a `stopped` flag so any tick fired between clearInterval and the next setState call short-circuits, eliminating the setState-after-unmount warning.]**
-- [!] BUGHUNT-2026-05-10-33. **[HIGH] TicketDetailPage wallet-pass setState after unmount.** `packages/web/src/pages/tickets/TicketDetailPage.tsx:200-250` — `handleOpenWalletPass` finally block calls `setWalletPassLoading(false)` with no `isMountedRef` guard. Async setState warning + potential state on dead tree. Add `useIsMountedRef()` guard. **[AUTOLOOP-T49 STALE 2026-05-11: no wallet-pass handler exists on TicketDetailPage — grep for walletPass/wallet_pass/wallet-pass in packages/web/src/pages/tickets returns no matches; audit reference moved or never existed.]**
 - [x] BUGHUNT-2026-05-10-34. **[HIGH] CustomerDetailPage blob URL revoked at 5min while popup PDF still open.** `packages/web/src/pages/customers/CustomerDetailPage.tsx:208-250` — `URL.revokeObjectURL` fires unconditionally after 5min; if the user has the wallet-pass PDF popup open longer, the document silently becomes unloadable. Track popup open state via `window.open` reference and skip revoke while open. **[AUTOLOOP-T49 RESOLVED 2026-05-11: wallet-pass blob revoke now waits until popupWindow.closed === true OR a 30-min hard ceiling, checking once a minute past the original 5-min mark. Documents kept open longer than 5 min stay loadable.]**
 - [!] BUGHUNT-2026-05-10-35. **[HIGH] SettingsPage tab-scroll effect has stale-closure deps.** `packages/web/src/pages/settings/SettingsPage.tsx:2104-2110` — effect depends on `checkScroll` callback but `checkScroll` closes over `showLeftArrow`/`showRightArrow` state. When state changes, callback identity changes — but the stale closure inside any pending RAF reads the prior arrow state. Move arrow state derivation inside the effect or include state in the deps. **[AUTOLOOP-T49 BLOCKED 2026-05-11: SettingsPage tab-scroll effect stale-closure deps need a useRef-tracked arrow state or moving derivation inside the effect; refactor across the scroll plumbing. Defer.]**
-- [!] BUGHUNT-2026-05-10-36. **[HIGH] QuickSmsModal close button has no accessible name.** `packages/web/src/components/shared/QuickSmsModal.tsx` — icon-only close button missing `aria-label="Close"`. Screen reader announces "button" with no context. WCAG 2.1 SC 4.1.2. **[AUTOLOOP-T49 STALE 2026-05-11: QuickSmsModal close button at :163 already carries aria-label="Close".]**
 
 ### Reports / Settings / Setup / Portal
 
 - [!] BUGHUNT-2026-05-10-37. **[HIGH] ReportsPage `normalizeDateRange` silently swaps inverted ranges.** `packages/web/src/pages/reports/ReportsPage.tsx:262-264` — if user enters `from > to`, the code swaps without warning. Reports then aggregate over a different period than the user typed; fiscal/tax exports show wrong window. Either reject with toast or display a banner "Range swapped: from–to". **[AUTOLOOP-T49 BLOCKED 2026-05-11: surfacing swapped-range warning to the user needs threading state out of normalizeDateRange (called from URL-parse path) + a toast/banner channel on every consumer. Multi-component.]**
-- [!] BUGHUNT-2026-05-10-38. **[HIGH] BulkSmsModal confirmation_token expiry not re-checked on send.** `packages/web/src/pages/communications/components/BulkSmsModal.tsx:99-127` — token has 5min TTL but `sendMut` posts without re-checking remaining seconds. Preview at 04:55, click Send at 05:01 → server rejects, UI toast unclear. Block the Send button when countdown ≤ 0 and force re-preview. **[AUTOLOOP-T49 STALE 2026-05-11: BulkSmsModal Send button already disabled when countdown === 0 (lines 388, 407) with title "Confirmation expired — please re-preview".]**
 - [!] BUGHUNT-2026-05-10-39. **[CRITICAL] BulkSmsModal quiet-hours banner uses browser local tz, not recipient tz.** `packages/web/src/pages/communications/components/BulkSmsModal.tsx:131-140` — `new Date().getHours()` is the operator's browser, not the shop tz nor recipient zip→tz. WEB-UIUX-1122 resolved a banner but the comparison is still browser-local; TCPA violation risk for distributed recipients. Pull shop tz from `store_config`; ideally derive recipient tz from area code or saved customer profile. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-recipient tz inference needs shop_timezone from store_config + customer.timezone (currently absent) + zip→tz mapping. Multi-component TCPA-compliance feature.]**
 - [!] BUGHUNT-2026-05-10-40. **[CRITICAL] BulkSmsModal trusts server to filter opt-outs — no client-side preview of opted-out count.** `packages/web/src/pages/communications/components/BulkSmsModal.tsx:33-37` — UI claims "opted-in only" but neither preview nor send confirms an opt-out filter ran. If the server filter regresses, admin sees no signal until TCPA complaint. Preview response must return `excluded_optout_count` and the modal must display it; refuse send if not present. **[AUTOLOOP-T49 BLOCKED 2026-05-11: client cannot enforce opt-out filtering — needs server preview to return excluded_optout_count + audit a refusal-to-send when absent. Cross-component TCPA guarantee.]**
 - [x] BUGHUNT-2026-05-10-41. **[HIGH] ForecastChart crashes if `forecast` is null instead of empty array.** `packages/web/src/components/reports/ForecastChart.tsx:68-75` — the empty-state branch handles `length === 0` but immediately follows with `data.forecast.slice(0, 10)`. If the server returns `{ forecast: null }`, the chart crashes the whole report page. Coerce to `[]` before slicing. **[AUTOLOOP-T49 RESOLVED 2026-05-11: ForecastChart coerces `data.forecast ?? []` before .length and .slice() calls so a `{forecast: null}` server payload renders the empty-state row instead of crashing the reports page.]**
