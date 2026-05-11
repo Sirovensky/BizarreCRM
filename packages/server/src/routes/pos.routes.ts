@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import {
   validatePrice,
   validateIntegerQuantity,
@@ -12,7 +13,7 @@ import { writeCommission } from '../utils/commissions.js';
 import { accruePaymentPoints } from '../services/notifications.js';
 import { generateOrderId } from '../utils/format.js';
 import { broadcast } from '../ws/server.js';
-import { WS_EVENTS } from '@bizarre-crm/shared';
+import { PERMISSIONS, WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { config } from '../config.js';
@@ -28,6 +29,7 @@ import { buildKitDecrementTxQueries } from './inventory.routes.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
 import { requirePosPinSale, requirePosPinByMode } from '../middleware/requirePosPin.js';
 import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
 import { verifyTenantStripePaymentIntent, refundTenantStripePayment } from '../services/tenantStripe.js';
@@ -190,7 +192,7 @@ router.get('/products', asyncHandler(async (req, res) => {
 }));
 
 // GET /pos/register - current register state
-router.get('/register', asyncHandler(async (req, res) => {
+router.get('/register', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const [cashInRow, cashOutRow, cashPaymentsRow, recentEntries] = await Promise.all([
     adb.get<any>('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_in\' AND DATE(created_at) = DATE(\'now\')'),
@@ -224,7 +226,7 @@ router.get('/register', asyncHandler(async (req, res) => {
 }));
 
 // POST /pos/cash-in
-router.post('/cash-in', asyncHandler(async (req, res) => {
+router.post('/cash-in', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -240,7 +242,7 @@ router.post('/cash-in', asyncHandler(async (req, res) => {
 }));
 
 // POST /pos/cash-out
-router.post('/cash-out', asyncHandler(async (req, res) => {
+router.post('/cash-out', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -1523,6 +1525,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   interface PreparedDevice {
     device_name: string;
     device_type: string | null;
+    device_model_id: number | null;
     imei: string | null;
     serial: string | null;
     security_code: string | null;
@@ -1681,6 +1684,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       preparedDevices.push({
         device_name: dev.device_name ?? '',
         device_type: dev.device_type ?? null,
+        device_model_id: dev.device_model_id ?? null,
         imei: dev.imei ?? null,
         serial: dev.serial ?? null,
         security_code: dev.security_code ?? null,
@@ -1927,10 +1931,47 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
 
   // Check if invoice already exists for this ticket (created during check-in).
   // Existing ticket → UPDATE + DELETE-and-reinsert lines. New ticket → INSERT.
+  // Layer-1 guard: an already-paid invoice MUST NOT be silently re-tendered.
+  // Previous behaviour wiped `amount_paid`, deleted the line items, and added
+  // duplicate payment rows — so the same ticket could be "checked out" any
+  // number of times and the server happily clobbered INV-N each pass. Read
+  // status + paid totals up-front; refuse with 409 when the invoice is
+  // already settled.
   let existingInvoiceId: number | null = null;
+  let existingInvoicePaidCents = 0;
+  let existingInvoiceTotalCents = 0;
+  let existingInvoiceStatus: string | null = null;
+  let existingInvoiceOrderId: string | null = null;
   if (ticketId) {
-    const existingInvoice = await adb.get<AnyRow>('SELECT id FROM invoices WHERE ticket_id = ?', ticketId);
-    if (existingInvoice) existingInvoiceId = existingInvoice.id;
+    const existingInvoice = await adb.get<AnyRow>(
+      'SELECT id, order_id, status, amount_paid, total FROM invoices WHERE ticket_id = ?',
+      ticketId,
+    );
+    if (existingInvoice) {
+      existingInvoiceId = existingInvoice.id;
+      existingInvoiceStatus = String(existingInvoice.status ?? '');
+      existingInvoiceOrderId = existingInvoice.order_id ?? null;
+      existingInvoicePaidCents = roundCents(Number(existingInvoice.amount_paid ?? 0));
+      existingInvoiceTotalCents = roundCents(Number(existingInvoice.total ?? 0));
+    }
+  }
+  if (
+    mode === 'checkout'
+    && existingInvoiceId
+    && existingInvoiceStatus === 'paid'
+  ) {
+    throw new AppError(
+      `Invoice ${existingInvoiceOrderId ?? `#${existingInvoiceId}`} is already paid in full. Refund or void it before re-tendering.`,
+      409,
+      ERROR_CODES.ERR_RESOURCE_CONFLICT,
+      {
+        invoice_id: existingInvoiceId,
+        invoice_order_id: existingInvoiceOrderId,
+        status: existingInvoiceStatus,
+        amount_paid_cents: existingInvoicePaidCents,
+        total_cents: existingInvoiceTotalCents,
+      },
+    );
   }
 
   // POS7 safety net: if the flow somehow reaches here without a customerId
@@ -2184,17 +2225,18 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     for (const d of preparedDevices) {
       txQueries.push({
         sql: `
-          INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
+          INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, imei, serial, security_code,
                                       color, network, status_id, assigned_to, service_id, service_name, price, line_discount,
                                       tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
                                       due_on, device_location, additional_notes, pre_conditions, post_conditions,
                                       created_at, updated_at)
-          VALUES (${TICKET_ID_SQL}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (${TICKET_ID_SQL}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         params: [
           ticketIdParam(),
           d.device_name,
           d.device_type,
+          d.device_model_id,
           d.imei,
           d.serial,
           d.security_code,
@@ -2274,6 +2316,19 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
 
   // 5b. Invoice (create or update)
   if (existingInvoiceId) {
+    // Layer-2: accumulate prior amount_paid with this run's tendered amount
+    // so installments / additional payments don't clobber earlier ones. The
+    // legacy code wrote `amount_paid = paidAmount`, throwing away every prior
+    // payment. We're guaranteed at this point that the invoice is NOT 'paid'
+    // (the Layer-1 guard above bails on that), so combining is safe.
+    const combinedPaid = roundCents(existingInvoicePaidCents + (isPaid ? paidAmount : 0));
+    const cappedPaid = Math.min(combinedPaid, invoiceTotal);
+    const remainingDue = roundCents(Math.max(0, invoiceTotal - cappedPaid));
+    const nextStatus = cappedPaid >= invoiceTotal && invoiceTotal > 0
+      ? 'paid'
+      : cappedPaid > 0
+        ? 'partial'
+        : 'unpaid';
     txQueries.push({
       sql: `
         UPDATE invoices SET
@@ -2287,9 +2342,9 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         discount,
         roundedTax,
         invoiceTotal,
-        isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
-        isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
-        isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
+        cappedPaid,
+        remainingDue,
+        nextStatus,
         now(),
         existingInvoiceId,
       ],
@@ -2975,18 +3030,10 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
 // ==================== ENR-POS4: Cash drawer integration ====================
 // POST /pos/open-drawer — sends a command to open the cash drawer
 // For now, logs the event and returns success. Actual hardware integration is per-deployment.
-router.post('/open-drawer', asyncHandler(async (req, res) => {
+router.post('/open-drawer', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const { reason } = req.body;
-
-  // @audit-fixed: cash drawer is a physical-security gate. Previously ANY
-  // authenticated user (e.g. a kiosk-mode customer-portal session) could call
-  // POST /pos/open-drawer and pop the till. Restrict to admin/manager/cashier.
-  const role = req.user?.role;
-  if (role !== 'admin' && role !== 'manager' && role !== 'cashier') {
-    throw new AppError('Only admin/manager/cashier can open the cash drawer', 403);
-  }
 
   // Log the drawer open event to cash_register table
   await adb.run(`
