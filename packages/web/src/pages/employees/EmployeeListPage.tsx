@@ -134,7 +134,8 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
   // WEB-UIUX-1252: locationId is the operator's selected punch location;
   // null when there is one active location (server falls back to user's
   // home_location_id / global default).
-  onSubmit: (pin: string, locationId: number | null) => void;
+  // WEB-UIUX-1261: notes is the optional clock-out memo (clock-in ignores it).
+  onSubmit: (pin: string, locationId: number | null, notes: string | null) => void;
   isPending: boolean;
   // WEB-UIUX-1262: parent passes lockout info parsed from server rate-limit error
   lockedUntilProp?: Date | null;
@@ -164,6 +165,10 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
     // Re-default once locations resolve.
     if (locationId == null && defaultLocationId != null) setLocationId(defaultLocationId);
   }, [defaultLocationId, locationId]);
+  // WEB-UIUX-1261: optional clock-out memo. Hidden on clock-in to keep the
+  // common-case PIN entry uncluttered; server-side, clock-in route doesn't
+  // accept this field anyway.
+  const [notes, setNotes] = useState('');
   // WEB-UIUX-902: canonical role gate via useHasRole.
   const isAdmin = useHasRole('admin');
   // WEB-UIUX-1262: rate-limit lockout countdown state (seeded from parent prop)
@@ -277,7 +282,9 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
                     // WEB-UIUX-1253: PIN is 4–6 digits; do NOT auto-submit at length 4 because
                     // the employee may still be typing a 5- or 6-digit PIN. Submit only on
                     // Enter when PIN is at max length (6); the explicit Submit button covers all lengths.
-                    if (e.key === 'Enter' && pin.length === 6) onSubmit(pin, locationId);
+                    if (e.key === 'Enter' && pin.length === 6) {
+                      onSubmit(pin, locationId, action === 'clock-out' ? (notes.trim() || null) : null);
+                    }
                   }}
                   placeholder="4-6 digit PIN"
                   autoFocus
@@ -300,6 +307,32 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
               <p id="pin-modal-hint" className="mt-1 text-xs text-surface-500 dark:text-surface-400">
                 4–6 digit PIN (digits only)
               </p>
+              {/* WEB-UIUX-1261: optional clock-out memo. Hidden on clock-in
+                  to keep the common-case PIN entry uncluttered; the server
+                  clock-in route ignores `notes` anyway. */}
+              {action === 'clock-out' && (
+                <div className="mt-3">
+                  <label
+                    htmlFor="pin-modal-notes"
+                    className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300"
+                  >
+                    Shift note (optional)
+                  </label>
+                  <textarea
+                    id="pin-modal-notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value.slice(0, 1000))}
+                    disabled={!!lockedUntil}
+                    rows={2}
+                    maxLength={1000}
+                    placeholder="e.g. covered for sick teammate, client meeting ran late"
+                    className="w-full resize-none rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  />
+                  <p className="mt-0.5 text-right text-[10px] text-surface-400">
+                    {notes.length}/1000
+                  </p>
+                </div>
+              )}
               {/* WEB-UIUX-1252: multi-location punch picker. Single-location
                   stores never see this row; server falls back to the user's
                   home_location_id when locationId is null. */}
@@ -361,7 +394,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
             </Link>
           ) : null}
           <button type="button"
-            onClick={() => onSubmit(pin, locationId)}
+            onClick={() => onSubmit(pin, locationId, action === 'clock-out' ? (notes.trim() || null) : null)}
             disabled={!employee.has_pin || pin.length < 4 || isPending || !!lockedUntil}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
@@ -708,8 +741,8 @@ export function EmployeeListPage() {
 
   // Clock out mutation
   const clockOutMutation = useMutation({
-    mutationFn: ({ id, pin, locationId }: { id: number; pin: string; locationId: number | null }) =>
-      employeeApi.clockOut(id, pin, locationId ?? undefined),
+    mutationFn: ({ id, pin, locationId, notes }: { id: number; pin: string; locationId: number | null; notes: string | null }) =>
+      employeeApi.clockOut(id, pin, locationId ?? undefined, notes ?? undefined),
     onSuccess: (res: any) => {
       // WEB-UIUX-1256: surface total hours banked + (when available)
       // clock-in time so the worker has explicit confirmation of what
@@ -741,12 +774,12 @@ export function EmployeeListPage() {
     },
   });
 
-  const handlePinSubmit = (pin: string, locationId: number | null) => {
+  const handlePinSubmit = (pin: string, locationId: number | null, notes: string | null) => {
     if (!pinModal) return;
     if (pinModal.action === 'clock-in') {
       clockInMutation.mutate({ id: pinModal.employee.id, pin, locationId });
     } else {
-      clockOutMutation.mutate({ id: pinModal.employee.id, pin, locationId });
+      clockOutMutation.mutate({ id: pinModal.employee.id, pin, locationId, notes });
     }
   };
 

@@ -1185,7 +1185,16 @@ export const employeeApi = {
   list: () => api.get('/employees'),
   get: (id: number) => api.get(`/employees/${id}`),
   clockIn: (id: number, pin: string, location_id?: number) => api.post(`/employees/${id}/clock-in`, { pin, ...(location_id !== undefined ? { location_id } : {}) }),
-  clockOut: (id: number, pin: string, location_id?: number) => api.post(`/employees/${id}/clock-out`, { pin, ...(location_id !== undefined ? { location_id } : {}) }),
+  // WEB-UIUX-1261: clock-out accepts an optional notes string so a tech /
+  // manager can append shift context ("covered for sick teammate", "client
+  // meeting ran late"). Server caps at 1000 chars and treats empty strings
+  // as null so a blank text area doesn't overwrite a prior note.
+  clockOut: (id: number, pin: string, location_id?: number, notes?: string) =>
+    api.post(`/employees/${id}/clock-out`, {
+      pin,
+      ...(location_id !== undefined ? { location_id } : {}),
+      ...(notes !== undefined ? { notes } : {}),
+    }),
   hours: (id: number, params?: { from_date?: string; to_date?: string }) =>
     api.get(`/employees/${id}/hours`, { params }),
   commissions: (id: number, params?: { from_date?: string; to_date?: string }) =>

@@ -412,7 +412,21 @@ router.post(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
-    const { pin, notes } = req.body;
+    const { pin, notes: rawNotes } = req.body;
+    // WEB-UIUX-1261: cap notes at 1000 chars so a runaway paste from the PIN
+    // modal can't bloat clock_entries.notes. Empty / whitespace-only strings
+    // collapse to null so we don't overwrite a prior note with blank text.
+    let notes: string | null | undefined;
+    if (rawNotes == null) {
+      notes = undefined;
+    } else if (typeof rawNotes !== 'string') {
+      throw new AppError('notes must be a string', 400);
+    } else {
+      const trimmed = rawNotes.trim();
+      if (trimmed.length === 0) notes = null;
+      else if (trimmed.length > 1000) throw new AppError('notes must be ≤ 1000 characters', 400);
+      else notes = trimmed;
+    }
 
     if (req.user?.role !== 'admin' && req.user?.id !== id) {
       throw new AppError('Can only clock yourself out', 403);
