@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi, customerApi, ticketApi, invoiceApi, expenseApi, rolesApi } from '@/api/endpoints';
 import type { RolePermissionEntry, RoleRecord } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { DEFAULT_PRIMARY_ACCENT } from '@/utils/themeAccent';
@@ -1544,7 +1545,8 @@ function UsersTab() {
   });
 
   const currentUser = useAuthStore((s) => s.user);
-  const isAdminUser = currentUser?.role === 'admin';
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdminUser = useHasRole('admin');
 
   const { data: rolePermissionData, isLoading: rolePermissionsLoading } = useQuery({
     queryKey: ['roles', 'settings-permission-matrix'],
@@ -2069,8 +2071,8 @@ function SettingsPageInner() {
   // tab still mounted on click, and the 403 toast was the user's first
   // signal that they were not supposed to see it. Filter at the nav
   // layer plus guard the render path below for defense-in-depth.
-  const currentUserRole = useAuthStore((s) => s.user?.role);
-  const isAdmin = currentUserRole === 'admin';
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   const filteredTabs = TABS.filter((t) => (t.key === 'audit-logs' ? isAdmin : true));
 
   // WEB-FAE-005 (Fixer-B21 2026-04-25): if a non-admin deep-links to

@@ -10,6 +10,7 @@ import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -138,6 +139,8 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
   const [pin, setPin] = useState('');
   // WEB-UIUX-1257: need current user role to show the right no-PIN guidance
   const { user: currentUser } = useAuthStore();
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   // WEB-UIUX-1262: rate-limit lockout countdown state (seeded from parent prop)
   const [lockedUntil, setLockedUntil] = useState<Date | null>(lockedUntilProp ?? null);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(attemptsRemainingProp ?? null);
@@ -213,7 +216,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
           {!employee.has_pin ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
               <p className="font-semibold">PIN required to clock in/out.</p>
-              {currentUser?.role === 'admin' ? (
+              {isAdmin ? (
                 <p className="mt-1">
                   {employee.first_name} {employee.last_name} has no PIN set.{' '}
                   <Link
@@ -284,7 +287,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
         {/* WEB-UIUX-1274: header X already closes. Footer secondary slot:
             when no PIN + admin → "Set PIN" link; otherwise no Cancel button. */}
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
-          {!employee.has_pin && currentUser?.role === 'admin' ? (
+          {!employee.has_pin && isAdmin ? (
             <Link
               to={`/settings/users?employee=${employee.id}`}
               onClick={onClose}
@@ -566,6 +569,8 @@ export function EmployeeListPage() {
   // WEB-UIUX-1259: client-side search filter (name + email substring)
   const [searchQuery, setSearchQuery] = useState('');
   const { user: currentUser } = useAuthStore();
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   // WEB-UIUX-1262: rate-limit lockout state parsed from server error response
   const [pinLockedUntil, setPinLockedUntil] = useState<Date | null>(null);
   const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState<number | null>(null);
@@ -766,6 +771,8 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
   onToggle: () => void;
   onClockAction: (action: 'clock-in' | 'clock-out') => void;
 }) {
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   // WEB-S6-033: use list-level fields; only fetch detail when expanded.
   const isClockedIn = !!(employee.is_clocked_in);
   const weeklyHours = Number(employee.weekly_hours ?? 0);
@@ -837,7 +844,7 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
               may only clock themselves in/out. Disable the button and show a tooltip when
               the current user is not an admin and this row is a different employee. */}
           {(() => {
-            const canClock = currentUser?.role === 'admin' || currentUser?.id === employee.id;
+            const canClock = isAdmin || currentUser?.id === employee.id;
             return (
               <span title={canClock ? undefined : 'Only admins can clock other employees'}>
                 <button

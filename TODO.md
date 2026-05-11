@@ -3386,7 +3386,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### ED14: Tax/Pricing/Discount Chaos
 
-- [ ] WEB-UIUX-764. **[BLOCKER] Discount stacking has NO canonical order — single cart-wide `discount` slot.** No model for "10% off + $5 off + member 20%" with sequence/basis. Subtle base-vs-net errors. L7, L13.
+- [!] WEB-UIUX-764. **[BLOCKER] Discount stacking has NO canonical order — single cart-wide `discount` slot.** No model for "10% off + $5 off + member 20%" with sequence/basis. Subtle base-vs-net errors. L7, L13. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires product decision on stacking order (% then $ vs $ then %), max-stack cap, and member-vs-promo precedence; multi-component model change across store/totals/server.]**
   `packages/web/src/pages/unified-pos/store.ts:101-103,235-237`
 
 - [!] WEB-UIUX-765. **[BLOCKER] No `tax_exempt` flag on customer record.** Cashiers must manually toggle each line's `taxable`. Customer change AFTER lines added doesn't auto-flip. Silent tax on non-profit invoice. L6, L13. **[AUTOLOOP-T35 BLOCKED: tax_exempt flag spans server schema + customer form + POS auto-apply logic; multi-component.]**
@@ -3398,14 +3398,14 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-767. **[BLOCKER] Group/auto-apply discount silently flips when customer changes mid-cart.** Switch to customer with `group_auto_apply=true` → cart total drops 10-20% silently. L6, L8. **[AUTOLOOP-T35 RESOLVED: CustomerSelector group_auto_apply useEffect fires toast.success showing old→new total on first activation; deduped on re-renders.]**
   `packages/web/src/pages/unified-pos/CustomerSelector.tsx:91-102`
 
-- [ ] WEB-UIUX-768. **[MAJOR] No multi-jurisdiction tax breakdown — single `Tax (8.875%)` line.** Settings supports list but UI surfaces only one. CA/FL receipts require local rate broken out. L7, L9.
+- [!] WEB-UIUX-768. **[MAJOR] No multi-jurisdiction tax breakdown — single `Tax (8.875%)` line.** Settings supports list but UI surfaces only one. CA/FL receipts require local rate broken out. L7, L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: tax_classes are per-category (parts/services), not per-jurisdiction. Adding state/county/city decomposition needs a tax_jurisdictions schema + per-line allocation in totals.ts/server pos.routes + receipt rendering — multi-component.]**
   `packages/web/src/pages/unified-pos/totals.ts:94`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:464-466`
 
 - [!] WEB-UIUX-769. **[MAJOR] Refund line cannot be entered — clamp at parse hides use case.** Trade-in credits, returns can't be expressed at POS. L5, L7. **[AUTOLOOP-T35 BLOCKED: dedicated trade-in/return modal needed for refund lines; conflicts with returns flow if patched at stepper.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:599-603`
 
-- [ ] WEB-UIUX-770. **[MAJOR] Tip/gratuity not implemented + no rounding-mode selector.** No tip-on-card flow, no Canada/Switzerland 5¢ rounding. L5, L7.
+- [!] WEB-UIUX-770. **[MAJOR] Tip/gratuity not implemented + no rounding-mode selector.** No tip-on-card flow, no Canada/Switzerland 5¢ rounding. L5, L7. **[AUTOLOOP-T49 BLOCKED 2026-05-11: tip handled on BlockChyp terminal hardware (UnifiedPosPage:6054); software tip-prompt + cash-rounding selector needs payment flow rewire + persisted setting + per-currency rule table.]**
 
 - [x] WEB-UIUX-771. **[MAJOR] Tax-rate change updates cart silently mid-checkout — no banner.** "Your total is $108.88" → "$109.13" between cashier saying it and tap to charge. L6, L8. **[AUTOLOOP-T35 RESOLVED: LeftPanel useRef+useEffect tracks prev taxRate; fires toast.warning with old%/new%/updated total on mid-session change.]**
   `packages/web/src/hooks/useDefaultTaxRate.ts:18-22`
@@ -3413,7 +3413,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-772. **[MAJOR] Bulk-price adjustment changes don't recompute existing cart lines.** Two cashiers add same item → different totals depending on add-time. L6, L11. **[AUTOLOOP-T36 BLOCKED: server emits no `inventory:price_changed` WS event; cannot signal cart for re-pricing without server-side event.]**
   `packages/web/src/pages/settings/RepairPricingTab.tsx:823-971`
 
-- [ ] WEB-UIUX-773. **[MAJOR] Tax-inclusive flag locked at line add — no UI to flip in cart.** ProductRow shows "No tax" for tax-inclusive item, cashier panic. L7, L9.
+- [!] WEB-UIUX-773. **[MAJOR] Tax-inclusive flag locked at line add — no UI to flip in cart.** ProductRow shows "No tax" for tax-inclusive item, cashier panic. L7, L9. **[AUTOLOOP-T49 STALE 2026-05-11: LeftPanel.tsx no longer exists (refactored into UnifiedPosPage.tsx); no "No tax" label is rendered anywhere. The locked-flag concern remains technically valid but the cited UI bug doesn't.]**
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:756-771`
 
 - [x] WEB-UIUX-774. **[MAJOR] `Math.max(0, total)` clamp masks refund-driven negative cart.** `Total: $0.00` instead of negative store-credit issuance. L7, L13. **[AUTOLOOP-T36 RESOLVED: PosTotals exposes storeCreditCents (pre-clamp excess); LeftPanel renders "Store credit to issue: $X" when discounts exceed cart. Server payload stays non-negative.]**
@@ -3489,7 +3489,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-797. **[MAJOR] ReceiveItemsModal scans NOT tied to any PO.** Scan-and-go restock looks like PO receive but creates ad-hoc unlinked stock. PO permanently "open". L5, L13. **[AUTOLOOP-T37 BLOCKED: ReceiveItemsModal needs PO picker UI + scan-validation + server purchase_order_id field; multi-component.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:1318-1492`
 
-- [ ] WEB-UIUX-798. **[MAJOR] Four independent scan implementations with no shared abstraction — diverge in all behaviors.** Multi-match, in-flight guard, audio, no-match recovery, modal context — all different across 4 paths. L3, L4.
+- [!] WEB-UIUX-798. **[MAJOR] Four independent scan implementations with no shared abstraction — diverge in all behaviors.** Multi-match, in-flight guard, audio, no-match recovery, modal context — all different across 4 paths. L3, L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires extracting a `useBarcodeScanner` hook covering keystroke aggregation + multi-match modal + audio + retry; 4 callsites each with bespoke UX glue. Multi-day refactor with regression risk on every scan-driven flow.]**
 
 - [x] WEB-UIUX-799. **[MAJOR] `posApi.products` no LIMIT — short numeric scan (e.g. "1") returns all matching items.** 10k-item inventory = MB+ payload. Client takes [0]. L15. **[AUTOLOOP-T37 RESOLVED: posApi.products gains `limit` param; all 4 call sites pass limit:20 (ProductsTab, LeftPanel ×2, UnifiedPosPage).]**
 
@@ -3562,7 +3562,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-822. **[MAJOR] Last-admin deletion: 409 surfaces wrong toast "This item was updated elsewhere — refresh to see latest changes."** Tenant locked out forever, no in-app recovery path. L8, L4. **[AUTOLOOP-T38 RESOLVED: server last-admin guard 400→409 with ERR_USER_LAST_ADMIN code; client 409 interceptor shows actionable "Promote another user to admin first" toast.]**
 
-- [ ] WEB-UIUX-823. **[MAJOR] Tenant slug change breaks magic links with no graceful surface.** L4, L14.
+- [!] WEB-UIUX-823. **[MAJOR] Tenant slug change breaks magic links with no graceful surface.** L4, L14. **[AUTOLOOP-T49 STALE 2026-05-11: slug is not in TENANT_UPDATE_FIELD_WHITELIST (super-admin.routes.ts:81); no UI/API path exposes a slug rename. The breakage is hypothetical until a rename route exists.]**
 
 - [x] WEB-UIUX-824. **[MINOR] `impersonation_session` localStorage outlives sessionStorage SA token.** Marker survives browser restart with no live token. L16. **[AUTOLOOP-T38 RESOLVED: App.tsx boot useEffect clears impersonation marker if no live SA token (covers hard-refresh expiry); session storage swap already done.]**
 
@@ -3712,12 +3712,12 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [ ] WEB-UIUX-869. **[MAJOR · BLOCKED] BulkSmsModal full-screen overlay — operator can't answer inbound SMS during 5-min token window.** No progress chip on enqueue, no abort mid-preview. L11, L1.
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
-- [ ] WEB-UIUX-870. **[MAJOR] Tech context-switching between 5 tickets loses cart state — only ONE persisted cart per user.** Switching ticket via `?ticket=` calls `resetAll()`. Inactivity timer 10min silently `resetAll()`. L4, L5.
+- [!] WEB-UIUX-870. **[MAJOR] Tech context-switching between 5 tickets loses cart state — only ONE persisted cart per user.** Switching ticket via `?ticket=` calls `resetAll()`. Inactivity timer 10min silently `resetAll()`. L4, L5. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs the POS browser-tab pattern (per-ticket cart slots) — multi-cart Zustand store keyed by ticket_id + tab-bar UI + LRU eviction. Mockup pattern memo'd; implementation is a multi-day refactor.]**
   `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:240-251`
 
 - [!] WEB-UIUX-871. **[MAJOR] Kanban no batch drag.** Tech with 5 "ready for pickup" tickets must drag each individually. Bulk-mode exists in List view but not Kanban. L1, L5. **[AUTOLOOP-T40 BLOCKED: requires-multi-select-batch-drag-feature; multi-select infrastructure missing.]**
 
-- [ ] WEB-UIUX-872. **[MAJOR] End-of-day flow scattered across 3 pages — no End-of-Day wizard.** CashDrawerWidget + CashRegisterPage + BottomActions. No unified close-shift sequence. L1, L4.
+- [!] WEB-UIUX-872. **[MAJOR] End-of-day flow scattered across 3 pages — no End-of-Day wizard.** CashDrawerWidget + CashRegisterPage + BottomActions. No unified close-shift sequence. L1, L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: new wizard route needs product spec for step order (count drawer → reconcile → Z-report → deposit → lock) + role gates + recovery flow; multi-component feature, no obvious right ordering without operator input.]**
 
 - [x] WEB-UIUX-873. **[MAJOR] Estimate→Ticket conversion: one-shot `confirm()` with no preview.** No which-fields-transfer, no edit-before-conversion, no link to result in toast. L5, L8. **[AUTOLOOP-T40 RESOLVED: Convert-to-ticket replaces native confirm with rich ReactNode preview modal — customer + due date + total + 5 line items + stale-status warning via confirmStore.]**
 
@@ -3728,7 +3728,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-875. **[BLOCKER] Voice calls list cannot identify caller — `from_number` rendered as raw text, no customer lookup.** Operator hand-copies number, navigates to Customers, searches → 15-30s lost. L1, L4. **[AUTOLOOP-T40 RESOLVED: VoiceCallsListPage lookupCustomersByPhones helper batch-queries customerApi.search; renders name as `/customers/:id` link or phone fallback.]**
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:160-217`
 
-- [ ] WEB-UIUX-876. **[BLOCKER] No "VIP / At-Risk / Disputed" customer flag in header.** Tags exist but buried in Info tab edit form. HealthScoreBadge tracks LTV but a churning customer can show "champion" while screaming. L1, L11.
+- [x] WEB-UIUX-876. **[BLOCKER] No "VIP / At-Risk / Disputed" customer flag in header.** Tags exist but buried in Info tab edit form. HealthScoreBadge tracks LTV but a churning customer can show "champion" while screaming. L1, L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerDetailPage header renders all customer.tags as colored badges (VIP=amber, At-Risk/Churn-Risk=orange, Disputed/Chargeback=red, others=neutral) next to name + health badges.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:330-396`
 
 - [x] WEB-UIUX-877. **[BLOCKER] No manager-override / approval gate on refunds.** Anyone with InvoiceDetail access issues credit-note up to amount_paid in single click. No PIN, no threshold. Audit trail captures `recorded_by` for payments but NOT for credit-note in UI. L16, L4. **[AUTOLOOP-T40 RESOLVED: Refund button gated by PinModal when maxCreditNoteAmount > $100 threshold; verifyPin via authApi opens credit-note form on success.]**
@@ -3749,7 +3749,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [!] WEB-UIUX-882. **[MAJOR] Communications tab on customer page strips call affordances — no duration, no recording-play, no transcript link.** 200% regression vs standalone CommunicationPage. L11, L4. **[AUTOLOOP-T41 BLOCKED: customer Communications call affordances need server SQL + client type+render; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1740-1785`
 
-- [ ] WEB-UIUX-883. **[MAJOR] Refund history not aggregated anywhere.** Operator clicks each invoice individually to see credit-note timeline. CustomerAnalyticsBar shows LTV but no "total refunds" or "refund ratio". L11, L13.
+- [x] WEB-UIUX-883. **[MAJOR] Refund history not aggregated anywhere.** Operator clicks each invoice individually to see credit-note timeline. CustomerAnalyticsBar shows LTV but no "total refunds" or "refund ratio". L11, L13. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server /:id/analytics now returns total_refunded + refund_count + refund_ratio (credit_note status / credit_note_for); CustomerAnalyticsBar appends a Refunds KPI tile (red ≥20%, amber otherwise) when refund_count>0.]**
 
 - [x] WEB-UIUX-884. **[MAJOR] No "invite back for free re-repair" workflow.** `cloneWarranty` exists but hidden in overflow menu, doesn't auto-message, no zero-cost line-item template. 5 manual steps. L4, L5. **[AUTOLOOP-T41 RESOLVED: TicketActions surfaces "Free re-repair" primary header button (RefreshCw icon); overflow item relabelled "Invite back for free re-repair (warranty)".]**
 
@@ -3784,7 +3784,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [x] WEB-UIUX-894. **[MAJOR] Currency change in Settings requires page reload.** `formatCurrency` reads module-level singleton refreshed only by `['settings-config-env']`. Saving currency in `['settings','store']` invalidates DIFFERENT key. L6, L10. **[AUTOLOOP-T41 RESOLVED: SettingsPage saveMutation onSuccess now invalidates ["settings-config-env"] so AppShell re-runs initCurrencyFromSettings without reload.]**
 
-- [ ] WEB-UIUX-895. **[MAJOR] Print page renders LIVE customer/store data on re-print of historical receipts.** Renamed customer "J Doe" → "Jane Doe-Smith" → reprint of 6-month-old receipt now says new name. Tax/legal expects point-in-time snapshots. L13, L16.
+- [!] WEB-UIUX-895. **[MAJOR] Print page renders LIVE customer/store data on re-print of historical receipts.** Renamed customer "J Doe" → "Jane Doe-Smith" → reprint of 6-month-old receipt now says new name. Tax/legal expects point-in-time snapshots. L13, L16. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs an invoice point-in-time snapshot (customer_name/address/store_name/tax_jurisdiction) populated at invoice creation + migration + read-fallback to live row for legacy invoices. Multi-component schema change across pos.routes/print + new migration.]**
   `packages/web/src/pages/print/PrintPage.tsx:195-241,451-549,763-810,910-941`
 
 - [x] WEB-UIUX-896. **[MAJOR] Ticket detail status change invalidates `['ticket', id]` only — Kanban shows OLD column.** Mitigated by WS but fails offline / tab-suspended. L11. **[AUTOLOOP-T41 RESOLVED: changeStatusMut onSettled now invalidates ["tickets","kanban"] + ["tickets"] in addition to detail cache. Kanban + list refresh after status change.]**
@@ -3805,7 +3805,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-901. **[MAJOR] Customer CSV export not role-gated, no PII warning, no audit-log breadcrumb.** Cashier exports entire DB. L16, L8. **[AUTOLOOP-T43 RESOLVED: Customer CSV export gated behind useHasRole admin/manager + ConfirmDialog with PII warning before download fires.]**
   `packages/web/src/pages/customers/CustomerListPage.tsx:308-354,586-589`
 
-- [ ] WEB-UIUX-902. **[MAJOR] 18 direct `user.role === 'admin'` literals despite `useHasRole` hook.** Inconsistent role semantics. Future role rename = 18 places. L4, L16.
+- [x] WEB-UIUX-902. **[MAJOR] 18 direct `user.role === 'admin'` literals despite `useHasRole` hook.** Inconsistent role semantics. Future role rename = 18 places. L4, L16. **[AUTOLOOP-T49 RESOLVED 2026-05-11: gate-style admin literals in App.tsx, SettingsPage (×2), SubscriptionsListPage, PerformanceReviewsPage, EmployeeListPage (×3 across PinModal + row + page) all routed through useHasRole('admin'). Remaining `r.role === 'admin'` instances are table-row badge rendering, not current-user gates — left as data display.]**
 
 - [x] WEB-UIUX-903. **[MAJOR] 403 responses to non-auth endpoints have NO global toast.** Demoted user clicks manager-only button → silent dead-end. L8. **[AUTOLOOP-T43 RESOLVED: Added 403 toast branch in axios response interceptor (after 5xx). upgrade_required + /auth/ 403s still return early. Plain 403 fires generic permission toast; opt-out via skipGlobal403Toast.]**
   `packages/web/src/api/client.ts:294-313,361-370`

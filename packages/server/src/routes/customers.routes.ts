@@ -1864,13 +1864,35 @@ router.get(
       WHERE t.customer_id = ? AND t.is_deleted = 0
     `, id);
 
+    // WEB-UIUX-883: aggregate refund history per customer. Credit notes are
+    // tracked either by status='credit_note' or by credit_note_for pointing
+    // to the original invoice (legacy + manual refund path). `i.total` is
+    // negative on credit notes, so we sum ABS to expose a positive "refunded"
+    // figure and a ratio against gross lifetime_value.
+    const refundStats = await adb.get<any>(`
+      SELECT
+        COUNT(*) AS refund_count,
+        COALESCE(SUM(ABS(total)), 0) AS total_refunded
+      FROM invoices
+      WHERE customer_id = ?
+        AND (status = 'credit_note' OR credit_note_for IS NOT NULL)
+    `, id);
+
+    const lifetimeValue = Math.round((stats.lifetime_value || 0) * 100) / 100;
+    const totalRefunded = Math.round((refundStats?.total_refunded || 0) * 100) / 100;
+    const refundCount = Number(refundStats?.refund_count || 0);
+    const refundRatio = lifetimeValue > 0 ? Math.round((totalRefunded / lifetimeValue) * 1000) / 1000 : 0;
+
     res.json({ success: true, data: {
       total_tickets: stats.total_tickets || 0,
-      lifetime_value: Math.round((stats.lifetime_value || 0) * 100) / 100,
+      lifetime_value: lifetimeValue,
       avg_ticket_value: Math.round((stats.avg_ticket_value || 0) * 100) / 100,
       first_visit: stats.first_visit,
       last_visit: stats.last_visit,
       days_since_last_visit: stats.days_since_last_visit || null,
+      total_refunded: totalRefunded,
+      refund_count: refundCount,
+      refund_ratio: refundRatio,
     }});
   }),
 );

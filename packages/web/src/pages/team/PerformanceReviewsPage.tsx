@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Star, Trash2, Loader2, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 
 interface Employee {
   id: number;
@@ -39,8 +39,8 @@ export function PerformanceReviewsPage() {
   // ?user_id= reviews, and trigger 403 toasts on every selectedUserId
   // flip. Server still enforces; this short-circuits the IDOR-shaped UI
   // surface so non-admins land on a friendly forbidden state instead.
-  const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === 'admin';
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [reviewPage, setReviewPage] = useState(1);
   const [draftNotes, setDraftNotes] = useState('');

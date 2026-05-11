@@ -32,6 +32,7 @@ import {
   Wallet,
   Copy,
   Eraser,
+  RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
@@ -367,6 +368,29 @@ export function CustomerDetailPage() {
               {/* Audit §49 — health score + LTV tier badges */}
               <HealthScoreBadge customerId={customerId} />
               <LtvTierBadge customerId={customerId} showValue={false} />
+              {/* WEB-UIUX-876: surface VIP / At-Risk / Disputed tag flags in the
+                  header so an operator sees "this customer is in dispute"
+                  before opening Info → Edit. Tag names are matched
+                  case-insensitively; unknown tags fall through to a neutral chip. */}
+              {parseTags((customer as { tags?: unknown }).tags).map((rawTag) => {
+                const tag = String(rawTag).trim();
+                if (!tag) return null;
+                const low = tag.toLowerCase();
+                const tone =
+                  low === 'vip' ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-700'
+                  : low === 'at-risk' || low === 'at risk' || low === 'churn-risk' ? 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/30 dark:text-orange-200 dark:border-orange-700'
+                  : low === 'disputed' || low === 'dispute' || low === 'chargeback' ? 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-200 dark:border-red-700'
+                  : 'bg-surface-100 text-surface-700 border-surface-300 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-600';
+                return (
+                  <span
+                    key={`hdr-tag-${tag}`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${tone}`}
+                    title={`Tag: ${tag}`}
+                  >
+                    {tag}
+                  </span>
+                );
+              })}
               {/* FA-M26: referral + wallet-pass enrichment actions. Admin
                   /manager only — server returns 403 otherwise so we hide
                   the buttons from staff who can't use them. */}
@@ -911,6 +935,18 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
   const analytics = data?.data?.data;
   if (isLoading || !analytics) return null;
 
+  // WEB-UIUX-883: surface refund history alongside LTV so an operator sees
+  // "this customer returned 30% of their spend" without clicking through each
+  // invoice. Only show when there's at least one refund — clean UI for the
+  // common case.
+  const refundCount = Number((analytics as { refund_count?: number }).refund_count ?? 0);
+  const totalRefunded = Number((analytics as { total_refunded?: number }).total_refunded ?? 0);
+  const refundRatio = Number((analytics as { refund_ratio?: number }).refund_ratio ?? 0);
+  const refundRatioPct = (refundRatio * 100).toFixed(1);
+  const refundTone = refundRatio >= 0.2
+    ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20'
+    : 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20';
+
   const cards = [
     {
       label: 'Lifetime Value',
@@ -940,6 +976,12 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
       icon: Calendar,
       color: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20',
     },
+    ...(refundCount > 0 ? [{
+      label: `Refunds (${refundCount})`,
+      value: `${formatCurrency(totalRefunded)} · ${refundRatioPct}%`,
+      icon: RotateCcw,
+      color: refundTone,
+    }] : []),
   ];
 
   return (

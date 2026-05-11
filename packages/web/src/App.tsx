@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
+import { useHasRole } from './hooks/useHasRole';
 import { authApi, settingsApi } from './api/endpoints';
 import { superAdminTokenStore, SUPER_ADMIN_LOGOUT_EVENT } from './api/client';
 import {
@@ -124,7 +125,10 @@ const ReviewsPage = lazy(() => import('./pages/reviews/ReviewsPage').then(m => (
 // components/shared/LoadingScreen.tsx — see import above.
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, user } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
+  // WEB-UIUX-902: route role checks through useHasRole instead of literal
+  // `user.role === 'admin'` so a future role-rename only touches the hook.
+  const isAdmin = useHasRole('admin');
   const location = useLocation();
   const { data: setupData, isLoading: setupLoading, isError: setupError, error: setupErrorObj, refetch: refetchSetup } = useQuery<
     { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null; wizard_completed: string | null } } }
@@ -212,7 +216,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // for one navigation tick.
   if (authSetupData !== undefined && !location.pathname.startsWith('/setup')) {
     const { setupWizardCompleted, setupWizardSkipCount, setupWizardSkippedAt } = authSetupData.data.data;
-    const isAdmin = user?.role === 'admin';
     const SKIP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
     const skipCooldownActive =
       setupWizardSkippedAt !== null &&

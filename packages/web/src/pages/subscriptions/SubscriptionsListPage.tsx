@@ -5,7 +5,7 @@ import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRig
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { MembershipSettings } from '@/pages/settings/MembershipSettings';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { confirm } from '@/stores/confirmStore';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
@@ -85,8 +85,9 @@ function TableSkeleton() {
 // ─── AdminOnly wrapper ────────────────────────────────────────────────────────
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
-  const user = useAuthStore((s) => s.user);
-  return user?.role === 'admin' ? <>{children}</> : null;
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
+  return isAdmin ? <>{children}</> : null;
 }
 
 // WEB-UIUX-1061: RunBillingButton (header) was a decoy — it showed a toast
