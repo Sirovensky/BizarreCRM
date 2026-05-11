@@ -114,13 +114,18 @@ export function CustomerHistorySidebar({
   // sidebar permanently empty.
   const ticketsRaw: HistoryTicket[] = data?.data?.data?.tickets ?? [];
 
-  const tickets = ticketsRaw
-    .filter((t) => t.id !== currentTicketId)
-    .slice(0, 5);
+  // WEB-UIUX-881: cap visible rows at 5 but compute repeat-fault across
+  // the FULL prior-tickets set, not just the visible slice — operator
+  // shouldn't lose the warning just because the matching prior ticket is
+  // beyond the fold. Also expose the total so we can render a "See all N"
+  // affordance below.
+  const allPriorTickets = ticketsRaw.filter((t) => t.id !== currentTicketId);
+  const tickets = allPriorTickets.slice(0, 5);
+  const hiddenCount = Math.max(0, allPriorTickets.length - tickets.length);
 
   const hasRepeatFault =
     !!currentDeviceName &&
-    tickets.some((t) => {
+    allPriorTickets.some((t) => {
       const name =
         t.first_device?.device_name ||
         (t.devices && t.devices[0] && (t.devices[0].device_name || t.devices[0].name)) ||
@@ -206,6 +211,14 @@ export function CustomerHistorySidebar({
             );
           })}
         </ul>
+      )}
+      {hiddenCount > 0 && (
+        <Link
+          to={`/customers/${customerId}?tab=tickets`}
+          className="mt-2 inline-block text-[11px] font-medium text-primary-600 hover:underline dark:text-primary-400"
+        >
+          See all {allPriorTickets.length} prior tickets →
+        </Link>
       )}
     </div>
   );

@@ -298,9 +298,15 @@ export function StepDefaultStatuses({
                   </div>
                   {enabledCount === 0 && (
                     <div className="text-xs text-red-600 dark:text-red-300">
-                      No auto-SMS will be sent until at least one status is enabled.
+                      Customer notifications stay off until at least one status is enabled.
                     </div>
                   )}
+                  {/* WEB-UIUX-865: clarify that "notify" picks the statuses
+                      that will trigger customer messages — actual SMS/email
+                      sending wires up in the later messaging steps. */}
+                  <div className="mt-0.5 text-[11px] text-surface-500 dark:text-surface-400">
+                    "Notify" only flags which statuses trigger customer messages. SMS / email delivery configures later in the wizard.
+                  </div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">

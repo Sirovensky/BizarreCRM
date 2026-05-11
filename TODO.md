@@ -3696,7 +3696,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 - [x] WEB-UIUX-864. **[MAJOR] Membership upsell shown to brand-new customers at checkout.** "Save X% with [Tier]!" banner before owner has configured tiers. L1, L14. **[AUTOLOOP-T59 RESOLVED: showUpsell now requires customer.id!==0 AND tiersForUpsell.length>0; banner suppressed for walk-ins and tenants with no membership tiers configured.]**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:194-237`
 
-- [ ] WEB-UIUX-865. **[MINOR · BLOCKED] StepDefaultStatuses (step 9) warns about auto-SMS BEFORE SMS configured (step 16).** Jargon-overload. L14.
+- [x] WEB-UIUX-865. **[MINOR · BLOCKED] StepDefaultStatuses (step 9) warns about auto-SMS BEFORE SMS configured (step 16).** Jargon-overload. L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: StepDefaultStatuses now clarifies inline that "Notify" only flags which statuses trigger customer messages; SMS/email delivery configures in later steps. Removes the jargon-warning before SMS is set up.]**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 
 - [x] WEB-UIUX-866. **[MINOR] StepShopType "Thin" badge hover-only — tablet/iPad users never see why.** Picking Console/PC traps shop in near-empty seed. L11, L14. **[AUTOLOOP-T49 RESOLVED 2026-05-11: Thin badge now renders alongside an always-visible "Few templates yet" caption so tablet/iPad users (no hover) see the meaning before picking the shop type.]**
@@ -3743,7 +3743,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/components/tickets/QcSignOffModal.tsx`
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-597`
 
-- [ ] WEB-UIUX-881. **[MAJOR] CustomerHistorySidebar caps at 5 with NO "See all" + repeat-fault pill only fires for current device.** L11.
+- [x] WEB-UIUX-881. **[MAJOR] CustomerHistorySidebar caps at 5 with NO "See all" + repeat-fault pill only fires for current device.** L11. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerHistorySidebar caps visible rows at 5 but computes hasRepeatFault across full prior-tickets set; surfaces See all N Link to /customers/<id>?tab=tickets when hiddenCount > 0.]**
   `packages/web/src/components/tickets/CustomerHistorySidebar.tsx:90-92`
 
 - [!] WEB-UIUX-882. **[MAJOR] Communications tab on customer page strips call affordances — no duration, no recording-play, no transcript link.** 200% regression vs standalone CommunicationPage. L11, L4. **[AUTOLOOP-T41 BLOCKED: customer Communications call affordances need server SQL + client type+render; multi-component.]**
