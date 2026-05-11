@@ -269,7 +269,10 @@ export async function runDunningOnce(
 
       const eligible = db
         .prepare(
-          `SELECT i.id, i.order_id, i.customer_id, i.amount_due, i.due_date, i.status
+          // Schema column is `due_on` (migration 013); the historical
+          // `due_date` reference 500'd. Alias to `due_date` for the row
+          // shape so the rest of the scheduler keeps the same field name.
+          `SELECT i.id, i.order_id, i.customer_id, i.amount_due, i.due_on AS due_date, i.status
              FROM invoices i
              LEFT JOIN dunning_runs r
                ON r.invoice_id = i.id
@@ -277,11 +280,11 @@ export async function runDunningOnce(
               AND r.step_index = ?
             WHERE i.amount_due > 0
               AND i.status IN ('unpaid','overdue','partial')
-              AND i.due_date IS NOT NULL
+              AND i.due_on IS NOT NULL
               -- SCAN-1174: compare the raw column so SQLite can range-scan
-              -- the i.due_date index. due_date is stored as YYYY-MM-DD
+              -- the i.due_on index. due_on is stored as YYYY-MM-DD
               -- HH:MM:SS so lex compare equals chrono compare.
-              AND i.due_date <= ?
+              AND i.due_on <= ?
               AND r.id IS NULL
             LIMIT 500`,
         )
