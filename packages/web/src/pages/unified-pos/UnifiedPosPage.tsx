@@ -111,6 +111,9 @@ interface HeldCartSnapshot {
   memberDiscountApplied: boolean;
   meta: ReturnType<typeof useUnifiedPosStore.getState>['meta'];
   sourceTicketId: number | null;
+  // Mid-intake repair draft (device, problems, notes, deposit). Optional so
+  // older held-cart rows without it still restore cleanly.
+  repairDraft?: RepairDraft;
 }
 
 interface ProductSearchItem {
@@ -257,6 +260,11 @@ interface RefundLineSelection {
   quantity: number;
   reason: string;
 }
+
+// Survives a page refresh during repair intake so device + problems + notes
+// aren't lost. Tab-scoped (sessionStorage) so concurrent registers in
+// different windows don't clobber each other.
+const REPAIR_DRAFT_STORAGE_KEY = 'pos-repair-draft';
 
 const DEFAULT_REPAIR_DRAFT: RepairDraft = {
   // Empty by default. The Category step asks the cashier to pick first; no
@@ -905,7 +913,27 @@ export function UnifiedPosPage() {
   const [customPrice, setCustomPrice] = useState('');
   const [createCustomerOpen, setCreateCustomerOpen] = useState(false);
   const [createCustomerDraft, setCreateCustomerDraft] = useState<CreateCustomerDraft>(EMPTY_CREATE_CUSTOMER_DRAFT);
-  const [repairDraft, setRepairDraft] = useState<RepairDraft>(DEFAULT_REPAIR_DRAFT);
+  // Repair-intake draft persists to sessionStorage so a mid-intake page
+  // refresh (browser crash, accidental cmd-R) doesn't nuke the device +
+  // problems + notes the cashier just entered. Also captured into the
+  // held-cart snapshot so parking a mid-intake sale and recalling it
+  // restores the draft as well.
+  const [repairDraft, setRepairDraft] = useState<RepairDraft>(() => {
+    try {
+      const raw = sessionStorage.getItem(REPAIR_DRAFT_STORAGE_KEY);
+      if (raw) return { ...DEFAULT_REPAIR_DRAFT, ...JSON.parse(raw) };
+    } catch {
+      /* corrupted blob — fall back to defaults */
+    }
+    return DEFAULT_REPAIR_DRAFT;
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(REPAIR_DRAFT_STORAGE_KEY, JSON.stringify(repairDraft));
+    } catch {
+      /* quota exceeded — best-effort; in-memory draft is still authoritative */
+    }
+  }, [repairDraft]);
   const [paidLegs, setPaidLegs] = useState<PaymentLeg[]>([]);
   const [selectedTenderMethod, setSelectedTenderMethod] = useState<TenderMethod>('Cash');
   const [amountEntry, setAmountEntry] = useState('');
@@ -1414,6 +1442,10 @@ export function UnifiedPosPage() {
     setWalkInActive(false);
     setCreateCustomerOpen(false);
     setCreateCustomerDraft(EMPTY_CREATE_CUSTOMER_DRAFT);
+    // Repair draft lives in component state (plus sessionStorage), so
+    // clearDraft() — which only resets zustand — leaves it stale. Wipe it
+    // explicitly so the new sale starts with no leaked device/problem picks.
+    setRepairDraft(DEFAULT_REPAIR_DRAFT);
     setMode('gate');
     setGlobalSearch('');
     setProductSearch('');
@@ -1439,6 +1471,7 @@ export function UnifiedPosPage() {
         memberDiscountApplied,
         meta,
         sourceTicketId,
+        repairDraft,
       };
       // Build a richer tab label so `#42 · held` becomes
       // `Marco D'Souza · 3 items · $214.50` — actually identifiable when the
@@ -1493,6 +1526,7 @@ export function UnifiedPosPage() {
         referralSource: '',
       },
       sourceTicketId: null,
+      repairDraft: DEFAULT_REPAIR_DRAFT,
     };
     try {
       await api.post('/pos/held-carts', {
@@ -1525,6 +1559,10 @@ export function UnifiedPosPage() {
     setMemberDiscountApplied(!!snapshot.memberDiscountApplied);
     setMeta(snapshot.meta ?? {});
     setSourceTicketId(snapshot.sourceTicketId ?? null);
+    // Restore the mid-intake repair draft when the held row carried one.
+    // Falling back to DEFAULT_REPAIR_DRAFT prevents the previously-active
+    // tab's draft from leaking into a recalled cart.
+    setRepairDraft(snapshot.repairDraft ?? DEFAULT_REPAIR_DRAFT);
     for (const item of snapshot.cartItems ?? []) {
       if (item.type === 'product') addProduct(item);
       if (item.type === 'misc') addMisc(item);
@@ -1555,9 +1593,22 @@ export function UnifiedPosPage() {
       api.post<{ success: boolean; data: HeldCartRow }>(`/pos/held-carts/${id}/recall`, {}, { skipGlobal500Toast: true } as object),
     onSuccess: (res, vars) => {
       if (!vars.skipRestore) {
-        const row = res.data.data;
-        restoreSnapshot(JSON.parse(row.cart_json) as HeldCartSnapshot);
-        toast.success('Held sale restored');
+        const row = res.data?.data;
+        // Corrupt or truncated cart_json blob shouldn't crash the page;
+        // surface a toast and leave the existing draft intact so the
+        // cashier can decide whether to discard or retry.
+        let snapshot: HeldCartSnapshot | null = null;
+        try {
+          if (row?.cart_json) snapshot = JSON.parse(row.cart_json) as HeldCartSnapshot;
+        } catch {
+          snapshot = null;
+        }
+        if (snapshot) {
+          restoreSnapshot(snapshot);
+          toast.success('Held sale restored');
+        } else {
+          toast.error('Held sale data was unreadable. Try again or discard the tab.');
+        }
       }
       queryClient.invalidateQueries({ queryKey: ['pos-held-carts'] });
     },
@@ -1616,6 +1667,23 @@ export function UnifiedPosPage() {
     onSuccess: () => toast.success('Drawer command sent'),
     onError: () => toast.error('Could not contact cash drawer'),
   });
+
+  // Warn before tab close when an in-flight charge or partial tender is
+  // pending so the cashier doesn't accidentally strand a payment that the
+  // server may already have captured. Browsers ignore custom strings, so
+  // returnValue is set but the message text is a hint to humans reading
+  // the code, not the dialog.
+  useEffect(() => {
+    const hasPendingPayment = processing || paidLegs.length > 0;
+    if (!hasPendingPayment) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = 'A payment is still in progress. Leaving may strand the charge.';
+      return event.returnValue;
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [processing, paidLegs.length]);
 
   useEffect(() => {
     const handleKeys = (event: KeyboardEvent) => {
@@ -1833,6 +1901,25 @@ export function UnifiedPosPage() {
     setRepairDraft(DEFAULT_REPAIR_DRAFT);
     setMode('sale');
   }, [addRepair, repairDraft, setMeta]);
+
+  // Same as saveRepairToCart, but additionally stamps the deposit + balance
+  // onto the ticket's internal notes so the pickup desk can reconcile what
+  // was collected today against what is owed at pickup. Capture deposit +
+  // quote BEFORE delegating because saveRepairToCart resets the draft.
+  const saveRepairWithDeposit = useCallback(() => {
+    const deposit = parseMoney(repairDraft.depositAmount);
+    const quoteSubtotal = repairDraft.selectedProblems.length > 0
+      ? repairDraft.selectedProblems.reduce((s, p) => s + p.priceCents, 0) / 100
+      : parseMoney(repairDraft.laborPrice);
+    const balance = Math.max(0, quoteSubtotal - deposit);
+    saveRepairToCart();
+    if (deposit > 0 && balance > 0) {
+      const existing = useUnifiedPosStore.getState().meta.internalNotes;
+      const note = `Deposit ${formatCurrency(deposit)} collected; balance ${formatCurrency(balance)} owed at pickup.`;
+      setMeta({ internalNotes: existing ? `${existing}\n${note}` : note });
+      toast.success(`Deposit ${formatCurrency(deposit)} noted — adjust line prices before tender if charging only the deposit.`);
+    }
+  }, [repairDraft, saveRepairToCart, setMeta]);
 
   const submitCheckout = useCallback(async (finalLeg: PaymentLeg) => {
     const legs = [...paidLegs, finalLeg].filter((leg) => leg.amount > 0);
@@ -2784,7 +2871,13 @@ export function UnifiedPosPage() {
                   draft={repairDraft}
                   setDraft={setRepairDraft}
                   onBack={() => setMode('repair-quote')}
-                  onSave={saveRepairToCart}
+                  // Save adds repair lines at FULL quote AND records the
+                  // requested deposit + balance-owed note onto the ticket
+                  // so the cashier (and the pickup desk) can see what was
+                  // collected today vs. what's outstanding. Cart math still
+                  // reflects the full quote — cashier can adjust the lines
+                  // before tender if they only want to charge the deposit.
+                  onSave={saveRepairWithDeposit}
                   onGoToStep={(target) => setMode(`repair-${target}` as any)}
                 />
               )}
