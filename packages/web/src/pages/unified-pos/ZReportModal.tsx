@@ -297,6 +297,21 @@ function ZReportBody({ report, varianceWarnCents }: ZReportBodyProps) {
           <ReportRow label="Transactions" value={String(report.totals.transaction_count)} />
         </div>
       </div>
+
+      {/* WEB-UIUX-1185: EOD signature lines for cashier + manager handover.
+          Only visible on print so the on-screen modal stays compact. */}
+      {!inProgress && (
+        <div className="hidden print:block mt-6 grid grid-cols-2 gap-8 text-xs text-surface-700">
+          <div>
+            <div className="border-b border-surface-700 h-8" />
+            <div className="mt-1">Cashier signature{report.closed_by_name ? ` — ${report.closed_by_name}` : ''}</div>
+          </div>
+          <div>
+            <div className="border-b border-surface-700 h-8" />
+            <div className="mt-1">Manager signature</div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

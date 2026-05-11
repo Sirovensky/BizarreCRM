@@ -236,6 +236,20 @@ export function InvoiceDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       // WEB-UIUX-715: status distribution donut chart reads ['invoice-stats'].
       queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+      // WEB-UIUX-1213: invalidate downstream caches that the credit-note path
+      // mutates. Server writes a refunds row (UIUX-1026), a payments row may
+      // need re-fetching for the invoice detail, and the customer's store
+      // credit balance + transactions may have moved via the overflow path.
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['refunds'] });
+      if (invoice?.customer_id) {
+        queryClient.invalidateQueries({ queryKey: ['store-credit', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-analytics', invoice.customer_id] });
+      }
+      // AR aging + dashboard refund tiles read from these keys.
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       // WEB-UIUX-431: build an informative refund destination message when
       // card info is available so operators can relay it to the customer.
       const cardPayment = invoice?.payments?.find(
@@ -458,8 +472,6 @@ export function InvoiceDetailPage() {
 
   // WEB-UIUX-1278: threshold above which typed-confirm is required.
   // Triggers when amount >= invoice total OR >= $500.
-  const CREDIT_NOTE_TYPED_THRESHOLD = 500;
-
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
     // WEB-UIUX-1390: collect all field errors before showing any feedback so the
@@ -481,21 +493,11 @@ export function InvoiceDetailPage() {
       return;
     }
     setCreditNoteError({});
-    // WEB-UIUX-1278: high-value credit notes (>= invoice total OR >= $500) require
-    // the operator to type the invoice number to confirm — same pattern as Void.
-    // Lower amounts fire immediately; the filled credit-note form itself is the
-    // confirm step (operator has already reviewed amount + reason before clicking).
-    const isHighValue =
-      amount >= Number(invoice.total) || amount >= CREDIT_NOTE_TYPED_THRESHOLD;
-    if (isHighValue) {
-      setShowCreditNoteConfirm(true);
-      return;
-    }
-    creditNoteMutation.mutate({
-      amount,
-      code: creditNoteForm.code as RefundReasonCode,
-      note: creditNoteForm.note.trim(),
-    });
+    // WEB-UIUX-1211: ALL credit notes are irreversible (no /credit-notes/:id/void
+    // endpoint), the negative invoice stays in AR forever, and the overflow can
+    // be spent by the customer before the operator notices. Force the typed
+    // confirm on every amount — not just high-value.
+    setShowCreditNoteConfirm(true);
   };
 
   const handleEmailReceipt = async () => {

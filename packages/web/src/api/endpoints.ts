@@ -283,7 +283,7 @@ import type { InvoiceDetail } from '@/types/invoice';
 
 export const invoiceApi = {
   // WEB-W2-022: server (invoices.routes.ts:236) accepts sort_by/sort_dir for the list view
-  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) =>
+  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number; sort_by?: string; sort_dir?: 'asc' | 'desc'; include_credit_notes?: 'true' }) =>
     api.get('/invoices', { params }),
   // WEB-W2-022: stats accepts the same filter params as list, so the KPI strip
   // matches the visible invoice subset.

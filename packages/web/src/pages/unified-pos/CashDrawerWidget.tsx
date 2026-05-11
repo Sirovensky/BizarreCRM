@@ -204,10 +204,17 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
   };
 
   return (
+    // WEB-UIUX-1181: dialog semantics so SR users hear the title and tab order
+    // is trapped to the modal.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="open-shift-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="open-shift-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Open Cash Drawer Shift
           </h3>
           <button onClick={onClose} className="btn-icon btn-xs" aria-label="Close">
@@ -320,10 +327,17 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
   };
 
   return (
+    // WEB-UIUX-1181: dialog semantics so SR users hear the title and tab order
+    // is trapped to the modal.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="close-shift-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="close-shift-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Close Shift & Count Drawer
           </h3>
           <button onClick={onClose} className="btn-icon btn-xs" aria-label="Close">

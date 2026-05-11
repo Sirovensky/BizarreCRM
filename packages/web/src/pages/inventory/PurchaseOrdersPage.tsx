@@ -24,6 +24,9 @@ interface PoLineItem {
 
 interface NewPoForm {
   supplier_id: number | '';
+  // WEB-UIUX-1190: expected delivery date — server accepts it on POST and
+  // uses it for late-shipment alerting + aging.
+  expected_date: string;
   notes: string;
   items: PoLineItem[];
 }
@@ -59,7 +62,12 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
         sku: it.sku,
         quantity_ordered: it.quantity_ordered,
         quantity_received: it.quantity_received || 0,
-        receive_qty: it.quantity_ordered - (it.quantity_received || 0),
+        // WEB-UIUX-1188: default the receive draft to 0, not the full
+        // remaining. Pre-filling with the optimistic total lets a careless
+        // "Confirm Receive" click silently post phantom units that
+        // inventory cannot undo (no /reverse-receipt endpoint). Force the
+        // cashier to type the physical count.
+        receive_qty: 0,
       })),
   );
 
@@ -97,9 +105,19 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
   });
 
   const totalToReceive = receiving.reduce((s, r) => s + r.receive_qty, 0);
+  // WEB-UIUX-1194: dirty-state guard on close. The modal captures physical
+  // counts; an accidental dismiss = recount the entire shipment. Warn if
+  // any line has a non-zero draft before discarding.
   const closeModal = useCallback(() => {
-    if (!receiveMut.isPending) onClose();
-  }, [onClose, receiveMut.isPending]);
+    if (receiveMut.isPending) return;
+    if (totalToReceive > 0) {
+      const ok = window.confirm(
+        `Discard counts for ${totalToReceive} item${totalToReceive === 1 ? '' : 's'}? You'll have to recount the shipment.`,
+      );
+      if (!ok) return;
+    }
+    onClose();
+  }, [onClose, receiveMut.isPending, totalToReceive]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -349,7 +367,7 @@ export function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
-  const [newPo, setNewPo] = useState<NewPoForm>({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
+  const [newPo, setNewPo] = useState<NewPoForm>({ supplier_id: '', expected_date: '', notes: '', items: [{ ...EMPTY_ITEM }] });
 
   // WEB-W3-003: receive modal state
   const [receiveModal, setReceiveModal] = useState<{ po: Record<string, unknown>; items: any[] } | null>(null);
@@ -389,6 +407,7 @@ export function PurchaseOrdersPage() {
       );
       return inventoryApi.createPurchaseOrder({
         supplier_id: newPo.supplier_id as number,
+        expected_date: newPo.expected_date || undefined,
         notes: newPo.notes || undefined,
         items: validItems,
       });
@@ -397,7 +416,7 @@ export function PurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       toast.success('Purchase order created');
       setShowCreate(false);
-      setNewPo({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
+      setNewPo({ supplier_id: '', expected_date: '', notes: '', items: [{ ...EMPTY_ITEM }] });
     },
     onError: (e: unknown) => {
       const msg =
@@ -446,7 +465,7 @@ export function PurchaseOrdersPage() {
       {showCreate && (
         <div className="card p-5 mb-6">
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">New Purchase Order</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div>
               <label htmlFor="po-supplier" className="block text-xs font-medium text-surface-500 mb-1">Supplier <span className="text-red-500">*</span></label>
               <select
@@ -464,6 +483,18 @@ export function PurchaseOrdersPage() {
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
+            </div>
+            {/* WEB-UIUX-1190: expected delivery date — server stores it for
+                late-shipment alerting + aging reports. */}
+            <div>
+              <label htmlFor="po-expected-date" className="block text-xs font-medium text-surface-500 mb-1">Expected date</label>
+              <input
+                id="po-expected-date"
+                type="date"
+                value={newPo.expected_date}
+                onChange={(e) => setNewPo({ ...newPo, expected_date: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
+              />
             </div>
             <div>
               <label htmlFor="po-notes" className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
@@ -543,7 +574,7 @@ export function PurchaseOrdersPage() {
               <button
                 onClick={() => {
                   setShowCreate(false);
-                  setNewPo({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
+                  setNewPo({ supplier_id: '', expected_date: '', notes: '', items: [{ ...EMPTY_ITEM }] });
                 }}
                 className="px-3 py-1.5 text-sm text-surface-500"
               >

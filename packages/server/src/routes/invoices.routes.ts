@@ -284,7 +284,7 @@ async function postPaymentSideEffects({
 // GET /invoices
 router.get('/', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
-  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id, sort_by, sort_dir } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id, sort_by, sort_dir, include_credit_notes } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page));
   const ps = Math.min(250, Math.max(1, parseInt(pagesize)));
   const offset = (p - 1) * ps;
@@ -295,6 +295,15 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
   if (status === 'overdue') {
     where += " AND inv.status IN ('unpaid','partial') AND inv.due_on IS NOT NULL AND inv.due_on < DATE('now')";
   } else if (status) { where += ' AND inv.status = ?'; params.push(status); }
+  // WEB-UIUX-1209: by default exclude negative-total credit-note rows from
+  // the unfiltered listing. AR aging totals + monthly receivables charts no
+  // longer surface phantom CN-XXXX entries unless the caller explicitly
+  // opts in with `?include_credit_notes=true`. Explicit `status=credit_note`
+  // also bypasses the exclusion since the caller is asking for them.
+  const wantCreditNotes = include_credit_notes === 'true' || include_credit_notes === '1' || status === 'credit_note';
+  if (!wantCreditNotes) {
+    where += ' AND inv.credit_note_for IS NULL';
+  }
   if (customer_id) { where += ' AND inv.customer_id = ?'; params.push(customer_id); }
   if (from_date) { where += ' AND DATE(inv.created_at) >= ?'; params.push(from_date); }
   if (to_date) { where += ' AND DATE(inv.created_at) <= ?'; params.push(to_date); }

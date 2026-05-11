@@ -208,14 +208,26 @@ export function InvoiceListPage() {
     setSearchParams(p, { replace: true });
   };
 
-  // WEB-UIUX-1287: "credit_note" is a client-side-only tab key. Do not pass it
-  // to the server (no such ?status= param); fetch all and filter locally instead.
+  // WEB-UIUX-1287 / UIUX-1209: "credit_note" tab passes `status=credit_note`
+  // which the server treats as an opt-in to surface negative-total credit
+  // notes (it normally filters `credit_note_for IS NULL`). For every other
+  // tab the server does the exclusion server-side, so the client doesn't
+  // need to post-filter.
   const isCreditNoteTab = status === 'credit_note';
   const serverStatus = isCreditNoteTab ? undefined : (status || undefined);
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoices', { page, pageSize, status, keyword, dateRange, fromDate: dateParams.from_date, toDate: dateParams.to_date, sortBy, sortDir }],
-    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: serverStatus, keyword: keyword || undefined, sort_by: sortBy, sort_dir: sortDir, ...dateParams }),
+    queryFn: () => invoiceApi.list({
+      page,
+      pagesize: pageSize,
+      status: serverStatus,
+      keyword: keyword || undefined,
+      sort_by: sortBy,
+      sort_dir: sortDir,
+      include_credit_notes: isCreditNoteTab ? 'true' : undefined,
+      ...dateParams,
+    }),
   });
 
   const { data: statsData } = useQuery({
@@ -231,17 +243,14 @@ export function InvoiceListPage() {
 
   const rawInvoices = data?.data?.data?.invoices;
   const allInvoices: InvoiceRow[] = Array.isArray(rawInvoices) ? (rawInvoices as InvoiceRow[]) : [];
-  // WEB-UIUX-1287 / UIUX-1053: filter credit notes client-side based on
-  // active tab. When the Credit Notes tab is selected, show only credit
-  // notes. When the All tab is selected, hide them by default — they have
-  // a dedicated tab, and mixing negative-total rows into All confuses the
-  // sum-of-totals visual. Other status tabs (unpaid/partial/paid/void)
-  // already exclude credit notes by server filter; pass-through.
+  // WEB-UIUX-1209: server now filters credit notes by default, returning them
+  // only when the Credit Notes tab is active (`include_credit_notes=true`).
+  // Keep a narrow client-side pass on the CN tab to drop any positive-total
+  // rows the server might surface if `credit_note_for` is wired in a future
+  // path that doesn't set it.
   const invoices: InvoiceRow[] = isCreditNoteTab
     ? allInvoices.filter((inv) => inv.credit_note_for != null || Number(inv.total) < 0)
-    : (status === '' || status == null)
-      ? allInvoices.filter((inv) => inv.credit_note_for == null && Number(inv.total) >= 0)
-      : allInvoices;
+    : allInvoices;
   const pagination = data?.data?.data?.pagination;
   const stats = statsData?.data?.data;
   // WEB-W2-023: overdue count now comes from the server (independent of current
