@@ -2552,7 +2552,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [!] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:797-1149`
 
-- [!] WEB-UIUX-654. **[MAJOR] Defect data exists per item but never read at reorder time.** `benchApi.defects.byItem(itemId)` API exists, zero call sites. Tech can re-add same defective part with no warning. L13. **BLOCKED 2026-05-10: needs UI threading in PO-create modal + per-line warning chip; multi-component. Defer to PO sprint.**
+- [x] WEB-UIUX-654. **PO-create modal surfaces 30-day defect counts per line (2026-05-11).** New `DefectWarningChip` in `PurchaseOrdersPage` queries `benchApi.defects.byItem(inventoryItemId)` (enabled only when the line has a real id picked), filters to reports in the last 30 days, and renders an amber chip with `<N> defect 30d` + a tooltip ("Confirm before re-ordering") next to the line. Non-privileged users get nothing because the underlying endpoint is admin/manager-only and `retry:false` keeps the failed query quiet. Tech adding a known-bad SKU back into a PO now sees a real warning.
   `packages/web/src/pages/tickets/TicketDevices.tsx:439-510`
   `packages/web/src/pages/inventory/AutoReorderPage.tsx:42-50`
 

@@ -1,11 +1,44 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X } from 'lucide-react';
+import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { inventoryApi } from '@/api/endpoints';
+import { inventoryApi, benchApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
+
+// WEB-UIUX-654: surface recent defect reports next to a PO line item so the
+// operator sees "this exact SKU was reported defective N times in the last
+// 30 days" before re-ordering more of it. Server endpoint is admin/manager
+// only; non-privileged users see nothing (component returns null on 403).
+function DefectWarningChip({ inventoryItemId }: { inventoryItemId: number | '' }) {
+  const enabled = typeof inventoryItemId === 'number' && inventoryItemId > 0;
+  const { data } = useQuery({
+    queryKey: ['po-defect-warning', inventoryItemId],
+    queryFn: () => benchApi.defects.byItem(inventoryItemId as number),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
+  if (!enabled) return null;
+  const rows = (data?.data?.data as Array<{ reported_at: string }> | undefined) ?? [];
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const recent = rows.filter((r) => {
+    const t = Date.parse(r.reported_at);
+    return Number.isFinite(t) && t >= cutoff;
+  });
+  if (recent.length === 0) return null;
+  return (
+    <span
+      role="alert"
+      className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+      title={`${recent.length} defect report${recent.length === 1 ? '' : 's'} in the last 30 days. Confirm before re-ordering.`}
+    >
+      <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+      {recent.length} defect{recent.length === 1 ? '' : 's'} 30d
+    </span>
+  );
+}
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-400',
@@ -597,6 +630,7 @@ export function PurchaseOrdersPage() {
                   className="w-28 px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
                   placeholder="Unit cost"
                 />
+                <DefectWarningChip inventoryItemId={item.inventory_item_id} />
                 {newPo.items.length > 1 && (
                   <button onClick={() => removeItem(i)} aria-label={`Remove purchase order line ${i + 1}`} className="text-red-400 hover:text-red-600 text-xs">
                     Remove
