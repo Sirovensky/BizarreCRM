@@ -3850,7 +3850,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 - [!] WEB-UIUX-918. **[MINOR] Esc behavior inconsistent across search inputs.** Some clear, some close parent modal, some no-op. No documented policy. L4, L12. **STATUS: BLOCKED — cross-flow Esc-policy design touching ~12 search inputs; needs documented policy first; defer to design-system sprint**
 
-- [ ] WEB-UIUX-921. **[MINOR] CustomerListPage CustomerActionsMenu lacks `role="menu"`/`menuitem`, no arrow-key nav, no Esc handler.** Header.tsx:465 + LeadPipelinePage.tsx:144 use proper pattern — propagate. L12.
+- [x] WEB-UIUX-921. **[MINOR] CustomerListPage CustomerActionsMenu lacks `role="menu"`/`menuitem`, no arrow-key nav, no Esc handler.** Header.tsx:465 + LeadPipelinePage.tsx:144 use proper pattern — propagate. L12. **[AUTOLOOP-T49 RESOLVED 2026-05-11: CustomerActionsMenu now uses role=menu/menuitem with arrow-key navigation (Up/Down/Home/End cycle), Esc closes, autofocus on open, and per-item focus styling.]**
 
 - [x] WEB-UIUX-922. **[MINOR] Star-rating radiogroup no arrow keys.** 5 radios = 5 Tab stops instead of 1 group with arrows. L12. **[AUTOLOOP-T59 RESOLVED: ReviewPromptModal stars gained role=radiogroup, role=radio, aria-checked, roving tabIndex, Left/Right/Up/Down arrow handler cycling through stars.]**
   `packages/web/src/pages/portal/components/ReviewPromptModal.tsx:86-108`

@@ -985,6 +985,8 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // WEB-UIUX-921: arrow-key navigation across the menu items.
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -995,6 +997,39 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
+  // WEB-UIUX-921: keyboard interaction — Esc closes, ArrowDown/Up cycle
+  // through items, Home/End jump to ends. Focuses first item on open so
+  // tab-key users land inside the menu, not on the trigger.
+  useEffect(() => {
+    if (!open) return;
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    items?.[0]?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (!menuRef.current) return;
+      const items = Array.from(
+        menuRef.current.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+      );
+      if (items.length === 0) return;
+      const activeIdx = items.findIndex((el) => el === document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); setOpen(false); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[(activeIdx + 1 + items.length) % items.length].focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[(activeIdx - 1 + items.length) % items.length].focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        items[0].focus();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        items[items.length - 1].focus();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
     <div className="flex items-center justify-end gap-1" ref={ref}>
       <Link to={`/customers/${customer.id}`} onClick={(e) => e.stopPropagation()}
@@ -1003,41 +1038,49 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
       </Link>
       <div className="relative">
         <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+          aria-haspopup="menu"
+          aria-expanded={open}
           className="p-1.5 rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:text-surface-300 dark:hover:bg-surface-700 transition-colors" title="More actions">
           <MoreHorizontal className="h-4 w-4" />
         </button>
         {open && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Customer actions"
+            className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="py-1">
               {phone && (
                 <>
-                  <a href={`tel:${phone}`} rel="noreferrer noopener"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+                  <a role="menuitem" tabIndex={-1} href={`tel:${phone}`} rel="noreferrer noopener"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                     <Phone className="h-3.5 w-3.5 text-blue-500" /> Call
                   </a>
-                  <Link to={`/communications?phone=${encodeURIComponent(phone)}`}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+                  <Link role="menuitem" tabIndex={-1} to={`/communications?phone=${encodeURIComponent(phone)}`}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                     <MessageSquare className="h-3.5 w-3.5 text-emerald-500" /> SMS
                   </Link>
                 </>
               )}
               {customer.email && (
-                <a href={`mailto:${customer.email}`} rel="noreferrer noopener"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+                <a role="menuitem" tabIndex={-1} href={`mailto:${customer.email}`} rel="noreferrer noopener"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                   <Mail className="h-3.5 w-3.5 text-amber-500" /> Email
                 </a>
               )}
-              <Link to={`/pos?customer=${customer.id}`}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+              <Link role="menuitem" tabIndex={-1} to={`/pos?customer=${customer.id}`}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                 <Wrench className="h-3.5 w-3.5 text-green-500" /> New Ticket
               </Link>
-              <Link to={`/customers/${customer.id}?edit=true`}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+              <Link role="menuitem" tabIndex={-1} to={`/customers/${customer.id}?edit=true`}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                 <Pencil className="h-3.5 w-3.5 text-amber-500" /> Edit
               </Link>
               <div className="my-1 border-t border-surface-200 dark:border-surface-700" />
-              <button onClick={(e) => { setOpen(false); onDelete(e, customer.id, fullName); }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
+              <button role="menuitem" tabIndex={-1} onClick={(e) => { setOpen(false); onDelete(e, customer.id, fullName); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 focus:bg-red-50 focus:outline-none dark:text-red-400 dark:hover:bg-red-900/20 dark:focus:bg-red-900/20">
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </button>
             </div>
