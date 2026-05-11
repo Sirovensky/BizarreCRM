@@ -244,6 +244,30 @@ export function GiftCardDetailPage() {
   // be inert rather than letting them fire a request that returns 403.
   const userRole = useAuthStore((s) => s.user?.role);
   const canReload = userRole === 'admin' || userRole === 'manager';
+  // WEB-UIUX-1546: disable / enable share the gift_cards.reload permission
+  // server-side, so reuse the canReload flag for the button gate.
+  const canDisable = canReload;
+  const queryClient = useQueryClient();
+  const disableMutation = useMutation({
+    mutationFn: (reason: string) => giftCardApi.disable(cardId, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gift-card', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['gift-cards'] });
+      toast.success('Gift card disabled');
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message || 'Failed to disable gift card'),
+  });
+  const enableMutation = useMutation({
+    mutationFn: () => giftCardApi.enable(cardId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gift-card', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['gift-cards'] });
+      toast.success('Gift card re-enabled');
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.message || 'Failed to re-enable gift card'),
+  });
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['gift-card', cardId],
@@ -385,6 +409,42 @@ export function GiftCardDetailPage() {
         </dl>
 
         {/* WEB-UIUX-1442: server allows reload on any status except disabled; show button for 'used' too (secondary tone indicates topping up a depleted card) */}
+        {/* WEB-UIUX-1546: Disable button — reports-stolen / lost-card path. */}
+        {canDisable && card.status === 'active' && (
+          <div className="mt-2">
+            <button
+              onClick={async () => {
+                const reason = window.prompt(
+                  'Why is this gift card being disabled? (optional — e.g. "reported lost", "stolen", "issued in error")',
+                  '',
+                );
+                if (reason === null) return;
+                if (!window.confirm('Disable this gift card? It can no longer be redeemed until you re-enable it.')) return;
+                disableMutation.mutate(reason);
+              }}
+              disabled={disableMutation.isPending}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <AlertCircle className="h-4 w-4" />
+              Disable card
+            </button>
+          </div>
+        )}
+        {canDisable && card.status === 'disabled' && (
+          <div className="mt-2">
+            <button
+              onClick={() => {
+                if (!window.confirm('Re-enable this gift card? It will be redeemable again at its current balance.')) return;
+                enableMutation.mutate();
+              }}
+              disabled={enableMutation.isPending}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Re-enable card
+            </button>
+          </div>
+        )}
         {card.status !== 'disabled' && canReload && (() => {
           // WEB-UIUX-999: server-side `GIFT_CARD_MAX_AMOUNT = 10_000` rejects
           // any reload that would push balance over $10k. Pre-disable here so

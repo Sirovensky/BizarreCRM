@@ -566,10 +566,9 @@ export function GiftCardsListPage() {
           <option value="">All statuses</option>
           <option value="active">Active</option>
           <option value="used">Used</option>
-          {/* WEB-UIUX-1439: removed Disabled option — no UI sets a card to
-              this status (no Disable button on detail, no bulk action, no
-              server route), so the filter always returned empty and the
-              dropdown promised a workflow that doesn't exist. */}
+          {/* WEB-UIUX-1546: Disabled status now wired via /:id/disable +
+              /:id/enable endpoints and the Disable button on detail. */}
+          <option value="disabled">Disabled</option>
           {/* WEB-UIUX-1438: expired filter option */}
           <option value="expired">Expired</option>
         </select>

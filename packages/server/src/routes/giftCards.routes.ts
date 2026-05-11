@@ -288,6 +288,20 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
   const validatedExpiresAt = expires_at != null && expires_at !== ''
     ? validateIsoDate(expires_at, 'expires_at', false)
     : null;
+  // WEB-UIUX-1548: reject past expiry dates — silently-expired cards
+  // burn cashier trust ("I just sold them this card and it doesn't
+  // work"). Compare against `today` in UTC (date-only) so a card
+  // issued at 23:59 with `expires_at=today` is allowed for the
+  // remainder of the day.
+  if (validatedExpiresAt) {
+    const exp = new Date(validatedExpiresAt + (validatedExpiresAt.length === 10 ? 'T23:59:59Z' : ''));
+    if (Number.isFinite(exp.getTime()) && exp.getTime() < Date.now()) {
+      throw new AppError(
+        `expires_at (${validatedExpiresAt}) is in the past — pick today or later.`,
+        400,
+      );
+    }
+  }
 
   const code = generateCode();
   const codeHash = hashCode(code);
@@ -520,6 +534,82 @@ router.get('/:id', asyncHandler(async (req, res) => {
     cardId,
   );
   res.json({ success: true, data: { ...card, transactions } });
+}));
+
+// WEB-UIUX-1546: POST /:id/disable — mark a gift card as disabled so a
+// reported-stolen / lost card can no longer be redeemed. Manager/admin
+// only; audited. Re-using the existing `disabled` status enum value
+// (`gift_cards.status` already accepts it via column check). Reversal
+// path is `/:id/enable`.
+router.post('/:id/disable', requirePermission('gift_cards.reload'), asyncHandler(async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const db = req.db;
+  const cardId = validateId(req.params.id, 'id');
+  const reasonRaw = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  const reason = reasonRaw.length > 0 ? reasonRaw.slice(0, 500) : null;
+
+  const card = await adb.get<GiftCardRow>(
+    'SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0',
+    cardId,
+  );
+  if (!card) throw new AppError('Gift card not found', 404);
+  if (card.status === 'disabled') {
+    throw new AppError('Gift card is already disabled', 400);
+  }
+  if (card.status === 'used') {
+    throw new AppError('Cannot disable a fully-redeemed card', 400);
+  }
+
+  await adb.run(
+    "UPDATE gift_cards SET status = 'disabled', updated_at = datetime('now') WHERE id = ?",
+    cardId,
+  );
+
+  // Audit entry — capture who, when, why, and the prior status so a
+  // mis-clicked disable can be reverted via /enable with full context.
+  audit(db, 'gift_card_disabled', req.user!.id, req.ip || 'unknown', {
+    gift_card_id: cardId,
+    prior_status: card.status,
+    current_balance: card.current_balance,
+    reason,
+  });
+
+  res.json({ success: true, data: { id: cardId, status: 'disabled' } });
+}));
+
+// WEB-UIUX-1546: POST /:id/enable — reverse a previous disable so an
+// admin can revive a mistakenly disabled card. Re-uses the manager+
+// permission gate. Refuses if the card is fully redeemed (status='used')
+// since revival would have zero balance regardless.
+router.post('/:id/enable', requirePermission('gift_cards.reload'), asyncHandler(async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const db = req.db;
+  const cardId = validateId(req.params.id, 'id');
+
+  const card = await adb.get<GiftCardRow>(
+    'SELECT * FROM gift_cards WHERE id = ? AND is_deleted = 0',
+    cardId,
+  );
+  if (!card) throw new AppError('Gift card not found', 404);
+  if (card.status !== 'disabled') {
+    throw new AppError(`Cannot enable a card in status '${card.status}'`, 400);
+  }
+
+  // Restore to 'active' when balance remains; otherwise let the next
+  // redemption attempt fail explicitly on the balance check.
+  const restoredStatus = Number(card.current_balance) > 0 ? 'active' : 'used';
+  await adb.run(
+    "UPDATE gift_cards SET status = ?, updated_at = datetime('now') WHERE id = ?",
+    restoredStatus,
+    cardId,
+  );
+
+  audit(db, 'gift_card_enabled', req.user!.id, req.ip || 'unknown', {
+    gift_card_id: cardId,
+    new_status: restoredStatus,
+  });
+
+  res.json({ success: true, data: { id: cardId, status: restoredStatus } });
 }));
 
 export default router;

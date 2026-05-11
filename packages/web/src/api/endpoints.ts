@@ -1624,6 +1624,11 @@ export const giftCardApi = {
     api.post(`/gift-cards/${id}/redeem`, data),
   reload: (id: number, data: { amount: number }) =>
     api.post(`/gift-cards/${id}/reload`, data),
+  // WEB-UIUX-1546: disable / enable wrappers — manager+ on server.
+  disable: (id: number, data?: { reason?: string }) =>
+    api.post(`/gift-cards/${id}/disable`, data ?? {}),
+  enable: (id: number) =>
+    api.post(`/gift-cards/${id}/enable`),
 };
 
 // ==================== Membership ====================
