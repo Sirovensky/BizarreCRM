@@ -5,10 +5,10 @@ import {
   Search, Plus, Wrench, ChevronLeft, ChevronRight, Trash2, Eye,
   ChevronDown, X, MoreHorizontal, Check, Settings2, MessageSquare, Stethoscope, Package,
   ArrowUp, ArrowDown, ArrowUpDown, Printer, Pin, List, CalendarDays, Send, Kanban,
-  Download, Bookmark, BookmarkX, AlertTriangle, Phone, Copy,
+  Download, Bookmark, BookmarkX, AlertTriangle, Phone, Copy, Smartphone,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ticketApi, settingsApi, smsApi } from '@/api/endpoints';
+import { ticketApi, settingsApi, smsApi, posHandoffApi } from '@/api/endpoints';
 import { CustomerPreviewPopover } from '@/components/shared/CustomerPreviewPopover';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
@@ -186,6 +186,27 @@ function PhoneActionPopover({ phone, label, className }: {
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             <Copy className="h-3.5 w-3.5 text-surface-500" /> Copy number
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setOpen(false);
+              try {
+                await posHandoffApi.pushHandoff('call', phone);
+                toast.success('Sent to your paired phone');
+              } catch (err) {
+                const e = err as { response?: { data?: { message?: string; code?: string } } };
+                if (e?.response?.data?.code === 'ERR_NO_ACTIVE_PAIRED_DEVICE') {
+                  toast.error('No paired mobile checked in recently. Pair under Settings → Account.');
+                } else {
+                  toast.error(e?.response?.data?.message ?? 'Could not push to paired phone');
+                }
+              }
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700"
+            title="If a paired mobile has checked in within 5 min, it will receive this number as a call action."
+          >
+            <Smartphone className="h-3.5 w-3.5 text-primary-500" /> Push to paired phone
           </button>
           <p className="border-t border-surface-200 px-3 py-2 text-[10.5px] text-surface-500 dark:border-surface-700">
             SMS goes to the in-app conversation. If no SMS provider is configured the page will say so.

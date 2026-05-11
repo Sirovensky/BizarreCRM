@@ -116,6 +116,7 @@ import giftCardRoutes from './routes/giftCards.routes.js';
 import tradeInRoutes from './routes/tradeIns.routes.js';
 import blockchypRoutes from './routes/blockchyp.routes.js';
 import financingRoutes from './routes/financing.routes.js';
+import posHandoffRoutes from './routes/posHandoff.routes.js';
 import accountRoutes from './routes/account.routes.js';
 import onboardingRoutes from './routes/onboarding.routes.js';
 import portalRoutes from './routes/portal.routes.js';
@@ -1704,6 +1705,11 @@ app.use('/api/v1/blockchyp', authMiddleware, blockchypRoutes);
 // do NOT wrap this in authMiddleware so the webhook path isn't gated on a
 // session cookie the provider doesn't have.
 app.use('/api/v1/financing', financingRoutes);
+// POS-PHONE-TAP-1: pair-and-poll handoff so a paired mobile drains
+// "call this number" / "send SMS draft" actions from the desktop POS.
+// /pair/complete + /handoff/poll are gated by the device_token inside the
+// route file itself, not authMiddleware — they live on the unauthed mount.
+app.use('/api/v1/pos', posHandoffRoutes);
 app.use('/api/v1/stripe', authMiddleware, tenantStripeRoutes);
 app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 // Audit 44 — Technician bench workflow (device templates + bench timer + QC + defects)

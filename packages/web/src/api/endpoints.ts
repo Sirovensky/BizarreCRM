@@ -2153,3 +2153,28 @@ export const financingApi = {
       { skipGlobal500Toast: true } as object,
     ),
 };
+
+// POS-PHONE-TAP-1: pair-and-poll handoff so a paired mobile device can take
+// over Call / SMS-draft actions the desktop user tapped.
+export interface PairedDevice {
+  id: number;
+  device_label: string | null;
+  platform: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+export const posHandoffApi = {
+  startPairing: () =>
+    api.post<{ success: boolean; data: { code: string; expires_in_seconds: number } }>('/pos/pair/start'),
+  listDevices: () =>
+    api.get<{ success: boolean; data: PairedDevice[] }>('/pos/devices'),
+  removeDevice: (id: number) =>
+    api.delete<{ success: boolean }>(`/pos/devices/${id}`),
+  pushHandoff: (action: 'call' | 'sms_draft', phone: string, payload?: Record<string, unknown>) =>
+    api.post<{ success: boolean; data?: { handoff_ids: number[]; device_count: number; expires_in_seconds: number }; code?: string; message?: string }>(
+      '/pos/handoff',
+      { action, phone, payload },
+      { skipGlobal500Toast: true } as object,
+    ),
+};
