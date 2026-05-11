@@ -1361,10 +1361,18 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   // UI sends from a fixed dropdown but curl/integration callers could submit
   // arbitrary strings and pollute reporting aggregations with unbounded
   // cardinality. Reject anything outside the enum.
+  // WEB-UIUX-1290: enum widened with the retail-cluster reasons the audit
+  // flagged (cancelled service, exchange-no-money, tax adjustment, shipping
+  // issue, loyalty/promo retroactive). Each maps cleanly to a downstream
+  // report bucket; staff no longer have to fall through to 'other' for the
+  // most-frequent real-world cases.
   const REFUND_REASON_CODES = new Set([
     'defective', 'dissatisfaction', 'wrong_item', 'duplicate_charge',
     'price_adjustment', 'failed_repair', 'lost_data', 'extended_delay',
-    'goodwill_gesture', 'chargeback_prevention', 'warranty_invocation', 'other',
+    'goodwill_gesture', 'chargeback_prevention', 'warranty_invocation',
+    'cancelled_service', 'exchange_no_refund', 'tax_adjustment',
+    'shipping_issue', 'loyalty_promo_retroactive',
+    'other',
   ]);
   const cnCodeRaw = typeof req.body.code === 'string' ? req.body.code.trim() : '';
   if (cnCodeRaw && !REFUND_REASON_CODES.has(cnCodeRaw)) {

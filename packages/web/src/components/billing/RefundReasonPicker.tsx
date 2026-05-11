@@ -27,23 +27,36 @@ export type RefundReasonCode =
   | 'goodwill_gesture'
   | 'chargeback_prevention'
   | 'warranty_invocation'
+  // WEB-UIUX-1290: retail-cluster codes added 2026-05-11 so staff stop
+  // falling through to 'other' for the most-frequent real-world reasons.
+  | 'cancelled_service'
+  | 'exchange_no_refund'
+  | 'tax_adjustment'
+  | 'shipping_issue'
+  | 'loyalty_promo_retroactive'
   | 'other';
 
 // WEB-UIUX-1042: hint strings omit terminal periods to match the app-wide
 // convention for dropdown labels (no trailing punctuation).
 const REASONS: ReadonlyArray<{ code: RefundReasonCode; label: string; hint: string }> = [
-  { code: 'defective',             label: 'Defective product',      hint: 'Arrived broken or malfunctioned' },
-  { code: 'dissatisfaction',       label: 'Customer dissatisfied',  hint: 'Changed mind, unhappy with result' },
-  { code: 'wrong_item',            label: 'Wrong item',             hint: 'Received/ordered the wrong SKU' },
-  { code: 'duplicate_charge',      label: 'Duplicate charge',       hint: 'Billed twice by mistake' },
-  { code: 'price_adjustment',      label: 'Price adjustment',       hint: 'Retroactive discount / price match' },
-  { code: 'failed_repair',         label: 'Failed repair',          hint: 'Service repair did not resolve the issue' },
-  { code: 'lost_data',             label: 'Lost data',              hint: 'Customer data lost during service' },
-  { code: 'extended_delay',        label: 'Extended delay',         hint: 'Service took significantly longer than quoted' },
-  { code: 'goodwill_gesture',      label: 'Goodwill gesture',       hint: 'Discretionary credit to preserve customer relationship' },
-  { code: 'chargeback_prevention', label: 'Chargeback prevention',  hint: 'Pre-emptive refund to avoid a payment dispute' },
-  { code: 'warranty_invocation',   label: 'Warranty invocation',    hint: 'Refund issued under product or service warranty' },
-  { code: 'other',                 label: 'Other',                  hint: 'Free-form reason in the note' },
+  { code: 'defective',                 label: 'Defective product',         hint: 'Arrived broken or malfunctioned' },
+  { code: 'dissatisfaction',           label: 'Customer dissatisfied',     hint: 'Changed mind, unhappy with result' },
+  { code: 'wrong_item',                label: 'Wrong item',                hint: 'Received/ordered the wrong SKU' },
+  { code: 'duplicate_charge',          label: 'Duplicate charge',          hint: 'Billed twice by mistake' },
+  { code: 'price_adjustment',          label: 'Price adjustment',          hint: 'Retroactive discount / price match' },
+  { code: 'failed_repair',             label: 'Failed repair',             hint: 'Service repair did not resolve the issue' },
+  { code: 'lost_data',                 label: 'Lost data',                 hint: 'Customer data lost during service' },
+  { code: 'extended_delay',            label: 'Extended delay',            hint: 'Service took significantly longer than quoted' },
+  { code: 'goodwill_gesture',          label: 'Goodwill gesture',          hint: 'Discretionary credit to preserve customer relationship' },
+  { code: 'chargeback_prevention',     label: 'Chargeback prevention',     hint: 'Pre-emptive refund to avoid a payment dispute' },
+  { code: 'warranty_invocation',       label: 'Warranty invocation',       hint: 'Refund issued under product or service warranty' },
+  // WEB-UIUX-1290: cluster of high-frequency retail reasons.
+  { code: 'cancelled_service',         label: 'Cancelled service',         hint: 'Appointment / service cancelled before work started' },
+  { code: 'exchange_no_refund',        label: 'Exchange (no refund)',      hint: 'Returned for swap, no money moved' },
+  { code: 'tax_adjustment',            label: 'Tax adjustment',            hint: 'Sales-tax correction (rate, exemption, jurisdiction)' },
+  { code: 'shipping_issue',            label: 'Shipping issue',            hint: 'Lost / damaged / never delivered' },
+  { code: 'loyalty_promo_retroactive', label: 'Loyalty / promo retro',     hint: 'Discount honored after the sale (missed code, member tier)' },
+  { code: 'other',                     label: 'Other',                     hint: 'Free-form reason in the note' },
 ];
 
 const OTHER_NOTE_MIN = 5;
