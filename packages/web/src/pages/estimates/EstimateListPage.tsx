@@ -524,10 +524,53 @@ export function EstimateListPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to reject estimate'),
   });
 
+  // WEB-UIUX-962: surface the previously-orphaned server bulk-convert.
+  // Server caps the request at 100 ids — we enforce that client-side too,
+  // and require admin-only the same way the per-row Convert button does.
+  const bulkConvertMut = useMutation({
+    mutationFn: (estimate_ids: number[]) => estimateApi.bulkConvert(estimate_ids),
+    onSuccess: (res: { data?: { data?: { converted?: number; failed?: number; ticket_ids?: number[] } } }) => {
+      const d = res?.data?.data ?? {};
+      const converted = d.converted ?? 0;
+      const failed = d.failed ?? 0;
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      if (converted > 0) {
+        toast.success(failed > 0
+          ? `Converted ${converted}, ${failed} failed`
+          : `Converted ${converted} estimate${converted !== 1 ? 's' : ''} to tickets`);
+      } else {
+        toast.error(`No estimates converted — ${failed} failed`);
+      }
+      setSelectedIds(new Set());
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message || 'Bulk convert failed'),
+  });
+
+  const handleBulkConvert = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (ids.length > 100) {
+      toast.error('Bulk convert is capped at 100 estimates per request');
+      return;
+    }
+    try {
+      const ok = await confirm(
+        `Convert ${ids.length} estimate${ids.length !== 1 ? 's' : ''} to tickets? Converted estimates can no longer be edited.`,
+        { confirmLabel: 'Convert' },
+      );
+      if (!ok) return;
+    } catch (err) {
+      toast.error(formatApiError(err));
+      return;
+    }
+    bulkConvertMut.mutate(ids);
+  }, [selectedIds, bulkConvertMut]);
+
   // Shared gate so Send/Convert/Delete/Reject row buttons can't fire in parallel
   // and race the convert->navigate transition (SCAN-984b).
   const anyMutationPending =
-    sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending || isBulkDeleting;
+    sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending || isBulkDeleting || bulkConvertMut.isPending;
 
   const handleBulkDelete = useCallback(async () => {
     if (anyMutationPending || selectedIds.size === 0) return;
@@ -713,6 +756,20 @@ export function EstimateListPage() {
                           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                           : <Trash2 className="h-3.5 w-3.5" />}
                         {isBulkDeleting ? 'Deleting...' : 'Delete selected'}
+                      </button>
+                      {/* WEB-UIUX-962: server bulk-convert (admin-only, tier-limit
+                          + 100-id cap) was orphaned; surface here so an admin
+                          batching 30 approved estimates doesn't click each row. */}
+                      <button
+                        type="button"
+                        onClick={handleBulkConvert}
+                        disabled={anyMutationPending}
+                        className="flex items-center gap-1 text-primary-600 hover:text-primary-700 font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {bulkConvertMut.isPending
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <ArrowRightLeft className="h-3.5 w-3.5" />}
+                        {bulkConvertMut.isPending ? 'Converting...' : 'Convert selected'}
                       </button>
                       <button
                         type="button"

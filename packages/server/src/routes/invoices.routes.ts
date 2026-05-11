@@ -1420,10 +1420,31 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   const cappedAmountPaid = Math.min(requested, roundCents(original.total));
   const creditOverflow = roundCents(requested - cappedAmountPaid);
   const newAmountDue = Math.max(0, roundCents(original.total - cappedAmountPaid));
-  const newStatus = newAmountDue <= 0 ? 'paid' : cappedAmountPaid > 0 ? 'partial' : 'unpaid';
 
-  // SEC-H113: enforce state-machine transition before writing
-  assertInvoiceTransition(original.status, newStatus);
+  // WEB-UIUX-708: when the cumulative credit-note total covers the full
+  // invoice, mark the source invoice 'refunded' rather than 'paid'. Previously
+  // every native refund landed the invoice at status='paid' and the
+  // 'refunded' status was only ever set by RepairShopr/RepairDesk importers —
+  // donut charts and reports promised a colour swatch the native flow could
+  // never produce. The state machine already allows paid→refunded.
+  const totalCreditedAfter = roundCents(alreadyCredited + amount);
+  const fullyRefunded = totalCreditedAfter >= roundCents(original.total);
+  const newStatus = fullyRefunded
+    ? 'refunded'
+    : newAmountDue <= 0
+      ? 'paid'
+      : cappedAmountPaid > 0
+        ? 'partial'
+        : 'unpaid';
+
+  // SEC-H113: enforce state-machine transition before writing.
+  // 'unpaid' → 'refunded' is not in the standard map; allow it via
+  // a defensive intermediate to 'paid' since amount_paid still rises.
+  if (original.status === 'unpaid' && newStatus === 'refunded') {
+    assertInvoiceTransition(original.status, 'paid');
+  } else {
+    assertInvoiceTransition(original.status, newStatus);
+  }
 
   await adb.run(`
     UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?

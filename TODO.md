@@ -3188,7 +3188,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:474-548`
   <!-- meta: fix=add-Credit-Notes-section-below-Payment-Timeline+invoice.credit_notes-from-server -->
 
-- [ ] WEB-UIUX-708. **[MAJOR] `'refunded'` invoice status is dead UI code — never set by native refund flows.** STATUS_COLORS at `InvoiceListPage:33` and `CustomerDetailPage:1685` map `refunded → purple`, but server only sets `'refunded'` from RepairShopr/RepairDesk/MyRepairApp importers, never from credit-note or refund routes. Native flow leaves invoice as `'paid'` and creates a sibling negative-total invoice. Color swatch in donut chart promises a status the native refund can't produce. L8, L9.
+- [x] WEB-UIUX-708. **[MAJOR] `'refunded'` invoice status is dead UI code — never set by native refund flows.** STATUS_COLORS at `InvoiceListPage:33` and `CustomerDetailPage:1685` map `refunded → purple`, but server only sets `'refunded'` from RepairShopr/RepairDesk/MyRepairApp importers, never from credit-note or refund routes. Native flow leaves invoice as `'paid'` and creates a sibling negative-total invoice. Color swatch in donut chart promises a status the native refund can't produce. L8, L9. **[AUTOLOOP-T49 RESOLVED 2026-05-11: server credit-note path now sets invoice.status=`refunded` when cumulative credit covers invoice.total; donut chart finally produces the colour swatch it promised.]**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:33,41` `packages/web/src/pages/customers/CustomerDetailPage.tsx:1685`
   `packages/server/src/services/repairShoprImport.ts:773-774` `packages/server/src/services/repairDeskImport.ts:1290`
   <!-- meta: fix=either-set-refunded-on-original-when-fully-credited-OR-remove-dead-color -->
@@ -3995,7 +3995,7 @@ Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-255`
   <!-- meta: fix=primary-action=solid-fill-by-status(Approve-when-sent-or-Send-when-draft-or-Convert-when-approved)+collapse-rest-into-overflow-menu -->
 
-- [ ] WEB-UIUX-962. **[MAJOR] List-page bulk action bar exposes only Delete — `bulkConvert` API + client wrapper exist unused.** `endpoints.ts:904` declares `bulkConvert(estimate_ids[])`, server `estimates.routes.ts:325-489` implements it (admin-only, tier-limit, idempotency, 100-id cap). `EstimateListPage.tsx:580-608` bulk bar has only Delete-selected. Operator approving 30 estimates after a quote-batch must click Convert one row at a time. L8, L3.
+- [x] WEB-UIUX-962. **[MAJOR] List-page bulk action bar exposes only Delete — `bulkConvert` API + client wrapper exist unused.** `endpoints.ts:904` declares `bulkConvert(estimate_ids[])`, server `estimates.routes.ts:325-489` implements it (admin-only, tier-limit, idempotency, 100-id cap). `EstimateListPage.tsx:580-608` bulk bar has only Delete-selected. Operator approving 30 estimates after a quote-batch must click Convert one row at a time. L8, L3. **[AUTOLOOP-T49 RESOLVED 2026-05-11: bulk-bar gains Convert-selected button wired to estimateApi.bulkConvert; 100-id cap enforced client-side; result toast shows converted+failed counts.]**
   `packages/web/src/pages/estimates/EstimateListPage.tsx:580-608`
   <!-- meta: fix=add-Convert-Selected-button-using-estimateApi.bulkConvert -->
 
@@ -4248,7 +4248,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   `packages/server/src/routes/invoices.routes.ts:1186-1202`
 
-- [ ] WEB-UIUX-1028. **[MAJOR] Credit Note modal "Max: $X (amount paid)" hint never subtracts prior credit notes.** Operator on a $200 invoice that already has a $50 credit issued sees "Max: $200" → types $200 → server 400 "already credited 50.00 of 200.00". Hint outright lies. L7, L8.
+- [!] WEB-UIUX-1028. **[MAJOR] Credit Note modal "Max: $X (amount paid)" hint never subtracts prior credit notes.** Operator on a $200 invoice that already has a $50 credit issued sees "Max: $200" → types $200 → server 400 "already credited 50.00 of 200.00". Hint outright lies. L7, L8. **STALE 2026-05-11: client already computes `serverCapForTotal = invoice.total - sumOfPriorCreditNotes` and uses it for both display and clamp (InvoiceDetailPage.tsx:348-353).**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:776-778`
   <!-- meta: fix=fetch-invoice.related_credit_notes-and-subtract-from-displayed-cap -->
 
@@ -4460,7 +4460,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/api/endpoints.ts:1366-1374`
   <!-- meta: fix=add-pages/settings/QcChecklistPage.tsx+row-CRUD+device-category-filter+drag-sort_order+wire-endpoints.bench.qc.{create,update,delete}+update-empty-state-link-to-real-route -->
 
-- [ ] WEB-UIUX-1081. **[BLOCKER] `GET /bench/qc/status/:ticketId` has zero web callers — TicketDetail never reflects whether the ticket has been QC-signed.** `grep "qc/status\|qcStatus"` in `packages/web/src` returns only the endpoint definition. Reviewer/manager scanning a ticket cannot tell at-a-glance "QC done by Joe at 14:32"; tech reopening modal can't see prior sign-off. Combined with no `UNIQUE(ticket_id)` on `qc_sign_offs` (`088_bench_timer_qc_defects.sql:71-82`), every modal submit creates a fresh row. Tickets accumulate duplicate sign-off rows; audit log doubles. L1, L4, L7, L8.
+- [!] WEB-UIUX-1081. **[BLOCKER] `GET /bench/qc/status/:ticketId` has zero web callers — TicketDetail never reflects whether the ticket has been QC-signed.** `grep "qc/status\|qcStatus"` in `packages/web/src` returns only the endpoint definition. Reviewer/manager scanning a ticket cannot tell at-a-glance "QC done by Joe at 14:32"; tech reopening modal can't see prior sign-off. Combined with no `UNIQUE(ticket_id)` on `qc_sign_offs` (`088_bench_timer_qc_defects.sql:71-82`), every modal submit creates a fresh row. Tickets accumulate duplicate sign-off rows; audit log doubles. L1, L4, L7, L8. **STALE 2026-05-11: TicketDetailPage.tsx:352 already queries `qcStatus` via `benchApi.qc.status(ticketId)` and renders the sign-off summary at line 742.]**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:591-597`
   `packages/server/src/routes/bench.routes.ts:703-753`
   <!-- meta: fix=add-useQuery(['qc-status',ticketId])-in-TicketDetail+badge-"QC signed by {name} at {time}"+disable-button-if-already-signed-or-show-"Re-sign-(needs-manager)"+add-UNIQUE(ticket_id)-via-migration-OR-explicit-INSERT-OR-REPLACE-with-confirm -->
