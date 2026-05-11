@@ -262,8 +262,17 @@ export function CustomerListPage() {
   const bulkTagMut = useMutation({
     mutationFn: ({ tag }: { tag: string }) =>
       customerApi.bulkTag(Array.from(selected), tag),
-    onSuccess: () => {
+    onSuccess: (_res, _vars, _ctx) => {
       toast.success('Tag applied successfully');
+      // BUGHUNT-2026-05-10-28: invalidate the per-customer detail cache
+      // for every selected id so a tab viewing a single customer doesn't
+      // show stale tags after a bulk apply. Snapshot selection BEFORE
+      // clearing the set.
+      const affected = Array.from(selected);
+      for (const id of affected) {
+        queryClient.invalidateQueries({ queryKey: ['customer', id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-analytics', id] });
+      }
       setSelected(new Set());
       setShowTagInput(false);
       setTagValue('');

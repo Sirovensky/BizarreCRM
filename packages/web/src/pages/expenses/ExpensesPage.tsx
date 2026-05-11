@@ -177,7 +177,15 @@ export function ExpensesPage() {
 
   const handleSubmit = () => {
     const errs: { amount?: string; category?: string; date?: string } = {};
-    if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = 'Valid amount required';
+    // BUGHUNT-2026-05-10-23: parseFloat('abc') is NaN; `NaN <= 0` is false,
+    // so the prior guard let non-numeric strings through. Number.isFinite
+    // rejects NaN/Inf so the mutation never posts a NaN amount.
+    {
+      const parsed = parseFloat(form.amount);
+      if (!form.amount || !Number.isFinite(parsed) || parsed <= 0) {
+        errs.amount = 'Valid amount required';
+      }
+    }
     if (!form.category) errs.category = 'Category required';
     // WEB-FK-013: belt-and-suspenders date guard — `max=` HTML attr is only a
     // browser hint; reject future-dated and pre-1900 expenses server-side too.

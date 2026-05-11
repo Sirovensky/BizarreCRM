@@ -1082,6 +1082,11 @@ function MembershipCard({ customerId }: { customerId: number }) {
     onSuccess: (data) => {
       setMembershipPaymentToken(data.token);
       setMembershipCardLabel([data.cardType, data.maskedPan].filter(Boolean).join(' ') || 'Card saved');
+      // BUGHUNT-2026-05-10-27: card-on-file save mutates server-side
+      // payment-token state that membership queries read; invalidate so
+      // the tier UI doesn't lag the success toast.
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['membership'] });
       toast.success('Card saved for membership billing');
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || err?.message || 'Failed to save card'),

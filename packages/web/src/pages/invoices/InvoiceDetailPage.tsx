@@ -440,7 +440,13 @@ export function InvoiceDetailPage() {
   const canCreateCreditNote = invoice.status !== 'void' && (Number(invoice.total) > 0 || Number(invoice.amount_paid) > 0) && maxCreditNoteAmount > 0;
 
   const handlePay = async () => {
-    if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return toast.error('Enter a valid amount');
+    // BUGHUNT-2026-05-10-22: parseFloat('abc') is NaN; `NaN <= 0` is false,
+    // so the prior guard let non-numeric strings through and posted a
+    // NaN amount. Number.isFinite + >0 rejects NaN/Inf/empty/negative.
+    const parsedAmount = parseFloat(paymentForm.amount);
+    if (!paymentForm.amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return toast.error('Enter a valid amount');
+    }
     // WEB-FH-021 (Fixer-B4 2026-04-25): warn the cashier before recording an
     // overpayment. The server happily accepts amounts that exceed amount_due
     // (it just leaves amount_due negative), so a fat-fingered extra zero

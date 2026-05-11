@@ -5835,7 +5835,9 @@ function RepairDepositStep({ draft, setDraft, onBack, onSave, onGoToStep }: {
     if (seededRef.current) return;
     seededRef.current = true;
     if (subtotalCents > 0) {
-      setDraft((prev) => ({ ...prev, depositAmount: ((subtotalCents * 0.5) / 100).toFixed(2) }));
+      // BUGHUNT-2026-05-10-20: integer-cents math so the deposit doesn't
+      // drift by a cent on float intermediates (e.g. 1999 * 0.5 = 999.5).
+      setDraft((prev) => ({ ...prev, depositAmount: (Math.round(subtotalCents / 2) / 100).toFixed(2) }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -6562,7 +6564,13 @@ function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, set
       const res = await api.get<{ data: { expected_cents: number } }>(`/pos-enrich/drawer/${drawerShiftId}/z-report`);
       return res.data.data;
     },
-    staleTime: 10_000,
+    // BUGHUNT-2026-05-10-19: refund cap must be live — a sale in another
+    // tab between modal-open and refund-click would leave the cached
+    // drawer balance stale and let a refund go through against an
+    // insufficient cash drawer. Refetch on every mount/window-focus.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
   const drawerCashOnHand = drawerZReportQuery.data ? fromCents(drawerZReportQuery.data.expected_cents) : null;
 
