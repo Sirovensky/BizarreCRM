@@ -2576,7 +2576,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
 #### ED10: Search/Filter Weirdness
 
-- [!] WEB-UIUX-662. **[MAJOR] CustomerListPage / TicketListPage / LeadListPage search sends raw input, NO phone/email normalization.** Searching `(555) 123-4567` won't match stored `5551234567`. CSR daily friction. L7, L1. **BLOCKED 2026-05-10: client normalization would mask different server behaviors; correct fix is server-side phone-normalize on search (digit-strip), affecting 3 list endpoints. Multi-component.**
+- [x] WEB-UIUX-662. **Server-side phone-digit normalization on customer / ticket / lead search (2026-05-11).** Each search endpoint now strips non-digits from the query string and, when ≥3 digits remain, OR-matches `phone`/`mobile` columns against the digit-only LIKE pattern in addition to the character-literal pattern. Operators can now paste `(555) 123-4567` and hit stored `5551234567` without re-formatting. Character-literal match on names / email / order_id / device / notes stays untouched.
 
 
 - [!] WEB-UIUX-664. **[MAJOR] Cross-page selection invisible.** Page 1 select 25 → page 2 → "50 selected" badge but page 2 checkboxes unchecked. Mystery state. L11. **BLOCKED 2026-05-10: all list pages keep selection as `Set<id>` not as visible checkbox state on the current page; correct fix is per-row visible-on-current-page check + row-disabled badge; cross-cutting UX.**

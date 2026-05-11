@@ -185,9 +185,19 @@ router.get(
     const params: unknown[] = [];
 
     if (keyword) {
-      conditions.push("(l.first_name LIKE ? ESCAPE '\\' OR l.last_name LIKE ? ESCAPE '\\' OR l.email LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\' OR l.order_id LIKE ? ESCAPE '\\')");
       const like = `%${escapeLike(keyword)}%`;
-      params.push(like, like, like, like, like);
+      // WEB-UIUX-662: digit-normalized phone match. "(555) 123-4567"
+      // now hits stored "5551234567" without forcing the operator to
+      // strip punctuation by hand.
+      const digitsOnly = keyword.replace(/\D+/g, '');
+      const digitMatch = digitsOnly.length >= 3 ? `%${escapeLike(digitsOnly)}%` : null;
+      if (digitMatch) {
+        conditions.push("(l.first_name LIKE ? ESCAPE '\\' OR l.last_name LIKE ? ESCAPE '\\' OR l.email LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\' OR l.order_id LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\')");
+        params.push(like, like, like, like, like, digitMatch);
+      } else {
+        conditions.push("(l.first_name LIKE ? ESCAPE '\\' OR l.last_name LIKE ? ESCAPE '\\' OR l.email LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\' OR l.order_id LIKE ? ESCAPE '\\')");
+        params.push(like, like, like, like, like);
+      }
     }
 
     if (status) {

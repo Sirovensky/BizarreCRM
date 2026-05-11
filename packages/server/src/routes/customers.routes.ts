@@ -637,6 +637,31 @@ async function likeSearch(adb: AsyncDb, q: string) {
   // (enumeration / DoS). ESCAPE '\' makes SQLite honour the backslashes
   // inserted by escapeLike().
   const like = `%${escapeLike(q)}%`;
+  // WEB-UIUX-662: phone digit-normalization. Searching "(555) 123-4567"
+  // never matched stored "5551234567" because LIKE is character-literal.
+  // When the query has at least 3 digits, strip non-digits and OR-match
+  // phone/mobile against the digit-only form. Names + email + organization
+  // stay character-literal because letters are meaningful in those fields.
+  const digitsOnly = q.replace(/\D+/g, '');
+  const digitMatch = digitsOnly.length >= 3 ? `%${escapeLike(digitsOnly)}%` : null;
+  if (digitMatch) {
+    return adb.all<AnyRow>(
+      `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
+              c.customer_group_id, cg.name AS customer_group_name,
+              cg.discount_pct AS group_discount_pct, cg.discount_type AS group_discount_type,
+              cg.auto_apply AS group_auto_apply
+       FROM customers c
+       LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
+       WHERE c.is_deleted = 0
+         AND (c.code IS NULL OR c.code != 'WALK-IN')
+         AND (c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\'
+              OR c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\'
+              OR c.email LIKE ? ESCAPE '\\' OR c.organization LIKE ? ESCAPE '\\'
+              OR c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\')
+       LIMIT 10`,
+      like, like, like, like, like, like, digitMatch, digitMatch,
+    );
+  }
   return adb.all<AnyRow>(
     `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
             c.customer_group_id, cg.name AS customer_group_name,

@@ -861,16 +861,34 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     keywordJoin = 'LEFT JOIN ticket_devices td_kw ON td_kw.ticket_id = t.id';
     // ESCAPE '\' + escapeLike() prevents users from supplying raw %/_
     // wildcards that would widen the match (enumeration / DoS).
-    conditions.push(`(
-      t.order_id LIKE ? ESCAPE '\\' OR
-      c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
-      (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
-      td_kw.device_name LIKE ? ESCAPE '\\' OR
-      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
-      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\')
-    )`);
+    // WEB-UIUX-662: when the operator types a phone like "(555) 123-4567"
+    // strip non-digits and OR-match c.phone / c.mobile against the digit
+    // form. Names + device + notes stay character-literal.
     const like = `%${escapeLike(keyword)}%`;
-    params.push(like, like, like, like, like, like, like);
+    const digitsOnly = keyword.replace(/\D+/g, '');
+    const digitMatch = digitsOnly.length >= 3 ? `%${escapeLike(digitsOnly)}%` : null;
+    if (digitMatch) {
+      conditions.push(`(
+        t.order_id LIKE ? ESCAPE '\\' OR
+        c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
+        (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
+        td_kw.device_name LIKE ? ESCAPE '\\' OR
+        t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
+        t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\') OR
+        c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\'
+      )`);
+      params.push(like, like, like, like, like, like, like, digitMatch, digitMatch);
+    } else {
+      conditions.push(`(
+        t.order_id LIKE ? ESCAPE '\\' OR
+        c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
+        (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
+        td_kw.device_name LIKE ? ESCAPE '\\' OR
+        t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
+        t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\')
+      )`);
+      params.push(like, like, like, like, like, like, like);
+    }
   }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
