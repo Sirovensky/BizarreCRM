@@ -556,12 +556,25 @@ export function EstimateDetailPage() {
     !estimateContentLocked;
 
   return (
-    <div>
-      <Breadcrumb items={estimateBreadcrumbItems} />
+    <div data-estimate-print-root>
+      {/* WEB-UIUX-681: visibility-hidden print stylesheet so window.print()
+          on this page produces a clean estimate without sidebar/topbar/breadcrumb
+          chrome. Same pattern as ZReportModal (WEB-UIUX-1182). The detail
+          subtree carries `data-estimate-print-root`; everything outside
+          that subtree gets hidden on paper. */}
+      <style dangerouslySetInnerHTML={{ __html: `
+@media print {
+  body * { visibility: hidden !important; }
+  [data-estimate-print-root], [data-estimate-print-root] * { visibility: visible !important; }
+  [data-estimate-print-root] { position: absolute !important; inset: 0 !important; max-width: none !important; padding: 0 !important; background: white !important; color: black !important; }
+  [data-estimate-print-root] .no-print, [data-estimate-print-root] .no-print * { visibility: hidden !important; }
+}
+` }} />
+      <div className="no-print"><Breadcrumb items={estimateBreadcrumbItems} /></div>
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <button onClick={() => navigate('/estimates')} className="shrink-0 rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button onClick={() => navigate('/estimates')} className="no-print shrink-0 rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="min-w-0">
@@ -584,7 +597,7 @@ export function EstimateDetailPage() {
             <p className="text-sm text-surface-500">Created {formatDate(estimate.created_at)}</p>
           </div>
         </div>
-        <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(8.75rem,1fr))] gap-2 sm:flex sm:flex-wrap sm:items-center lg:w-auto lg:justify-end" data-estimate-actions="true">
+        <div className="no-print grid w-full grid-cols-[repeat(auto-fit,minmax(8.75rem,1fr))] gap-2 sm:flex sm:flex-wrap sm:items-center lg:w-auto lg:justify-end" data-estimate-actions="true">
           {canStartSigning && (
             <button
               onClick={() => createSignUrlMut.mutate()}

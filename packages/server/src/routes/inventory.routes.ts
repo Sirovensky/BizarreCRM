@@ -1669,8 +1669,22 @@ router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
 // SEC-H25: receiving stock against a PO adjusts inventory — gate behind inventory.adjust_stock.
 router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_stock'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { items } = req.body; // [{purchase_order_item_id, quantity_received}]
+  const { items } = req.body; // [{purchase_order_item_id, quantity_received, lot_number?, expiration_date?, bin_location?, actual_unit_cost?}]
   if (!items?.length) throw new AppError('Items required', 400);
+
+  // WEB-UIUX-1189: receive-level metadata that applies to every line in this
+  // shipment (supplier invoice # / packing slip #) lives on the request body
+  // root; per-line metadata (lot/expiry/bin/actual-cost) lives on each item.
+  // All optional; legacy clients sending only {purchase_order_item_id,
+  // quantity_received} continue to work.
+  const rawBody = req.body as Record<string, unknown>;
+  const trimCap = (val: unknown, max: number): string | null => {
+    if (typeof val !== 'string') return null;
+    const t = val.trim();
+    return t ? t.slice(0, max) : null;
+  };
+  const shipmentSupplierInvoiceNo = trimCap(rawBody.supplier_invoice_no, 64);
+  const shipmentPackingSlipNo = trimCap(rawBody.packing_slip_no, 64);
 
   // S4: Pre-read + build the whole receive plan, then run it in one atomic
   //     transaction so a partial failure can't leave stock, poi, and
@@ -1688,6 +1702,21 @@ router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_
     const received = Math.min(requested, receivable);
     if (received <= 0) continue;
 
+    // Per-line receiving meta. lot/expiry/bin are free-text; actual_unit_cost
+    // is in dollars from the client and stored as cents to match the rest of
+    // the integer-cents money pipeline.
+    const lotNumber = trimCap(item.lot_number, 64);
+    const expirationDate = trimCap(item.expiration_date, 32);
+    const binLocation = trimCap(item.bin_location, 64);
+    let actualUnitCostCents: number | null = null;
+    if (item.actual_unit_cost !== undefined && item.actual_unit_cost !== null && item.actual_unit_cost !== '') {
+      const n = Number(item.actual_unit_cost);
+      if (!Number.isFinite(n) || n < 0 || n > 1_000_000) {
+        throw new AppError('actual_unit_cost must be a non-negative number ≤ 1,000,000', 400);
+      }
+      actualUnitCostCents = Math.round(n * 100);
+    }
+
     // Guarded differential UPDATE — prevents two concurrent receive requests for
     // the same PO from both computing `receivable` from a stale pre-lock read
     // and over-receiving beyond quantity_ordered (SEC-H62 over-receive race).
@@ -1704,9 +1733,18 @@ router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_
       params: [received, poItem.inventory_item_id],
     });
     txQueries.push({
-      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
-            VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?)`,
-      params: [poItem.inventory_item_id, received, poId, req.user!.id],
+      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id,
+                                          supplier_invoice_no, packing_slip_no, lot_number, expiration_date, bin_location, actual_unit_cost_cents)
+            VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        poItem.inventory_item_id, received, poId, req.user!.id,
+        shipmentSupplierInvoiceNo,
+        shipmentPackingSlipNo,
+        lotNumber,
+        expirationDate,
+        binLocation,
+        actualUnitCostCents,
+      ],
     });
     itemsReceivedCount++;
   }

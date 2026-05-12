@@ -1769,13 +1769,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [!] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
   `packages/web/src/pages/inventory/MassLabelPrintPage.tsx:42-95`
 
-- [!] WEB-UIUX-681. **[MAJOR] Invoice print fallback uses `window.print()` against current SPA route — prints sidebar+toolbars+breadcrumbs.** Same on EstimateDetailPage. L9, L8. **BLOCKED 2026-05-10: needs body-print CSS contained to print-route on detail pages, or window.open to /print route; design choice + per-detail-page edit.**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:367-373`
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:249`
-
-  `packages/web/src/pages/settings/PosSettings.tsx:233-238`
-  `packages/web/src/pages/settings/settingsMetadata.ts:669-674`
-
 - [!] WEB-UIUX-683. **[MAJOR] No printer-status telemetry anywhere — zero hits for printer.*offline / printer_status.** Cannot pre-disable Print buttons when no printer connected. L8, L11. **BLOCKED 2026-05-11: needs printer-status integration with the local hardware (CUPS/IPP poll, ESC/POS heartbeat, or USB enumeration). No telemetry agent in repo; printers vary by tenant. Cannot pre-disable Print buttons reliably without a deployment-side detector.**
 
   `packages/web/src/components/shared/PrintPreviewModal.tsx:16-21`
@@ -2580,15 +2573,6 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:164-209, 246-296`
   <!-- meta: fix=mirror-ZReportModal-pattern:-role=dialog-aria-modal-true-aria-labelledby=open/close-shift-title+id-on-h3+focus-trap-or-trap-within-modal -->
 
-- [!] WEB-UIUX-1189. **[MAJOR] Receive modal captures only quantity — no field for supplier invoice #, packing slip #, lot/batch, expiration date, bin location, or actual unit cost as received.** Standard receiving workflow needs invoice number for AP matching and lot/expiry for traceability (mandatory for regulated parts). Without these the `stock_movements.notes` column is hard-coded `'Received from PO'` (server line 1503) — no audit trail of which physical shipment created the units. Cost variance: PO `cost_price` is locked at order time; if supplier raised price between order and ship, actual cost is silently lost. L4 flow completion, L11 data integrity. **STATUS: BLOCKED — receive modal needs supplier_invoice_no/lot/expiry/actual_cost/bin fields + server schema additions; multi-component, defer to inventory sprint**
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:50-150`
-  `packages/server/src/routes/inventory.routes.ts:1465-1526`
-  <!-- meta: fix=add-optional-supplier_invoice_no+packing_slip+per-line-lot/batch/expiry/actual_cost+bin-location-fields+server-extends-stock_movements.notes-or-new-receipts-table -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:24-28, 288, 326-330`
-  `packages/server/src/routes/inventory.routes.ts:1384`
-  <!-- meta: fix=add-Expected-Delivery-date-input-to-create-form+pass-as-expected_date-in-createPurchaseOrder-payload -->
-
 - [!] WEB-UIUX-1191. **[MAJOR] No "Send PO to Supplier" action — created PO sits in `draft` forever with no email/PDF/print path.** Procurement workflow normally: create PO → email supplier → mark `pending` (awaiting confirm) → mark `ordered` (supplier acknowledged). This UI has neither send action nor PDF render. Real-world cashier creates PO and then has to retype it into a separate email client. L4 flow completion, L6 discoverability. **STATUS: BLOCKED — needs new server endpoint POST /purchase-orders/:id/email + PDF render via existing print pipeline; multi-component**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (entire file — no send action)
   <!-- meta: fix=add-"Send-to-Supplier"-button-on-PO-row+server-endpoint-POST-/purchase-orders/:id/email+optional-pdf-render-via-existing-print-pipeline -->
@@ -2765,14 +2749,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
 
-- [!] WEB-UIUX-1293. **[MAJOR] No commission reversal on the credit-note path. `/refunds` PATCH approve calls `reverseCommission()` (`refunds.routes.ts:10`); `/invoices/:id/credit-note` does NOT. Tech who earned $40 commission on a $400 invoice that's then credit-noted keeps the $40; payroll-period lock never trips. Operator processing a returned-product credit note has no idea this is happening.** L13 ledger integrity, L7 silent side-effect. **STATUS: BLOCKED — server invoices.routes.ts credit-note path needs reverseCommission integration; backend, defer to refunds sprint**
-  `packages/server/src/routes/invoices.routes.ts:1162-1317` (no commission reversal)
-  `packages/server/src/routes/refunds.routes.ts:10` (vs. has it)
-  <!-- meta: fix=server-credit-note-route-call-reverseCommission-proportionally+OR-warn-in-modal-Credit-notes-do-not-reverse-tech-commissions+document-policy -->
-
-  `packages/web/src/api/endpoints.ts:295-298`
-  <!-- meta: fix=add-X-Idempotency-Key-header-(crypto.randomUUID-fallback)+wrap-credit-note-route-with-idempotent-middleware-server-side -->
-
 - [!] WEB-UIUX-1295. **[MAJOR] Card-method routing missing. When the original payment was on a BlockChyp terminal (`processor_transaction_id` set, `InvoiceDetailPage.tsx:203-205`), the natural refund path is to send the credit BACK to the original card. UI offers no terminal-refund button; operator with a $300 card sale + customer in front of them has no way to push the refund through the terminal. They click Credit Note → ledger only. Customer leaves with no money on the card.** L1 findability, L4 flow completion. **STATUS: BLOCKED — needs new server blockchypApi.processRefund route + UI Refund-to-Card branch; multi-component, defer to terminal sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:203-205,376-380`
   <!-- meta: fix=if-cardPaymentWithTxn-add-Refund-to-Card-($amount-on-card-XXXX)-button+wire-blockchypApi.processRefund-(stub-if-not-yet-implemented)+otherwise-warn-Card-refund-not-available -->
@@ -2786,23 +2762,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
   <!-- meta: fix=conditional-copy-amount_due>0-current-text+amount_due===0-"This-will-be-recorded-as-store-credit-on-the-customer's-account." -->
-
-- [!] WEB-UIUX-1298. **[MINOR] Store-credit overflow path (`invoices.routes.ts:1248-1302`) is server-only; UI never tells the operator the credit went to the customer's store-credit balance. Customer gets no heads-up either. Operator can't answer "where did the $50 overflow go" without DB access.** L7 feedback meaning. **STATUS: BLOCKED — server invoices.routes.ts must return credit_overflow + store_credit_balance in response; backend, defer to refunds sprint**
-  `packages/server/src/routes/invoices.routes.ts:1248-1302`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
-  <!-- meta: fix=server-return-credit_overflow+store_credit_balance-in-response+UI-onSuccess-toast/banner-$X-applied-to-balance,-$Y-added-to-store-credit-(now-$Z) -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:766,777`
-  <!-- meta: fix=replace-.toFixed(2)-with-formatCurrency-everywhere-in-modal+drop-hardcoded-$-prefix-on-input-(use-currency-symbol-from-formatCurrency)-or-keep-$-and-be-explicit-USD-only -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
-  <!-- meta: fix=label=`Issue ${formatCurrency(parseFloat(amount)||0)} credit note`-when-amount>0+default-Create-Credit-Note-when-empty -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
-  <!-- meta: fix=onBlur-format-amount-via-Number().toFixed(2)+thousands-separator-via-formatCurrency-stripping-symbol -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-805`
-  <!-- meta: fix=use-FocusTrap-or-headlessui-Dialog-(or-mirror-existing-modal-pattern-on-this-page-if-trapping)+restore-focus-to-trigger-on-close -->
 
 - [!] WEB-UIUX-1309. **[NIT] Header has Print/Void/Credit Note/Payment Plan/Financing — a 5+ button row that crowds on smaller viewports. Rare actions (Credit Note, Void) should live in a `…` overflow menu; common-and-frequent (Record Payment) front-and-centre.** L5 hierarchy, L1 primary action. **[AUTOLOOP-T49 BLOCKED 2026-05-11: header overflow menu (Credit Note + Void into ) needs the consistent primary-CTA-vs-overflow pattern across estimate UIUX-961, invoice UIUX-1039. App-wide pass.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`

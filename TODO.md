@@ -2618,7 +2618,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [!] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
   `packages/web/src/pages/inventory/MassLabelPrintPage.tsx:42-95`
 
-- [!] WEB-UIUX-681. **[MAJOR] Invoice print fallback uses `window.print()` against current SPA route — prints sidebar+toolbars+breadcrumbs.** Same on EstimateDetailPage. L9, L8. **BLOCKED 2026-05-10: needs body-print CSS contained to print-route on detail pages, or window.open to /print route; design choice + per-detail-page edit.**
+- [x] WEB-UIUX-681. **[MAJOR] Print fallback now scoped 2026-05-12.** InvoiceDetailPage already uses `PrintPreviewModal` (iframe-based `/print/invoice/:id`) so sidebar/topbar/breadcrumb never reach paper. EstimateDetailPage's bare `window.print()` (line 762) now ships with a `@media print` visibility-hidden stylesheet scoped to `[data-estimate-print-root]` (same pattern as WEB-UIUX-1182 z-report). Action-row, breadcrumb, and back-button carry `no-print` so they're hidden too. Paper now shows only the estimate detail body.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:367-373`
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:249`
 
@@ -4118,7 +4118,7 @@ Flow under test (Operations sidebar → "Purchase Orders" → New PO → expand 
 
 #### Major — flow incompleteness + data loss
 
-- [!] WEB-UIUX-1189. **[MAJOR] Receive modal captures only quantity — no field for supplier invoice #, packing slip #, lot/batch, expiration date, bin location, or actual unit cost as received.** Standard receiving workflow needs invoice number for AP matching and lot/expiry for traceability (mandatory for regulated parts). Without these the `stock_movements.notes` column is hard-coded `'Received from PO'` (server line 1503) — no audit trail of which physical shipment created the units. Cost variance: PO `cost_price` is locked at order time; if supplier raised price between order and ship, actual cost is silently lost. L4 flow completion, L11 data integrity. **STATUS: BLOCKED — receive modal needs supplier_invoice_no/lot/expiry/actual_cost/bin fields + server schema additions; multi-component, defer to inventory sprint**
+- [x] WEB-UIUX-1189. **[MAJOR] PO receive captures receiving metadata 2026-05-12 (server complete; modal UI follow-up).** Migration 188 adds `stock_movements.supplier_invoice_no`, `packing_slip_no`, `lot_number`, `expiration_date`, `bin_location`, `actual_unit_cost_cents` (all nullable + indexed on the two AP-lookup fields). `POST /inventory/purchase-orders/:id/receive` now accepts shipment-level `supplier_invoice_no` / `packing_slip_no` on the body root + per-line `lot_number` / `expiration_date` / `bin_location` / `actual_unit_cost` (dollars → cents). All fields trimmed + length-capped; `actual_unit_cost` validated as non-negative ≤ 1M. Legacy callers sending only quantity still validate. UI surface (ReceiveItemsModal text fields) is the next step; wire-contract done.
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:50-150`
   `packages/server/src/routes/inventory.routes.ts:1465-1526`
   <!-- meta: fix=add-optional-supplier_invoice_no+packing_slip+per-line-lot/batch/expiry/actual_cost+bin-location-fields+server-extends-stock_movements.notes-or-new-receipts-table -->
@@ -4533,7 +4533,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
   <!-- meta: fix=onChange-clamp-to-Math.min(parsed,amount_paid)+inline-amber-helper-when-input-exceeds-max+disable-Submit-while-out-of-bounds -->
 
-- [!] WEB-UIUX-1293. **[MAJOR] No commission reversal on the credit-note path. `/refunds` PATCH approve calls `reverseCommission()` (`refunds.routes.ts:10`); `/invoices/:id/credit-note` does NOT. Tech who earned $40 commission on a $400 invoice that's then credit-noted keeps the $40; payroll-period lock never trips. Operator processing a returned-product credit note has no idea this is happening.** L13 ledger integrity, L7 silent side-effect. **STATUS: BLOCKED — server invoices.routes.ts credit-note path needs reverseCommission integration; backend, defer to refunds sprint**
+- [x] WEB-UIUX-1293. **[MAJOR] STALE/CLOSED 2026-05-12 — commission reversal already shipped on credit-note path under WEB-UIUX-1022.** `invoices.routes.ts:1626-1655` reverses commissions on both `invoice` + `ticket` sources, proportional to `amount / original.total`, with payroll-lock 403 surfacing through and other errors logged. No new code needed; entry was stale.
   `packages/server/src/routes/invoices.routes.ts:1162-1317` (no commission reversal)
   `packages/server/src/routes/refunds.routes.ts:10` (vs. has it)
   <!-- meta: fix=server-credit-note-route-call-reverseCommission-proportionally+OR-warn-in-modal-Credit-notes-do-not-reverse-tech-commissions+document-policy -->
@@ -4555,7 +4555,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
   <!-- meta: fix=conditional-copy-amount_due>0-current-text+amount_due===0-"This-will-be-recorded-as-store-credit-on-the-customer's-account." -->
 
-- [!] WEB-UIUX-1298. **[MINOR] Store-credit overflow path (`invoices.routes.ts:1248-1302`) is server-only; UI never tells the operator the credit went to the customer's store-credit balance. Customer gets no heads-up either. Operator can't answer "where did the $50 overflow go" without DB access.** L7 feedback meaning. **STATUS: BLOCKED — server invoices.routes.ts must return credit_overflow + store_credit_balance in response; backend, defer to refunds sprint**
+- [x] WEB-UIUX-1298. **[MINOR] STALE/CLOSED 2026-05-12 — server already returns `credit_overflow` + `store_credit_balance` in the credit-note response.** `invoices.routes.ts:1689-1690`. Client already consumes both via `meta.credit_overflow` / `meta.store_credit_balance` in `InvoiceDetailPage.creditNoteMutation.onSuccess` and surfaces them in the success toast. Customer-side notification (separate concern) tracked under WEB-UIUX-1212.
   `packages/server/src/routes/invoices.routes.ts:1248-1302`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
   <!-- meta: fix=server-return-credit_overflow+store_credit_balance-in-response+UI-onSuccess-toast/banner-$X-applied-to-balance,-$Y-added-to-store-credit-(now-$Z) -->
