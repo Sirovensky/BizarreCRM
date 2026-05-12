@@ -31,6 +31,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { requirePermission } from '../middleware/auth.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
@@ -757,8 +758,13 @@ router.get(
 );
 
 // POST /bench/qc/sign-off (multipart: photo + signature + JSON fields)
+// WEB-UIUX-1084: gate behind `qc.sign` permission so cashier / viewer / any
+// future low-trust role can't submit a sign-off and have tech_user_id
+// recorded as theirs. Default roles: admin + manager (operational) + tech
+// (explicit grant) carry qc.sign; cashier does not.
 router.post(
   '/qc/sign-off',
+  requirePermission('qc.sign'),
   enforceUploadQuota,
   qcUpload.fields([
     { name: 'working_photo', maxCount: 1 },

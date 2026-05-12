@@ -86,6 +86,9 @@ export const PERMISSIONS = {
   SETTINGS_EDIT: 'settings.edit',
   USERS_MANAGE: 'users.manage',
   IMPORT_EXPORT: 'settings.import_export',
+
+  // QC sign-off (WEB-UIUX-1084)
+  QC_SIGN: 'qc.sign',
 } as const;
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -107,6 +110,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     PERMISSIONS.LEADS_VIEW, PERMISSIONS.LEADS_CREATE,
     PERMISSIONS.ESTIMATES_VIEW, PERMISSIONS.ESTIMATES_CREATE, PERMISSIONS.ESTIMATES_EDIT,
     PERMISSIONS.CLOCK_IN_OUT,
+    // WEB-UIUX-1084: QC sign-off is a tech responsibility by default.
+    PERMISSIONS.QC_SIGN,
   ],
   cashier: [
     PERMISSIONS.POS_ACCESS, PERMISSIONS.POS_CASH_REGISTER,

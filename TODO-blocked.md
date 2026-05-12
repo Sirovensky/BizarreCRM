@@ -2671,10 +2671,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:136-174`
   <!-- meta: fix=add-row-level-pass/fail-radio+if-any-fail-replace-CTA-with-Mark-failed-routes-ticket-to-In-Progress-and-creates-defect-report-with-reason -->
 
-- [!] WEB-UIUX-1084. **[MAJOR] `POST /bench/qc/sign-off` has no role gate — any authenticated user can sign as the tech.** `bench.routes.ts:756-772` checks only `req.user?.id`. Cashier role, viewer role, even a sandboxed customer-portal user (if added) can submit a sign-off and have `tech_user_id` recorded as theirs. Compare admin-only routes for checklist CRUD (`:618,650,693`). Industry baseline: QC sign-off requires explicit `qc.sign` permission gated to tech/manager. L8. **STATUS: BLOCKED — server role-gate change (POST /bench/qc/sign-off requires permission(qc.sign)) needs security review of all callers; defer to QC sprint**
-  `packages/server/src/routes/bench.routes.ts:756-774`
-  <!-- meta: fix=add-requireRole(['tech','manager','admin'])-or-permission(qc.sign)-middleware-before-handler -->
-
 - [!] WEB-UIUX-1085. **[MAJOR] Signature canvas content not bound to the signing user's identity — `tech_user_id = req.user.id` regardless of squiggle drawn.** No PIN re-auth, no name typed, no biometric, no hash of the captured image vs. a baseline signature on file. A manager who hands their tablet to an apprentice gets "signed by manager" stored on a record actually signed by apprentice. Repudiation risk in warranty / dispute scenarios. L8. **STATUS: BLOCKED — needs server schema (typed_name+pin_verified_at cols) + PIN re-auth modal + signature hash; defer to QC sprint**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:289-307`
   `packages/server/src/routes/bench.routes.ts:885-902`

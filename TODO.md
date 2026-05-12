@@ -3696,7 +3696,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:136-174`
   <!-- meta: fix=add-row-level-pass/fail-radio+if-any-fail-replace-CTA-with-Mark-failed-routes-ticket-to-In-Progress-and-creates-defect-report-with-reason -->
 
-- [!] WEB-UIUX-1084. **[MAJOR] `POST /bench/qc/sign-off` has no role gate — any authenticated user can sign as the tech.** `bench.routes.ts:756-772` checks only `req.user?.id`. Cashier role, viewer role, even a sandboxed customer-portal user (if added) can submit a sign-off and have `tech_user_id` recorded as theirs. Compare admin-only routes for checklist CRUD (`:618,650,693`). Industry baseline: QC sign-off requires explicit `qc.sign` permission gated to tech/manager. L8. **STATUS: BLOCKED — server role-gate change (POST /bench/qc/sign-off requires permission(qc.sign)) needs security review of all callers; defer to QC sprint**
+- [x] WEB-UIUX-1084. **[MAJOR] `POST /bench/qc/sign-off` now gated behind `qc.sign` permission.** Shipped 2026-05-12. New `PERMISSIONS.QC_SIGN = 'qc.sign'` key in `packages/shared/src/constants/permissions.ts`, granted to admin (all perms) + manager (all-minus-users/import/gdpr_erase, inherits qc.sign automatically) + technician (explicit grant). Cashier does NOT carry qc.sign. `bench.routes.ts` mounts `requirePermission('qc.sign')` ahead of the upload pipeline so a cashier-role token gets a 403 before any photo/signature byte is processed. Server returns the canonical `ERR_PERM_INSUFFICIENT` shape consumed by the existing client error handler.
   `packages/server/src/routes/bench.routes.ts:756-774`
   <!-- meta: fix=add-requireRole(['tech','manager','admin'])-or-permission(qc.sign)-middleware-before-handler -->
 
