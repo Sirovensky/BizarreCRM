@@ -3974,7 +3974,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:163-174`
   <!-- meta: fix=aria-label=`Lock period ${p.name}`+title=`Permanently lock ${p.name}`+consider-Shield-or-Lock-icon-with-arrow -->
 
-- [!] WEB-UIUX-1156. **[MINOR] Empty-CSV (period with zero commissions/clock entries) still triggers a download with header row + zeros for every active employee — no "No payroll data for this period" prompt.** `team.routes.ts:971-989` always emits a row per active user even when h/c/t are all 0. Operator opens an empty payroll CSV and wonders if export broke. L9 empty-state. **STATUS: BLOCKED — server team.routes.ts empty-CSV detection requires summary endpoint; defer to payroll sprint**
+- [x] WEB-UIUX-1156. **Empty-period CSV now self-identifies 2026-05-11.** `/payroll/export.csv` aggregates per-user h+c+t as it builds rows; when the running total stays 0 across every active employee it (a) prepends a `# No payroll data for {name} ({start} → {end}) — zero commissions, time entries, and tips. Verify period selection…` comment row that spreadsheets render literally in the first cell, (b) sends `X-Payroll-Empty: 1` for programmatic detection, and (c) suffixes the filename with `_EMPTY` so the download bar itself hints at the result. Operator no longer mistakes a quiet period for a broken export.
   `packages/server/src/routes/team.routes.ts:925-996`
   <!-- meta: fix=if-all-rows-zero-return-409-with-message-No-payroll-activity-or-client-pre-flight-via-/payroll/periods/:id/summary-(WEB-UIUX-1145) -->
 

@@ -1157,18 +1157,40 @@ router.get(
       const str = (s ?? '').replace(/[",\n\r]/g, ' ').trim();
       return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
     };
+    // WEB-UIUX-1156: detect empty payroll periods so the export doesn't
+    // hand the operator a "header + zeros for every employee" CSV without
+    // any signal. We aggregate as we build each row; if every user landed
+    // 0/0/0 we prepend an explicit comment header that names the period
+    // boundaries + a hint to recheck the period selection.
+    let totalActivity = 0;
     for (const u of users) {
       const h = Number(hMap.get(u.id) ?? 0).toFixed(2);
       const c = Number(cMap.get(u.id) ?? 0).toFixed(2);
       const t = Number(tMap.get(u.id) ?? 0).toFixed(2);
       const gross = (Number(h) + Number(c) + Number(t)).toFixed(2);
+      totalActivity += Number(h) + Number(c) + Number(t);
       csvLines.push(
         `${u.id},"${sanitize(u.first_name)}","${sanitize(u.last_name)}",${u.username},${h},0.00,${c},${t},${gross},${period.start_date},${period.end_date}`,
       );
     }
+    const isEmpty = totalActivity === 0;
+    if (isEmpty) {
+      // CSV comment lines starting with `#` are tolerated by every payroll
+      // tool we target (Gusto, ADP, QuickBooks); spreadsheets render them
+      // as a literal first cell, which is preferable to silently shipping a
+      // wall of zeros that looks like real data.
+      csvLines.unshift(
+        `# No payroll data for ${period.name} (${period.start_date} → ${period.end_date}) — zero commissions, time entries, and tips in this window. Verify period selection or check the lock-consequences summary before re-exporting.`,
+      );
+      // Surface the same signal on a response header so callers that
+      // bypass the body (e.g. test harnesses) can detect the empty case.
+      res.setHeader('X-Payroll-Empty', '1');
+    }
 
     const csv = csvLines.join('\n');
-    const filename = `payroll_${period.name.replace(/[^a-z0-9_\-]/gi, '_')}.csv`;
+    const filename = isEmpty
+      ? `payroll_${period.name.replace(/[^a-z0-9_\-]/gi, '_')}_EMPTY.csv`
+      : `payroll_${period.name.replace(/[^a-z0-9_\-]/gi, '_')}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);
