@@ -507,6 +507,9 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
   // active. SEC-H114: also re-check expires_at in the WHERE clause so a card
   // that crosses its expiry boundary between the SELECT above and this UPDATE
   // cannot be redeemed.
+  // BUGHUNT-2026-05-10-24: bump version stamp inside the guarded UPDATE so
+  // another tab's stale balance + version becomes detectable via the
+  // version field in the redeem/reload response.
   const dec = await adb.run(
     `UPDATE gift_cards
         SET current_balance = current_balance - ?,
@@ -514,6 +517,7 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
                        WHEN current_balance - ? <= 0 THEN 'used'
                        ELSE status
                      END,
+            version = version + 1,
             updated_at = ?
       WHERE id = ? AND status = 'active' AND current_balance >= ?
         AND (expires_at IS NULL
@@ -525,12 +529,15 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
   }
 
   // Re-read committed balance + status for the response (avoid stale values).
+  // BUGHUNT-2026-05-10-24: include version so concurrent-tab consumers can
+  // detect a stale view.
   const fresh = await adb.get<GiftCardRow>(
-    'SELECT current_balance, status FROM gift_cards WHERE id = ?',
+    'SELECT current_balance, status, version FROM gift_cards WHERE id = ?',
     cardId,
   );
   const newBalance = roundCurrency(fresh?.current_balance ?? 0);
   const newStatus = fresh?.status ?? 'active';
+  const newVersion = (fresh as any)?.version ?? null;
 
   await adb.run(
     'INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -543,7 +550,7 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
     new_balance: newBalance,
     invoice_id: invoiceId,
   });
-  res.json({ success: true, data: { new_balance: newBalance, status: newStatus } });
+  res.json({ success: true, data: { new_balance: newBalance, status: newStatus, version: newVersion } });
 }));
 
 // POST /:id/reload — Add balance to gift card
@@ -566,8 +573,9 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
   // reload requests don't race-overwrite each other's credit. AND is_deleted = 0
   // closes the window where a card is logically deleted between the SELECT
   // precheck and this write (SEC-H62 reload guard).
+  // BUGHUNT-2026-05-10-24: bump version on reload too.
   const reloadResult = await adb.run(
-    "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', updated_at = ? WHERE id = ? AND is_deleted = 0",
+    "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', version = version + 1, updated_at = ? WHERE id = ? AND is_deleted = 0",
     amount, now(), cardId,
   );
   if (reloadResult.changes === 0) {
@@ -579,17 +587,19 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
   );
 
   // Re-read committed balance for accuracy (avoid stale computed values).
+  // BUGHUNT-2026-05-10-24: include version for concurrent-tab detection.
   const fresh = await adb.get<GiftCardRow>(
-    'SELECT current_balance FROM gift_cards WHERE id = ?',
+    'SELECT current_balance, version FROM gift_cards WHERE id = ?',
     cardId,
   );
   const newBalance = roundCurrency(fresh?.current_balance ?? 0);
+  const newVersion = (fresh as any)?.version ?? null;
   audit(db, 'gift_card_reloaded', req.user!.id, req.ip || 'unknown', {
     gift_card_id: cardId,
     amount,
     new_balance: newBalance,
   });
-  res.json({ success: true, data: { new_balance: newBalance } });
+  res.json({ success: true, data: { new_balance: newBalance, version: newVersion } });
 }));
 
 // GET /:id — Gift card details with transactions
@@ -685,8 +695,9 @@ router.post('/:id/disable', requirePermission('gift_cards.reload'), asyncHandler
     throw new AppError('Cannot disable a fully-redeemed card', 400);
   }
 
+  // BUGHUNT-2026-05-10-24: bump version on disable.
   await adb.run(
-    "UPDATE gift_cards SET status = 'disabled', updated_at = datetime('now') WHERE id = ?",
+    "UPDATE gift_cards SET status = 'disabled', version = version + 1, updated_at = datetime('now') WHERE id = ?",
     cardId,
   );
 
@@ -723,8 +734,9 @@ router.post('/:id/enable', requirePermission('gift_cards.reload'), asyncHandler(
   // Restore to 'active' when balance remains; otherwise let the next
   // redemption attempt fail explicitly on the balance check.
   const restoredStatus = Number(card.current_balance) > 0 ? 'active' : 'used';
+  // BUGHUNT-2026-05-10-24: bump version on enable.
   await adb.run(
-    "UPDATE gift_cards SET status = ?, updated_at = datetime('now') WHERE id = ?",
+    "UPDATE gift_cards SET status = ?, version = version + 1, updated_at = datetime('now') WHERE id = ?",
     restoredStatus,
     cardId,
   );
