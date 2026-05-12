@@ -350,7 +350,40 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
     },
   ];
 
-  const refundMethod = String(refund.method ?? '').toLowerCase();
+  // WEB-UIUX-1295: client-side refund picker sends method='card' (the operator-
+  // facing label). At approve time, resolve that to the actual processor
+  // ('blockchyp' or 'stripe') based on what the invoice's captured payments
+  // came in on. This makes the picker's "Refund to card" choice push the
+  // credit back to the original card via the processor rather than silently
+  // landing in the ledger.
+  let refundMethod = String(refund.method ?? '').toLowerCase();
+  if (refundMethod === 'card' && refund.invoice_id && refund.type === 'refund') {
+    const processorRow = await adb.get<{ processor: string | null }>(
+      `SELECT
+         CASE
+           WHEN LOWER(method) = 'blockchyp' OR LOWER(COALESCE(processor, '')) = 'blockchyp' THEN 'blockchyp'
+           WHEN LOWER(method) = 'stripe' OR LOWER(COALESCE(processor, '')) = 'stripe' THEN 'stripe'
+           ELSE NULL
+         END AS processor
+       FROM payments
+       WHERE invoice_id = ?
+         AND COALESCE(capture_state, 'captured') = 'captured'
+         AND COALESCE(processor_transaction_id, transaction_id, reference) IS NOT NULL
+       ORDER BY amount DESC, created_at DESC, id DESC
+       LIMIT 1`,
+      refund.invoice_id,
+    );
+    if (processorRow?.processor) {
+      refundMethod = processorRow.processor;
+      // Persist the resolved method so the audit + reports keep the
+      // canonical processor name, not the operator-facing alias.
+      await adb.run(`UPDATE refunds SET method = ? WHERE id = ?`, refundMethod, id);
+    }
+    // If no processor row found, refundMethod stays 'card' — falls through to
+    // the no-op branch (ledger-only) and the approve flow completes without
+    // attempting a processor call. Operator will see the refund approved
+    // without any card movement; the invoice will reconcile via amount_paid.
+  }
   const needsProcessorClaim = Boolean(
     refund.invoice_id
     && refund.type === 'refund'
