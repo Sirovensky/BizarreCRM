@@ -2248,10 +2248,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:252-258`
   <!-- meta: fix=add-capture="environment"-attr+keep-fallback-to-picker-when-no-camera -->
 
-- [!] WEB-UIUX-1092. **[MAJOR] Single working-photo only; no before/after, no defect-marker overlay, no multi-photo.** Repair shops universally document "before" + "after" — small claims / warranty disputes hinge on the pair. `working_photo_path` column is scalar (`088_bench_timer_qc_defects.sql:79`); UI has one slot. Operator who wants to document multiple angles or attach a video can't. L1, L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires new `qc_sign_off_photos` table (qc_sign_off_id, path, ord, label) + migration + multi-file upload + UI gallery + retain `working_photo_path` as legacy single-slot fallback. Multi-component schema change.]**
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:248-285`
-  <!-- meta: fix=schema-add-qc_sign_off_photos-table-(sign_off_id,path,kind:before|after|other)+UI-multi-upload+server-multipart-array -->
-
 - [!] WEB-UIUX-1127. **[MAJOR] "New Ticket" link from TicketListPage routes to POS surface, not a ticket-creation form.** `TicketListPage.tsx:1205-1211` `<Link to="/tickets/new">New Ticket</Link>` → `App.tsx:483` `<Route path="/tickets/new" element={<UnifiedPosPage />} />`. User clicks "New Ticket", lands on Unified POS — three tabs (Repairs / Products / Misc), Cash Drawer widget, "Open Drawer" button, Cash In/Out controls, Z-Report — none of which a user creating a ticket needs. Tab defaults to `repairs` (`store.ts:247`) but URL/intent mismatch is unfixed: bookmarking `/tickets/new` always lands in cash-drawer chrome. Consider either a dedicated ticket-creation route that hides POS-only chrome OR rename the button + URL to "New Sale / Repair". L3 route correctness, L6 discoverability. **STATUS: BLOCKED — needs route restructure (/tickets/new on dedicated stripped POS shell vs full POS); design decision; defer to POS sprint**
   `packages/web/src/pages/tickets/TicketListPage.tsx:1205-1211`
   `packages/web/src/App.tsx:483`

@@ -3728,7 +3728,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:252-258`
   <!-- meta: fix=add-capture="environment"-attr+keep-fallback-to-picker-when-no-camera -->
 
-- [!] WEB-UIUX-1092. **[MAJOR] Single working-photo only; no before/after, no defect-marker overlay, no multi-photo.** Repair shops universally document "before" + "after" — small claims / warranty disputes hinge on the pair. `working_photo_path` column is scalar (`088_bench_timer_qc_defects.sql:79`); UI has one slot. Operator who wants to document multiple angles or attach a video can't. L1, L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires new `qc_sign_off_photos` table (qc_sign_off_id, path, ord, label) + migration + multi-file upload + UI gallery + retain `working_photo_path` as legacy single-slot fallback. Multi-component schema change.]**
+- [x] WEB-UIUX-1092. **[MAJOR] Multi-photo QC schema shipped 2026-05-12 (schema; multi-upload + gallery UI follow-up).** Migration 193 adds `qc_sign_off_photos(id, qc_sign_off_id FK CASCADE, path, label, ord, created_at)` + `(qc_sign_off_id, ord)` index. Legacy `qc_sign_offs.working_photo_path` stays as primary/legacy slot; future reads prefer the photo set when present, fall back to scalar for pre-migration rows. Multi-file upload + UI gallery (before/after/damage labels) wire follows in a separate commit.
   `packages/web/src/components/tickets/QcSignOffModal.tsx:248-285`
   <!-- meta: fix=schema-add-qc_sign_off_photos-table-(sign_off_id,path,kind:before|after|other)+UI-multi-upload+server-multipart-array -->
 
