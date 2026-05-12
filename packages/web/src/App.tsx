@@ -601,7 +601,11 @@ export default function App() {
                         {/* Gift Cards (§ orphan). */}
                         <Route path="/gift-cards" element={<GiftCardsListPage />} />
                         <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />
-                        {/* Memberships / Subscriptions admin list (§ orphan). */}
+                        {/* WEB-UIUX-1063: page is operator-facing as "Memberships" everywhere
+                            (header, command palette display, customer-profile card), so /memberships
+                            is now the canonical route. /subscriptions stays as a permanent alias to
+                            avoid breaking existing bookmarks, deep-links, and SMS payment-link URLs. */}
+                        <Route path="/memberships" element={<SubscriptionsListPage />} />
                         <Route path="/subscriptions" element={<SubscriptionsListPage />} />
                         {/* Loaner device management. */}
                         <Route path="/loaners" element={<LoanersPage />} />
