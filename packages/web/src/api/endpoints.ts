@@ -2163,6 +2163,9 @@ export const refundApi = {
     pagesize?: number;
     status?: string;
     customer_id?: number;
+    // WEB-UIUX-1286: scope refunds to a single invoice for the credit-note
+    // duplicate-warning lookup.
+    invoice_id?: number;
     from_date?: string;
     to_date?: string;
   }) => api.get('/refunds', { params }),

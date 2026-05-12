@@ -144,6 +144,35 @@ export function InvoiceDetailPage() {
     enabled: !!customerIdForCredits,
   });
   const customerCreditBalance = Number(creditData?.data?.data?.balance ?? 0) || 0;
+
+  // WEB-UIUX-1286: refunds-path rows scoped to this invoice. Powers the
+  // duplicate-credit warning inside the credit-note modal — operator with
+  // a $50 prior cash refund sees it before issuing a $50 credit note for
+  // the same complaint. Only fires while the modal is open so closed-modal
+  // page time doesn't burn a request. 60s staleTime is safe — refund
+  // mutations on this invoice would only come from this page anyway.
+  const invoiceNumericIdForRefundLookup = Number(id);
+  const { data: priorRefundsData } = useQuery({
+    queryKey: ['refunds-for-invoice', invoiceNumericIdForRefundLookup],
+    queryFn: async () => {
+      const res = await refundApi.list({ invoice_id: invoiceNumericIdForRefundLookup });
+      // refundApi.list returns the raw axios response (no generic), so the
+      // server `{ refunds, pagination }` shape is at res.data.data.
+      const d = (res.data as { data?: { refunds?: unknown[] } })?.data;
+      return Array.isArray(d?.refunds) ? d!.refunds! : [];
+    },
+    enabled: Number.isFinite(invoiceNumericIdForRefundLookup) && invoiceNumericIdForRefundLookup > 0 && showCreditNote,
+    staleTime: 60_000,
+  });
+  const priorRefunds = (priorRefundsData ?? []) as Array<{
+    id: number;
+    amount: number;
+    status: string;
+    type?: string | null;
+    method?: string | null;
+    reason?: string | null;
+    created_at: string;
+  }>;
   const blockchypEnabled = bcData?.data?.data?.enabled ?? false;
   const [terminalProcessing, setTerminalProcessing] = useState(false);
 
@@ -1297,6 +1326,36 @@ export function InvoiceDetailPage() {
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {/* WEB-UIUX-1286: warn when one or more rows from the separate
+                /refunds path already exist against this invoice. Surfaces
+                amount + when + status so manager doesn't double-credit a
+                complaint that was already settled in cash on Tuesday. */}
+            {priorRefunds.length > 0 && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                <p className="font-semibold text-amber-800 dark:text-amber-200">
+                  Prior refund{priorRefunds.length === 1 ? '' : 's'} already issued on this invoice
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {priorRefunds.slice(0, 5).map((r) => (
+                    <li key={r.id} className="tabular-nums">
+                      {formatCurrency(Math.abs(Number(r.amount) || 0))}
+                      {' · '}
+                      <span className="font-mono">{r.status}</span>
+                      {r.method && <> · {r.method}</>}
+                      {' · '}{formatDate(r.created_at)}
+                    </li>
+                  ))}
+                  {priorRefunds.length > 5 && (
+                    <li className="text-amber-700 dark:text-amber-300">
+                      …and {priorRefunds.length - 5} more
+                    </li>
+                  )}
+                </ul>
+                <p className="mt-1 text-amber-700 dark:text-amber-300">
+                  Server caps prevent double-crediting, but verify the new credit isn't for the same complaint.
+                </p>
+              </div>
+            )}
             {/* WEB-UIUX-1214: when amount_due is 0, every dollar of the credit note
                 becomes store credit — surface this prominently so the operator
                 knows the overflow path is active before they submit. */}

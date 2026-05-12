@@ -93,11 +93,29 @@ router.get('/', asyncHandler(async (req, res) => {
   const allowedStatuses = ['pending', 'approved', 'declined', 'cancelled', 'completed'];
   const status = allowedStatuses.includes(statusRaw) ? statusRaw : '';
 
+  // WEB-UIUX-1286: optional invoice_id filter so the credit-note modal can
+  // detect a separate /refunds-path refund already exists against the same
+  // invoice + warn the operator before they double-credit. Same `customer_id`
+  // axis lets the customer profile pull every refund without paging the
+  // full list.
+  const invoiceIdRaw = typeof req.query.invoice_id === 'string' ? req.query.invoice_id.trim() : '';
+  const invoiceIdFilter = /^\d+$/.test(invoiceIdRaw) ? Number(invoiceIdRaw) : null;
+  const customerIdRaw = typeof req.query.customer_id === 'string' ? req.query.customer_id.trim() : '';
+  const customerIdFilter = /^\d+$/.test(customerIdRaw) ? Number(customerIdRaw) : null;
+
   const whereClauses: string[] = [];
   const whereArgs: unknown[] = [];
   if (status) {
     whereClauses.push('r.status = ?');
     whereArgs.push(status);
+  }
+  if (invoiceIdFilter !== null) {
+    whereClauses.push('r.invoice_id = ?');
+    whereArgs.push(invoiceIdFilter);
+  }
+  if (customerIdFilter !== null) {
+    whereClauses.push('r.customer_id = ?');
+    whereArgs.push(customerIdFilter);
   }
   const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
