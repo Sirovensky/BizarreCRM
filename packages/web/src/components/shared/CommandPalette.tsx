@@ -71,7 +71,7 @@ const PAGE_JUMPS: PageJumpEntry[] = [
   { display: 'Cash Register', path: '/cash-register', aliases: ['drawer', 'till'] },
   { display: 'Catalog', path: '/catalog', aliases: ['products'] },
   { display: 'Loaners', path: '/loaners', aliases: ['loaner devices'] },
-  { display: 'Subscriptions', path: '/subscriptions', aliases: ['memberships', 'recurring'] },
+  { display: 'Memberships', path: '/subscriptions', aliases: ['subscriptions', 'recurring'] },
   { display: 'Gift Cards', path: '/gift-cards' },
   { display: 'Referrals', path: '/marketing/referrals' },
   { display: 'My Queue', path: '/team/my-queue', aliases: ['team', 'queue'] },
