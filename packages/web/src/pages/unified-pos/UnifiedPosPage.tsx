@@ -2857,7 +2857,19 @@ export function UnifiedPosPage() {
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {mode === 'receipt' && completedSale ? (
-          <ReceiptView sale={completedSale} onNext={startNewSale} />
+          <ReceiptView
+            sale={completedSale}
+            onNext={startNewSale}
+            // WEB-UIUX-433: Process Refund inline on the success screen so
+            // the cashier doesn't have to nav Invoices → find → open → click
+            // Credit Note (5 clicks for a 2-tap operation in-store).
+            onProcessRefund={completedSale.invoiceId ? () => {
+              setRefundInvoiceId(String(completedSale.invoiceId));
+              setRefundSelections([]);
+              setRefundMethod('original');
+              setMode('refund');
+            } : undefined}
+          />
         ) : (
           <main className="h-full overflow-auto bg-surface-100 dark:bg-surface-900 p-0">
               {mode === 'gate' && (
@@ -7033,7 +7045,7 @@ function LineEditModal({ item, onClose, onSave }: {
   );
 }
 
-function ReceiptView({ sale, onNext }: { sale: CompletedSale; onNext: () => void }) {
+function ReceiptView({ sale, onNext, onProcessRefund }: { sale: CompletedSale; onNext: () => void; onProcessRefund?: () => void }) {
   // Print by cloning the receipt panel into a fresh popup window. Earlier
   // `@media print { body * { visibility: hidden } [panel] { visible } }`
   // approaches kept producing an empty preview — the panel sits inside a
@@ -7185,6 +7197,16 @@ ${panel.outerHTML}
           <div className="flex flex-wrap gap-2 no-print">
             <button type="button" onClick={onNext} className={primaryButton}>Next sale</button>
             {sale.invoiceId && <button type="button" onClick={() => window.location.assign(`/invoices/${sale.invoiceId}`)} className={secondaryButton}>Open invoice</button>}
+            {/* WEB-UIUX-433: inline refund affordance — saves the 5-click Invoices→find→open→Credit Note dance. */}
+            {onProcessRefund && (
+              <button
+                type="button"
+                onClick={onProcessRefund}
+                className={secondaryButton}
+              >
+                Process refund
+              </button>
+            )}
           </div>
         </div>
         <Section className="p-5 font-mono text-sm" data-receipt-panel>

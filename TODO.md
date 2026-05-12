@@ -2034,7 +2034,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-180`
   <!-- meta: fix=success-modal-with-refund-summary+print-receipt-CTA -->
 
-- [!] WEB-UIUX-433. **[MINOR usability] No way to refund directly from POS sale — operator must navigate to Invoices → find invoice → open detail → click Credit Note.** ~5 clicks for what should be 2-tap operation in-store. L1, L5. **[AUTOLOOP-T18 BLOCKED: ReturnModal exists + hotkeybound, but surfacing button on SuccessScreen requires prop-threading across SuccessScreen+UnifiedPosPage; exceeds single-file edit.]**
+- [x] WEB-UIUX-433. **[MINOR usability] No way to refund directly from POS sale — operator must navigate to Invoices → find invoice → open detail → click Credit Note.** ~5 clicks for what should be 2-tap operation in-store. L1, L5. **DONE 2026-05-12: ReceiptView now takes an optional `onProcessRefund` callback rendered as a "Process refund" button next to "Next sale" / "Open invoice" on the success screen. UnifiedPosPage wires it to seed `refundInvoiceId` with the just-completed invoice id, reset `refundSelections`, default `refundMethod = 'original'`, and flip `setMode('refund')` — landing the cashier directly on the RefundView pre-loaded with the right invoice. Two taps from receipt to refund flow. Guarded on `completedSale.invoiceId` so the button hides for repair-only sales that never produce an invoice id. tsc clean.**
   Cross-reference: `packages/web/src/pages/unified-pos/` no refund affordance from past-sales view
   <!-- meta: fix=add-Refund-button-to-recent-sales-list-in-POS -->
 

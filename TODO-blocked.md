@@ -1342,12 +1342,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Cross-Cutting (table a11y)
 
-- [!] WEB-UIUX-433. **[MINOR usability] No way to refund directly from POS sale — operator must navigate to Invoices → find invoice → open detail → click Credit Note.** ~5 clicks for what should be 2-tap operation in-store. L1, L5. **[AUTOLOOP-T18 BLOCKED: ReturnModal exists + hotkeybound, but surfacing button on SuccessScreen requires prop-threading across SuccessScreen+UnifiedPosPage; exceeds single-file edit.]**
-  Cross-reference: `packages/web/src/pages/unified-pos/` no refund affordance from past-sales view
-  <!-- meta: fix=add-Refund-button-to-recent-sales-list-in-POS -->
-
-#### Cross-Cutting (Pass 8)
-
 - [!] WEB-UIUX-434. **[MAJOR usability pattern] Many destructive flows label by ENGINEERING action, not USER intent.** "Void" = engineering noun. "Credit Note" = accounting noun. Users think in verbs: refund, cancel, undo. Audit all action labels for engineering-vs-user-intent mismatch. L14. **PARTIAL/BROAD 2026-05-07: valid pattern, but the requested audit spans destructive flows across invoices/POS/settings/imports. Scoped remaining invoice detail label changed from user-visible "Void" to "Cancel invoice" with cancel-oriented confirmation/toast copy while preserving the existing void API/status contract. Full product-copy audit remains open/broad.**
   Audit needed: search for buttons named: Void, Reverse, Reconcile, Reissue, Mutate, etc.
 
