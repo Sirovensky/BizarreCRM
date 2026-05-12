@@ -1732,8 +1732,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [!] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:797-1149`
 
-- [!] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13. **[AUTOLOOP-T30 BLOCKED: estimate_line_items has no cost_price column; server snapshot on creation/convert requires schema migration.]**
-
 - [!] WEB-UIUX-660. **[MAJOR · BLOCKED] No abandoned-ticket workflow.** 90-day Ready-for-Pickup gets zero escalation lane (lumped with 7-day stale tickets in dashboard). No SMS cadence, no liability disclaimer, no auto-write-off. L5. **BLOCKED 2026-05-10: feature-scope — SMS cadence + liability template + write-off rule + dashboard lane.**
   **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
 

@@ -471,9 +471,21 @@ router.post(
     await adb.run('UPDATE estimates SET order_id = ? WHERE id = ?', orderId, estimateId);
 
     for (const item of normalizedItems) {
+      // WEB-UIUX-659: snapshot cost_price from inventory_items at create
+      // time so the estimate's reported margin doesn't silently drift if
+      // the supplier later raises the part cost.
+      let costPrice: number | null = null;
+      if (item.inventory_item_id) {
+        const row = await adb.get<{ cost_price: number | null }>(
+          'SELECT cost_price FROM inventory_items WHERE id = ?', item.inventory_item_id,
+        );
+        if (row?.cost_price != null && Number.isFinite(Number(row.cost_price))) {
+          costPrice = Number(row.cost_price);
+        }
+      }
       await adb.run(`
-        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         estimateId,
         item.inventory_item_id,
@@ -483,6 +495,7 @@ router.post(
         item.tax_amount,
         item.tax_class_id,
         item.line_total,
+        costPrice,
       );
     }
 
@@ -839,10 +852,21 @@ router.put(
 
       await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
       for (const item of normalizedItems) {
+        // WEB-UIUX-659: re-snapshot cost_price on PUT replace so the margin
+        // tracks the current supplier price for any newly-added line.
+        let costPrice: number | null = null;
+        if (item.inventory_item_id) {
+          const row = await adb.get<{ cost_price: number | null }>(
+            'SELECT cost_price FROM inventory_items WHERE id = ?', item.inventory_item_id,
+          );
+          if (row?.cost_price != null && Number.isFinite(Number(row.cost_price))) {
+            costPrice = Number(row.cost_price);
+          }
+        }
         await adb.run(`
-          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.tax_class_id, item.line_total);
+          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.tax_class_id, item.line_total, costPrice);
       }
 
       const total = subtotal - effectiveDiscount + totalTax;
@@ -1545,6 +1569,9 @@ router.post(
     );
     const newId = Number(insertResult.lastInsertRowid);
     // Copy line items as-is; pricing snapshot stays current at clone time.
+    // WEB-UIUX-659: re-snapshot cost_price from inventory_items at clone
+    // time so the cloned estimate reports margin against today's supplier
+    // cost, not the price captured on the original quote.
     const items = await adb.all<{
       inventory_item_id: number | null;
       description: string;
@@ -1554,19 +1581,29 @@ router.post(
       tax_class_id: number | null;
       line_subtotal: number;
       line_total: number;
+      cost_price: number | null;
     }>(
       `SELECT inventory_item_id, description, quantity, unit_price, tax_amount,
-              tax_class_id, line_subtotal, line_total
+              tax_class_id, line_subtotal, line_total, cost_price
          FROM estimate_line_items WHERE estimate_id = ?`,
       id,
     );
     for (const it of items) {
+      let costPrice: number | null = it.cost_price;
+      if (it.inventory_item_id) {
+        const row = await adb.get<{ cost_price: number | null }>(
+          'SELECT cost_price FROM inventory_items WHERE id = ?', it.inventory_item_id,
+        );
+        if (row?.cost_price != null && Number.isFinite(Number(row.cost_price))) {
+          costPrice = Number(row.cost_price);
+        }
+      }
       await adb.run(
         `INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description,
-            quantity, unit_price, tax_amount, tax_class_id, line_subtotal, line_total)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            quantity, unit_price, tax_amount, tax_class_id, line_subtotal, line_total, cost_price)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         newId, it.inventory_item_id, it.description, it.quantity, it.unit_price,
-        it.tax_amount, it.tax_class_id, it.line_subtotal, it.line_total,
+        it.tax_amount, it.tax_class_id, it.line_subtotal, it.line_total, costPrice,
       );
     }
     audit(req.db, 'estimate_cloned', req.user!.id, req.ip || 'unknown', {
