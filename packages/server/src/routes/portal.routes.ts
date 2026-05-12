@@ -1412,12 +1412,22 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
   const adb = req.asyncDb;
   const cid = req.portalCustomerId!;
 
+  // WEB-UIUX-1466: hide drafts (work-in-progress; not meant for customer
+  // eyes — they render with no Approve button + look like a broken
+  // estimate). Sort by action-required first: status='sent' floats to
+  // the top regardless of age, then everything else (approved /
+  // converted / rejected) falls through by recency. created_at DESC is
+  // the tiebreaker inside each bucket so newest-first behaviour for
+  // history rows is preserved.
   const estimates = await adb.all<AnyRow>(`
     SELECT e.id, e.order_id, e.status, e.subtotal, e.discount, e.total_tax, e.total,
            e.valid_until, e.notes, e.created_at, e.approved_at, e.viewed_at
     FROM estimates e
-    WHERE e.customer_id = ? AND e.status IN ('draft', 'sent', 'approved', 'converted')
-    ORDER BY e.created_at DESC
+    WHERE e.customer_id = ?
+      AND e.status IN ('sent', 'approved', 'converted', 'rejected')
+    ORDER BY
+      CASE WHEN e.status = 'sent' THEN 0 ELSE 1 END,
+      e.created_at DESC
     LIMIT 50
   `, cid);
 
