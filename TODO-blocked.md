@@ -2150,34 +2150,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:22-51`
 
-- [!] WEB-UIUX-812. **[MINOR] Customer-side portal has only Approve, not Reject.** Q4 ("customer rejects → ticket auto-cancels?") unimplementable on customer side. L5. **[AUTOLOOP-T38 BLOCKED: portal Reject needs server route + UI button + auto-cancel logic; multi-component.]**
-
-#### ED18: Super-Admin / Multi-Tenant
-
-  `packages/web/src/pages/super-admin/TenantsListPage.tsx:185-211`
-
-  `packages/web/src/components/ImpersonationBanner.tsx:6,17`
-
-  `packages/web/src/components/ImpersonationBanner.tsx:26-43,50-85`
-
-  `packages/web/src/stores/authStore.ts:250-267`
-
-  `packages/web/src/stores/authStore.ts:241-249`
-
-  `packages/web/src/components/ImpersonationBanner.tsx:89-93`
-
-  `packages/web/src/pages/super-admin/TenantsListPage.tsx:179-212`
-
-  `packages/web/src/api/client.ts:320-349`
-
-
-
-
-
-#### ED7: Subscription/Billing Chaos
-
-  `packages/web/src/pages/unified-pos/CheckoutModal.tsx:351-365,377-398`
-
 - [!] WEB-UIUX-826. **[BLOCKER] `subscribeMut` calls `membershipApi.subscribe` with NO `blockchyp_token` and NO `signature_file`.** Activation never captures card on file. Every nightly renewal will fail by definition. L5, L7, L16. **[AUTOLOOP-T38 BLOCKED: needs BlockChyp tokenize step + signature pad UI in CheckoutModal/CustomerDetailPage; multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:891-902`
 

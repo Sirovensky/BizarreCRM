@@ -337,6 +337,11 @@ export async function approveEstimate(id: number): Promise<void> {
   await portalClient.post(`/estimates/${id}/approve`);
 }
 
+// WEB-UIUX-812: portal-side decline path. Mirrors approve shape.
+export async function rejectEstimate(id: number): Promise<void> {
+  await portalClient.post(`/estimates/${id}/reject`);
+}
+
 export async function getInvoices(): Promise<InvoiceSummary[]> {
   const res = await portalClient.get('/invoices');
   return res.data.data;

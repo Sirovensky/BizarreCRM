@@ -2961,7 +2961,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:22-51`
 
-- [!] WEB-UIUX-812. **[MINOR] Customer-side portal has only Approve, not Reject.** Q4 ("customer rejects → ticket auto-cancels?") unimplementable on customer side. L5. **[AUTOLOOP-T38 BLOCKED: portal Reject needs server route + UI button + auto-cancel logic; multi-component.]**
+- [x] WEB-UIUX-812. **[MINOR] Customer-side portal Decline path shipped 2026-05-12.** Migration 181 adds `estimates.rejected_at`. `POST /portal/estimates/:id/reject` mirrors the existing approve shape: portalAuth + CSRF + full-scope gate, ownership check + status='sent' guard, `estimate_signatures` audit row (signer name suffixed `(rejected)`, NULL signature_data_url since one-click), `status='rejected'` + `rejected_at` update, optional ticket auto-cancel via new `ticket_status_after_estimate_rejected` store_config key (default: leave ticket untouched, mirrors approve hook). Web: `portalApi.rejectEstimate(id)` + secondary "Decline this estimate" button alongside the amber Approve, both with optimistic flip + rollback on server error. `'rejected'` empty-state line renders for declined rows.
 
 #### ED18: Super-Admin / Multi-Tenant
 

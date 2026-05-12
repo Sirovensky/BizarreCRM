@@ -12,6 +12,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
   const [estimates, setEstimates] = useState<api.EstimateSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [rejectingId, setRejectingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // WEB-UIUX-1475: pagination state. Page size matches server default.
   const [page, setPage] = useState(1);
@@ -85,6 +86,53 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
       setError(serverMsg || 'Failed to approve estimate. Please try again.');
     } finally {
       setApprovingId(null);
+    }
+  }
+
+  // WEB-UIUX-812: portal-side Reject mirrors handleApprove with the same
+  // optimistic-update + rollback shape. Customer-facing copy frames it as
+  // declining the quote, not "rejecting work", so the shop's auto-cancel
+  // hook (ticket_status_after_estimate_rejected) is the destructive
+  // affordance — the portal click itself is reversible by the shop.
+  async function handleReject(id: number) {
+    const est = estimates.find((e) => e.id === id);
+    if (est) {
+      const total = Number(est.total ?? 0);
+      const totalStr = total.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm(
+        `Decline estimate ${est.order_id ?? '#' + id} for ${totalStr}?\n\n` +
+        `The shop will be notified that you are not moving forward with this quote.`,
+      );
+      if (!ok) return;
+    }
+    setRejectingId(id);
+    setError(null);
+    let previous: api.EstimateSummary | undefined;
+    setEstimates(prev => {
+      previous = prev.find(e => e.id === id);
+      return prev.map(e =>
+        e.id === id ? { ...e, status: 'rejected' } : e
+      );
+    });
+    try {
+      await api.rejectEstimate(id);
+      toast.success('Estimate declined. The shop has been notified.');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const code = err?.response?.data?.code;
+      const serverMsg: string | undefined = err?.response?.data?.message;
+      if (status === 404 && (code === 'ERR_RESOURCE_NOT_FOUND' || /already processed/i.test(serverMsg ?? ''))) {
+        toast.success(serverMsg || 'Estimate already processed.');
+        return;
+      }
+      if (previous) {
+        const snapshot = previous;
+        setEstimates(prev => prev.map(e => (e.id === id ? snapshot : e)));
+      }
+      setError(serverMsg || 'Failed to decline estimate. Please try again.');
+    } finally {
+      setRejectingId(null);
     }
   }
 
@@ -169,13 +217,28 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
 
                 {est.status === 'sent' && (
                   // WEB-UIUX-1476: amber tone signals financial commitment; label includes total for clarity.
-                  <button
-                    onClick={() => handleApprove(est.id)}
-                    disabled={approvingId === est.id}
-                    className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
-                  >
-                    {approvingId === est.id ? 'Approving...' : `Approve & authorize $${est.total.toFixed(2)}`}
-                  </button>
+                  // WEB-UIUX-812: Decline sibling shipped 2026-05-12 for the customer-facing reject path.
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => handleApprove(est.id)}
+                      disabled={approvingId === est.id || rejectingId === est.id}
+                      className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                    >
+                      {approvingId === est.id ? 'Approving...' : `Approve & authorize $${est.total.toFixed(2)}`}
+                    </button>
+                    <button
+                      onClick={() => handleReject(est.id)}
+                      disabled={approvingId === est.id || rejectingId === est.id}
+                      className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                    >
+                      {rejectingId === est.id ? 'Declining...' : 'Decline this estimate'}
+                    </button>
+                  </div>
+                )}
+                {est.status === 'rejected' && (
+                  <div className="text-sm text-surface-500 dark:text-surface-400 text-center">
+                    Declined
+                  </div>
                 )}
                 {est.status === 'approved' && (
                   <div className="text-sm text-green-600 text-center flex items-center justify-center gap-1">

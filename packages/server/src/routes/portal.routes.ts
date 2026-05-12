@@ -1626,6 +1626,95 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
 }));
 
 // ---------------------------------------------------------------------------
+// POST /estimates/:id/reject — Customer declines a quote (WEB-UIUX-812)
+// ---------------------------------------------------------------------------
+router.post('/estimates/:id/reject', portalAuth, requireCsrfToken, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const estimateId = parseInt(req.params.id as string, 10);
+  if (isNaN(estimateId)) {
+    res.status(400).json({ success: false, message: 'Invalid estimate ID' });
+    return;
+  }
+
+  const estimate = await adb.get<AnyRow>(
+    "SELECT id, customer_id, status FROM estimates WHERE id = ? AND status = 'sent'",
+    estimateId);
+
+  if (!estimate || estimate.customer_id !== req.portalCustomerId) {
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Estimate not found or already processed' });
+    return;
+  }
+
+  // Mirror the approve-path estimate_signatures audit row so the shop has
+  // a tamper-evident record of who declined and when. Reuses the same
+  // signer attribution shape; signature_data_url is NULL because portal
+  // Reject is one-click, not a drawn signature.
+  try {
+    const customer = await adb.get<AnyRow>(
+      'SELECT first_name, last_name, email FROM customers WHERE id = ?',
+      req.portalCustomerId,
+    );
+    const signerName = customer
+      ? [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'Portal customer'
+      : 'Portal customer';
+    const signerEmail = (customer?.email as string | null) ?? null;
+    const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? null;
+    const signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
+    const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+    const totalsRow = await adb.get<AnyRow>(
+      'SELECT subtotal, total_tax, total FROM estimates WHERE id = ?',
+      estimateId,
+    );
+    await adb.run(
+      `INSERT INTO estimate_signatures
+         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+          subtotal_at_signing, tax_at_signing, total_at_signing)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
+      estimateId,
+      `${signerName} (rejected)`,
+      signerEmail,
+      signerIp,
+      userAgent,
+      totalsRow?.subtotal ?? null,
+      totalsRow?.total_tax ?? null,
+      totalsRow?.total ?? null,
+    );
+  } catch (sigErr) {
+    logger.warn('portal_estimate_reject_signature_write_failed', {
+      err: sigErr instanceof Error ? sigErr.message : String(sigErr),
+      estimate_id: estimateId,
+    });
+  }
+
+  await adb.run(`
+    UPDATE estimates SET status = 'rejected', rejected_at = datetime('now'), updated_at = datetime('now')
+    WHERE id = ?
+  `, estimateId);
+
+  // Auto-cancel linked ticket when the shop has configured a rejection
+  // target status. Mirrors the approve path's ticket_status_after_estimate
+  // hook so operators can opt in (default: leave the ticket untouched).
+  const statusAfterReject = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate_rejected'");
+  if (statusAfterReject?.value) {
+    const targetStatusId = parseInt(statusAfterReject.value as string);
+    if (targetStatusId > 0) {
+      const est = await adb.get<AnyRow>('SELECT converted_ticket_id FROM estimates WHERE id = ?', estimateId);
+      const ticketId = est?.converted_ticket_id
+        || (await adb.get<AnyRow>('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0', estimateId))?.id;
+      if (ticketId) {
+        const statusExists = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE id = ?', targetStatusId);
+        if (statusExists) {
+          await adb.run('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND is_deleted = 0',
+            targetStatusId, ticketId);
+        }
+      }
+    }
+  }
+
+  res.json({ success: true, data: { rejected: true } });
+}));
+
+// ---------------------------------------------------------------------------
 // GET /invoices — Customer's invoices (full scope)
 // ---------------------------------------------------------------------------
 router.get('/invoices', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
