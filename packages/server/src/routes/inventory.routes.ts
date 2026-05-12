@@ -1338,7 +1338,7 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
   const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
 
-  const { quantity, type = 'adjustment', notes } = req.body;
+  const { quantity, type = 'adjustment', notes, expected_qty } = req.body;
   if (quantity === undefined) throw new AppError('Quantity is required', 400);
 
   const parsedQty = parseInt(quantity, 10);
@@ -1349,18 +1349,53 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
   // and corrupt every downstream report.
   if (Math.abs(parsedQty) > 1_000_000) throw new AppError('Adjustment too large (|qty| <= 1,000,000)', 400);
 
+  // WEB-UIUX-736: optional compare-and-swap on the current stock value.
+  // Operator A types -1 against an `in_stock=10` row while operator B is
+  // already mid-typing +5 against the same row. Without CAS both writes
+  // commit and the row is 14 — neither operator agreed to that total.
+  // When `expected_qty` is supplied, fold it into the WHERE so a stale
+  // read fails fast with a 409 and operator can re-check before retrying.
+  let expectedQty: number | null = null;
+  if (expected_qty !== undefined && expected_qty !== null && expected_qty !== '') {
+    const parsed = Number(expected_qty);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+      throw new AppError('expected_qty must be an integer', 400);
+    }
+    expectedQty = parsed;
+    if (Number(item.in_stock) !== parsed) {
+      throw new AppError(
+        `Stock has changed since you started. You expected ${parsed}, current is ${item.in_stock}. Re-check and retry.`,
+        409,
+        ERROR_CODES.ERR_RESOURCE_CONFLICT,
+      );
+    }
+  }
+
   // SEC-H22: guarded differential UPDATE. The `WHERE in_stock + ? >= 0`
   // predicate is evaluated by SQLite atomically; a concurrent writer that
   // reduces stock first will cause our UPDATE to match zero rows, signalling
   // the race so we fail cleanly instead of persisting a negative balance.
+  // WEB-UIUX-736: when expected_qty was provided, the WHERE also matches
+  // `in_stock = ?` so a concurrent writer between our SELECT-and-validate
+  // and the UPDATE still trips the guard.
   const clearDismissed = parsedQty > 0 && item.low_stock_dismissed_at;
-  const upd = await adb.run(
-    clearDismissed
-      ? "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0"
-      : "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0",
-    parsedQty, req.params.id, parsedQty,
-  );
+  const expectedClause = expectedQty != null ? ' AND in_stock = ?' : '';
+  const expectedParams = expectedQty != null ? [expectedQty] : [];
+  const sql = clearDismissed
+    ? `UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0${expectedClause}`
+    : `UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0${expectedClause}`;
+  const upd = await adb.run(sql, parsedQty, req.params.id, parsedQty, ...expectedParams);
   if (upd.changes === 0) {
+    if (expectedQty != null) {
+      const current = await adb.get<{ in_stock: number }>(
+        'SELECT in_stock FROM inventory_items WHERE id = ?', req.params.id,
+      );
+      throw new AppError(
+        `Stock changed during write. You expected ${expectedQty}, current is ${current?.in_stock ?? 'unknown'}. Re-check and retry.`,
+        409,
+        ERROR_CODES.ERR_RESOURCE_CONFLICT,
+      );
+    }
     throw new AppError('Insufficient stock', 400);
   }
 

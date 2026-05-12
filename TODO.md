@@ -2779,7 +2779,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   Multiple settings tabs share `['settings','config']` cache
 
-- [!] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11. **[AUTOLOOP-T34 BLOCKED: requires server endpoint expected_qty CAS + new client UI input; multi-component.]**
+- [x] WEB-UIUX-736. **[BLOCKER] adjustStock now supports compare-and-swap on `expected_qty` 2026-05-12.** `POST /inventory/:id/adjust-stock` accepts optional `expected_qty` (integer). When supplied, the route both pre-validates against the freshly-SELECTed row AND folds `AND in_stock = ?` into the guarded UPDATE so a concurrent writer between SELECT and UPDATE still trips the guard. Stale-stock retries return 409 + `ERR_RESOURCE_CONFLICT` + the actual current quantity so the operator can re-check before re-submitting. Existing callers that omit the field continue to use the original differential UPDATE — backwards-compatible. Client opt-in to send the field unlocks the CAS guarantee.
   `packages/web/src/pages/inventory/InventoryDetailPage.tsx:101-112,127-131`
 
   Tickets, sidebar, notes, kanban share pattern
@@ -5204,7 +5204,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
   <!-- meta: fix=confirm-with-{title:'Approve-on-customer-behalf?',body:'This-bypasses-the-e-sign-flow.-Use-only-when-customer-has-authorized-in-person-and-you-have-recorded-authorization.',confirmLabel:'Approve-on-behalf'} -->
 
-- [!] WEB-UIUX-1472. **[MINOR] `'Convert to Ticket'` button shows on `'rejected'` estimates? No — UI hides at `EstimateDetailPage.tsx:219`. But it DOES show on `'signed'` estimates, and Convert clobbers the signed status (`status='converted'` overwrites). The captured signature stays in `estimate_signatures` table but the estimate's status no longer reflects "customer signed before conversion" — operator looking back at a converted ticket has to dig into a separate Signatures admin view (which doesn't exist on web — see WEB-UIUX-1460). Convert should preserve signed-state somewhere visible: e.g. converted ticket carries `signed_by` and `signed_at` from the original estimate.** L11 consistency, L4 flow integrity. **STATUS: BLOCKED — needs server schema (tickets.signed_by/signed_at copied from estimate) + UI display; backend + UI changes, defer**
+- [x] WEB-UIUX-1472. **[MINOR] Convert preserves signed evidence on the ticket 2026-05-12.** Migration 185 adds `tickets.signed_at TEXT NULL` + `signed_by_name TEXT NULL`. Both convert paths (single + bulk in `estimates.routes.ts`) now copy the most-recent `estimate_signatures` row's `signer_name` + `signed_at` onto the new ticket. Operator inspecting a converted ticket can now answer "was this signed before work started?" without joining back to estimate_signatures. Web detail-page rendering of the new fields can ship as a follow-up alongside any other signed-evidence UI surface.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
   `packages/server/src/routes/estimates.routes.ts:865-873`
   <!-- meta: fix=on-convert-copy-signed_by/signed_at/signature_id-onto-tickets-table+render-"Customer-signed-on-Date-by-Name"-on-ticket-detail-when-source-estimate-was-signed -->

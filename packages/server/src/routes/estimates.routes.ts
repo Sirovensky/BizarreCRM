@@ -644,6 +644,23 @@ router.post(
           );
         }
 
+        // WEB-UIUX-1472: preserve the customer-signed evidence so a future
+        // "was this signed before we started work?" lookup doesn't need to
+        // re-join estimate_signatures. We take the most-recent signature
+        // row's signer_name + signed_at.
+        const lastSig = await adb.get<AnyRow>(
+          'SELECT signer_name, signed_at FROM estimate_signatures WHERE estimate_id = ? ORDER BY signed_at DESC LIMIT 1',
+          estId,
+        );
+        if (lastSig) {
+          await adb.run(
+            'UPDATE tickets SET signed_at = ?, signed_by_name = ? WHERE id = ?',
+            lastSig.signed_at ?? null,
+            lastSig.signer_name ?? null,
+            ticketId,
+          );
+        }
+
         // Update estimate status
         await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
           ticketId, estId);
@@ -1090,6 +1107,21 @@ router.post(
           `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
            VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
           ticketId, req.user!.id, `[From Estimate ${estimate.order_id}] ${estimate.notes}`,
+        );
+      }
+
+      // WEB-UIUX-1472: same signed-evidence preservation as the bulk-convert
+      // path so single-row convert doesn't drop the customer signature.
+      const lastSig = await adb.get<any>(
+        'SELECT signer_name, signed_at FROM estimate_signatures WHERE estimate_id = ? ORDER BY signed_at DESC LIMIT 1',
+        id,
+      );
+      if (lastSig) {
+        await adb.run(
+          'UPDATE tickets SET signed_at = ?, signed_by_name = ? WHERE id = ?',
+          lastSig.signed_at ?? null,
+          lastSig.signer_name ?? null,
+          ticketId,
         );
       }
 

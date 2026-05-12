@@ -1865,17 +1865,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   Multiple settings tabs share `['settings','config']` cache
 
-- [!] WEB-UIUX-736. **[BLOCKER] Inventory adjustStock sends raw delta with NO expected-quantity verification.** Operator A reduces by 1, Operator B types +5 simultaneously → both apply blindly. L6, L11. **[AUTOLOOP-T34 BLOCKED: requires server endpoint expected_qty CAS + new client UI input; multi-component.]**
-  `packages/web/src/pages/inventory/InventoryDetailPage.tsx:101-112,127-131`
-
-  Tickets, sidebar, notes, kanban share pattern
-
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:1104-1167,1200-1201`
-
-  `packages/web/src/hooks/useDraft.ts:28-32,86,215-219`
-
-  `packages/web/src/hooks/useWebSocket.ts:25-28,454`
-
 - [!] WEB-UIUX-741. **[MINOR] No "stale data" age indicator anywhere.** Zero "edited X ago, refresh" badges. L11. **BLOCKED 2026-05-11: app-wide "edited X ago, refresh" badges need a uniform staleness contract per query key + per-page UI; designed-by-policy work, not a contained fix.**
 
 #### ED5: Auth/Session/Permission Edges
@@ -3226,14 +3215,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
   <!-- meta: fix=confirm-with-{title:'Approve-on-customer-behalf?',body:'This-bypasses-the-e-sign-flow.-Use-only-when-customer-has-authorized-in-person-and-you-have-recorded-authorization.',confirmLabel:'Approve-on-behalf'} -->
-
-- [!] WEB-UIUX-1472. **[MINOR] `'Convert to Ticket'` button shows on `'rejected'` estimates? No — UI hides at `EstimateDetailPage.tsx:219`. But it DOES show on `'signed'` estimates, and Convert clobbers the signed status (`status='converted'` overwrites). The captured signature stays in `estimate_signatures` table but the estimate's status no longer reflects "customer signed before conversion" — operator looking back at a converted ticket has to dig into a separate Signatures admin view (which doesn't exist on web — see WEB-UIUX-1460). Convert should preserve signed-state somewhere visible: e.g. converted ticket carries `signed_by` and `signed_at` from the original estimate.** L11 consistency, L4 flow integrity. **STATUS: BLOCKED — needs server schema (tickets.signed_by/signed_at copied from estimate) + UI display; backend + UI changes, defer**
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
-  `packages/server/src/routes/estimates.routes.ts:865-873`
-  <!-- meta: fix=on-convert-copy-signed_by/signed_at/signature_id-onto-tickets-table+render-"Customer-signed-on-Date-by-Name"-on-ticket-detail-when-source-estimate-was-signed -->
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:233-247`
-  <!-- meta: fix=conditional-confirm-body-string-when-estimate.status==='approved'-or-'signed'-with-approved_at-formatted -->
 
 - [!] WEB-UIUX-1493. **[MAJOR] After immediate cancel, customer-detail Membership card disappears entirely. `getCustomerMembership` returns null when `active_subscription_id` is NULL (set on cancel `membership.routes.ts:232`); UI then renders the enroll prompt (`CustomerDetailPage.tsx:1024+`). Lost context: admin opening cancelled customer can't see prior tier, tenure, last charge, or churn date. No way to view past memberships at all (only payment-history endpoint, no UI).** L9 empty/loading/error, L8 recovery. **[AUTOLOOP-T49 BLOCKED 2026-05-11: past-membership history requires new server endpoint returning the prior subscription rows for a customer + UI tab/section under MembershipCard. Multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:935,1024+`
