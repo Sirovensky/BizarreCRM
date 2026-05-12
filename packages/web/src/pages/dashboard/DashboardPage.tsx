@@ -65,6 +65,10 @@ interface DashboardKpis {
   cogs: number;
   net_profit: number;
   refunds: number;
+  // WEB-UIUX-1312: per-period refund count so the Refunds KPI can surface
+  // volume alongside total. Distinguishes "$2,000 across 3 refunds" from
+  // "$2,000 across 47 refunds" — same total, very different process signal.
+  refund_count?: number;
   expenses: number;
   receivables: number;
   sales_by_type: { type: string; quantity: number; sales: number; discounts: number; cogs: number; net_profit: number; tax: number }[];
@@ -2435,7 +2439,10 @@ function AdminOrManagerDashboard() {
               // WEB-UIUX-1383: drill into the Credit Notes filter on the
               // invoice list so an operator hunting "where did $X of refunds
               // come from?" can see the underlying CN rows.
-              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: 'Sum of credit-notes + returns in the selected period (positive value; already subtracted from Net Profit). Click to see the underlying credit notes.', href: '/invoices?status=credit_note' },
+              // WEB-UIUX-1312: tooltip now mentions the period refund count
+              // so a manager hovering the tile sees volume + total. Drill-
+              // down still lands on the credit-note filtered invoice list.
+              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: `Sum of credit-notes + returns in the selected period (positive value; already subtracted from Net Profit). ${kpis?.refund_count ? `${kpis.refund_count} refund${kpis.refund_count === 1 ? '' : 's'} in this window. ` : ''}Click to see the underlying credit notes.`, href: '/invoices?status=credit_note' },
               { label: 'Expenses', value: kpis?.expenses ?? 0, tooltip: 'Business expenses in period', href: '/expenses' },
               { label: 'Receivables', value: kpis?.receivables ?? 0, tooltip: 'Outstanding unpaid invoice amounts', href: '/invoices?status=unpaid' },
             ];

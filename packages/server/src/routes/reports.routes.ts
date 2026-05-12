@@ -398,9 +398,16 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       ) sc_min ON ii.cost_price = 0 AND sc_min.norm_name = LOWER(TRIM(ii.name))
       WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?${empFilter}
     `, from, to, ...empParams),
-    // Refunds
+    // Refunds — WEB-UIUX-1312: also return refund_count (distinct refund
+    // rows in the period) so the dashboard can surface "$X across N
+    // refunds" instead of a single opaque dollar total. The two signals
+    // diverge informatively: a manager seeing "$0 / 0 refunds" knows
+    // nothing happened; "$2000 / 3 refunds" vs "$2000 / 47 refunds"
+    // points at a process problem even at the same dollar level.
     adb.get<any>(`
-      SELECT COALESCE(SUM(p.amount), 0) AS v
+      SELECT
+        COALESCE(SUM(p.amount), 0) AS v,
+        COUNT(DISTINCT i.id) AS refund_count
       FROM payments p
       JOIN invoices i ON i.id = p.invoice_id
       WHERE i.status = 'refunded' AND DATE(p.created_at) BETWEEN ? AND ?${empFilterInv}
@@ -528,6 +535,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
   const cogs = cogsRow?.v ?? 0;
   const net_profit = totalSales - cogs - discounts;
   const refunds = refundsRow?.v ?? 0;
+  const refund_count = refundsRow?.refund_count ?? 0;
   const expenses = expensesRow?.v ?? 0;
   const receivables = receivablesRow?.v ?? 0;
 
@@ -561,6 +569,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       cogs,
       net_profit,
       refunds,
+      refund_count,
       expenses,
       receivables,
       sales_by_type,

@@ -4604,7 +4604,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:749,792`
   <!-- meta: fix=remove-footer-Cancel+widen-Submit-OR-remove-header-X-(more-keyboard-friendly) -->
 
-- [!] WEB-UIUX-1312. **[NIT] No analytics / dashboard tile for refund volume. Server has the data; UI surfaces nothing. Manager asking "why are returns up this month" has no in-app answer.** L6 discoverability of insights. **STATUS: BLOCKED — needs Refunds-this-week dashboard tile + drilldown route + reason-codes bar; multi-component, defer**
+- [x] WEB-UIUX-1312. **Refund volume surfaced on Dashboard KPI 2026-05-11.** `/dashboard-kpis` SQL now returns `refund_count` (distinct refunded invoices in the period) alongside the existing dollar total. Dashboard Refunds KPI tile tooltip echoes "N refunds in this window" so a manager hovering the tile distinguishes "$2,000 across 3 refunds" from "$2,000 across 47 refunds" — same total, very different process signal. Drilldown still lands on `/invoices?status=credit_note`. Reason-codes bar remains a follow-up but the manager's "why are returns up?" question now has an in-app answer.
   `packages/server/src/routes/refunds.routes.ts:74-95` (data)
   `packages/web/src/pages/dashboard/DashboardPage.tsx` (no refund tile)
   <!-- meta: fix=Refunds-this-week-tile-on-dashboard+drilldown-to-Refunds-page-(see-WEB-UIUX-1275)+top-3-reason-codes-bar -->
