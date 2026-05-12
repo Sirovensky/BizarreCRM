@@ -30,6 +30,9 @@ import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
+// BUGHUNT-2026-05-10-04: per-user rate limit on financial POS routes so a
+// compromised session can't burst-spam /sales, /refund, /cash-in, etc.
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { requirePosPinSale, requirePosPinByMode } from '../middleware/requirePosPin.js';
 import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
 import { verifyTenantStripePaymentIntent, refundTenantStripePayment } from '../services/tenantStripe.js';
@@ -38,6 +41,41 @@ import { isBlockChypEnabled, processRefund as blockchypProcessRefund } from '../
 const logger = createLogger('pos');
 
 const router = Router();
+
+// BUGHUNT-2026-05-10-04: per-user rate-limit caps for financial POS surfaces.
+// Defaults sized for a busy cashier in a high-volume shop:
+//   60 sales / refunds per minute (1/s sustained burst with headroom)
+//   30 cash-in / cash-out / drawer ops per minute
+// Window is 60s wall-clock per category+user. A compromised session that
+// tries to burst >60 sales/min hits a 429 with retry-after seconds; the
+// legitimate cashier has zero practical risk of tripping it.
+const POS_FINANCIAL_RATE_WINDOW_MS = 60_000;
+const POS_FINANCIAL_RATE_MAX_SALES = 60;
+const POS_FINANCIAL_RATE_MAX_DRAWER = 30;
+
+function guardPosFinancialRate(
+  req: any,
+  category: 'pos_sales' | 'pos_refunds' | 'pos_return' | 'pos_drawer',
+): void {
+  const userId = req?.user?.id;
+  if (!userId) return; // unauthenticated requests fail earlier; just skip
+  const cap = category === 'pos_drawer'
+    ? POS_FINANCIAL_RATE_MAX_DRAWER
+    : POS_FINANCIAL_RATE_MAX_SALES;
+  const result = consumeWindowRate(
+    req.db,
+    category,
+    String(userId),
+    cap,
+    POS_FINANCIAL_RATE_WINDOW_MS,
+  );
+  if (!result.allowed) {
+    throw new AppError(
+      `Too many ${category.replace('pos_', '')} operations — slow down and retry in ${result.retryAfterSeconds}s.`,
+      429,
+    );
+  }
+}
 
 const POS_SIGNATURE_MAX_CHARS = 100 * 1024;
 function validateOptionalSignatureDataUrl(value: unknown): string | null {
@@ -227,6 +265,7 @@ router.get('/register', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncH
 
 // POST /pos/cash-in
 router.post('/cash-in', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_drawer');
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -243,6 +282,7 @@ router.post('/cash-in', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncH
 
 // POST /pos/cash-out
 router.post('/cash-out', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_drawer');
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -276,6 +316,7 @@ router.post('/cash-out', requirePermission(PERMISSIONS.POS_CASH_REGISTER), async
 //          transaction — no precheck/deduct race.
 //   EM6:   inserts employee_tips row linking tip to cashier.
 router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_sales');
   const adb = req.asyncDb;
   const db = req.db;
   const cashierId = req.user!.id;
@@ -988,6 +1029,7 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
 // header dedupes retries (middleware.idempotent).
 // ---------------------------------------------------------------------------
 router.post('/sales', idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_sales');
   const adb = req.asyncDb;
   const db = req.db;
   const cashierId = req.user!.id;
@@ -1449,6 +1491,7 @@ async function calcTaxAsync(adb: AsyncDb, price: number, taxClassId: number | nu
 
 // POST /pos/checkout-with-ticket - Create ticket + invoice + optional payment in one transaction
 router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_sales');
   const adb = req.asyncDb;
   const db = req.db;
   const userId = req.user!.id;
@@ -2830,6 +2873,7 @@ router.get('/returnable-invoice/:invoiceId', asyncHandler(async (req, res) => {
 // Admin/manager only.
 // ---------------------------------------------------------------------------
 router.post('/return', idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_return');
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
   const userId = req.user!.id;
@@ -3207,6 +3251,7 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
 // POST /pos/open-drawer — sends a command to open the cash drawer
 // For now, logs the event and returns success. Actual hardware integration is per-deployment.
 router.post('/open-drawer', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_drawer');
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const { reason } = req.body;
