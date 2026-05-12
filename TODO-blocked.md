@@ -2565,36 +2565,6 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/server/src/routes/invoices.routes.ts:1162-1316` (no reverse endpoint exists)
   <!-- meta: fix=ConfirmDialog-with-requireTyping=order_id+danger-styling+server-add-DELETE-/invoices/:cn_id/credit-note-(admin-only)-or-POST-/invoices/:id/credit-note/reverse -->
 
-- [!] WEB-UIUX-1212. **[MAJOR] After credit note, no customer notification — no email "we issued a $X credit toward invoice Y", no SMS.** Operator who issues credit-as-refund-substitute then has to manually message the customer "your card wasn't refunded but you have store credit" or risk a chargeback. The `notificationApi.sendReceipt` exists for receipts; there's no analogous `sendCreditNote` path. L4 flow completion, L7 customer-side feedback. **STATUS: BLOCKED — server-side notification enqueue (sendCreditNote template) + email pipeline; backend change, defer to refunds sprint**
-  `packages/server/src/routes/invoices.routes.ts:1303-1316`
-  `packages/web/src/api/endpoints.ts` (no `sendCreditNote`)
-  <!-- meta: fix=server-after-credit-note-create-enqueue-notification-credit_note_issued+send-via-existing-notif-pipeline+template-includes-amount-reason-store-credit-balance-if-overflow -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-175`
-  <!-- meta: fix=on-success-invalidate:['invoice',id]+['invoices']+['payments',invoiceId]+['store-credit',customer_id]+['reports']+['customer',customer_id] -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
-  `packages/server/src/routes/invoices.routes.ts:1240-1297`
-  <!-- meta: fix=if-amount-greater-than-amount_due-show-warning-block:Excess-of-$X-will-be-issued-as-store-credit+OR-server-tighten-cap-to-amount_paid-and-delete-overflow-path-if-truly-unreachable -->
-
-#### Minor — picker bugs, modal hygiene, copy
-
-  `packages/web/src/components/billing/RefundReasonPicker.tsx:39-50`
-  <!-- meta: fix=propagate-note-to-parent-on-every-keystroke-regardless-of-localReason+OR-disable-the-note-textarea-until-a-reason-is-selected -->
-
-  `packages/web/src/components/billing/RefundReasonPicker.tsx:85-92`
-  <!-- meta: fix=add-counter-${localNote.length}/500-below-textarea+turn-amber-when->450 -->
-
-  `packages/web/src/components/billing/RefundReasonPicker.tsx:23, 82-92`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:305-310` (validation only requires `reason`, not `note` when reason==='other')
-  <!-- meta: fix=if-localReason==='other'-make-note-required+label-becomes-Notes-(required)+parent-handleCreditNote-validates-note.trim().length-when-code==='other' -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:738-746`
-  <!-- meta: fix=if-(amount||reason||note.trim())-show-window.confirm("Discard-credit-note?")-on-backdrop-click+also-on-Esc-handler-in-useEffect:60-69 -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
-  <!-- meta: fix=switch-to-bg-red-600/hover:bg-red-700-to-match-Void-button+OR-bg-primary-600-and-add-an-explicit-confirm-step-(see-WEB-UIUX-1211) -->
-
 - [!] WEB-UIUX-1220. **[MINOR] Reason picker labels "Defective product / Duplicate charge / Wrong item" all imply REFUND semantics (money back to card). The chosen action (Credit Note) does not refund the card. Either the picker is wrong here or the action is wrong — they don't match.** `RefundReasonPicker.tsx:17-24` was authored as a refund picker (component name + comments confirm — see line 2 "for partial refunds"); reusing it on a credit-note modal mis-leads operators. L2 truthful labels. **STATUS: BLOCKED — split CreditNoteReasonPicker from RefundReasonPicker requires component-level refactor + caller updates; defer to refunds sprint**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:1-10`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:783-789`
@@ -2809,28 +2779,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:46-63`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->
-
-- [!] WEB-UIUX-1455. **[NIT] Lookup-rate-limit feedback (when WEB-UIUX-1436 lands) must distinguish "Too many lookup attempts" (429) from "Gift card not found" (404) and "Gift card is used/expired" (400). Server returns these as separate AppError messages (`giftCards.routes.ts:196,232,236,240`) — UI should branch on status code, not blindly toast `e.message`. 429 should also show a countdown until window reset (1 min from first failure).** L7 feedback meaningfulness, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1436 (lookup modal not yet shipped); rate-limit branching pairs with that sprint**
-  `packages/server/src/routes/giftCards.routes.ts:196,232,236,240`
-  <!-- meta: fix=on-Lookup-modal-mutation-error-branch-on-status:-429→banner-with-countdown;404→inline-"No-card-with-that-code";400→show-server-message-(used/expired);else→generic -->
-
-### Web UI/UX Audit — Pass 31 (2026-05-05, flow walk: Approve Estimate — staff Approve, Send-via-SMS, customer-portal Approve, e-sign gap, Reject reversibility)
-
-#### Blocker — flow integrity / state truthfulness
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:206-218,237`
-  `packages/server/src/routes/estimates.routes.ts:1034-1035,1068-1069`
-  <!-- meta: fix=server-/approve-rejects-status-IN-('rejected','signed')+restore-Approve-button-on-rejected-only-if-route-allows+update-confirm-copy-to-match-actual-server-behavior -->
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:16-22`
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:158-169`
-  `packages/server/src/routes/portal.routes.ts:1382`
-  <!-- meta: fix=add-{value:'signed',label:'Signed',color:'#0ea5e9'}-to-ESTIMATE_STATUSES+STATUS_COLORS+EstimateStatusBadge.colors+include-'signed'-in-portal-WHERE-status-IN-list -->
-
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:132-140`
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:208-211`
-  <!-- meta: fix=portal-Approve-opens-confirm-sheet-with-total+terms+typed-or-checkbox-acknowledgement+optional-signature-pad+single-button-"I-Approve-$X.XX" -->
 
 - [!] WEB-UIUX-1460. **[MAJOR] No web UI to issue a customer e-sign URL. `estimateSign.routes.ts:233-310` ships `POST /api/v1/estimates/:id/sign-url` (HMAC-signed, single-use, signature pad capture) but `endpoints.ts:893-913` deliberately omits the `estimateApi.signUrl` wrapper with a comment "mobile-only today" — meaning **web-only shops cannot capture customer signatures at all**. The `EstimateDetailPage` has Send (SMS quote with no sign link), Approve (admin override, no signature), Convert, Reject — but no "Send for signature" button. Counter-signed work-orders are a legal requirement in many states for electronics repair. Wire `estimateApi.signUrl(id, ttl)` + a `<SignLinkModal>` that copies the URL / triggers SMS via existing `/send` and shows captured signatures via existing `/signatures` GET (`estimateSign.routes.ts:316-352`).** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: web sign-URL flow requires wiring estimateApi.signUrl + a <SignLinkModal> (copy URL / SMS / list signatures). Server endpoint ready; UI scaffolding is product-spec territory.]**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-256`

@@ -4214,7 +4214,7 @@ Flow under test (Invoice detail → "Credit Note" button → reason picker → s
   `packages/server/src/routes/invoices.routes.ts:1162-1316` (no reverse endpoint exists)
   <!-- meta: fix=ConfirmDialog-with-requireTyping=order_id+danger-styling+server-add-DELETE-/invoices/:cn_id/credit-note-(admin-only)-or-POST-/invoices/:id/credit-note/reverse -->
 
-- [!] WEB-UIUX-1212. **[MAJOR] After credit note, no customer notification — no email "we issued a $X credit toward invoice Y", no SMS.** Operator who issues credit-as-refund-substitute then has to manually message the customer "your card wasn't refunded but you have store credit" or risk a chargeback. The `notificationApi.sendReceipt` exists for receipts; there's no analogous `sendCreditNote` path. L4 flow completion, L7 customer-side feedback. **STATUS: BLOCKED — server-side notification enqueue (sendCreditNote template) + email pipeline; backend change, defer to refunds sprint**
+- [x] WEB-UIUX-1212. **[MAJOR] STALE/CLOSED 2026-05-12 — credit-note customer-notification prompt already shipped under WEB-UIUX-722.** `InvoiceDetailPage.creditNoteMutation.onSuccess` fires `setShowReceiptPrompt(true)` so the same Print / SMS / Email prompt the payment flow uses surfaces after a credit note. The credit note is itself an invoice row, so `notificationApi.sendReceipt` accepts its id directly and renders the negative-total receipt the customer expects. Dedicated `sendCreditNote` template (different legal copy per state) remains a separate item but the silent-completion gap is closed.
   `packages/server/src/routes/invoices.routes.ts:1303-1316`
   `packages/web/src/api/endpoints.ts` (no `sendCreditNote`)
   <!-- meta: fix=server-after-credit-note-create-enqueue-notification-credit_note_issued+send-via-existing-notif-pipeline+template-includes-amount-reason-store-credit-balance-if-overflow -->
@@ -5121,7 +5121,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->
 
-- [!] WEB-UIUX-1455. **[NIT] Lookup-rate-limit feedback (when WEB-UIUX-1436 lands) must distinguish "Too many lookup attempts" (429) from "Gift card not found" (404) and "Gift card is used/expired" (400). Server returns these as separate AppError messages (`giftCards.routes.ts:196,232,236,240`) — UI should branch on status code, not blindly toast `e.message`. 429 should also show a countdown until window reset (1 min from first failure).** L7 feedback meaningfulness, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1436 (lookup modal not yet shipped); rate-limit branching pairs with that sprint**
+- [x] WEB-UIUX-1455. **[NIT] RedeemModal already branches by status code 2026-05-12.** Shipped under WEB-UIUX-1543: 429 surfaces "Too many lookup attempts — wait Ns and retry" with the `retry_after_seconds` value from the server, 404 surfaces "Gift card not found", 400 (used/expired) surfaces the server message. Per-request countdown timer for 429 remains a small follow-up nicety; the structured branching is in place.
   `packages/server/src/routes/giftCards.routes.ts:196,232,236,240`
   <!-- meta: fix=on-Lookup-modal-mutation-error-branch-on-status:-429→banner-with-countdown;404→inline-"No-card-with-that-code";400→show-server-message-(used/expired);else→generic -->
 
