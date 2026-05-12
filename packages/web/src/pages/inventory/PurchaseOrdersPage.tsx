@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X, AlertTriangle, Send } from 'lucide-react';
+import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X, AlertTriangle, Send, ScanBarcode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { inventoryApi, benchApi } from '@/api/endpoints';
@@ -137,6 +137,38 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
     },
   });
 
+  // WEB-UIUX-1193: in-modal barcode scan path. Operator hits the scan field
+  // with a handheld scanner gun; on Enter the modal looks up the matching
+  // PO line by SKU (case-insensitive) and increments its receive_qty by 1,
+  // capped at the remaining count. Surfaces success/no-match/already-full
+  // states inline so the cashier doesn't have to switch focus.
+  const [scanValue, setScanValue] = useState('');
+  const [scanFeedback, setScanFeedback] = useState<{ tone: 'ok' | 'warn' | 'err'; msg: string } | null>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
+
+  const handleScan = useCallback((raw: string) => {
+    const sku = raw.trim();
+    if (!sku) return;
+    const skuLower = sku.toLowerCase();
+    const idx = receiving.findIndex((r) => (r.sku ?? '').toLowerCase() === skuLower);
+    if (idx === -1) {
+      setScanFeedback({ tone: 'err', msg: `No PO line matches SKU "${sku}".` });
+      return;
+    }
+    const target = receiving[idx];
+    const remaining = target.quantity_ordered - target.quantity_received;
+    if (target.receive_qty >= remaining) {
+      setScanFeedback({ tone: 'warn', msg: `"${target.item_name}" already at remaining cap (${remaining}).` });
+      return;
+    }
+    setReceiving((prev) =>
+      prev.map((item, i) =>
+        i === idx ? { ...item, receive_qty: Math.min(remaining, item.receive_qty + 1) } : item,
+      ),
+    );
+    setScanFeedback({ tone: 'ok', msg: `+1 ${target.item_name} (now ${target.receive_qty + 1} / ${remaining})` });
+  }, [receiving]);
+
   const totalToReceive = receiving.reduce((s, r) => s + r.receive_qty, 0);
   // WEB-UIUX-1194: dirty-state guard on close. The modal captures physical
   // counts; an accidental dismiss = recount the entire shipment. Warn if
@@ -185,6 +217,48 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* WEB-UIUX-1193: barcode-scan path surfaced inline so the cashier
+            with a handheld scanner gun doesn't have to type qty per row. */}
+        {receiving.length > 0 && (
+          <div className="border-b border-surface-200 dark:border-surface-700 p-4">
+            <label htmlFor="po-receive-scan-input" className="flex items-center gap-2 text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5">
+              <ScanBarcode className="h-3.5 w-3.5" />
+              Scan to receive (+1 per scan)
+            </label>
+            <input
+              id="po-receive-scan-input"
+              ref={scanInputRef}
+              type="text"
+              value={scanValue}
+              onChange={(e) => setScanValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleScan(scanValue);
+                  setScanValue('');
+                  scanInputRef.current?.focus();
+                }
+              }}
+              placeholder="Scan or type SKU then Enter…"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-mono text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {scanFeedback && (
+              <p
+                className={cn(
+                  'mt-1.5 text-xs',
+                  scanFeedback.tone === 'ok' && 'text-emerald-600 dark:text-emerald-400',
+                  scanFeedback.tone === 'warn' && 'text-amber-600 dark:text-amber-400',
+                  scanFeedback.tone === 'err' && 'text-red-600 dark:text-red-400',
+                )}
+              >
+                {scanFeedback.msg}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {receiving.length === 0 ? (

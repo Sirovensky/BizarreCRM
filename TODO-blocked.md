@@ -2107,56 +2107,6 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:164-209, 246-296`
   <!-- meta: fix=mirror-ZReportModal-pattern:-role=dialog-aria-modal-true-aria-labelledby=open/close-shift-title+id-on-h3+focus-trap-or-trap-within-modal -->
 
-- [!] WEB-UIUX-1193. **[MAJOR] No barcode-scan receive path surfaced from PO page.** Server has `POST /inventory/receive-scan` (`inventory.routes.ts:1716`) for barcode receiving — but no link from `PurchaseOrdersPage`. Operator with a hand scanner has to manually find the line item and type qty. Faster, less error-prone path is hidden. L6 discoverability, L4 flow. **STATUS: BLOCKED — needs scan modal + scanner-input wiring to /inventory/receive-scan + permission gates; multi-component**
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (no scan entry point)
-  `packages/server/src/routes/inventory.routes.ts:1713-1716`
-  <!-- meta: fix=add-"Scan-to-Receive"-button-on-PoDetailRow-(canReceive)+open-modal-with-scanner-input-bound-to-receive-scan-endpoint -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:85, 92, 135-137`
-  <!-- meta: fix=if-any-receive_qty-differs-from-default-show-confirm("Discard-counted-quantities?")-on-cancel/✕ -->
-
-#### Minor — copy + hierarchy + discoverability
-
-  `packages/web/src/components/layout/Sidebar.tsx:76, 80`
-  <!-- meta: fix=swap-PO-icon-to-Truck-or-ClipboardList -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:268-273`
-  <!-- meta: fix=show-hint-when-!canReceive&&status!=='received'&&status!=='cancelled' -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:181-186`
-  <!-- meta: fix=remove-text-primary-600-from-PO#-cell-OR-add-/purchase-orders/:id-detail-route -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:438-446`
-  <!-- meta: fix=warn-on-submit-if-any-line-cost_price===0+confirm("Submit-with-$0-line-items?") -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:72-76`
-  <!-- meta: fix=use-react-hot-toast-custom-toast-with-link-to-stock-movements-or-the-first-affected-inventory-item -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:461-463`
-  <!-- meta: fix=cancel-handler-also-calls-setNewPo({supplier_id:'',notes:'',items:[{...EMPTY_ITEM}]}) -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:187-189`
-  <!-- meta: fix=supplier_name||"(Supplier-removed)"+add-FK-ON-DELETE-RESTRICT-or-soft-delete-suppliers -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:138-145`
-  <!-- meta: fix=2-step-confirm-on-Receive-when-totalToReceive>0+show-summary-"Receive-N-units-of-M-items?-This-cannot-be-undone." -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:92-94`
-  <!-- meta: fix=replace-✕-with-<X-className="h-4-w-4"-/>-from-lucide-react -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:84-150`
-  <!-- meta: fix=useEffect-keydown-listener-on-mount+if-key=Escape+confirm-if-dirty-then-onClose -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:299-314, 383-392, 409-429`
-  <!-- meta: fix=if(suppliersLoading||inventoryLoading)-show-skeleton-or-spinner-inside-select+disable-Create-button -->
-
-
-### Web UI/UX Audit — Pass 21 (2026-05-05, flow walk: Process Refund / Credit Note — invoice detail entry, picker, server effects, recovery)
-
-Flow under test (Invoice detail → "Credit Note" button → reason picker → submit): operator wants to give a customer their money back after a defective sale. Walked entry point on `InvoiceDetailPage.tsx`, the `RefundReasonPicker` component, the `POST /invoices/:id/credit-note` server handler, and the entire `refunds.routes.ts` parallel approval-workflow (which exists end-to-end on the server but has zero UI). Mismatch between the operator's mental model ("refund the card") and what the system actually does ("create a credit note that zeros the invoice and possibly mints store credit") is the dominant theme.
-
-#### Blocker — semantic mismatch + dead workflow
-
 - [!] WEB-UIUX-1208. **[MAJOR] Credit-note silently inflates `amount_paid` on the original invoice by the credit amount — invoice flips to "paid" status with no actual money movement.** `invoices.routes.ts:1245-1257` `cappedAmountPaid = Math.min(prevAmountPaid + amount, total)` then UPDATE. So a $100 invoice with $50 collected, after a $50 credit note, reads `amount_paid=$100, amount_due=$0, status=paid` — but the customer paid only $50 cash. Reconciliation between AR ledger and bank deposits will silently disagree by $50 forever. The accounting-correct shape is: original invoice's `amount_paid` stays at $50 (real cash), and the new credit-note row's negative total is what brings net AR to zero. L13 trust/correctness, L7 honest feedback (status reads "paid" while customer was not refunded). **STATUS: BLOCKED — server invoices.routes.ts amount_paid mutation behavior change needs accounting review; backend, defer**
   `packages/server/src/routes/invoices.routes.ts:1245-1257`
   <!-- meta: fix=do-not-mutate-original.amount_paid-on-credit-note+let-the-negative-credit-note-row-cover-the-AR-reduction+OR-introduce-amount_credited-column-distinct-from-amount_paid -->
