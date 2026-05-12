@@ -1412,6 +1412,15 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
   const adb = req.asyncDb;
   const cid = req.portalCustomerId!;
 
+  // WEB-UIUX-1475: paginate so customers with 51+ historical estimates can
+  // browse beyond the prior hard-cap of 50. Hold per_page at 50 max so a
+  // single response stays bounded.
+  const pageRaw = typeof req.query.page === 'string' ? Number.parseInt(req.query.page, 10) : 1;
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
+  const perPageRaw = typeof req.query.per_page === 'string' ? Number.parseInt(req.query.per_page, 10) : 25;
+  const perPage = Number.isFinite(perPageRaw) && perPageRaw >= 1 ? Math.min(perPageRaw, 50) : 25;
+  const offset = (page - 1) * perPage;
+
   // WEB-UIUX-1466: hide drafts (work-in-progress; not meant for customer
   // eyes — they render with no Approve button + look like a broken
   // estimate). Sort by action-required first: status='sent' floats to
@@ -1419,17 +1428,25 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
   // converted / rejected) falls through by recency. created_at DESC is
   // the tiebreaker inside each bucket so newest-first behaviour for
   // history rows is preserved.
-  const estimates = await adb.all<AnyRow>(`
-    SELECT e.id, e.order_id, e.status, e.subtotal, e.discount, e.total_tax, e.total,
-           e.valid_until, e.notes, e.created_at, e.approved_at, e.viewed_at
-    FROM estimates e
-    WHERE e.customer_id = ?
-      AND e.status IN ('sent', 'approved', 'converted', 'rejected')
-    ORDER BY
-      CASE WHEN e.status = 'sent' THEN 0 ELSE 1 END,
-      e.created_at DESC
-    LIMIT 50
-  `, cid);
+  const [{ count } = { count: 0 }, estimates] = await Promise.all([
+    adb.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM estimates
+        WHERE customer_id = ?
+          AND status IN ('sent', 'approved', 'converted', 'rejected')`,
+      cid,
+    ).then((r) => r ?? { count: 0 }),
+    adb.all<AnyRow>(`
+      SELECT e.id, e.order_id, e.status, e.subtotal, e.discount, e.total_tax, e.total,
+             e.valid_until, e.notes, e.created_at, e.approved_at, e.viewed_at
+      FROM estimates e
+      WHERE e.customer_id = ?
+        AND e.status IN ('sent', 'approved', 'converted', 'rejected')
+      ORDER BY
+        CASE WHEN e.status = 'sent' THEN 0 ELSE 1 END,
+        e.created_at DESC
+      LIMIT ? OFFSET ?
+    `, cid, perPage, offset),
+  ]);
 
   // ENR-LE7: Mark unviewed estimates as viewed when customer opens the list
   const unviewedIds = estimates.filter(e => !e.viewed_at).map(e => e.id);
@@ -1475,7 +1492,16 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
     })),
   }));
 
-  res.json({ success: true, data: result });
+  res.json({
+    success: true,
+    data: result,
+    pagination: {
+      page,
+      per_page: perPage,
+      total: count,
+      total_pages: Math.max(1, Math.ceil(count / perPage)),
+    },
+  });
 }));
 
 // ---------------------------------------------------------------------------

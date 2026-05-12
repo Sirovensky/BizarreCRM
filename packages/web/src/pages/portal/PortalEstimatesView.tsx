@@ -13,13 +13,21 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
   const [loading, setLoading] = useState(true);
   const [approvingId, setApprovingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // WEB-UIUX-1475: pagination state. Page size matches server default.
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 25;
+  const [pagination, setPagination] = useState<api.PortalPagination | null>(null);
 
   useEffect(() => {
-    api.getEstimates()
-      .then(setEstimates)
+    setLoading(true);
+    api.getEstimates(page, PER_PAGE)
+      .then((res) => {
+        setEstimates(res.estimates);
+        setPagination(res.pagination);
+      })
       .catch(() => setError('Failed to load estimates. Please try again later.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page]);
 
   async function handleApprove(id: number) {
     // WEB-UIUX-1458: portal Approve is the highest-stakes action (customer
@@ -180,6 +188,34 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
               </div>
             </div>
           ))
+        )}
+        {/* WEB-UIUX-1475: prev/next pagination — hidden when only one
+            page of history exists so first-time customers don't see
+            empty chrome. */}
+        {pagination && pagination.total_pages > 1 && (
+          <div className="flex items-center justify-between rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-4 py-3 text-sm">
+            <span className="text-surface-500 dark:text-surface-400">
+              Page {pagination.page} of {pagination.total_pages} · {pagination.total} estimate{pagination.total === 1 ? '' : 's'}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="rounded-md border border-surface-200 dark:border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
+                disabled={page >= pagination.total_pages || loading}
+                className="rounded-md border border-surface-200 dark:border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

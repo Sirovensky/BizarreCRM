@@ -313,9 +313,24 @@ export async function submitFeedback(ticketId: number, rating: number, comment?:
   await portalClient.post(`/tickets/${ticketId}/feedback`, { rating, comment });
 }
 
-export async function getEstimates(): Promise<EstimateSummary[]> {
-  const res = await portalClient.get('/estimates');
-  return res.data.data;
+// WEB-UIUX-1475: paginated portal estimates. Server caps per_page at 50;
+// caller can omit params to default to page 1 × 25 rows. Returns the
+// estimate array + pagination meta so the UI can render prev/next.
+export interface PortalPagination {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+}
+export async function getEstimates(
+  page = 1,
+  perPage = 25,
+): Promise<{ estimates: EstimateSummary[]; pagination: PortalPagination }> {
+  const res = await portalClient.get('/estimates', { params: { page, per_page: perPage } });
+  return {
+    estimates: res.data.data,
+    pagination: res.data.pagination ?? { page, per_page: perPage, total: 0, total_pages: 1 },
+  };
 }
 
 export async function approveEstimate(id: number): Promise<void> {

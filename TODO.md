@@ -5216,7 +5216,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-255`
   <!-- meta: fix=primary-CTA-is-context-dependent-(Send-when-draft;-Convert-when-approved);-secondary-outline-for-others;-Reject-pinned-right-with-`ml-auto`-divider+red-outline -->
 
-- [!] WEB-UIUX-1475. **[MINOR] No pagination on portal estimate list (`PortalEstimatesView.tsx:94-152`). Server hard-caps at 50 (`portal.routes.ts:1384`). Customer with 51+ historical estimates sees only newest 50, no warning, no "Load more". Compare with staff `EstimateListPage` which has full pagination + per-page selector (`:840-913`).** L4 flow, L9 loading state. **[AUTOLOOP-T49 BLOCKED 2026-05-11: portal pagination requires server endpoint to accept page+per_page (currently hard-cap 50) + UI prev/next + "Load more" handling on top of customer-portal layout. Multi-step.]**
+- [x] WEB-UIUX-1475. **Portal estimate pagination shipped 2026-05-11.** Server `GET /portal/estimates` accepts `page` + `per_page` (capped at 50, default 25) and returns `{ data, pagination: { page, per_page, total, total_pages } }`. Web `portalApi.getEstimates(page, perPage)` returns `{ estimates, pagination }`. `PortalEstimatesView` adds a footer "Page N of M · X estimates" with Prev/Next buttons that re-fire the load effect on click. Footer auto-hides when only one page exists.
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:94-152`
   `packages/server/src/routes/portal.routes.ts:1384`
   <!-- meta: fix=portal-route-takes-?page+?per_page-with-bounds+UI-renders-load-more-button-or-paginator -->
