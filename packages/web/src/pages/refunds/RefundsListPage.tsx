@@ -111,8 +111,23 @@ export function RefundsListPage() {
       queryClient.invalidateQueries({ queryKey: ['refunds'] });
     },
     onError: (err: unknown) => {
-      const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message ?? 'Approval failed');
+      // WEB-UIUX-1401: distinguish 409 race / state-drift errors from 400
+      // operator-fixable input so the manager gets actionable recovery
+      // copy instead of a flat "Approval failed". 409 from refunds.routes
+      // covers "exceeds available balance (concurrent refund conflict)"
+      // and "no longer pending"; both resolve with a refetch.
+      const e = err as { response?: { status?: number; data?: { message?: string } } };
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 409) {
+        toast.error(
+          `${serverMsg ?? 'State changed since you opened this row.'} Refreshing list…`,
+          { duration: 6000 },
+        );
+        queryClient.invalidateQueries({ queryKey: ['refunds'] });
+        return;
+      }
+      toast.error(serverMsg ?? 'Approval failed');
     },
   });
 
@@ -123,8 +138,21 @@ export function RefundsListPage() {
       queryClient.invalidateQueries({ queryKey: ['refunds'] });
     },
     onError: (err: unknown) => {
-      const e = err as { response?: { data?: { message?: string } } };
-      toast.error(e?.response?.data?.message ?? 'Decline failed');
+      // WEB-UIUX-1401: same 409 race branch as approveMut — server can
+      // return "no longer pending" if another admin acted between page
+      // load + click; refetch puts the operator on real state.
+      const e = err as { response?: { status?: number; data?: { message?: string } } };
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 409) {
+        toast.error(
+          `${serverMsg ?? 'State changed since you opened this row.'} Refreshing list…`,
+          { duration: 6000 },
+        );
+        queryClient.invalidateQueries({ queryKey: ['refunds'] });
+        return;
+      }
+      toast.error(serverMsg ?? 'Decline failed');
     },
   });
 

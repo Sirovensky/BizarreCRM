@@ -4969,7 +4969,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Major — recovery + concurrency surfacing
 
-- [!] WEB-UIUX-1401. **[MAJOR] Server returns 409 "Refund exceeds available balance (concurrent refund conflict)" (`refunds.routes.ts:227`) and 409 "Refund is no longer pending" (`:299`) — surface-friendly admin needs UI hint "another admin just acted; reload". With no UI today the messages are theoretical, but when WEB-UIUX-1382 lands the toast must distinguish 409 (race, retry) from 400 (operator-fixable input).** L7 feedback specificity, L8 recovery. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); 409 race surface pairs with that sprint**
+- [x] WEB-UIUX-1401. **409 race recovery shipped 2026-05-11.** Both `approveMut.onError` and `declineMut.onError` on `RefundsListPage` now inspect `response.status`; on 409 they surface `{server message} Refreshing list…` for 6s and invalidate the `['refunds']` query so the operator sees current state, while non-409 errors keep the existing flat error toast. Closes the race surface for "Refund exceeds available balance (concurrent refund conflict)" + "Refund is no longer pending" without paying the recovery-toast cost on the common 400-input path.
   `packages/server/src/routes/refunds.routes.ts:227,299,308`
   <!-- meta: fix=on-409-show-toast-"Already-actioned-by-another-admin.-Refresh-to-see-current-state."+auto-invalidate-refund-list-query+on-400-keep-form-open-with-server-message -->
 
