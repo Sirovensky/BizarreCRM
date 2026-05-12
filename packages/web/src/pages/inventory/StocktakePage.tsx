@@ -56,6 +56,11 @@ interface StocktakeCount {
   name?: string;
   sku?: string;
   cost_price?: number;
+  // WEB-UIUX-1356: server already returns `i.in_stock as current_in_stock`
+  // in GET /stocktake/:id (stocktake.routes.ts:179) — the live in_stock at
+  // query time. Used here to flag rows whose expected_qty baseline has
+  // drifted because of concurrent sales since the row was scanned.
+  current_in_stock?: number;
 }
 
 interface StocktakeDetail {
@@ -796,7 +801,24 @@ export function StocktakePage() {
                           <div className="font-medium">{c.name}</div>
                           <div className="text-xs text-surface-500">{c.sku}</div>
                         </td>
-                        <td className="text-right px-3 py-2">{c.expected_qty}</td>
+                        <td className="text-right px-3 py-2">
+                          {c.expected_qty}
+                          {/* WEB-UIUX-1356: warn when the baseline this row
+                              was scanned against has drifted from live
+                              in_stock (concurrent sales between scan and
+                              now). Tooltip names the live value so the
+                              operator can decide whether to re-scan. */}
+                          {typeof c.current_in_stock === 'number'
+                            && c.current_in_stock !== c.expected_qty && (
+                            <span
+                              title={`Baseline drifted — current in_stock is ${c.current_in_stock}. Re-scan to refresh.`}
+                              aria-label={`Baseline drifted; current in_stock is ${c.current_in_stock}`}
+                              className="ml-1 inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                            >
+                              !
+                            </span>
+                          )}
+                        </td>
                         <td className="text-right px-3 py-2">{c.counted_qty}</td>
                         <td
                           className={cn(

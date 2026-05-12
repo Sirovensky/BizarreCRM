@@ -4786,7 +4786,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
 
 #### Major — feedback gaps
 
-- [!] WEB-UIUX-1356. **[MAJOR] Variance computed against `expected_qty` snapshot taken at scan time (server line 215). UI never warns "your variance baseline may be stale — items sold since you scanned will skew totals". A 4-hour stocktake with concurrent sales produces wrong variance and operator has no way to know.** L7 feedback meaningfulness. **STATUS: BLOCKED — server stocktake.routes.ts must include current_in_stock alongside baseline; backend, defer to inventory sprint**
+- [x] WEB-UIUX-1356. **Variance-baseline drift warning shipped 2026-05-11.** Server `GET /stocktake/:id` already hydrates each count row with `i.in_stock AS current_in_stock` (`stocktake.routes.ts:179`). Web `StocktakeCount` interface widened with the optional field, and the count table's Expected column now renders an amber `!` chip when `current_in_stock !== expected_qty` (title surfaces the live value + "Re-scan to refresh" prompt). Operator can spot which rows became stale because of concurrent sales between scan and now.
   `packages/server/src/routes/stocktake.routes.ts:209-216` + `packages/web/src/pages/inventory/StocktakePage.tsx:285-305`
   <!-- meta: fix=show-banner-"baseline-locked-at-scan-time:N-sales-since-then"+server-includes-current_in_stock-in-counts-row+UI-shows-current-vs-baseline-side-by-side -->
 
