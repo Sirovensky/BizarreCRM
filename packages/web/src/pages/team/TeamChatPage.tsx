@@ -57,7 +57,7 @@ function formatMessageTime(isoString: string): string {
   return `${date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${timeStr}`;
 }
 import { MentionPicker } from '@/components/team/MentionPicker';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 
 interface Channel {
   id: number;
@@ -80,8 +80,8 @@ interface Message {
 
 export function TeamChatPage() {
   const queryClient = useQueryClient();
-  const userRole = useAuthStore((s) => s.user?.role);
-  const canCreateGeneralChannel = userRole === 'admin';
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canCreateGeneralChannel = useHasRole('admin');
   const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
   const [olderMessages, setOlderMessages] = useState<Message[]>([]);
   const [loadingOlder, setLoadingOlder] = useState(false);

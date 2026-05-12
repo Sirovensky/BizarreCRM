@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { CommissionPeriodLock } from '@/components/team/CommissionPeriodLock';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { extractApiError } from '@/utils/apiError';
 import { formatDateTime } from '@/utils/format';
 
@@ -75,7 +75,8 @@ function formatPeriodRange(period: PayrollPeriod): string {
 }
 
 export function PayrollPage() {
-  const userRole = useAuthStore((s) => s.user?.role);
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const isManager = useHasRole('manager');
   const {
     data,
     isLoading,
@@ -124,7 +125,7 @@ export function PayrollPage() {
         </div>
       </header>
 
-      {userRole === 'manager' && (
+      {isManager && (
         <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
           <ShieldAlert className="mt-0.5 h-5 w-5 flex-none" />
           <div>
