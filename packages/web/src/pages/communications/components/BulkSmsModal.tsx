@@ -135,6 +135,24 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   const tplPayload = tplData?.data as SmsTemplateListResponse | undefined;
   const templates: SmsTemplate[] = tplPayload?.data?.templates ?? [];
 
+  // WEB-UIUX-1512: pre-fetch per-segment counts so segment buttons can
+  // label their reach before the admin commits to one. Server endpoint
+  // is admin-only + cheap (3 COUNT(DISTINCT) queries); 60s staleTime
+  // keeps the chip honest without spamming refresh.
+  const { data: segmentCountsData } = useQuery({
+    queryKey: ['bulk-sms-segment-counts'],
+    queryFn: async () => {
+      const res = await api.get<{
+        success: boolean;
+        data: { open_tickets: number; all_customers: number; recent_purchases: number };
+      }>('/inbox/bulk-send-segment-counts');
+      return res.data.data;
+    },
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const segmentCounts = segmentCountsData ?? null;
+
   const previewMut = useMutation({
     mutationFn: async () => {
       if (!templateId) throw new Error('Pick a template');
@@ -491,8 +509,20 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                       : 'border-surface-200 hover:border-surface-300 dark:border-surface-600',
                   )}
                 >
-                  <div className="font-medium text-surface-900 dark:text-surface-100">
-                    {s.label}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium text-surface-900 dark:text-surface-100">
+                      {s.label}
+                    </div>
+                    {/* WEB-UIUX-1512: per-segment count chip so admin sees
+                        audience size before committing to a segment. Hidden
+                        while the counts query is in flight (renders the
+                        previous selection's label cleanly during initial
+                        modal open). */}
+                    {segmentCounts && (
+                      <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-surface-600 dark:bg-surface-700 dark:text-surface-300">
+                        {segmentCounts[s.value].toLocaleString()}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-surface-500">{s.hint}</div>
                 </button>

@@ -532,6 +532,57 @@ function verifyBulkToken(
   return payloadObj;
 }
 
+/**
+ * WEB-UIUX-1512: live segment counts so the bulk-SMS modal can label each
+ * segment button with its actual reach before the admin commits to one.
+ * Re-uses the same WHERE-clause shape as previewBulkSegment so the count
+ * matches what step-1 preview would return. Admin-only (matches the post
+ * route gating).
+ */
+router.get(
+  '/bulk-send-segment-counts',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const adb = req.asyncDb;
+    const [openTickets, allCustomers, recentPurchases] = await Promise.all([
+      adb.get<{ count: number }>(
+        `SELECT COUNT(DISTINCT c.mobile) AS count
+           FROM customers c
+           JOIN tickets t ON t.customer_id = c.id
+           JOIN ticket_statuses s ON s.id = t.status_id
+          WHERE s.is_closed = 0 AND s.is_cancelled = 0
+            AND t.is_deleted = 0
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND COALESCE(c.sms_opt_in, 0) = 1
+            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
+      ),
+      adb.get<{ count: number }>(
+        `SELECT COUNT(DISTINCT mobile) AS count FROM customers
+          WHERE mobile IS NOT NULL AND mobile <> ''
+            AND COALESCE(sms_opt_in, 0) = 1
+            AND COALESCE(sms_consent_marketing, 0) = 1`,
+      ),
+      adb.get<{ count: number }>(
+        `SELECT COUNT(DISTINCT c.mobile) AS count
+           FROM customers c
+           JOIN invoices i ON i.customer_id = c.id
+          WHERE i.created_at >= datetime('now','-30 days')
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND COALESCE(c.sms_opt_in, 0) = 1
+            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
+      ),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        open_tickets: openTickets?.count ?? 0,
+        all_customers: allCustomers?.count ?? 0,
+        recent_purchases: recentPurchases?.count ?? 0,
+      },
+    });
+  }),
+);
+
 router.post(
   '/bulk-send',
   asyncHandler(async (req, res) => {
