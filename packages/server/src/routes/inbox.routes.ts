@@ -381,8 +381,14 @@ const BULK_SEGMENTS: readonly BulkSegment[] = [
 async function previewBulkSegment(
   adb: AsyncDb,
   segment: BulkSegment,
-): Promise<{ count: number; phones: string[]; phonesHash: string }> {
+): Promise<{ count: number; phones: string[]; phonesHash: string; excluded_optout_count: number }> {
   let rows: { phone: string }[] = [];
+  // BUGHUNT-2026-05-10-40: surface excluded-by-opt-out count separately so the
+  // client can render explicit "we filtered N out for TCPA" evidence instead
+  // of trusting the server filter ran. Same WHERE shape as the main query
+  // but with the opt-in clauses inverted; only phone-bearing customers
+  // count (an empty mobile is already excluded by the main filter).
+  let excluded: { c: number } | undefined;
   switch (segment) {
     case 'open_tickets':
       rows = await adb.all<{ phone: string }>(
@@ -396,6 +402,16 @@ async function previewBulkSegment(
             AND COALESCE(c.sms_opt_in, 0) = 1
             AND COALESCE(c.sms_consent_marketing, 0) = 1`,
       );
+      excluded = await adb.get<{ c: number }>(
+        `SELECT COUNT(DISTINCT c.id) AS c
+           FROM customers c
+           JOIN tickets t ON t.customer_id = c.id
+           JOIN ticket_statuses s ON s.id = t.status_id
+          WHERE s.is_closed = 0 AND s.is_cancelled = 0
+            AND t.is_deleted = 0
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND (COALESCE(c.sms_opt_in, 0) = 0 OR COALESCE(c.sms_consent_marketing, 0) = 0)`,
+      );
       break;
     case 'all_customers':
       rows = await adb.all<{ phone: string }>(
@@ -403,6 +419,11 @@ async function previewBulkSegment(
           WHERE mobile IS NOT NULL AND mobile <> ''
             AND COALESCE(sms_opt_in, 0) = 1
             AND COALESCE(sms_consent_marketing, 0) = 1`,
+      );
+      excluded = await adb.get<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM customers
+          WHERE mobile IS NOT NULL AND mobile <> ''
+            AND (COALESCE(sms_opt_in, 0) = 0 OR COALESCE(sms_consent_marketing, 0) = 0)`,
       );
       break;
     case 'recent_purchases':
@@ -415,6 +436,14 @@ async function previewBulkSegment(
             AND COALESCE(c.sms_opt_in, 0) = 1
             AND COALESCE(c.sms_consent_marketing, 0) = 1`,
       );
+      excluded = await adb.get<{ c: number }>(
+        `SELECT COUNT(DISTINCT c.id) AS c
+           FROM customers c
+           JOIN invoices i ON i.customer_id = c.id
+          WHERE i.created_at >= datetime('now','-30 days')
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND (COALESCE(c.sms_opt_in, 0) = 0 OR COALESCE(c.sms_consent_marketing, 0) = 0)`,
+      );
       break;
   }
   const phones = rows.map((r) => normalizePhone(r.phone)).filter(Boolean) as string[];
@@ -425,7 +454,12 @@ async function previewBulkSegment(
     .update([...phones].sort().join('|'))
     .digest('hex')
     .slice(0, 32);
-  return { count: phones.length, phones, phonesHash };
+  return {
+    count: phones.length,
+    phones,
+    phonesHash,
+    excluded_optout_count: Number(excluded?.c ?? 0),
+  };
 }
 
 /**
@@ -737,6 +771,11 @@ router.post(
         success: true,
         data: {
           preview_count: preview.count,
+          // BUGHUNT-2026-05-10-40: surface excluded-by-opt-out count so the
+          // UI can render explicit TCPA-filter evidence ("we filtered N
+          // unconsented phones out") instead of trusting the server filter
+          // ran. Client refuses Send when this field is missing.
+          excluded_optout_count: preview.excluded_optout_count,
           confirmation_token: freshToken,
           confirmed: false,
           sample_phones: samplePhones,

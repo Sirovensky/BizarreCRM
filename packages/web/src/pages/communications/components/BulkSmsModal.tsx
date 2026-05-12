@@ -48,6 +48,11 @@ interface SmsTemplate {
 
 interface PreviewResponse {
   preview_count: number;
+  // BUGHUNT-2026-05-10-40: TCPA evidence — count of phone-having customers
+  // matching this segment who were EXCLUDED because sms_opt_in/consent was
+  // off. Field MUST be present; Send is refused when it's missing so a
+  // future server regression that drops the filter never reaches confirm.
+  excluded_optout_count?: number;
   confirmation_token: string;
   confirmed: false;
   // WEB-UIUX-1113: server ships up to 5 masked sample phones so the operator
@@ -647,12 +652,6 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
           {preview && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              {/*
-                * WEB-UIUX-1124: Live countdown replaces static "5 minutes" copy.
-                * WEB-UIUX-1523: Static "Confirmation expires in 5 minutes" was inaccurate;
-                *   the live MM:SS timer below is already truthful — no copy change needed.
-                *   (Re-preview prompt on expiry also satisfies the "wait longer" guidance.)
-                */}
               <span>
                 This will send to <strong>{preview.preview_count}</strong> recipients.
                 {countdown > 0 ? (
@@ -662,6 +661,25 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                 )}
               </span>
             </div>
+          )}
+          {/* BUGHUNT-2026-05-10-40: explicit TCPA-filter evidence. When the
+              server didn't return the field, the Send button below is
+              disabled too — we refuse to assume a missing field means zero. */}
+          {preview && (
+            preview.excluded_optout_count === undefined ? (
+              <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>
+                  Server did not confirm opt-out filtering ran. Send is disabled — re-preview or update the server before continuing.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-800/50 dark:text-surface-300">
+                <span>
+                  TCPA filter: {preview.excluded_optout_count} customer{preview.excluded_optout_count === 1 ? '' : 's'} in this segment excluded for missing opt-in or marketing consent.
+                </span>
+              </div>
+            )
           )}
           {/* WEB-UIUX-1113: masked sample recipients so operator sanity-checks WHO. */}
           {preview && preview.sample_phones && preview.sample_phones.length > 0 && (
@@ -761,15 +779,22 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                       || countdown === 0
                       || typedConfirm !== String(preview.preview_count)
                       || preview.provider?.real === false
+                      // BUGHUNT-2026-05-10-40: refuse send when the server
+                      // didn't echo the TCPA-filter count — missing field
+                      // implies a server regression that may have skipped
+                      // the opt-in filter entirely.
+                      || preview.excluded_optout_count === undefined
                     }
                     title={
-                      preview.provider?.real === false
-                        ? 'Configure a real SMS provider in Settings → SMS before sending'
-                        : countdown === 0
-                          ? 'Confirmation expired — please re-preview'
-                          : typedConfirm !== String(preview.preview_count)
-                            ? `Type ${preview.preview_count} to confirm`
-                            : undefined
+                      preview.excluded_optout_count === undefined
+                        ? 'Server did not confirm opt-out filtering — re-preview or update server'
+                        : preview.provider?.real === false
+                          ? 'Configure a real SMS provider in Settings → SMS before sending'
+                          : countdown === 0
+                            ? 'Confirmation expired — please re-preview'
+                            : typedConfirm !== String(preview.preview_count)
+                              ? `Type ${preview.preview_count} to confirm`
+                              : undefined
                     }
                     className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
@@ -780,11 +805,13 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               ) : (
                 <button
                   onClick={() => sendMut.mutate()}
-                  disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0 || preview.provider?.real === false}
+                  disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0 || preview.provider?.real === false || preview.excluded_optout_count === undefined}
                   title={
-                    preview.provider?.real === false
-                      ? 'Configure a real SMS provider in Settings → SMS before sending'
-                      : countdown === 0 ? 'Confirmation expired — please re-preview' : undefined
+                    preview.excluded_optout_count === undefined
+                      ? 'Server did not confirm opt-out filtering — re-preview or update server'
+                      : preview.provider?.real === false
+                        ? 'Configure a real SMS provider in Settings → SMS before sending'
+                        : countdown === 0 ? 'Confirmation expired — please re-preview' : undefined
                   }
                   // WEB-UIUX-1116: drop red (destructive) — sending an opted-in
                   // marketing reminder is additive, not destructive. Primary

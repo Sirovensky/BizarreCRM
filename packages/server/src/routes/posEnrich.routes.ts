@@ -343,8 +343,12 @@ router.post(
 router.post(
   '/drawer/:id/close',
   asyncHandler(async (req, res) => {
-    // Closing a drawer writes final variance + z-report — manager/admin only.
-    requireManagerOrAdmin(req);
+    // Closing a drawer writes final variance + z-report. WEB-UIUX-1165:
+    // allow the shift opener to close their own shift even when not a
+    // manager — they own the till for the duration, and the end-of-shift
+    // close is the natural pair to /open which has no role gate. Closing
+    // someone else's shift still requires manager/admin (preserves the
+    // dual-control intent for cross-cashier reconciliation).
     const adb: AsyncDb = req.asyncDb;
     const shiftId = parseInt(qs(req.params.id), 10);
     if (!shiftId || isNaN(shiftId)) throw new AppError('Invalid shift id', 400);
@@ -355,6 +359,14 @@ router.post(
     );
     if (!shift) throw new AppError('Shift not found', 404);
     if (shift.closed_at) throw new AppError('Shift already closed', 409);
+    const role = (req as any)?.user?.role;
+    const isSelfClose = shift.opened_by_user_id === (req as any)?.user?.id;
+    if (!isSelfClose && role !== 'admin' && role !== 'manager') {
+      throw new AppError(
+        'Only the cashier who opened this shift, a manager, or an admin can close it.',
+        403,
+      );
+    }
 
     // Look up the optional high-volume escape hatch. A store that truly
     // does $50k+ per shift can set store_config.pos_high_volume_drawer = '1'.
@@ -639,6 +651,47 @@ async function buildZReport(
     totals: totalsRow ?? { gross_cents: 0, refund_cents: 0, net_cents: 0, transaction_count: 0 },
   };
 }
+
+// WEB-UIUX-1168: paginated list of closed shifts so operators can reprint a
+// Z-report after the modal was dismissed and the paper was lost. Admin /
+// manager only — opening_float + variance are shop-confidential.
+router.get(
+  '/drawer/history',
+  asyncHandler(async (req, res) => {
+    const role = (req as any)?.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager required', 403);
+    }
+    const adb: AsyncDb = req.asyncDb;
+    const page = Math.max(1, parseInt(qs(req.query.page as string) || '1', 10) || 1);
+    const perPageRaw = parseInt(qs(req.query.per_page as string) || '25', 10) || 25;
+    const perPage = Math.max(1, Math.min(100, perPageRaw));
+    const offset = (page - 1) * perPage;
+    const totalRow = await adb.get<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM cash_drawer_shifts WHERE closed_at IS NOT NULL`,
+    );
+    const total = totalRow?.c ?? 0;
+    const rows = await adb.all<any>(
+      `SELECT s.id, s.opened_at, s.closed_at, s.opening_float_cents,
+              s.closing_counted_cents, s.expected_cents, s.variance_cents,
+              s.opened_by_user_id, s.closed_by_user_id,
+              ou.first_name || ' ' || ou.last_name AS opened_by_name,
+              cu.first_name || ' ' || cu.last_name AS closed_by_name
+         FROM cash_drawer_shifts s
+    LEFT JOIN users ou ON ou.id = s.opened_by_user_id
+    LEFT JOIN users cu ON cu.id = s.closed_by_user_id
+        WHERE s.closed_at IS NOT NULL
+     ORDER BY s.closed_at DESC
+        LIMIT ? OFFSET ?`,
+      perPage, offset,
+    );
+    res.json({
+      success: true,
+      data: rows,
+      pagination: { page, per_page: perPage, total, total_pages: Math.max(1, Math.ceil(total / perPage)) },
+    });
+  }),
+);
 
 router.get(
   '/drawer/:id/z-report',

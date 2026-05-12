@@ -47,6 +47,7 @@ import {
   BellRing,
   LifeBuoy,
   Truck,
+  ScrollText,
 } from 'lucide-react';
 
 interface NavItem {
@@ -92,6 +93,8 @@ const navSections: NavSection[] = [
       { label: 'Expenses', path: '/expenses', icon: Receipt },
       { label: 'Purchase Orders', path: '/purchase-orders', icon: Truck },
       { label: 'Cash Register', path: '/cash-register', icon: DollarSign },
+      // WEB-UIUX-1168: Z-Report reprint surface — admin/manager only.
+      { label: 'Shift History', path: '/pos/shifts/history', icon: ScrollText, adminOnly: true },
       { label: 'Loaners', path: '/loaners', icon: Smartphone },
       { label: 'Gift Cards', path: '/gift-cards', icon: WalletCards },
       // WEB-UIUX-1056 + WEB-UIUX-1063: rename "Subscriptions" → "Memberships" and
