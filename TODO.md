@@ -3946,7 +3946,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:54-77`
   <!-- meta: fix=server-validation:-reject-when-EXISTS-payroll_periods-WHERE-(start_date<=newEnd-AND-end_date>=newStart)-AND-locked_at-IS-NOT-NULL+OR-warn-on-any-overlap+enforce-name-UNIQUE -->
 
-- [!] WEB-UIUX-1148. **[MAJOR] Period list capped at server `LIMIT 100` with zero pagination/filter/search; weekly cadence × 2 years fills it; older periods silently fall off the end.** `team.routes.ts:852` `ORDER BY start_date DESC LIMIT 100`. Client `CommissionPeriodLock.tsx:35-44` accepts whatever it gets, no "load more". Manager opening the page after 24 months sees the most recent 100 weeks; periods 101+ are invisible to the UI even though the audit/CSV export still works by ID. L6 discoverability of historical data. **STATUS: BLOCKED — server team.routes.ts pagination + year filter; multi-component, defer to payroll sprint**
+- [x] WEB-UIUX-1148. **Payroll-period pagination + year filter shipped 2026-05-11.** Server `/team/payroll/periods` accepts `year` (YYYY) + `page` + `per_page` (capped at 200, default 50) and returns `{ data, pagination: { page, per_page, total, total_pages } }`. `CommissionPeriodLock` adds a year input (numeric, 4-digit) in the header that resets page on change, and a footer with Prev/Next buttons + "Page N of M · X periods" copy. Footer auto-hides when total_pages == 1 so first-year tenants see no new chrome. Existing in-flight queries gracefully degrade to the new shape via optional chaining.
   `packages/server/src/routes/team.routes.ts:847-856`
   <!-- meta: fix=add-?year=YYYY-or-?before=ISO+limit/offset-pagination+client-year-picker-or-Load-more-link -->
 

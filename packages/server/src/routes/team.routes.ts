@@ -882,10 +882,42 @@ router.get(
   '/payroll/periods',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const rows = await adb.all(
-      `SELECT * FROM payroll_periods ORDER BY start_date DESC LIMIT 100`,
-    );
-    res.json({ success: true, data: rows });
+    // WEB-UIUX-1148: paginate so periods 101+ stop silently falling off
+    // the end on weekly-cadence tenants past the first 2 years.
+    // year filter narrows further when admin is auditing a fiscal window.
+    const yearRaw = typeof req.query.year === 'string' ? req.query.year.trim() : '';
+    const year = /^\d{4}$/.test(yearRaw) ? yearRaw : null;
+    const page = Math.max(1, Number.parseInt(String(req.query.page ?? '1'), 10) || 1);
+    const perPageRaw = Math.max(1, Number.parseInt(String(req.query.per_page ?? '50'), 10) || 50);
+    const perPage = Math.min(perPageRaw, 200);
+    const offset = (page - 1) * perPage;
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (year) {
+      conditions.push("strftime('%Y', start_date) = ?");
+      params.push(year);
+    }
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [{ count } = { count: 0 }, rows] = await Promise.all([
+      adb.get<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM payroll_periods ${whereClause}`,
+        ...params,
+      ).then((r) => r ?? { count: 0 }),
+      adb.all(
+        `SELECT * FROM payroll_periods ${whereClause} ORDER BY start_date DESC LIMIT ? OFFSET ?`,
+        ...params, perPage, offset,
+      ),
+    ]);
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        page,
+        per_page: perPage,
+        total: count,
+        total_pages: Math.max(1, Math.ceil(count / perPage)),
+      },
+    });
   }),
 );
 

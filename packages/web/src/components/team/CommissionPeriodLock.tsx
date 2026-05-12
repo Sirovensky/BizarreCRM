@@ -130,17 +130,29 @@ export function CommissionPeriodLock() {
     initialFocusSelector: 'input',
   });
 
+  // WEB-UIUX-1148: paginate + optional year filter so periods 101+ stop
+  // silently falling off the end on weekly-cadence tenants past the first
+  // 2 years. Default page-size is 50 (matches server cap of 200).
+  const [yearFilter, setYearFilter] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const perPage = 50;
+
   // WEB-UIUX-1150: destructure isLoading to avoid empty-state false positive on cold load.
   const { data, isLoading } = useQuery({
-    queryKey: ['team', 'payroll', 'periods'],
+    queryKey: ['team', 'payroll', 'periods', yearFilter, page],
     queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: PayrollPeriod[] }>(
-        '/team/payroll/periods',
-      );
-      return res.data.data;
+      const params: Record<string, string | number> = { page, per_page: perPage };
+      if (yearFilter) params.year = yearFilter;
+      const res = await api.get<{
+        success: boolean;
+        data: PayrollPeriod[];
+        pagination?: { page: number; per_page: number; total: number; total_pages: number };
+      }>('/team/payroll/periods', { params });
+      return res.data;
     },
   });
-  const periods: PayrollPeriod[] = data || [];
+  const periods: PayrollPeriod[] = data?.data || [];
+  const pagination = data?.pagination;
 
   // WEB-FX-003: Esc-to-close for new-period dialog.
   // WEB-UIUX-1154: guard Esc with dirty-check so accidental key press doesn't silently discard work.
@@ -239,14 +251,29 @@ export function CommissionPeriodLock() {
 
   return (
     <div className="bg-white dark:bg-surface-800 rounded-lg shadow border dark:border-surface-700 p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2">
         <h2 className="text-sm font-bold text-surface-800 dark:text-surface-100">Payroll periods</h2>
-        <button
-          className="px-2 py-1 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 rounded text-xs inline-flex items-center"
-          onClick={() => setShowNew(true)}
-        >
-          <Plus className="w-3 h-3 mr-1" /> New period
-        </button>
+        <div className="flex items-center gap-2">
+          {/* WEB-UIUX-1148: year filter narrows audits to a fiscal window
+              without scrolling backwards through paginated history. */}
+          <input
+            type="number"
+            inputMode="numeric"
+            min={2000}
+            max={2100}
+            value={yearFilter}
+            onChange={(e) => { setYearFilter(e.target.value.replace(/[^\d]/g, '').slice(0, 4)); setPage(1); }}
+            placeholder="Year"
+            aria-label="Filter by year"
+            className="w-20 rounded border dark:border-surface-600 bg-white dark:bg-surface-700 px-2 py-1 text-xs"
+          />
+          <button
+            className="px-2 py-1 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 rounded text-xs inline-flex items-center"
+            onClick={() => setShowNew(true)}
+          >
+            <Plus className="w-3 h-3 mr-1" /> New period
+          </button>
+        </div>
       </div>
       {/* WEB-UIUX-1150: show loading skeleton on cold load to avoid empty-state false positive. */}
       {isLoading && (
@@ -326,6 +353,35 @@ export function CommissionPeriodLock() {
           </div>
         ))}
       </div>
+
+      {/* WEB-UIUX-1148: pagination footer when total > per_page. Hidden on
+          single-page results so weekly tenants in their first year see
+          nothing new. */}
+      {pagination && pagination.total_pages > 1 && (
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs text-surface-500 dark:text-surface-400">
+          <span>
+            Page {pagination.page} of {pagination.total_pages} · {pagination.total} period{pagination.total === 1 ? '' : 's'}
+          </span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-40 hover:bg-surface-50 dark:hover:bg-surface-700"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
+              disabled={page >= pagination.total_pages}
+              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-40 hover:bg-surface-50 dark:hover:bg-surface-700"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {showNew && (
         <div
