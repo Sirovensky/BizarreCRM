@@ -13,6 +13,7 @@ import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
 import { useHasRole } from '@/hooks/useHasRole';
+import { useHasPermission } from '@/hooks/useHasPermission';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
@@ -107,7 +108,11 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-1539: focus-trap for the Record Payment modal — mirrors credit-note pattern.
   const paymentDialogRef = useFocusTrap(showPayment);
   // WEB-UIUX-1210: gate Credit Note + Void behind admin/manager role.
-  const canVoidOrCreditNote = useHasRole(['admin', 'manager']);
+  // WEB-UIUX-1051: prefer permission-string gating so per-user custom-role
+  // grants/denies (`invoices.credit_note`) are honoured. Void stays role-only
+  // — there is no `invoices.void` permission key.
+  const canCreditNote = useHasPermission('invoices.credit_note');
+  const canVoid = useHasRole(['admin', 'manager']);
   // WEB-UIUX-1218: Esc handler checks dirty state before closing credit-note modal.
   useEscClose(() => {
     if (creditNoteForm.amount || creditNoteForm.code || creditNoteForm.note.trim()) {
@@ -691,7 +696,7 @@ export function InvoiceDetailPage() {
                 >
                   <Undo2 className="h-4 w-4" /> Refund
                 </button>
-              ) : canVoidOrCreditNote ? (
+              ) : canCreditNote ? (
                 <>
                 {/* WEB-UIUX-721: refund-to-original-card path. Creates a pending
                     refund row with method='blockchyp' so the existing approve
@@ -778,7 +783,7 @@ export function InvoiceDetailPage() {
                 is the current workaround per the server's NOT_SUPPORTED response. */}
             {/* WEB-UIUX-1210: Void also gated behind admin/manager role. */}
             {invoice.status !== 'void' && (
-              canVoidOrCreditNote ? (
+              canVoid ? (
                 <button onClick={() => setShowVoidConfirm(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                   <Ban className="h-4 w-4" /> Void
                 </button>
