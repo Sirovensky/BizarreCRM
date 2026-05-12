@@ -83,12 +83,19 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
       loc.city AS loc_city, loc.state AS loc_state, loc.postcode AS loc_postcode,
       loc.country AS loc_country, loc.phone AS loc_phone, loc.email AS loc_email,
       loc.timezone AS loc_timezone,
-      t.is_deleted AS ticket_is_deleted
+      t.is_deleted AS ticket_is_deleted,
+      -- WEB-UIUX-805: derive estimate backlink via the ticket. The invoice
+      -- carries no estimate_id of its own, but tickets do (set at convert
+      -- time). Expose estimate_id + estimate.order_id so the detail page
+      -- can render "Created from estimate EST-XXX" without a second fetch.
+      t.estimate_id AS source_estimate_id,
+      est.order_id AS source_estimate_order_id
     FROM invoices inv
     LEFT JOIN customers c ON c.id = inv.customer_id
     LEFT JOIN users u ON u.id = inv.created_by
     LEFT JOIN locations loc ON loc.id = inv.location_id
     LEFT JOIN tickets t ON t.id = inv.ticket_id
+    LEFT JOIN estimates est ON est.id = t.estimate_id
     WHERE inv.id = ?
   `, id);
   if (!invoice) return null;

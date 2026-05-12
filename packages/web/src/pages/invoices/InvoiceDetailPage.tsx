@@ -739,6 +739,19 @@ export function InvoiceDetailPage() {
                 Credit note for {invoice.credit_note_for_order_id ?? `INV-${invoice.credit_note_for}`}
               </Link>
             )}
+            {/* WEB-UIUX-805: backlink to the originating estimate when this
+                invoice was created from a ticket converted from an estimate.
+                Server joins tickets.estimate_id → estimates so this is a
+                single hop, no extra fetch. */}
+            {(invoice as any).source_estimate_id != null && (
+              <Link
+                to={`/estimates/${(invoice as any).source_estimate_id}`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                From estimate {(invoice as any).source_estimate_order_id ?? `EST-${(invoice as any).source_estimate_id}`}
+              </Link>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {invoice.status !== 'void' && invoice.status !== 'paid' && (

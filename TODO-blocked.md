@@ -1965,13 +1965,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
 
-- [!] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13. **[AUTOLOOP-T37 BLOCKED: invoices table + shared Invoice type lack estimate_id; needs server migration + route changes.]**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:416-420`
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:27-31,510-552`
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:219-231`
-
 - [!] WEB-UIUX-808. **[MAJOR] Print on EstimateDetail uses `window.print()` of LIVE DOM.** Post-edit numbers + original `created_at` + `order_id` — customer can argue printout doesn't match what they signed. L13. **BLOCKED 2026-05-11: requires a server-rendered /print/estimate route (parallel to /print/invoice) to snapshot signed totals; needs an estimateprint.routes.ts file + EstimatePrintPage. Feature scope.**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:248-254`
 

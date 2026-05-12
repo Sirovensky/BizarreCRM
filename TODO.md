@@ -2944,7 +2944,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/estimates/EstimateListPage.tsx:587-601`
 
 
-- [!] WEB-UIUX-805. **[MAJOR] No back-link from Invoice→Estimate.** Chain is one-way only. Dispute can't go back to estimate phase from invoice. L5, L13. **[AUTOLOOP-T37 BLOCKED: invoices table + shared Invoice type lack estimate_id; needs server migration + route changes.]**
+- [x] WEB-UIUX-805. **[MAJOR] Invoice → Estimate backlink shipped 2026-05-12.** No new column needed — invoices link to tickets, tickets carry `estimate_id` (set at convert time), so `getInvoiceDetail` joins `tickets → estimates` and exposes `source_estimate_id` + `source_estimate_order_id` in the response. `InvoiceDetailPage` renders a "From estimate EST-XXX" pill alongside the existing "Credit note for INV-XXX" backlink. Dispute can now jump back to the original quote in one click.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:416-420`
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:27-31,510-552`
