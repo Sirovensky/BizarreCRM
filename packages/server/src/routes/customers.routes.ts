@@ -909,6 +909,33 @@ router.post(
     const combinedTags = [...new Set([...keepTags, ...mergeTags])];
     await adb.run('UPDATE customers SET tags = ? WHERE id = ?', JSON.stringify(combinedTags), kid);
 
+    // Reconcile opt-in / consent flags — most-restrictive wins (TCPA/GDPR).
+    // If either row has opted out / revoked consent, the merged customer inherits
+    // the restriction. Schema defaults: email_opt_in=0, sms_opt_in=0,
+    // sms_consent_marketing=1, sms_consent_transactional=1.
+    const minFlag = (a: unknown, b: unknown, def: number): number => {
+      const na = a == null ? def : Number(a) || 0;
+      const nb = b == null ? def : Number(b) || 0;
+      return Math.min(na, nb);
+    };
+    const reconciledEmailOptIn = minFlag(keepCustomer.email_opt_in, mergeCustomer.email_opt_in, 0);
+    const reconciledSmsOptIn = minFlag(keepCustomer.sms_opt_in, mergeCustomer.sms_opt_in, 0);
+    const reconciledSmsMarketing = minFlag(keepCustomer.sms_consent_marketing, mergeCustomer.sms_consent_marketing, 1);
+    const reconciledSmsTransactional = minFlag(keepCustomer.sms_consent_transactional, mergeCustomer.sms_consent_transactional, 1);
+    await adb.run(
+      `UPDATE customers
+         SET email_opt_in = ?,
+             sms_opt_in = ?,
+             sms_consent_marketing = ?,
+             sms_consent_transactional = ?
+       WHERE id = ?`,
+      reconciledEmailOptIn,
+      reconciledSmsOptIn,
+      reconciledSmsMarketing,
+      reconciledSmsTransactional,
+      kid,
+    );
+
     // Soft-delete the merged customer
     await adb.run("UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", mid);
 
@@ -919,6 +946,12 @@ router.post(
     audit(req.db, 'customer_merged', req.user!.id, req.ip || 'unknown', {
       keep_id: Number(keep_id),
       merge_id: Number(merge_id),
+      reconciled_consent: {
+        email_opt_in: reconciledEmailOptIn,
+        sms_opt_in: reconciledSmsOptIn,
+        sms_consent_marketing: reconciledSmsMarketing,
+        sms_consent_transactional: reconciledSmsTransactional,
+      },
     });
 
     // Return the updated keep customer
