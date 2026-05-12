@@ -94,20 +94,30 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
     };
   }, []);
 
-  // WEB-W3-016: inject a print-only <style> that hides everything on the page
-  // EXCEPT the modal content, then call window.print(). The style tag is
-  // mounted once (on modal open) and removed on unmount so it never leaks into
-  // other print contexts. Using a data attribute instead of a class selector
-  // avoids any coupling to Tailwind utility names that could change.
+  // WEB-W3-016 / WEB-UIUX-1182: print-only <style> scoped via visibility
+  // toggles instead of `display: none` on every body child. The display
+  // approach yanked unrelated modals out of the DOM during the print
+  // preview window — a confirm dialog popped mid-print blanked too. With
+  // `visibility: hidden`, layout is preserved but only the z-report tree
+  // paints, and any other `role="dialog"` still occupies space if the
+  // user dismisses print and returns. Outline reset on the root preserves
+  // the static positioning fix.
   useEffect(() => {
     const style = document.createElement('style');
     style.setAttribute('data-z-report-print', 'true');
     style.textContent = `
 @media print {
-  body > * { display: none !important; }
-  [data-z-report-modal] { display: block !important; position: static !important; }
-  [data-z-report-modal] > * { display: block !important; }
-  [data-z-report-modal] .no-print { display: none !important; }
+  body * { visibility: hidden !important; }
+  [data-z-report-modal], [data-z-report-modal] * { visibility: visible !important; }
+  [data-z-report-modal] {
+    position: absolute !important;
+    inset: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    background: white !important;
+  }
+  [data-z-report-modal] .no-print, [data-z-report-modal] .no-print * { visibility: hidden !important; }
 }
     `.trim();
     document.head.appendChild(style);
