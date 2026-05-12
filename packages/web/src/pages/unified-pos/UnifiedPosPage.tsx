@@ -595,7 +595,7 @@ function buildCheckoutPayload(
   legs: PaymentLeg[],
   mode: 'checkout' | 'create_ticket' = 'checkout',
 ) {
-  const { cartItems, customer, discount, discountReason, meta, sourceTicketId } = store;
+  const { cartItems, customer, discount, discountReason, meta, sourceTicketId, stackMembership } = store;
   const repairs = cartItems.filter((item): item is RepairCartItem => item.type === 'repair');
   const products = cartItems.filter((item): item is ProductCartItem => item.type === 'product');
   const miscItems = cartItems.filter((item): item is MiscCartItem => item.type === 'misc');
@@ -660,6 +660,10 @@ function buildCheckoutPayload(
     payments: legs.length > 1 && nonCardLegs.length > 0
       ? nonCardLegs.map((leg) => ({ method: apiPaymentMethod(leg.method), amount: leg.amount }))
       : undefined,
+    // WEB-UIUX-1245: opt-in stacking. Server defaults to max(manual,
+    // membership); only sum both when the operator explicitly asked
+    // via the discount-modal checkbox.
+    stack_membership: stackMembership || undefined,
   };
 }
 
@@ -871,6 +875,8 @@ export function UnifiedPosPage() {
     setDiscount,
     memberDiscountApplied,
     setMemberDiscountApplied,
+    stackMembership,
+    setStackMembership,
     meta,
     setMeta,
     sourceTicketId,
@@ -3127,6 +3133,27 @@ export function UnifiedPosPage() {
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                 Over 25% — manager PIN required to apply.
               </div>
+            )}
+            {/* WEB-UIUX-1245: only useful when the customer has a membership
+                tier — otherwise there's nothing to stack against. Server
+                still ignores the flag when no membership discount applies,
+                so it's safe to leave the checkbox absent on non-member
+                checkouts. */}
+            {memberDiscountApplied && (
+              <label className="flex items-start gap-2 rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm dark:border-surface-700 dark:bg-surface-800/50">
+                <input
+                  type="checkbox"
+                  checked={stackMembership}
+                  onChange={(e) => setStackMembership(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">Stack with membership</span>
+                  <span className="block text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+                    Default keeps the larger of manual vs membership discount. Tick to apply BOTH (server caps the sum at subtotal).
+                  </span>
+                </span>
+              </label>
             )}
           </div>
         </Modal>

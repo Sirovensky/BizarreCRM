@@ -131,6 +131,11 @@ interface UnifiedPosState {
   setDiscount: (amount: number, reason: string) => void;
   memberDiscountApplied: boolean;
   setMemberDiscountApplied: (applied: boolean) => void;
+  // WEB-UIUX-1245: opt-in stacking of manual + membership discount. When
+  // false (default) server picks max(manual, membership). When true server
+  // sums both, capped at invoiceSubtotal.
+  stackMembership: boolean;
+  setStackMembership: (enabled: boolean) => void;
 
   // Ticket metadata
   meta: TicketMeta;
@@ -288,6 +293,8 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
   setDiscount: (discount, discountReason) => set({ discount, discountReason }),
   memberDiscountApplied: false,
   setMemberDiscountApplied: (memberDiscountApplied) => set({ memberDiscountApplied }),
+  stackMembership: false,
+  setStackMembership: (stackMembership) => set({ stackMembership }),
 
   meta: { ...DEFAULT_META },
   setMeta: (updates) => set((s) => ({ meta: { ...s.meta, ...updates } })),
@@ -324,6 +331,7 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
     discount: 0,
     discountReason: '',
     memberDiscountApplied: false,
+    stackMembership: false,
     meta: { ...DEFAULT_META },
     sourceTicketId: null,
     activeTab: 'repairs',
@@ -341,6 +349,7 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
     discount: 0,
     discountReason: '',
     memberDiscountApplied: false,
+    stackMembership: false,
     meta: { ...DEFAULT_META },
     sourceTicketId: null,
     activeTab: 'repairs',

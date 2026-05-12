@@ -4347,7 +4347,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-981`
   <!-- meta: fix=on-resetAll-also-reset-DiscountEditor-(via-effect-listening-on-cartItems.length===0)+OR-key-the-component-on-cartId-so-it-remounts-clean -->
 
-- [!] WEB-UIUX-1245. **[MINOR] `Math.max(manual, member)` server-side means a tiny manual discount + a tiny membership tier silently picks one — operator who deliberately wants both has no UX path. `stack_membership` server flag is exposed but no UI.** Discussed in WEB-UIUX-1228 from the silent-override angle; this is the inverse — an intentional power-user can't compose. L6 discoverability of advanced. **STATUS: BLOCKED — exposing stack_membership requires UI checkbox + payload thread + server membership-tier query; multi-component, defer**
+- [x] WEB-UIUX-1245. **Stack-with-membership opt-in shipped 2026-05-11.** Zustand store gains `stackMembership` + `setStackMembership` (default false; reset in `clearDraft` / `resetAll`). `buildCheckoutPayload` threads `stack_membership: stackMembership || undefined` so non-stack carts keep their existing shape. Discount modal renders a labelled checkbox ONLY when `memberDiscountApplied` is true so non-member carts stay uncluttered. Server picks `max(manual, membership)` by default; ticking the box has the server SUM both, capped at invoiceSubtotal (existing behaviour, just now reachable).
   `packages/server/src/routes/pos.routes.ts:1879-1881`
   <!-- meta: fix=expose-Stack-with-membership-checkbox-in-DiscountEditor-when-customer-has-active-tier+pass-stack_membership=true-in-buildTicketPayload-when-checked -->
 
