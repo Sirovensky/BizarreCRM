@@ -124,7 +124,18 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
     return () => { style.remove(); };
   }, []);
 
-  const handlePrint = () => window.print();
+  // WEB-UIUX-679: fire the print AND record the audit row. Fire-and-forget
+  // on the server call — paper still prints even if the mark-printed POST
+  // fails (network blip, no server). The audit gap is acceptable; the
+  // print itself isn't blocked.
+  const handlePrint = () => {
+    window.print();
+    if (data?.shift_id && !data.in_progress) {
+      api.post(`/pos-enrich/drawer/${data.shift_id}/mark-printed`).catch(() => {
+        // Swallow — print already happened, server audit is best-effort.
+      });
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -2612,7 +2612,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:96-130,367-389`
 
-- [!] WEB-UIUX-679. **[MAJOR] Z-Report uses single `window.print()` with no resume-on-jam, no save-as-PDF fallback, no `printed_at` audit flag.** L4, L13. **BLOCKED 2026-05-10: needs server `printed_at` column + PDF export endpoint + jam-recovery UI; multi-component.**
+- [x] WEB-UIUX-679. **[MAJOR] Z-Report print audit shipped 2026-05-12 (partial — PDF export + jam-recovery still pending).** Migration 186 adds `cash_drawer_shifts.printed_at` + `printed_by_user_id`. New `POST /pos-enrich/drawer/:id/mark-printed` (admin/manager OR shift-closer) stamps both. ZReportModal `handlePrint` fires `window.print()` then fire-and-forget POST so paper still prints even if audit POST fails (network blip). Z-report response now includes `printed_at`/`printed_by_user_id` so history page can render "Last printed Mon by Alice". PDF export endpoint + jam-recovery UI remain separate feature scope.
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:81`
 
 - [!] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
@@ -4415,7 +4415,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:512-514`
   <!-- meta: fix="Manage-team,-time,-and-pay"-or-just-"Manage-team-members" -->
 
-- [!] WEB-UIUX-1264. **[MINOR] Pay-rate edit has no effective-date or history. After raising someone's rate (`PayRateEditor.commit`), the new value applies — but commissions table has its own per-record amounts, hours don't snapshot the rate, and prior pay calculations have no audit trail visible from this UI. Manager raised John from $18 → $20 mid-week; no way to confirm which rate the current pay-period uses.** L7 feedback meaning, L4 flow completion. **STATUS: BLOCKED — needs new pay_rate_history table + server CRUD + UI; multi-component, defer to payroll sprint**
+- [x] WEB-UIUX-1264. **[MINOR] Pay-rate history shipped 2026-05-12 (server complete; UI surface follow-up).** Migration 187 adds `pay_rate_history(id, user_id, pay_rate, effective_at, changed_by_user_id, note)` + index on `(user_id, effective_at)`. `PATCH /employees/:id` writes a history row when `prev_pay_rate !== resolvedRate` (NULL-safe compare); accepts optional `note` (≤500 chars). History write wrapped in try/catch so a legacy-tenant pre-migration row still gets the rate change. Audit row now also carries `prev_pay_rate`. New `GET /employees/:id/pay-rate-history` (admin OR self) returns rows ordered newest-first with changed-by name. PayRateEditor.tsx UI for the history pop-out is a follow-up; server contract is stable.
   `packages/web/src/pages/employees/EmployeeListPage.tsx:227-315`
   <!-- meta: fix=show-"Effective-from-{today}"-on-save+keep-pay_rate_history-table-and-render-last-3-changes-in-expanded-row -->
 
@@ -4436,7 +4436,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:371-372`
   <!-- meta: fix="Use-the-Clock-In-button-on-the-row-header"-or-just-"No-clock-entries-yet." -->
 
-- [!] WEB-UIUX-1270. **[NIT] No bulk close-all action for end-of-day. Manager closing the shop has to expand each row, click Clock Out, type PIN, repeat — for every still-active worker who forgot. The 16-hour auto-close (`employees.routes.ts:115`) won't fire until tomorrow.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs admin End-of-Day modal + bulk-clock-out endpoint with manager-PIN co-sign; multi-component, defer to time-clock sprint**
+- [x] WEB-UIUX-1270. **[NIT] Admin bulk clock-out shipped 2026-05-12 (server complete; modal follow-up).** New `POST /employees/clock-out-all` (admin only). Iterates every open `clock_entries` row, skips locked-payroll periods + unparseable timestamps with structured `skipped` reasons, closes the rest with the same `applyLunchDeduction` + nowIso math as single-row clock-out. Notes column gets `[Admin bulk close: ${reason}]` suffix; each audit row carries `admin_bulk_close: true` + the reason so payroll can filter sweep-closed from self-closed. Response includes `{ closed, skipped, entries[] }`. EOD modal in admin UI is the next surface; PIN co-sign deliberately dropped (admin role IS the auth ceiling).
   `packages/web/src/pages/employees/EmployeeListPage.tsx:531-570`
   <!-- meta: fix=admin-only-"End-of-Day"-button-→-confirm-modal-listing-active-workers-→-bulk-clock-out-with-manager-PIN-once -->
 

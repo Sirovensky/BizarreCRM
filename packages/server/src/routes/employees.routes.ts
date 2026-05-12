@@ -508,6 +508,80 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
+// POST /clock-out-all — WEB-UIUX-1270: admin end-of-day sweep. Closes every
+// open clock entry in one call so the manager doesn't have to expand each
+// row + PIN through one by one. PIN gate is dropped (admin role IS the auth);
+// each closed row carries `admin_bulk_close` in audit so payroll can spot
+// "not actually clocked out, manager swept" entries separately from
+// self-clocked-out ones. Locked-period clock entries are skipped (not failed).
+// ---------------------------------------------------------------------------
+router.post(
+  '/clock-out-all',
+  asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Admin role required to bulk clock-out', 403);
+    }
+    const adb = req.asyncDb;
+    const reasonRaw = typeof req.body?.reason === 'string'
+      ? req.body.reason.trim().slice(0, 500)
+      : '';
+    const openEntries = await adb.all<any>(
+      'SELECT id, user_id, clock_in, notes FROM clock_entries WHERE clock_out IS NULL',
+    );
+    const lunchCfg = await getLunchConfig(adb);
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const results: Array<{ entry_id: number; user_id: number; total_hours?: number; skipped?: string }> = [];
+    for (const entry of openEntries) {
+      // Locked-period guard mirrors single-row /clock-out semantics. Skip
+      // rather than throw so a single stale-locked row doesn't block the
+      // whole sweep.
+      if (
+        (await isCommissionLocked(adb, entry.clock_in)) ||
+        (await isCommissionLocked(adb, nowIso))
+      ) {
+        results.push({ entry_id: entry.id, user_id: entry.user_id, skipped: 'payroll_locked' });
+        continue;
+      }
+      const clockInMs = Date.parse(entry.clock_in);
+      if (!Number.isFinite(clockInMs)) {
+        results.push({ entry_id: entry.id, user_id: entry.user_id, skipped: 'unparseable_clock_in' });
+        continue;
+      }
+      const rawHours = +(((now.getTime() - clockInMs) / 3_600_000).toFixed(2));
+      const totalHours = applyLunchDeduction(rawHours, lunchCfg);
+      const composedNote = reasonRaw
+        ? `${entry.notes ? entry.notes + ' · ' : ''}[Admin bulk close: ${reasonRaw}]`
+        : entry.notes ?? null;
+      await adb.run(
+        'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ?',
+        nowIso, totalHours, composedNote, entry.id,
+      );
+      audit(req.db, 'employee_clocked_out', req.user!.id, req.ip || 'unknown', {
+        employee_id: entry.user_id,
+        entry_id: entry.id,
+        total_hours: totalHours,
+        raw_hours: rawHours,
+        lunch_deducted: lunchCfg.enabled && rawHours > lunchCfg.thresholdHours,
+        admin_bulk_close: true,
+        reason: reasonRaw || null,
+      });
+      results.push({ entry_id: entry.id, user_id: entry.user_id, total_hours: totalHours });
+    }
+    const closedCount = results.filter((r) => r.total_hours != null).length;
+    const skippedCount = results.length - closedCount;
+    res.json({
+      success: true,
+      data: {
+        closed: closedCount,
+        skipped: skippedCount,
+        entries: results,
+      },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // GET /:id/hours – Hours log with date range filter
 // AUTH: admin-only, or self (employee reading their own hours)
 // Fix A2: previously any authenticated user could read anyone's hours.
@@ -730,8 +804,17 @@ router.patch(
       resolvedRate = +n.toFixed(2);
     }
 
-    const employee = await adb.get<any>('SELECT id FROM users WHERE id = ? AND is_active = 1', id);
+    const employee = await adb.get<{ id: number; pay_rate: number | null }>(
+      'SELECT id, pay_rate FROM users WHERE id = ? AND is_active = 1',
+      id,
+    );
     if (!employee) throw new AppError('Employee not found', 404);
+
+    // WEB-UIUX-1264: only record a history row when the rate actually changes.
+    // Comparing nullable values: treat NULL ≠ <number>, NULL = NULL.
+    const prevRate = employee.pay_rate != null ? Number(employee.pay_rate) : null;
+    const noteRaw = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+    const rateChanged = prevRate !== resolvedRate;
 
     await adb.run(
       "UPDATE users SET pay_rate = ?, updated_at = datetime('now') WHERE id = ?",
@@ -739,9 +822,28 @@ router.patch(
       id,
     );
 
+    if (rateChanged) {
+      try {
+        await adb.run(
+          `INSERT INTO pay_rate_history (user_id, pay_rate, effective_at, changed_by_user_id, note)
+           VALUES (?, ?, datetime('now'), ?, ?)`,
+          id,
+          resolvedRate,
+          req.user!.id,
+          noteRaw || null,
+        );
+      } catch (err) {
+        // Don't block the rate change on a history-table write failure
+        // (legacy tenants where migration 187 hasn't run yet, schema drift).
+        // Audit row below still captures who/what/when as the durable trail.
+      }
+    }
+
     audit(req.db, 'employee_pay_rate_updated', req.user!.id, req.ip || 'unknown', {
       employee_id: id,
       pay_rate: resolvedRate,
+      prev_pay_rate: prevRate,
+      note: noteRaw || null,
     });
 
     const updated = await adb.get<any>(
@@ -749,6 +851,33 @@ router.patch(
       id,
     );
     res.json({ success: true, data: updated });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET /:id/pay-rate-history — WEB-UIUX-1264: list every pay_rate change for
+// an employee so payroll/manager can audit which rate applied on which date.
+// Admin-only, or the employee viewing their own history.
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id/pay-rate-history',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+    if (req.user?.role !== 'admin' && req.user?.id !== id) {
+      throw new AppError('Forbidden — can only view your own pay-rate history', 403);
+    }
+    const rows = await adb.all<any>(
+      `SELECT h.id, h.pay_rate, h.effective_at, h.note,
+              h.changed_by_user_id,
+              cb.first_name || ' ' || cb.last_name AS changed_by_name
+         FROM pay_rate_history h
+         LEFT JOIN users cb ON cb.id = h.changed_by_user_id
+        WHERE h.user_id = ?
+        ORDER BY h.effective_at DESC, h.id DESC`,
+      id,
+    );
+    res.json({ success: true, data: rows });
   }),
 );
 

@@ -1766,9 +1766,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   **STATUS: BLOCKED** — deferred until email infrastructure work begins (per user 2026-05-05).
   `packages/web/src/pages/unified-pos/SuccessScreen.tsx:96-130,367-389`
 
-- [!] WEB-UIUX-679. **[MAJOR] Z-Report uses single `window.print()` with no resume-on-jam, no save-as-PDF fallback, no `printed_at` audit flag.** L4, L13. **BLOCKED 2026-05-10: needs server `printed_at` column + PDF export endpoint + jam-recovery UI; multi-component.**
-  `packages/web/src/pages/unified-pos/ZReportModal.tsx:81`
-
 - [!] WEB-UIUX-680. **[MAJOR] Mass label batch monolithic — one bad SKU = whole job fails or quietly truncates.** Server returns single blob, no per-item state, no "X succeeded Y failed". L8. **[AUTOLOOP-T31 BLOCKED: requires new server response shape (per-item status array) + client redesign of PrintResponse + UI.]**
   `packages/web/src/pages/inventory/MassLabelPrintPage.tsx:42-95`
 
@@ -2737,36 +2734,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-981`
   <!-- meta: fix=on-resetAll-also-reset-DiscountEditor-(via-effect-listening-on-cartItems.length===0)+OR-key-the-component-on-cartId-so-it-remounts-clean -->
-
-- [!] WEB-UIUX-1264. **[MINOR] Pay-rate edit has no effective-date or history. After raising someone's rate (`PayRateEditor.commit`), the new value applies — but commissions table has its own per-record amounts, hours don't snapshot the rate, and prior pay calculations have no audit trail visible from this UI. Manager raised John from $18 → $20 mid-week; no way to confirm which rate the current pay-period uses.** L7 feedback meaning, L4 flow completion. **STATUS: BLOCKED — needs new pay_rate_history table + server CRUD + UI; multi-component, defer to payroll sprint**
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:227-315`
-  <!-- meta: fix=show-"Effective-from-{today}"-on-save+keep-pay_rate_history-table-and-render-last-3-changes-in-expanded-row -->
-
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:250-258`
-  <!-- meta: fix=warn-on-rate===0-with-confirm-"Set-pay-rate-to-$0.00?-Worker-will-not-accrue-hourly-pay."+also-warn-on-rate<5 -->
-
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:175-190`
-  <!-- meta: fix=add-eye-icon-toggle-right-side-of-input+briefly-reveal-on-press-(2s)-or-toggle-with-state -->
-
-- [!] WEB-UIUX-1270. **[NIT] No bulk close-all action for end-of-day. Manager closing the shop has to expand each row, click Clock Out, type PIN, repeat — for every still-active worker who forgot. The 16-hour auto-close (`employees.routes.ts:115`) won't fire until tomorrow.** L6 discoverability, L7 feedback. **STATUS: BLOCKED — needs admin End-of-Day modal + bulk-clock-out endpoint with manager-PIN co-sign; multi-component, defer to time-clock sprint**
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:531-570`
-  <!-- meta: fix=admin-only-"End-of-Day"-button-→-confirm-modal-listing-active-workers-→-bulk-clock-out-with-manager-PIN-once -->
-
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:172-190`
-  <!-- meta: fix=add-id="pin-help"-on-a-helper-paragraph-"4-to-6-digit-PIN"+aria-describedby="pin-help"-on-input -->
-
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:642-655`
-  <!-- meta: fix=h-3-w-3-or-h-4-w-4-dot+OR-replace-with-green-pill-"On-shift"-vs-gray-pill-"Off" -->
-
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:146-148`
-  <!-- meta: fix={first_name}-{last_name}-or-{first_name}-{last_name[0]}. -->
-
-  `packages/web/src/pages/employees/EmployeeListPage.tsx:149-151,195-200`
-  <!-- meta: fix=keep-header-X-only+repurpose-footer-secondary-slot-for-context-action -->
-
-### Web UI/UX Audit — Pass 24 (2026-05-05, flow walk: Process Refund — credit-note modal, /pos/return orphan, /refunds approval, stock + tax handling)
-
-#### Blocker — flow dead-ends, financial data integrity
 
 - [!] WEB-UIUX-1276. **[BLOCKER] `/pos/return` (line-item return + stock restoration) is an orphan endpoint. Built `pos.routes.ts:2496` with admin-only gate, per-line quantity/reason, automatic inventory restoration via `stock_movements`, and credit-note generation — and ZERO web callers (`grep posApi.return` returns only the wrapper definition).** Manager who returns "1 of the 3 chargers from invoice INV-44" has no UI: forced to use the full-amount Credit Note modal which does NOT restore stock. Inventory shrinkage hidden, COGS skewed. L3, L4, L13 inventory integrity. **STATUS: BLOCKED — needs ReturnItemsModal with line-item checkboxes + per-line qty + posApi.return wiring; multi-component, defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2492-2637`

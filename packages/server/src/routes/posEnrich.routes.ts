@@ -97,6 +97,9 @@ interface DrawerShiftRow {
   variance_cents: number | null;
   z_report_json: string | null;
   notes: string | null;
+  // WEB-UIUX-679: Z-report print audit (migration 186).
+  printed_at: string | null;
+  printed_by_user_id: number | null;
 }
 
 interface TrainingSessionRow {
@@ -731,7 +734,53 @@ router.get(
       shift.expected_cents ?? shift.opening_float_cents,
       isInProgress ? null : (shift.variance_cents ?? 0),
     );
-    res.json({ success: true, data: { ...report, in_progress: isInProgress } });
+    res.json({
+      success: true,
+      data: {
+        ...report,
+        in_progress: isInProgress,
+        // WEB-UIUX-679: surface print audit on the z-report response so
+        // ShiftHistoryPage can render "Last printed 2026-05-12 by Alice"
+        // alongside the existing reprint button.
+        printed_at: shift.printed_at ?? null,
+        printed_by_user_id: shift.printed_by_user_id ?? null,
+      },
+    });
+  }),
+);
+
+// WEB-UIUX-679: POST /drawer/:id/mark-printed — stamp printed_at on the
+// shift so the audit trail records every paper or PDF copy. Idempotent in
+// the sense that re-printing simply overwrites the timestamp (operators
+// commonly reprint after a paper jam). Admin/manager only; cashier who
+// closed the shift can also re-print their own.
+router.post(
+  '/drawer/:id/mark-printed',
+  asyncHandler(async (req, res) => {
+    const adb: AsyncDb = req.asyncDb;
+    const shiftId = parseInt(qs(req.params.id), 10);
+    if (!shiftId || isNaN(shiftId)) throw new AppError('Invalid shift id', 400);
+    const shift = await adb.get<DrawerShiftRow>(
+      `SELECT id, closed_by_user_id, closed_at FROM cash_drawer_shifts WHERE id = ?`,
+      shiftId,
+    );
+    if (!shift) throw new AppError('Shift not found', 404);
+    if (!shift.closed_at) throw new AppError('Shift is still open', 409);
+    const role = (req as any)?.user?.role;
+    const callerId = (req as any)?.user?.id;
+    const isSelfClose = shift.closed_by_user_id === callerId;
+    if (role !== 'admin' && role !== 'manager' && !isSelfClose) {
+      throw new AppError(
+        'Only the cashier who closed this shift, a manager, or an admin can mark a Z-report as printed.',
+        403,
+      );
+    }
+    const nowIso = new Date().toISOString();
+    await adb.run(
+      `UPDATE cash_drawer_shifts SET printed_at = ?, printed_by_user_id = ? WHERE id = ?`,
+      nowIso, callerId, shiftId,
+    );
+    res.json({ success: true, data: { printed_at: nowIso, printed_by_user_id: callerId } });
   }),
 );
 
