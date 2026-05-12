@@ -1480,12 +1480,34 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
   }
 
   const estimate = await adb.get<AnyRow>(
-    "SELECT id, customer_id, status FROM estimates WHERE id = ? AND status = 'sent'",
+    "SELECT id, customer_id, status, valid_until FROM estimates WHERE id = ? AND status = 'sent'",
     estimateId);
 
   if (!estimate || estimate.customer_id !== req.portalCustomerId) {
     res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Estimate not found or already processed' });
     return;
+  }
+
+  // WEB-UIUX-1459: reject portal approval on expired quotes. valid_until is
+  // a date (YYYY-MM-DD); we treat it as "good through end of that day local"
+  // — the shop's tz drives that boundary in the detail-page UI, and here we
+  // mirror with end-of-day UTC since the portal request has no shop tz on
+  // hand. False-negative bias is small (a quote expires at most ~24h late)
+  // and the alternative — silently binding the shop to a stale price — is
+  // far worse.
+  if (estimate.valid_until) {
+    const validUntilStr = String(estimate.valid_until);
+    const cutoff = /^\d{4}-\d{2}-\d{2}$/.test(validUntilStr)
+      ? new Date(`${validUntilStr}T23:59:59Z`).getTime()
+      : Date.parse(validUntilStr);
+    if (Number.isFinite(cutoff) && cutoff < Date.now()) {
+      res.status(409).json({
+        success: false,
+        code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND,
+        message: `This estimate expired on ${validUntilStr} — please contact the shop to request a refreshed quote.`,
+      });
+      return;
+    }
   }
 
   // WEB-UIUX-947: write an estimate_signatures audit row for the portal-side
