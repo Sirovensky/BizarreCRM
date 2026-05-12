@@ -3362,21 +3362,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:233-247`
   <!-- meta: fix=conditional-confirm-body-string-when-estimate.status==='approved'-or-'signed'-with-approved_at-formatted -->
 
-- [!] WEB-UIUX-1482. **[NIT] Portal `EstimateSummary.line_items[].discount` (`portalApi.ts:155`) is always `0` — server `portal.routes.ts:1421-1428` hardcodes `discount: 0` even when the estimate has a header-level discount. Customer sees Total = subtotal+tax with no Discount line, then questions "where did the discount go?". Render header-level discount above Total (server already returns `discount` on the summary `:1414`).** L7 feedback, L2 truthfulness. **STATUS: BLOCKED — server portal.routes.ts hardcoded discount:0; backend, defer to portal sprint**
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:120-125`
-  `packages/server/src/routes/portal.routes.ts:1421-1428`
-  <!-- meta: fix=portal-renders-Subtotal+Discount-(if>0)+Tax+Total-block-instead-of-just-Total -->
-
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:747,770,815`
-  <!-- meta: fix=Send-confirmLabel:'Send'+Convert-confirmLabel:'Convert'+Delete-confirmLabel:'Delete'+danger:true-on-Delete -->
-
-### Web UI/UX Audit — Pass 32 (2026-05-05, flow walk: Cancel Subscription — admin list, customer detail, server gates, past_due retry, customer-portal self-service)
-
-#### Blocker — flow-breaking, dead actions, compliance
-
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:998-1005`
-  <!-- meta: fix=wrap-cancelMut.mutate()-in-await-confirm({title,confirmLabel:'Cancel-membership',danger:true})+match-list-page-pattern -->
-
 - [!] WEB-UIUX-1493. **[MAJOR] After immediate cancel, customer-detail Membership card disappears entirely. `getCustomerMembership` returns null when `active_subscription_id` is NULL (set on cancel `membership.routes.ts:232`); UI then renders the enroll prompt (`CustomerDetailPage.tsx:1024+`). Lost context: admin opening cancelled customer can't see prior tier, tenure, last charge, or churn date. No way to view past memberships at all (only payment-history endpoint, no UI).** L9 empty/loading/error, L8 recovery. **[AUTOLOOP-T49 BLOCKED 2026-05-11: past-membership history requires new server endpoint returning the prior subscription rows for a customer + UI tab/section under MembershipCard. Multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:935,1024+`
   `packages/server/src/routes/membership.routes.ts:129-150`

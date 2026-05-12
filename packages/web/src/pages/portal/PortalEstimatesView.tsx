@@ -204,6 +204,30 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
               )}
 
               <div className="p-4">
+                {/* WEB-UIUX-1482: surface header-level discount + tax above Total so the
+                    customer sees where the price comes from. Subtotal/discount/tax
+                    rows render only when non-zero to keep the dense layout calm
+                    for plain "no discount, no tax" estimates. */}
+                {(Number(est.discount) > 0 || Number(est.tax) > 0) && (
+                  <div className="mb-3 space-y-1 text-xs text-surface-500 dark:text-surface-400">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span>${Number(est.subtotal).toFixed(2)}</span>
+                    </div>
+                    {Number(est.discount) > 0 && (
+                      <div className="flex justify-between">
+                        <span>Discount</span>
+                        <span>-${Number(est.discount).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(est.tax) > 0 && (
+                      <div className="flex justify-between">
+                        <span>Tax</span>
+                        <span>${Number(est.tax).toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex justify-between text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">
                   <span>Total</span>
                   <span>${est.total.toFixed(2)}</span>
