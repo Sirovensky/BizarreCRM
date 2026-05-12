@@ -127,6 +127,11 @@ export function InvoiceDetailPage() {
   // grants/denies (`invoices.credit_note`) are honoured. Void stays role-only
   // — there is no `invoices.void` permission key.
   const canCreditNote = useHasPermission('invoices.credit_note');
+  // Bug-review fix: refund-destination picker also exposes cash/card/store_credit
+  // paths that route to /api/v1/refunds. Server gates POST /refunds on
+  // `refunds.create`; mirror that on the client so the option pills don't
+  // tempt a cashier-tier user who would only hit a 403 on submit.
+  const canCreateRefund = useHasPermission('refunds.create');
   const canVoid = useHasRole(['admin', 'manager']);
   // WEB-UIUX-1218: Esc handler checks dirty state before closing credit-note modal.
   useEscClose(() => {
@@ -1571,10 +1576,14 @@ export function InvoiceDetailPage() {
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Refund destination</label>
                 <div className="grid grid-cols-2 gap-2">
                   {([
-                    { key: 'credit_note' as const, label: 'Credit note', desc: 'Ledger only — no money out' },
-                    { key: 'cash' as const, label: 'Cash refund', desc: 'Drawer pays out on approve' },
-                    { key: 'card' as const, label: 'Refund to card', desc: blockchypEnabled && cardPaymentWithTxn ? 'BlockChyp reverse on approve' : 'No captured card on this invoice', disabled: !(blockchypEnabled && cardPaymentWithTxn) },
-                    { key: 'store_credit' as const, label: 'Store credit', desc: 'Customer balance on approve' },
+                    { key: 'credit_note' as const, label: 'Credit note', desc: 'Ledger only — no money out', disabled: !canCreditNote },
+                    // Bug-review fix: cash / card / store_credit go through
+                    // /api/v1/refunds which the server gates on `refunds.create`.
+                    // Mirror that on the client so a viewer-tier session can't
+                    // even pick those options.
+                    { key: 'cash' as const, label: 'Cash refund', desc: canCreateRefund ? 'Drawer pays out on approve' : 'You lack refunds.create', disabled: !canCreateRefund },
+                    { key: 'card' as const, label: 'Refund to card', desc: !canCreateRefund ? 'You lack refunds.create' : (blockchypEnabled && cardPaymentWithTxn ? 'BlockChyp reverse on approve' : 'No captured card on this invoice'), disabled: !canCreateRefund || !(blockchypEnabled && cardPaymentWithTxn) },
+                    { key: 'store_credit' as const, label: 'Store credit', desc: canCreateRefund ? 'Customer balance on approve' : 'You lack refunds.create', disabled: !canCreateRefund },
                   ]).map((opt) => (
                     <button
                       key={opt.key}

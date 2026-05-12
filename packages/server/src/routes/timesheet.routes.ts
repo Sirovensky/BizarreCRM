@@ -152,12 +152,17 @@ router.patch('/clock-entries/:id', asyncHandler(async (req: any, res: any) => {
   // to a different old date still trips the gate.
   const BACKDATE_GUARD_MS = 7 * 24 * 60 * 60 * 1000;
   const proposedClockIn = req.body?.clock_in != null ? String(req.body.clock_in) : null;
-  const existingClockInMs = Date.parse(existing.clock_in) || 0;
-  const proposedClockInMs = proposedClockIn ? Date.parse(proposedClockIn) : 0;
-  const oldestRelevantMs = Math.min(
-    existingClockInMs || Date.now(),
-    proposedClockInMs || Date.now(),
-  );
+  // Bug-review fix: previously used `Date.parse(...) || 0` which collapsed
+  // NaN/0 to `0`, and `0 || Date.now()` then made the row look brand-new —
+  // silently bypassing the admin guard on rows with a corrupt clock_in.
+  // Treat unparseable timestamps as already-old (epoch 0) so the gate
+  // engages instead of opens.
+  const parsedExisting = Date.parse(existing.clock_in);
+  const existingClockInMs = Number.isFinite(parsedExisting) ? parsedExisting : 0;
+  const parsedProposed = proposedClockIn ? Date.parse(proposedClockIn) : NaN;
+  const proposedClockInMs = Number.isFinite(parsedProposed) ? parsedProposed : null;
+  const candidates = [existingClockInMs, ...(proposedClockInMs != null ? [proposedClockInMs] : [])];
+  const oldestRelevantMs = Math.min(...candidates);
   const ageMs = Date.now() - oldestRelevantMs;
   const isBackdatedEdit = ageMs > BACKDATE_GUARD_MS;
   const callerRole = (req as any)?.user?.role;

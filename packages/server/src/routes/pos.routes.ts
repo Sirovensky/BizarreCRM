@@ -55,7 +55,9 @@ const POS_FINANCIAL_RATE_MAX_DRAWER = 30;
 
 function guardPosFinancialRate(
   req: any,
-  category: 'pos_sales' | 'pos_refunds' | 'pos_return' | 'pos_drawer',
+  // Bug-review fix: dropped unused 'pos_refunds' category (no callsite passed
+  // it). /return is the cashier refund flow and shares the sales cap.
+  category: 'pos_sales' | 'pos_return' | 'pos_drawer',
 ): void {
   const userId = req?.user?.id;
   if (!userId) return; // unauthenticated requests fail earlier; just skip
