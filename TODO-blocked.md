@@ -971,138 +971,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   `packages/web/src/pages/setup/steps/StepStoreInfo.tsx:36-53`
 
-- [!] WEB-UIUX-241. **[MINOR] StepShopType "Skip" advances without recording intent.** BLOCKED 2026-05-07 — critique: valid, but no safe existing client/server write path exists inside the allowed ownership. `POST /onboarding/set-shop-type` records/audits real selections only, `PATCH /onboarding/state` audits only unrelated boolean flags, and `PUT /settings/config` can audit `shop_type` but that key is consumed by repair-pricing seed logic, so storing a synthetic `skipped` value would corrupt a real contract. Needs a server-owned onboarding skip event/field before the UI can record this honestly while remaining non-blocking.
-  `packages/web/src/pages/setup/steps/StepShopType.tsx:106-109`
-
-  `packages/web/src/pages/setup/steps/StepImportHandoff.tsx:62-70`
-
-  `packages/web/src/pages/setup/steps/StepFirstLogin.tsx:78-86`
-
-  `packages/web/src/pages/setup/steps/StepForcePassword.tsx:25-33`
-  <!-- meta: fix=use-zxcvbn-or-length-bonus -->
-
-  Files: StepSignup.tsx:37-50 vs StepForcePassword.tsx:25-33
-  <!-- meta: fix=extract-shared-gradePassword-helper -->
-
-  `packages/web/src/pages/setup/steps/StepSignup.tsx:88-125`
-
-  `packages/web/src/pages/setup/steps/StepSignup.tsx:73-118,132-145,356-361`
-
-  `packages/web/src/pages/setup/steps/StepSignup.tsx:152-159`
-
-  `packages/web/src/pages/setup/steps/StepTwoFactorSetup.tsx:125-131`
-
-  `packages/web/src/pages/setup/steps/StepRepairPricing.tsx:181-194`
-
-  `packages/web/src/pages/setup/steps/StepFirstEmployees.tsx:214-218,388-396`
-
-  `packages/web/src/pages/setup/ExtrasHub.tsx`
-  <!-- meta: fix=delete-or-document-as-fallback -->
-
-#### Onboarding
-
-  `packages/web/src/components/onboarding/SpotlightCoach.tsx:422-429`
-  <!-- meta: fix=add-Re-enable-toggle-in-Settings-confirm-before-nuking -->
-
-  `packages/web/src/components/onboarding/SpotlightCoach.tsx:99-112`
-  <!-- meta: fix=use-svg-mask-with-rect-cutout -->
-
-  `packages/web/src/components/onboarding/DailyNudge.tsx:130-132`
-
-  `packages/web/src/components/onboarding/DailyNudge.tsx:100-103`
-
-  `packages/web/src/components/onboarding/GettingStartedWidget.tsx:166-205`
-
-#### Print / TV / Photo Capture
-
-  `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:127-287`
-
-  `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:127-287`
-
-  `packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:14-27`
-  <!-- meta: fix=migrate-to-per-action-JWT -->
-
-  `packages/web/src/pages/print/PrintPage.tsx:1051-1063`
-
-  `packages/web/src/pages/print/PrintPage.tsx:231,402,429,672,712,902`
-
-  `packages/web/src/pages/print/PrintPage.tsx:1022-1038`
-
-  `packages/web/src/pages/tv/TvDisplayPage.tsx:128-133`
-
-  `packages/web/src/pages/tv/TvDisplayPage.tsx:191-214`
-  <!-- meta: fix=add-config-toggle-or-show-device-class-only -->
-
-  `packages/web/src/pages/tv/TvDisplayPage.tsx:78-84`
-
-#### Reports Sub-Components
-
-  `packages/web/src/pages/reports/components/*.tsx`
-  <!-- meta: fix=define-chart-CSS-vars-in-design-system -->
-
-  <!-- meta: fix=extract-useReportQuery-hook -->
-
-  `packages/web/src/pages/reports/components/DeviceModelsTab.tsx:75`
-
-  `CustomerAcquisitionTab.tsx:81`, `TechnicianHoursTab.tsx:86`
-
-#### Tickets Components
-
-  `packages/web/src/components/tickets/BenchTimer.tsx:218-263`
-
-  `packages/web/src/components/tickets/DefectReporterButton.tsx:94-99`
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:289-301`
-  <!-- meta: fix=multiply-backing-store-by-devicePixelRatio -->
-
-#### Team Components
-
-  `packages/web/src/components/team/CommissionPeriodLock.tsx:126,182-244`
-
-  `packages/web/src/components/team/CommissionPeriodLock.tsx:183-243`
-
-  `packages/web/src/components/team/MentionPicker.tsx:78-83`
-
-  `packages/web/src/components/team/TicketHandoffModal.tsx:84-90`
-
-  `packages/web/src/components/team/MentionPicker.tsx:91-99`
-
-  `packages/web/src/components/team/TicketHandoffModal.tsx:114-125`
-
-  Cache: `['employees','simple']` vs `['employees','simple-mention']`
-
-#### Cross-Cutting (Pass 4)
-
-  <!-- meta: fix=canonical-Modal-or-adopt-Radix-or-HeadlessUI -->
-
-  StepWelcome:105, StepStoreInfo:200, StepShopType:215 + many more
-
-
-### Web UI/UX Audit — Pass 5 (2026-05-05, keyboard shortcuts + error boundary + z-index)
-
-#### Keyboard Shortcuts (WCAG 2.1.4)
-
-  `packages/web/src/components/layout/AppShell.tsx:108-128`
-  `packages/web/src/components/layout/Header.tsx:286`
-  <!-- meta: fix=add-shortcut-toggle-in-Settings-Accessibility-tab -->
-
-  <!-- meta: fix=add-aria-keyshortcuts=F2-on-POS-link-etc -->
-
-  `packages/web/src/pages/settings/components/SettingsGlobalSearch.tsx:55-67` vs `components/layout/Header.tsx:281`
-  <!-- meta: fix=stop-propagation-or-coordinate-via-uiStore -->
-
-#### Error Boundary Coverage
-
-  `packages/web/src/main.tsx:364`, `packages/web/src/App.tsx:443`
-  <!-- meta: fix=wrap-each-lazy-route-in-PageErrorBoundary -->
-
-#### Z-Index Stacking War
-
-  Pattern across web/src
-  <!-- meta: fix=define-z-index-scale-in-design-tokens-modal:50-toast:60-banner:40 -->
-
-#### Cross-Cutting Pass 5
-
 - [!] WEB-UIUX-301. **[MINOR] 237 `Loader2 animate-spin` callsites — most duplicate centered-loading pattern.** BLOCKED 2026-05-07 — critique: valid but too broad for a safe single tick. A real fix needs a shared loading/skeleton API plus gradual per-surface adoption so buttons, inline spinners, table skeletons, full-page loaders, and modal loaders do not all get flattened into one inappropriate component.
   <!-- meta: fix=extract-LoadingSpinner-component-or-Skeleton-defaults -->
 
@@ -2549,7 +2417,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/server/src/routes/refunds.routes.ts:253-412`
   <!-- meta: fix=on-refund-approve-set-invoice.status='refunded'-when-cumulative-refunds>=amount_paid+OR-remove-the-status-colour-decoration -->
 
-- [x] WEB-UIUX-1397. **[MAJOR] Reports refund detail tab shipped.** 2026-05-12 — new RefundsReportTab under Reports (`packages/web/src/pages/reports/components/RefundsReportTab.tsx`) renders a paginated per-refund table sourced from `GET /refunds`, scoped to the parent report's date window. Columns: id, customer (linked), invoice (linked), amount, type, method, status, reason, created (with author). Status tab strip (Approved default, Pending, Declined, All), page-local summary cards (count / total / cash-card split), and a CTA out to /refunds for approve/decline.
+- [!] WEB-UIUX-1397. **[MAJOR] Reports do not surface refund detail. Dashboard KPI shows aggregate (`kpis.refunds`); `/reports` page (linked from KPI siblings) has no per-refund breakdown — server's `GET /refunds` returns paginated detail with customer name + invoice order_id + creator, but the data is unread by any frontend.** L6 discoverability, L4 flow. **STATUS: BLOCKED — Reports refund detail tab needs server pagination + UI table; multi-component, defer**
   `packages/server/src/routes/refunds.routes.ts:74-95`
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=add-Refunds-Detail-tab-to-/reports+table-with-date+invoice+customer+amount+reason+method+approver -->
@@ -2558,7 +2426,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/server/src/routes/refunds.routes.ts:177-202`
   <!-- meta: fix=NewRefundModal-prefill-method-from-invoice.payments[0].method+disable-non-card-options-when-original-was-card+show-card-cap-inline-($X-card-collected,-$Y-already-refunded) -->
 
-- [x] WEB-UIUX-1399. **[MAJOR] Capture-state precondition hint surfaced.** 2026-05-12 — Server throws `ERR_REFUND_PAYMENTS_NOT_CAPTURED` with structured `non_captured_count` + `states` (refunds.routes.ts:191-209). InvoiceDetailPage refundMutation `onError` branches on the code and shows actionable copy ("Reconcile N payment(s) in state X — scroll to Payments below and Capture or Void them first") instead of the flat 400. Refund button itself stays enabled — the error surfaces only on attempted submit, which is the right time to point operator at Payments table.
+- [!] WEB-UIUX-1399. **[MAJOR] Capture-state precondition (`refunds.routes.ts:140-153` — refunds blocked while any payment is `authorized` or `voided` not yet captured) — no UI hint. Operator on an invoice with an auth-only BlockChyp payment will hit a 400 "Cannot refund — N payment(s) on this invoice are not captured" with no path to "Capture or void the authorization first" the error tells them to do. Capture flow itself buried/nonexistent.** L4 flow dead-end, L7 feedback unactionable. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); capture-state hint pairs with that sprint**
   `packages/server/src/routes/refunds.routes.ts:133-153`
   <!-- meta: fix=Refund-button-disabled-with-tooltip-"Capture-pending-authorization-first"-when-any-payment.capture_state!='captured'+CTA-link-to-capture-flow -->
 

@@ -1581,7 +1581,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   `packages/web/src/pages/setup/steps/StepStoreInfo.tsx:36-53`
 
-- [!] WEB-UIUX-241. **[MINOR] StepShopType "Skip" advances without recording intent.** BLOCKED 2026-05-07 — critique: valid, but no safe existing client/server write path exists inside the allowed ownership. `POST /onboarding/set-shop-type` records/audits real selections only, `PATCH /onboarding/state` audits only unrelated boolean flags, and `PUT /settings/config` can audit `shop_type` but that key is consumed by repair-pricing seed logic, so storing a synthetic `skipped` value would corrupt a real contract. Needs a server-owned onboarding skip event/field before the UI can record this honestly while remaining non-blocking.
+- [x] WEB-UIUX-241. **[MINOR] StepShopType "Skip" advances without recording intent.** FIXED 2026-05-12 — added audit-only `POST /onboarding/skip-shop-type` route emitting `onboarding.shop_type_skipped`; `onboardingApi.skipShopType()` fires fire-and-forget from `StepShopType` skip handler. No schema change, no contract drift with the real `set-shop-type` audit. Skip is now distinguishable from a real selection in the audit log.
   `packages/web/src/pages/setup/steps/StepShopType.tsx:106-109`
 
   `packages/web/src/pages/setup/steps/StepImportHandoff.tsx:62-70`

@@ -104,6 +104,10 @@ export function StepShopType({ onNext, onBack }: StepProps) {
   }, [selected, onNext]);
 
   const handleSkip = useCallback(() => {
+    // WEB-UIUX-241: record skip intent so the audit trail distinguishes a real
+    // shop-type selection from an opaque advance. Fire-and-forget — failure
+    // must not block the wizard since this step is non-blocking by design.
+    void onboardingApi.skipShopType().catch(() => {});
     onNext();
   }, [onNext]);
 

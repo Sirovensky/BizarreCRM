@@ -1288,6 +1288,7 @@ export const onboardingApi = {
   removeSampleData: () => api.delete('/onboarding/sample-data'),
   setShopType: (shop_type: OnboardingShopType) =>
     api.post('/onboarding/set-shop-type', { shop_type }),
+  skipShopType: () => api.post('/onboarding/skip-shop-type', {}),
 };
 
 // ==================== Roles / Permissions ====================

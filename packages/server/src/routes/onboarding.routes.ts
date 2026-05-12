@@ -10,6 +10,8 @@
  *   POST   /sample-data       — inserts 5 customers + 10 tickets + 3 invoices.
  *   DELETE /sample-data       — removes everything tracked in sample_data_entities_json.
  *   POST   /set-shop-type     — applies a starter template for the chosen shop type.
+ *   POST   /skip-shop-type    — records that the user advanced past the shop-type step
+ *                                without picking one. Audit-only; no DB write.
  *
  * Response shape is the project-standard { success, data } envelope.
  * Writes are audited via utils/audit. User-facing errors throw AppError so
@@ -551,6 +553,20 @@ router.post(
       success: true,
       data: { state: rowToResponse(updated), templates_installed: installed },
     });
+  }),
+);
+
+/**
+ * POST /skip-shop-type — records that the operator advanced past the shop-type
+ * step without picking one. Audit-only: no DB write. UI emits this from the
+ * setup wizard's "Skip this step" button so the audit trail distinguishes a
+ * real selection from an opaque skip (WEB-UIUX-241).
+ */
+router.post(
+  '/skip-shop-type',
+  asyncHandler(async (req, res) => {
+    audit(req.db, 'onboarding.shop_type_skipped', req.user?.id ?? null, req.ip || 'unknown', {});
+    res.json({ success: true, data: { skipped: true } });
   }),
 );
 
