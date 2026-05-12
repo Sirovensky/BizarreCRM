@@ -9,6 +9,7 @@ import { isCommissionLocked } from './_team.payroll.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { validateId } from '../utils/validate.js';
+import { getTenantTz, tzModifier } from '../utils/timezone.js';
 
 const router = Router();
 const logger = createLogger('employees');
@@ -529,16 +530,34 @@ router.get(
     const conditions: string[] = ['user_id = ?'];
     const params: unknown[] = [id];
 
+    // BUGHUNT-2026-05-10-15: clock_in is stored as UTC ISO; bare date filters
+    // ('2026-05-10') previously compared as strings against UTC timestamps,
+    // dropping late-shift entries for techs west of UTC (clock-out 23:30 ET
+    // = 03:30 UTC next day was excluded from the same local-calendar report).
+    // Shift the column to tenant-local before comparing when the input is a
+    // bare date, so the window matches the operator's local calendar.
+    const tzMod = tzModifier(getTenantTz(req));
+    const isBareDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
     if (fromDate) {
-      conditions.push('clock_in >= ?');
-      params.push(fromDate);
+      if (isBareDate(fromDate)) {
+        conditions.push("datetime(clock_in, ?) >= ?");
+        params.push(tzMod, `${fromDate} 00:00:00`);
+      } else {
+        conditions.push('clock_in >= ?');
+        params.push(fromDate);
+      }
     }
     if (toDate) {
-      // POST-ENRICH §28: date-only inputs (e.g. 2026-04-11) previously excluded
-      // the entire day because clock_in stores full timestamps. Pad the upper
-      // bound to 23:59:59 when the input looks like a bare date.
-      conditions.push('clock_in <= ?');
-      params.push(/^\d{4}-\d{2}-\d{2}$/.test(toDate) ? `${toDate} 23:59:59` : toDate);
+      if (isBareDate(toDate)) {
+        // POST-ENRICH §28: pad bare-date upper bound to 23:59:59 in tenant tz
+        // so the full local calendar day is included regardless of UTC offset.
+        conditions.push("datetime(clock_in, ?) <= ?");
+        params.push(tzMod, `${toDate} 23:59:59`);
+      } else {
+        conditions.push('clock_in <= ?');
+        params.push(toDate);
+      }
     }
 
     const [entries, { total_hours }] = await Promise.all([

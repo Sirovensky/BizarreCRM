@@ -9,6 +9,7 @@ import { audit } from '../utils/audit.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { validateId } from '../utils/validate.js';
+import { getTenantTz, tzModifier } from '../utils/timezone.js';
 
 const router = Router();
 
@@ -2006,62 +2007,8 @@ function parseBiDays(raw: unknown, fallback: number, max: number): number {
   return Math.min(Math.floor(n), max);
 }
 
-/**
- * RPT-TZ1: Read the tenant's configured IANA timezone from store_config so
- * date-bucketing queries (hour-of-day, day-of-week, daily totals) group on
- * the owner's local calendar rather than UTC. Falls back to UTC so existing
- * behaviour is preserved when the setting is missing.
- *
- * Uses the synchronous `req.db` wrapper because the rest of this file calls
- * `adb.get/all` in hot paths — the store_config lookup is a single-row cache
- * hit and cheaper through the sync binding than round-tripping Promise.all.
- */
-function getTenantTz(req: any): string {
-  try {
-    const row = req.db
-      ?.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
-      .get() as { value?: string } | undefined;
-    return row?.value || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
-
-/**
- * Convert an IANA timezone name into a SQLite strftime modifier that shifts a
- * UTC datetime to local time for date/hour bucketing. SQLite does not have
- * real timezone support, so we compute the current offset via Intl and emit
- * a `'±HH:MM'` modifier (e.g. `'-07:00'`). Returns a literal the query can
- * embed inside a strftime() call: `strftime('%w', col, '${tzModifier(tz)}')`.
- *
- * Note: offset is computed at query time from "now" so DST boundaries within
- * the selected range drift by one hour. For report accuracy that's acceptable
- * — DoW/hour reports are trend-shape indicators, not tax-time numbers.
- *
- * Returns an empty-effect modifier ('+00:00') when the timezone is UTC or
- * unrecognised so the SQL shape stays constant.
- */
-function tzModifier(timezone: string): string {
-  if (!timezone || timezone === 'UTC') return '+00:00';
-  try {
-    // Use Intl to compute the current offset in minutes for the given TZ.
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      timeZoneName: 'shortOffset',
-    });
-    const parts = fmt.formatToParts(new Date());
-    const offset = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
-    // offset looks like 'GMT-7' or 'GMT+5:30'. Normalize to SQLite '-07:00' form.
-    const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-    if (!match) return '+00:00';
-    const sign = match[1];
-    const hh = match[2].padStart(2, '0');
-    const mm = (match[3] || '00').padStart(2, '0');
-    return `${sign}${hh}:${mm}`;
-  } catch {
-    return '+00:00';
-  }
-}
+// RPT-TZ1: getTenantTz + tzModifier moved to ../utils/timezone.js so other
+// routes (employees hours, etc.) can reuse the SQLite-friendly offset shape.
 
 // ─── 1. Profit hero KPI ──────────────────────────────────────────────────
 
