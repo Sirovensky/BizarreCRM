@@ -47,18 +47,34 @@ interface CurrentShiftResponse {
 function centsFromInput(value: string): { ok: boolean; cents: number; reason?: string } {
   const trimmed = value.trim();
   if (!trimmed) return { ok: false, cents: 0, reason: 'Enter an amount' };
-  const n = parseFloat(trimmed);
-  if (!Number.isFinite(n) || isNaN(n) || n < 0) {
+  // BUGHUNT-2026-05-10-21: parse dollars + fractional cents as separate
+  // integer strings instead of `Math.round(parseFloat(x) * 100)`. The float
+  // path miscounts a small set of inputs at IEEE-754 boundaries (10.99,
+  // 0.29 etc) — rare but pollutes the cash-drawer ledger. Accepts optional
+  // leading $/space, optional thousands separators, 0..2 fractional digits.
+  const match = /^\$?\s*(\d{1,12}(?:,\d{3})*|\d{1,12})(?:\.(\d{1,2}))?$/.exec(trimmed);
+  if (!match) {
     return { ok: false, cents: 0, reason: 'Enter a non-negative amount' };
   }
-  if (n > DRAWER_CAP_DOLLARS) {
+  const dollars = parseInt(match[1].replace(/,/g, ''), 10);
+  const fracDigits = match[2] ?? '';
+  const fracCents = fracDigits.length === 0
+    ? 0
+    : fracDigits.length === 1
+      ? parseInt(fracDigits, 10) * 10
+      : parseInt(fracDigits, 10);
+  if (!Number.isFinite(dollars) || dollars < 0) {
+    return { ok: false, cents: 0, reason: 'Enter a non-negative amount' };
+  }
+  const cents = dollars * 100 + fracCents;
+  if (cents > DRAWER_CAP_DOLLARS * 100) {
     return {
       ok: false,
       cents: 0,
       reason: `Amount exceeds ${formatCurrency(DRAWER_CAP_DOLLARS)} drawer cap`,
     };
   }
-  return { ok: true, cents: Math.round(n * 100) };
+  return { ok: true, cents };
 }
 
 export function CashDrawerWidget() {
