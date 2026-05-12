@@ -1974,13 +1974,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/components/tickets/CustomerHistorySidebar.tsx:90-92`
 
-- [!] WEB-UIUX-882. **[MAJOR] Communications tab on customer page strips call affordances — no duration, no recording-play, no transcript link.** 200% regression vs standalone CommunicationPage. L11, L4. **PARTIAL 2026-05-12: server SQL fixed — `GET /customers/:id/communications` now selects `duration_secs`, `recording_url`, and `transcription_status` on the call_logs branch (padded NULL on sms/email branches to keep UNION ALL aligned). Client type + render is the remaining piece — CustomerDetailPage.tsx:1740-1785 can now render duration pill, ▶ recording link, and transcript indicator without an additional fetch.**
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:1740-1785`
-
-
-
-  **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
-
 - [!] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
 
 #### DATA1: Data Flow Consistency

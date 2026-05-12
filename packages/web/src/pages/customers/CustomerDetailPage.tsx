@@ -1892,6 +1892,23 @@ interface CustomerCommunicationRow {
   content?: string | null;
   message?: string | null;
   created_at?: string;
+  // WEB-UIUX-882: call_logs branch of the UNION exposes duration + recording
+  // + transcript status; sms/email branches return NULL for these. Render
+  // duration pill, ▶ recording link, and transcript indicator inline so the
+  // customer Communications tab stops dropping call affordances vs. the
+  // standalone Communications page.
+  duration_secs?: number | null;
+  recording_url?: string | null;
+  transcription_status?: string | null;
+}
+
+/** "1m 23s" / "0:45" style — short, no trailing zeros for sub-minute calls. */
+function formatCallDuration(secs: number | null | undefined): string | null {
+  if (secs == null || !Number.isFinite(Number(secs)) || Number(secs) <= 0) return null;
+  const total = Math.round(Number(secs));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
 }
 
 interface CustomerPhone {
@@ -2140,6 +2157,56 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
               </p>
             )}
             <p>{msg.content ?? msg.message ?? ''}</p>
+            {/* WEB-UIUX-882: call affordances — duration pill, ▶ recording, transcript status. */}
+            {msg.comm_type === 'call' && (() => {
+              const duration = formatCallDuration(msg.duration_secs);
+              const recording = msg.recording_url ? String(msg.recording_url) : null;
+              const transcript = msg.transcription_status ? String(msg.transcription_status) : null;
+              if (!duration && !recording && !transcript) return null;
+              return (
+                <div className={cn(
+                  'mt-1 flex flex-wrap items-center gap-2 text-[10px]',
+                  msg.direction === 'outbound' ? 'text-primary-100' : 'text-surface-500 dark:text-surface-400',
+                )}>
+                  {duration && (
+                    <span className={cn(
+                      'rounded-full px-1.5 py-0.5 font-medium',
+                      msg.direction === 'outbound' ? 'bg-primary-700/40' : 'bg-surface-200 dark:bg-surface-700',
+                    )}>
+                      {duration}
+                    </span>
+                  )}
+                  {recording && (
+                    <a
+                      href={recording}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        'inline-flex items-center gap-0.5 font-medium underline-offset-2 hover:underline',
+                        msg.direction === 'outbound' ? 'text-primary-100' : 'text-primary-600 dark:text-primary-400',
+                      )}
+                    >
+                      ▶ Recording
+                    </a>
+                  )}
+                  {transcript && transcript !== 'none' && (
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-0.5',
+                        transcript === 'completed'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          : transcript === 'failed'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                      )}
+                    >
+                      Transcript: {transcript}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             <p className={cn('text-[10px] mt-1', msg.direction === 'outbound' ? 'text-primary-200' : 'text-surface-400')}>
               {msg.created_at ? formatShortDateTime(msg.created_at) : ''}
             </p>
