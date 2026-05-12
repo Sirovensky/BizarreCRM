@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Target, Trash2, Plus, Loader2, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, toLocalDateString } from '@/utils/format';
 // FA-L4: CommissionPeriodLock gives managers a visible control to freeze
 // payroll windows once commissions are finalized. Goals + payroll live in
 // the same manager workflow so we mount both on this page.
@@ -48,14 +48,16 @@ interface GoalMetricDef {
   unit: string;
 }
 
+// WEB-UIUX-788: local-calendar Y-M-D so form defaults match the manager's
+// wall-clock day — `.toISOString()` returned tomorrow after ~4pm west of UTC.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalDateString(new Date());
 }
 
 function plusDaysIso(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateString(d);
 }
 
 // @audit-fixed (WEB-FG-010 / Fixer-B1 2026-04-25): clamp to a sane window so

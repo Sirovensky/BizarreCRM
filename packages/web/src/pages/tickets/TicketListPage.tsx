@@ -19,7 +19,7 @@ import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
-import { formatCurrency, formatDate, formatTicketId, timeAgo } from '@/utils/format';
+import { formatCurrency, formatDate, formatTicketId, timeAgo, toLocalDateString } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 
@@ -1262,8 +1262,12 @@ export function TicketListPage() {
   });
 
   // ─── Calendar data ────────────────────────────────────────────────
-  const calStartDate = new Date(calendarMonth.year, calendarMonth.month, 1).toISOString().slice(0, 10);
-  const calEndDate = new Date(calendarMonth.year, calendarMonth.month + 1, 0).toISOString().slice(0, 10);
+  // WEB-UIUX-788: `new Date(y, m, d)` produces a *local* midnight; previously
+  // `.toISOString().slice(0,10)` reinterpreted that instant in UTC, which
+  // for users west of UTC silently rolled the month boundary back a day
+  // (Jan 1 PST → Dec 31 UTC → query missed the first day of the month).
+  const calStartDate = toLocalDateString(new Date(calendarMonth.year, calendarMonth.month, 1));
+  const calEndDate = toLocalDateString(new Date(calendarMonth.year, calendarMonth.month + 1, 0));
 
   const { data: calendarData } = useQuery({
     queryKey: ['tickets-calendar', calStartDate, calEndDate],

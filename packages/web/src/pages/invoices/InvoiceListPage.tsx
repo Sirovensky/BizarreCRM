@@ -13,7 +13,7 @@ import toast from 'react-hot-toast';
 import { invoiceApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, toLocalDateString } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 
 const STATUS_TABS = [
@@ -56,11 +56,13 @@ const DATE_TABS = [
 function getDateRange(key: string): { from_date?: string; to_date?: string } {
   if (!key) return {};
   const now = new Date();
-  const to_date = now.toISOString().slice(0, 10);
+  // WEB-UIUX-788: local-calendar Y-M-D so users west of UTC don't see
+  // tomorrow's date used as the server filter after ~4pm local.
+  const to_date = toLocalDateString(now);
   if (key === 'today') return { from_date: to_date, to_date };
   const days = parseInt(key);
   const from = new Date(now.getTime() - days * 86400_000);
-  return { from_date: from.toISOString().slice(0, 10), to_date };
+  return { from_date: toLocalDateString(from), to_date };
 }
 
 function isYmd(value: string | null | undefined): value is string {

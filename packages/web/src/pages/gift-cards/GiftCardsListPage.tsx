@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail, WalletCards } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi, customerApi, type PendingGiftCardIssuance } from '@/api/endpoints';
-import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents, formatMaybeCents } from '@/utils/format';
+import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents, formatMaybeCents, toLocalDateString } from '@/utils/format';
 // WEB-UIUX-998: CSV export for outstanding liability — PII-gated
 import { toCsvRow, CSV_BOM } from '@/utils/csv';
 import { useHasRole } from '@/hooks/useHasRole';
@@ -872,7 +872,7 @@ export function GiftCardsListPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `gift-cards-outstanding-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `gift-cards-outstanding-${toLocalDateString(new Date())}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }

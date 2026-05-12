@@ -21,7 +21,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { formatDate } from '@/utils/format';
+import { formatDate, toLocalDateString } from '@/utils/format';
 
 interface PayrollPeriod {
   id: number;
@@ -230,7 +230,9 @@ export function CommissionPeriodLock() {
   });
 
   async function handleBulkLock() {
-    const today = new Date().toISOString().slice(0, 10);
+    // WEB-UIUX-788: local-calendar today; the prompt default must reflect
+    // the operator's wall-clock day, not UTC midnight.
+    const today = toLocalDateString(new Date());
     const cutoff = window.prompt(
       'Lock every unlocked period whose end_date is strictly before this date (YYYY-MM-DD).\n\nThis cannot be undone.',
       today,

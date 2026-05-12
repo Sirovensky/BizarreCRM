@@ -2908,7 +2908,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:135-148,238-241`
 
-- [!] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
+- [x] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **DONE 2026-05-12: migrated every remaining `.toISOString().slice(0,10)` data-affecting site to the shared `toLocalDateString()` helper. Form/server-payload sites fixed: `InvoiceListPage.getDateRange` (Today / 7d / 30d filters were sending tomorrow's UTC date as the server filter after ~4pm west of UTC), `TicketListPage` calendar `calStartDate`/`calEndDate` (calendar month-boundary query rolled back a day in non-UTC zones), `DateRangePicker.todayISO`, `GoalsPage.todayIso`/`plusDaysIso`, `CommissionPeriodLock.handleBulkLock`, and the `SettingsPage.seedDaysAgoToIso` seeded-date helper. Filename-only sites also migrated for consistency: `SettingsPage` two export filenames, `CustomerListPage`, `RepairPricingDynamicPanel`, `InventoryListPage`, `AbcAnalysisPage`, `GiftCardsListPage`. Remaining `.toISOString().slice(0,10)` callsites are either inside Date.UTC math (`InstallmentPlanWizard:76`) or doc comments referencing the anti-pattern. tsc clean.**
 
   `packages/web/src/utils/format.ts:154-168`
 

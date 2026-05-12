@@ -358,7 +358,7 @@ export function CustomerListPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `customers-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `customers-export-${toLocalDateString(new Date())}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success(`Exported ${all.length} customers`);

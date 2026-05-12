@@ -32,7 +32,7 @@ import type {
 import { confirm } from '@/stores/confirmStore';
 import { formatApiError } from '@/utils/apiError';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate, formatDateTime, formatNumber, timeAgo } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatNumber, timeAgo, toLocalDateString } from '@/utils/format';
 
 type EditableTier = Exclude<RepairPricingTier, 'unknown'>;
 type PresentableTier = EditableTier | 'unknown';
@@ -743,7 +743,7 @@ export function RepairPricingMatrixSubTab() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `repair-prices-${category}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `repair-prices-${category}-${toLocalDateString(new Date())}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -9,7 +9,7 @@ import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { parseCsvLine } from '@/utils/csv';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace inline `$${n.toFixed(2)}` with formatCurrency to honor tenant currency.
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, toLocalDateString } from '@/utils/format';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
 
@@ -370,7 +370,7 @@ export function InventoryListPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `inventory-export-${toLocalDateString(new Date())}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

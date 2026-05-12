@@ -1846,25 +1846,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/billing/PaymentLinksPage.tsx:135-148,238-241`
 
-- [!] WEB-UIUX-788. **[MINOR] `.toISOString().slice(0,10)` anti-pattern in 8+ sites.** Latent local-vs-UTC drift bug west of UTC after ~4pm. Pattern caught/fixed in ExpensesPage but lesson didn't propagate. L7. **[AUTOLOOP-T36 BLOCKED: 8+ call-site codemod too broad. Added `toLocalDateString(date, tz?)` helper in format.ts with JSDoc explaining UTC-drift bug for future migrations.]**
-
-  `packages/web/src/utils/format.ts:154-168`
-
-  `packages/web/src/components/tickets/BenchTimer.tsx:92-121`
-
-#### ED16: Barcode/Scanner Input
-
-  `packages/web/src/pages/inventory/StocktakePage.tsx:174-177`
-
-  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:138-144`
-
-  Multiple scan paths: `UnifiedPosPage.tsx:166`, `LeftPanel.tsx:453`, `StocktakePage.tsx:173`
-
-  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:190-198`
-
-
-  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:160-163`
-
 - [!] WEB-UIUX-797. **[MAJOR] ReceiveItemsModal scans NOT tied to any PO.** Scan-and-go restock looks like PO receive but creates ad-hoc unlinked stock. PO permanently "open". L5, L13. **[AUTOLOOP-T37 BLOCKED: ReceiveItemsModal needs PO picker UI + scan-validation + server purchase_order_id field; multi-component.]**
   `packages/web/src/pages/inventory/InventoryListPage.tsx:1318-1492`
 

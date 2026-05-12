@@ -23,7 +23,7 @@ import {
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
-import { formatNumber, formatCurrency } from '@/utils/format';
+import { formatNumber, formatCurrency, toLocalDateString } from '@/utils/format';
 // FA-M7: DeviceTemplatesPage is a standalone admin editor. Before this change
 // it was only reachable by typing the URL (/settings/device-templates was
 // never defined). Mount it as a Settings tab so the DeviceTemplatePicker
@@ -911,7 +911,7 @@ function SettingsExportImportSection() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `crm-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `crm-settings-${toLocalDateString(new Date())}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Settings exported');
@@ -2991,7 +2991,7 @@ function DownloadAllDataSection() {
       // filename from Content-Disposition; fall back to a safe default.
       const dispo = (res.headers?.['content-disposition'] || '') as string;
       const match = /filename="?([^"]+)"?/i.exec(dispo);
-      const filename = match?.[1] || `bizarre-crm-export-${new Date().toISOString().slice(0, 10)}.json`;
+      const filename = match?.[1] || `bizarre-crm-export-${toLocalDateString(new Date())}.json`;
 
       const blob = new Blob([res.data], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -3601,9 +3601,11 @@ const SEED_EXPENSES = [
 ];
 
 function seedDaysAgoToIso(n: number): string {
+  // WEB-UIUX-788: local-calendar Y-M-D so seeded historical dates land on
+  // the expected wall-clock day (UTC slice silently rolled forward after ~4pm).
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateString(d);
 }
 
 interface SeedProgress {
