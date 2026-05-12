@@ -2613,11 +2613,6 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
   <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
 
-- [!] WEB-UIUX-1067. **[MAJOR] Cancel reason not collected at all.** Industry standard (Stripe, Recurly, Chargebee, ChartMogul) prompts `cancellation_reason` on cancel for retention analytics + win-back targeting. Server has no `cancellation_reason` column on `customer_subscriptions`; UI has no field; audit log has only `{ subscription_id, immediate }` (`membership.routes.ts:237`). Lost MRR-churn signal entirely. L1, L4. **STATUS: BLOCKED — needs schema migration (cancellation_reason+cancellation_note cols) + modal radio + audit log changes; defer to memberships sprint**
-  `packages/server/src/routes/membership.routes.ts:222-239`
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:155-168`
-  <!-- meta: fix=add-cancellation_reason+cancellation_note-cols-via-migration+modal-radio[too-expensive|moved|switched|not-using|other]+include-in-audit -->
-
 - [!] WEB-UIUX-1069. **[MAJOR] Past-due subs share Cancel button affordance with active subs; no "Retry payment" CTA.** Past-due is the highest-leverage retention state — Stripe surfaces "Retry now" and "Send invoice" as the *primary* actions. Our list shows Bill now (admin only, behind token) + Cancel — Cancel is destructive yet visually equivalent to billing. No alert badge on the row, no "X days overdue", no email-customer button. L1, L5, L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs server `POST /subscriptions/:id/retry-payment` + dunning email trigger + alert badge state machine. Bill-now path is already admin-gated; Retry-now is a distinct semantic.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:240-286`
   <!-- meta: fix=for-status='past_due'-promote-Retry-payment-as-primary+add-days-overdue-pill+SendDunningEmail-secondary-action -->

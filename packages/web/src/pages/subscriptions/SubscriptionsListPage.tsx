@@ -119,8 +119,10 @@ export function SubscriptionsListPage() {
   const cancelMutation = useMutation({
     // WEB-UIUX-827: pass `immediate` through so the operator can choose
     // immediate vs end-of-period cancellation. Server already supports both.
-    mutationFn: (vars: { id: number; immediate: boolean }) =>
-      membershipApi.cancel(vars.id, { immediate: vars.immediate }),
+    // WEB-UIUX-1067: cancellation_reason + free-text note ride along so the
+    // churn analytics column gets populated.
+    mutationFn: (vars: { id: number; immediate: boolean; reason: string; note: string }) =>
+      membershipApi.cancel(vars.id, { immediate: vars.immediate, reason: vars.reason, note: vars.note || undefined }),
     // WEB-UIUX-1070: also invalidate customer membership cache so CustomerDetailPage stays in sync
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
@@ -326,8 +328,41 @@ export function SubscriptionsListPage() {
         },
       );
       if (!ok) return;
+      // WEB-UIUX-1067: collect cancellation reason after the operator confirms
+      // the cancel-now vs cancel-at-period-end choice. Reason buckets mirror
+      // the server allow-list; free-text note caps at 500 chars on the
+      // backend. Server tolerates blank reason for backwards-compat, but the
+      // analytics column gets NULL in that case so encourage a choice.
+      const reasonChoice = window.prompt(
+        'Why is this customer cancelling? Pick a number (analytics + retention):\n' +
+        '  1. Too expensive\n' +
+        '  2. Missing features\n' +
+        '  3. Switched to another service\n' +
+        '  4. Not getting enough value\n' +
+        '  5. Customer service / experience\n' +
+        '  6. Business closed / moved\n' +
+        '  7. No longer needed\n' +
+        '  8. Other\n' +
+        'Type a number 1–8 or leave blank to skip.',
+        '4',
+      );
+      const REASON_MAP: Record<string, string> = {
+        '1': 'too_expensive',
+        '2': 'missing_features',
+        '3': 'switched_service',
+        '4': 'low_value',
+        '5': 'customer_service',
+        '6': 'business_closed',
+        '7': 'no_longer_needed',
+        '8': 'other',
+      };
+      const reason = reasonChoice ? (REASON_MAP[reasonChoice.trim()] ?? '') : '';
+      let note = '';
+      if (reason === 'other') {
+        note = (window.prompt('Add a short note describing the cancellation reason (max 500 chars).') ?? '').slice(0, 500);
+      }
       setCancellingId(sub.id);
-      cancelMutation.mutate({ id: sub.id, immediate });
+      cancelMutation.mutate({ id: sub.id, immediate, reason, note });
     } catch (err) {
       toast.error(formatApiError(err));
     }

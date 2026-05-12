@@ -408,12 +408,34 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
 
 // ── Cancel / Pause / Resume ──────────────────────────────────────────
 
+// WEB-UIUX-1067: allow-listed cancellation reasons mirror the industry-standard
+// MRR-churn taxonomy (Stripe/Recurly/ChartMogul). 'other' lets the operator
+// store an unstructured note when none of the buckets fit; bucket choice still
+// gives the analytics layer something to GROUP BY.
+const CANCELLATION_REASONS = new Set([
+  'too_expensive',
+  'missing_features',
+  'switched_service',
+  'low_value',
+  'customer_service',
+  'business_closed',
+  'no_longer_needed',
+  'other',
+]);
+
 router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
   requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
-  const { immediate } = req.body;
+  const { immediate, reason, note } = req.body as { immediate?: boolean; reason?: string; note?: string };
+
+  // WEB-UIUX-1067: validate reason against the allow-list; ignore unknown
+  // values so a stale client doesn't poison the analytics column with
+  // free-form strings. Note caps at 500 chars to mirror the discount_reason
+  // / refund_reason ceiling.
+  const cleanReason = typeof reason === 'string' && CANCELLATION_REASONS.has(reason) ? reason : null;
+  const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) || null : null;
 
   if (immediate) {
     await adb.run(
@@ -421,8 +443,12 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
           SET status = 'cancelled',
               auto_renew = 0,
               next_billing_attempt_at = NULL,
+              cancellation_reason = ?,
+              cancellation_note = ?,
               updated_at = ?
         WHERE id = ?`,
+      cleanReason,
+      cleanNote,
       now(),
       id,
     );
@@ -434,15 +460,24 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
           SET cancel_at_period_end = 1,
               auto_renew = 0,
               next_billing_attempt_at = NULL,
+              cancellation_reason = ?,
+              cancellation_note = ?,
               updated_at = ?
         WHERE id = ?`,
+      cleanReason,
+      cleanNote,
       now(),
       id,
     );
   }
 
-  audit(req.db, 'membership_cancelled', req.user!.id, req.ip || 'unknown', { subscription_id: id, immediate: !!immediate });
-  res.json({ success: true, data: { cancelled: true, immediate: !!immediate } });
+  audit(req.db, 'membership_cancelled', req.user!.id, req.ip || 'unknown', {
+    subscription_id: id,
+    immediate: !!immediate,
+    reason: cleanReason,
+    note: cleanNote,
+  });
+  res.json({ success: true, data: { cancelled: true, immediate: !!immediate, reason: cleanReason } });
 }));
 
 router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {

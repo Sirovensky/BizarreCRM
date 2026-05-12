@@ -1753,7 +1753,9 @@ export const membershipApi = {
   // stop reaching for raw axios.
   paymentLink: (data: { tier_id: number; customer_id: number }) =>
     api.post('/membership/payment-link', data),
-  cancel: (id: number, data?: { immediate?: boolean }) =>
+  // WEB-UIUX-1067: capture cancellation reason + free-text note alongside the
+  // immediate/end-of-period choice so churn analytics has signal.
+  cancel: (id: number, data?: { immediate?: boolean; reason?: string; note?: string }) =>
     api.post(`/membership/${id}/cancel`, data || {}),
   pause: (id: number, data?: { reason?: string }) =>
     api.post(`/membership/${id}/pause`, data || {}),
