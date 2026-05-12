@@ -1233,8 +1233,8 @@ function InsightsTab({
                       formatter={(value: number) => [value, 'Repairs']}
                     />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                      {popular_models.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      {popular_models.map((entry, i) => (
+                        <Cell key={entry.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -1306,8 +1306,8 @@ function InsightsTab({
                       formatter={(value: number) => [value, 'Count']}
                     />
                     <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                      {popular_services.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      {popular_services.map((entry, i) => (
+                        <Cell key={entry.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -1357,8 +1357,8 @@ function InsightsTab({
                         formatter={(value: number) => [formatCurrency(value), 'Revenue']}
                       />
                       <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
-                        {revenue_by_model.map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                        {revenue_by_model.map((entry, i) => (
+                          <Cell key={entry.name} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                         ))}
                       </Bar>
                     </BarChart>

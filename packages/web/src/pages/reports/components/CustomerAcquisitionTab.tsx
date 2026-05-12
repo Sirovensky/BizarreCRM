@@ -84,8 +84,8 @@ export function CustomerAcquisitionTab({ from, to }: { from: string; to: string 
                   formatter={(value: number) => [value, 'New Customers']}
                 />
                 <Bar dataKey="new_customers" radius={[4, 4, 0, 0]}>
-                  {monthlyChart.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  {monthlyChart.map((entry, i) => (
+                    <Cell key={entry.month} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>
