@@ -1930,10 +1930,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [!] WEB-UIUX-1013. **[MINOR] Lookup endpoint rate-limit error 429 never surfaced to operator UI** — `giftCardApi.lookup` not called, but if/when wired, generic-onError handlers won't translate "Too many lookup attempts" into a meaningful "wait 60s" countdown. Pre-emptive: lookup UI should special-case 429 + show retry-after. L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: pre-emptive item — giftCardApi.lookup has 0 callers (per the audit note); no real UI to retrofit until the lookup flow itself ships.]**
   `packages/server/src/routes/giftCards.routes.ts:188-197`
 
-- [!] WEB-UIUX-1020. **[BLOCKER] POS has no return / refund flow despite `posApi.return` declared with idempotency.** `endpoints.ts:753-761` exposes `posApi.return` with X-Idempotency-Key headers. `grep "posApi.return" packages/web/src` → 0 callers. Server `/pos/return` (`pos.routes.ts:2492-2637`) creates negative invoice + restores stock + writes refund row at status='completed'. Cashier with returning customer must (a) navigate to invoice detail, (b) click Credit Note (different flow!), (c) manually open drawer, (d) hand back cash — no scan-returned-item, no per-line-item return UI. L1, L4, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: full return-flow UI in POS (scan-original-invoice → per-line-item return picker → restock/no-restock toggle → refund method selector → drawer-open trigger) is a multi-step modal feature. Server `/pos/return` ready; needs UX pass on the cashier flow.]**
-  `packages/web/src/api/endpoints.ts:749-761`
-  `packages/server/src/routes/pos.routes.ts:2492-2637`
-
 - [!] WEB-UIUX-1021. **[BLOCKER] `/pos/return` writes refund row directly at `status='completed'` — bypasses dual-control approval entirely.** `pos.routes.ts:2618-2621` `INSERT INTO refunds ... status='completed'`. Refunds.routes.ts `POST /` always inserts `status='pending'` then requires admin approve. The cashier path (when wired) skips that gate. Defeats the entire SEC-H28 atomic-approve design + SEC-H29 idempotency + EM1 commission reversal that fires only on `/approve`. Manager dual-control becomes opt-in based on which write path the cashier happens to take. L16, L4. **STATUS: BLOCKED — server pos.routes.ts dual-control policy change requires audit + role-gate review; defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2618-2621`
   `packages/server/src/routes/refunds.routes.ts:107,229-234`
@@ -1945,39 +1941,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 
   `packages/web/src/pages/customers/CustomerDetailPage.tsx`
   `packages/server/src/routes/refunds.routes.ts:439-525`
-
-- [!] WEB-UIUX-1025. **[BLOCKER] No way to issue a CASH refund — the only wired path ("Credit Note") creates a negative invoice but does not move money out.** Customer wants a $50 cash refund from till. Operator clicks "Credit Note" on InvoiceDetail → server creates `CRN-####` invoice with `amount_paid=0`, decrements original invoice's amount_due. No drawer pop, no `cash_register` row written, no `payments` row showing $-50 paid out. Cashier hands back $50 from drawer with no system record of the cash leaving. End-of-day Z-report won't reconcile. L1, L4, L8, L16. **STATUS: BLOCKED — Cash Refund tender requires drawer-pop + cash_register row + payments row writes; multi-component, server change; defer to refunds sprint**
-  `packages/server/src/routes/invoices.routes.ts:1162-1317`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311,737-805`
-  <!-- meta: fix=add-Cash-Refund-tender-on-credit-note-modal+post-cashRegister-row+open-drawer -->
-
-#### Major — Truthfulness, hierarchy, recovery, mismatch with server
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:377-380`
-  <!-- meta: fix=server-must-also-INSERT-INTO-refunds-on-credit-note-OR-rename-button-to-Issue-Credit-Note-(no-money-back) -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
-  `packages/server/src/routes/invoices.routes.ts:1186-1202`
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:776-778`
-  <!-- meta: fix=fetch-invoice.related_credit_notes-and-subtract-from-displayed-cap -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-176`
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:393-588`
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:328-423`
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-177`
-  `packages/server/src/routes/invoices.routes.ts:1259-1302`
-
-  `packages/web/src/components/billing/RefundReasonPicker.tsx:42-50`
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-167`
-
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:1685`
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:768,776-778`
 
 - [!] WEB-UIUX-1037. **[MAJOR] Credit Note modal has no recovery: no "Preview", no "Save Draft", no Undo window.** Void has 5s undo (`useUndoableAction` at `:110-135`); credit-note creation is fire-and-forget. Operator who fat-fingers $200 instead of $20 must manually issue a $180 reverse credit note and reconcile. Pattern asymmetry inside same page. L8, L16. **[AUTOLOOP-T49 BLOCKED 2026-05-11: 5s undo for credit-notes is risky — the action writes to invoices + refunds + store_credits + reverses commission in one transaction; undo would need to reverse all four side-effects (or pre-stage as draft). Server-side draft endpoint missing. Multi-component.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`
@@ -2107,24 +2070,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Blocker — missing primitives + dead UI
 
-- [!] WEB-UIUX-1276. **[BLOCKER] `/pos/return` (line-item return + stock restoration) is an orphan endpoint. Built `pos.routes.ts:2496` with admin-only gate, per-line quantity/reason, automatic inventory restoration via `stock_movements`, and credit-note generation — and ZERO web callers (`grep posApi.return` returns only the wrapper definition).** Manager who returns "1 of the 3 chargers from invoice INV-44" has no UI: forced to use the full-amount Credit Note modal which does NOT restore stock. Inventory shrinkage hidden, COGS skewed. L3, L4, L13 inventory integrity. **STATUS: BLOCKED — needs ReturnItemsModal with line-item checkboxes + per-line qty + posApi.return wiring; multi-component, defer to refunds sprint**
-  `packages/server/src/routes/pos.routes.ts:2492-2637`
-  `packages/web/src/api/endpoints.ts:753-761` (wrapper exists, no caller)
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx` (only Credit Note path)
-  <!-- meta: fix=add-ReturnItemsModal-on-InvoiceDetailPage-with-line-item-checkboxes+per-line-quantity-input+RefundReasonPicker-shared+wire-posApi.return-with-idempotencyKey+gate-on-invoice.line_items.some(inventory_item_id) -->
-
-  `packages/server/src/routes/invoices.routes.ts:1213-1230`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805` (modal hides this fact)
-  <!-- meta: fix=server-derive-credit-tax-proportionally-(amount/total*total_tax)+credit-line-net+tax-separately+OR-explicit-toggle-Refund-tax-too-default-on+update-modal-summary-Net/Tax/Total -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177,795-801`
-  <!-- meta: fix=wrap-handleCreditNote-in-useUndoableAction-(same-as-void)+OR-ConfirmDialog-with-amount-display-when-amount>$500+OR-typed-confirm-with-amount-string-for-amount>=invoice.total -->
-
-#### Major — labels, routing, mental model
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
-  <!-- meta: fix=relabel-button-Refund-(keep-Credit-Note-as-modal-doc-name)+OR-split-into-two-CTAs-Refund-(cash-back)-vs-Issue-Credit-(store-credit) -->
-
 - [!] WEB-UIUX-1284. **[MAJOR] No print/email/SMS handoff for the credit-note customer copy. Compare the Receipt prompt that fires after Record Payment (`InvoiceDetailPage.tsx:676-734`) — Print / SMS / Email. Credit note has zero customer-facing artifact path. Customer leaves the counter with nothing in hand showing the refund.** L4 flow completion, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a credit-note print/SMS/email receipt template + delivery hooks akin to the Receipt prompt path; depends on a customer-facing artifact spec (legal text varies by state).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`
   <!-- meta: fix=after-credit-note-success-fire-CreditNoteReceiptPrompt-with-Print/SMS/Email-mirroring-payment-prompt-but-credit-note-template -->
@@ -2200,13 +2145,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/server/src/routes/leads.routes.ts:1063-1080`
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:64,371-378`
   <!-- meta: fix=convert-handler-SELECT-customers-WHERE-email=?-OR-phone=?-LIMIT-1-before-INSERT+if-match-return-{found:true,customer_id,name}+UI-presents-link-or-create-new-choice -->
-
-- [!] WEB-UIUX-1385. **[BLOCKER] `posApi.return` (`endpoints.ts:753`) POSTs `/pos/return` with idempotency key — never called from any UI. Cashier with a returning customer holding receipt #12345 has no "Process Return" path through POS. UnifiedPosPage has no return tab/mode; CashRegisterPage has only cash in/out (drawer events, not sales-returns). The endpoint is documented as "Cash refund on an existing sale" but is dead.** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on /pos return-flow UI (UIUX-1020). posApi.return is ready server-side.]**
-  `packages/web/src/api/endpoints.ts:749-761`
-  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx`
-  <!-- meta: fix=add-Returns-tab-to-UnifiedPosPage+receipt-lookup-by-order_id-or-scan+select-line-items-to-return+method-picker-(cash|card|store-credit)+POST-/pos/return-with-idempotency -->
-
-#### Major — credit-note flow ergonomics + truthfulness
 
 - [!] WEB-UIUX-1386. **[MAJOR] Credit-note client cap mismatched to server cap. Client caps amount at `Number(invoice.amount_paid) || 0` (`InvoiceDetailPage.tsx:298,763,777`). Server caps at `original.total - alreadyCreditedSoFar` (`invoices.routes.ts:1186,1197-1201`). Unpaid $200 invoice that legitimately needs a $200 ledger write-off (e.g. uncollectible debt to be written off as discount-after-the-fact) cannot be credited via UI — client throws "Amount cannot exceed amount paid ($0)" before request leaves browser. Server would accept the $200 credit. Two divergent rules; client is more restrictive than necessary.** L4 flow, L11 consistency. **STATUS: BLOCKED — credit-note client/server cap mismatch needs accounting policy decision (write-off semantics); defer to refunds sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:298-303,763,776-778`
