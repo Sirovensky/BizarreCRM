@@ -2082,16 +2082,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
 
-- [!] WEB-UIUX-1296. **[MAJOR] No partial-line-item picker — credit-note modal accepts only a free-form total amount. To return 1 of 3 phone cases ($25 each on a $75 line), operator types $25, but the line items table still shows "qty 3"; stock untouched; no reference to the specific item being returned. Compare orphan `/pos/return` (per-line, with stock restoration).** L1 findability of the right primitive, L4 flow completion. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-line-item picker = significant flow change; depends on UIUX-1020 (POS return flow with line-item picker). Defer until /pos/return UI ships.]**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:425-450` (line items table is read-only)
-  <!-- meta: fix=checkboxes+qty-spinners-on-line-items-table-when-modal-open+derive-amount-from-selection+post-to-/pos/return+amount-only-mode-fallback-for-non-product-invoices -->
-
-#### Minor — modal copy, validation, focus
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
-  <!-- meta: fix=conditional-copy-amount_due>0-current-text+amount_due===0-"This-will-be-recorded-as-store-credit-on-the-customer's-account." -->
-
 - [!] WEB-UIUX-1309. **[NIT] Header has Print/Void/Credit Note/Payment Plan/Financing — a 5+ button row that crowds on smaller viewports. Rare actions (Credit Note, Void) should live in a `…` overflow menu; common-and-frequent (Record Payment) front-and-centre.** L5 hierarchy, L1 primary action. **[AUTOLOOP-T49 BLOCKED 2026-05-11: header overflow menu (Credit Note + Void into ) needs the consistent primary-CTA-vs-overflow pattern across estimate UIUX-961, invoice UIUX-1039. App-wide pass.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
   <!-- meta: fix=keep-Record-Payment+Print-in-header+wrap-Void+Credit-Note+Payment-Plan-into-Kebab-More-actions-menu -->

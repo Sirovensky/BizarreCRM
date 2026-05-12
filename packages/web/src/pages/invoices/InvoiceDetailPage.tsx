@@ -66,6 +66,14 @@ export function InvoiceDetailPage() {
   // available on the wire.
   const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' as 'payment' | 'deposit' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
+  // WEB-UIUX-1284: when the prompt fires after a credit-note (not a regular
+  // payment), Print/SMS/Email must target the credit-note's own invoice row
+  // — not the original. Carry both the target id + a kind tag so the prompt
+  // copy + downstream calls land on the right artifact.
+  const [receiptPromptTarget, setReceiptPromptTarget] = useState<
+    { invoiceId: number; kind: 'payment' | 'credit_note'; orderId: string | null; refundAmount: number | null }
+    | null
+  >(null);
   const [showCreditNote, setShowCreditNote] = useState(false);
   // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
   const [showRefundPinGate, setShowRefundPinGate] = useState(false);
@@ -329,6 +337,7 @@ export function InvoiceDetailPage() {
       toast.success('Payment recorded');
       setShowPayment(false);
       setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' });
+      setReceiptPromptTarget(null);
       setShowReceiptPrompt(true);
     },
     onError: (e: any, vars: any) => {
@@ -525,9 +534,20 @@ export function InvoiceDetailPage() {
       setShowCreditNote(false);
       setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
       setCreditNoteError({});
-      // WEB-UIUX-722: after credit note success, surface the same
-      // SMS/email/skip prompt the payment flow uses so the customer
-      // walks out with proof of refund.
+      // WEB-UIUX-722 / WEB-UIUX-1284: after credit note success, surface the
+      // SMS/email/skip prompt — but target the CREDIT-NOTE invoice id, not
+      // the original. Otherwise the customer would receive a copy of the
+      // sale they're being refunded for instead of proof of refund.
+      if (cnId && cnOrderId) {
+        setReceiptPromptTarget({
+          invoiceId: cnId,
+          kind: 'credit_note',
+          orderId: cnOrderId,
+          refundAmount: variables.amount,
+        });
+      } else {
+        setReceiptPromptTarget(null);
+      }
       setShowReceiptPrompt(true);
     },
     onError: (e: any) => {
@@ -773,6 +793,7 @@ export function InvoiceDetailPage() {
         queryClient.invalidateQueries({ queryKey: ['invoice', id] });
         queryClient.invalidateQueries({ queryKey: ['invoices'] });
         setShowPayment(false);
+        setReceiptPromptTarget(null);
         setShowReceiptPrompt(true);
       } else {
         toast.error(result?.error || result?.responseDescription || 'Payment declined');
@@ -818,10 +839,17 @@ export function InvoiceDetailPage() {
   const handleEmailReceipt = async () => {
     const email = invoice.customer_email;
     if (!email) return toast.error('No email address on file for this customer');
+    // WEB-UIUX-1284: target the credit-note invoice when the prompt is firing
+    // for a credit-note (otherwise customer gets a copy of the original sale).
+    const targetInvoiceId = receiptPromptTarget?.invoiceId ?? invoiceId;
     setEmailReceiptSending(true);
     try {
-      await notificationApi.sendReceipt({ invoice_id: invoiceId, email });
-      toast.success('Receipt emailed to ' + email);
+      await notificationApi.sendReceipt({ invoice_id: targetInvoiceId, email });
+      toast.success(
+        receiptPromptTarget?.kind === 'credit_note'
+          ? `Credit note emailed to ${email}`
+          : `Receipt emailed to ${email}`,
+      );
       setShowReceiptPrompt(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || 'Failed to email receipt');
@@ -1467,65 +1495,87 @@ export function InvoiceDetailPage() {
             {/* WEB-UIUX-1541: partial-payment acknowledgement so the cashier
                 deliberately picks SMS/Email/Skip with full context. */}
             {(() => {
+              // WEB-UIUX-1284: differentiate copy when prompt fires for a
+              // credit-note (refund proof) versus a regular payment receipt.
+              const isCreditNote = receiptPromptTarget?.kind === 'credit_note';
               const balance = Number(invoice.amount_due) || 0;
               const partial = balance > 0;
+              const title = isCreditNote
+                ? 'Send Credit Note?'
+                : (partial ? 'Send Partial Receipt?' : 'Send Receipt?');
+              const refundAmt = receiptPromptTarget?.refundAmount ?? 0;
+              const body = isCreditNote
+                ? <>Credit note <span className="font-mono">{receiptPromptTarget?.orderId}</span> created for <strong>{formatCurrency(refundAmt)}</strong>. How would you like to send the customer's copy?</>
+                : (partial
+                    ? <>Payment recorded. <strong className="text-amber-700 dark:text-amber-300">Balance remaining: {formatCurrency(balance)}</strong>. How would you like to send the receipt?</>
+                    : 'Payment recorded successfully. How would you like to send the receipt?');
               return (
                 <>
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
-                      {partial ? 'Send Partial Receipt?' : 'Send Receipt?'}
-                    </h3>
+                    <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">{title}</h3>
                     <button aria-label="Close" onClick={() => setShowReceiptPrompt(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
-                  <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
-                    {partial
-                      ? <>Payment recorded. <strong className="text-amber-700 dark:text-amber-300">Balance remaining: {formatCurrency(balance)}</strong>. How would you like to send the receipt?</>
-                      : 'Payment recorded successfully. How would you like to send the receipt?'}
-                  </p>
+                  <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">{body}</p>
                 </>
               );
             })()}
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
+                  // WEB-UIUX-1284: when the prompt is for a credit-note, the
+                  // Print modal must open against the credit-note id, not the
+                  // original invoice. PrintPreviewModal accepts invoiceId so
+                  // we navigate the user there instead — keeps the rest of
+                  // the print flow (size picker, server-rendered receipt)
+                  // intact without duplicating modal state.
                   setShowReceiptPrompt(false);
-                  setShowPrintModal(true);
+                  if (receiptPromptTarget?.kind === 'credit_note' && receiptPromptTarget.invoiceId !== invoiceId) {
+                    navigate(`/invoices/${receiptPromptTarget.invoiceId}?print=1`);
+                  } else {
+                    setShowPrintModal(true);
+                  }
                 }}
                 className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
               >
                 <Printer className="h-4 w-4" />
-                Print Receipt
+                {receiptPromptTarget?.kind === 'credit_note' ? 'Print Credit Note' : 'Print Receipt'}
               </button>
               {invoice?.customer_phone && (
                 <button
                   onClick={() => {
                     const phone = invoice.customer_phone;
                     if (!phone) return;
-                    // WEB-UIUX-1528: include the most-recent payment amount
-                    // + method + remaining balance so a partial payment
-                    // doesn't read like the invoice is paid in full.
-                    // Falls back to the legacy copy if payment data is
-                    // unavailable (shouldn't happen on this receipt path,
-                    // but defensive).
-                    const payments = (invoice as any).payments ?? [];
-                    const lastPayment = payments[payments.length - 1];
                     const balanceDue = Number(invoice.amount_due) || 0;
                     let msg: string;
-                    if (lastPayment) {
-                      const paid = Number(lastPayment.amount) || 0;
-                      const method = String(lastPayment.method || 'payment').replace(/_/g, ' ');
-                      msg = balanceDue > 0
-                        ? `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Balance remaining: ${formatCurrency(balanceDue)}.`
-                        : `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Paid in full — thank you!`;
+                    let entityId: number = invoiceId;
+                    // WEB-UIUX-1284: distinct SMS copy for credit-note path —
+                    // customer needs proof of refund, not a duplicate of the
+                    // original sale receipt.
+                    if (receiptPromptTarget?.kind === 'credit_note') {
+                      const cnAmount = receiptPromptTarget.refundAmount ?? 0;
+                      const cnOrderId = receiptPromptTarget.orderId ?? `CN-${receiptPromptTarget.invoiceId}`;
+                      entityId = receiptPromptTarget.invoiceId;
+                      msg = `Credit note ${cnOrderId} issued for ${formatCurrency(cnAmount)} against Invoice #${invoice.order_id || id}. Thank you.`;
                     } else {
-                      msg = balanceDue > 0
-                        ? `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Balance remaining: ${formatCurrency(balanceDue)}.`
-                        : `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Paid in full — thank you!`;
+                      // WEB-UIUX-1528: payment copy with most-recent leg.
+                      const payments = (invoice as any).payments ?? [];
+                      const lastPayment = payments[payments.length - 1];
+                      if (lastPayment) {
+                        const paid = Number(lastPayment.amount) || 0;
+                        const method = String(lastPayment.method || 'payment').replace(/_/g, ' ');
+                        msg = balanceDue > 0
+                          ? `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Balance remaining: ${formatCurrency(balanceDue)}.`
+                          : `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Paid in full — thank you!`;
+                      } else {
+                        msg = balanceDue > 0
+                          ? `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Balance remaining: ${formatCurrency(balanceDue)}.`
+                          : `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Paid in full — thank you!`;
+                      }
                     }
-                    smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: invoiceId })
-                      .then(() => toast.success('Receipt sent via SMS'))
+                    smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: entityId })
+                      .then(() => toast.success(receiptPromptTarget?.kind === 'credit_note' ? 'Credit note sent via SMS' : 'Receipt sent via SMS'))
                       .catch(() => toast.error('Failed to send SMS'));
                     setShowReceiptPrompt(false);
                   }}
@@ -1849,9 +1899,13 @@ export function InvoiceDetailPage() {
                 )}
               </div>
             </div>
-            {/* WEB-UIUX-623: stock-restore warning */}
+            {/* WEB-UIUX-623: stock-restore warning.
+                WEB-UIUX-1296: this modal accepts a free-form total only. For
+                returning specific items with per-line stock restoration, point
+                operators at POS → Refund mode (UnifiedPosPage `mode='refund'`,
+                wired to `/pos/return`). */}
             <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mt-4">
-              Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back.
+              Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back, or open this invoice in POS → Refund mode to pick specific line items and restore stock per line.
             </p>
             <div className="flex gap-3 mt-4">
               {/* WEB-UIUX-1041: give the primary action ~2× width so visual
