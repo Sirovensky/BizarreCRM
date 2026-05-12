@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText, AlertTriangle } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button; WEB-UIUX-937: AlertTriangle for terminal-offline pill
@@ -223,6 +223,58 @@ export function InvoiceDetailPage() {
   // on Record Payment.
   const paymentMethods: any[] = Array.isArray(pmData?.data?.data) ? pmData!.data!.data : [];
   const currencySymbol = formatCurrencySymbol();
+
+  // WEB-UIUX-1398: derive the dominant captured tender on this invoice so the
+  // refund-destination picker can default to the same method instead of
+  // letting the operator silently pick "Cash" against a card sale. Maps each
+  // payment.method to one of our refund destinations:
+  //   any 'card'-flavour method (credit_card, debit_card, blockchyp_*) → 'card'
+  //   exact 'cash' → 'cash'
+  //   'store_credit' / 'credit'-without-card → 'store_credit'
+  //   anything else → 'credit_note' (the legacy ledger-only default)
+  // Picks by total dollar value, not row count — a $200 card + $5 cash sale
+  // refunds to card. Ignores prior credit_note rows since those don't
+  // represent collected money.
+  const dominantRefundMethod: 'credit_note' | 'cash' | 'card' | 'store_credit' = useMemo(() => {
+    const rows = invoice?.payments ?? [];
+    const totals = { cash: 0, card: 0, store_credit: 0 };
+    for (const p of rows) {
+      const m = (p.method ?? '').toLowerCase();
+      const amt = Math.abs(Number(p.amount) || 0);
+      if (m === 'credit_note' || m === '' || amt === 0) continue;
+      if (m.includes('card') || m === 'blockchyp' || m.startsWith('blockchyp_')) {
+        totals.card += amt;
+      } else if (m === 'cash') {
+        totals.cash += amt;
+      } else if (m === 'store_credit' || m === 'credit') {
+        totals.store_credit += amt;
+      }
+    }
+    const best = (Object.entries(totals) as Array<['cash' | 'card' | 'store_credit', number]>)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])[0];
+    return best ? best[0] : 'credit_note';
+  }, [invoice?.payments]);
+
+  // Pre-select the dominant tender as the refund destination the moment the
+  // modal opens, but only on a fresh open (don't clobber an in-progress form
+  // the operator has already touched). Empty amount + null code + empty note
+  // is our "fresh state" sentinel — matches the reset payload used on close.
+  useEffect(() => {
+    if (!showCreditNote) return;
+    setCreditNoteForm((f) => {
+      const isFresh = !f.amount && !f.code && !f.note.trim();
+      if (!isFresh) return f;
+      // Card route additionally needs a captured BlockChyp txn to be useful;
+      // if there isn't one fall back to credit_note so the operator gets a
+      // valid default rather than an option they'll have to switch away from.
+      const hasCardWithTxn = (invoice?.payments ?? []).some(
+        (p) => p.processor_transaction_id && (p.method ?? '').toLowerCase().includes('card'),
+      );
+      const next = dominantRefundMethod === 'card' && !hasCardWithTxn ? 'credit_note' : dominantRefundMethod;
+      return { ...f, method: next };
+    });
+  }, [showCreditNote, dominantRefundMethod, invoice?.payments]);
 
   // WEB-UIUX-1537: align paymentForm.method with the first enabled payment method when
   // paymentMethods loads, so 'cash' default doesn't silently mismatch a tenant that
