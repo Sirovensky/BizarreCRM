@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DollarSign, ArrowUpCircle, ArrowDownCircle, Loader2 } from 'lucide-react';
+import { DollarSign, ArrowUpCircle, ArrowDownCircle, Loader2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { posApi } from '@/api/endpoints';
+import { api } from '@/api/client';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
@@ -55,6 +57,22 @@ export function CashRegisterPage() {
     refetchInterval: 30000,
     staleTime: 25_000, // just under the 30s interval
   });
+
+  // WEB-UIUX-1160: surface a banner when a Unified POS drawer shift is open.
+  // Cash In/Out here writes to the legacy `cash_register` ledger (drawer-pop
+  // history) and does NOT post to the open shift's Z-report. Without this
+  // signpost, operators clicking "Cash In" during an active shift assume the
+  // entry will reconcile at shift close — it won't. Ledger unification
+  // remains the long-term fix; this is a discoverability bandaid.
+  const activeDrawerShiftQuery = useQuery({
+    queryKey: ['pos-enrich', 'drawer-current'],
+    queryFn: async () => {
+      const res = await api.get<{ data: { id: number } | null }>('/pos-enrich/drawer/current');
+      return res.data.data;
+    },
+    staleTime: 30_000,
+  });
+  const hasOpenShift = activeDrawerShiftQuery.data?.id != null;
 
   // SCAN-1121: server returns `{ cash_in, cash_out, cash_sales, net, entries }`
   // (see pos.routes.ts GET /register). This page was reading
@@ -115,6 +133,25 @@ export function CashRegisterPage() {
         <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Cash Register</h1>
         <p className="text-sm text-surface-500 dark:text-surface-400">Today's cash register summary</p>
       </div>
+
+      {hasOpenShift && (
+        <div
+          role="status"
+          className="mb-6 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div>
+            <p className="font-medium">A POS drawer shift is open.</p>
+            <p className="mt-0.5">
+              Cash In / Cash Out here records a drawer-pop event, but does NOT post to the open shift&apos;s Z-report.
+              {' '}For shift-tracked cash flow use{' '}
+              <Link to="/pos" className="underline underline-offset-2 hover:no-underline">
+                Unified POS → Cash Drawer
+              </Link>.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
