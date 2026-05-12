@@ -2720,10 +2720,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   <!-- meta: fix=track-fieldErrors:Record<string,string>+render-text-red-500-text-xs-mt-1-under-each-field+disable-Create-button-when-any-fieldError-set -->
 
-- [!] WEB-UIUX-1391. **[MAJOR] No notification to customer when credit note created. Refund-style action against a paid invoice — customer expects an email/SMS receipt of the credit ("$50 credited toward INV-001 — reason: defective product"). Server returns success silently; UI clears form, no follow-up. Compare InvoiceDetail's `showReceiptPrompt` after payment (`:594+`) which prompts cashier to email/SMS receipt. Symmetry broken on the credit side.** L7 feedback (downstream actor unaware), L4 flow. **STATUS: BLOCKED — needs notificationApi.sendCreditNoteReceipt template + server enqueue + customer email; multi-component, defer to refunds sprint**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-177, 594-733`
-  <!-- meta: fix=onSuccess-show-prompt-modal-(reuse-receipt-prompt-pattern)+wire-notificationApi.sendCreditNoteReceipt+pre-fill-with-customer-email -->
-
 - [!] WEB-UIUX-1392. **[MAJOR] Credit-note creates ledger entry but never adjusts customer's `store_credits` row when a refund-to-credit method is desired. Server only credits `store_credits` for *overflow* (credit > remaining due, `invoices.routes.ts:1259-1283`). Operator who wants "$50 credit note → put $50 on customer's store credit" with the invoice fully unpaid has no way to do this from credit-note flow. Refund route handles it (`refunds.routes.ts:383-396`) but refund route has no UI (WEB-UIUX-1382).** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on /refunds UI (UIUX-1018/1207). refunds.routes already credits store_credits for the "refund-to-credit" path.]**
   `packages/server/src/routes/invoices.routes.ts:1259-1283`
   `packages/server/src/routes/refunds.routes.ts:383-396`

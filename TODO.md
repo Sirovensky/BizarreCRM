@@ -4922,7 +4922,7 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   <!-- meta: fix=track-fieldErrors:Record<string,string>+render-text-red-500-text-xs-mt-1-under-each-field+disable-Create-button-when-any-fieldError-set -->
 
-- [!] WEB-UIUX-1391. **[MAJOR] No notification to customer when credit note created. Refund-style action against a paid invoice — customer expects an email/SMS receipt of the credit ("$50 credited toward INV-001 — reason: defective product"). Server returns success silently; UI clears form, no follow-up. Compare InvoiceDetail's `showReceiptPrompt` after payment (`:594+`) which prompts cashier to email/SMS receipt. Symmetry broken on the credit side.** L7 feedback (downstream actor unaware), L4 flow. **STATUS: BLOCKED — needs notificationApi.sendCreditNoteReceipt template + server enqueue + customer email; multi-component, defer to refunds sprint**
+- [x] WEB-UIUX-1391. **[MAJOR] STALE/CLOSED 2026-05-12 — duplicate of WEB-UIUX-1212.** Credit-note success on `InvoiceDetailPage.creditNoteMutation.onSuccess` already triggers `setShowReceiptPrompt(true)` (Print / SMS / Email), and `notificationApi.sendReceipt` accepts the credit-note's own invoice row (negative total) so the customer copy goes out via the existing receipt pipeline. Dedicated `sendCreditNoteReceipt` template with state-specific legal copy remains a separate (lower-priority) sprint, but the silent-completion gap this item flagged is already closed.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:169-177, 594-733`
   <!-- meta: fix=onSuccess-show-prompt-modal-(reuse-receipt-prompt-pattern)+wire-notificationApi.sendCreditNoteReceipt+pre-fill-with-customer-email -->
 
