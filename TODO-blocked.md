@@ -2443,18 +2443,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx`
   <!-- meta: fix=add-"Schedule-for-later"-toggle+datetime-picker;-on-confirm-route-to-scheduled-bulk-send-endpoint-instead-of-immediate-/inbox/bulk-send -->
 
-- [!] WEB-UIUX-1533. **[MAJOR] Invoice list has no inline "Record Payment" — collections workflow loses scroll/filter on every row. `InvoiceListPage.tsx:533-538` action column shows "View" only; the row is also clickable as a whole, so selection or quick action requires `e.stopPropagation()` plumbing already in place. A cashier reviewing the overdue tab (50 rows) and calling each customer in turn must click row → land on detail → click Record Payment → record → navigate back → scroll back to position. Add a small "$" / "Pay" icon button beside View on rows with `amount_due > 0`, opening the same payment modal in-list (or via a side drawer).** L4 flow integrity, L6 discoverability. **STATUS: BLOCKED — needs RecordPaymentModal extracted into shared component + InvoiceListPage row action; multi-component, defer**
-  `packages/web/src/pages/invoices/InvoiceListPage.tsx:483-540`
-  <!-- meta: fix=add-quick-pay-button-on-rows-with-amount_due>0;-mount-shared-PaymentModal-component-with-invoiceId-+-onClose;-extract-modal-from-InvoiceDetailPage.tsx-into-components/billing/RecordPaymentModal.tsx -->
-
-#### Minor — clarity / consistency
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:603-617`
-  <!-- meta: fix=placeholder=formatCurrency(invoice.amount_due);-remove-hardcoded-$-prefix-OR-derive-from-tenant.currency_symbol -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:602-622`
-  <!-- meta: fix=primary-CTA="Pay-{full}";-secondary-toggle-"Custom-amount"-reveals-input;-existing-link-replaced-by-button -->
-
 - [!] WEB-UIUX-1536. **[MINOR] Method `<button>` highlight depends on a normalize that breaks on rename. `InvoiceDetailPage.tsx:629,631` matches `paymentForm.method === pm.name.toLowerCase().replace(/\s+/g, '_')`. Admin renames "Credit Card" → "Credit" in Settings → method string becomes `credit` not `credit_card` → all historical reports keyed on `credit_card` lose continuity. The `payment_methods` table has a stable `id` column (`settings.routes.ts:849`); use that as the wire value, with `name` only for display. Same fix unblocks WEB-UIUX-1524.** L11 consistency, L10 trust (reports). **[AUTOLOOP-T49 BLOCKED 2026-05-11: switching the payload from name-slug to payment_method id is a contract change — server `payments.method` column stores the normalized name today; migrating requires schema work + import-job audit.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:626-639`
   `packages/server/src/routes/settings.routes.ts:838-851`

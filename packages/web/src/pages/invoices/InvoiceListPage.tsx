@@ -621,10 +621,26 @@ export function InvoiceListPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        <Link to={`/invoices/${inv.id}`} onClick={(e) => e.stopPropagation()}
-                          className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 font-medium">
-                          View
-                        </Link>
+                        <div className="flex items-center gap-3">
+                          <Link to={`/invoices/${inv.id}`} onClick={(e) => e.stopPropagation()}
+                            className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 font-medium">
+                            View
+                          </Link>
+                          {/* WEB-UIUX-1533: inline Pay link for outstanding invoices — saves the
+                              row→detail→Record Payment dance on a long collections call list.
+                              Deep-link param auto-opens the modal on the detail page. */}
+                          {Number(inv.amount_due) > 0 && (
+                            <Link
+                              to={`/invoices/${inv.id}?record_payment=1`}
+                              onClick={(e) => e.stopPropagation()}
+                              title="Record payment for this invoice"
+                              className="inline-flex items-center gap-0.5 text-sm font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                            >
+                              <DollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                              Pay
+                            </Link>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );})}

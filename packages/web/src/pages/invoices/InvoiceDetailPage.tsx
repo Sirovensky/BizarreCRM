@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText, AlertTriangle } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button; WEB-UIUX-937: AlertTriangle for terminal-offline pill
 import toast from 'react-hot-toast';
@@ -45,6 +45,11 @@ export function InvoiceDetailPage() {
   const queryClient = useQueryClient();
   const invoiceId = Number(id);
   const isValidId = id != null && !isNaN(invoiceId) && invoiceId > 0;
+  // WEB-UIUX-1533: support `?record_payment=1` deep-link from the invoice
+  // list so collections staff can jump straight from a row to the payment
+  // modal without bouncing through the read-only detail surface.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const recordPaymentParam = searchParams.get('record_payment');
   // AUDIT-WEB-008: hold a cache snapshot taken just before optimistic void so
   // rollback works regardless of component mount state.
   const voidSnapshotRef = useRef<unknown>(undefined);
@@ -214,6 +219,23 @@ export function InvoiceDetailPage() {
 
   // Server: res.json({ success: true, data: <flat invoice> }) — no extra .invoice nesting.
   const invoice: InvoiceDetail | undefined = data?.data?.data;
+  // WEB-UIUX-1533: when the deep-link `?record_payment=1` is present and the
+  // invoice has outstanding balance, open the payment modal once and prefill
+  // amount with the full amount_due. Param is stripped after firing so a
+  // refresh / back-nav doesn't re-trigger.
+  const recordPaymentFiredRef = useRef(false);
+  useEffect(() => {
+    if (recordPaymentFiredRef.current) return;
+    if (!recordPaymentParam) return;
+    if (!invoice) return;
+    if (Number(invoice.amount_due) <= 0) return;
+    recordPaymentFiredRef.current = true;
+    setPaymentForm((prev) => ({ ...prev, amount: Number(invoice.amount_due).toFixed(2) }));
+    setShowPayment(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('record_payment');
+    setSearchParams(next, { replace: true });
+  }, [recordPaymentParam, invoice, searchParams, setSearchParams]);
   // WEB-UIUX-1524: server returns `{ success: true, data: <array> }` (see
   // settings.routes.ts:840-841 and SettingsPage which already reads
   // res.data.data correctly). The previous `pmData?.data?.data?.payment_methods`
