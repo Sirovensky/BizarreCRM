@@ -260,9 +260,28 @@ export function StocktakePage() {
         const res = await inventoryApi.lookupBarcode(q);
         item = res.data?.data ?? undefined;
       } else {
-        const res = await api.get('/inventory', { params: { keyword: q, pagesize: 1 } });
-        const items = res.data.data?.items || [];
-        item = items[0];
+        // WEB-UIUX-1353: try exact-SKU lookup first so a scan that prefixes
+        // another item doesn't silently credit the prefix. 404 → fall back
+        // to fuzzy keyword (existing behaviour). 409 (duplicate active SKU)
+        // surfaces a structured toast asking the operator to resolve the
+        // dup rather than crediting an arbitrary row.
+        try {
+          const exact = await api.get('/inventory/by-sku', { params: { sku: q } });
+          item = exact.data?.data ?? undefined;
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status === 409) {
+            toast.error(err?.response?.data?.message || `Duplicate active SKU '${q}' — resolve in Inventory first.`);
+            return;
+          }
+          if (status !== 404) {
+            throw err;
+          }
+          // 404 → not an exact SKU; fall through to fuzzy.
+          const res = await api.get('/inventory', { params: { keyword: q, pagesize: 1 } });
+          const items = res.data.data?.items || [];
+          item = items[0];
+        }
       }
       if (!item) {
         // WEB-UIUX-1381: append fuzzy-match hint when exact lookup returns zero

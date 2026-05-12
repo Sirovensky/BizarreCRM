@@ -713,6 +713,31 @@ router.get('/barcode/:code', asyncHandler(async (req, res) => {
   res.json({ success: true, data: item });
 }));
 
+// WEB-UIUX-1353: exact SKU lookup. The keyword-based /inventory?keyword=X search
+// does fuzzy match — scanning a barcode that prefixes another SKU silently
+// credits an arbitrary item. This route requires an exact match on `sku`
+// (case-insensitive) and returns 404 when no row matches or 409 when more
+// than one is active (real data drift — operator must resolve before the
+// next scan goes through).
+router.get('/by-sku', asyncHandler(async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const skuRaw = (req.query.sku as string | undefined)?.trim();
+  if (!skuRaw) throw new AppError('sku query param required', 400);
+  if (skuRaw.length > 128) throw new AppError('sku too long (≤128 chars)', 400);
+  const rows = await adb.all<any>(
+    'SELECT * FROM inventory_items WHERE LOWER(sku) = LOWER(?) AND is_active = 1',
+    skuRaw,
+  );
+  if (rows.length === 0) throw new AppError('Item not found', 404);
+  if (rows.length > 1) {
+    throw new AppError(
+      `Multiple active items share SKU '${skuRaw}'. Resolve the duplicate in Inventory before scanning.`,
+      409,
+    );
+  }
+  res.json({ success: true, data: rows[0] });
+}));
+
 // ---------------------------------------------------------------------------
 // ENR-INV11: Kit/bundle definitions
 // ---------------------------------------------------------------------------

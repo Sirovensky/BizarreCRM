@@ -2742,12 +2742,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:64,371-378`
   <!-- meta: fix=convert-handler-SELECT-customers-WHERE-email=?-OR-phone=?-LIMIT-1-before-INSERT+if-match-return-{found:true,customer_id,name}+UI-presents-link-or-create-new-choice -->
 
-- [!] WEB-UIUX-1353. **[BLOCKER] SKU lookup uses `keyword=q&pagesize=1` — picks FIRST match silently, including partial matches. Scanning a barcode that maps to 2+ items (sku-prefix collision, search treats keyword as fuzzy) credits an arbitrary item. No "exact match required" or "did you mean…" feedback.** L2 label truthfulness, L4 flow. **STATUS: BLOCKED — needs new server route /inventory/by-sku?sku=:exact + UI fuzzy-match suggestions; multi-component, defer to inventory sprint**
-  `packages/web/src/pages/inventory/StocktakePage.tsx:166-173`
-  <!-- meta: fix=add-/inventory/by-sku?sku=:exact-route-OR-pass-exact_sku=1-flag+if-no-exact-match-show-toast-with-top-3-fuzzy-suggestions -->
-
-#### Blocker — recovery + irreversible state
-
 - [!] WEB-UIUX-1368. **[MAJOR] No upload-CSV path for blind counts. Many stores count on paper or offline scanner gun, then bulk-upload at end of day. Forcing real-time scan-to-server excludes that workflow entirely. Industry-standard stocktake tools (Square, Lightspeed, Vend) all support CSV import.** L6 discoverability. **STATUS: BLOCKED — needs new server POST /stocktake/:id/counts/bulk route + Import CSV modal + sample template; multi-component, defer**
   `packages/web/src/pages/inventory/StocktakePage.tsx`
   <!-- meta: fix=add-Import-CSV-button+modal-with-sample-template+POST-/stocktake/:id/counts/bulk-route-with-sku|qty-rows -->

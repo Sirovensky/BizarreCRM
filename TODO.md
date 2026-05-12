@@ -4771,7 +4771,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:177` + `packages/server/src/routes/stocktake.routes.ts:218-234`
   <!-- meta: fix=client-keeps-running-count+sends-absolute-counted_qty=prior+1+OR-add-POST-/counts/increment-route-with-delta-semantics -->
 
-- [!] WEB-UIUX-1353. **[BLOCKER] SKU lookup uses `keyword=q&pagesize=1` — picks FIRST match silently, including partial matches. Scanning a barcode that maps to 2+ items (sku-prefix collision, search treats keyword as fuzzy) credits an arbitrary item. No "exact match required" or "did you mean…" feedback.** L2 label truthfulness, L4 flow. **STATUS: BLOCKED — needs new server route /inventory/by-sku?sku=:exact + UI fuzzy-match suggestions; multi-component, defer to inventory sprint**
+- [x] WEB-UIUX-1353. **[BLOCKER] Exact SKU lookup shipped 2026-05-12.** New server `GET /inventory/by-sku?sku=X` does case-insensitive exact match on `sku`. Returns 404 when no row matches, 409 when more than one active row shares the SKU (real data drift — operator must resolve in Inventory). StocktakePage's quick-scan path tries the exact lookup first; 404 falls through to the existing fuzzy keyword search (preserves the "did you mean" hint flow), 409 surfaces the structured "duplicate active SKU" toast. Barcode (8+ digit) path unchanged — already uses sku-OR-upc exact match via `/barcode/:code`.
   `packages/web/src/pages/inventory/StocktakePage.tsx:166-173`
   <!-- meta: fix=add-/inventory/by-sku?sku=:exact-route-OR-pass-exact_sku=1-flag+if-no-exact-match-show-toast-with-top-3-fuzzy-suggestions -->
 
