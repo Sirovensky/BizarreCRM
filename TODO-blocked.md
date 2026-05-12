@@ -1563,27 +1563,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### Blockers — Unwired server APIs
 
-- [x] WEB-UIUX-704. **[BLOCKER] Credit-notes list/apply/void UI shipped.** 2026-05-12 — new `CreditNotesListPage` at `/credit-notes` (lazy-loaded route). Wraps new `creditNotesApi.list/apply/void`. Status tab strip (Open / Applied / Voided / All) + paginated table with linked customer + linked original invoice + applied-to invoice + status badge. Manager/admin rows expose inline Apply (prompt for invoice id + optional amount) and Void (prompt for reason).
-  `packages/server/src/routes/creditNotes.routes.ts:63,135,237,318`
-  <!-- meta: fix=add-creditNotesApi+CreditNotesListPage+apply-modal+void-mutation -->
-
-  `packages/web/src/api/endpoints.ts:749-761`
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
-  <!-- meta: fix=wrap-button-in-PermissionBoundary+invoices.credit_note -->
-
-#### Major — State visibility, recovery, integration
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:474-548`
-  <!-- meta: fix=add-Credit-Notes-section-below-Payment-Timeline+invoice.credit_notes-from-server -->
-
-  `packages/web/src/pages/invoices/InvoiceListPage.tsx:33,41` `packages/web/src/pages/customers/CustomerDetailPage.tsx:1685`
-  `packages/server/src/services/repairShoprImport.ts:773-774` `packages/server/src/services/repairDeskImport.ts:1290`
-  <!-- meta: fix=either-set-refunded-on-original-when-fully-credited-OR-remove-dead-color -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:807-817` (Void) vs `737-805` (CreditNote)
-  <!-- meta: fix=ConfirmDialog-with-requireTyping-amount-OR-add-undoableAction-window -->
-
 - [!] WEB-UIUX-710. **[MAJOR] Credit Note has no undo window; Void has 5s undo (`useUndoableAction`).** Same severity action, different recovery affordance. Operator-initiated mistake on credit note is permanent from web (server has POST /credit-notes/:id/void but unwired — see WEB-UIUX-704). L8. **PARTIAL 2026-05-11: server has POST /credit-notes/:id/void but credit_notes table is decoupled from the invoices.credit_note_for negative-invoice row that POST /invoices/:id/credit-note creates. A real undo needs the two tables reconciled first; defer to refunds reconciliation sprint.**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177,110-135`
 
@@ -1965,20 +1944,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [!] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8. **STATUS: BLOCKED — needs new server-side card-refund route (BlockChyp refund API call) + audit-log + 5+ files; defer to refunds sprint**
   `packages/web/src/pages/settings/BlockChypSettings.tsx`
 
-- [x] WEB-UIUX-1063. **[MAJOR] Canonical /memberships route added; /subscriptions kept as permanent alias.** 2026-05-12 — App.tsx now mounts `<SubscriptionsListPage>` at BOTH `/memberships` (canonical, matches operator-facing copy) and `/subscriptions` (legacy alias, kept so existing bookmarks / deep-links / SMS payment-link URLs don't 404). CommandPalette `path` flipped to `/memberships`; aliases retain 'subscriptions' for back-search. Full file/component rename remains deferred — both routes resolve to the same lazy chunk so naming inside the package can move at any time without breaking external links.
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:180`
-  `packages/web/src/App.tsx:540`
-  <!-- meta: fix=rename-route-to-/memberships+keep-/subscriptions-as-301-redirect+rename-file+update-CommandPalette-display -->
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:199-206`
-  <!-- meta: fix=change-CTA-to-link-to-/customers-with-text="Open-a-customer-profile-and-tap-Enroll-in-Membership"-also-add-Configure-Tiers-secondary-link -->
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:257-286`
-  <!-- meta: fix=add-Pause/Resume-buttons-to-row-action-cell+row-level-state+optional-bulk-pause-checkbox-selection -->
-
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
-  <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
-
 - [!] WEB-UIUX-1089. **[MAJOR] Signed sign-off is not printable / emailable / PDF-exportable — customer never receives a copy.** Migration 088 stores signature + photo + checklist results, but no `/qc/sign-off/:id/pdf` route, no print template, no `Email customer` button on TicketDetail post-sign. Customer who was promised "we'll send you the QC certificate" gets nothing. L1, L4, L8. **STATUS: BLOCKED — needs new /qc/queue page + Sidebar badge + LEFT-JOIN-IS-NULL query; multi-component, defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:703-910`
   <!-- meta: fix=add-GET-/qc/sign-off/:id/pdf-uses-existing-pdf-pipeline+after-success-toast-render-button-Send-to-customer-emails-PDF -->
@@ -2040,40 +2005,6 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:795-801`
   `packages/server/src/routes/invoices.routes.ts:1162-1316` (no reverse endpoint exists)
   <!-- meta: fix=ConfirmDialog-with-requireTyping=order_id+danger-styling+server-add-DELETE-/invoices/:cn_id/credit-note-(admin-only)-or-POST-/invoices/:id/credit-note/reverse -->
-
-- [!] WEB-UIUX-1220. **[MINOR] Reason picker labels "Defective product / Duplicate charge / Wrong item" all imply REFUND semantics (money back to card). The chosen action (Credit Note) does not refund the card. Either the picker is wrong here or the action is wrong — they don't match.** `RefundReasonPicker.tsx:17-24` was authored as a refund picker (component name + comments confirm — see line 2 "for partial refunds"); reusing it on a credit-note modal mis-leads operators. L2 truthful labels. **STATUS: BLOCKED — split CreditNoteReasonPicker from RefundReasonPicker requires component-level refactor + caller updates; defer to refunds sprint**
-  `packages/web/src/components/billing/RefundReasonPicker.tsx:1-10`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:783-789`
-  <!-- meta: fix=split-CreditNoteReasonPicker-(price_adjustment+goodwill+billing_correction+other)-from-RefundReasonPicker-(defective+wrong_item+duplicate_charge+dissatisfaction+other)+each-paired-with-its-correct-action -->
-
-  `packages/server/src/routes/invoices.routes.ts:1180-1182`
-  <!-- meta: fix=validateEnum(req.body.code,['defective','dissatisfaction','wrong_item','duplicate_charge','price_adjustment','other','billing_correction','goodwill'],'code')+share-the-list-with-RefundReasonPicker -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:753-755`
-  <!-- meta: fix=conditional-copy-based-on-invoice.amount_due:amount_due>0?Reduces-balance-by-X:Adds-to-customer's-store-credit-balance -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:791-794`
-  <!-- meta: fix=cancel-handler:setShowCreditNote(false)+setCreditNoteForm({amount:'',reason:null,note:''})+also-Esc-handler-and-✕-handler -->
-
-#### Nit — visual polish
-
-  `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
-  <!-- meta: fix=grid-cols-1-sm:grid-cols-2 -->
-
-- [!] WEB-UIUX-1225. **[NIT] Credit-note `notes` field on the new invoice row stores `"Credit note: ${reason}"` (`invoices.routes.ts:1224`) — duplicates `credit_note_code` + `credit_note_note` columns. Three places store the reason; report queries that read `notes` get the legacy composed string while reports reading `credit_note_code` get the enum value.** Risk of divergence as new credit notes are issued. L13 schema dup. **STATUS: BLOCKED — server invoices.routes.ts notes-column dedup needs read/write migration; backend, defer to refunds sprint**
-  `packages/server/src/routes/invoices.routes.ts:1213-1224`
-  <!-- meta: fix=stop-writing-Credit-note-prefix-into-notes+OR-derive-notes-display-from-code+note-on-read+single-source-of-truth -->
-
-### Web UI/UX Audit — Pass 22 (2026-05-05, flow walk: Apply Discount at POS — line item, order-wide, member, manager-PIN gate, server enforcement)
-
-Flow under test (LeftPanel cart → click `Add discount` pill → enter amount + optional reason → Apply → checkout): operator wants to give a customer money off their cart at the register. Walked the cart-wide `DiscountEditor` (`LeftPanel.tsx:864-981`), the orphaned `LineItemDiscountMenu` component, the auto-applied member discount on `CustomerSelector.tsx`, the manager-PIN threshold logic in `BottomActions.tsx:244-270`, and the server's `POST /pos/checkout-with-ticket` discount validation (`pos.routes.ts:1869-1889`). Recurring theme: cart-wide is dollar-only with zero policy (no max, no manager gate, no percent), per-line is ghost-coded, member discount silently overrides instead of stacking, and reason capture is best-effort and partially dropped on the invoice path.
-
-#### Blocker — missing primitives + dead UI
-
-- [!] WEB-UIUX-1291. **[MAJOR] Reason composed as `${code}: ${note}` AND sent both as `reason` AND structured `code`/`note` (`InvoiceDetailPage.tsx:158-167`). Server stores all three (`invoices.routes.ts:1180-1185,1224`). Reports keying on `reason` get pre-FA-L8 free-text rows AND new "code: note" rows mixed; reports keying on `code` lose pre-FA-L8 rows entirely. No back-fill migration. Reporting cardinality is still split.** L13 reporting integrity. **STATUS: BLOCKED — needs server migration back-fill of credit_note_code from legacy reason field; backend change, defer to data-cleanup sprint**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-168`
-  `packages/server/src/routes/invoices.routes.ts:1180-1230`
-  <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
 
 - [!] WEB-UIUX-1309. **[NIT] Header has Print/Void/Credit Note/Payment Plan/Financing — a 5+ button row that crowds on smaller viewports. Rare actions (Credit Note, Void) should live in a `…` overflow menu; common-and-frequent (Record Payment) front-and-centre.** L5 hierarchy, L1 primary action. **[AUTOLOOP-T49 BLOCKED 2026-05-11: header overflow menu (Credit Note + Void into ) needs the consistent primary-CTA-vs-overflow pattern across estimate UIUX-961, invoice UIUX-1039. App-wide pass.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:342-389`
