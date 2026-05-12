@@ -5425,7 +5425,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
 
 #### Nit — copy / polish
 
-- [!] WEB-UIUX-1522. **[NIT] Header icon is `Users` — same icon as the trigger button (`CommunicationPage.tsx:1552`). Inside the modal it reads as decorative redundancy with the title "Bulk SMS". Swap for `Megaphone` or `Send` to reinforce broadcast semantic.** L1 visual hierarchy. **[AUTOLOOP-T49 BLOCKED 2026-05-11: icon swap needs a brand-consistent broadcast glyph chosen across CommunicationPage trigger + modal header + sidebar entries. Cosmetic; deferred.]**
+- [x] WEB-UIUX-1522. **[NIT] Header icon is `Users` — same icon as the trigger button (`CommunicationPage.tsx:1552`). Inside the modal it reads as decorative redundancy with the title "Bulk SMS". Swap for `Megaphone` or `Send` to reinforce broadcast semantic.** L1 visual hierarchy. **DONE 2026-05-12: BulkSmsModal header swapped from `Users` to `Megaphone` (lucide-react). Trigger button on CommunicationPage keeps `Users` (audience semantic) — distinct from modal's broadcast glyph. Single-file edit; tsc clean.**
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:124-127`
 
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:191-194`

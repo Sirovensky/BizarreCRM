@@ -3589,19 +3589,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Nit — copy / polish
 
-- [!] WEB-UIUX-1522. **[NIT] Header icon is `Users` — same icon as the trigger button (`CommunicationPage.tsx:1552`). Inside the modal it reads as decorative redundancy with the title "Bulk SMS". Swap for `Megaphone` or `Send` to reinforce broadcast semantic.** L1 visual hierarchy. **[AUTOLOOP-T49 BLOCKED 2026-05-11: icon swap needs a brand-consistent broadcast glyph chosen across CommunicationPage trigger + modal header + sidebar entries. Cosmetic; deferred.]**
-  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:124-127`
-
-  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:191-194`
-
-### Web UI/UX Audit — Pass 34 (2026-05-05, flow walk: Record Payment on Invoice — modal entry, methods, dedup, receipt, recovery)
-
-#### Blocker — wrong response shape, dedup blocks legitimate split tender
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:77-92`
-  `packages/server/src/routes/settings.routes.ts:838-842`
-  <!-- meta: fix=replace-`pmData?.data?.data?.payment_methods`-with-`Array.isArray(pmData?.data?.data)?pmData.data.data:[]`;-typed-as-PaymentMethod[];-keep-fallback-only-when-array-is-empty -->
-
 - [!] WEB-UIUX-1525. **[BLOCKER] Same-amount-same-user dedup window (5s in-memory + 10s DB at `invoices.routes.ts:763-776`) blocks a legitimate split tender. Two friends each hand the cashier $50 cash for a $100 invoice. Cashier records first $50 → success. Records second $50 immediately → server returns 409 "Duplicate payment detected. Please wait before retrying." Toast message implies the prior write didn't land, so cashier waits, retries, fails again. Common workarounds: change second amount to $50.01, or split into two payments by method (cash + cash again later) — both falsify the ledger. Either (a) require an explicit `force` flag with an "Yes, this is a separate tender" confirmation when dedup hits, or (b) include an idempotency key from the client so the dedup is keyed on intent not amount.** L2 truthfulness, L4 flow integrity, L8 recovery. **STATUS: BLOCKED — server invoices.routes.ts dedup needs idempotency-key based check + force flag; backend, defer to billing sprint**
   `packages/server/src/routes/invoices.routes.ts:760-777`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:94-105`

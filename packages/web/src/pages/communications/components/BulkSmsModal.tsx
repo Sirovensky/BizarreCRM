@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { X, AlertTriangle, Users, Send, Minus } from 'lucide-react';
+import { X, AlertTriangle, Users, Send, Minus, Megaphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { smsApi } from '@/api/endpoints';
@@ -428,7 +428,8 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
           <h3 id="bulk-sms-title" className="flex items-center gap-2 text-lg font-semibold text-surface-900 dark:text-surface-100">
-            <Users className="h-5 w-5 text-primary-500" />
+            {/* WEB-UIUX-1522: Megaphone reinforces broadcast semantic; trigger button in CommunicationPage uses Users (audience). */}
+            <Megaphone className="h-5 w-5 text-primary-500" />
             Bulk SMS
           </h3>
           <div className="flex items-center gap-1">
