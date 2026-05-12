@@ -2107,14 +2107,6 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:164-209, 246-296`
   <!-- meta: fix=mirror-ZReportModal-pattern:-role=dialog-aria-modal-true-aria-labelledby=open/close-shift-title+id-on-h3+focus-trap-or-trap-within-modal -->
 
-- [x] WEB-UIUX-1191. **[MAJOR] "Email supplier" action shipped on PO row.** 2026-05-12 — `PoEmailSupplierButton` next to "Mark as Ordered" on each non-received/non-cancelled PO. Composes `mailto:` URL with subject `Purchase Order <order_id>` + body containing greeting (supplier contact name when on file), line items (name/SKU/qty/unit-cost/line-total), order total, requested delivery date, and PO notes. Server `/purchase-orders/list` query joins `suppliers.email + contact_name` so the button has data without an extra fetch. Disabled with tooltip when supplier has no email. Click also auto-advances PO status to `ordered`. Mailto: chosen over server SMTP so it works zero-config in any tenant; server-side PDF email send is future work behind SMTP infra.
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (entire file — no send action)
-  <!-- meta: fix=add-"Send-to-Supplier"-button-on-PO-row+server-endpoint-POST-/purchase-orders/:id/email+optional-pdf-render-via-existing-print-pipeline -->
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:286, 293-297, 363-374`
-  `packages/server/src/routes/inventory.routes.ts:1347-1378`
-  <!-- meta: fix=add-status-pill-filter-row+search-input-debounced-by-PO-#-or-supplier-name+server-extends-LIST-with-q-LIKE-clause -->
-
 - [!] WEB-UIUX-1193. **[MAJOR] No barcode-scan receive path surfaced from PO page.** Server has `POST /inventory/receive-scan` (`inventory.routes.ts:1716`) for barcode receiving — but no link from `PurchaseOrdersPage`. Operator with a hand scanner has to manually find the line item and type qty. Faster, less error-prone path is hidden. L6 discoverability, L4 flow. **STATUS: BLOCKED — needs scan modal + scanner-input wiring to /inventory/receive-scan + permission gates; multi-component**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx` (no scan entry point)
   `packages/server/src/routes/inventory.routes.ts:1713-1716`
