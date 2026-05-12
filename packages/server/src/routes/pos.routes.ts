@@ -2489,11 +2489,23 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       ? [ticketOrderId]
       : (ticketId ? [ticketId] : []);
 
+    // WEB-UIUX-1230: persist the operator's discount reason on the
+    // invoice row so non-ticket (product-only) sales don't lose the
+    // audit context. Without this, InvoiceDetailPage renders the
+    // parenthetical reason as blank for every retail checkout even
+    // though the client sent it. ticketData?.discount_reason is set on
+    // every cart (UnifiedPosPage.buildCheckoutPayload always populates
+    // it from the cart's `discountReason` field).
+    const invoiceDiscountReason =
+      typeof ticketData?.discount_reason === 'string'
+        && ticketData.discount_reason.trim()
+        ? ticketData.discount_reason.trim().slice(0, 500)
+        : null;
     txQueries.push({
       sql: `
-        INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
+        INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason, total_tax, total,
                               amount_paid, amount_due, status, created_by, created_at, updated_at)
-        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       params: [
         invoiceOrderId,
@@ -2501,6 +2513,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         ...invoiceTicketIdParams,
         roundedSubtotal,
         discount,
+        invoiceDiscountReason,
         roundedTax,
         invoiceTotal,
         isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
