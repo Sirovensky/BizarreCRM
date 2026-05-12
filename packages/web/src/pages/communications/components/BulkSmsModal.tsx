@@ -58,6 +58,14 @@ interface PreviewResponse {
     window_ms: number;
     reset_at: string | null;
   };
+  // WEB-UIUX-1510: provider state echoed at preview time. `real=false`
+  // means simulated/unconfigured — UI gates Send + renders an inline
+  // "configure provider" banner instead of letting admin build a full
+  // campaign that then fails at confirm step.
+  provider?: {
+    real: boolean;
+    name: string | null;
+  };
 }
 
 // WEB-UIUX-1111: Updated to match server response shape from inbox.routes.ts:693-703
@@ -583,6 +591,24 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
           {preview && preview.quota && (
             <BulkSendQuotaLine quota={preview.quota} />
           )}
+          {/* WEB-UIUX-1510: surface provider configuration BEFORE Send. When
+              real=false, simulated/no-op provider is configured, so the blast
+              would either go nowhere or queue in retry. Banner makes the
+              cause visible while still letting admin sanity-check audience
+              size; Send is gated below. */}
+          {preview && preview.provider && !preview.provider.real && (
+            <div
+              role="alert"
+              className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+            >
+              <p className="font-medium">SMS provider not configured</p>
+              <p className="mt-0.5">
+                Current provider ({preview.provider.name ?? 'simulated'}) does
+                not actually deliver SMS. Configure a real provider in
+                Settings → SMS before sending; Send is disabled until then.
+              </p>
+            </div>
+          )}
           </>}
         </div>
 
@@ -631,13 +657,16 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                       || preview.preview_count === 0
                       || countdown === 0
                       || typedConfirm !== String(preview.preview_count)
+                      || preview.provider?.real === false
                     }
                     title={
-                      countdown === 0
-                        ? 'Confirmation expired — please re-preview'
-                        : typedConfirm !== String(preview.preview_count)
-                          ? `Type ${preview.preview_count} to confirm`
-                          : undefined
+                      preview.provider?.real === false
+                        ? 'Configure a real SMS provider in Settings → SMS before sending'
+                        : countdown === 0
+                          ? 'Confirmation expired — please re-preview'
+                          : typedConfirm !== String(preview.preview_count)
+                            ? `Type ${preview.preview_count} to confirm`
+                            : undefined
                     }
                     className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
@@ -648,8 +677,12 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               ) : (
                 <button
                   onClick={() => sendMut.mutate()}
-                  disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
-                  title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
+                  disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0 || preview.provider?.real === false}
+                  title={
+                    preview.provider?.real === false
+                      ? 'Configure a real SMS provider in Settings → SMS before sending'
+                      : countdown === 0 ? 'Confirmation expired — please re-preview' : undefined
+                  }
                   // WEB-UIUX-1116: drop red (destructive) — sending an opted-in
                   // marketing reminder is additive, not destructive. Primary
                   // tone matches Stripe/Klaviyo confident-send buttons; the

@@ -550,6 +550,14 @@ router.post(
     // Step 1: no token → return a preview + fresh token. Caller confirms then
     // re-posts.
     if (!token) {
+      // WEB-UIUX-1510: surface provider state at preview time so admin sees
+      // "configure provider in Settings" before building a 12k campaign —
+      // not after token verification + segment-drift check at confirm step.
+      // Returned as a flag (not a throw) so the UI can render an inline
+      // banner instead of blocking preview entirely; admin can still review
+      // the audience size, but Send stays disabled.
+      const previewProvider = getSmsProvider();
+      const previewProviderStatus = isProviderRealOrSimulated(previewProvider);
       const preview = await previewBulkSegment(adb, segment);
       // SCAN-602: embed phones_hash + count into the token so step 2 can
       // detect segment drift without storing server-side state.
@@ -604,6 +612,14 @@ router.post(
             // wall-clock time is more useful than "ms remaining" when
             // the page is left open for an hour).
             reset_at: quotaResetAt ? new Date(quotaResetAt).toISOString() : null,
+          },
+          // WEB-UIUX-1510: provider state echoed at preview time so the UI
+          // can render an inline banner BEFORE Send is clicked. `real=false`
+          // means simulated (logs to console) or unconfigured — either way
+          // the cashier has no business sending a 12k blast yet.
+          provider: {
+            real: previewProviderStatus.real,
+            name: previewProvider?.name ?? null,
           },
         },
       });
