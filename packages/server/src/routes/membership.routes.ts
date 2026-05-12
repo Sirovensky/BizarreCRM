@@ -714,4 +714,41 @@ router.post('/:id/run-billing', asyncHandler(async (req: Request, res: Response)
   res.json({ success: true, data: { subscription: updated, result } });
 }));
 
+// WEB-UIUX-1069: distinct "Retry payment" semantic for past-due subs.
+// Functionally similar to /run-billing but gated on the subscription
+// being in 'past_due' status so the UI can wire a Retry button that's
+// safe to expose to operators outside the admin's bill-now-token path.
+// `force=true` is implicit because past_due means the renewal already
+// failed at least once.
+router.post('/:id/retry-payment', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const db = req.db;
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+  const sub = loadMembershipBillingSubscription(db, id);
+  if (!sub) throw new AppError('Subscription not found', 404);
+  if ((sub as any).status !== 'past_due') {
+    throw new AppError(
+      `Retry payment only applies to past-due subscriptions (current status: ${(sub as any).status}). Use /run-billing for a normal bill-now.`,
+      409,
+    );
+  }
+  const result = await billMembershipSubscription(db, sub, {
+    userId: req.user!.id,
+    ip: req.ip || 'unknown',
+    force: true,
+    source: 'retry_past_due',
+  });
+  if (result.status !== 'success') {
+    throw new AppError(result.message, result.httpStatus ?? 400);
+  }
+  const updated = await req.asyncDb.get<AnyRow>('SELECT * FROM customer_subscriptions WHERE id = ?', id);
+  audit(req.db, 'membership_retry_payment', req.user!.id, req.ip || 'unknown', {
+    subscription_id: id,
+    new_status: (updated as any)?.status ?? null,
+  });
+  res.json({ success: true, data: { subscription: updated, result } });
+}));
+
 export default router;

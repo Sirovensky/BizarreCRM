@@ -2355,20 +2355,6 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
   <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
 
-- [!] WEB-UIUX-1069. **[MAJOR] Past-due subs share Cancel button affordance with active subs; no "Retry payment" CTA.** Past-due is the highest-leverage retention state — Stripe surfaces "Retry now" and "Send invoice" as the *primary* actions. Our list shows Bill now (admin only, behind token) + Cancel — Cancel is destructive yet visually equivalent to billing. No alert badge on the row, no "X days overdue", no email-customer button. L1, L5, L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs server `POST /subscriptions/:id/retry-payment` + dunning email trigger + alert badge state machine. Bill-now path is already admin-gated; Retry-now is a distinct semantic.]**
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:240-286`
-  <!-- meta: fix=for-status='past_due'-promote-Retry-payment-as-primary+add-days-overdue-pill+SendDunningEmail-secondary-action -->
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:115-124,128-139`
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:894-929`
-  <!-- meta: fix=after-each-mutation-invalidate-both-['subscriptions']-and-['membership','customer',customerId]+also-['membership','tiers']-after-tier-CRUD -->
-
-  `packages/server/src/routes/membership.routes.ts:138,222-239`
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:935-1022,1024-1092`
-  <!-- meta: fix=add-POST-/:id/reactivate-route-flips-status-back-to-active+resets-cancel_at_period_end+UI-Reactivate-button-when-most-recent-sub-is-cancelled -->
-
-#### Minor — feedback specificity, sub-state polish
-
 - [!] WEB-UIUX-1075. **[MINOR] Subscription list missing primary "Add subscription / Enroll customer" action.** Page is the recurring-revenue dashboard yet has no entry-point to enrolment workflow — admin must remember "go to a customer profile". Industry baseline: Stripe Dashboard → Subscriptions → Create subscription opens customer-picker first. L1, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a customer-picker → plan-picker → confirm modal that reuses CustomerSelector + plansApi.list. Spec needs to nail whether "Add subscription" should also seed a first invoice or wait for the cycle.]**
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:175-189`
   <!-- meta: fix=add-primary-button-New-subscription-opens-modal-CustomerPicker+TierPicker+CardOnFile-or-PaymentLink -->
