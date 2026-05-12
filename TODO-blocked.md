@@ -2060,7 +2060,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
   <!-- meta: fix=grid-cols-1-sm:grid-cols-2 -->
 
-- [!] WEB-UIUX-1225. **[NIT] Credit-note `notes` field on the new invoice row stores `"Credit note: ${reason}"` (`invoices.routes.ts:1224`) — duplicates `credit_note_code` + `credit_note_note` columns. Three places store the reason; report queries that read `notes` get the legacy composed string while reports reading `credit_note_code` get the enum value.** Risk of divergence as new credit notes are issued. L13 schema dup. **STATUS: BLOCKED — server invoices.routes.ts notes-column dedup needs read/write migration; backend, defer to refunds sprint**
+- [x] WEB-UIUX-1225. **[NIT] Credit-note notes-column dedup — stopped writing composed string for new rows.** 2026-05-12 — `invoices.routes.ts` credit-note INSERT now passes `NULL` to the `notes` column. The dedicated `credit_note_code` + `credit_note_note` columns are the single source of truth going forward. Pre-2026-05-12 rows still carry `"Credit note: ${reason}"` in `notes` for backwards compat; reports must prefer `credit_note_code` when present and fall back to `notes` only for legacy rows where `credit_note_code IS NULL`. Comment in code documents the contract for future maintainers.
   `packages/server/src/routes/invoices.routes.ts:1213-1224`
   <!-- meta: fix=stop-writing-Credit-note-prefix-into-notes+OR-derive-notes-display-from-code+note-on-read+single-source-of-truth -->
 

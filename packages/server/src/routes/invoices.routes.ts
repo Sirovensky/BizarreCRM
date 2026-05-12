@@ -1590,7 +1590,14 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
     -cnSubtotalPortion,    // negative subtotal (pre-tax portion of refund)
     -cnTaxPortion,         // negative tax (proportional share of refund)
     -amount,               // negative total
-    `Credit note: ${resolvedReason}`,
+    // WEB-UIUX-1225: stop writing `Credit note: ${reason}` into `notes` for
+    // new credit-note rows. The dedicated `credit_note_code` +
+    // `credit_note_note` columns (set immediately below) are now the
+    // single source of truth. Pre-2026-05-12 rows still carry the composed
+    // string in `notes` for backwards-compat; reports must prefer
+    // `credit_note_code` when present and fall back to `notes` only for
+    // legacy rows where `credit_note_code IS NULL`.
+    null,
     invoiceId,             // link to original
     req.user!.id,
     original.location_id ?? 1,
