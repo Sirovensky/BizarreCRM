@@ -610,15 +610,6 @@ Verified working. Not TODOs.
 
 ### Wave-Loop Finder-AE run 2026-04-25 — tenant + role isolation
 
-- [!] WEB-FAE-006. **[MED] Hardcoded role lists drift from server's canonical `shared/constants/permissions` — comment at `Sidebar.tsx:141` literally says "shared ROLE_PERMISSIONS grants manager every permission except a handful" but the client doesn't import that constant; it just reproduces `userRole === 'admin' || userRole === 'manager'` inline.** `Header.tsx:439` checks `'admin' || 'manager'`, `DashboardPage.tsx:1626` checks `'admin' || 'manager'`, `DangerZoneTab.tsx:35` checks only `'admin'`, `BulkSmsModal.tsx:18` says "backend enforces req.user.role === 'admin'" (only one consistent), `SettingsPage.tsx:1762` lists `'manager'`+`['Tickets', 'Customers', 'POS']`+`'technician'` — all hand-rolled. If server adds an `'owner'` or `'kiosk'` role, every callsite drifts silently. Import `ROLE_PERMISSIONS` from `@bizarre-crm/shared` and derive role gates from a single map. **[AUTOLOOP-T1 BLOCKED: 15-file role-check codemod, exceeds limit.]**
-  <!-- meta: scope=web/components+pages; files=packages/web/src/components/layout/Header.tsx:439,packages/web/src/components/layout/Sidebar.tsx:147,packages/web/src/pages/settings/SettingsPage.tsx:1761-1762,packages/web/src/pages/dashboard/DashboardPage.tsx:1626; fix=import-ROLE_PERMISSIONS-from-shared+derive-isAdminOrManager-from-canonical-map+add-eslint-rule-no-hardcoded-role-string-literal -->
-
-
-
-
-
----
-
 
 ## Web UI/UX Audit (WEB-UIUX) — 2026-05-04
 
