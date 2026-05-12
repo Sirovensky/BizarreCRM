@@ -1677,10 +1677,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### ED2: Split-Tender Partial Refund
 
-- [!] WEB-UIUX-626. **[BLOCKER] Operator cannot choose refund tender — all wired invoice refunds still go through Credit Note generic.** BLOCKED 2026-05-07 — valid architecture gap. InvoiceDetailPage only submits `invoiceApi.createCreditNote(invoiceId, { amount, reason, code, note })`; `/invoices/:id/credit-note` still accepts amount/reason/code/note only, so there is no per-tender destination payload for "$X back to card, $Y cash, $Z store credit". Backend `/api/v1/refunds` has a method field, but no web API wrapper or invoice UI wiring. Needs a real refund-destination model + UI + server contract, not a copy tweak. L1, L7.
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
-  `packages/server/src/routes/invoices.routes.ts:1162-1318`
-
 - [!] WEB-UIUX-627. **[BLOCKER] Credit-note never inserts payment-out row, never decrements gift-card balance, never calls BlockChyp reverse.** BLOCKED 2026-05-07 — still valid for the wired invoice path. `/invoices/:id/credit-note` creates a negative invoice, updates the original invoice balance, and writes overflow to `store_credits`; it never writes a negative `payments` row, never writes `cash_register`, never touches `gift_cards`, and never calls `processRefund()`. Important nuance: the separate `/api/v1/refunds/:id/approve` path now can call BlockChyp/Stripe processor refunds, but InvoiceDetailPage does not use it. L8, L13, L16.
   `packages/server/src/routes/invoices.routes.ts:1213-1257`
 
@@ -1694,20 +1690,10 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 - [!] WEB-UIUX-631. **[MAJOR] Cash refund never inserts `cash_register cash_out` event.** BLOCKED 2026-05-07 — valid. `POST /pos/cash-out` writes drawer events, but neither `/invoices/:id/credit-note` nor `/api/v1/refunds/:id/approve` inserts a `cash_register(type='cash_out')` row for `method='cash'`; approve only marks the refund completed and decrements invoice amount_paid. Needs a transactional cash-refund payout path with drawer permissions and audit/reconciliation semantics. L13, L16.
   `packages/server/src/routes/invoices.routes.ts:1162-1318`
 
-- [!] WEB-UIUX-632. **[MAJOR] Two parallel refund paths: web wires only `/credit-note`; `/refunds` remains effectively unreachable from invoice/POS UI.** BLOCKED 2026-05-07 — valid. Server mounts `/api/v1/refunds` with create/list/approve/decline, per-method caps, approval gating, BlockChyp/Stripe processor calls, and store-credit posting, but web search finds no `refundApi`/create/approve callers; InvoiceDetailPage still calls only `createCreditNote`. Needs API wrappers, destination picker, approval/list surface, and migration of invoice/POS refund entry points. L3, L4.
-  `packages/server/src/routes/refunds.routes.ts:107` (unused by web)
-
 - [!] WEB-UIUX-633. **[MAJOR] Card-leg failure mid-split can leave earlier card legs captured without a finish/reverse workflow.** BLOCKED 2026-05-07 — valid. CheckoutModal charges card legs sequentially after `posApi.checkoutWithTicket`; on a later leg failure it keeps the modal open with an error and invoice id, but it does not summarize already-captured legs, offer continue-with-remaining, or reverse captured legs. Server idempotency/recent-amount guards reduce immediate duplicate risk, but they do not create a durable split-session reconciliation model. L5, L8, L11.
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:367-402`
 
 - [!] WEB-UIUX-634. **[MAJOR] `payments`/`refunds` lack an original-payment/refund-payment link.** BLOCKED 2026-05-07 — valid schema gap. `payments` has invoice/method/processor/reference/capture-state columns but no `parent_payment_id`/`refund_of_payment_id`; `refunds` also has no `original_payment_id`. The current BlockChyp/Stripe refund approval selects the latest captured payment on the invoice, which is not enough for split tenders, multiple card captures, or partial refunds. Requires a migration plus route/report/UI contract changes.
-
-- [!] WEB-UIUX-635. **[MINOR] RefundReasonPicker single-purpose — no `RefundDestinationPicker` companion.** BLOCKED 2026-05-07 — valid but not useful as a standalone component until WEB-UIUX-626/632 define the destination contract. Current UI collects amount + reason only; building an unwired picker would be a false affordance. Needs to land with refund method caps, original-payment selection, and cash/gift-card/card payout behavior. L4.
-  `packages/web/src/components/billing/RefundReasonPicker.tsx`
-
-#### ED4: Stock/Inventory Chaos
-
-  `packages/web/src/pages/inventory/StocktakePage.tsx:136-148,337-348`
 
 - [!] WEB-UIUX-637. **[BLOCKER] PO Receive has no un-receive path.** Wrong items received → vanish into stock with no recovery. inventoryApi has no `un-receive`/`cancel-receipt`/`negative-receive`. L4, L16. **BLOCKED 2026-05-07: critique valid and backend-blocked. Web cannot safely fake un-receive because PO receive mutates purchase-order line quantities, inventory stock, and stock movement history; needs server API + audit semantics for reversing a receipt.**
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:64-80,138-146`
@@ -2906,11 +2892,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:376-380`
   <!-- meta: fix=relabel-button-Refund-(keep-Credit-Note-as-modal-doc-name)+OR-split-into-two-CTAs-Refund-(cash-back)-vs-Issue-Credit-(store-credit) -->
-
-- [!] WEB-UIUX-1280. **[MAJOR] Single "Credit Note" CTA conflates three distinct outcomes the server supports: cash refund (`type='refund'`), store credit (`type='store_credit'`), credit note (`type='credit_note'`) — `refunds.routes.ts:18-19`. UI hardcodes the credit-note path (`InvoiceDetailPage.tsx:162` → `/invoices/:id/credit-note`). Operator who wanted "give the customer their card-charged money back" gets a ledger entry instead of a refund to the card. Customer calls back angry. Card-refund branch (`refunds.routes.ts:177-202`) is unreachable from this UI.** L1 findability, L3 wrong destination, L4 flow completion. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs an in-modal three-way picker (Cash refund / Store credit / Credit note) that branches to refunds.routes vs invoices.routes/credit-note. Pairs with UIUX-1018 /refunds UI build-out.]**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177,376-380`
-  `packages/server/src/routes/refunds.routes.ts:107-239`
-  <!-- meta: fix=Refund-modal-with-radio-group-type=refund_to_original|store_credit|credit_note+route-cash/card-refunds-through-/refunds+keep-/credit-note-only-for-explicit-doc-issuance -->
 
 - [!] WEB-UIUX-1284. **[MAJOR] No print/email/SMS handoff for the credit-note customer copy. Compare the Receipt prompt that fires after Record Payment (`InvoiceDetailPage.tsx:676-734`) — Print / SMS / Email. Credit note has zero customer-facing artifact path. Customer leaves the counter with nothing in hand showing the refund.** L4 flow completion, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a credit-note print/SMS/email receipt template + delivery hooks akin to the Receipt prompt path; depends on a customer-facing artifact spec (legal text varies by state).]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`

@@ -69,11 +69,20 @@ export function InvoiceDetailPage() {
   // what it actually holds (a RefundReasonCode enum value). The composed
   // `reason` string (code + note) is still what we send to the server — see
   // creditNoteMutation.mutationFn below.
+  // WEB-UIUX-626/632/635/1280: refund-destination picker. method=credit_note
+  // routes to the existing /invoices/:id/credit-note path (immediate ledger
+  // entry, capped at amount_paid). method=cash | card | store_credit routes
+  // through /api/v1/refunds create → admin /approve, which posts the actual
+  // money movement (cash drawer payout, BlockChyp processor refund, store
+  // credit grant). Card option is gated on a captured BlockChyp payment with
+  // a processor_transaction_id.
+  type RefundMethod = 'credit_note' | 'cash' | 'card' | 'store_credit';
   const [creditNoteForm, setCreditNoteForm] = useState<{
     amount: string;
     code: RefundReasonCode | null;
     note: string;
-  }>({ amount: '', code: null, note: '' });
+    method: RefundMethod;
+  }>({ amount: '', code: null, note: '', method: 'credit_note' });
   // WEB-UIUX-731: field-level error state for credit note form.
   // Populated from server error.response.data.fields (e.g. { amount: 'msg' })
   // or a generic fallback; cleared on any form change or successful mutation.
@@ -424,7 +433,7 @@ export function InvoiceDetailPage() {
       setTimeout(() => setCreditNoteSuccessAnnouncement(''), 4000);
 
       setShowCreditNote(false);
-      setCreditNoteForm({ amount: '', code: null, note: '' });
+      setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
       setCreditNoteError({});
       // WEB-UIUX-722: after credit note success, surface the same
       // SMS/email/skip prompt the payment flow uses so the customer
@@ -459,6 +468,54 @@ export function InvoiceDetailPage() {
         setCreditNoteError({ _general: serverMsg });
       }
       toast.error(parsedMaxRemaining !== null ? `Cap exceeded — max remaining ${formatCurrency(parsedMaxRemaining)}. Amount field has been adjusted.` : serverMsg);
+    },
+  });
+
+  // WEB-UIUX-626/632/635/1280: refund-method branch that targets /api/v1/refunds
+  // (cash drawer payout, BlockChyp card refund, store credit). Server returns a
+  // pending refund row; admin /approve actually moves the money. Operator
+  // gets a toast pointing them at the /refunds queue.
+  const refundMutation = useMutation({
+    mutationFn: (d: { amount: number; reason: string; method: 'cash' | 'card' | 'store_credit' }) => {
+      if (!invoice?.customer_id) {
+        return Promise.reject(new Error('Invoice has no customer — cannot route refund through /refunds. Use credit note instead.'));
+      }
+      // method=card goes to the BlockChyp processor on approve; method=cash
+      // and method=store_credit just move the money in tenant-local ledgers.
+      // Server treats type='store_credit' as "post credit balance, no money
+      // out"; everything else is type='refund' with the chosen tender method.
+      const type: 'refund' | 'store_credit' = d.method === 'store_credit' ? 'store_credit' : 'refund';
+      const wireMethod = d.method === 'store_credit' ? null : d.method;
+      return refundApi.create({
+        invoice_id: invoiceId,
+        customer_id: invoice.customer_id,
+        amount: d.amount,
+        type,
+        reason: d.reason || null,
+        method: wireMethod,
+      });
+    },
+    onSuccess: (_res, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['refunds'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      if (invoice?.customer_id) {
+        queryClient.invalidateQueries({ queryKey: ['store-credit', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', invoice.customer_id] });
+      }
+      const label = variables.method === 'cash' ? 'Cash refund'
+        : variables.method === 'card' ? 'Card refund'
+        : 'Store credit';
+      toast.success(`${label} of ${formatCurrency(variables.amount)} queued — admin must approve in /refunds before money moves.`);
+      setShowCreditNote(false);
+      setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
+      setCreditNoteError({});
+    },
+    onError: (e: any) => {
+      const serverMsg: string = e?.response?.data?.message || e?.message || 'Failed to queue refund';
+      setCreditNoteError({ _general: serverMsg });
+      toast.error(serverMsg);
     },
   });
 
@@ -1362,7 +1419,7 @@ export function InvoiceDetailPage() {
               if (!window.confirm('Discard credit-note in progress?')) return;
             }
             setShowCreditNote(false);
-            setCreditNoteForm({ amount: '', code: null, note: '' });
+            setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
           }}
         >
           {/* WEB-UIUX-1302: creditNoteDialogRef wired here so useFocusTrap traps focus inside Credit Note dialog. */}
@@ -1371,7 +1428,7 @@ export function InvoiceDetailPage() {
               {/* WEB-UIUX-1054: "Issue" is more precise — the action issues a
                   credit instrument; "Create" is too generic. */}
               <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Issue Credit Note</h2>
-              <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '' }); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
+              <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' }); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -1491,9 +1548,49 @@ export function InvoiceDetailPage() {
                   {creditNoteError._general}
                 </p>
               )}
+              {/* WEB-UIUX-626/632/635/1280: refund-destination picker. Operator
+                  chooses where the money goes; submission branches into
+                  /credit-note (immediate ledger) vs /refunds (pending →
+                  admin approve → cash drawer / processor refund / store
+                  credit grant). Card option only when a captured BlockChyp
+                  payment exists with a processor_transaction_id. */}
+              <div>
+                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Refund destination</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { key: 'credit_note' as const, label: 'Credit note', desc: 'Ledger only — no money out' },
+                    { key: 'cash' as const, label: 'Cash refund', desc: 'Drawer pays out on approve' },
+                    { key: 'card' as const, label: 'Refund to card', desc: blockchypEnabled && cardPaymentWithTxn ? 'BlockChyp reverse on approve' : 'No captured card on this invoice', disabled: !(blockchypEnabled && cardPaymentWithTxn) },
+                    { key: 'store_credit' as const, label: 'Store credit', desc: 'Customer balance on approve' },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setCreditNoteForm({ ...creditNoteForm, method: opt.key })}
+                      disabled={!!opt.disabled}
+                      aria-pressed={creditNoteForm.method === opt.key}
+                      className={cn(
+                        'rounded-lg border px-3 py-2 text-left text-xs transition-colors',
+                        creditNoteForm.method === opt.key
+                          ? 'border-amber-500 bg-amber-50 text-amber-900 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-200'
+                          : 'border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800',
+                        opt.disabled && 'opacity-50 cursor-not-allowed',
+                      )}
+                    >
+                      <div className="font-semibold">{opt.label}</div>
+                      <div className="mt-0.5 text-[11px] text-surface-500 dark:text-surface-400">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                {creditNoteForm.method !== 'credit_note' && (
+                  <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
+                    This destination queues a pending refund. An admin must approve it in the Refunds queue before money actually moves.
+                  </p>
+                )}
+              </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Credit Amount</label>
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">{creditNoteForm.method === 'credit_note' ? 'Credit Amount' : 'Refund Amount'}</label>
                   <button
                     type="button"
                     onClick={() => { setCreditNoteForm({ ...creditNoteForm, amount: maxCreditNoteAmount.toFixed(2) }); setCreditNoteError((prev) => ({ ...prev, amount: undefined })); }}
@@ -1573,7 +1670,7 @@ export function InvoiceDetailPage() {
                   in reporting, while still accepting a free-form note. */}
               <div>
                 <RefundReasonPicker
-                  label="Reason for credit note"
+                  label={creditNoteForm.method === 'credit_note' ? 'Reason for credit note' : 'Reason for refund'}
                   value={creditNoteForm.code}
                   note={creditNoteForm.note}
                   onChange={(code, note) => {
@@ -1600,28 +1697,26 @@ export function InvoiceDetailPage() {
                   hierarchy matches importance (Issue is the action; Discard
                   is the escape hatch). Both buttons keep grow:1 minimums to
                   stay tappable on narrow viewports. */}
-              <button onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '' }); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+              <button onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' }); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                 Discard
               </button>
               <button
                 onClick={handleCreditNote}
                 // WEB-UIUX-1407: also disable when entered amount exceeds cap (onChange clamp + this guard prevent over-cap submission).
-                disabled={creditNoteMutation.isPending || !!(creditNoteError.amount || creditNoteError.reason || creditNoteError.note) || (!Number.isNaN(parseFloat(creditNoteForm.amount)) && parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)}
-                // WEB-UIUX-1040: red ramp matches button in header — irreversible action.
-                // WEB-UIUX-1308: bg-red-600 hover:bg-red-700 (matches Void destructive treatment; verified correct).
-                // WEB-UIUX-1390: also disabled while any field-level validation error is shown.
-                // WEB-UIUX-1405: verified — already bg-red-600 hover:bg-red-700 text-white, consistent with Void's destructive treatment.
+                // WEB-UIUX-626/632/635/1280: also disabled while refundMutation pending.
+                disabled={creditNoteMutation.isPending || refundMutation.isPending || !!(creditNoteError.amount || creditNoteError.reason || creditNoteError.note) || (!Number.isNaN(parseFloat(creditNoteForm.amount)) && parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)}
                 className="flex-[2] px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
-                {/* WEB-UIUX-1300: include amount in label when entered so operator can confirm before clicking */}
-                {creditNoteMutation.isPending
-                  ? 'Issuing...'
-                  : (() => {
-                      const amt = parseFloat(creditNoteForm.amount);
-                      return amt > 0
-                        ? `Issue ${formatCurrency(amt)} credit note`
-                        : 'Issue Credit Note';
-                    })()}
+                {(() => {
+                  if (creditNoteMutation.isPending) return 'Issuing...';
+                  if (refundMutation.isPending) return 'Queuing...';
+                  const amt = parseFloat(creditNoteForm.amount);
+                  const amtStr = amt > 0 ? formatCurrency(amt) : '';
+                  if (creditNoteForm.method === 'credit_note') return amtStr ? `Issue ${amtStr} credit note` : 'Issue Credit Note';
+                  if (creditNoteForm.method === 'cash') return amtStr ? `Queue ${amtStr} cash refund` : 'Queue cash refund';
+                  if (creditNoteForm.method === 'card') return amtStr ? `Queue ${amtStr} card refund` : 'Queue card refund';
+                  return amtStr ? `Queue ${amtStr} store credit` : 'Queue store credit';
+                })()}
               </button>
             </div>
           </div>
@@ -1640,13 +1735,36 @@ export function InvoiceDetailPage() {
         onCancel={() => setShowVoidConfirm(false)}
       />
 
-      {/* WEB-UIUX-1278: typed-confirm for high-value credit notes (>= invoice total or >= $500).
-          Mirrors the Void pattern: operator must type the invoice number before the mutation fires. */}
+      {/* WEB-UIUX-1278: typed-confirm for high-value credit notes. WEB-UIUX-626/632/635/1280: confirm copy + label reflect destination. */}
       <ConfirmDialog
         open={showCreditNoteConfirm}
-        title={`Issue Credit Note — ${invoice?.order_id || id}`}
-        message={`You are issuing a credit note of ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} against invoice ${invoice?.order_id || id}. This adjusts the ledger and cannot be undone.`}
-        confirmLabel="Issue Credit Note"
+        title={
+          creditNoteForm.method === 'credit_note'
+            ? `Issue Credit Note — ${invoice?.order_id || id}`
+            : creditNoteForm.method === 'cash'
+              ? `Cash refund — ${invoice?.order_id || id}`
+              : creditNoteForm.method === 'card'
+                ? `Refund to original card — ${invoice?.order_id || id}`
+                : `Store credit — ${invoice?.order_id || id}`
+        }
+        message={
+          creditNoteForm.method === 'credit_note'
+            ? `You are issuing a credit note of ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} against invoice ${invoice?.order_id || id}. This adjusts the ledger and cannot be undone.`
+            : creditNoteForm.method === 'cash'
+              ? `You are queuing a ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} cash refund. An admin must approve in the Refunds queue before the drawer pays out.`
+              : creditNoteForm.method === 'card'
+                ? `You are queuing a ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} refund back to the original card. An admin must approve in the Refunds queue; the BlockChyp reverse runs at approve time.`
+                : `You are queuing a ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} store-credit grant. An admin must approve in the Refunds queue before the customer's balance moves.`
+        }
+        confirmLabel={
+          creditNoteForm.method === 'credit_note'
+            ? 'Issue Credit Note'
+            : creditNoteForm.method === 'cash'
+              ? 'Queue cash refund'
+              : creditNoteForm.method === 'card'
+                ? 'Queue card refund'
+                : 'Queue store credit'
+        }
         danger
         requireTyping
         confirmText={String(invoice?.order_id || id)}
@@ -1654,11 +1772,26 @@ export function InvoiceDetailPage() {
           setShowCreditNoteConfirm(false);
           const amount = parseFloat(creditNoteForm.amount);
           if (!amount || !creditNoteForm.code) return;
-          creditNoteMutation.mutate({
-            amount,
-            code: creditNoteForm.code,
-            note: creditNoteForm.note.trim(),
-          });
+          // WEB-UIUX-626/632/635/1280: route to the right server endpoint
+          // based on the chosen refund destination. Cash/card/store-credit
+          // go through /api/v1/refunds (pending → admin approve → money
+          // moves). Credit note is the existing immediate-ledger path.
+          if (creditNoteForm.method === 'credit_note') {
+            creditNoteMutation.mutate({
+              amount,
+              code: creditNoteForm.code,
+              note: creditNoteForm.note.trim(),
+            });
+          } else {
+            const reasonComposed = creditNoteForm.note.trim()
+              ? `${creditNoteForm.code} — ${creditNoteForm.note.trim()}`
+              : creditNoteForm.code;
+            refundMutation.mutate({
+              amount,
+              reason: reasonComposed,
+              method: creditNoteForm.method,
+            });
+          }
         }}
         onCancel={() => setShowCreditNoteConfirm(false)}
       />
