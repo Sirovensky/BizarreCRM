@@ -189,8 +189,14 @@ function IssueModal({ onClose }: IssueModalProps) {
           <h2 id="gift-card-issued-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">Gift card issued</h2>
           {/* WEB-UIUX-1016: aria-live region so screen readers announce the issued code */}
           <div role="status" aria-live="polite">
+            {/* WEB-UIUX-1544: detail-page reveal is permission-gated
+                (gift_cards.issue / gift_cards.redeem) and audited per
+                reveal — the code is recoverable for privileged users on
+                the card's detail page, not "shown only once". Copy
+                updated to reflect reality while still urging the
+                cashier to hand it off securely. */}
             <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
-              Save this code now — it will not be shown again.
+              Save this code now — keep it private and hand it to the recipient through a trusted channel.
             </p>
             <div className="font-mono text-2xl text-center tracking-widest py-4 px-3 bg-surface-100 dark:bg-surface-800 rounded-lg text-surface-900 dark:text-surface-100 select-all mb-4 break-all">
               {/* WEB-UIUX-1005: 4-char groups improve transcription accuracy
@@ -244,7 +250,7 @@ function IssueModal({ onClose }: IssueModalProps) {
                       Recipient: ${recipient}<br/>
                       ${form.recipient_email ? `Email: ${form.recipient_email}<br/>` : ''}
                       Issued: ${new Date().toLocaleString()}<br/>
-                      Save this code — it will not be shown again.
+                      Save this code — keep it private and hand it to the recipient through a trusted channel.
                     </div>
                   </body></html>`;
                 const w = window.open('', '_blank', 'width=520,height=600');

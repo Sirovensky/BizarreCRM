@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
-import { requirePermission } from '../middleware/auth.js';
+import { requirePermission, hasPermission } from '../middleware/auth.js';
 import { roundCurrency } from '../utils/currency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -627,7 +627,38 @@ router.get('/:id', asyncHandler(async (req, res) => {
       ORDER BY t.created_at DESC`,
     cardId,
   );
-  res.json({ success: true, data: { ...card, transactions } });
+  // WEB-UIUX-1544: gate plaintext `code` reveal on permission. Any user with
+  // gift_cards.issue OR gift_cards.redeem (the operators who actually need
+  // the code to mint or apply a card) sees the full value + the reveal is
+  // audited so a future investigation has a per-call trail. Users without
+  // either permission (analytics-only roles, kiosks, etc.) get a masked
+  // form (`first 4 + last 4`) so the page still renders sensibly while not
+  // leaking the redemption secret. Closes the "any authed user can iterate
+  // /gift-cards/:id and harvest plaintext" path from the audit.
+  const canRevealCode =
+    hasPermission(req.user, 'gift_cards.issue')
+    || hasPermission(req.user, 'gift_cards.redeem');
+  const fullCode = String(card.code ?? '');
+  let exposedCode: string | null;
+  if (canRevealCode) {
+    exposedCode = fullCode;
+    audit(req.db, 'gift_card_code_revealed', req.user!.id, req.ip || 'unknown', {
+      gift_card_id: cardId,
+    });
+  } else {
+    exposedCode = fullCode.length > 8
+      ? `${fullCode.slice(0, 4)}****${fullCode.slice(-4)}`
+      : null;
+  }
+  res.json({
+    success: true,
+    data: {
+      ...card,
+      code: exposedCode,
+      code_revealed: canRevealCode,
+      transactions,
+    },
+  });
 }));
 
 // WEB-UIUX-1546: POST /:id/disable — mark a gift card as disabled so a
