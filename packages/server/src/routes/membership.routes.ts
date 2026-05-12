@@ -505,6 +505,70 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { cancelled: true, immediate: !!immediate, reason: cleanReason } });
 }));
 
+// WEB-UIUX-828: change-tier so operators don't have to cancel + re-subscribe
+// (which loses tenure, triggers two audit rows, and refuses the customer
+// any in-flight grandfathered pricing). Admin only. The new tier id must
+// reference an active membership_tiers row. Status stays as-is (does not
+// re-activate a cancelled sub — use /subscribe for that). next_billing_attempt_at
+// untouched so the upcoming renewal fires at the new tier's monthly_price.
+router.post('/:id/change-tier', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+
+  const newTierIdRaw = req.body?.tier_id;
+  const newTierId = Number(newTierIdRaw);
+  if (!Number.isFinite(newTierId) || newTierId <= 0) {
+    throw new AppError('tier_id required (positive integer)', 400);
+  }
+  const noteRaw = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+
+  const sub = await adb.get<AnyRow>(
+    'SELECT id, tier_id, status FROM customer_subscriptions WHERE id = ?',
+    id,
+  );
+  if (!sub) throw new AppError('Subscription not found', 404);
+  if (sub.status === 'cancelled') {
+    throw new AppError('Cannot change tier on a cancelled subscription. Use /subscribe for re-enrolment.', 409);
+  }
+  if (Number(sub.tier_id) === newTierId) {
+    throw new AppError('Subscription is already on this tier.', 409);
+  }
+  const newTier = await adb.get<AnyRow>(
+    'SELECT id, name, is_active FROM membership_tiers WHERE id = ?',
+    newTierId,
+  );
+  if (!newTier) throw new AppError('Target tier not found', 404);
+  if (Number(newTier.is_active) !== 1) {
+    throw new AppError('Target tier is not active', 400);
+  }
+
+  await adb.run(
+    'UPDATE customer_subscriptions SET tier_id = ?, updated_at = ? WHERE id = ?',
+    newTierId, now(), id,
+  );
+
+  audit(req.db, 'membership_tier_changed', req.user!.id, req.ip || 'unknown', {
+    subscription_id: id,
+    prev_tier_id: Number(sub.tier_id),
+    new_tier_id: newTierId,
+    new_tier_name: newTier.name,
+    note: noteRaw || null,
+  });
+
+  const updated = await adb.get<AnyRow>(
+    `SELECT cs.*, mt.name AS tier_name, mt.monthly_price, mt.discount_pct,
+            mt.discount_applies_to, mt.color
+       FROM customer_subscriptions cs
+       JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.id = ?`,
+    id,
+  );
+  res.json({ success: true, data: updated });
+}));
+
 router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
   requireMembershipsFeature(req);
   requireAdmin(req);

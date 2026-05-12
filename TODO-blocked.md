@@ -1898,12 +1898,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124,155-168`
 
-- [!] WEB-UIUX-828. **[BLOCKER] No tier-change UI ANYWHERE.** `membershipApi` exposes only subscribe/cancel/pause/resume. Operator must cancel (immediately, see above) + re-subscribe at full price. L5, L7. **[AUTOLOOP-T38 BLOCKED: tier-change needs new server route + billing service update + UI flow; multi-component.]**
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
-
-  `packages/web/src/pages/billing/DunningPage.tsx:153-164,119-151`
-
 - [!] WEB-UIUX-831. **[MAJOR] InstallmentPlanWizard customer-default-on-3rd-payment story COMPLETELY ABSENT.** No payment status per row, no missed-payment marker, no transition to dunning, no auto-debit retry view. L5, L13. **[AUTOLOOP-T39 BLOCKED: per-installment payment status + missed-payment marker + dunning needs DB schema + API + cron; multi-component.]**
   `packages/web/src/components/billing/InstallmentPlanWizard.tsx:43-198`
 

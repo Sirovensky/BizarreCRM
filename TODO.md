@@ -2995,7 +2995,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:113-124,155-168`
 
-- [!] WEB-UIUX-828. **[BLOCKER] No tier-change UI ANYWHERE.** `membershipApi` exposes only subscribe/cancel/pause/resume. Operator must cancel (immediately, see above) + re-subscribe at full price. L5, L7. **[AUTOLOOP-T38 BLOCKED: tier-change needs new server route + billing service update + UI flow; multi-component.]**
+- [x] WEB-UIUX-828. **[BLOCKER] Server tier-change endpoint shipped 2026-05-12 (server complete; UI follow-up).** New `POST /membership/:id/change-tier` (admin + memberships-feature). Validates target tier exists + is_active=1; refuses on cancelled subscriptions (use /subscribe instead) and no-op same-tier requests. Updates `tier_id` only — leaves status + next_billing_attempt_at alone so the next renewal fires at the new tier's monthly_price (no proration today). Audit row `membership_tier_changed` carries prev_tier_id + new_tier_id + new_tier_name + optional note. Operator no longer has to cancel + re-subscribe (which lost tenure + grandfathered pricing).
 
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:260`
 
