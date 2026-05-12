@@ -2070,13 +2070,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Blocker — missing primitives + dead UI
 
-- [x] WEB-UIUX-1284. **[MAJOR] Credit-note print/SMS/email handoff wired.** 2026-05-12 — credit-note success opens receipt prompt with `receiptPromptTarget = { invoiceId: <CN id>, kind: 'credit_note', orderId, refundAmount }`. Prompt title/body/buttons branch on kind: "Print Credit Note" navigates to `/invoices/<cn-id>?print=1` (auto-open-print effect there); SMS body becomes "Credit note CN-#### issued for $X against Invoice #INV…"; Email sends `notificationApi.sendReceipt` against the credit-note id. Payment-success paths reset target to null so prompt doesn't carry stale state. Reuses existing PrintPreviewModal + notificationApi + smsApi.
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`
-  <!-- meta: fix=after-credit-note-success-fire-CreditNoteReceiptPrompt-with-Print/SMS/Email-mirroring-payment-prompt-but-credit-note-template -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:756-779`
-  <!-- meta: fix=add-Refund-full-amount-($amount_paid)-button-below-the-amount-input+matches-Pay-full-balance-style -->
-
 - [!] WEB-UIUX-1291. **[MAJOR] Reason composed as `${code}: ${note}` AND sent both as `reason` AND structured `code`/`note` (`InvoiceDetailPage.tsx:158-167`). Server stores all three (`invoices.routes.ts:1180-1185,1224`). Reports keying on `reason` get pre-FA-L8 free-text rows AND new "code: note" rows mixed; reports keying on `code` lose pre-FA-L8 rows entirely. No back-fill migration. Reporting cardinality is still split.** L13 reporting integrity. **STATUS: BLOCKED — needs server migration back-fill of credit_note_code from legacy reason field; backend change, defer to data-cleanup sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:158-168`
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
