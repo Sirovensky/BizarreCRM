@@ -3451,7 +3451,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:57-63`
 
-- [!] WEB-UIUX-1015. **[NIT] Issue success modal Done button color `bg-primary-600 text-primary-950` — relies on tenant theme; in dark theme on mobile, `text-primary-950` (very dark) on `bg-primary-600` may have <3:1 contrast depending on primary hue.** L12. **[AUTOLOOP-T49 BLOCKED 2026-05-11: contrast verification needs sampled tenant primary hues + WCAG audit; same pattern appears on every primary-styled button. App-wide pass, not a per-page nit.]**
+- [x] WEB-UIUX-1015. **[NIT] Issue success modal Done button color `bg-primary-600 text-primary-950`.** CLOSED 2026-05-12 — premise was wrong. `--primary-950` is not the static Tailwind 950 shade; it's a CSS variable set at runtime in `globals.css:78` (light: `38 24 6`) and `:147` (dark: `26 11 0`) explicitly as the contrast color slot for the chosen accent. The comment at `globals.css:465-467` documents this: "`--primary-950` is set to the contrast color for the chosen accent so existing `text-primary-950` button text remains readable when shops pick a dark accent." No app-wide audit needed — token is by design.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:147`
 
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138-144`

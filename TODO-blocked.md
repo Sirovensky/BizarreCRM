@@ -1948,23 +1948,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [!] WEB-UIUX-1013. **[MINOR] Lookup endpoint rate-limit error 429 never surfaced to operator UI** — `giftCardApi.lookup` not called, but if/when wired, generic-onError handlers won't translate "Too many lookup attempts" into a meaningful "wait 60s" countdown. Pre-emptive: lookup UI should special-case 429 + show retry-after. L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: pre-emptive item — giftCardApi.lookup has 0 callers (per the audit note); no real UI to retrofit until the lookup flow itself ships.]**
   `packages/server/src/routes/giftCards.routes.ts:188-197`
 
-- [!] WEB-UIUX-1015. **[NIT] Issue success modal Done button color `bg-primary-600 text-primary-950` — relies on tenant theme; in dark theme on mobile, `text-primary-950` (very dark) on `bg-primary-600` may have <3:1 contrast depending on primary hue.** L12. **[AUTOLOOP-T49 BLOCKED 2026-05-11: contrast verification needs sampled tenant primary hues + WCAG audit; same pattern appears on every primary-styled button. App-wide pass, not a per-page nit.]**
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:147`
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138-144`
-
-
-### Web UI/UX Audit — Pass 13 (2026-05-05, flow walk: Process Refund — issue, approve, return, store credit)
-
-Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index.ts:1603`) exposes a full pending→completed/declined refund state-machine with idempotency, role gates, atomic capture-state checks, commission reversal, and store-credit upsert. Client surface: zero. `endpoints.ts` declares 46 `*Api` namespaces; **no `refundApi` exists**. Three parallel write paths (`POST /refunds`, `POST /invoices/:id/credit-note`, `POST /pos/return`) — only path #2 wired to UI (the InvoiceDetail "Credit Note" button). The pending-refund approval queue is invisible. Cross-checked `refunds.routes.ts`, `pos.routes.ts:2492-2637`, `invoices.routes.ts:1159-1318`, `InvoiceDetailPage.tsx`, `RefundReasonPicker.tsx`, `endpoints.ts`, `Sidebar.tsx`, `CommandPalette.tsx`, `App.tsx`, `UnifiedPosPage.tsx`, `CustomerDetailPage.tsx`.
-
-#### Blockers — Refund flow non-existent in UI; approval workflow defeated
-
-  `packages/web/src/api/endpoints.ts:35-1492 (no refundApi exported)`
-  `packages/server/src/routes/refunds.routes.ts:73-546`
-  `packages/server/src/index.ts:1603`
-  <!-- meta: fix=add-refundApi-namespace+wire-list+approve+decline+create+credits-endpoints -->
-
 - [!] WEB-UIUX-1020. **[BLOCKER] POS has no return / refund flow despite `posApi.return` declared with idempotency.** `endpoints.ts:753-761` exposes `posApi.return` with X-Idempotency-Key headers. `grep "posApi.return" packages/web/src` → 0 callers. Server `/pos/return` (`pos.routes.ts:2492-2637`) creates negative invoice + restores stock + writes refund row at status='completed'. Cashier with returning customer must (a) navigate to invoice detail, (b) click Credit Note (different flow!), (c) manually open drawer, (d) hand back cash — no scan-returned-item, no per-line-item return UI. L1, L4, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: full return-flow UI in POS (scan-original-invoice → per-line-item return picker → restock/no-restock toggle → refund method selector → drawer-open trigger) is a multi-step modal feature. Server `/pos/return` ready; needs UX pass on the cashier flow.]**
   `packages/web/src/api/endpoints.ts:749-761`
   `packages/server/src/routes/pos.routes.ts:2492-2637`
