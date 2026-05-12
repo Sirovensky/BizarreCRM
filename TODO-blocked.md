@@ -1563,7 +1563,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
 #### Blockers — Unwired server APIs
 
-- [!] WEB-UIUX-704. **[BLOCKER] No web UI for `creditNotes.routes.ts` collection endpoints.** Server exposes GET `/credit-notes`, GET `/credit-notes/:id`, POST `/credit-notes/:id/apply` (use credit), POST `/credit-notes/:id/void`. Web only calls invoice-scoped POST `/invoices/:id/credit-note`. No list page, no detail page, no apply-to-future-invoice flow, no void path for mistaken credit notes. L3, L8. **BLOCKED 2026-05-11: requires new web pages (list/detail/apply) — multi-page feature scope. Server endpoints are stable. Defer to credit-notes UI sprint.**
+- [x] WEB-UIUX-704. **[BLOCKER] Credit-notes list/apply/void UI shipped.** 2026-05-12 — new `CreditNotesListPage` at `/credit-notes` (lazy-loaded route). Wraps new `creditNotesApi.list/apply/void`. Status tab strip (Open / Applied / Voided / All) + paginated table with linked customer + linked original invoice + applied-to invoice + status badge. Manager/admin rows expose inline Apply (prompt for invoice id + optional amount) and Void (prompt for reason).
   `packages/server/src/routes/creditNotes.routes.ts:63,135,237,318`
   <!-- meta: fix=add-creditNotesApi+CreditNotesListPage+apply-modal+void-mutation -->
 

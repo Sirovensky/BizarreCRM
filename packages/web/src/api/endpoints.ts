@@ -2267,6 +2267,22 @@ export const refundApi = {
     ),
 };
 
+// ==================== Credit Notes ====================
+// WEB-UIUX-704: thin wrappers over creditNotes.routes.ts (list/detail/apply/
+// void). The `credit_notes` table is separate from the negative-invoice rows
+// that POST /invoices/:id/credit-note creates — those still live under the
+// invoiceApi.createCreditNote path. This API surfaces the dedicated credit-
+// note ledger so the new CreditNotesListPage can list/apply/void them.
+export const creditNotesApi = {
+  list: (params?: { page?: number; pagesize?: number; status?: string; customer_id?: number }) =>
+    api.get('/credit-notes', { params }),
+  get: (id: number) => api.get(`/credit-notes/${id}`),
+  apply: (id: number, body: { invoice_id: number; amount?: number }) =>
+    api.post(`/credit-notes/${id}/apply`, body),
+  void: (id: number, body?: { reason?: string }) =>
+    api.post(`/credit-notes/${id}/void`, body ?? {}),
+};
+
 // WEB-UNWIRED-007: financing provider wrapper. Returns redirect_url when the
 // tenant has Affirm/Klarna creds wired; 503 + code='not_configured' otherwise.
 export interface FinancingCheckoutResponse {
