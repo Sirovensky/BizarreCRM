@@ -1572,12 +1572,17 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   const cnTaxPortion = roundCents(amount * taxFraction);
   const cnSubtotalPortion = roundCents(amount - cnTaxPortion);
 
+  // WEB-UIUX-895: snapshot for the credit-note invoice so its reprint
+  // doesn't bleed live customer/store renames into a historical refund.
+  const pitCn = await getInvoicePitSnapshot(adb, original.customer_id);
+
   // Create the credit note as a negative invoice
   const cnResult = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
       amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id,
-      credit_note_code, credit_note_note)
-    VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?)
+      credit_note_code, credit_note_note,
+      customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     orderId,
     original.customer_id,
@@ -1591,6 +1596,10 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
     original.location_id ?? 1,
     cnCode,
     cnNote,
+    pitCn.customer_name_snapshot,
+    pitCn.customer_address_snapshot,
+    pitCn.store_name_snapshot,
+    pitCn.tax_jurisdiction_snapshot,
   );
 
   const creditNoteId = cnResult.lastInsertRowid;

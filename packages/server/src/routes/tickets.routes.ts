@@ -3102,16 +3102,23 @@ router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncH
     invoiceOrderId = generateOrderId('INV', seqRow!.next_num);
   }
 
+  // WEB-UIUX-895: ticket-to-invoice generation captures the live
+  // customer/store/jurisdiction so a future reprint mirrors what was on
+  // the ticket at generation time.
+  const pitTicket = await getInvoicePitSnapshot(adb, ticket.customer_id);
   const invResult = await adb.run(`
     INSERT INTO invoices (order_id, ticket_id, customer_id, status, subtotal, discount, discount_reason,
-                          total_tax, total, amount_paid, amount_due, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 'unpaid', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+                          total_tax, total, amount_paid, amount_due, notes, created_by, created_at, updated_at,
+                          customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, 'unpaid', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     invoiceOrderId, ticketId, ticket.customer_id,
     ticket.subtotal, ticket.discount, ticket.discount_reason,
     ticket.total_tax, ticket.total, ticket.total,
     `Generated from ticket ${ticket.order_id}`,
     userId, now(), now(),
+    pitTicket.customer_name_snapshot, pitTicket.customer_address_snapshot,
+    pitTicket.store_name_snapshot, pitTicket.tax_jurisdiction_snapshot,
   );
 
   const invoiceId = Number(invResult.lastInsertRowid);
