@@ -1080,6 +1080,16 @@ export const leadApi = {
   createAppointment: (data: CreateAppointmentInput) => api.post('/leads/appointments', data),
   updateAppointment: (id: number, data: UpdateAppointmentInput) => api.put(`/leads/appointments/${id}`, data),
   deleteAppointment: (id: number) => api.delete(`/leads/appointments/${id}`),
+  // WEB-UIUX-1324: cross-viewport overlap check. The page-level
+  // `existingAppointments` array only covers the current month/week/day, so
+  // a booking on the last day of a viewport against an appt in the next
+  // viewport returns a false-clear. This calls the dedicated server route
+  // that scans the assignee's full calendar with no viewport limit.
+  getAppointmentOverlaps: (params: { assigned_to: number; start_time: string; end_time?: string; exclude_id?: number }) =>
+    api.get<{ success: boolean; data: { overlaps: Array<{ id: number; title: string | null; start_time: string; end_time: string | null; status: string; customer_first_name: string | null; customer_last_name: string | null }>; count: number } }>(
+      '/leads/appointments/overlaps',
+      { params },
+    ),
   // WEB-W2-035: bulk action on leads. Server: POST /leads/bulk-action (leads.routes.ts:411)
   // accepts { lead_ids, action, value? } and rejects batches > 500.
   bulkAction: (lead_ids: number[], action: string, value?: string) =>

@@ -271,11 +271,43 @@ function AppointmentDetailModal({
     return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot.`;
   }
 
+  // WEB-UIUX-1324: cross-viewport overlap check. The local `existingAppointments`
+  // array is just the viewport; this asks the server for any conflicting appt
+  // for the same assignee anywhere in their calendar. Run on submit (not on
+  // every keystroke) so we trade one extra round-trip per save for a true
+  // cross-window guarantee.
+  async function checkOverlapCrossWindow(
+    startIso: string,
+    endIso: string,
+    assignedUserId: number | null,
+    excludeId: number,
+  ): Promise<string | null> {
+    if (!assignedUserId) return null;
+    try {
+      const res = await leadApi.getAppointmentOverlaps({
+        assigned_to: assignedUserId,
+        start_time: startIso,
+        end_time: endIso,
+        exclude_id: excludeId,
+      });
+      const overlaps = res.data?.data?.overlaps ?? [];
+      if (overlaps.length === 0) return null;
+      const conflict = overlaps[0];
+      const name = users.find((u) => u.id === assignedUserId);
+      const assigneeName = name ? `${name.first_name} ${name.last_name}` : 'this person';
+      return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot (outside the current view).`;
+    } catch {
+      // Best-effort — if the cross-window check fails we still let the
+      // server-side POST guard catch it; don't block the operator.
+      return null;
+    }
+  }
+
   function updateAppointment(data: UpdateAppointmentPayload) {
     updateMut.mutate(data);
   }
 
-  function handleSave(e: FormEvent<HTMLFormElement>) {
+  async function handleSave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const startTime = toISOWithOffset(form.start_date, form.start_hour, form.start_min);
     const endTime = toISOWithOffset(form.start_date, form.end_hour, form.end_min);
@@ -284,7 +316,10 @@ function AppointmentDetailModal({
       return;
     }
     const assignedId = form.assigned_to ? Number(form.assigned_to) : null;
-    const warn = checkOverlap(startTime, endTime, assignedId);
+    // Local-viewport first (cheap), cross-window if local clears (WEB-UIUX-1324).
+    const warn =
+      checkOverlap(startTime, endTime, assignedId)
+      ?? await checkOverlapCrossWindow(startTime, endTime, assignedId, appointment.id);
     if (warn && !overlapWarning) {
       setOverlapWarning(warn);
       return;
@@ -740,6 +775,30 @@ function CreateAppointmentModal({
     return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot.`;
   }
 
+  // WEB-UIUX-1324: cross-viewport overlap check via the dedicated server route.
+  async function checkOverlapCrossWindow(
+    startIso: string,
+    endIso: string,
+    assignedUserId: number | null,
+  ): Promise<string | null> {
+    if (!assignedUserId) return null;
+    try {
+      const res = await leadApi.getAppointmentOverlaps({
+        assigned_to: assignedUserId,
+        start_time: startIso,
+        end_time: endIso,
+      });
+      const overlaps = res.data?.data?.overlaps ?? [];
+      if (overlaps.length === 0) return null;
+      const conflict = overlaps[0];
+      const name = users.find((u) => u.id === assignedUserId);
+      const assigneeName = name ? `${name.first_name} ${name.last_name}` : 'this person';
+      return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot (outside the current view).`;
+    } catch {
+      return null;
+    }
+  }
+
   return (
     <div
       role="dialog"
@@ -757,7 +816,7 @@ function CreateAppointmentModal({
         </div>
         <form
           className="space-y-4 px-6 py-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             // WEB-FK-015: use TZ-aware ISO strings so the server stores the
             // correct instant regardless of server timezone.
@@ -768,8 +827,11 @@ function CreateAppointmentModal({
               return;
             }
             // Overlap check — warn but still allow user to proceed after seeing the warning.
+            // WEB-UIUX-1324: local-viewport check first (cheap), then cross-window if local clears.
             const assignedId = form.assigned_to ? Number(form.assigned_to) : null;
-            const warn = checkOverlap(startTime, endTime, assignedId);
+            const warn =
+              checkOverlap(startTime, endTime, assignedId)
+              ?? await checkOverlapCrossWindow(startTime, endTime, assignedId);
             if (warn && !overlapWarning) {
               // Show warning on first submit; second submit proceeds.
               setOverlapWarning(warn);

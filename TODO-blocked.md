@@ -2552,13 +2552,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
   <!-- meta: fix=mount-aria-live=polite-region-rendering-last-toast-text+OR-verify-react-hot-toast-emits-role=status -->
 
-- [!] WEB-UIUX-1324. **[MAJOR] `existingAppointments` passed to overlap check (`CalendarPage.tsx:200-206,256-271`) is the current viewport only (month/week/day window from `dateRange` query). Booking on the last day of viewed month against an appt on the first day of next month: client says all clear. Server warning catches some, but #1319 throws that away anyway. False sense of safety on every cross-window booking.** L7 feedback meaning. **PARTIAL 2026-05-12: server endpoint `GET /appointments/overlaps?assigned_to=&start_time=&end_time=&exclude_id=` shipped (leads.routes.ts) — reuses same SQL as POST conflict check but with no viewport limit, returns up to 5 conflicting rows. CalendarPage can now fetch a fresh cross-window check on modal submit. UI wiring + UX trade-off (call on every submit vs. only on date-change) is the remaining piece.**
-  `packages/web/src/pages/leads/CalendarPage.tsx:256-271,727-733`
-  <!-- meta: fix=fetch-±1-week-buffer-around-target-time-on-modal-open-(or-on-time-change)+server-side-precondition-check-already-correct,-just-surface-warning-(see-WEB-UIUX-1319) -->
-
-  `packages/web/src/pages/leads/CalendarPage.tsx:396-405`
-  <!-- meta: fix=add-No-show-option+also-expose-via-edit-modal-(WEB-UIUX-1316)+server-PUT-already-supports-no_show-flag -->
-
 - [!] WEB-UIUX-1328. **[MAJOR] No click-to-create on calendar grid. MonthView day cells (`483-538`), WeekView slots (`588-613`), DayView slots (`641-672`) ignore clicks. Every booking flows through "New Appointment" button → form pre-filled 9:00–10:00 → user manually re-types date+time. Industry-standard calendar UX (Google/Outlook/Cal.com) is click-an-empty-slot-to-create. Forced friction on the most common action.** L1 findability, L4 flow completion, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: click-to-create on calendar grid requires onClick handlers on Month/Week/Day cells that compute the slot start time + open CreateAppointmentModal with prefilled defaults — multi-view refactor.]**
   `packages/web/src/pages/leads/CalendarPage.tsx:483-538,557-617,621-674`
   <!-- meta: fix=onClick-on-empty-cell-opens-CreateAppointmentModal-with-pre-filled-date-(month)-or-date+hour-(week/day)+drag-to-select-range-for-end-time -->
