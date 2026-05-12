@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { giftCardApi, type PendingGiftCardIssuance } from '@/api/endpoints';
+import { giftCardApi, customerApi, type PendingGiftCardIssuance } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents } from '@/utils/format';
 // WEB-UIUX-998: CSV export for outstanding liability — PII-gated
 import { toCsvRow, CSV_BOM } from '@/utils/csv';
@@ -49,6 +49,10 @@ interface IssueFormState {
   expires_at: string;
   // WEB-UIUX-989: server validates notes up to 1000 chars
   notes: string;
+  // WEB-UIUX-1430: optional customer link. server validates against customers
+  // table; null means an unlinked walk-in card.
+  customer_id: number | null;
+  customer_label: string;
 }
 
 const PAGE_SIZE = 50;
@@ -118,7 +122,27 @@ function IssueModal({ onClose }: IssueModalProps) {
     recipient_email: '',
     expires_at: '',
     notes: '', // WEB-UIUX-989
+    customer_id: null,
+    customer_label: '',
   });
+  // WEB-UIUX-1430: customer picker — debounced search hits /customers/search
+  // when the operator types ≥2 chars; selecting fills customer_id + a
+  // human-readable label, and clears the dropdown.
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [debouncedCustomerSearch, setDebouncedCustomerSearch] = useState('');
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedCustomerSearch(customerSearch.trim()), 250);
+    return () => window.clearTimeout(t);
+  }, [customerSearch]);
+  const { data: customerData } = useQuery({
+    queryKey: ['gift-card-issue-customer-search', debouncedCustomerSearch],
+    queryFn: ({ signal }) => customerApi.search(debouncedCustomerSearch, signal),
+    enabled: debouncedCustomerSearch.length >= 2 && showCustomerDropdown,
+    staleTime: 30_000,
+  });
+  const customerResults: Array<{ id: number; first_name?: string | null; last_name?: string | null; email?: string | null; phone?: string | null }> =
+    customerData?.data?.data ?? [];
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const todayDateInputValue = localDateInputValue();
   const expiresInPast = isPastDateInputValue(form.expires_at);
@@ -153,6 +177,10 @@ function IssueModal({ onClose }: IssueModalProps) {
         expires_at: form.expires_at || null,
         // WEB-UIUX-989: include notes (server validates ≤1000 chars)
         notes: form.notes || null,
+        // WEB-UIUX-1430: link the card to a customer record so the
+        // customer detail page can render "Gift cards held by this
+        // customer" without an extra lookup.
+        customer_id: form.customer_id,
       });
     },
     onSuccess: (res) => {
@@ -310,7 +338,8 @@ function IssueModal({ onClose }: IssueModalProps) {
               }
               setIssuedCode(null);
               setCodeSavedConfirmed(false);
-              setForm({ amount: '', recipient_name: '', recipient_email: '', expires_at: '', notes: '' });
+              setForm({ amount: '', recipient_name: '', recipient_email: '', expires_at: '', notes: '', customer_id: null, customer_label: '' });
+              setCustomerSearch('');
             }}
             disabled={!codeSavedConfirmed}
             className="mt-3 w-full px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-950/30 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
@@ -389,6 +418,75 @@ function IssueModal({ onClose }: IssueModalProps) {
             <p id="gift-card-amount-hint" className="mt-1 text-xs text-surface-500 dark:text-surface-400">
               $1 — $10,000 per card
             </p>
+          </div>
+          {/* WEB-UIUX-1430: link card to a customer record. Optional —
+              walk-in gifts can stay unlinked. When set, the customer's
+              detail page can render "Gift cards held by this customer". */}
+          <div>
+            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              Link to customer (optional)
+            </label>
+            {form.customer_id ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-primary-300 bg-primary-50 px-3 py-2 text-sm dark:border-primary-700 dark:bg-primary-900/20">
+                <span className="text-surface-800 dark:text-surface-100 truncate">
+                  {form.customer_label || `Customer #${form.customer_id}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((p) => ({ ...p, customer_id: null, customer_label: '' }));
+                    setCustomerSearch('');
+                  }}
+                  className="text-xs text-primary-700 hover:underline dark:text-primary-300"
+                >
+                  Clear
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => { setCustomerSearch(e.target.value); setShowCustomerDropdown(true); }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  placeholder="Search name / phone / email…"
+                  className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                />
+                {showCustomerDropdown && debouncedCustomerSearch.length >= 2 && customerResults.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+                    {customerResults.slice(0, 8).map((c) => {
+                      const name = [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || `Customer #${c.id}`;
+                      const meta = [c.email, c.phone].filter(Boolean).join(' · ');
+                      return (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((p) => ({
+                                ...p,
+                                customer_id: c.id,
+                                customer_label: name,
+                                // Pre-fill recipient name / email when blank so
+                                // the operator doesn't retype data we already
+                                // have on the customer record.
+                                recipient_name: p.recipient_name || name,
+                                recipient_email: p.recipient_email || (c.email ?? ''),
+                              }));
+                              setCustomerSearch('');
+                              setShowCustomerDropdown(false);
+                            }}
+                            className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-50 dark:hover:bg-surface-700"
+                          >
+                            <span className="font-medium text-surface-900 dark:text-surface-100">{name}</span>
+                            {meta && <span className="block text-xs text-surface-500 dark:text-surface-400">{meta}</span>}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
