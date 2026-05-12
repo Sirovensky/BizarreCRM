@@ -918,11 +918,45 @@ router.post(
         ? validateTextLength(req.body.notes, 1000, 'notes')
         : null;
 
+    // WEB-UIUX-1085: identity binding. typed_name is the operator typing
+    // their full name alongside the drawn signature (capped at 200 chars;
+    // optional but recommended — surfaces in audit when present).
+    const typedName = typeof req.body?.typed_name === 'string'
+      ? validateTextLength(req.body.typed_name.trim(), 200, 'typed_name')
+      : null;
+
+    // Optional PIN re-auth. When the caller submits `pin`, verify it
+    // against the signing user's stored bcrypt PIN and stamp
+    // pin_verified_at. A mismatched PIN refuses the sign-off (cannot
+    // claim identity falsely). When `pin` is absent the sign-off still
+    // records but pin_verified_at stays NULL so reports can distinguish
+    // session-cookie-only signs from PIN-verified signs.
+    let pinVerifiedAt: string | null = null;
+    if (typeof req.body?.pin === 'string' && req.body.pin.length > 0) {
+      const bcrypt = await import('bcryptjs');
+      const user = await adb.get<{ pin: string | null }>(
+        'SELECT pin FROM users WHERE id = ?',
+        userId,
+      );
+      if (!user?.pin) {
+        throw new AppError('No PIN on file for this user — cannot verify signature identity. Ask admin to set one.', 400);
+      }
+      if (!user.pin.startsWith('$2')) {
+        throw new AppError('PIN not properly hashed — contact admin', 500);
+      }
+      const ok = bcrypt.default.compareSync(req.body.pin, user.pin);
+      if (!ok) {
+        throw new AppError('PIN does not match — cannot sign QC under this account.', 401);
+      }
+      pinVerifiedAt = new Date().toISOString();
+    }
+
     const result = await adb.run(
       `INSERT INTO qc_sign_offs
         (ticket_id, ticket_device_id, tech_user_id, checklist_results_json,
-         tech_signature_path, working_photo_path, notes, outcome, failure_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         tech_signature_path, working_photo_path, notes, outcome, failure_reason,
+         typed_name, pin_verified_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ticketId,
       qcTicketDeviceId,
       userId,
@@ -932,6 +966,8 @@ router.post(
       qcNotes || null,
       outcome,
       failureReason,
+      typedName || null,
+      pinVerifiedAt,
     );
 
     audit(req.db, outcome === 'fail' ? 'qc_sign_off_fail' : 'qc_sign_off', userId, req.ip ?? 'unknown', {
@@ -939,6 +975,9 @@ router.post(
       sign_off_id: Number(result.lastInsertRowid),
       outcome,
       failure_reason: failureReason,
+      // WEB-UIUX-1085: identity binding visible in audit trail.
+      typed_name_present: !!typedName,
+      pin_verified: !!pinVerifiedAt,
     });
 
     // WEB-UIUX-1086: when QC passes on a ticket currently parked in
