@@ -74,11 +74,60 @@ router.get('/', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHand
       (SELECT COUNT(*) FROM loaner_history lh WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL) AS is_loaned_out,
       (SELECT c.first_name || ' ' || c.last_name FROM loaner_history lh
        LEFT JOIN customers c ON c.id = lh.customer_id
-       WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL LIMIT 1) AS loaned_to
+       WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL LIMIT 1) AS loaned_to,
+      -- WEB-UIUX-641: surface the most recent active loan due_back_at +
+      -- compute an is_overdue flag the client can render without re-querying.
+      (SELECT lh.due_back_at FROM loaner_history lh
+       WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL
+       ORDER BY lh.loaned_at DESC LIMIT 1) AS due_back_at,
+      (SELECT CASE WHEN lh.due_back_at IS NOT NULL AND datetime(lh.due_back_at) < datetime('now') THEN 1 ELSE 0 END
+       FROM loaner_history lh
+       WHERE lh.loaner_device_id = ld.id AND lh.returned_at IS NULL
+       ORDER BY lh.loaned_at DESC LIMIT 1) AS is_overdue
     FROM loaner_devices ld WHERE ld.is_deleted = 0 ORDER BY ld.name LIMIT ? OFFSET ?
   `, perPage, offset);
   const redacted = devices.map((d) => redactLoanerForRole(d, _req.user?.role));
   res.json({ success: true, data: redacted, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
+}));
+
+// GET /overdue — WEB-UIUX-641: list every active loan past its due_back_at.
+// Returned shape mirrors loaner_history with the loaner device name +
+// customer name joined for the dashboard widget. Pagination matches the
+// list endpoint defaults (50/page). Ordered by how late the loan is.
+router.get('/overdue', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const page = parsePage(req.query.page);
+  const perPage = parsePageSize(req.query.per_page, 50);
+  const offset = validatePaginationOffset((page - 1) * perPage, 'offset');
+  const total = ((await adb.get<{ c: number }>(`
+    SELECT COUNT(*) AS c
+      FROM loaner_history lh
+      JOIN loaner_devices ld ON ld.id = lh.loaner_device_id
+     WHERE lh.returned_at IS NULL
+       AND lh.due_back_at IS NOT NULL
+       AND datetime(lh.due_back_at) < datetime('now')
+       AND ld.is_deleted = 0
+  `))!).c;
+  const rows = await adb.all<any>(`
+    SELECT lh.id AS history_id, lh.loaner_device_id, lh.customer_id,
+           lh.loaned_at, lh.due_back_at, lh.notes,
+           ld.name AS loaner_name, ld.condition,
+           c.first_name, c.last_name, c.phone, c.email,
+           t.id AS ticket_id, t.order_id AS ticket_order_id,
+           CAST((julianday('now') - julianday(lh.due_back_at)) AS INTEGER) AS days_overdue
+      FROM loaner_history lh
+      JOIN loaner_devices ld ON ld.id = lh.loaner_device_id
+ LEFT JOIN customers c ON c.id = lh.customer_id
+ LEFT JOIN ticket_devices td ON td.id = lh.ticket_device_id
+ LEFT JOIN tickets t ON t.id = td.ticket_id
+     WHERE lh.returned_at IS NULL
+       AND lh.due_back_at IS NOT NULL
+       AND datetime(lh.due_back_at) < datetime('now')
+       AND ld.is_deleted = 0
+     ORDER BY lh.due_back_at ASC
+     LIMIT ? OFFSET ?
+  `, perPage, offset);
+  res.json({ success: true, data: rows, pagination: { page, per_page: perPage, total, total_pages: Math.ceil(total / perPage) } });
 }));
 
 // GET /:id — Single loaner device with history
@@ -145,8 +194,23 @@ router.post('/:id/loan', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), 
   const rl = consumeWindowRate(db, 'loaner_write', String(req.user!.id), LOANER_WRITE_MAX, LOANER_WRITE_WINDOW_MS);
   if (!rl.allowed) throw new AppError('Too many loaner operations — please slow down', 429);
   const id = validateId(req.params.id, 'id');
-  const { customer_id, ticket_device_id, notes } = req.body;
+  const { customer_id, ticket_device_id, notes, due_back_at } = req.body;
   if (!customer_id) throw new AppError('customer_id required', 400);
+  // WEB-UIUX-641: optional ISO timestamp / YYYY-MM-DD date string. Accept
+  // either shape; store as-is so the overdue query can compare against
+  // datetime('now'). Reject non-string values + obviously-bad inputs so a
+  // crafted blob can't poison the column.
+  let dueBackAt: string | null = null;
+  if (due_back_at !== undefined && due_back_at !== null && due_back_at !== '') {
+    if (typeof due_back_at !== 'string' || due_back_at.length > 32) {
+      throw new AppError('due_back_at must be a YYYY-MM-DD or ISO timestamp string', 400);
+    }
+    const parsed = Date.parse(due_back_at);
+    if (!Number.isFinite(parsed)) {
+      throw new AppError('due_back_at could not be parsed as a date', 400);
+    }
+    dueBackAt = due_back_at;
+  }
   // @audit-fixed: §37 — loaner_history.ticket_device_id is NOT NULL in
   // 001_initial.sql:502, but the previous handler accepted requests without a
   // ticket_device_id and inserted NULL, which always failed with a constraint
@@ -186,12 +250,12 @@ router.post('/:id/loan', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), 
       throw new AppError('Device is not available', 409);
     }
     const r = db.prepare(
-      'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(id, ticket_device_id, customer_id, txNow, (device as any).condition, notes || null);
+      'INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out, notes, due_back_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, ticket_device_id, customer_id, txNow, (device as any).condition, notes || null, dueBackAt);
     return r.lastInsertRowid;
   });
   const historyId = loanTx();
-  audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: id, customer_id, history_id: historyId });
+  audit(db, 'loaner_device_loaned', req.user!.id, req.ip || 'unknown', { loaner_id: id, customer_id, history_id: historyId, due_back_at: dueBackAt });
   res.json({ success: true, data: { history_id: historyId } });
 }));
 

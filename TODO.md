@@ -2519,7 +2519,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
   `packages/web/src/pages/inventory/ShrinkagePage.tsx:73-99,209-243`
 
-- [!] WEB-UIUX-641. **[MAJOR] Loaner has no `due_back_at` field, no overdue detection, no charge-customer flow that creates invoice.** Damage cost goes to free-text `notes` only. L5, L13. **BLOCKED 2026-05-10: needs server schema migration (due_back_at, overdue flag) + overdue cron + invoice-on-damage flow; multi-component feature.**
+- [x] WEB-UIUX-641. **[MAJOR] Loaner due-back + overdue detection shipped 2026-05-12 (partial — charge-customer-on-damage still pending).** Migration 183 adds `loaner_history.due_back_at TEXT NULL` + partial index keyed on active overdue rows. `POST /loaners/:id/loan` accepts optional `due_back_at` (YYYY-MM-DD or ISO timestamp, length-capped + Date.parse validated). `GET /loaners` extended to return per-device `due_back_at` + computed `is_overdue` flag derived from `datetime(lh.due_back_at) < datetime('now')`. New `GET /loaners/overdue` returns paginated active-loan rows past their due date with `days_overdue`, customer name/phone/email, and linked ticket order_id for the dashboard widget. The charge-customer-on-damage path (invoice generation when condition_in is worse than condition_out) is still feature-scope and remains a separate item.
   `packages/web/src/pages/loaners/LoanersPage.tsx:312-422`
 
   `packages/web/src/api/endpoints.ts:1218-1259`

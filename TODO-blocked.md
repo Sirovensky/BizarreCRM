@@ -1704,11 +1704,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   `packages/web/src/pages/inventory/ShrinkagePage.tsx:73-99,209-243`
 
-- [!] WEB-UIUX-641. **[MAJOR] Loaner has no `due_back_at` field, no overdue detection, no charge-customer flow that creates invoice.** Damage cost goes to free-text `notes` only. L5, L13. **BLOCKED 2026-05-10: needs server schema migration (due_back_at, overdue flag) + overdue cron + invoice-on-damage flow; multi-component feature.**
-  `packages/web/src/pages/loaners/LoanersPage.tsx:312-422`
-
-  `packages/web/src/api/endpoints.ts:1218-1259`
-
 - [!] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8. **BLOCKED 2026-05-10: quick-scan increments counted_qty by 1 per scan, which is the documented behavior (`counted = existingCount.counted_qty + 1` at StocktakePage.tsx:239). Adding a "confirm-existing" mode requires a new UI toggle + mutation variant + cashier-training; feature-scope.**
   `packages/web/src/pages/inventory/StocktakePage.tsx:174-181`
 
