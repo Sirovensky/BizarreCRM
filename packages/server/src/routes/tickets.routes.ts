@@ -1703,6 +1703,76 @@ router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // ===================================================================
+// GET /pending-qc — WEB-UIUX-1088: tickets parked in 'Repaired - Pending QC'
+// (or any status flagged for QC) without a passing sign-off row. Surfaces
+// the tech's "finished work but not yet signed" backlog plus the manager's
+// "stuck waiting for QC > N hours" view.
+// ===================================================================
+router.get('/pending-qc', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  // Optional assigned_to filter so a tech can see only their own pending
+  // sign-offs; manager view omits the filter to see the whole backlog.
+  const assignedToRaw = req.query.assigned_to;
+  const assignedTo = assignedToRaw && /^\d+$/.test(String(assignedToRaw)) ? Number(assignedToRaw) : null;
+  // Optional age filter (hours) so "> 24h pending" can be carved out.
+  const minHoursRaw = req.query.min_hours;
+  const minHours = minHoursRaw && Number.isFinite(Number(minHoursRaw)) ? Math.max(0, Number(minHoursRaw)) : 0;
+
+  const params: unknown[] = [];
+  let assignedClause = '';
+  if (assignedTo != null) {
+    assignedClause = ' AND t.assigned_to = ?';
+    params.push(assignedTo);
+  }
+  let ageClause = '';
+  if (minHours > 0) {
+    ageClause = ` AND (julianday('now') - julianday(t.updated_at)) * 24 >= ?`;
+    params.push(minHours);
+  }
+
+  const rows = await adb.all<AnyRow>(`
+    SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
+           t.total, t.created_at, t.updated_at,
+           CAST((julianday('now') - julianday(t.updated_at)) * 24 AS INTEGER) AS hours_pending,
+           c.first_name AS c_first_name, c.last_name AS c_last_name,
+           ts.name AS status_name, ts.color AS status_color,
+           u.first_name AS assigned_first, u.last_name AS assigned_last
+      FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+ LEFT JOIN customers c ON c.id = t.customer_id
+ LEFT JOIN users u ON u.id = t.assigned_to
+     WHERE t.is_deleted = 0
+       AND ts.name = 'Repaired - Pending QC'
+       AND NOT EXISTS (
+         SELECT 1 FROM qc_sign_offs qs
+          WHERE qs.ticket_id = t.id
+            AND qs.outcome = 'pass'
+       )
+       ${assignedClause}
+       ${ageClause}
+     ORDER BY t.updated_at ASC
+  `, ...params);
+
+  res.json({
+    success: true,
+    data: rows.map((t) => ({
+      id: t.id,
+      order_id: t.order_id,
+      customer_id: t.customer_id,
+      status_id: t.status_id,
+      assigned_to: t.assigned_to,
+      total: t.total,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      hours_pending: t.hours_pending,
+      customer: { id: t.customer_id, first_name: t.c_first_name, last_name: t.c_last_name },
+      status: { id: t.status_id, name: t.status_name, color: t.status_color },
+      assigned_user: t.assigned_to ? { id: t.assigned_to, first_name: t.assigned_first, last_name: t.assigned_last } : null,
+    })),
+  });
+}));
+
+// ===================================================================
 // GET /device-history - Search tickets by IMEI or serial number
 // ===================================================================
 router.get('/device-history', asyncHandler(async (req: Request, res: Response) => {

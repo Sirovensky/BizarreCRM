@@ -48,6 +48,7 @@ import {
   LifeBuoy,
   Truck,
   ScrollText,
+  ClipboardCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -142,6 +143,8 @@ const navSections: NavSection[] = [
     title: 'Team',
     items: [
       { label: 'My Queue', path: '/team/my-queue', icon: ClipboardList },
+      // WEB-UIUX-1088: tech's "finished but not yet signed" QC backlog.
+      { label: 'Pending QC', path: '/qc/pending', icon: ClipboardCheck },
       { label: 'Shifts', path: '/team/shifts', icon: Calendar },
       { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
       { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },

@@ -137,6 +137,20 @@ const LEGAL_TICKET_TRANSITIONS: Record<string, readonly string[]> = {
     'Waiting for inspection',
   ],
 
+  // WEB-UIUX-1086: 'Repaired - Pending QC' is the natural staging state
+  // between tech-finished and customer-pickup-ready. Forward path on a
+  // passing sign-off goes to 'Repaired' (closed); a failed sign-off can
+  // re-route to 'Repaired - Defect found' which already routes elsewhere
+  // (defect_reports flow), or back to an active state for rework.
+  'Repaired - Pending QC': [
+    'Repaired',
+    'Repaired - Waiting for payment',
+    'Waiting on customer',
+    'Waiting for Parts',
+    'Repaired - Defect found',
+    'Cancelled',
+  ],
+
   // ── Cancelled → conditional re-open ────────────────────────────────────────
   // Customer cancellations and BER verdicts can be reversed (re-evaluate device).
   'Cancelled': [

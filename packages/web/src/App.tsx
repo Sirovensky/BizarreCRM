@@ -76,6 +76,7 @@ const ExpensesPage = lazy(() => import('./pages/expenses/ExpensesPage').then(m =
 const PurchaseOrdersPage = lazy(() => import('./pages/inventory/PurchaseOrdersPage').then(m => ({ default: m.PurchaseOrdersPage })));
 const CashRegisterPage = lazy(() => import('./pages/pos/CashRegisterPage').then(m => ({ default: m.CashRegisterPage })));
 const ShiftHistoryPage = lazy(() => import('./pages/pos/ShiftHistoryPage').then(m => ({ default: m.ShiftHistoryPage })));
+const QcPendingPage = lazy(() => import('./pages/qc/QcPendingPage').then(m => ({ default: m.QcPendingPage })));
 const CommunicationPage = lazy(() => import('./pages/communications/CommunicationPage').then(m => ({ default: m.CommunicationPage })));
 const EmployeeListPage = lazy(() => import('./pages/employees/EmployeeListPage').then(m => ({ default: m.EmployeeListPage })));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
@@ -572,6 +573,8 @@ export default function App() {
                         <Route path="/cash-register" element={<CashRegisterPage />} />
                         {/* WEB-UIUX-1168: Z-Report reprint surface. */}
                         <Route path="/pos/shifts/history" element={<ShiftHistoryPage />} />
+                        {/* WEB-UIUX-1088: tickets pending QC sign-off worklist. */}
+                        <Route path="/qc/pending" element={<QcPendingPage />} />
                         <Route path="/communications" element={<CommunicationPage />} />
                         <Route path="/employees" element={<RequireRole roles={['admin', 'manager']}><EmployeeListPage /></RequireRole>} />
                         <Route path="/settings/*" element={<RequireRole roles={['admin', 'manager']}><SettingsPage /></RequireRole>} />

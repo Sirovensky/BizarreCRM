@@ -941,6 +941,50 @@ router.post(
       failure_reason: failureReason,
     });
 
+    // WEB-UIUX-1086: when QC passes on a ticket currently parked in
+    // 'Repaired - Pending QC', auto-advance to 'Repaired'. Failure path
+    // already has its own status-flip plumbing via defect_reports. Wrapped
+    // in try/catch so a transition-guard mismatch (custom tenant statuses,
+    // ticket already moved by another tech) surfaces as a structured audit
+    // row but doesn't fail the sign-off itself — the sign-off row is the
+    // authoritative compliance artifact.
+    if (outcome !== 'fail') {
+      try {
+        const ticketRow = await adb.get<{ status_id: number }>(
+          'SELECT status_id FROM tickets WHERE id = ? AND is_deleted = 0',
+          ticketId,
+        );
+        if (ticketRow) {
+          const curStatus = await adb.get<{ name: string }>(
+            'SELECT name FROM ticket_statuses WHERE id = ?',
+            ticketRow.status_id,
+          );
+          if (curStatus?.name === 'Repaired - Pending QC') {
+            const repairedStatus = await adb.get<{ id: number }>(
+              "SELECT id FROM ticket_statuses WHERE name = 'Repaired' LIMIT 1",
+            );
+            if (repairedStatus?.id) {
+              const { applyTicketStatusChange } = await import('../services/ticketStatus.js');
+              await applyTicketStatusChange(
+                req.db,
+                ticketId,
+                repairedStatus.id,
+                userId,
+                (req as any).tenantSlug || null,
+                true, // skipGuards — the QC sign-off we just wrote IS the gate
+              );
+            }
+          }
+        }
+      } catch (err) {
+        audit(req.db, 'qc_sign_off_status_advance_failed', userId, req.ip ?? 'unknown', {
+          ticket_id: ticketId,
+          sign_off_id: Number(result.lastInsertRowid),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     const row = await adb.get(
       'SELECT * FROM qc_sign_offs WHERE id = ?',
       Number(result.lastInsertRowid),

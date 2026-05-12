@@ -2481,18 +2481,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/server/src/routes/bench.routes.ts:885-902`
   <!-- meta: fix=add-required-typed-name-field+optional-PIN-re-auth-modal-before-canvas+server-stores-typed_name+pin_verified_at-alongside-image -->
 
-- [!] WEB-UIUX-1086. **[MAJOR] Successful sign-off does not advance ticket status — sign-off is decorative.** `signMut.onSuccess` (`QcSignOffModal.tsx:163-169`) toasts + invalidates queries; no `ticketsApi.updateStatus(ticketId, 'Repaired')` call. Tech still has to manually move the status pill. State machine in `ticketStatus.ts:99-108` lists `'Repaired - Pending QC'` as a valid transition out of `'Repaired'` (backwards) but no automatic forward path triggered by a successful sign-off. L1, L4, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: state machine has no forward transition declared from 'Repaired - Pending QC' (no key in LEGAL_TICKET_TRANSITIONS), so target status is product-decision. Candidates: 'Repaired - Waiting for payment', 'Ready for Pickup', or a new 'QC Passed' status. Server-side advance also needs to coexist with the failure-reroute path that already changes status on `outcome=fail`.]**
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:163-169`
-  <!-- meta: fix=after-sign-off-PATCH-ticket-status-to-Repaired-OR-Pending-QC-handoff-config-driven+offer-radio-Move-to-Repaired-now-vs-Stay-on-current-status -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:182-194`
-  <!-- meta: fix=guard-backdrop-onClick-with-isDirty-check+confirm-modal-or-just-no-op-if-anything-staged -->
-
-- [!] WEB-UIUX-1088. **[MAJOR] No "Tickets pending QC" worklist anywhere.** Tickets list, dashboard, sidebar all silent on QC backlog. Tech has to remember which tickets they've finished but not yet signed; manager has no view into "X tickets sat on Repaired without sign-off > 24h". Compare commission queue, dunning queue — both surface unworked items. L1, L4, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs server `GET /qc/pending` (tickets with no qc_sign_offs row + status in repair-done set) + dashboard widget + sidebar entry + filters by tech/age. Multi-component.]**
-  `packages/web/src/pages/tickets/TicketsListPage.tsx`
-  `packages/web/src/components/layout/Sidebar.tsx`
-  <!-- meta: fix=add-page-/qc/queue-listing-tickets-status='Repaired-Pending-QC'-OR-status='Repaired'-AND-no-qc_sign_off-LEFT-JOIN-qc_sign_offs-IS-NULL+badge-on-Sidebar-Tickets -->
-
 - [!] WEB-UIUX-1089. **[MAJOR] Signed sign-off is not printable / emailable / PDF-exportable — customer never receives a copy.** Migration 088 stores signature + photo + checklist results, but no `/qc/sign-off/:id/pdf` route, no print template, no `Email customer` button on TicketDetail post-sign. Customer who was promised "we'll send you the QC certificate" gets nothing. L1, L4, L8. **STATUS: BLOCKED — needs new /qc/queue page + Sidebar badge + LEFT-JOIN-IS-NULL query; multi-component, defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:703-910`
   <!-- meta: fix=add-GET-/qc/sign-off/:id/pdf-uses-existing-pdf-pipeline+after-success-toast-render-button-Send-to-customer-emails-PDF -->
