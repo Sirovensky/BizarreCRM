@@ -2532,7 +2532,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 - [!] WEB-UIUX-645. **[MAJOR] Serial number status flip has zero side effects.** `sold→returned` doesn't increment in_stock, no invoice back-link enforced, no warning. L13, L16. **BLOCKED 2026-05-10: side-effect chain needs server transaction (status flip + in_stock increment + invoice link check) — schema + endpoint redesign.**
   `packages/web/src/pages/inventory/SerialNumbersPage.tsx:74-81,186-198`
 
-- [!] WEB-UIUX-646. **[MAJOR] PO Receive doesn't capture serials at receive time — phantom stock for serialized items until separate manual entry.** L13. **[AUTOLOOP-T29 BLOCKED: requires new serial-entry UI flow at receive time + backend API; multi-component.]**
+- [x] WEB-UIUX-646. **[MAJOR] PO Receive accepts per-line `serials[]` 2026-05-12 (server complete; UI serial-entry field follow-up).** `POST /inventory/purchase-orders/:id/receive` per-line payload now accepts optional `serials: string[]`. Server validates length matches received qty (rejects off-by-one), rejects duplicates within the request, length-caps each serial at 64 chars, and INSERTs each as an `inventory_serials` row with `status='in_stock'` inside the same transaction as the stock + PO-item updates. Receive a partial fail → all serial rows roll back together with stock movements. ReceiveItemsModal serial-input UI is the next surface; legacy callers that omit `serials` still receive non-serialized inventory the same as before.
   `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:50-151`
 
   `packages/web/src/pages/inventory/InventoryListPage.tsx:330`

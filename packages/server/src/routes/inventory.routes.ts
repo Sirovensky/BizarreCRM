@@ -1741,6 +1741,29 @@ router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_
       }
       actualUnitCostCents = Math.round(n * 100);
     }
+    // WEB-UIUX-646: optional serial numbers captured at receive time. Each
+    // serial becomes an `inventory_serials` row with status='in_stock'.
+    // When `serials` is provided its length must match the received qty so
+    // an off-by-one entry surfaces immediately instead of leaving phantom
+    // stock untracked. Duplicate serials within the request reject.
+    let receiveSerials: string[] = [];
+    if (Array.isArray(item.serials) && item.serials.length > 0) {
+      const cleaned = item.serials
+        .map((s: unknown) => typeof s === 'string' ? s.trim() : '')
+        .filter((s: string) => s.length > 0)
+        .map((s: string) => s.slice(0, 64));
+      const unique = new Set(cleaned);
+      if (unique.size !== cleaned.length) {
+        throw new AppError(`Duplicate serial numbers in receive payload for item ${poItem.inventory_item_id}`, 400);
+      }
+      if (cleaned.length !== received) {
+        throw new AppError(
+          `Serial count (${cleaned.length}) must match received qty (${received}) for item ${poItem.inventory_item_id}`,
+          400,
+        );
+      }
+      receiveSerials = cleaned;
+    }
 
     // Guarded differential UPDATE — prevents two concurrent receive requests for
     // the same PO from both computing `receivable` from a stale pre-lock read
@@ -1771,6 +1794,16 @@ router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_
         actualUnitCostCents,
       ],
     });
+    // WEB-UIUX-646: persist serial rows inside the same transaction so a
+    // partial failure rolls everything back. Each serial becomes an
+    // inventory_serials row with status='in_stock'.
+    for (const sn of receiveSerials) {
+      txQueries.push({
+        sql: `INSERT INTO inventory_serials (inventory_item_id, serial_number, status)
+              VALUES (?, ?, 'in_stock')`,
+        params: [poItem.inventory_item_id, sn],
+      });
+    }
     itemsReceivedCount++;
   }
 
