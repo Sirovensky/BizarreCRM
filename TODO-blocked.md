@@ -3481,10 +3481,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:998-1005`
   <!-- meta: fix=wrap-cancelMut.mutate()-in-await-confirm({title,confirmLabel:'Cancel-membership',danger:true})+match-list-page-pattern -->
 
-- [!] WEB-UIUX-1491. **[MAJOR] `POST /:id/resume` does not check current status (`membership.routes.ts:251-258`). Calling resume on a `cancelled` row sets `status='active'` — but `customers.active_subscription_id` was nulled on immediate cancel (`:232`), never restored. Result: cs.status='active' but customer.active_subscription_id=NULL → POS won't apply membership discount, list shows row as active, customer detail shows no membership card (queries by active_subscription_id). Data inconsistency reachable via API. UI hides resume for cancelled but server is the source of truth.** L4 flow completion, L1 truthfulness. **STATUS: BLOCKED — server membership.routes.ts /:id/resume must reject cancelled-status OR restore active_subscription_id; backend, defer**
-  `packages/server/src/routes/membership.routes.ts:251-258`
-  <!-- meta: fix=if-status==='cancelled'-throw-AppError('Cancelled-subs-cannot-be-resumed-create-new-subscription')+OR-also-restore-active_subscription_id-on-resume -->
-
 - [!] WEB-UIUX-1493. **[MAJOR] After immediate cancel, customer-detail Membership card disappears entirely. `getCustomerMembership` returns null when `active_subscription_id` is NULL (set on cancel `membership.routes.ts:232`); UI then renders the enroll prompt (`CustomerDetailPage.tsx:1024+`). Lost context: admin opening cancelled customer can't see prior tier, tenure, last charge, or churn date. No way to view past memberships at all (only payment-history endpoint, no UI).** L9 empty/loading/error, L8 recovery. **[AUTOLOOP-T49 BLOCKED 2026-05-11: past-membership history requires new server endpoint returning the prior subscription rows for a customer + UI tab/section under MembershipCard. Multi-component.]**
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:935,1024+`
   `packages/server/src/routes/membership.routes.ts:129-150`

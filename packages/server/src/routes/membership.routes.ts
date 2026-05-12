@@ -495,6 +495,22 @@ router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
+  // WEB-UIUX-1491: cancelled subscriptions cannot be resumed — the immediate-cancel
+  // path nulls customers.active_subscription_id, so silently flipping status back
+  // to 'active' would leave cs.status='active' AND customers.active_subscription_id=NULL,
+  // an unrecoverable inconsistency (POS won't apply membership discount, customer-detail
+  // hides the card). UI already hides Resume for cancelled rows; this is the server-side
+  // matching guard. Operator who wants the customer back must enroll a fresh subscription.
+  const current = await adb.get<AnyRow>(
+    'SELECT status FROM customer_subscriptions WHERE id = ?',
+    id,
+  );
+  if (!current) {
+    throw new AppError('Subscription not found', 404);
+  }
+  if (current.status === 'cancelled') {
+    throw new AppError('Cancelled subscriptions cannot be resumed; enroll the customer in a new subscription instead.', 409);
+  }
   await adb.run(
     `UPDATE customer_subscriptions
         SET status = 'active',
