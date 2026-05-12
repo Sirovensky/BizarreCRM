@@ -38,6 +38,16 @@ function requireManagerOrAdmin(req: any): void {
   }
 }
 
+// Admin-only gate for high-stakes reversal operations like reverse-close
+// (WEB-UIUX-1161 / 1171). Manager scope intentionally not granted — the
+// reopen path nukes a frozen z_report + variance audit row and we want a
+// per-shop attestable trail that the elevation happened.
+function requireAdminStrict(req: any): void {
+  if (req?.user?.role !== 'admin') {
+    throw new AppError('Admin role required', 403);
+  }
+}
+
 /**
  * Cents validator — non-negative whole cents. Callers pass an upper bound
  * suited to the specific field so a typo in a PUT body can't silently let
@@ -411,6 +421,105 @@ router.post(
     });
 
     res.json({ success: true, data: { ...zReport, shift_id: shiftId } });
+  }),
+);
+
+/**
+ * WEB-UIUX-1161 / 1171: admin reverse-close. Operator close-with-typo
+ * (`2200` instead of `220.00`) was permanent — variance lived in the audit
+ * trail forever and the next shift inherited a fictitious starting position
+ * if the prior over/undercounted. Endpoint NULLs the close fields so the
+ * shift returns to "open" state, with a fresh audit row capturing reason +
+ * the values that were cleared. Refuses to reopen when another shift is
+ * already open (preserves the "only one open shift" invariant) or when the
+ * shift is older than 7 days (a generous correction window without making
+ * audit timestamps mutable forever).
+ */
+router.post(
+  '/drawer/:id/reopen',
+  asyncHandler(async (req, res) => {
+    requireAdminStrict(req);
+    const adb: AsyncDb = req.asyncDb;
+    const shiftId = parseInt(qs(req.params.id), 10);
+    if (!shiftId || isNaN(shiftId)) throw new AppError('Invalid shift id', 400);
+
+    const reason = req.body?.reason ? validateTextLength(req.body.reason, 500, 'reason') : null;
+    if (!reason || !reason.trim()) {
+      throw new AppError('reason required for reopen (audit trail)', 400);
+    }
+
+    const shift = await adb.get<DrawerShiftRow>(
+      `SELECT * FROM cash_drawer_shifts WHERE id = ?`,
+      shiftId,
+    );
+    if (!shift) throw new AppError('Shift not found', 404);
+    if (!shift.closed_at) throw new AppError('Shift is already open', 409);
+
+    // 7-day correction window keeps the reopen path bounded; older rows
+    // require an explicit audit-tooling intervention rather than silent
+    // mutation of week-old close timestamps.
+    const closedMs = Date.parse(shift.closed_at);
+    if (Number.isFinite(closedMs) && Date.now() - closedMs > 7 * 24 * 60 * 60 * 1000) {
+      throw new AppError('Shift was closed more than 7 days ago — reopen window expired', 409);
+    }
+
+    const conflict = await adb.get<{ id: number }>(
+      `SELECT id FROM cash_drawer_shifts WHERE closed_at IS NULL AND id <> ? LIMIT 1`,
+      shiftId,
+    );
+    if (conflict) {
+      throw new AppError(
+        `Another shift (#${conflict.id}) is currently open — close it before reopening shift #${shiftId}.`,
+        409,
+      );
+    }
+
+    // Snapshot the values we're about to nuke so the audit row has the
+    // full pre-reopen state.
+    const snapshot = {
+      closed_at: shift.closed_at,
+      closing_counted_cents: shift.closing_counted_cents,
+      expected_cents: shift.expected_cents,
+      variance_cents: shift.variance_cents,
+      closed_by_user_id: shift.closed_by_user_id,
+    };
+
+    const db = req.db;
+    const tx = db.transaction(() => {
+      const result = db
+        .prepare(
+          `UPDATE cash_drawer_shifts
+              SET closed_at             = NULL,
+                  closing_counted_cents = NULL,
+                  expected_cents        = NULL,
+                  variance_cents        = NULL,
+                  z_report_json         = NULL,
+                  closed_by_user_id     = NULL
+            WHERE id = ? AND closed_at IS NOT NULL`,
+        )
+        .run(shiftId);
+      if (result.changes !== 1) {
+        throw new AppError('Shift state changed during reopen (race)', 409);
+      }
+    });
+    tx();
+
+    audit(req.db, 'drawer_shift_reopened', req.user!.id, req.ip || 'unknown', {
+      shift_id: shiftId,
+      reason: reason.trim(),
+      cleared: snapshot,
+    });
+    logger.info('drawer_shift_reopened', {
+      shift_id: shiftId,
+      user_id: req.user!.id,
+      variance_cents_cleared: snapshot.variance_cents,
+    });
+
+    const row = await adb.get<DrawerShiftRow>(
+      `SELECT * FROM cash_drawer_shifts WHERE id = ?`,
+      shiftId,
+    );
+    res.json({ success: true, data: row });
   }),
 );
 
