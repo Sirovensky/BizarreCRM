@@ -6,9 +6,10 @@
  * detail page (the actual status mutation lives there). The endpoint
  * `GET /api/v1/team/my-queue` does the filtering server-side.
  */
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Clock, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Clock, AlertCircle, CheckCircle2, ArrowRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { api } from '@/api/client';
 import { formatCurrency } from '@/utils/format';
 
@@ -48,15 +49,38 @@ function dueBadge(dueOn: string | null): { label: string; color: string } | null
   return { label: `due ${new Date(dueOn).toLocaleDateString()}`, color: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300' };
 }
 
+type SortKey = 'due_on' | 'created_at' | 'updated_at' | 'order_id' | 'total' | '';
+type SortOrder = 'asc' | 'desc';
+
 export function MyQueuePage() {
+  // WEB-UIUX-543: server now accepts keyword + sort params so the page can
+  // narrow/re-sort against the bounded 200-row response without rolling a
+  // brittle client-only ordering that disagrees with the default. Empty
+  // keyword + empty sort key reproduces the original "due first, NULLs
+  // last, then oldest" contract.
+  const [keyword, setKeyword] = useState('');
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
+  const [sortBy, setSortBy] = useState<SortKey>('');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedKeyword(keyword.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [keyword]);
+
   // WEB-FO-010 (Fixer-426B 2026-04-26): opt back in to refetchOnWindowFocus
   // for this shared-workflow view. The global default is false (main.tsx)
   // to guard POS/form drafts, but the queue shows shared assignment state —
   // a tech returning from their email should see new handoffs immediately.
   const { data, isLoading, error } = useQuery({
-    queryKey: ['team', 'my-queue'],
+    queryKey: ['team', 'my-queue', debouncedKeyword, sortBy, sortOrder],
     queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: QueueTicket[] }>('/team/my-queue');
+      const params: Record<string, string> = {};
+      if (debouncedKeyword) params.keyword = debouncedKeyword;
+      if (sortBy) {
+        params.sort_by = sortBy;
+        params.sort_order = sortOrder;
+      }
+      const res = await api.get<{ success: boolean; data: QueueTicket[] }>('/team/my-queue', { params });
       return res.data.data;
     },
     refetchInterval: 30_000,
@@ -65,6 +89,19 @@ export function MyQueuePage() {
 
   const tickets: QueueTicket[] = data || [];
 
+  function toggleSort(col: SortKey) {
+    if (sortBy === col) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(col);
+      setSortOrder('asc');
+    }
+  }
+  function sortIcon(col: SortKey) {
+    if (sortBy !== col) return null;
+    return sortOrder === 'asc' ? <ArrowUp className="w-3 h-3 inline ml-1" /> : <ArrowDown className="w-3 h-3 inline ml-1" />;
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto text-surface-900 dark:text-surface-100">
       <header className="mb-6">
@@ -72,6 +109,17 @@ export function MyQueuePage() {
         <p className="text-sm text-surface-500 dark:text-surface-400">
           Tickets assigned to you, sorted by due date and age. Updates every 30 seconds.
         </p>
+        {/* WEB-UIUX-543: keyword filter (300ms debounce) hits the same
+            server route so the bounded 200-row cap behaves like a true
+            filter, not a client-side post-trim. */}
+        <input
+          type="search"
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          placeholder="Filter by order, first name, last name…"
+          aria-label="Filter my queue"
+          className="mt-3 w-full max-w-sm rounded-md border border-surface-300 bg-white px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+        />
       </header>
 
       {isLoading && (
@@ -102,12 +150,18 @@ export function MyQueuePage() {
           <table className="w-full text-sm text-surface-700 dark:text-surface-200">
             <thead className="bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-300 text-left text-xs uppercase">
               <tr>
-                <th className="px-4 py-3">Order</th>
+                {/* WEB-UIUX-543: sortable Order / Age / Due / Total headers
+                    — click toggles asc/desc, server orders the bounded 200
+                    rows. Customer + Status stay un-sortable because the
+                    server has no index on the customer name fields and
+                    status sort would need to map status_id to display
+                    order. */}
+                <th className="px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('order_id')}>Order{sortIcon('order_id')}</th>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Age</th>
-                <th className="px-4 py-3">Due</th>
-                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('created_at')}>Age{sortIcon('created_at')}</th>
+                <th className="px-4 py-3 cursor-pointer select-none" onClick={() => toggleSort('due_on')}>Due{sortIcon('due_on')}</th>
+                <th className="px-4 py-3 text-right cursor-pointer select-none" onClick={() => toggleSort('total')}>Total{sortIcon('total')}</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>

@@ -2278,7 +2278,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
   `packages/web/src/pages/team/MyQueuePage.tsx:34-48`
 
-- [!] WEB-UIUX-543. **[MAJOR] MyQueuePage no sort columns, no filter — tech with 50+ tickets sees long table sorted by server.** L5. **BLOCKED 2026-05-07: `/team/my-queue` hardcodes due-date/age ordering and exposes no keyword/status/sort query params; client-only sorting/filtering over the capped 200-row response would make the table look authoritative without an API contract.**
+- [x] WEB-UIUX-543. **MyQueue sort + filter shipped 2026-05-11.** Server `/team/my-queue` now accepts `keyword`, `status_id`, `sort_by` (whitelisted to due_on / created_at / updated_at / order_id / total), and `sort_order` (asc / desc). LIKE filter escapes wildcards. Default ordering (due first, NULLs last, then oldest) is preserved when no sort_by is sent so existing callers keep their contract. Web `MyQueuePage` adds a debounced keyword input + click-to-toggle sortable Order / Age / Due / Total headers with an arrow icon showing current direction.
   `packages/web/src/pages/team/MyQueuePage.tsx:100-160`
 
   `packages/web/src/pages/team/TeamChatPage.tsx:184-188,292-298`
@@ -4600,7 +4600,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
   <!-- meta: fix=mount-aria-live=polite-region-rendering-last-toast-text+OR-verify-react-hot-toast-emits-role=status -->
 
-- [!] WEB-UIUX-1311. **[NIT] Modal X close (line 749) and Cancel (line 792) coexist; same outcome. Pick one — common pattern: keep header X (mouse) and either remove footer Cancel or repurpose it.** L5 redundancy. **[AUTOLOOP-T49 BLOCKED 2026-05-11: nit redundancy. Common pattern keeps both header X (mouse-mid-flow exit) + footer Cancel (keyboard tab-to-cancel) — removing either breaks one user class.]**
+- [x] WEB-UIUX-1311. **Both close affordances kept by design (STALE 2026-05-11).** Audit nit is the documented dual-affordance pattern: header X for mouse-mid-flow exit, footer Cancel for keyboard tab-to-cancel. Removing either breaks one user class. The blocker note itself acknowledges "common pattern keeps both"; closing the entry.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:749,792`
   <!-- meta: fix=remove-footer-Cancel+widen-Submit-OR-remove-header-X-(more-keyboard-friendly) -->
 
@@ -20879,3 +20879,9 @@ Static audit across server, web POS, payments, React state, reports, settings, i
 
 ### Audit wave 2026-05-10 — fire #2 (cron 97ba6974)
 
+
+### Audit wave 2026-05-10 — round 2 (manual dispatch, 4 parallel agents)
+
+- [ ] BUGHUNT-2026-05-10-54. **[HIGH] Customer merge drops opt-in / TCPA-consent reconciliation.** `packages/server/src/routes/customers.routes.ts:801-914` — `/merge` moves tickets, invoices, estimates, phones, emails, tags, but never reconciles `sms_opt_in`, `email_opt_in`, `sms_consent_marketing`, `sms_consent_transactional` between keep+merge rows. If the merged customer had opted out and the keep row had not, the opt-out is silently discarded; the resulting customer is messaged in violation of TCPA/GDPR. Fix: in the same handler, compute `MIN(keep.flag, merge.flag)` for each consent column (most-restrictive wins) and UPDATE the keep row before soft-deleting the merge row.
+- [ ] BUGHUNT-2026-05-10-55. **[HIGH] CSV importers (RepairShopr, MyRepairApp) wrap per-record errors in a try/catch INSIDE `db.transaction()` — partial batches commit instead of rolling back.** `packages/server/src/services/repairShoprImport.ts:399-490` (and the mirror handler in `myRepairAppImport.ts`) — `db.transaction(() => { for (raw of batch) { try { … } catch { errors++; } } })()` swallows row errors so the transaction commits the 97 rows it processed before record 98 threw. Subsequent retries see partial state via `import_id_map` idempotence; mid-record FK rows (phones, emails, history) end up orphaned. Fix: scope the transaction per-record (`for (raw of batch) { try { db.transaction(() => { … })(); } catch { errors++; } }`), or rethrow inside the inner try so the outer transaction aborts.
+- [ ] BUGHUNT-2026-05-10-56. **[HIGH] Recurring-invoice cron backfills every missed period silently after downtime.** `packages/server/src/services/recurringInvoicesCron.ts:61-114,129-160` — `advanceNextRunAt(tpl.next_run_at, …)` increments ONE interval from the stored timestamp. If the server was down 60 minutes on a 15-minute cron, `next_run_at` is 60 min behind; each tick advances by one interval and fires another invoice until caught up, generating 3-4 back-to-back invoices for the same period. No operator-visible signal, no "skip on backlog" config, no notification to the affected customer. Fix: when `nextRunAt <= now()` after advance, either clamp to `advanceNextRunAt(now, kind, count)` so backlog collapses to ONE invoice, or surface a "backfill threshold" config that lets the operator decide between collapse vs. catch-up.

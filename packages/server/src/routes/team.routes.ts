@@ -349,8 +349,47 @@ router.get(
     const adb: AsyncDb = req.asyncDb;
     const userId = requireUserId(req);
 
-    // tickets table uses `assigned_to`, not `assigned_user_id`. Sort: due first
-    // (NULLs last), then oldest unfinished. Excludes soft-deleted + closed.
+    // WEB-UIUX-543: accept keyword + status_id + sort params so the page can
+    // narrow / re-sort the cap of 200 rows server-side instead of hand-
+    // rolling a brittle client-only sort that disagrees with the
+    // due-date-first server default. Sort whitelist is locked to a small
+    // set of columns we know are indexed or selective enough to keep the
+    // query fast.
+    const keyword = (typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '').slice(0, 100);
+    const statusIdRaw = req.query.status_id;
+    const statusId = typeof statusIdRaw === 'string' && /^\d+$/.test(statusIdRaw)
+      ? Number(statusIdRaw)
+      : null;
+    const ALLOWED_SORT = new Map<string, string>([
+      ['due_on', 't.due_on'],
+      ['created_at', 't.created_at'],
+      ['updated_at', 't.updated_at'],
+      ['order_id', 't.order_id'],
+      ['total', 't.total'],
+    ]);
+    const sortBy = typeof req.query.sort_by === 'string' && ALLOWED_SORT.has(req.query.sort_by)
+      ? ALLOWED_SORT.get(req.query.sort_by)!
+      : null;
+    const sortOrder = req.query.sort_order === 'desc' ? 'DESC' : 'ASC';
+
+    const where: string[] = ['t.assigned_to = ?', 't.is_deleted = 0', 'COALESCE(ts.is_closed, 0) = 0'];
+    const params: unknown[] = [userId];
+    if (keyword) {
+      where.push('(t.order_id LIKE ? ESCAPE \'\\\\\' OR c.first_name LIKE ? ESCAPE \'\\\\\' OR c.last_name LIKE ? ESCAPE \'\\\\\')');
+      const k = `%${keyword.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+      params.push(k, k, k);
+    }
+    if (statusId !== null) {
+      where.push('t.status_id = ?');
+      params.push(statusId);
+    }
+
+    const orderBy = sortBy
+      ? `${sortBy} ${sortOrder}, t.id ${sortOrder}`
+      // Default: due first (NULLs last), then oldest unfinished — preserves
+      // the prior contract for callers that don't pass sort_by.
+      : `CASE WHEN t.due_on IS NULL THEN 1 ELSE 0 END, t.due_on ASC, t.created_at ASC`;
+
     const tickets = await adb.all(`
       SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
              t.due_on, t.created_at, t.updated_at, t.total,
@@ -359,15 +398,10 @@ router.get(
       FROM tickets t
       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
       LEFT JOIN customers c ON c.id = t.customer_id
-      WHERE t.assigned_to = ?
-        AND t.is_deleted = 0
-        AND COALESCE(ts.is_closed, 0) = 0
-      ORDER BY
-        CASE WHEN t.due_on IS NULL THEN 1 ELSE 0 END,
-        t.due_on ASC,
-        t.created_at ASC
+      WHERE ${where.join(' AND ')}
+      ORDER BY ${orderBy}
       LIMIT 200
-    `, userId);
+    `, ...params);
 
     res.json({ success: true, data: tickets });
   }),
