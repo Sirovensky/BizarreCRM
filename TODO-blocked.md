@@ -2046,7 +2046,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744`
 
-- [!] WEB-UIUX-1047. **[MINOR] Z-Report (`ZReportModal.tsx:204`) shows "Refunds" total in cents, but no drill-down link to refund detail and no per-tender breakdown (cash refunds vs card refunds).** End-of-day reconciliation is summary-only. L8, L1. **[AUTOLOOP-T49 BLOCKED 2026-05-11: server Z-Report needs per-tender refund SUM (GROUP BY method) + drill-down route /refunds?date=... — depends on UIUX-1018 (no /refunds route exists yet).]**
+- [x] WEB-UIUX-1047. **[MINOR] Z-Report per-tender refund breakdown + drill-down shipped.** 2026-05-12 — server `buildZReport` adds `refund_breakdown: Array<{method, cents, count}>` sourced from `refunds` table grouped by method, scoped to the shift window (`posEnrich.routes.ts`). ZReportModal renders a new "Refund Breakdown" section (hidden when empty) with each tender row + an "Open detail →" link that lands on `/refunds?from=<opened_at>&to=<closed_at>&status=approved`. RefundsListPage now honors `from`/`to`/`status` URL params and shows a "Filtered window" banner with Clear-filter affordance.
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:204`
 
 - [!] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8. **STATUS: BLOCKED — needs new server-side card-refund route (BlockChyp refund API call) + audit-log + 5+ files; defer to refunds sprint**

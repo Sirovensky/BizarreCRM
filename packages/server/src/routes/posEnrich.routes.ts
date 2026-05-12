@@ -562,6 +562,11 @@ interface ZReport {
   duration_minutes: number | null;
   notes: string | null;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
+  // WEB-UIUX-1047: per-tender refund breakdown so end-of-day reconciliation
+  // can answer "how much went back to cards vs paid out from the drawer."
+  // Sourced from the refunds table for the shift window, grouped by method.
+  // Approved + completed only — pending refunds don't represent money moved.
+  refund_breakdown: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
     refund_cents: number;
@@ -588,6 +593,22 @@ async function buildZReport(
        FROM payments p
       WHERE p.created_at BETWEEN ? AND ?
       GROUP BY COALESCE(p.method, 'unknown')
+      ORDER BY cents DESC`,
+    shift.opened_at,
+    closedAt,
+  );
+
+  // WEB-UIUX-1047: per-tender refund breakdown — refunds approved/completed
+  // within the shift window grouped by method. NULL methods (legacy /
+  // store-credit) fall under 'unknown' so the row count stays accurate.
+  const refundBreakdown = await adb.all<{ method: string; cents: number; count: number }>(
+    `SELECT COALESCE(r.method, 'unknown') AS method,
+            COALESCE(SUM(CAST(ROUND(r.amount * 100) AS INTEGER)), 0) AS cents,
+            COUNT(*) AS count
+       FROM refunds r
+      WHERE r.created_at BETWEEN ? AND ?
+        AND r.status IN ('approved', 'completed')
+      GROUP BY COALESCE(r.method, 'unknown')
       ORDER BY cents DESC`,
     shift.opened_at,
     closedAt,
@@ -651,6 +672,7 @@ async function buildZReport(
     duration_minutes: durationMinutes,
     notes: shift.notes ?? null,
     payment_breakdown: breakdown,
+    refund_breakdown: refundBreakdown,
     totals: totalsRow ?? { gross_cents: 0, refund_cents: 0, net_cents: 0, transaction_count: 0 },
   };
 }

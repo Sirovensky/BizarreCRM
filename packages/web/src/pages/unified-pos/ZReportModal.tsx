@@ -33,6 +33,9 @@ interface ZReport {
   duration_minutes?: number | null;
   notes?: string | null;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
+  // WEB-UIUX-1047: per-tender refund breakdown (cash refunds vs card refunds
+  // vs store credit). Refunds approved + completed within the shift window.
+  refund_breakdown?: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
     refund_cents: number;
@@ -318,6 +321,34 @@ function ZReportBody({ report, varianceWarnCents }: ZReportBodyProps) {
           <ReportRow label="Transactions" value={String(report.totals.transaction_count)} />
         </div>
       </div>
+
+      {/* WEB-UIUX-1047: per-tender refund breakdown + drill-down link to
+          /refunds filtered to the shift window. Hidden when there were no
+          approved refunds in this shift so the modal stays compact for the
+          common no-refunds case. Drill-down is print:hidden because operators
+          carry the printed copy off-system; the link only matters on-screen. */}
+      {(report.refund_breakdown?.length ?? 0) > 0 && (
+        <div>
+          <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+            <span>Refund Breakdown</span>
+            <a
+              href={`/refunds?from=${encodeURIComponent(report.opened_at)}&to=${encodeURIComponent(report.closed_at)}&status=approved`}
+              className="print:hidden text-[10px] font-normal normal-case tracking-normal text-primary-600 hover:underline dark:text-primary-400"
+            >
+              Open detail →
+            </a>
+          </div>
+          <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+            {report.refund_breakdown!.map((r) => (
+              <ReportRow
+                key={r.method}
+                label={`${r.method} (${r.count})`}
+                value={formatMoney(r.cents)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* WEB-UIUX-1185: EOD signature lines for cashier + manager handover.
           Only visible on print so the on-screen modal stays compact. */}

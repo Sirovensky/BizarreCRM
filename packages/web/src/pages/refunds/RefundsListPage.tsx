@@ -9,7 +9,7 @@
  * reversal + store-credit upsert); this page is the missing UI.
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Check, X, Loader2, Receipt } from 'lucide-react';
@@ -55,18 +55,30 @@ const STATUS_BADGE: Record<string, string> = {
 export function RefundsListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canApprove = useHasPermission('refunds.approve');
-  const [tab, setTab] = useState<StatusTab>('pending');
+  // WEB-UIUX-1047: honor URL search params so drill-downs from Z-Report
+  // (`/refunds?from=…&to=…&status=approved`) land on the right window.
+  const initialStatus = (() => {
+    const s = searchParams.get('status');
+    return s === 'pending' || s === 'approved' || s === 'declined' || s === 'all'
+      ? (s as StatusTab) : 'pending';
+  })();
+  const [tab, setTab] = useState<StatusTab>(initialStatus);
   const [page, setPage] = useState(1);
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
   const PAGE_SIZE = 25;
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['refunds', tab, page],
+    queryKey: ['refunds', tab, page, fromParam, toParam],
     queryFn: async () => {
       const res = await refundApi.list({
         page,
         pagesize: PAGE_SIZE,
         ...(tab === 'all' ? {} : { status: tab }),
+        ...(fromParam ? { from_date: fromParam } : {}),
+        ...(toParam ? { to_date: toParam } : {}),
       });
       return res.data as {
         success: boolean;
@@ -74,6 +86,17 @@ export function RefundsListPage() {
       };
     },
   });
+
+  // Keep the URL in sync when the operator switches tabs so the drill-down
+  // window stays sticky on reload but tab toggles still feel responsive.
+  const handleTabChange = (next: StatusTab) => {
+    setTab(next);
+    setPage(1);
+    const params = new URLSearchParams(searchParams);
+    if (next === 'pending') params.delete('status');
+    else params.set('status', next);
+    setSearchParams(params, { replace: true });
+  };
 
   // WEB-UIUX-712 / WEB-UIUX-703 follow-up: manager liability summary so an
   // admin opening the queue can instantly see outstanding store-credit
@@ -172,6 +195,29 @@ export function RefundsListPage() {
         </div>
       </header>
 
+      {/* WEB-UIUX-1047: drill-down window indicator. Visible when caller
+          (typically Z-Report) passed `from`+`to` URL params; one-click clear
+          puts the operator back on the unfiltered queue. */}
+      {(fromParam || toParam) && (
+        <div className="flex items-center justify-between rounded-md border border-primary-200 bg-primary-50 px-3 py-2 text-xs dark:border-primary-500/30 dark:bg-primary-500/10">
+          <span className="text-primary-700 dark:text-primary-300">
+            Filtered window: {fromParam ? new Date(fromParam).toLocaleString() : '…'} → {toParam ? new Date(toParam).toLocaleString() : '…'}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams(searchParams);
+              params.delete('from');
+              params.delete('to');
+              setSearchParams(params, { replace: true });
+            }}
+            className="rounded px-2 py-0.5 text-primary-700 hover:bg-primary-100 dark:text-primary-300 dark:hover:bg-primary-500/20"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
+
       {/* Manager liability snapshot — admins only. Hidden when zero so it doesn't add noise on fresh tenants. */}
       {canApprove && liabilityData?.data?.total && liabilityData.data.total > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
@@ -190,7 +236,7 @@ export function RefundsListPage() {
             key={t.value}
             role="tab"
             aria-selected={tab === t.value}
-            onClick={() => { setTab(t.value); setPage(1); }}
+            onClick={() => handleTabChange(t.value)}
             className={cn(
               'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
               tab === t.value
