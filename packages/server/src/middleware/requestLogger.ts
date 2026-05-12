@@ -14,6 +14,14 @@ const log = createLogger('http');
 // @audit-fixed: Cap the map so an attacker can't OOM the server by flooding
 // requests with unique Host headers that each create a new tenant slug entry.
 const MAX_TRACKED_TENANTS = 10_000;
+// BUGHUNT-2026-05-10-09: a smaller cap for the `host:` fallback bucket so an
+// attacker who floods unique Host headers cannot hold the full 10k slots.
+// Legitimate unresolved-host traffic (landing pages, misconfigured DNS) fits
+// in <100 distinct hostnames; anything beyond that collapses to a single
+// `host:overflow` bucket, which still preserves the dashboard signal that
+// SOMETHING is hitting unresolved hostnames while bounding memory.
+const MAX_TRACKED_HOST_BUCKETS = 100;
+const HOST_OVERFLOW_BUCKET = 'host:overflow';
 const tenantRequests = new Map<string, { count: number; resetAt: number }>();
 
 /** Returns a snapshot of per-tenant request counts (for the management dashboard). */
@@ -86,7 +94,25 @@ export function requestLogger(req: Request, res: Response, next: NextFunction): 
   } else {
     const hostHeader = req.headers.host || '';
     const hostname = String(hostHeader).split(':')[0].toLowerCase() || 'unknown';
-    slug = `host:${hostname}`;
+    const candidate = `host:${hostname}`;
+    // BUGHUNT-2026-05-10-09: cap distinct host: buckets. An attacker spraying
+    // random Host headers can no longer hold 10k slots — once we have
+    // MAX_TRACKED_HOST_BUCKETS already, every new unresolved-host request
+    // collapses into HOST_OVERFLOW_BUCKET. Existing host: buckets continue
+    // to count their own traffic so attribution survives for legitimate
+    // unresolved-host sources.
+    if (tenantRequests.has(candidate)) {
+      slug = candidate;
+    } else {
+      let hostBucketCount = 0;
+      for (const k of tenantRequests.keys()) {
+        if (k.startsWith('host:')) {
+          hostBucketCount++;
+          if (hostBucketCount >= MAX_TRACKED_HOST_BUCKETS) break;
+        }
+      }
+      slug = hostBucketCount >= MAX_TRACKED_HOST_BUCKETS ? HOST_OVERFLOW_BUCKET : candidate;
+    }
   }
   const now = Date.now();
   maybePruneTenantRequests(now);
