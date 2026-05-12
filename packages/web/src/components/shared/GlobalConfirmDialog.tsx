@@ -2,7 +2,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { useConfirmStore } from '@/stores/confirmStore';
 
 export function GlobalConfirmDialog() {
-  const { open, generation, title, message, confirmLabel, danger, close } = useConfirmStore();
+  const { open, generation, title, message, confirmLabel, danger, requireTyping, confirmText, close } = useConfirmStore();
 
   return (
     <ConfirmDialog
@@ -17,6 +17,8 @@ export function GlobalConfirmDialog() {
       message={message}
       confirmLabel={confirmLabel}
       danger={danger}
+      requireTyping={requireTyping}
+      confirmText={confirmText}
       onConfirm={() => close(true)}
       onCancel={() => close(false)}
     />

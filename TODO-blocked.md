@@ -2824,30 +2824,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/customers/CustomerCreatePage.tsx:64,371-378`
   <!-- meta: fix=convert-handler-SELECT-customers-WHERE-email=?-OR-phone=?-LIMIT-1-before-INSERT+if-match-return-{found:true,customer_id,name}+UI-presents-link-or-create-new-choice -->
 
-- [!] WEB-UIUX-1340. **[MAJOR] Lead reminders orphaned by convert. Lead has `lead_reminders` rows (`leads.routes.ts:945-998`); convert flips status to 'converted' but never copies/migrates reminders to the new ticket. Operator scheduled "follow up Mon" on the lead → converted same day → Monday arrives, no reminder fires (ticket has no reminder, lead is closed). Detail page even shows the reminders in the activity timeline (`LeadDetailPage.tsx:290-298`) so user thinks they're real promises. Devices DO get copied (`:1098-1113`); reminders are forgotten.** L4 broken flow, L7 silent loss of work. **STATUS: BLOCKED — server convert handler must INSERT INTO ticket_reminders SELECT FROM lead_reminders; backend, defer to convert sprint**
-  `packages/server/src/routes/leads.routes.ts:945-998,1098-1136`
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:290-298`
-  <!-- meta: fix=convert-handler-INSERT-INTO-ticket_reminders-(SELECT-...-FROM-lead_reminders-WHERE-lead_id=?-AND-is_dismissed=0)+OR-leave-reminders-on-lead-and-add-link-back-to-lead-from-ticket-detail+document-which-side-owns-future-followups -->
-
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:405`
-  `packages/web/src/pages/leads/LeadListPage.tsx:805`
-  `packages/server/src/routes/leads.routes.ts:1063-1082`
-  <!-- meta: fix=copy="Convert-this-lead?-Will-create-Ticket+Customer-records.-Existing-customer-with-this-email/phone-will-be-linked-instead." -->
-
-  `packages/web/src/pages/leads/LeadPipelinePage.tsx:148-161`
-  `packages/server/src/routes/leads.routes.ts:31-43`
-  <!-- meta: fix=expose-LEGAL_LEAD_TRANSITIONS-via-/api/leads/transitions-(or-bake-into-frontend-constant)+filter-menu-items-to-allowed[lead.status]+grey-out-with-"requires-Proposal-status-first"-tooltip-for-converted -->
-
-- [!] WEB-UIUX-1345. **[MAJOR] LeadListPage row actions are icon-only with no labels — Convert (ArrowRightLeft) and Delete (Trash2) sit side-by-side, both bare icons. Lines 792-836. Only differentiation is hover color (green vs red) and tooltip. New staff cannot identify which is which without hover; touch users get no tooltip. Convert is rarely-needed-but-irreversible (creates ticket+customer+audit); Delete is destructive. Two destructive-feeling icons with no labels invites mis-clicks. Industry standard for low-frequency irreversible actions: text label or kebab menu.** L1 findability, L2 truthfulness, L5 hierarchy (destructive vs creative not visually distinct). **[AUTOLOOP-T49 BLOCKED 2026-05-11: icon-only row action redesign needs a consistent kebab-menu pattern across all list pages (Customers, Tickets, Invoices, Leads) — multi-callsite.]**
-  `packages/web/src/pages/leads/LeadListPage.tsx:790-837`
-  <!-- meta: fix=move-Convert+Delete-into-overflow-kebab-with-text-labels+keep-only-View-as-icon+OR-add-text-labels-(sm:inline)-on-Convert/Delete-buttons -->
-
-  `packages/web/src/pages/leads/LeadPipelinePage.tsx:20-27`
-  <!-- meta: fix=remove-'converted'-from-PIPELINE_STAGES+add-"Show-converted"-toggle-OR-show-only-converted-from-last-30d+keep-link-from-each-converted-lead-to-its-ticket-via-card-footer -->
-
-  `packages/web/src/pages/leads/LeadListPage.tsx:812-817`
-  <!-- meta: fix=track-pendingId-state-(useState<number|null>)+disable-only-the-row-being-converted+show-spinner-on-that-icon -->
-
 - [!] WEB-UIUX-1353. **[BLOCKER] SKU lookup uses `keyword=q&pagesize=1` — picks FIRST match silently, including partial matches. Scanning a barcode that maps to 2+ items (sku-prefix collision, search treats keyword as fuzzy) credits an arbitrary item. No "exact match required" or "did you mean…" feedback.** L2 label truthfulness, L4 flow. **STATUS: BLOCKED — needs new server route /inventory/by-sku?sku=:exact + UI fuzzy-match suggestions; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/StocktakePage.tsx:166-173`
   <!-- meta: fix=add-/inventory/by-sku?sku=:exact-route-OR-pass-exact_sku=1-flag+if-no-exact-match-show-toast-with-top-3-fuzzy-suggestions -->
@@ -3191,15 +3167,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:591-672`
   <!-- meta: fix=remove-backdrop-close;-or-on-dismiss-when-(amount||notes||method!=='cash')-show-confirm-"Discard-payment-entry?" -->
-
-- [!] WEB-UIUX-1530. **[MAJOR] Overpayment guard uses native `window.confirm()` (`InvoiceDetailPage.tsx:236`). Native dialog is unstyled, can be muted by browser site settings, and looks identical for "$50 overage on a $50 invoice (likely tip)" vs "$4,950 overage on a $50 invoice (definitely typo)". The guard accepts any amount on Yes — no typed confirmation, no "Record overage as $X store credit?" preview, no breakdown showing where the excess will land. Replace with a styled ConfirmDialog that surfaces the planned store_credit insert and requires typed confirmation when overage > e.g. 50% of invoice total.** L5 destructive hierarchy, L7 feedback, L13 forgiveness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: replacing window.confirm with a styled ConfirmDialog + store-credit preview + typed gate >50% needs the overpayment-policy product decision (allow tip vs always credit) + dialog wiring across the modal.]**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:225-242`
-  `packages/server/src/routes/invoices.routes.ts:792-798,825-861`
-  <!-- meta: fix=swap-window.confirm-for-ConfirmDialog-with-{amount,balance,overage,store_credit_target,customer_name};-requireTyping=overage>balance*0.5 -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:641-644`
-  `packages/server/src/routes/invoices.routes.ts:750,780-783`
-  <!-- meta: fix=add-{transaction_id}-to-paymentForm;-render-input-conditional-on-method!=='cash';-pass-through-on-payMutation;-render-on-timeline-row -->
 
 - [!] WEB-UIUX-1533. **[MAJOR] Invoice list has no inline "Record Payment" — collections workflow loses scroll/filter on every row. `InvoiceListPage.tsx:533-538` action column shows "View" only; the row is also clickable as a whole, so selection or quick action requires `e.stopPropagation()` plumbing already in place. A cashier reviewing the overdue tab (50 rows) and calling each customer in turn must click row → land on detail → click Record Payment → record → navigate back → scroll back to position. Add a small "$" / "Pay" icon button beside View on rows with `amount_due > 0`, opening the same payment modal in-list (or via a side drawer).** L4 flow integrity, L6 discoverability. **STATUS: BLOCKED — needs RecordPaymentModal extracted into shared component + InvoiceListPage row action; multi-component, defer**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:483-540`

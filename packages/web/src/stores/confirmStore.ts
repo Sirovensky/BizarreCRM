@@ -15,11 +15,24 @@ interface ConfirmState {
   message: string | ReactNode;
   confirmLabel: string;
   danger: boolean;
+  // WEB-UIUX-1530: forward type-to-confirm gate so callers can require the
+  // operator to type a fixed string (e.g. the overage amount) before the
+  // confirm button enables. Avoids fat-finger commits on rare high-impact
+  // actions like a $4,950 overpayment on a $50 invoice.
+  requireTyping: boolean;
+  confirmText: string;
   resolve: ((value: boolean) => void) | null;
 }
 
 interface ConfirmStore extends ConfirmState {
-  confirm: (opts: { title?: string; message: string | ReactNode; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
+  confirm: (opts: {
+    title?: string;
+    message: string | ReactNode;
+    confirmLabel?: string;
+    danger?: boolean;
+    requireTyping?: boolean;
+    confirmText?: string;
+  }) => Promise<boolean>;
   close: (result: boolean) => void;
 }
 
@@ -30,6 +43,8 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
   message: '',
   confirmLabel: 'Confirm',
   danger: false,
+  requireTyping: false,
+  confirmText: '',
   resolve: null,
 
   confirm: (opts) => {
@@ -75,6 +90,8 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
           return 'Confirm';
         })(),
         danger: opts.danger ?? false,
+        requireTyping: opts.requireTyping ?? false,
+        confirmText: opts.confirmText ?? '',
         resolve,
       });
     });
@@ -88,6 +105,9 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
 }));
 
 /** Shorthand: await confirm('Delete this item?') */
-export function confirm(message: string, opts?: { title?: string; confirmLabel?: string; danger?: boolean }): Promise<boolean> {
+export function confirm(
+  message: string,
+  opts?: { title?: string; confirmLabel?: string; danger?: boolean; requireTyping?: boolean; confirmText?: string },
+): Promise<boolean> {
   return useConfirmStore.getState().confirm({ message, ...opts });
 }

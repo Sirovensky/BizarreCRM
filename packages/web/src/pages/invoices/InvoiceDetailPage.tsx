@@ -610,12 +610,28 @@ export function InvoiceDetailPage() {
     const balanceDue = Number(invoice.amount_due) || 0;
     if (enteredAmount > balanceDue + 0.005) {
       const overage = enteredAmount - balanceDue;
+      // WEB-UIUX-1530: when the overage exceeds 50% of invoice total, gate
+      // the confirm behind a typed amount so a fat-fingered extra zero
+      // ($500 on a $50 invoice) cannot slip through a single Enter press.
+      // Small tips/rounding (under the threshold) keep the cheap one-tap
+      // confirm; only outsized overpayments require the typed amount.
+      const invoiceTotal = Number(invoice.total) || 0;
+      const requireTyped = invoiceTotal > 0 && overage > invoiceTotal * 0.5;
+      const confirmText = requireTyped ? overage.toFixed(2) : undefined;
+      // WEB-UIUX-1530: outcome-preview so the operator sees exactly where the
+      // overage lands. Server posts the overage to the customer's store-credit
+      // balance — surface that destination so "Record" isn't a black box.
+      const overagePreview = `Overage of ${formatCurrency(overage)} will be added to the customer's store credit on this invoice's customer record.`;
       const proceed = await confirm(
-        `Amount ${formatCurrency(enteredAmount)} exceeds the balance due of ${formatCurrency(balanceDue)} by ${formatCurrency(overage)}. Record this overpayment anyway?`,
+        requireTyped
+          ? `Amount ${formatCurrency(enteredAmount)} exceeds the balance due of ${formatCurrency(balanceDue)} by ${formatCurrency(overage)} — more than 50% over invoice total.\n\n${overagePreview}\n\nType ${overage.toFixed(2)} to confirm.`
+          : `Amount ${formatCurrency(enteredAmount)} exceeds the balance due of ${formatCurrency(balanceDue)} by ${formatCurrency(overage)}.\n\n${overagePreview}\n\nRecord this overpayment anyway?`,
         {
           title: 'Record overpayment?',
           confirmLabel: 'Record payment',
           danger: true,
+          requireTyping: requireTyped,
+          confirmText,
         },
       );
       if (!proceed) return;

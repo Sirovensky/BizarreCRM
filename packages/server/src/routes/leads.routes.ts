@@ -8,6 +8,8 @@ import { WS_EVENTS, LEGAL_LEAD_TRANSITIONS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { normalizePhone } from '../utils/phone.js';
+import { createLogger } from '../utils/logger.js';
+const logger = createLogger('leads');
 import { escapeLike } from '../utils/query.js';
 import {
   validateEmail,
@@ -1153,6 +1155,41 @@ router.post(
 
     await adb.run('UPDATE tickets SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
       totals.subtotal, totals.total_tax, totals.total, ticketId);
+
+    // WEB-UIUX-1340: carry open lead reminders forward as a ticket note so
+    // the future-Monday follow-up doesn't silently vanish when the lead
+    // closes. No new ticket_reminders table — the reminder text just becomes
+    // a visible ticket-note line so the operator sees it on the ticket
+    // detail's note history. Each reminder gets the remind_at date prefix.
+    try {
+      const openReminders = await adb.all<any>(
+        `SELECT remind_at, note FROM lead_reminders
+          WHERE lead_id = ? AND COALESCE(completed, 0) = 0
+       ORDER BY remind_at ASC`,
+        id,
+      );
+      if (openReminders.length > 0) {
+        const lines = openReminders.map((r) => {
+          const due = r.remind_at ? String(r.remind_at) : 'no date';
+          const text = r.note ? String(r.note).trim() : '(no note)';
+          return `• ${due} — ${text}`;
+        });
+        const noteBody =
+          `[Carried from Lead ${lead.order_id ?? `#${id}`}] ${openReminders.length} open reminder${openReminders.length === 1 ? '' : 's'}:\n`
+          + lines.join('\n');
+        await adb.run(
+          `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
+           VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+          ticketId, req.user!.id, noteBody.slice(0, 4000),
+        );
+      }
+    } catch (remErr) {
+      logger.warn('lead_convert_reminder_carryover_failed', {
+        error: remErr instanceof Error ? remErr.message : String(remErr),
+        lead_id: id,
+        ticket_id: ticketId,
+      });
+    }
 
     // Update lead status
     await adb.run("UPDATE leads SET status = 'converted', updated_at = datetime('now') WHERE id = ?", id);
