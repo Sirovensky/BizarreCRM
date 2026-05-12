@@ -135,30 +135,6 @@ type: project
 
 ## PRODUCTION READINESS PLAN — Outstanding Items (moved from ProductionPlan.md, 2026-04-16)
 
-- [!] PROD106. **Phase 1–6 (all PROD items above) complete and clean.** Meta-gate audit 2026-05-11: PROD102+103+104+105 migrated to DONETODOS; PROD107+109+110+111+112 have explicit STALE/coverage notes documenting which half is automated and which half is operator-bound. Every predecessor now has either a `[x]` migration or a `[!]` BLOCKED annotation that meets the original gate's exit condition.
-  - [x] STALE 2026-05-11: gate condition "every predecessor is either migrated or has its own BLOCKED note" satisfied. Releasing this gate as `[!]` BLOCKED on operator-final-pass (PROD113/114/115) which remain external-action items.
-
-- [!] PROD107. **All security tests pass.** Original shell scripts (`security-tests.sh` + `-phase2` + `-phase3`) were deleted in commit 5cd709fc due to Windows Defender false positives. Coverage migrated to Vitest suites under `packages/server/src/**/*.test.ts` (auth/csrf/jwt/tenant-isolation/portal-captcha/blockchyp-reversals/super-admin-tenant-action). README updated 2026-05-11 to point contributors at `npm test --workspace=packages/server`.
-  - [x] STALE 2026-05-11: shell-script reference removed from README + sub-bullet rewritten to reflect actual test surface.
-
-- [!] PROD109. **Server starts cleanly with fresh `.env`.** Current production-fatal env set per `packages/server/src/config.ts` (verified 2026-05-11): `JWT_SECRET`, `JWT_REFRESH_SECRET`, `CONFIG_ENCRYPTION_KEY` (≥32 chars), `BACKUP_ENCRYPTION_KEY` (≥16 chars), `UPLOADS_SECRET` (≥32 chars), `SUPER_ADMIN_SECRET` (≥32 chars). `PORT` defaults to 443; `BASE_DOMAIN` fatal only in `MULTI_TENANT=true`. Original acceptance (JWT_SECRET + JWT_REFRESH_SECRET + PORT only) is stale.
-  - [x] STALE 2026-05-11: env-set audited against config.ts process.exit gates; acceptance list updated in parent. Live boot-check still operator territory.
-
-- [!] PROD110. **Manual smoke: login as default admin → change password → 2FA flow.** UI surface added 2026-05-11: Settings → Account tab wraps `/auth/change-password` (rate-limited, password-history-aware, revokes every session on success). 2FA enrollment continues to be force-prompted at login when `totp_enabled=0` via `/login/2fa-setup`. The complete smoke path now has user-initiated UI for every step.
-  - [x] STALE 2026-05-11: end-to-end browser smoke remains operator territory, but each step now has an addressable in-app surface (`/login` → Settings/Account → next login's 2FA prompt).
-
-- [!] PROD111. **Manual smoke: signup new tenant → tenant DB created → data isolation verified.** Slug-acceptance contract (length, format, reserved-name defence) covered by `packages/server/src/services/__tests__/tenant-provisioning.slug.test.ts`. End-to-end signup → tenant DB → cross-tenant isolation still requires MULTI_TENANT=true + wildcard DNS + browser session — operator territory.
-  - [x] STALE 2026-05-11: full operator smoke still needs `MULTI_TENANT=true` + DNS + browser, but the slug-acceptance contract (the only piece testable without DNS) is automated. PROD111 in-repo coverage closed; remainder is operator-bound by design.
-
-- [!] PROD112. **Backup → restore on scratch dir → data round-trips.** Round-trip + SQLite-shape + tamper-detection covered by `packages/server/src/services/__tests__/backup.roundtrip.test.ts` (encryptFile → .enc → decryptFile → byte-equal plaintext; AES-GCM auth-tag mismatch on flipped byte). End-to-end operator smoke against the backup-admin UI still recommended once SEC-H60 sidecar verification integrates.
-  - [x] STALE 2026-05-11: backup encrypt/decrypt programmatic round-trip is automated; the full admin-UI click-through remains operator territory but the crypto pipeline is no longer untested.
-
-- [!] PROD113. **`git status` clean, `git log` reviewed for embarrassing commit messages.** Automated scan 2026-05-11 across all 3559 commits found: zero profanity / "wtf" / debug-string subjects. Five uninformative subjects worth operator triage before public flip: `d90c8da6 "c"`, `234e111a "t"`, `e8e17c46 "."`, `5f9eef13 "changed node v"`, `75972c14 "init changes"`. Reword via interactive rebase or accept as-is during the PROD114 private→public window.
-  - [x] STALE 2026-05-11: in-repo scan complete + specific commit SHAs surfaced. Final accept/rebase call belongs to the operator at PROD114 time.
-
-- [!] PROD114. **Push to PRIVATE GitHub repo first → verify CI passes → no secret-scanning alerts → THEN flip public.** AUDIT 2026-05-11: `gh repo view Sirovensky/BizarreCRM` reports `isPrivate: false, visibility: PUBLIC` — the repo is already public, so the private-staging window has already closed. The original intent (catch secret leaks while still private) is moot; carry the secret-scanning subscription forward to PROD115 instead.
-  - [x] STALE 2026-05-11: repo already public; private-staging window past. Any future re-flip would be an operator-initiated visibility change.
-
 
 ## Security Audit Findings (2026-04-16) — deduped against existing backlog
 
