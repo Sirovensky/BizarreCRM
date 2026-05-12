@@ -8,6 +8,10 @@ import { SmsTemplateListResponse } from '@/api/types';
 import { cn } from '@/utils/cn';
 // WEB-UIUX-1521: Focus trap for modal accessibility
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+// BUGHUNT-2026-05-10-39: quiet-hours TCPA window must follow the shop's
+// configured timezone, not the operator's browser tz, since the staff
+// member triggering the blast may not be physically in the shop's zone.
+import { useSettings } from '@/hooks/useSettings';
 
 /**
  * Bulk SMS modal — audit §51.3.
@@ -96,6 +100,9 @@ interface JobProgress {
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   // WEB-UIUX-1521: Always-active focus trap — modal only renders when open
   const dialogRef = useFocusTrap(true);
+  // BUGHUNT-2026-05-10-39: shop tz for TCPA quiet-hours window.
+  const { getSetting } = useSettings();
+  const shopTimezone = getSetting('store_timezone', '') || undefined;
   // WEB-UIUX-1121: Default to recent_purchases — most common bulk send use-case
   const [segment, setSegment] = useState<Segment>('recent_purchases');
   const [templateId, setTemplateId] = useState<number | null>(null);
@@ -318,16 +325,44 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
     onClose();
   }
 
-  // WEB-UIUX-1122: Check TCPA quiet hours (8am–9pm) on open and whenever modal is shown
+  // WEB-UIUX-1122 + BUGHUNT-2026-05-10-39: Check TCPA quiet hours (8am–9pm)
+  // in the SHOP's timezone (store_timezone from settings), not the operator's
+  // browser tz. A remote admin firing a blast from a different zone otherwise
+  // saw a misleading "all clear" banner. Falls back to browser tz when the
+  // setting is missing so existing behaviour is preserved.
   useEffect(() => {
     if (!open) return;
     const checkQuietHours = () => {
       const now = new Date();
-      const h = now.getHours();
+      let h: number;
+      let mm: string;
+      if (shopTimezone) {
+        try {
+          const fmt = new Intl.DateTimeFormat('en-US', {
+            timeZone: shopTimezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          });
+          const parts = fmt.formatToParts(now);
+          const hStr = parts.find(p => p.type === 'hour')?.value ?? '00';
+          mm = parts.find(p => p.type === 'minute')?.value ?? '00';
+          h = parseInt(hStr, 10);
+          // Intl reports `hour: '2-digit'` with `hour12: false` as 0–23 except
+          // on some Node/Safari builds where 00:xx becomes 24:xx. Normalize.
+          if (h === 24) h = 0;
+        } catch {
+          h = now.getHours();
+          mm = String(now.getMinutes()).padStart(2, '0');
+        }
+      } else {
+        h = now.getHours();
+        mm = String(now.getMinutes()).padStart(2, '0');
+      }
       if (h < 8 || h >= 21) {
         const hh = String(h).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        setQuietHoursWarning(`${hh}:${mm}`);
+        const tzLabel = shopTimezone ? ` ${shopTimezone}` : '';
+        setQuietHoursWarning(`${hh}:${mm}${tzLabel}`);
       } else {
         setQuietHoursWarning(null);
       }
@@ -335,7 +370,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
     checkQuietHours();
     const interval = setInterval(checkQuietHours, 60_000);
     return () => clearInterval(interval);
-  }, [open]);
+  }, [open, shopTimezone]);
 
   // WEB-UIUX-1124: Live countdown for confirmation token (5 min = 300 s)
   useEffect(() => {
@@ -604,7 +639,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
               <span>
-                Local time {quietHoursWarning} — TCPA quiet hours typically 21:00–08:00. Many US states restrict sending outside that window.
+                Shop time {quietHoursWarning} — TCPA quiet hours typically 21:00–08:00. Many US states restrict sending outside that window.
               </span>
             </div>
           )}
