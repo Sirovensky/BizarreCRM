@@ -1645,9 +1645,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   `packages/web/src/pages/inventory/StocktakePage.tsx:378-400`
 
-- [!] WEB-UIUX-645. **[MAJOR] Serial number status flip has zero side effects.** `sold→returned` doesn't increment in_stock, no invoice back-link enforced, no warning. L13, L16. **BLOCKED 2026-05-10: side-effect chain needs server transaction (status flip + in_stock increment + invoice link check) — schema + endpoint redesign.**
-  `packages/web/src/pages/inventory/SerialNumbersPage.tsx:74-81,186-198`
-
 - [!] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:797-1149`
 

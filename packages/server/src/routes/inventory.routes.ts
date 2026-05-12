@@ -2311,4 +2311,128 @@ router.post('/receive-scan/quick-add', requirePermission('inventory.bulk_action'
   res.status(201).json({ success: true, data: item });
 }));
 
+// WEB-UIUX-645: PATCH /inventory/serials/:id — status-flip endpoint with
+// the side-effect chain. Transitions plus their effects:
+//   in_stock → sold       : leave in_stock untouched (sale handler is
+//                           expected to have already decremented). Just
+//                           record the flip in stock_movements as audit.
+//   in_stock → defective  : decrement in_stock and write a 'defective'
+//                           stock_movement (defective unit no longer sells).
+//   sold     → returned   : increment in_stock + write 'return' movement.
+//                           Refuse without a real invoice_id passed in (so
+//                           returns can't be ginned up against no sale).
+//   sold     → defective  : neither in_stock change nor refund — just flip
+//                           the flag (RMA pipeline owns the rest).
+//   returned → in_stock   : decrement back (the returned row already
+//                           incremented; in_stock=true means it's been
+//                           restocked, so reversing a restock decrements).
+//   defective → in_stock  : increment (false-defective resolution).
+// Any other transition rejects with 400. Wrapped in adb.transaction() so a
+// partial failure rolls back stock + movement + status flip together.
+router.patch('/serials/:id', requirePermission('inventory.adjust_stock'), asyncHandler(async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager required to flip serial status', 403);
+  }
+  const adb: AsyncDb = req.asyncDb;
+  const serialId = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(serialId) || serialId <= 0) {
+    throw new AppError('Invalid serial id', 400);
+  }
+  const { status: nextStatus, invoice_id: invoiceIdRaw, notes } = req.body as {
+    status?: string; invoice_id?: number | string; notes?: string;
+  };
+  const allowedStatuses = ['in_stock', 'sold', 'returned', 'defective'];
+  if (typeof nextStatus !== 'string' || !allowedStatuses.includes(nextStatus)) {
+    throw new AppError(`status must be one of ${allowedStatuses.join(', ')}`, 400);
+  }
+  const existing = await adb.get<{ id: number; inventory_item_id: number; status: string; serial_number: string }>(
+    'SELECT id, inventory_item_id, status, serial_number FROM inventory_serials WHERE id = ?',
+    serialId,
+  );
+  if (!existing) throw new AppError('Serial not found', 404);
+  if (existing.status === nextStatus) {
+    throw new AppError(`Serial is already ${nextStatus}`, 409);
+  }
+
+  // Legal-transition table — anything not listed is rejected.
+  type Transition = { from: string; to: string; stockDelta: number; moveType: string };
+  const TRANSITIONS: Transition[] = [
+    { from: 'in_stock',  to: 'sold',      stockDelta: 0,  moveType: 'sale' },
+    { from: 'in_stock',  to: 'defective', stockDelta: -1, moveType: 'defective' },
+    { from: 'sold',      to: 'returned',  stockDelta: +1, moveType: 'return' },
+    { from: 'sold',      to: 'defective', stockDelta: 0,  moveType: 'defective' },
+    { from: 'returned',  to: 'in_stock',  stockDelta: -1, moveType: 'adjustment' },
+    { from: 'returned',  to: 'defective', stockDelta: -1, moveType: 'defective' },
+    { from: 'defective', to: 'in_stock',  stockDelta: +1, moveType: 'adjustment' },
+  ];
+  const transition = TRANSITIONS.find((t) => t.from === existing.status && t.to === nextStatus);
+  if (!transition) {
+    throw new AppError(`Illegal serial transition: ${existing.status} → ${nextStatus}`, 400);
+  }
+
+  // Refuse sold→returned without an invoice_id so a return can't be ginned
+  // up against no sale. invoice_id need not be the original sale — the
+  // operator may match a different invoice when the original is missing
+  // (warranty case) — but SOMETHING must link the return event to an
+  // invoice for audit.
+  let invoiceId: number | null = null;
+  if (existing.status === 'sold' && nextStatus === 'returned') {
+    if (!invoiceIdRaw) {
+      throw new AppError('invoice_id is required when returning a sold serial', 400);
+    }
+    const parsedInvoice = parseInt(String(invoiceIdRaw), 10);
+    if (!Number.isFinite(parsedInvoice) || parsedInvoice <= 0) {
+      throw new AppError('invoice_id must be a positive integer', 400);
+    }
+    const inv = await adb.get<{ id: number }>('SELECT id FROM invoices WHERE id = ?', parsedInvoice);
+    if (!inv) throw new AppError('invoice_id not found', 404);
+    invoiceId = parsedInvoice;
+  }
+  const trimmedNotes = typeof notes === 'string' ? notes.trim().slice(0, 500) : null;
+
+  const txQueries: TxQuery[] = [];
+  txQueries.push({
+    sql: `UPDATE inventory_serials SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = ?`,
+    params: [nextStatus, serialId, existing.status],
+    expectChanges: true,
+    expectChangesError: `Serial status changed concurrently (expected ${existing.status})`,
+  });
+  if (transition.stockDelta !== 0) {
+    txQueries.push({
+      sql: `UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0`,
+      params: [transition.stockDelta, existing.inventory_item_id, transition.stockDelta],
+      expectChanges: true,
+      expectChangesError: 'Stock movement would drive in_stock negative',
+    });
+  }
+  txQueries.push({
+    sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      existing.inventory_item_id,
+      transition.moveType,
+      transition.stockDelta || 0,
+      invoiceId ? 'invoice' : 'serial',
+      invoiceId ?? serialId,
+      trimmedNotes || `Serial ${existing.serial_number}: ${existing.status} → ${nextStatus}`,
+      req.user!.id,
+    ],
+  });
+
+  await adb.transaction(txQueries);
+
+  audit(req.db, 'inventory_serial_status_flipped', req.user!.id, req.ip || 'unknown', {
+    serial_id: serialId,
+    inventory_item_id: existing.inventory_item_id,
+    from: existing.status,
+    to: nextStatus,
+    stock_delta: transition.stockDelta,
+    invoice_id: invoiceId,
+  });
+
+  const updated = await adb.get('SELECT * FROM inventory_serials WHERE id = ?', serialId);
+  res.json({ success: true, data: updated });
+}));
+
 export default router;
