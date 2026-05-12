@@ -2922,10 +2922,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/leads/LeadListPage.tsx:812-817`
   <!-- meta: fix=track-pendingId-state-(useState<number|null>)+disable-only-the-row-being-converted+show-spinner-on-that-icon -->
 
-- [!] WEB-UIUX-1348. **[MINOR] After successful convert, navigate fires (`LeadDetailPage.tsx:203`) but lead-detail query was just invalidated (`:200`) — race: brief flash of refetched "converted" detail page before route changes. Cosmetic but jarring. Also, undo window for the `useUndoableAction` status changes (`:222-242`) is absent for convert — convert is irreversible (creates ticket+customer+audit) but UX provides no warning that this is final.** L7 feedback, L8 recovery (none expected for convert but copy could acknowledge it). **[AUTOLOOP-T69 RESOLVED: pendingConvertId + pendingDeleteId state replaces global isPending so only the clicked row disables.]** **[AUTOLOOP-T49 BLOCKED 2026-05-11: convert is irreversible (creates ticket/customer/audit). Race-flash mitigation needs setQueryData snapshot+navigate ordering — minor cosmetic. Copy already acknowledges finality via UIUX-1341 confirm dialog.]**
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:197-206`
-  <!-- meta: fix=skip-invalidate-when-navigating-away+confirm-copy-add-"This-cannot-be-undone-from-the-UI"+server-already-supports-converted→new-recovery-but-only-via-direct-DB/admin -->
-
 - [!] WEB-UIUX-1353. **[BLOCKER] SKU lookup uses `keyword=q&pagesize=1` — picks FIRST match silently, including partial matches. Scanning a barcode that maps to 2+ items (sku-prefix collision, search treats keyword as fuzzy) credits an arbitrary item. No "exact match required" or "did you mean…" feedback.** L2 label truthfulness, L4 flow. **STATUS: BLOCKED — needs new server route /inventory/by-sku?sku=:exact + UI fuzzy-match suggestions; multi-component, defer to inventory sprint**
   `packages/web/src/pages/inventory/StocktakePage.tsx:166-173`
   <!-- meta: fix=add-/inventory/by-sku?sku=:exact-route-OR-pass-exact_sku=1-flag+if-no-exact-match-show-toast-with-top-3-fuzzy-suggestions -->

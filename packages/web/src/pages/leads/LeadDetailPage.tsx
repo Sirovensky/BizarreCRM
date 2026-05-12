@@ -206,7 +206,6 @@ export function LeadDetailPage() {
   const convertMut = useMutation({
     mutationFn: () => leadApi.convert(Number(id)),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['lead', id] });
       // WEB-UIUX-1350: include both order_ids so the success copy matches the
       // list-page version + lets the operator confirm the correct destination.
       const ticket = res.data?.data?.ticket;
@@ -214,8 +213,13 @@ export function LeadDetailPage() {
       const ticketLabel = ticket?.order_id ? `Ticket ${ticket.order_id}` : 'a ticket';
       const leadLabel = lead?.order_id ? `Lead ${lead.order_id}` : 'Lead';
       toast.success(`${leadLabel} converted → ${ticketLabel}`);
+      // WEB-UIUX-1348: navigate FIRST, then invalidate, so the operator never
+      // sees a refetched "converted" detail flash. We also drop the
+      // invalidate-self call since we're leaving the route — the lead-list
+      // refetch is enough; the destination ticket has its own loader.
       const ticketId = ticket?.id || res.data?.data?.ticket_id;
       if (ticketId) navigate(`/tickets/${ticketId}`);
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
     // WEB-UIUX-1338 / WEB-UIUX-1349: tier-limit 403 → open the canonical
     // UpgradeModal so the manager lands on a real CTA + Stripe checkout path
