@@ -358,7 +358,7 @@ function MembershipCard({ currency, locale }: MembershipCardProps) {
               type="button"
               disabled={busy}
               onClick={() => commit('cancel')}
-              className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-60"
+              className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
             >
               {busy ? 'Cancelling…' : 'Yes, cancel'}
             </button>
@@ -366,7 +366,7 @@ function MembershipCard({ currency, locale }: MembershipCardProps) {
               type="button"
               disabled={busy}
               onClick={() => setConfirming(null)}
-              className="rounded-md border border-surface-300 px-3 py-1.5 text-xs hover:bg-surface-100 disabled:opacity-60 dark:border-surface-600 dark:hover:bg-surface-700"
+              className="rounded-md border border-surface-300 px-3 py-1.5 text-xs hover:bg-surface-100 disabled:opacity-50 dark:border-surface-600 dark:hover:bg-surface-700"
             >
               Keep it
             </button>
@@ -385,7 +385,7 @@ function MembershipCard({ currency, locale }: MembershipCardProps) {
               type="button"
               disabled={busy}
               onClick={() => commit('resume')}
-              className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-60"
+              className="rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
             >
               {busy ? 'Saving…' : 'Yes, keep it'}
             </button>
@@ -393,7 +393,7 @@ function MembershipCard({ currency, locale }: MembershipCardProps) {
               type="button"
               disabled={busy}
               onClick={() => setConfirming(null)}
-              className="rounded-md border border-surface-300 px-3 py-1.5 text-xs hover:bg-surface-100 disabled:opacity-60 dark:border-surface-600 dark:hover:bg-surface-700"
+              className="rounded-md border border-surface-300 px-3 py-1.5 text-xs hover:bg-surface-100 disabled:opacity-50 dark:border-surface-600 dark:hover:bg-surface-700"
             >
               Back
             </button>

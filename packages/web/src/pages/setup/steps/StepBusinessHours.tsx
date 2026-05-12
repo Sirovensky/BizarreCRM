@@ -122,7 +122,7 @@ export function StepBusinessHours({
                 value={h.from}
                 onChange={(e) => updateDay(day, { from: e.target.value })}
                 disabled={!h.open}
-                className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-50 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
               />
               <span className="text-sm text-surface-400">to</span>
               <input
@@ -130,7 +130,7 @@ export function StepBusinessHours({
                 value={h.to}
                 onChange={(e) => updateDay(day, { to: e.target.value })}
                 disabled={!h.open}
-                className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-50 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
               />
               {!h.open && <span className="text-xs text-surface-400">Closed</span>}
             </div>

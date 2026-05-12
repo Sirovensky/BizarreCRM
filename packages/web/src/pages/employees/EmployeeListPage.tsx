@@ -1014,7 +1014,7 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
                     onClockAction(isClockedIn ? 'clock-out' : 'clock-in');
                   }}
                   className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                    'rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
                     isClockedIn
                       ? 'bg-red-600 hover:bg-red-700'
                       : 'bg-green-600 hover:bg-green-700',

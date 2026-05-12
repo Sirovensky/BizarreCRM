@@ -6174,7 +6174,7 @@ function TenderMethodView({
               onClick={() => onSelect(method)}
               disabled={disabled}
               className={cn(
-                'relative rounded-lg border p-5 text-left shadow-sm hover:border-primary-500 disabled:hover:border-surface-200 dark:border-surface-800 dark:bg-surface-900 disabled:opacity-60',
+                'relative rounded-lg border p-5 text-left shadow-sm hover:border-primary-500 disabled:hover:border-surface-200 dark:border-surface-800 dark:bg-surface-900 disabled:opacity-50',
                 isPrimary
                   ? 'border-primary-300 bg-primary-50/40 dark:border-primary-800 dark:bg-primary-900/10'
                   : 'border-surface-200 bg-white',

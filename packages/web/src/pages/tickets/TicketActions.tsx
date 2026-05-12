@@ -179,7 +179,7 @@ function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff, onDupl
               onClick={() => { if (!hasOpenPayments) { onDelete(); setOpen(false); } }}
               disabled={hasOpenPayments}
               title={hasOpenPayments ? 'Refund payments first' : undefined}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent dark:disabled:hover:bg-transparent"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent dark:disabled:hover:bg-transparent"
             >
               <Trash2 className="h-4 w-4" /> Delete
             </button>

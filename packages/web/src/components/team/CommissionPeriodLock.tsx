@@ -423,7 +423,7 @@ export function CommissionPeriodLock() {
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-40 hover:bg-surface-50 dark:hover:bg-surface-700"
+              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-50 hover:bg-surface-50 dark:hover:bg-surface-700"
             >
               Prev
             </button>
@@ -431,7 +431,7 @@ export function CommissionPeriodLock() {
               type="button"
               onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
               disabled={page >= pagination.total_pages}
-              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-40 hover:bg-surface-50 dark:hover:bg-surface-700"
+              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-50 hover:bg-surface-50 dark:hover:bg-surface-700"
             >
               Next
             </button>

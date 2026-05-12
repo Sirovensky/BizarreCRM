@@ -571,7 +571,7 @@ export function QcSignOffModal({
                   value={rerouteStatusId}
                   onChange={(e) => setRerouteStatusId(Number(e.target.value))}
                   disabled={statusesLoading || activeStatuses.length === 0}
-                  className="mt-1 w-full rounded-lg border border-red-300 bg-white p-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-700 dark:bg-surface-900 dark:text-surface-100"
+                  className="mt-1 w-full rounded-lg border border-red-300 bg-white p-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:bg-surface-900 dark:text-surface-100"
                 >
                   {activeStatuses.map((status) => (
                     <option key={status.id} value={status.id}>

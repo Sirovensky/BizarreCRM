@@ -255,7 +255,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
             onChange={(e) => setName(e.target.value)}
             onBlur={() => setTouched((t) => ({ ...t, name: true }))}
             disabled={submitting}
-            className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-60"
+            className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-50"
             placeholder="Joe Smith"
           />
           {touched.name && nameErr && (
@@ -276,7 +276,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
             onChange={(e) => setEmail(e.target.value)}
             onBlur={() => setTouched((t) => ({ ...t, email: true }))}
             disabled={submitting}
-            className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-60"
+            className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-50"
             placeholder="joe@joesphonerepair.com"
           />
           {touched.email && emailErr && (
@@ -298,7 +298,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
               onChange={(e) => setPassword(e.target.value)}
               onBlur={() => setTouched((t) => ({ ...t, password: true }))}
               disabled={submitting}
-              className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 pr-10 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-60"
+              className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 pr-10 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-50"
               placeholder="At least 10 characters"
             />
             <button
@@ -361,7 +361,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
                 onCompositionEnd={handleSlugCompositionEnd}
                 onBlur={handleSlugBlur}
                 disabled={submitting}
-                className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 pr-9 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-60"
+                className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-900 px-3 py-2.5 pr-9 text-surface-900 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:opacity-50"
                 placeholder="joes-phone-repair"
               />
               <span className="absolute inset-y-0 right-2 flex items-center" aria-hidden="true">

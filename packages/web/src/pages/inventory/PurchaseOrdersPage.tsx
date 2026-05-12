@@ -546,7 +546,7 @@ export function PurchaseOrdersPage() {
                 value={newPo.supplier_id}
                 disabled={suppliersLoading}
                 onChange={(e) => setNewPo({ ...newPo, supplier_id: e.target.value ? Number(e.target.value) : '' })}
-                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-60"
+                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-50"
               >
                 {suppliersLoading
                   ? <option disabled>Loading…</option>
@@ -599,7 +599,7 @@ export function PurchaseOrdersPage() {
                       cost_price: found ? found.cost_price : item.cost_price,
                     });
                   }}
-                  className="flex-1 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-60"
+                  className="flex-1 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-50"
                 >
                   {inventoryLoading
                     ? <option disabled>Loading…</option>

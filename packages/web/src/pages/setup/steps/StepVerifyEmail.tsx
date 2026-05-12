@@ -166,7 +166,7 @@ export function StepVerifyEmail({
           type="button"
           onClick={handleResend}
           disabled={resending}
-          className="btn btn-sm mt-3 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-primary-400"
+          className="btn btn-sm mt-3 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-primary-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400"
         >
           {resending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           {resending ? 'Sending...' : 'Resend code'}

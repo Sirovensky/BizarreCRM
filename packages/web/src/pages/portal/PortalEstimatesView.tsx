@@ -202,7 +202,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1 || loading}
-                className="rounded-md border border-surface-200 dark:border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="rounded-md border border-surface-200 dark:border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
               </button>
@@ -210,7 +210,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                 type="button"
                 onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
                 disabled={page >= pagination.total_pages || loading}
-                className="rounded-md border border-surface-200 dark:border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="rounded-md border border-surface-200 dark:border-surface-700 px-3 py-1.5 text-xs font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
               </button>

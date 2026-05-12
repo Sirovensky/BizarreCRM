@@ -642,7 +642,7 @@ export function GiftCardDetailPage() {
                     <button
                       onClick={() => setTxPage((p) => Math.max(0, p - 1))}
                       disabled={safePage === 0}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Previous
                     </button>
@@ -652,7 +652,7 @@ export function GiftCardDetailPage() {
                     <button
                       onClick={() => setTxPage((p) => Math.min(totalPages - 1, p + 1))}
                       disabled={safePage >= totalPages - 1}
-                      className="px-3 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-xs rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Next
                     </button>

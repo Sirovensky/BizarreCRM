@@ -322,7 +322,7 @@ function IssueModal({ onClose }: IssueModalProps) {
             <button
               onClick={() => { setCodeSavedConfirmed(false); onClose(); }}
               disabled={!codeSavedConfirmed}
-              className="px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               I&apos;ve saved the code
             </button>
@@ -342,7 +342,7 @@ function IssueModal({ onClose }: IssueModalProps) {
               setCustomerSearch('');
             }}
             disabled={!codeSavedConfirmed}
-            className="mt-3 w-full px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-950/30 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            className="mt-3 w-full px-4 py-2 rounded-lg border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-300 dark:hover:bg-primary-950/30 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Issue another
           </button>

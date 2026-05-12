@@ -684,9 +684,6 @@ Verified working. Not TODOs.
 - [!] WEB-UIUX-6. **[MINOR] 54 raw `teal-*` color references without semantic alias.** BLOCKED 2026-05-07 — valid brand-token debt, but the remaining teal uses mix legacy brand accent, success-ish status, POS action, and selected-state meanings. Needs semantic-token naming first, not a blind grep replace.
   <!-- meta: scope=web/all; fix=define-semantic-alias-or-migrate-to-primary -->
 
-- [!] WEB-UIUX-7. **[MINOR] 15 `disabled:opacity-60` + 2 `disabled:opacity-40` vs canonical `disabled:opacity-50`.** BLOCKED 2026-05-07 — valid visual drift, but still a multi-file button-state codemod that should ride with the broader Button/disabled-tooltip migration instead of being patched piecemeal.
-  <!-- meta: scope=web/all; fix=normalize-to-opacity-50 -->
-
 - [!] WEB-UIUX-8. **[MINOR] Shared `<Skeleton>` component has only 2 imports.** BLOCKED 2026-05-07 — valid design-system debt, but replacing dozens of page-specific skeletons requires preserving layout dimensions per page to avoid loading-state shift. Not safe as a single checklist item.
   <!-- meta: scope=web/all; files=components/shared/Skeleton.tsx; fix=migrate-loading-states -->
 

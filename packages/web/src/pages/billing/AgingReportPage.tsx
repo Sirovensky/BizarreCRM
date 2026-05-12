@@ -214,7 +214,7 @@ export function AgingReportPage() {
                   onChange={toggleSelectAll}
                   disabled={allIds.length === 0}
                   aria-label="Select all visible invoices"
-                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800 disabled:opacity-40"
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800 disabled:opacity-50"
                 />
               </th>
               <th className="px-3 py-2 text-left">Invoice</th>

@@ -161,7 +161,7 @@ export function PayrollPage() {
                 type="button"
                 onClick={() => void refetch()}
                 disabled={isFetching}
-                className="mt-3 inline-flex items-center rounded border border-error-300 px-3 py-1.5 text-xs font-semibold text-error-800 hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-error-800 dark:text-error-100 dark:hover:bg-error-900/40"
+                className="mt-3 inline-flex items-center rounded border border-error-300 px-3 py-1.5 text-xs font-semibold text-error-800 hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-error-800 dark:text-error-100 dark:hover:bg-error-900/40"
               >
                 {isFetching && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 Retry
