@@ -6631,9 +6631,22 @@ function RefundView({ invoiceId, setInvoiceId, invoice, loading, selections, set
   });
   const drawerCashOnHand = drawerZReportQuery.data ? fromCents(drawerZReportQuery.data.expected_cents) : null;
 
+  // BUGHUNT-2026-05-10-18: include the line's tax allocation in the refund
+  // preview. Each invoice line carries `tax_amount` aggregated over its
+  // ordered qty; allocate proportionally to the refunded qty so a partial
+  // return refunds the correct tax slice. Falls back to 0 if tax_amount is
+  // null/undefined (legacy line items without per-line tax) so the legacy
+  // unit_price-only behaviour still works for those.
   const selectedTotal = selections.reduce((sum, selection) => {
     const line = invoice?.line_items?.find((item: any) => item.id === selection.line_item_id);
-    return sum + (line ? Number(line.unit_price ?? line.price ?? 0) * selection.quantity : 0);
+    if (!line) return sum;
+    const unitPrice = Number(line.unit_price ?? line.price ?? 0);
+    const lineQty = Math.max(1, Number(line.quantity ?? 1));
+    const lineTax = Number(line.tax_amount ?? 0);
+    const refundQty = Number(selection.quantity ?? 0);
+    const subtotal = unitPrice * refundQty;
+    const taxAlloc = lineTax > 0 ? (lineTax * refundQty) / lineQty : 0;
+    return sum + subtotal + taxAlloc;
   }, 0);
   const cashShort = refundMethod === 'cash' && drawerCashOnHand !== null && selectedTotal > drawerCashOnHand;
   const toggleLine = (line: any) => {
