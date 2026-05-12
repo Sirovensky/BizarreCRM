@@ -593,8 +593,20 @@ router.get('/:id', asyncHandler(async (req, res) => {
     cardId,
   );
   if (!card) throw new AppError('Gift card not found', 404);
+  // WEB-UIUX-991 / 992: hydrate `by` (user first/last) and `invoice_order_id`
+  // so the detail page transactions table can show audit context. LEFT JOIN
+  // keeps legacy rows (user_id NULL) renderable. invoice_order_id lets the
+  // operator pivot from gift-card-tx → invoice without hand-mapping ids.
   const transactions = await adb.all(
-    'SELECT * FROM gift_card_transactions WHERE gift_card_id = ? ORDER BY created_at DESC',
+    `SELECT t.*,
+            u.first_name AS by_first_name,
+            u.last_name  AS by_last_name,
+            i.order_id   AS invoice_order_id
+       FROM gift_card_transactions t
+       LEFT JOIN users u ON u.id = t.user_id
+       LEFT JOIN invoices i ON i.id = t.invoice_id
+      WHERE t.gift_card_id = ?
+      ORDER BY t.created_at DESC`,
     cardId,
   );
   res.json({ success: true, data: { ...card, transactions } });

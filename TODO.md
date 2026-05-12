@@ -3361,7 +3361,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
   <!-- meta: fix=remove-cents-heuristic+pin-server-to-one-representation+migrate-callsites -->
 
-- [!] WEB-UIUX-983. **[BLOCKER] No way to disable lost/stolen card.** DB `status` enum has `'disabled'` (statusBadge handles it, list filter has Disabled option) but giftCards.routes.ts exposes ONLY GET, POST, redeem, reload — no PATCH/DELETE/disable route. DetailPage has no Disable / Void / Cancel button. Customer reports stolen $500 card → operator must hit DB directly. L1, L8, L16. **STATUS: BLOCKED — needs new server route POST /gift-cards/:id/disable + audit-log + reason input + 5+ files; deferred to gift-card hardening sprint**
+- [x] WEB-UIUX-983. **Gift-card disable/enable shipped via WEB-UIUX-1546 (STALE 2026-05-11).** `POST /gift-cards/:id/disable` (`giftCards.routes.ts:608`) is permission-gated, refuses double-disable + fully-redeemed cards, audits with reason. Detail page already exposes the action. Companion `/enable` for mis-click recovery sits beside it. Audit claim of "operator must hit DB directly" is stale.
   `packages/server/src/routes/giftCards.routes.ts:104-451`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
   <!-- meta: fix=add-POST-/:id/disable-server-route+Disable-Card-action-on-DetailPage+confirm-with-reason -->
@@ -3386,14 +3386,14 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-227`
 
-- [!] WEB-UIUX-990. **[MAJOR] DetailPage typed `notes: string | null` but never renders it.** `GiftCardDetail` interface includes notes; the meta `<dl>` at `:258-281` shows recipient/email/issued/expires but skips notes. Manager auditing card never sees the original tag. L1, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx is currently dirty in a parallel agent session; defer to next tick**
+- [x] WEB-UIUX-990. **Issue notes now surfaced on GiftCardDetailPage 2026-05-11.** Meta `<dl>` adds a span-3 "Notes" row that whitespace-pre-wraps `card.notes` when set. Auditor reading the page sees the original tag ("corporate gift order #4711", "lost-card replacement") without DB diving.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:31,258-281`
 
-- [!] WEB-UIUX-991. **[MAJOR] DetailPage transaction row never shows WHO redeemed/reloaded.** Server `gift_card_transactions` has `user_id` column written on every insert. DetailPage transactions table renders date / type / notes / amount only. Audit trail invisible — operator can't tell which cashier rang the redemption. L8, L11. **STATUS: BLOCKED — needs server-side JOIN users + UI By column on GiftCardDetailPage (dirty in parallel agent session); defer**
+- [x] WEB-UIUX-991. **Transaction "By" column shipped 2026-05-11.** Server `GET /gift-cards/:id` transactions query now LEFT JOINs `users` (by_first_name, by_last_name); web `Transaction` interface widens, table adds a "By" column showing `${first} ${last}` (or `User #N` for legacy rows where the user has been deleted, `—` when user_id is null). Audit trail visible without DB access.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:303-329`
   <!-- meta: fix=server-detail-route-must-JOIN-users+UI-add-By-column -->
 
-- [!] WEB-UIUX-992. **[MAJOR] DetailPage redemption row never links invoice.** `redeem` route accepts `invoice_id` and writes it on the transaction row. List response `:447-449` selects `*`, so invoice_id is present. UI doesn't render — Notes column shows hardcoded "Redeemed at POS". Operator reconciling a refund can't pivot from gift-card-tx → invoice. L1, L8. **STATUS: BLOCKED — GiftCardDetailPage.tsx is currently dirty in a parallel agent session; defer to next tick**
+- [x] WEB-UIUX-992. **Invoice deep-link on tx row shipped 2026-05-11.** Server LEFT JOINs `invoices` to expose `invoice_order_id` alongside the existing `invoice_id`. New "Invoice" column on the transaction table renders a `<Link to=/invoices/:id>` showing the order_id in mono font when present, `—` otherwise. Operator reconciling a refund pivots gift-card-tx → invoice in one click.
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:317-318`
 
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:180`
@@ -4484,7 +4484,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/refunds.routes.ts:107-239`
   <!-- meta: fix=Refund-modal-with-radio-group-type=refund_to_original|store_credit|credit_note+route-cash/card-refunds-through-/refunds+keep-/credit-note-only-for-explicit-doc-issuance -->
 
-- [!] WEB-UIUX-1281. **[MAJOR] No record of prior credit notes on the invoice page. Server enforces `priorCredits` aggregate (`invoices.routes.ts:1192-1202`); UI never shows them. Operator who already credited $50 against a $200 paid invoice sees identical UI to a never-credited invoice; tries to credit another $200; bounces on server reject "would exceed invoice total (already credited 50.00 of 200.00)". The Payment Timeline (`InvoiceDetailPage.tsx:475-548`) has no Credit Notes timeline.** L7 feedback meaningful, L9 missing prior-credit state. **STATUS: BLOCKED — needs Credit Notes timeline section + new useQuery for invoices.credit_note_for=:id; multi-component, defer to refunds sprint**
+- [x] WEB-UIUX-1281. **Credit Notes timeline already shipped (STALE 2026-05-11).** GET /invoices/:id returns `credit_notes` array (WEB-UIUX-707, server line 120-126: SELECT id, order_id, total, amount_paid, notes, credit_note_code, credit_note_note, created_at WHERE credit_note_for=?). `InvoiceDetailPage.tsx:962-987` renders a "Credit Notes Issued" card listing every prior credit with order_id, date, reason (`{code}: {note}`), and negative amount in tabular-nums. Payment Timeline at `:854` also merges credit notes into the per-tender history. Operator sees prior credits before retrying — no surprise server reject.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:474-548`
   `packages/server/src/routes/invoices.routes.ts:1192-1202`
   <!-- meta: fix=add-Credit-Notes-section-OR-merge-into-Payment-Timeline-(query-invoices-where-credit_note_for=:id)+each-row-amount+date+CRN-link+update-Max-helper-amount_paid-already_credited -->

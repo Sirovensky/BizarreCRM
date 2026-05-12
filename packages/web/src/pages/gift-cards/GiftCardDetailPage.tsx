@@ -24,6 +24,16 @@ interface Transaction {
   amount: number;
   notes: string | null;
   created_at: string;
+  // WEB-UIUX-991: server now JOINs users so the row can show who rang the
+  // redemption / reload. Null for system-generated or legacy rows.
+  by_first_name?: string | null;
+  by_last_name?: string | null;
+  user_id?: number | null;
+  // WEB-UIUX-992: server JOINs invoices so the row can deep-link to the
+  // original sale. Null when the tx wasn't tied to an invoice (e.g.
+  // purchase outside POS, manual adjustment).
+  invoice_id?: number | null;
+  invoice_order_id?: string | null;
 }
 
 interface GiftCardDetail {
@@ -435,6 +445,15 @@ export function GiftCardDetailPage() {
               <dd className="mt-0.5 text-surface-700 dark:text-surface-300">{formatDate(card.expires_at)}</dd>
             </div>
           )}
+          {/* WEB-UIUX-990: surface notes captured at issue time so the
+              auditor sees the original tag ("corporate gift order #4711",
+              "lost-card replacement") instead of having to query the DB. */}
+          {card.notes && (
+            <div className="col-span-2 sm:col-span-3">
+              <dt className="text-xs text-surface-400 uppercase tracking-wide">Notes</dt>
+              <dd className="mt-0.5 whitespace-pre-wrap text-surface-700 dark:text-surface-300">{card.notes}</dd>
+            </div>
+          )}
         </dl>
 
         {/* WEB-UIUX-1000: resend code by email — works on active cards only. */}
@@ -573,15 +592,39 @@ export function GiftCardDetailPage() {
                       <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Date</th>
                       <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Type</th>
                       <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Notes</th>
+                      {/* WEB-UIUX-991: cashier name from JOIN users. */}
+                      <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">By</th>
+                      {/* WEB-UIUX-992: invoice deep-link for redemptions. */}
+                      <th className="text-left px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Invoice</th>
                       <th className="text-right px-5 py-2.5 font-medium text-surface-500 dark:text-surface-400">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
-                    {pageTxs.map((tx) => (
+                    {pageTxs.map((tx) => {
+                      const byName = [tx.by_first_name, tx.by_last_name]
+                        .filter(Boolean)
+                        .join(' ')
+                        .trim();
+                      return (
                       <tr key={tx.id}>
                         <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{formatDate(tx.created_at)}</td>
                         <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type, tx.amount)}</td>
                         <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{tx.notes ?? '—'}</td>
+                        <td className="px-5 py-3 text-surface-500 dark:text-surface-400">
+                          {byName || (tx.user_id ? `User #${tx.user_id}` : '—')}
+                        </td>
+                        <td className="px-5 py-3 text-surface-500 dark:text-surface-400">
+                          {tx.invoice_id ? (
+                            <Link
+                              to={`/invoices/${tx.invoice_id}`}
+                              className="text-primary-600 dark:text-primary-400 hover:underline font-mono text-xs"
+                            >
+                              {tx.invoice_order_id ?? `INV-${tx.invoice_id}`}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type, tx.amount)}`}>
                           {/* Fixer-WW: sign driven by tx.type so redemptions always
                               render `-$X` (matches POS convention) and -0 amounts
@@ -589,7 +632,8 @@ export function GiftCardDetailPage() {
                           {tx.type === 'redemption' ? '-' : tx.amount > 0 ? '+' : tx.amount < 0 ? '-' : ''}{formatCurrency(tx.amount)}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
