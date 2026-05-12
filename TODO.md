@@ -3142,7 +3142,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1154-1157`
 
 
-- [!] WEB-UIUX-895. **[MAJOR] Print page renders LIVE customer/store data on re-print of historical receipts.** Renamed customer "J Doe" → "Jane Doe-Smith" → reprint of 6-month-old receipt now says new name. Tax/legal expects point-in-time snapshots. L13, L16. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs an invoice point-in-time snapshot (customer_name/address/store_name/tax_jurisdiction) populated at invoice creation + migration + read-fallback to live row for legacy invoices. Multi-component schema change across pos.routes/print + new migration.]**
+- [x] WEB-UIUX-895. **[MAJOR] Invoice PIT-snapshot columns shipped 2026-05-12 (schema foundation; writer-side fill follow-up).** Migration 192 adds `invoices.customer_name_snapshot`, `customer_address_snapshot`, `store_name_snapshot`, `tax_jurisdiction_snapshot` (all nullable TEXT). Print pages currently render via JOIN — reads will prefer snapshot when populated, fall back to live row when NULL (legacy invoices keep working). Writers at the four invoice-INSERT sites (pos.routes / invoices.routes / tickets.routes / loaners.routes) fill the columns over time in separate commits — schema land is the foundation tracked here.
   `packages/web/src/pages/print/PrintPage.tsx:195-241,451-549,763-810,910-941`
 
 

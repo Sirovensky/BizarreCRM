@@ -1991,29 +1991,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1154-1157`
 
 
-- [!] WEB-UIUX-895. **[MAJOR] Print page renders LIVE customer/store data on re-print of historical receipts.** Renamed customer "J Doe" → "Jane Doe-Smith" → reprint of 6-month-old receipt now says new name. Tax/legal expects point-in-time snapshots. L13, L16. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs an invoice point-in-time snapshot (customer_name/address/store_name/tax_jurisdiction) populated at invoice creation + migration + read-fallback to live row for legacy invoices. Multi-component schema change across pos.routes/print + new migration.]**
-  `packages/web/src/pages/print/PrintPage.tsx:195-241,451-549,763-810,910-941`
-
-
-
-#### SEC1: Security UX
-
-  `packages/web/src/pages/communications/CommunicationPage.tsx:1546-1554`
-
-  `packages/web/src/pages/unified-pos/store.ts:126-127,253-254,268,290-303`
-
-  `packages/web/src/components/layout/Header.tsx:642-728`
-
-  `packages/web/src/pages/customers/CustomerListPage.tsx:308-354,586-589`
-
-
-  `packages/web/src/api/client.ts:294-313,361-370`
-
-
-  `packages/web/src/pages/settings/DangerZoneTab.tsx:32-83`
-
-  `packages/web/src/pages/settings/AuditLogsTab.tsx:60-70,161`
-
 - [!] WEB-UIUX-911. **[MAJOR] 30+ `role="dialog"` sites lack focus-restore on close.** Only ConfirmDialog implements lastFocused capture/restore. PinModal, UpgradeModal, QuickSmsModal, CheckoutModal, WidgetCustomizeModal, SwitchUserModal, ReviewPromptModal, 5 InventoryListPage modals — focus drops to body. L12. **STATUS: BLOCKED — codemod across 30+ dialog sites; useFocusTrap hook already capture/restores so fix is calling it everywhere**
 
   TicketDevices.tsx:559,581,611,988,1008; TicketSidebar.tsx:232; KanbanBoard.tsx:114; DashboardPage.tsx:860; RepairsTab.tsx:1366,1372; ConditionsTab.tsx:337
