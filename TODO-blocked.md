@@ -3207,12 +3207,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Blocker — broken end-to-end flow / lying copy / missing controls
 
-- [!] WEB-UIUX-1543. **[BLOCKER] No redeem surface anywhere in POS or invoice. Server exposes `POST /gift-cards/:id/redeem` (`giftCards.routes.ts:328`) and `GET /gift-cards/lookup/:code` (`:172`); web client wires `giftCardApi.redeem` and `giftCardApi.lookup` (`endpoints.ts:1274-1276`) but NO UI calls them. `CashRegisterPage.tsx` has zero references to "gift", "redeem", "giftCard"; `InvoiceDetailPage.tsx` payment-method buttons render only what `payment_methods` table returns (no built-in gift-card tender). Cashier issues a $200 gift card, customer returns to redeem → cashier physically cannot accept it. End-to-end flow does not close. Either (a) add Gift Card as a payment-method option in the Record Payment modal that opens a code-lookup-first flow, or (b) build a dedicated Redeem page and link it from the Gift Cards list.** L4 flow completion, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: gift-card redemption flow needs either (a) Gift Card as a Record Payment method that opens a code-lookup-first sub-modal, or (b) a dedicated /redeem page linked from Gift Cards list. Multi-step product feature.]**
-  `packages/web/src/pages/pos/CashRegisterPage.tsx`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:625-639`
-  `packages/server/src/routes/giftCards.routes.ts:328-392`
-  <!-- meta: fix=add-Gift-Card-method-button-in-RecordPaymentModal+lookup-by-code-step+redeem-mutation;-OR-add-/gift-cards/redeem-route-with-LookupForm+RedeemForm -->
-
 - [!] WEB-UIUX-1556. **[MAJOR] No bulk issue. `IssueModal` issues one card per submission. HR wanting to drop 50 holiday gift cards has to repeat the form 50 times. Add a "Bulk issue" path that takes a CSV (recipient_name, recipient_email, amount, expires_at) or a count + flat amount, returns a downloadable CSV of {recipient, code} for handoff.** L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: bulk-issue flow needs a CSV upload endpoint + per-row issue + downloadable manifest. Multi-component.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:84-248`
   `packages/server/src/routes/giftCards.routes.ts:253-323`

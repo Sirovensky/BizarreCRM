@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail } from 'lucide-react';
+import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail, WalletCards } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi, customerApi, type PendingGiftCardIssuance } from '@/api/endpoints';
 import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents } from '@/utils/format';
@@ -583,6 +583,205 @@ function IssueModal({ onClose }: IssueModalProps) {
   );
 }
 
+// ─── Redeem modal (WEB-UIUX-1543) ────────────────────────────────────────────
+
+interface RedeemModalProps { onClose: () => void; }
+
+function RedeemModal({ onClose }: RedeemModalProps) {
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState('');
+  const [amount, setAmount] = useState('');
+  const [invoiceId, setInvoiceId] = useState('');
+  const [lookupCard, setLookupCard] = useState<any | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<{ new_balance: number } | null>(null);
+
+  const handleLookup = async () => {
+    setLookupError(null);
+    setRedeemError(null);
+    setSuccess(null);
+    setLookupCard(null);
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setLookupError('Enter a gift-card code.');
+      return;
+    }
+    setLookupLoading(true);
+    try {
+      const res = await giftCardApi.lookup(trimmed);
+      // Server returns { success, data: { id, current_balance, status, expires_at, ... } }
+      const card = (res as any)?.data?.data ?? (res as any)?.data ?? null;
+      if (!card) {
+        setLookupError('Card not found.');
+        return;
+      }
+      setLookupCard(card);
+      const balanceCandidate = Number(card.current_balance);
+      if (Number.isFinite(balanceCandidate) && !amount) {
+        setAmount(balanceCandidate.toFixed(2));
+      }
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const serverMsg = err?.response?.data?.message;
+      if (status === 429) {
+        const retry = Number(err?.response?.data?.retry_after_seconds ?? 60);
+        setLookupError(serverMsg || `Too many lookup attempts — wait ${retry}s and retry.`);
+      } else if (status === 404) {
+        setLookupError(serverMsg || 'Gift card not found.');
+      } else if (status === 400) {
+        setLookupError(serverMsg || 'Gift card is used or expired.');
+      } else {
+        setLookupError(serverMsg || 'Could not look up gift card.');
+      }
+    } finally {
+      setLookupLoading(false);
+    }
+  };
+
+  const redeemMut = useMutation({
+    mutationFn: () => {
+      const amt = Number(amount);
+      const invId = invoiceId.trim() ? Number(invoiceId) : null;
+      return giftCardApi.redeem(Number(lookupCard?.id), { amount: amt, invoice_id: invId });
+    },
+    onSuccess: (res: any) => {
+      setSuccess({ new_balance: Number(res?.data?.data?.new_balance ?? 0) });
+      queryClient.invalidateQueries({ queryKey: ['gift-cards'] });
+    },
+    onError: (err: any) => {
+      setRedeemError(err?.response?.data?.message || 'Redeem failed.');
+    },
+  });
+
+  const handleRedeem = () => {
+    setRedeemError(null);
+    if (!lookupCard) {
+      setRedeemError('Look up a card first.');
+      return;
+    }
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setRedeemError('Enter a positive amount.');
+      return;
+    }
+    const balance = Number(lookupCard.current_balance) || 0;
+    if (amt > balance + 0.005) {
+      setRedeemError(`Amount exceeds card balance of ${formatCurrency(balance)}.`);
+      return;
+    }
+    redeemMut.mutate();
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="redeem-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 id="redeem-modal-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Redeem gift card</h2>
+          <button aria-label="Close" onClick={onClose} className="rounded p-1 text-surface-400 hover:text-surface-600">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Card code</label>
+          <div className="flex gap-2">
+            <input
+              value={code}
+              onChange={(e) => { setCode(e.target.value); setLookupCard(null); setSuccess(null); }}
+              placeholder="e.g. GC-ABCD-1234"
+              className="input flex-1 font-mono uppercase"
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={handleLookup}
+              disabled={lookupLoading || !code.trim()}
+              className="rounded-lg bg-surface-100 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-200 disabled:opacity-50 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            >
+              {lookupLoading ? 'Looking…' : 'Look up'}
+            </button>
+          </div>
+          {lookupError && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">{lookupError}</p>
+          )}
+        </div>
+        {lookupCard && (
+          <div className="rounded-lg border border-surface-200 bg-surface-50 p-3 text-sm dark:border-surface-700 dark:bg-surface-800/50">
+            <div className="flex items-center justify-between">
+              <span className="text-surface-500 dark:text-surface-400">Balance</span>
+              <span className="font-mono font-semibold text-surface-900 dark:text-surface-100">
+                {formatCurrency(Number(lookupCard.current_balance) || 0)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-surface-500 dark:text-surface-400">Status</span>
+              <span className="font-mono text-surface-700 dark:text-surface-300">{lookupCard.status}</span>
+            </div>
+            {lookupCard.expires_at && (
+              <div className="flex items-center justify-between">
+                <span className="text-surface-500 dark:text-surface-400">Expires</span>
+                <span className="text-surface-700 dark:text-surface-300">{formatDate(lookupCard.expires_at)}</span>
+              </div>
+            )}
+          </div>
+        )}
+        {lookupCard && lookupCard.status === 'active' && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount to redeem</label>
+              <input
+                type="number" step="0.01" min="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder={(Number(lookupCard.current_balance) || 0).toFixed(2)}
+                className="input w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Apply to invoice ID (optional)</label>
+              <input
+                value={invoiceId}
+                onChange={(e) => setInvoiceId(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="e.g. 1024"
+                className="input w-full font-mono"
+              />
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">Leave blank to record a balance-only redemption.</p>
+            </div>
+            {redeemError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">{redeemError}</p>
+            )}
+            {success && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                Redeemed. New balance: {formatCurrency(success.new_balance)}.
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleRedeem}
+              disabled={redeemMut.isPending || !!success}
+              className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {redeemMut.isPending ? 'Redeeming…' : `Redeem ${amount ? formatCurrency(Number(amount) || 0) : ''}`}
+            </button>
+          </>
+        )}
+        {lookupCard && lookupCard.status !== 'active' && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            Card is <span className="font-mono">{lookupCard.status}</span> — cannot redeem.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function TableSkeleton() {
@@ -604,6 +803,10 @@ export function GiftCardsListPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showIssueModal, setShowIssueModal] = useState(false);
+  // WEB-UIUX-1543: dedicated lookup → redeem modal for customer's physical
+  // card. Lives alongside IssueModal so the gift-card surface owns both
+  // ends of the lifecycle.
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
   const searchKeyword = debouncedKeyword.trim();
   // WEB-UIUX-998: CSV export gated behind admin/manager role (PII-sensitive)
   const canExport = useHasRole(['admin', 'manager']);
@@ -707,13 +910,27 @@ export function GiftCardsListPage() {
           )}
           {/* WEB-UIUX-1446: hide header CTA on empty state — empty-state centered button takes over */}
           {cards.length > 0 && (
-            <button
-              onClick={() => setShowIssueModal(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
-            >
-              <Plus className="h-4 w-4" />
-              Issue gift card
-            </button>
+            <>
+              {/* WEB-UIUX-1543: dedicated Redeem-by-code surface so the
+                  customer's physical card can be applied to an invoice
+                  without leaving the gift-cards page. Modal does
+                  lookup → balance/status preview → redeem against an
+                  invoice id input. */}
+              <button
+                onClick={() => setShowRedeemModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium"
+              >
+                <WalletCards className="h-4 w-4" />
+                Redeem code
+              </button>
+              <button
+                onClick={() => setShowIssueModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
+              >
+                <Plus className="h-4 w-4" />
+                Issue gift card
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -896,6 +1113,7 @@ export function GiftCardsListPage() {
       <PendingIssuancesInbox />
 
       {showIssueModal && <IssueModal onClose={() => setShowIssueModal(false)} />}
+      {showRedeemModal && <RedeemModal onClose={() => setShowRedeemModal(false)} />}
     </div>
   );
 }
