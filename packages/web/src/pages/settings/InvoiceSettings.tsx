@@ -8,6 +8,7 @@ import { SkeletonCard } from '@/components/shared/Skeleton';
 import {
   IMAGE_UPLOAD_ACCEPT,
   INLINE_LOGO_MAX_BYTES,
+  maybeConvertHeicToJpeg,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 
@@ -98,8 +99,10 @@ function LogoUploadRow({ label, description, value, onChange }: {
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const raw = e.target.files?.[0];
+    if (!raw) return;
+    // WEB-UIUX-1090: transcode HEIC → JPEG before validation.
+    const file = await maybeConvertHeicToJpeg(raw);
     const error = await validateImageFile(file, {
       maxBytes: INLINE_LOGO_MAX_BYTES,
       label: 'Logo',

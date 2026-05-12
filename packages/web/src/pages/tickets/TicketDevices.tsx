@@ -16,6 +16,7 @@ import { safeColor } from '@/utils/safeColor';
 import {
   GENERAL_IMAGE_UPLOAD_MAX_BYTES,
   IMAGE_UPLOAD_ACCEPT,
+  maybeConvertHeicToJpeg,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 // FA-M9: DefectReporterButton lets techs report a bad part directly from the
@@ -533,7 +534,9 @@ function PhotoUploadSection({
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const valid: File[] = [];
-    for (const f of Array.from(files)) {
+    for (const raw of Array.from(files)) {
+      // WEB-UIUX-1090: transcode iPhone HEIC → JPEG before validation.
+      const f = await maybeConvertHeicToJpeg(raw);
       const error = await validateImageFile(f, {
         maxBytes: GENERAL_IMAGE_UPLOAD_MAX_BYTES,
         label: `"${f.name}"`,

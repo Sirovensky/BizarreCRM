@@ -20,6 +20,7 @@ import { DEFAULT_PRIMARY_ACCENT } from '@/utils/themeAccent';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  maybeConvertHeicToJpeg,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
@@ -256,8 +257,10 @@ function StoreInfoTab() {
   });
 
   const handleStoreLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+    const raw = e.target.files?.[0];
+    if (raw) {
+      // WEB-UIUX-1090: transcode HEIC → JPEG before validation.
+      const file = await maybeConvertHeicToJpeg(raw);
       const error = await validateImageFile(file, {
         maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
         label: `"${file.name}"`,

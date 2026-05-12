@@ -23,6 +23,7 @@ import { formatApiError } from '@/utils/apiError';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  maybeConvertHeicToJpeg,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 
@@ -264,8 +265,12 @@ export function QcSignOffModal({
   };
 
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const raw = e.target.files?.[0];
+    if (!raw) return;
+    // WEB-UIUX-1090: HEIC/HEIF arriving from iPhone Safari is transcoded
+    // client-side to JPEG via canvas before validation, so iOS users are not
+    // dead-ended at "convert to JPEG before uploading".
+    const file = await maybeConvertHeicToJpeg(raw);
     // WEB-UIUX-1099: Guard oversized photos before hitting the server.
     if (file.size > 10 * 1024 * 1024) {
       toast.error('Photo too large (max 10MB). Try a smaller image.');

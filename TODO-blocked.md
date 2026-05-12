@@ -2235,13 +2235,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/server/src/routes/bench.routes.ts:703-910`
   <!-- meta: fix=add-GET-/qc/sign-off/:id/pdf-uses-existing-pdf-pipeline+after-success-toast-render-button-Send-to-customer-emails-PDF -->
 
-- [!] WEB-UIUX-1090. **[MAJOR] Photo `accept` excludes HEIC/HEIF — iPhone Safari users blocked from camera roll.** `QcSignOffModal.tsx:255` `accept="image/jpeg,image/png,image/webp"`. iOS default capture is HEIC. Tech opens picker, sees photos greyed out, has no in-app guidance to convert. `ALLOWED_MIMES` server-side likely also rejects HEIC (verify in `bench.routes.ts:130-132`). L1, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: client accept already includes image/heic,image/heif; server `IMAGE_UPLOAD_MIME_TYPES` (imageUploadPolicy.ts:1) still rejects them and the error copy says "HEIC/HEIF need server-side conversion first". Real fix needs sharp/libheif HEIC → JPEG transcode in the upload pipeline before persistence. Multi-component.]**
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:252-258`
-  <!-- meta: fix=add-image/heic+image/heif-to-accept+verify-server-ALLOWED_MIMES-or-add-client-side-heic-to-jpeg-conversion-via-heic2any -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:252-258`
-  <!-- meta: fix=add-capture="environment"-attr+keep-fallback-to-picker-when-no-camera -->
-
 - [!] WEB-UIUX-1127. **[MAJOR] "New Ticket" link from TicketListPage routes to POS surface, not a ticket-creation form.** `TicketListPage.tsx:1205-1211` `<Link to="/tickets/new">New Ticket</Link>` → `App.tsx:483` `<Route path="/tickets/new" element={<UnifiedPosPage />} />`. User clicks "New Ticket", lands on Unified POS — three tabs (Repairs / Products / Misc), Cash Drawer widget, "Open Drawer" button, Cash In/Out controls, Z-Report — none of which a user creating a ticket needs. Tab defaults to `repairs` (`store.ts:247`) but URL/intent mismatch is unfixed: bookmarking `/tickets/new` always lands in cash-drawer chrome. Consider either a dedicated ticket-creation route that hides POS-only chrome OR rename the button + URL to "New Sale / Repair". L3 route correctness, L6 discoverability. **STATUS: BLOCKED — needs route restructure (/tickets/new on dedicated stripped POS shell vs full POS); design decision; defer to POS sprint**
   `packages/web/src/pages/tickets/TicketListPage.tsx:1205-1211`
   `packages/web/src/App.tsx:483`
