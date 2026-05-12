@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail, WalletCards } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi, customerApi, type PendingGiftCardIssuance } from '@/api/endpoints';
-import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents } from '@/utils/format';
+import { formatCurrency as formatCurrencyShared, formatCurrencySymbol, formatDate, formatDateTime, dollarsFromMaybeCents, formatMaybeCents } from '@/utils/format';
 // WEB-UIUX-998: CSV export for outstanding liability — PII-gated
 import { toCsvRow, CSV_BOM } from '@/utils/csv';
 import { useHasRole } from '@/hooks/useHasRole';
@@ -60,12 +60,10 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// dollarsFromMaybeCents imported from @/utils/format (WEB-UIUX-550).
-// Server is mid-migration from float-dollars to integer-cents; the heuristic
-// lives in the shared util so both gift-card pages stay in sync.
-function formatCurrency(amount: number): string {
-  return formatCurrencyShared(dollarsFromMaybeCents(amount));
-}
+// WEB-UIUX-1014: use shared formatMaybeCents wrapper (was a local
+// formatCurrency duplicating GiftCardDetailPage). Single source for the
+// cents-vs-dollars heuristic + tenant currency formatter.
+const formatCurrency = (amount: number): string => formatMaybeCents(amount);
 
 function maskCode(code: string): string {
   if (!code) return code;

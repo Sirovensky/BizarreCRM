@@ -2239,10 +2239,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 - [!] WEB-UIUX-1013. **[MINOR] Lookup endpoint rate-limit error 429 never surfaced to operator UI** — `giftCardApi.lookup` not called, but if/when wired, generic-onError handlers won't translate "Too many lookup attempts" into a meaningful "wait 60s" countdown. Pre-emptive: lookup UI should special-case 429 + show retry-after. L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: pre-emptive item — giftCardApi.lookup has 0 callers (per the audit note); no real UI to retrofit until the lookup flow itself ships.]**
   `packages/server/src/routes/giftCards.routes.ts:188-197`
 
-- [!] WEB-UIUX-1014. **[NIT] `dollarsFromMaybeCents` exists on detail page, near-duplicate `formatCurrency` on list page — two separate copies of the same fragile heuristic.** L7. **STATUS: BLOCKED — refactor of currency heuristic touches both GCLP + GCDP and risks duplicating across the codebase; needs design review for unified currency utility**
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:57-63`
-
 - [!] WEB-UIUX-1015. **[NIT] Issue success modal Done button color `bg-primary-600 text-primary-950` — relies on tenant theme; in dark theme on mobile, `text-primary-950` (very dark) on `bg-primary-600` may have <3:1 contrast depending on primary hue.** L12. **[AUTOLOOP-T49 BLOCKED 2026-05-11: contrast verification needs sampled tenant primary hues + WCAG audit; same pattern appears on every primary-styled button. App-wide pass, not a per-page nit.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:147`
 

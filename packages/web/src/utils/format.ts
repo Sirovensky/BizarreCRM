@@ -260,6 +260,20 @@ export function dollarsFromMaybeCents(amount: number): number {
   return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
 }
 
+// WEB-UIUX-1014: shared currency formatter that applies the maybe-cents
+// heuristic. Replaces the two near-duplicate `formatCurrency` wrappers that
+// used to live in GiftCardsListPage.tsx and GiftCardDetailPage.tsx.
+//
+// `abs: true` strips the sign so the caller can render +/- separately.
+export function formatMaybeCents(
+  amount: number | null | undefined,
+  opts?: { abs?: boolean },
+): string {
+  if (amount == null || !Number.isFinite(Number(amount))) return formatCurrency(amount);
+  const dollars = dollarsFromMaybeCents(Number(amount));
+  return formatCurrency(opts?.abs ? Math.abs(dollars) : dollars);
+}
+
 /**
  * Return the local-calendar date of `date` as a `YYYY-MM-DD` string.
  *

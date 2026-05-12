@@ -12,7 +12,7 @@ import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useConfirmStore } from '@/stores/confirmStore';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): inline `$${n.toFixed(2)}` ignored tenant currency. Use shared formatCurrency.
-import { formatDate, formatCurrency as formatCurrencyShared, dollarsFromMaybeCents } from '@/utils/format';
+import { formatDate, formatCurrency as formatCurrencyShared, dollarsFromMaybeCents, formatMaybeCents } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,16 +55,11 @@ interface GiftCardDetail {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-// dollarsFromMaybeCents is now imported from @/utils/format (WEB-UIUX-550).
-
-function formatCurrency(amount: number): string {
-  // Magnitude only — sign is rendered separately by the caller (+/-).
-  return formatCurrencyShared(Math.abs(dollarsFromMaybeCents(amount)));
-}
-
-function formatBalance(amount: number): string {
-  return formatCurrencyShared(dollarsFromMaybeCents(amount));
-}
+// WEB-UIUX-1014: use shared formatMaybeCents wrapper (was two local
+// formatCurrency/formatBalance duplicates). `abs: true` strips the sign so
+// the row renders +/- separately.
+const formatCurrency = (amount: number): string => formatMaybeCents(amount, { abs: true });
+const formatBalance = (amount: number): string => formatMaybeCents(amount);
 
 // WEB-UIUX-1444: 'adjustment' label now inspects amount sign — positive = Reload, negative = Adjustment
 function txLabel(type: TxType, amount?: number): string {
