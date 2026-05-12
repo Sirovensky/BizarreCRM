@@ -94,9 +94,10 @@ export function CustomerDetailPage() {
   // POST) are admin/manager-only on the server (crm.routes.ts:258, 327).
   // Hide the actions from other roles so non-privileged staff aren't shown
   // buttons that would just 403.
-  const userRole = useAuthStore((s) => s.user?.role);
+  // WEB-FAE-001 follow-up: route role gates through shared useHasRole hook.
   const userId = useAuthStore((s) => s.user?.id);
-  const canUseEnrichmentActions = userRole === 'admin' || userRole === 'manager';
+  const canUseEnrichmentActions = useHasRole(['admin', 'manager']);
+  const isAdmin = useHasRole('admin');
 
   const [activeTab, setActiveTab] = useState<TabId>('info');
 
@@ -490,7 +491,7 @@ export function CustomerDetailPage() {
             <Trash2 className="h-4 w-4" />
             Delete
           </button>
-          {userRole === 'admin' && (
+          {isAdmin && (
             <button
               onClick={() => setShowEraseConfirm(true)}
               disabled={erasePiiMutation.isPending}

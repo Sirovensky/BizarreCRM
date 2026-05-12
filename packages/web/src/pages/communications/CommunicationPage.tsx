@@ -21,7 +21,7 @@ import {
 } from '@/utils/format';
 import { obfuscatePhoneForStorageKey } from '@/utils/phoneFormat';
 import { useDraft } from '@/hooks/useDraft';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
@@ -1120,8 +1120,8 @@ export function CommunicationPage() {
   // WEB-UIUX-898: role gate for the Bulk SMS trigger — server requires
   // admin/manager; mirror client-side so cashiers never see the modal
   // (which would leak segment recipient counts before the 403).
-  const userRole = useAuthStore((s) => s.user?.role);
-  const canBulkSms = userRole === 'admin' || userRole === 'manager';
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canBulkSms = useHasRole(['admin', 'manager']);
   const reminderParam = searchParams.get('reminder_id');
   const reminderDeepLinkId = reminderParam ? Number(reminderParam) : null;
   const [mainView, setMainView] = useState<'messages' | 'calls' | 'email'>('messages');
