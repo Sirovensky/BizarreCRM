@@ -5367,7 +5367,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:117`
   <!-- meta: fix=disable-backdrop-onClose-when-preview-non-null;-or-route-backdrop-click-through-confirmation-"Discard-this-send?" -->
 
-- [!] WEB-UIUX-1508. **[MAJOR] No "send test to me" option. Industry standard for mass-mail / mass-SMS: send a single test to the operator's own phone before the blast, to verify wording/links/variable substitution. Missing entirely from BulkSmsModal. Admin's only options are: send to 12k recipients, or don't. No middle ground.** L6 discoverability, L4 flow integrity. **STATUS: BLOCKED — needs new send-test-to-me feature with quota bypass; multi-component, defer to bulk-sms sprint**
+- [x] WEB-UIUX-1508. **Send-test-to-me shipped 2026-05-11.** New admin-only `POST /inbox/bulk-send-test` accepts `template_id` (+ optional `to_phone` override), defaults to the admin's own `users.mobile_number`, fires one SMS via `sendSmsTenant`, audits as `bulk_sms_test_sent`. Quota-free path so a worried admin doesn't burn their hourly cap on tests. Provider-not-configured returns the same 400 the real send would, so test failures match production failure modes. `BulkSmsModal` adds a "Send test to me" button next to Preview, gated on a picked template; success toast shows the masked destination.
   `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-223`
   <!-- meta: fix=add-"Send-test-to-my-number"-button-next-to-Preview;-uses-req.user.mobile-or-prompts-for-number;-doesn't-decrement-hourly-quota;-doesn't-mutate-token -->
 

@@ -583,6 +583,93 @@ router.get(
   }),
 );
 
+/**
+ * WEB-UIUX-1508: send a single test SMS to the admin's own mobile (or an
+ * explicit override) so wording/links/variable substitution can be verified
+ * before the 12k-recipient blast goes out. Quota-free path — separate from
+ * `/bulk-send` so a worried admin doesn't burn their hourly cap on tests.
+ * Provider-not-configured still throws so the admin sees the same failure
+ * mode the real send would hit.
+ */
+router.post(
+  '/bulk-send-test',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const db = req.db;
+    const adb = req.asyncDb;
+    const templateId = requirePositiveInt((req.body ?? {}).template_id, 'template_id');
+    const overrideRaw = typeof req.body?.to_phone === 'string' ? req.body.to_phone : '';
+    const tpl = await adb.get<{ id: number; content: string; name: string }>(
+      'SELECT id, content, name FROM sms_templates WHERE id = ?',
+      templateId,
+    );
+    if (!tpl) throw new AppError('Template not found', 404);
+
+    // Resolve destination: explicit override first (admin testing on a
+    // co-worker's phone is common), else the admin's own mobile_number.
+    // No silent fallback — refuse cleanly if neither produces a valid
+    // phone so the admin doesn't think the test "succeeded" by SMS-ing
+    // a number that wasn't theirs.
+    let toPhone: string;
+    if (overrideRaw.trim()) {
+      toPhone = requirePhone(overrideRaw, 'to_phone');
+    } else {
+      const me = await adb.get<{ mobile_number: string | null }>(
+        'SELECT mobile_number FROM users WHERE id = ?',
+        req.user!.id,
+      );
+      if (!me?.mobile_number) {
+        throw new AppError(
+          'No mobile_number on your profile — add one in Settings → Account or pass to_phone override.',
+          400,
+        );
+      }
+      toPhone = requirePhone(me.mobile_number, 'mobile_number');
+    }
+
+    // Same provider gate the real send uses so the admin sees the same
+    // failure mode (configure provider before blasting) at test time.
+    const provider = getSmsProvider();
+    const providerStatus = isProviderRealOrSimulated(provider);
+    if (!providerStatus.real) {
+      throw new AppError(
+        'SMS provider is not configured — test refused. Configure a real provider (Twilio, Telnyx, Bandwidth, Plivo, Vonage) in Settings before sending tests.',
+        400,
+      );
+    }
+
+    const tenantSlug = (req as any).tenantSlug ?? null;
+    try {
+      const result = await sendSmsTenant(db, tenantSlug, toPhone, tpl.content);
+      if (!result?.success) {
+        throw new AppError(
+          `Test send failed: ${result?.error || 'unknown provider error'}`,
+          502,
+        );
+      }
+    } catch (err: unknown) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(
+        `Test send failed: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+      );
+    }
+    audit(db, 'bulk_sms_test_sent', req.user!.id, req.ip || 'unknown', {
+      template_id: templateId,
+      template_name: tpl.name,
+      to_phone_last4: toPhone.slice(-4),
+    });
+    res.json({
+      success: true,
+      data: {
+        sent: true,
+        to_phone_masked: toPhone.length >= 7 ? `${toPhone.slice(0, 3)}•••${toPhone.slice(-4)}` : toPhone,
+        template_name: tpl.name,
+      },
+    });
+  }),
+);
+
 router.post(
   '/bulk-send',
   asyncHandler(async (req, res) => {

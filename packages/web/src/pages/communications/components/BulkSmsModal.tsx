@@ -153,6 +153,30 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   });
   const segmentCounts = segmentCountsData ?? null;
 
+  // WEB-UIUX-1508: send-test-to-me — fires a single SMS to the admin's
+  // mobile_number (or override) so wording / links / variables can be
+  // verified before the blast. Quota-free server route; we still gate the
+  // button on a picked template so the admin can't fire an empty test.
+  const sendTestMut = useMutation({
+    mutationFn: async () => {
+      if (!templateId) throw new Error('Pick a template');
+      const res = await api.post<{
+        success: boolean;
+        data: { sent: boolean; to_phone_masked: string; template_name: string };
+      }>('/inbox/bulk-send-test', { template_id: templateId });
+      return res.data.data;
+    },
+    onSuccess: (d) => {
+      toast.success(`Test sent to ${d.to_phone_masked}`);
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message
+        ?? e?.response?.data?.error
+        ?? 'Test send failed';
+      toast.error(msg);
+    },
+  });
+
   const previewMut = useMutation({
     mutationFn: async () => {
       if (!templateId) throw new Error('Pick a template');
@@ -648,6 +672,19 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
             Cancel
+          </button>
+          {/* WEB-UIUX-1508: send-test-to-me — quota-free single SMS to the
+              admin's mobile so wording / links / vars can be verified before
+              the blast. Disabled until a template is picked; provider gate
+              still applies server-side (preview banner surfaces the same
+              condition for the real send). */}
+          <button
+            onClick={() => sendTestMut.mutate()}
+            disabled={!templateId || sendTestMut.isPending}
+            title="Send a single test message to your own mobile number"
+            className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-700"
+          >
+            {sendTestMut.isPending ? 'Sending test…' : 'Send test to me'}
           </button>
           {!preview ? (
             <button
