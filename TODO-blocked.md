@@ -3499,15 +3499,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:1003-1004`
   <!-- meta: fix=label-'Cancel-membership'-OR-'End-plan'+keep-confirm-modal-confirmLabel-'Cancel-subscription' -->
 
-- [!] WEB-UIUX-1497. **[MINOR] No cancellation reason capture. Confirm dialog (`SubscriptionsListPage.tsx:158-161`) accepts only yes/no. Standard SaaS retention flow asks "Why are you cancelling?" with preset pills + optional comment — feeds the churn dashboard. Currently the only data point on cancel is the audit row (`:237`), which records `subscription_id, immediate` and nothing else.** L7 feedback, L9 empty/loading/error. **[AUTOLOOP-T49 BLOCKED 2026-05-11: cancellation-reason capture needs a churn dashboard + reason-pill schema (cancel_reason column / cancel_reason_id FK) + retention modal. Multi-component.]**
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:155-168`
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:904-911`
-  `packages/server/src/routes/membership.routes.ts:222-239`
-  <!-- meta: fix=replace-confirm-with-CancelReasonModal+server-accept-reason-string+store-in-customer_subscriptions.cancel_reason+audit-payload -->
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:158-161`
-  <!-- meta: fix=confirm-body-include-tier-name+last_charge_amount+current_period_end+'No-refund'-line+benefits-list -->
-
 - [!] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: immediate-cancel proration / refund flow needs a server `/membership/:id/cancel` flag + automatic credit-note path keyed to days remaining. Multi-component finance change.]**
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->
