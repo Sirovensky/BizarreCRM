@@ -201,6 +201,75 @@ router.get(
 );
 
 // --------------------------------------------------------------------------
+// WEB-UIUX-1366: GET /stocktake/:id.csv — flat audit export
+// Auditors require a CSV they can attach to year-end paperwork. Mirrors the
+// detail JSON shape but as flat rows: sku, name, expected, counted, variance,
+// current_in_stock, counted_at, notes. SCAN-1161 anti-formula prefix applied
+// per cell so a SKU starting with `=`/`+`/`-`/`@` doesn't execute inside
+// Excel/Calc.
+// --------------------------------------------------------------------------
+router.get(
+  '/:id.csv',
+  asyncHandler(async (req, res) => {
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseInt(qs(req.params.id), 10);
+    if (!id || isNaN(id)) throw new AppError('Invalid stocktake id', 400);
+
+    const session = await adb.get<StocktakeRow>(
+      'SELECT * FROM stocktakes WHERE id = ?',
+      id,
+    );
+    if (!session) throw new AppError('Stocktake not found', 404);
+
+    const counts = await adb.all<StocktakeCountRow>(
+      `SELECT sc.*, i.name, i.sku, i.in_stock as current_in_stock
+         FROM stocktake_counts sc
+         LEFT JOIN inventory_items i ON i.id = sc.inventory_item_id
+        WHERE sc.stocktake_id = ?
+        ORDER BY sc.counted_at ASC`,
+      id,
+    );
+
+    const sanitize = (s: string | number | null | undefined): string => {
+      const str = String(s ?? '').replace(/[",\n\r]/g, ' ').trim();
+      return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+    };
+
+    const csvLines: string[] = [
+      'sku,name,expected_qty,counted_qty,variance,current_in_stock,counted_at,notes',
+    ];
+    for (const c of counts) {
+      const row = c as unknown as {
+        sku?: string | null;
+        name?: string | null;
+        expected_qty: number;
+        counted_qty: number;
+        variance: number;
+        current_in_stock?: number | null;
+        counted_at?: string;
+        notes?: string | null;
+      };
+      csvLines.push([
+        `"${sanitize(row.sku)}"`,
+        `"${sanitize(row.name)}"`,
+        row.expected_qty,
+        row.counted_qty,
+        row.variance,
+        row.current_in_stock ?? '',
+        `"${sanitize(row.counted_at)}"`,
+        `"${sanitize(row.notes)}"`,
+      ].join(','));
+    }
+
+    const csv = csvLines.join('\n');
+    const safeName = session.name.replace(/[^a-z0-9_\-]/gi, '_');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="stocktake_${safeName}_${session.id}.csv"`);
+    res.send(csv);
+  }),
+);
+
+// --------------------------------------------------------------------------
 // POST /stocktake/:id/counts — UPSERT a single item count
 // Body: { inventory_item_id, counted_qty, notes? }
 // Re-scanning the same SKU replaces the prior row (not a duplicate insert).

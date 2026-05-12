@@ -4820,7 +4820,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:286-410`
   <!-- meta: fix=add-search-input+filter-pills-(All|Variance|Surplus|Shortage)+make-Variance-summary-stat-a-button-that-toggles-the-filter -->
 
-- [!] WEB-UIUX-1366. **[MAJOR] No CSV/PDF export of counts. Auditors require a flat list to attach to year-end paperwork. App has print/CSV elsewhere (invoices, reports) — pattern not extended here.** L6 discoverability. **STATUS: BLOCKED — needs server /stocktake/:id.csv route + UI Export button; multi-component, defer to inventory sprint**
+- [x] WEB-UIUX-1366. **Stocktake CSV export shipped 2026-05-11.** New server `GET /stocktake/:id.csv` returns a flat audit CSV (sku, name, expected_qty, counted_qty, variance, current_in_stock, counted_at, notes) ordered by counted_at ASC. SCAN-1161 anti-formula prefix applied to every cell so `=`/`+`/`-`/`@`-prefixed SKUs don't execute inside Excel/Calc. Filename = `stocktake_${slug}_${id}.csv`. Web `StocktakePage` session detail card adds an "Export CSV" button next to the title that hits the route via axios blob (bearer-aware per WEB-FD-021) + anchor-trigger download + 60s URL.revokeObjectURL cleanup.
   `packages/web/src/pages/inventory/StocktakePage.tsx:283-410`
   <!-- meta: fix=add-Export-CSV-button-near-summary+wire-/stocktake/:id.csv-server-route-(reuse-csv-helper-from-reports.routes) -->
 

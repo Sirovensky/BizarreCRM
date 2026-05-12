@@ -18,6 +18,7 @@ import {
   X,
   Loader2,
   ScanBarcode,
+  Download,
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { inventoryApi } from '@/api/endpoints';
@@ -516,7 +517,41 @@ export function StocktakePage() {
           {detailData && (
             <>
               <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
-                <h3 className="font-semibold text-lg">{detailData.session.name}</h3>
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-semibold text-lg">{detailData.session.name}</h3>
+                  {/* WEB-UIUX-1366: CSV export for auditor handoff. Hits the
+                      server route with a bearer-header request (no
+                      window.open — that 401s in bearer-only tenants per
+                      WEB-FD-021) and triggers a download. */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const res = await api.get(`/stocktake/${detailData.session.id}.csv`, {
+                          responseType: 'blob',
+                        });
+                        const blob = new Blob([res.data as BlobPart], { type: 'text/csv' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = blobUrl;
+                        const safeName = detailData.session.name.replace(/[^a-z0-9_\-]/gi, '_');
+                        a.download = `stocktake_${safeName}_${detailData.session.id}.csv`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        toast.success('Stocktake CSV downloaded');
+                        setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+                      } catch (err) {
+                        console.error('[StocktakePage] CSV export failed', err);
+                        toast.error('CSV export failed');
+                      }
+                    }}
+                    title="Export counts as CSV for audit"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-surface-300 px-2.5 py-1 text-xs font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-200 dark:hover:bg-surface-700"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Export CSV
+                  </button>
+                </div>
                 <div className="mt-2 grid grid-cols-4 gap-3 text-sm">
                   <div>
                     <div className="text-surface-500">Items counted</div>
