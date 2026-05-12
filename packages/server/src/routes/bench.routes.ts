@@ -742,16 +742,25 @@ router.get(
 
     const role = req.user?.role;
     const isPrivileged = role === 'admin' || role === 'manager';
+    const callerId = req.user?.id;
 
-    const items = rows.map((row) => ({
-      ...row,
-      checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
-        row.checklist_results_json,
-        [],
-      ),
-      tech_signature_path: isPrivileged ? row.tech_signature_path : undefined,
-      working_photo_path: isPrivileged ? row.working_photo_path : undefined,
-    }));
+    const items = rows.map((row) => {
+      // WEB-UIUX-1093: the tech who signed must be able to review their own
+      // signature + working photo later (most-common dispute case is "did I
+      // sign that?"). Admin/manager see everything; the signer sees their
+      // own row's media; everyone else gets the paths stripped.
+      const isOwnRow = callerId != null && row.tech_user_id === callerId;
+      const canSeeMedia = isPrivileged || isOwnRow;
+      return {
+        ...row,
+        checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
+          row.checklist_results_json,
+          [],
+        ),
+        tech_signature_path: canSeeMedia ? row.tech_signature_path : undefined,
+        working_photo_path: canSeeMedia ? row.working_photo_path : undefined,
+      };
+    });
 
     res.json({ success: true, data: { sign_offs: items, total: rows.length } });
   }),

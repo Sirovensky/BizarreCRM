@@ -3670,7 +3670,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
 #### Blocker — broken contract, unwired status, missing admin surfaces
 
-- [!] WEB-UIUX-1078. **[BLOCKER] Migration 088 promises `qc_required=true` blocks PATCH `status='complete'` until a `qc_sign_offs` row exists — no server enforcement exists.** `088_bench_timer_qc_defects.sql:22-23` states the gate; `tickets.routes.ts` has zero references to `qc_required` or `qc_sign_offs`. Admin who flips the flag (DB-only, see WEB-UIUX-1079) gets a false sense of compliance — every tech still completes tickets without sign-off. Documentation lies. L2, L8. **STATUS: BLOCKED — server policy enforcement (qc_required gate in PATCH status handler) needs route audit + integration tests; defer to QC sprint**
+- [x] WEB-UIUX-1078. **[BLOCKER] qc_required gate enforced 2026-05-12.** `applyTicketStatusChange` now reads `store_config.qc_required`; when truthy ('1'/'true') and the new status is closed, the helper looks up the most-recent `qc_sign_offs` row for the ticket and refuses the transition unless `outcome='pass'`. Failed sign-offs do not unblock. Single-shared-helper change means every status-change path (PATCH /:id/status, automations, PUT replace, inline edits) inherits the gate — no per-route audit was needed.
   `packages/server/src/db/migrations/088_bench_timer_qc_defects.sql:18-26`
   `packages/server/src/routes/tickets.routes.ts`
   <!-- meta: fix=in-tickets-PATCH-status-handler-when-qc_required==='true'-AND-target-status-is-terminal('Repaired'|'Repaired-Pending QC'|'Payment Received & Picked Up')-SELECT-1-FROM-qc_sign_offs-WHERE-ticket_id=?-LIMIT-1+throw-409-if-missing -->
@@ -3732,7 +3732,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:248-285`
   <!-- meta: fix=schema-add-qc_sign_off_photos-table-(sign_off_id,path,kind:before|after|other)+UI-multi-upload+server-multipart-array -->
 
-- [!] WEB-UIUX-1093. **[MAJOR] `GET /qc/status` strips `tech_signature_path` + `working_photo_path` for non-admin/non-manager (`bench.routes.ts:738-740`) — tech who signed cannot review their own signature later.** Self-review is the most common dispute case ("did I sign that?"). Privilege filter denies the signing party access to their own act. L1, L8. **STATUS: BLOCKED — needs schema migration (qc_sign_off_photos table) + multi-upload + multipart array server route; multi-component, defer to QC sprint**
+- [x] WEB-UIUX-1093. **[MAJOR] Self-review media-path gate shipped 2026-05-12.** `GET /bench/qc/status/:ticketId` now exposes `tech_signature_path` + `working_photo_path` to the signer of each row in addition to admin/manager. Other authenticated users still get the paths stripped. Single-line guard: `canSeeMedia = isPrivileged || row.tech_user_id === callerId`. The earlier-blocker note about a schema-migration multi-upload table was misattributed; that lands separately under WEB-UIUX-1092.
   `packages/server/src/routes/bench.routes.ts:728-741`
   <!-- meta: fix=loosen-filter-to-isPrivileged-OR-tech_user_id===req.user.id -->
 

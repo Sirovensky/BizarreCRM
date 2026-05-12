@@ -319,6 +319,28 @@ export async function applyTicketStatusChange(
           throw new AppError('Repair timer must be started before closing the ticket', 400);
         }
       }
+
+      // WEB-UIUX-1078: enforce the qc_required gate that migration 088
+      // documented but no route was honouring. When `qc_required=true` in
+      // store_config, refuse to close the ticket until a `pass` sign-off row
+      // exists in qc_sign_offs. A failed sign-off does not unblock — the
+      // tech must resolve the failure and re-sign before close.
+      const requireQc = await adb.get<AnyRow>(
+        "SELECT value FROM store_config WHERE key = 'qc_required'",
+      );
+      const qcEnabled = requireQc?.value === '1' || requireQc?.value === 'true';
+      if (qcEnabled) {
+        const passRow = await adb.get<AnyRow>(
+          "SELECT id FROM qc_sign_offs WHERE ticket_id = ? AND outcome = 'pass' ORDER BY signed_at DESC LIMIT 1",
+          ticketId,
+        );
+        if (!passRow) {
+          throw new AppError(
+            'QC sign-off is required before closing this ticket. Open the QC modal and capture a pass sign-off first.',
+            400,
+          );
+        }
+      }
     }
 
     // F13: Require diagnostic note before any status change

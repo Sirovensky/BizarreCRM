@@ -2470,15 +2470,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
 #### Blocker — broken contract, unwired status, missing admin surfaces
 
-- [!] WEB-UIUX-1078. **[BLOCKER] Migration 088 promises `qc_required=true` blocks PATCH `status='complete'` until a `qc_sign_offs` row exists — no server enforcement exists.** `088_bench_timer_qc_defects.sql:22-23` states the gate; `tickets.routes.ts` has zero references to `qc_required` or `qc_sign_offs`. Admin who flips the flag (DB-only, see WEB-UIUX-1079) gets a false sense of compliance — every tech still completes tickets without sign-off. Documentation lies. L2, L8. **STATUS: BLOCKED — server policy enforcement (qc_required gate in PATCH status handler) needs route audit + integration tests; defer to QC sprint**
-  `packages/server/src/db/migrations/088_bench_timer_qc_defects.sql:18-26`
-  `packages/server/src/routes/tickets.routes.ts`
-  <!-- meta: fix=in-tickets-PATCH-status-handler-when-qc_required==='true'-AND-target-status-is-terminal('Repaired'|'Repaired-Pending QC'|'Payment Received & Picked Up')-SELECT-1-FROM-qc_sign_offs-WHERE-ticket_id=?-LIMIT-1+throw-409-if-missing -->
-
-  `packages/web/src/pages/settings/SettingsPage.tsx`
-  `packages/server/src/routes/bench.routes.ts:255-275`
-  <!-- meta: fix=add-pages/settings/BenchQcSettings.tsx+settings-tab-Bench/QC+toggles-for-qc_required+bench_timer_enabled+number-input-for-labor-rate -->
-
 - [!] WEB-UIUX-1080. **[BLOCKER] No admin UI for QC checklist CRUD — and the modal's empty-state copy points to that nonexistent page.** Server has `POST/PUT/DELETE /bench/qc-checklist` admin-gated routes (`bench.routes.ts:614-700`) with no client wrapper besides `checklist()` (read). Empty-state in modal: `"Ask an admin to add some under Settings → Bench / QC."` (`QcSignOffModal.tsx:218`) — that path doesn't exist. Tech reads guidance, admin follows guidance, both dead-end. L1, L2, L4, L8. **STATUS: BLOCKED — needs new pages/settings/QcChecklistPage admin UI with row CRUD + drag-sort + endpoints; multi-component, defer to QC sprint**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:217-219`
   `packages/web/src/api/endpoints.ts:1366-1374`
@@ -2527,24 +2518,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 - [!] WEB-UIUX-1092. **[MAJOR] Single working-photo only; no before/after, no defect-marker overlay, no multi-photo.** Repair shops universally document "before" + "after" — small claims / warranty disputes hinge on the pair. `working_photo_path` column is scalar (`088_bench_timer_qc_defects.sql:79`); UI has one slot. Operator who wants to document multiple angles or attach a video can't. L1, L4. **[AUTOLOOP-T49 BLOCKED 2026-05-11: requires new `qc_sign_off_photos` table (qc_sign_off_id, path, ord, label) + migration + multi-file upload + UI gallery + retain `working_photo_path` as legacy single-slot fallback. Multi-component schema change.]**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:248-285`
   <!-- meta: fix=schema-add-qc_sign_off_photos-table-(sign_off_id,path,kind:before|after|other)+UI-multi-upload+server-multipart-array -->
-
-- [!] WEB-UIUX-1093. **[MAJOR] `GET /qc/status` strips `tech_signature_path` + `working_photo_path` for non-admin/non-manager (`bench.routes.ts:738-740`) — tech who signed cannot review their own signature later.** Self-review is the most common dispute case ("did I sign that?"). Privilege filter denies the signing party access to their own act. L1, L8. **STATUS: BLOCKED — needs schema migration (qc_sign_off_photos table) + multi-upload + multipart array server route; multi-component, defer to QC sprint**
-  `packages/server/src/routes/bench.routes.ts:728-741`
-  <!-- meta: fix=loosen-filter-to-isPrivileged-OR-tech_user_id===req.user.id -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:54-59`
-  <!-- meta: fix=key-reset-on-JSON.stringify(items.map(i=>i.id))+also-add-server-side-version-token-on-checklist-and-409-on-stale -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:289-307`
-  <!-- meta: fix=in-useEffect-set-canvas.width=cssWidth*dpr+canvas.height=cssHeight*dpr+ctx.scale(dpr,dpr)+CSS-keeps-original-display-size -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:194-210`
-  <!-- meta: fix=fetch-ticketsApi.get(ticketId)+render-subtitle="T-{order_id} · {customer_name} · {device_name}" -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:163-167`
-  <!-- meta: fix=track-with-WEB-UIUX-1081-when-status-query-lands -->
-
-#### Minor — copy, hierarchy, edge cases
 
 - [!] WEB-UIUX-1098. **[MINOR] "QC sign-off" green button on TicketDetail always rendered, regardless of ticket status or `qc_required` flag.** `TicketDetailPage.tsx:590-597`. Tech can sign QC on a ticket still in `'Awaiting parts'` — bypasses any process intent. Should be hidden until status is `'Repaired'` / `'Repaired - Pending QC'`, or always visible but disabled with tooltip "Status must be Repaired". L1, L9. **PARTIAL 2026-05-10: TicketDetailPage.tsx:815 already disables QC button when ticket reaches terminal (closed/cancelled) status. Tighter gate to `'Repaired'`/`'Repaired - Pending QC'` requires server-side `is_repair_complete` flag on ticket_statuses; defer to data-model pass.**
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-597`
