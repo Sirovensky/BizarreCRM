@@ -349,7 +349,32 @@ export function EstimateDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['estimates'] });
       const data = res?.data?.data || {};
       if (data.sent === false) {
-        toast.error(data.warning || 'No message was sent');
+        const warning: string = data.warning || 'No message was sent';
+        // WEB-UIUX-1468: server returns `warning: "Customer has no phone
+        // number on file."` when the customer record is missing a phone.
+        // Surface an inline "Edit customer" action that deep-links to the
+        // customer profile so the operator doesn't have to navigate
+        // Customers → search → edit → save → back to estimate → Send again.
+        const isNoPhone = /phone/i.test(warning);
+        const targetCustomerId = (estimate as any)?.customer_id;
+        if (isNoPhone && targetCustomerId) {
+          toast((t) => (
+            <span className="flex items-center gap-2 text-sm">
+              {warning}
+              <button
+                className="ml-2 rounded bg-surface-200 px-3 py-2 min-h-[44px] md:min-h-0 md:px-2 md:py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  navigate(`/customers/${targetCustomerId}`);
+                }}
+              >
+                Edit customer
+              </button>
+            </span>
+          ), { duration: 8000 });
+        } else {
+          toast.error(warning);
+        }
       } else {
         toast.success(data.message || 'Estimate sent to customer');
       }

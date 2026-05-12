@@ -2774,24 +2774,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/portal/PortalDashboard.tsx:89-103,144-162`
   <!-- meta: fix=always-render-Estimates-CTA-(disabled-grey-when-total=0)+badge-shows-pending-count-only-when>0+secondary-style-when-no-action-needed -->
 
-- [!] WEB-UIUX-1468. **[MAJOR] No "no phone on file" recovery on Send. Server returns `sent:false` + `warning:'Customer has no phone number on file.'` (`estimates.routes.ts:1010-1011`), UI surfaces the warning as a single toast (`EstimateDetailPage.tsx:77`, `EstimateListPage.tsx:459`) — no "Add phone" button, no link to the customer record. Operator must manually navigate Customers → search → edit → save → back to estimate → Send again. 5 clicks for a missing field that's one-tap to fix inline.** L8 recovery, L4 flow. **STATUS: BLOCKED — needs new PhoneEditModal + auto-retry Send chain; multi-component, defer to estimates sprint**
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:71-83`
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:454-466`
-  `packages/server/src/routes/estimates.routes.ts:1009-1012`
-  <!-- meta: fix=on-no-phone-warning-toast-includes-action-button-"Add-phone"-opening-an-inline-PhoneEditModal-then-auto-retries-Send-on-save -->
-
-  `packages/web/src/api/endpoints.ts:906`
-  `packages/server/src/routes/estimates.routes.ts:963-970`
-  <!-- meta: fix=narrow-method-type-to-'sms'-OR-implement-email-via-emailProvider+respect-customer.contact_preference -->
-
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:37-50`
-  <!-- meta: fix=on-success-show-success-banner-"Estimate-approved.-Shop-has-been-notified."-+CTA-"View-your-repair"-deep-link-to-ticket-detail+optional-toast-with-undo-(server-allows-via-staff-Reject-still) -->
-
-#### Minor — labels, copy, hierarchy
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
-  <!-- meta: fix=confirm-with-{title:'Approve-on-customer-behalf?',body:'This-bypasses-the-e-sign-flow.-Use-only-when-customer-has-authorized-in-person-and-you-have-recorded-authorization.',confirmLabel:'Approve-on-behalf'} -->
-
 - [!] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: immediate-cancel proration / refund flow needs a server `/membership/:id/cancel` flag + automatic credit-note path keyed to days remaining. Multi-component finance change.]**
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->

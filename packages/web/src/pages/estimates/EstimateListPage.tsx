@@ -505,11 +505,34 @@ export function EstimateListPage() {
 
   // Send mutation
   const sendMut = useMutation({
-    mutationFn: (id: number) => estimateApi.send(id),
-    onSuccess: (res) => {
+    mutationFn: (vars: { id: number; customer_id?: number | null }) => estimateApi.send(vars.id),
+    onSuccess: (res, vars) => {
       const data = res?.data?.data || {};
       if (data.sent === false) {
-        toast.error(data.warning || 'No message was sent');
+        const warning: string = data.warning || 'No message was sent';
+        // WEB-UIUX-1468: surface inline "Edit customer" recovery action when
+        // the server reports the customer has no phone on file. Deep-links
+        // to the customer profile instead of forcing manual navigation.
+        const isNoPhone = /phone/i.test(warning);
+        if (isNoPhone && vars.customer_id) {
+          const cid = vars.customer_id;
+          toast((t) => (
+            <span className="flex items-center gap-2 text-sm">
+              {warning}
+              <button
+                className="ml-2 rounded bg-surface-200 px-3 py-2 min-h-[44px] md:min-h-0 md:px-2 md:py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  navigate(`/customers/${cid}`);
+                }}
+              >
+                Edit customer
+              </button>
+            </span>
+          ), { duration: 8000 });
+        } else {
+          toast.error(warning);
+        }
       } else {
         toast.success(data.message || 'Estimate sent to customer');
       }
@@ -979,7 +1002,7 @@ export function EstimateListPage() {
                                 e.stopPropagation();
                                 try {
                                   if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
-                                    sendMut.mutate(est.id);
+                                    sendMut.mutate({ id: est.id, customer_id: est.customer_id ?? null });
                                   }
                                 } catch (err) {
                                   toast.error(formatApiError(err));
