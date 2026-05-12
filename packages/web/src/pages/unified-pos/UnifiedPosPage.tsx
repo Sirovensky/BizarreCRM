@@ -1245,6 +1245,16 @@ export function UnifiedPosPage() {
   });
   const blockchypConfigured = blockchypStatus.data?.data?.data?.enabled ?? false;
   const terminalName = blockchypStatus.data?.data?.data?.terminalName ?? 'terminal';
+  // WEB-UIUX-937: heartbeat-aware reachability. `null` = no ping yet this
+  // process (unknown — UI shouldn't block); `online === false` = last ping
+  // failed or is older than the freshness window.
+  const blockchypHeartbeat = blockchypStatus.data?.data?.data?.heartbeat ?? null;
+  const blockchypOffline = !!blockchypHeartbeat && !blockchypHeartbeat.online;
+  const blockchypOfflineReason = blockchypHeartbeat?.lastError
+    ? `Last error: ${blockchypHeartbeat.lastError}`
+    : blockchypHeartbeat?.stale
+      ? 'No recent ping — terminal may be unplugged'
+      : null;
 
   const ticketParam = searchParams.get('ticket');
   const customerParam = searchParams.get('customer') || searchParams.get('customer_id');
@@ -2988,6 +2998,8 @@ export function UnifiedPosPage() {
                   paidLegs={paidLegs}
                   remainingCents={remainingCents}
                   blockchypConfigured={blockchypConfigured}
+                  blockchypOffline={blockchypOffline}
+                  blockchypOfflineReason={blockchypOfflineReason}
                   terminalName={terminalName}
                   customerId={customer?.id ?? null}
                   onBack={() => setMode('sale')}
@@ -3017,6 +3029,8 @@ export function UnifiedPosPage() {
                   processing={processing}
                   terminalError={terminalError}
                   blockchypConfigured={blockchypConfigured}
+                  blockchypOffline={blockchypOffline}
+                  blockchypOfflineReason={blockchypOfflineReason}
                   terminalName={terminalName}
                   customerId={customer?.id ?? null}
                   customerName={customer ? getCustomerName(customer) : null}
@@ -6086,6 +6100,8 @@ function TenderMethodView({
   paidLegs,
   remainingCents,
   blockchypConfigured,
+  blockchypOffline,
+  blockchypOfflineReason,
   terminalName,
   customerId,
   onBack,
@@ -6095,6 +6111,8 @@ function TenderMethodView({
   paidLegs: PaymentLeg[];
   remainingCents: number;
   blockchypConfigured: boolean;
+  blockchypOffline: boolean;
+  blockchypOfflineReason: string | null;
   terminalName: string;
   customerId: number | null;
   onBack: () => void;
@@ -6122,7 +6140,20 @@ function TenderMethodView({
         : 'No store-credit on file';
   const methods: Array<{ method: TenderMethod; title: string; subtitle: string; icon: React.ElementType; disabled?: boolean }> = [
     { method: 'Cash', title: 'Cash', subtitle: 'Type amount · drawer opens on confirm', icon: Banknote },
-    { method: 'Card', title: 'Card · tap · chip · swipe', subtitle: blockchypConfigured ? `Terminal ${terminalName} · ready · tip handled there` : 'Pair terminal in settings', icon: CreditCard, disabled: !blockchypConfigured },
+    {
+      method: 'Card',
+      title: 'Card · tap · chip · swipe',
+      // WEB-UIUX-937: surface terminal-offline state instead of falsely
+      // promising "ready". Tile is disabled while offline so a sale can't
+      // start against an unreachable terminal.
+      subtitle: !blockchypConfigured
+        ? 'Pair terminal in settings'
+        : blockchypOffline
+          ? `Terminal ${terminalName} OFFLINE — ${blockchypOfflineReason ?? 'recent ping failed'}`
+          : `Terminal ${terminalName} · ready · tip handled there`,
+      icon: CreditCard,
+      disabled: !blockchypConfigured || blockchypOffline,
+    },
     { method: 'Gift card', title: 'Gift card', subtitle: 'Scan or type code', icon: Gift },
     { method: 'Store credit', title: 'Store credit', subtitle: storeCreditSubtitle, icon: Star, disabled: storeCreditDisabled },
   ];
@@ -6295,7 +6326,7 @@ function CashTenderView({ amount, setAmount, remainingCents, processing, onBack,
   );
 }
 
-function CardTenderView({ method, amount, setAmount, remainingCents, processing, terminalError, blockchypConfigured, terminalName, customerId, customerName, onBack, onAccept }: {
+function CardTenderView({ method, amount, setAmount, remainingCents, processing, terminalError, blockchypConfigured, blockchypOffline, blockchypOfflineReason, terminalName, customerId, customerName, onBack, onAccept }: {
   method: TenderMethod;
   amount: string;
   setAmount: (value: string) => void;
@@ -6303,6 +6334,8 @@ function CardTenderView({ method, amount, setAmount, remainingCents, processing,
   processing: boolean;
   terminalError: string | null;
   blockchypConfigured: boolean;
+  blockchypOffline: boolean;
+  blockchypOfflineReason: string | null;
   terminalName: string;
   customerId: number | null;
   customerName: string | null;
@@ -6333,6 +6366,11 @@ function CardTenderView({ method, amount, setAmount, remainingCents, processing,
   const disabled =
     processing
     || (requiresTerminal && !blockchypConfigured)
+    // WEB-UIUX-937: block the Charge button when the heartbeat says the
+    // terminal is unreachable. Without this gate the SDK call hangs for
+    // the full timeout before throwing, leaving the cashier and customer
+    // staring at a frozen screen.
+    || (requiresTerminal && blockchypOffline)
     || overdraft
     || noCustomerForStoreCredit
     || tenderedCents <= 0;
@@ -6381,7 +6419,11 @@ function CardTenderView({ method, amount, setAmount, remainingCents, processing,
         </div>
         <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">
           {method === 'Card'
-            ? (blockchypConfigured ? `Customer terminal mirrors the prompt + handles tip.` : 'Terminal is not configured.')
+            ? (!blockchypConfigured
+                ? 'Terminal is not configured.'
+                : blockchypOffline
+                  ? `Terminal OFFLINE — ${blockchypOfflineReason ?? 'recent ping failed'}. Power-cycle or run Test Connection.`
+                  : `Customer terminal mirrors the prompt + handles tip.`)
             : method === 'Store credit'
               ? (customerName
                   ? `Apply from ${customerName}'s store-credit ledger. Cap is the live balance.`

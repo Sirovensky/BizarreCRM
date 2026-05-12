@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button
+import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText, AlertTriangle } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button; WEB-UIUX-937: AlertTriangle for terminal-offline pill
 import toast from 'react-hot-toast';
 import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi, refundApi } from '@/api/endpoints';
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
@@ -199,6 +199,17 @@ export function InvoiceDetailPage() {
     created_at: string;
   }>;
   const blockchypEnabled = bcData?.data?.data?.enabled ?? false;
+  // WEB-UIUX-937: heartbeat-aware reachability. `null` heartbeat = no ping
+  // yet this process; treated as "unknown" (Charge proceeds — caller hits
+  // /test-connection which seeds the cache). `online === false` means the
+  // last ping failed or is older than the freshness window.
+  const blockchypHeartbeat = bcData?.data?.data?.heartbeat ?? null;
+  const blockchypOffline = !!blockchypHeartbeat && !blockchypHeartbeat.online;
+  const blockchypOfflineReason = blockchypHeartbeat?.lastError
+    ? `Last error: ${blockchypHeartbeat.lastError}`
+    : blockchypHeartbeat?.stale
+      ? 'No recent ping — terminal may be unplugged'
+      : null;
   const [terminalProcessing, setTerminalProcessing] = useState(false);
 
   // Server: res.json({ success: true, data: <flat invoice> }) — no extra .invoice nesting.
@@ -1307,17 +1318,38 @@ export function InvoiceDetailPage() {
               </label>
             </div>
             {blockchypEnabled && (
-              <button
-                onClick={handleTerminalPay}
-                disabled={terminalProcessing || payMutation.isPending}
-                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-              >
-                {terminalProcessing ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Waiting for terminal...</>
-                ) : (
-                  <><Smartphone className="h-4 w-4" /> Pay {formatCurrency(invoice.amount_due)} via Terminal</>
+              <div className="mt-4 space-y-2">
+                {/* WEB-UIUX-937: surface the heartbeat-derived offline state
+                    so the operator sees the terminal is unreachable BEFORE
+                    they tap Pay — the SDK call would otherwise hang for the
+                    full timeout before throwing. */}
+                {blockchypOffline && (
+                  <div
+                    role="status"
+                    className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+                  >
+                    <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <div className="font-semibold">Terminal offline</div>
+                      <div className="opacity-80">
+                        {blockchypOfflineReason ?? 'Recent ping failed.'} Power-cycle the terminal or run Test Connection in Settings before charging.
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </button>
+                <button
+                  onClick={handleTerminalPay}
+                  disabled={terminalProcessing || payMutation.isPending || blockchypOffline}
+                  title={blockchypOffline ? 'Terminal is offline — reconnect before charging' : undefined}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                >
+                  {terminalProcessing ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Waiting for terminal...</>
+                  ) : (
+                    <><Smartphone className="h-4 w-4" /> Pay {formatCurrency(invoice.amount_due)} via Terminal</>
+                  )}
+                </button>
+              </div>
             )}
             {blockchypEnabled && (
               <div className="relative my-3">

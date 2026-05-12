@@ -1482,7 +1482,30 @@ export const dataExportApi = {
 
 // ==================== BlockChyp Payment Terminal ====================
 export const blockchypApi = {
-  status: () => api.get<{ success: boolean; data: { enabled: boolean; terminalName: string; tcEnabled: boolean; promptForTip: boolean; autoCloseTicket: boolean } }>('/blockchyp/status'),
+  // WEB-UIUX-937: server now returns a `heartbeat` block alongside the
+  // configured-state flags so the UI can render an "offline" pill / disable
+  // Charge when the last `testConnection()` ping failed or is older than the
+  // freshness window (default 5 min). `heartbeat` is `null` when no ping has
+  // ever been issued for this terminal in the current process.
+  status: () => api.get<{
+    success: boolean;
+    data: {
+      enabled: boolean;
+      terminalName: string;
+      tcEnabled: boolean;
+      promptForTip: boolean;
+      autoCloseTicket: boolean;
+      heartbeat: {
+        lastSeenAt: string | null;
+        lastCheckedAt: string | null;
+        lastError: string | null;
+        firmwareVersion: string | null;
+        online: boolean;
+        stale: boolean;
+        freshnessWindowMs: number;
+      } | null;
+    };
+  }>('/blockchyp/status'),
   testConnection: (terminalName?: string) =>
     api.post<{ success: boolean; data: { success: boolean; terminalName: string; firmwareVersion?: string; error?: string } }>('/blockchyp/test-connection', { terminalName }),
   captureCheckinSignature: () =>

@@ -2064,41 +2064,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/api/client.ts:65`
 
-- [!] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **PARTIAL 2026-05-12: GET /blockchyp/status now surfaces a `heartbeat` block with `lastSeenAt`, `lastCheckedAt`, `lastError`, `firmwareVersion`, `online` (true if last successful ping within 5 min), and `stale` (true if last ping is older than the window). In-process cache fed by every `testConnection()` call (POST /test-connection). UI wiring (gate Charge button / show offline pill / prompt operator to power-cycle) is the follow-up. Folding charge/void/capture/refund success into the heartbeat is open scope.**
-  `packages/web/src/pages/unified-pos/CheckoutModal.tsx:170-178`
-
-  `packages/web/src/pages/settings/BlockChypSettings.tsx:282-296`
-
-  `packages/web/src/pages/catalog/CatalogPage.tsx:27-42`
-
-  `packages/web/src/pages/catalog/CatalogPage.tsx:660-676`
-
-  **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
-
-  **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
-
-
-  **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
-  `packages/web/src/pages/settings/SmsVoiceSettings.tsx:235-262`
-
-  **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
-
-
-### Web UI/UX Audit — Pass 11 (2026-05-05, flow walk: approve estimate — server-vs-client gaps + customer e-sign)
-
-Walk of the "Approve Estimate" flow: staff create → send-by-SMS → customer (or staff) approves → optional convert-to-ticket. Cross-checked server `estimates.routes.ts` + `estimateSign.routes.ts` (sign-URL + signature-capture) + `portal.routes.ts /estimates/:id/approve` against client `EstimateListPage`, `EstimateDetailPage`, `PortalEstimatesView`. Largest gap: server has full e-sign infra (`estimate_signatures` table, sign-token issuance, public signer UI) **mobile-only** — desktop flow flips `status='approved'` with zero name/IP/UA capture. Compliance/audit gap.
-
-#### Blockers — Status drift, missing audit trail, unwired endpoints
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:16-22`
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:17-24`
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:158-164`
-  <!-- meta: fix=add-signed-color-everywhere+filter-pill+detail-badge -->
-
-  `packages/server/src/routes/portal.routes.ts:1437-1478`
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:132-139`
-  <!-- meta: fix=portal-Approve-must-route-through-signed-token-flow-OR-capture-signer-name-+-IP-+-UA-server-side -->
-
 - [!] WEB-UIUX-957. **[MAJOR] No fallback channel when SMS fails — operator gets toast, no "Try email/portal-link instead" branch.** `estimates.routes.ts` returns `sent: false, warning, sms_error` but web just shows the warning toast. Customer with no phone or bad number = dead end; operator must navigate elsewhere to send by alternate means (and there is no alternate means in web). L4, L8. **STATUS: BLOCKED — needs SMS infrastructure work (deferred per user 2026-05-05); fallback channel UI pairs with that sprint**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:75-80`
 
