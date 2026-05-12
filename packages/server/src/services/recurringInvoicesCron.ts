@@ -92,6 +92,31 @@ function advanceNextRunAt(current: string, kind: string, count: number): string 
   return d.toISOString().replace('T', ' ').slice(0, 19);
 }
 
+// BUGHUNT-2026-05-10-56: collapse missed periods after downtime into a single
+// invoice. The cron previously advanced next_run_at by ONE interval per tick,
+// so an N-day outage of a daily template fired N back-to-back invoices over
+// the following N ticks. Now we advance until next_run_at is strictly in the
+// future; the missed periods are logged as `backfill_skipped` and a single
+// invoice is minted for "this period."
+function advanceUntilFuture(
+  current: string,
+  kind: string,
+  count: number,
+): { next: string; skipped: number } {
+  const nowIso = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  let next = advanceNextRunAt(current, kind, count);
+  let skipped = 0;
+  // Safety bound: 10000 iterations is enough for daily templates after a 27-year
+  // outage; protects against pathological interval_kind values.
+  let guard = 0;
+  while (next <= nowIso && guard < 10_000) {
+    next = advanceNextRunAt(next, kind, count);
+    skipped++;
+    guard++;
+  }
+  return { next, skipped };
+}
+
 // ---------------------------------------------------------------------------
 // Per-tenant run
 // ---------------------------------------------------------------------------
@@ -126,7 +151,22 @@ function runForTenant(slug: string, db: Database.Database): void {
 }
 
 function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTemplateRow): void {
-  const nextRunAt = advanceNextRunAt(tpl.next_run_at, tpl.interval_kind, tpl.interval_count);
+  const { next: nextRunAt, skipped: backfillSkipped } = advanceUntilFuture(
+    tpl.next_run_at,
+    tpl.interval_kind,
+    tpl.interval_count,
+  );
+  if (backfillSkipped > 0) {
+    logger.warn('recurring invoice: collapsing missed periods after downtime', {
+      slug,
+      template_id: tpl.id,
+      interval_kind: tpl.interval_kind,
+      interval_count: tpl.interval_count,
+      last_next_run_at: tpl.next_run_at,
+      collapsed_next_run_at: nextRunAt,
+      backfill_skipped: backfillSkipped,
+    });
+  }
   let invoiceId: number | null = null;
 
   try {
