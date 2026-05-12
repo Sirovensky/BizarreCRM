@@ -21,6 +21,7 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { runAutomations } from '../services/automations.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
+import { getInvoicePitSnapshot } from '../utils/invoiceSnapshot.js';
 import { fireWebhook } from '../services/webhooks.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
@@ -616,14 +617,22 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   }
   const amount_due = total;
 
+  // WEB-UIUX-895: capture customer/store/jurisdiction at create time so a
+  // reprint 6 months later doesn't lie about a renamed profile, store
+  // banner, or shifted jurisdiction. Print pages prefer the snapshot when
+  // populated and fall back to the live row when NULL (legacy invoices).
+  const pit = await getInvoicePitSnapshot(adb, customer_id);
+
   const result = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
       total_tax, total, amount_paid, amount_due, notes, due_on, created_by,
-      is_deposit, deposit_amount, parent_invoice_id, location_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_deposit, deposit_amount, parent_invoice_id, location_id,
+      customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
     total_tax, total, amount_due, notes || null, validatedDueDate, req.user!.id,
-    depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId);
+    depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId,
+    pit.customer_name_snapshot, pit.customer_address_snapshot, pit.store_name_snapshot, pit.tax_jurisdiction_snapshot);
 
   const invoiceId = result.lastInsertRowid;
 
