@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift, ReceiptText, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { SkeletonCard, SkeletonTable } from '@/components/shared/Skeleton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -248,8 +248,8 @@ export function GiftCardDetailPage() {
   // WEB-UIUX-552: gate Reload on server-side permission (gift_cards.reload is
   // admin/manager only). Free-plan cashiers don't have it, so the button must
   // be inert rather than letting them fire a request that returns 403.
-  const userRole = useAuthStore((s) => s.user?.role);
-  const canReload = userRole === 'admin' || userRole === 'manager';
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canReload = useHasRole(['admin', 'manager']);
   // WEB-UIUX-1546: disable / enable share the gift_cards.reload permission
   // server-side, so reuse the canReload flag for the button gate.
   const canDisable = canReload;

@@ -16,6 +16,7 @@ import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { useEffect, useState } from 'react';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -276,7 +277,8 @@ export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const userRole = useAuthStore((s) => s.user?.role);
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canManageSigning = useHasRole(['admin', 'manager']);
   // WEB-UIUX-1463: capture current user id for self-approval guard
   const currentUserId = useAuthStore((s) => s.user?.id);
   const [editing, setEditing] = useState(false);
@@ -309,7 +311,6 @@ export function EstimateDetailPage() {
   });
 
   const estimate = data?.data?.data;
-  const canManageSigning = userRole === 'admin' || userRole === 'manager';
 
   // Version history query (ENR-LE6)
   const { data: versionsData, isLoading: versionsLoading } = useQuery({

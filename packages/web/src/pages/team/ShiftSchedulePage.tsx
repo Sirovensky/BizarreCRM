@@ -15,7 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { extractApiError } from '@/utils/apiError';
 import { dstSpringForwardAnomaly } from '@/utils/format';
 
@@ -59,8 +59,8 @@ function startOfWeek(d: Date): Date {
 
 export function ShiftSchedulePage() {
   const queryClient = useQueryClient();
-  const userRole = useAuthStore((s) => s.user?.role);
-  const canManageSchedule = userRole === 'admin' || userRole === 'manager';
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canManageSchedule = useHasRole(['admin', 'manager']);
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [showNew, setShowNew] = useState(false);
   const [showAllTimeOff, setShowAllTimeOff] = useState(false);
