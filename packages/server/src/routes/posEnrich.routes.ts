@@ -225,7 +225,24 @@ async function computeExpectedCents(
     closedAt,
   );
   const cashIn = row?.cash_cents ?? 0;
-  return openingFloatCents + cashIn;
+  // WEB-UIUX-1159: also fold in `cash_register` rows from the legacy
+  // CashRegisterPage path so paid-in (cash_in) bumps the expected drawer
+  // and paid-out (cash_out, vendor refund / petty cash) reduces it. Prior
+  // computation summed `payments` only, so a shift with $50 cash-in + $0
+  // sales correctly counted as $250 in drawer would have shown a $50 OVER
+  // variance after every shift — phantom investigation for an in-balance
+  // till. Single query so we still keep the original `payments` scan +
+  // the new `cash_register` scan in parallel-friendly shape.
+  const registerRow = await adb.get<{ paid_in: number; paid_out: number }>(
+    `SELECT COALESCE(SUM(CASE WHEN type = 'cash_in'  THEN CAST(ROUND(COALESCE(amount,0) * 100) AS INTEGER) ELSE 0 END), 0) AS paid_in,
+            COALESCE(SUM(CASE WHEN type = 'cash_out' THEN CAST(ROUND(COALESCE(amount,0) * 100) AS INTEGER) ELSE 0 END), 0) AS paid_out
+       FROM cash_register
+      WHERE created_at BETWEEN ? AND ?`,
+    openedAt,
+    closedAt,
+  );
+  const adjustments = (registerRow?.paid_in ?? 0) - (registerRow?.paid_out ?? 0);
+  return openingFloatCents + cashIn + adjustments;
 }
 
 async function getCurrentShift(adb: AsyncDb): Promise<DrawerShiftRow | undefined> {
