@@ -2887,70 +2887,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/server/src/routes/giftCards.routes.ts:172-245,328-392`
   <!-- meta: fix=add-PaymentMethod='GiftCard'+tile-with-Gift-icon+on-select-show-code-input+lookup→show-balance-pill-"$45.00-available"+confirm-amount-(cap-at-min(due,balance))+POST-/gift-cards/:id/redeem-with-invoice_id-on-checkout-success+include-in-split-payments -->
 
-- [!] WEB-UIUX-1436. **[MAJOR] No code-lookup surface anywhere in UI. `GET /gift-cards/lookup/:code` (`giftCards.routes.ts:172-245`) is purpose-built for "cashier types code, system returns balance + status + expiry". Web client never invokes it. Even outside POS, an operator answering a phone call ("what's my balance on card XYZ?") has no input field — must scroll the masked-code list, and the list shows only `****XXXX` last-4 anyway, so they cannot find a card by anything but the last 4 hex chars (assuming the user can read their own code).** L1 primary action findability, L4 flow, L6 discoverability. **STATUS: BLOCKED — needs new lookup-by-code modal + balance pill + redeem/disable/reload actions; multi-component, defer**
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:309-331`
-  `packages/server/src/routes/giftCards.routes.ts:172-245`
-  <!-- meta: fix=add-secondary-"Look-up-by-code"-button-next-to-"Issue-gift-card"+modal-with-code-input+barcode-scan-icon+POST-lookup→show-balance-card-(amount-status-recipient-expires)+actions-row-(redeem-disable-reload) -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:65-68,370-372`
-  <!-- meta: fix=show-first-4-+-last-4:-`A4F2****1234`+per-row-Eye-icon-(permission-gated)-to-reveal+per-row-Copy-icon -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:16,70-76,326-330`
-  `packages/server/src/index.ts:2641-2653`
-  <!-- meta: fix=widen-GiftCard.status-type-to-include-'expired'+add-statusBadge-case-(amber-tone)+add-<option-value="expired">Expired</option>-to-filter -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:329`
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
-  <!-- meta: fix=ship-DELETE-or-PATCH-/gift-cards/:id/disable-route+wire-Disable-button-on-detail-page-(red-secondary)-with-requireTyping-confirm+OR-remove-the-disabled-filter-option -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:270-280,313-320`
-  <!-- meta: fix=wrap-keyword-in-useDeferredValue-or-debounce-300ms-(reuse-existing-useDebounce-hook-from-InventoryList)-before-passing-into-queryKey -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:264-281`
-  <!-- meta: fix=add-page-state+pagination-controls-(reuse-component-used-on-CustomersListPage)+pass-{page,per_page}-into-giftCardApi.list -->
-
-#### Major — Detail / Reload ergonomics
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:283-293`
-  `packages/server/src/routes/giftCards.routes.ts:396-438`
-  <!-- meta: fix=show-Reload-when-status!=='disabled'+keep-existing-active-style+with-secondary-tone-when-status='used' -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:115-155`
-  <!-- meta: fix=pass-currentBalance-prop-to-ReloadModal+render-"Current:-$X.XX"-helper+computed-"After-reload:-$Y"-line-as-user-types -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:55-61`
-  <!-- meta: fix=label-driven-by-sign:-amount>0?'Reload':'Adjustment'+OR-introduce-explicit-tx.subtype -->
-
-#### Minor — labels, copy, ergonomics
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:142-144`
-  <!-- meta: fix=insert-spaces-every-4-chars+keep-select-all-(strip-spaces-on-paste-input-server-side-already-uppercases) -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:300-307,345-352`
-  <!-- meta: fix=hide-header-CTA-when-cards.length===0+rely-on-empty-state-CTA-only -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:136-152`
-  <!-- meta: fix=flex-col-gap-2-sm:flex-row-sm:justify-end-sm:gap-3+w-full-sm:w-auto-on-each-button -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:373-378`
-  <!-- meta: fix=add-title={card.recipient_email}-attribute+optional-aria-label -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:127-129,160-162`
-  <!-- meta: fix=replace-onKeyDown-with-useEffect-window.addEventListener('keydown')→Escape→onClose+remove-from-wrapper -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:145-150`
-  <!-- meta: fix=add-secondary-"Issue-another"-button-(resets-form-keeps-modal-open)+primary-Done-stays -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:237-243`
-  <!-- meta: fix=add-aria-label-prop-mirroring-title -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:258-281`
-  `packages/server/src/routes/giftCards.routes.ts:441-451`
-  <!-- meta: fix=server-LEFT-JOIN-customers-on-GET-/:id-and-include-customer-summary+UI-render-"Customer:-<Link-to=/customers/:id>name</Link>" -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:73`
-  <!-- meta: fix=used-badge-grey-with-Check-icon-h-3-w-3-prefix+OR-balance-cell-line-through-when-status=used -->
-
 - [!] WEB-UIUX-1454. **[NIT] `formatCurrency` cents/dollars heuristic (`GiftCardsListPage.tsx:57-63`, mirrored on Detail `:41-44`) treats integers >=1000 as cents. A $999.99 card stored as float 999.99 renders as $999.99 (correct); a $10.00 card stored as integer 1000 cents renders as $10.00 (correct); but a $10 card mistakenly stored as integer 10 (dollars, not cents) renders as $10 — looks fine until you hit edge case $1500 → 1500 dollars vs 1500 cents=15 ambiguity. Comment acknowledges fragility ("if it does, it'll still render correctly because 1000.5...") but it's a ticking interpretation bomb. Drop the heuristic the moment server picks one representation.** L11 consistency. **[AUTOLOOP-T49 BLOCKED 2026-05-11: heuristic resolution must follow a server-side picks-one-representation change (cents OR dollars) + migration on stored balances. Single-page fix risks regressions until the server commits.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:46-63`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
@@ -3020,20 +2956,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`
   <!-- meta: fix=confirm-with-{title:'Approve-on-customer-behalf?',body:'This-bypasses-the-e-sign-flow.-Use-only-when-customer-has-authorized-in-person-and-you-have-recorded-authorization.',confirmLabel:'Approve-on-behalf'} -->
-
-- [!] WEB-UIUX-1493. **[MAJOR] After immediate cancel, customer-detail Membership card disappears entirely. `getCustomerMembership` returns null when `active_subscription_id` is NULL (set on cancel `membership.routes.ts:232`); UI then renders the enroll prompt (`CustomerDetailPage.tsx:1024+`). Lost context: admin opening cancelled customer can't see prior tier, tenure, last charge, or churn date. No way to view past memberships at all (only payment-history endpoint, no UI).** L9 empty/loading/error, L8 recovery. **[AUTOLOOP-T49 BLOCKED 2026-05-11: past-membership history requires new server endpoint returning the prior subscription rows for a customer + UI tab/section under MembershipCard. Multi-component.]**
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:935,1024+`
-  `packages/server/src/routes/membership.routes.ts:129-150`
-  <!-- meta: fix=server-include-most-recent-cancelled-sub-when-no-active+UI-render-'Previously:-{tier}-cancelled-{date}'-collapsed-card+add-View-history-link-to-payments-table -->
-
-#### Minor — labels, copy, missing capture
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:81-95`
-  <!-- meta: fix=remove-RunBillingButton-OR-add-server-route-POST-/membership/admin/run-billing-cron+wire-button-to-call-it+show-progress-toast-with-counts -->
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:282`
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:1003-1004`
-  <!-- meta: fix=label-'Cancel-membership'-OR-'End-plan'+keep-confirm-modal-confirmLabel-'Cancel-subscription' -->
 
 - [!] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: immediate-cancel proration / refund flow needs a server `/membership/:id/cancel` flag + automatic credit-note path keyed to days remaining. Multi-component finance change.]**
   `packages/server/src/routes/membership.routes.ts:222-239`

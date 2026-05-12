@@ -161,6 +161,31 @@ router.get('/customer/:customerId', asyncHandler(async (req: Request, res: Respo
   res.json({ success: true, data: subscription || null });
 }));
 
+// WEB-UIUX-1493: list every subscription a customer has ever had, including
+// cancelled / paused rows. The active /customer/:id endpoint above filters
+// to status IN ('active', 'past_due'); after an immediate cancel that
+// returns null and the CustomerDetailPage membership card vanishes,
+// losing tier/tenure/last-charge context. This endpoint lets the UI
+// render a "past memberships" section with churn dates + cancellation
+// reason (WEB-UIUX-1067 column) for retention review.
+router.get('/customer/:customerId/history', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = parseInt(req.params.customerId as string, 10);
+  if (!Number.isFinite(customerId)) throw new AppError('Invalid customer id', 400);
+  const rows = await adb.all<AnyRow>(`
+    SELECT cs.id, cs.tier_id, cs.status, cs.cancel_at_period_end,
+           cs.cancellation_reason, cs.cancellation_note,
+           cs.created_at, cs.updated_at, cs.current_period_start, cs.current_period_end,
+           cs.last_charge_at, cs.last_charge_amount, cs.paused_at, cs.pause_reason,
+           mt.name AS tier_name, mt.monthly_price, mt.color
+      FROM customer_subscriptions cs
+      JOIN membership_tiers mt ON mt.id = cs.tier_id
+     WHERE cs.customer_id = ?
+     ORDER BY cs.created_at DESC
+  `, customerId);
+  res.json({ success: true, data: rows });
+}));
+
 // ── Subscribe ────────────────────────────────────────────────────────
 
 router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
