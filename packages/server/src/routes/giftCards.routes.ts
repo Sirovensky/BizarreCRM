@@ -476,6 +476,229 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
   });
 }));
 
+// --------------------------------------------------------------------------
+// POST /bulk — WEB-UIUX-1556: bulk issue (HR holiday-card style).
+// Accepts `{ rows: [{ amount, customer_id?, recipient_name?, recipient_email?,
+// expires_at?, notes?, send_email? }] }`. Each row is independently validated
+// and minted; per-row failures are reported in the response without aborting
+// the batch. Defaults `send_email=false` so a 500-row drop does not blast 500
+// outbound emails unless the caller explicitly opts each row in.
+// Admin-only: the manager dual-control gate on POST / does not extend cleanly
+// to a 500-row batch (each row would have to enqueue its own pending row),
+// so this endpoint requires admin to keep the contract simple.
+// --------------------------------------------------------------------------
+const BULK_ISSUE_ROW_CAP = 500;
+
+router.post('/bulk', requirePermission('gift_cards.issue'), asyncHandler(async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'admin') {
+    throw new AppError('Admin role required for bulk gift card issuance', 403);
+  }
+  const adb: AsyncDb = req.asyncDb;
+  const rowsRaw = (req.body?.rows ?? []) as Array<Record<string, unknown>>;
+  if (!Array.isArray(rowsRaw) || rowsRaw.length === 0) {
+    throw new AppError('rows array required (at least one row)', 400);
+  }
+  if (rowsRaw.length > BULK_ISSUE_ROW_CAP) {
+    throw new AppError(`rows capped at ${BULK_ISSUE_ROW_CAP} per upload`, 400);
+  }
+
+  type RowStatus = 'ok' | 'invalid_amount' | 'amount_exceeds_max'
+    | 'customer_not_found' | 'invalid_recipient_name' | 'invalid_recipient_email'
+    | 'invalid_notes' | 'invalid_expires_at' | 'expires_at_in_past' | 'error';
+  const results: Array<{
+    index: number;
+    status: RowStatus;
+    id?: number;
+    code?: string;
+    code_prefix?: string;
+    recipient_email_sent?: boolean;
+    message?: string;
+  }> = [];
+  let okCount = 0;
+
+  const emailConfigured = isEmailConfigured(req.db);
+  const storeName = (req.db
+    .prepare("SELECT value FROM store_config WHERE key = 'store_name'")
+    .get() as { value: string } | undefined)?.value
+    || 'Your repair shop';
+
+  for (let i = 0; i < rowsRaw.length; i++) {
+    const row = rowsRaw[i];
+    try {
+      let amount: number;
+      try {
+        amount = validatePositiveAmount(row.amount, 'amount');
+      } catch {
+        results.push({ index: i, status: 'invalid_amount', message: 'amount must be a positive number' });
+        continue;
+      }
+      if (amount > GIFT_CARD_MAX_AMOUNT) {
+        results.push({ index: i, status: 'amount_exceeds_max', message: `amount cannot exceed $${GIFT_CARD_MAX_AMOUNT.toLocaleString()}` });
+        continue;
+      }
+
+      let validatedCustomerId: number | null = null;
+      if (row.customer_id != null && row.customer_id !== '') {
+        try {
+          validatedCustomerId = validateId(row.customer_id, 'customer_id');
+        } catch {
+          results.push({ index: i, status: 'customer_not_found', message: 'customer_id invalid' });
+          continue;
+        }
+        const cust = await adb.get(
+          'SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0',
+          validatedCustomerId,
+        );
+        if (!cust) {
+          results.push({ index: i, status: 'customer_not_found', message: `customer ${validatedCustomerId} not found` });
+          continue;
+        }
+      }
+
+      let validatedRecipientName: string | null = null;
+      if (row.recipient_name != null && row.recipient_name !== '') {
+        try {
+          validatedRecipientName = validateTextLength(String(row.recipient_name), 120, 'recipient_name');
+        } catch {
+          results.push({ index: i, status: 'invalid_recipient_name', message: 'recipient_name too long (max 120)' });
+          continue;
+        }
+      }
+
+      let validatedRecipientEmail: string | null = null;
+      if (row.recipient_email != null && row.recipient_email !== '') {
+        try {
+          validatedRecipientEmail = validateTextLength(String(row.recipient_email), 200, 'recipient_email');
+        } catch {
+          results.push({ index: i, status: 'invalid_recipient_email', message: 'recipient_email too long (max 200)' });
+          continue;
+        }
+      }
+
+      let validatedNotes: string | null = null;
+      if (row.notes != null && row.notes !== '') {
+        try {
+          validatedNotes = validateTextLength(String(row.notes), 1000, 'notes');
+        } catch {
+          results.push({ index: i, status: 'invalid_notes', message: 'notes too long (max 1000)' });
+          continue;
+        }
+      }
+
+      let validatedExpiresAt: string | null = null;
+      if (row.expires_at != null && row.expires_at !== '') {
+        try {
+          validatedExpiresAt = validateIsoDate(row.expires_at, 'expires_at', false);
+        } catch {
+          results.push({ index: i, status: 'invalid_expires_at', message: 'expires_at must be ISO date' });
+          continue;
+        }
+        if (validatedExpiresAt) {
+          const exp = new Date(validatedExpiresAt + (validatedExpiresAt.length === 10 ? 'T23:59:59Z' : ''));
+          if (Number.isFinite(exp.getTime()) && exp.getTime() < Date.now()) {
+            results.push({ index: i, status: 'expires_at_in_past', message: `expires_at (${validatedExpiresAt}) is in the past` });
+            continue;
+          }
+        }
+      }
+
+      const code = generateCode();
+      const codeHash = hashCode(code);
+      const result = await adb.run(`
+        INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
+      `, code, codeHash, amount, amount, validatedCustomerId, validatedRecipientName, validatedRecipientEmail,
+        validatedExpiresAt, validatedNotes, req.user!.id, now(), now());
+
+      await adb.run(
+        'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        result.lastInsertRowid, 'purchase', amount, 'Initial load (bulk)', req.user!.id, now(),
+      );
+
+      audit(req.db, 'gift_card_issued', req.user!.id, req.ip || 'unknown', {
+        gift_card_id: Number(result.lastInsertRowid),
+        code_prefix: code.slice(0, 4),
+        code_hash: codeHash,
+        amount,
+        customer_id: validatedCustomerId,
+        bulk: true,
+      });
+
+      let emailSent = false;
+      const requestedSend = row.send_email === true; // bulk default: opt-IN per row
+      if (requestedSend && validatedRecipientEmail && emailConfigured) {
+        try {
+          const formattedAmount = (Math.round(amount * 100) / 100).toFixed(2);
+          const subject = `Your $${formattedAmount} gift card from ${storeName}`;
+          const html = `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+              <h2>${storeName} gift card</h2>
+              <p>Hello${validatedRecipientName ? ` ${validatedRecipientName}` : ''},</p>
+              <p>You've received a gift card worth <strong>$${formattedAmount}</strong>.</p>
+              <p>Present this code at checkout or quote it over the phone:</p>
+              <div style="font-family: 'Courier New', monospace; font-size: 24px; letter-spacing: 4px;
+                          background: #f3f4f6; padding: 16px; text-align: center; border-radius: 8px;">
+                ${code}
+              </div>
+              ${validatedExpiresAt ? `<p>Expires: ${validatedExpiresAt}</p>` : ''}
+              <p style="color: #6b7280; font-size: 12px; margin-top: 24px;">
+                Keep this code safe — anyone with it can redeem the card.
+              </p>
+            </div>
+          `;
+          emailSent = await sendEmail(req.db, {
+            to: validatedRecipientEmail,
+            subject,
+            html,
+          });
+        } catch (emailErr) {
+          logger.warn('gift_card_recipient_email_failed', {
+            gift_card_id: Number(result.lastInsertRowid),
+            bulk: true,
+            error: emailErr instanceof Error ? emailErr.message : String(emailErr),
+          });
+        }
+      }
+
+      results.push({
+        index: i,
+        status: 'ok',
+        id: Number(result.lastInsertRowid),
+        code,
+        code_prefix: code.slice(0, 4),
+        recipient_email_sent: emailSent,
+      });
+      okCount++;
+    } catch (rowErr) {
+      logger.warn('gift_card_bulk_row_error', {
+        index: i,
+        error: rowErr instanceof Error ? rowErr.message : String(rowErr),
+      });
+      results.push({
+        index: i,
+        status: 'error',
+        message: rowErr instanceof Error ? rowErr.message : 'Unexpected error',
+      });
+    }
+  }
+
+  audit(req.db, 'gift_card_bulk_issued', req.user!.id, req.ip || 'unknown', {
+    row_count: rowsRaw.length,
+    ok_count: okCount,
+    reject_count: rowsRaw.length - okCount,
+  });
+
+  res.status(okCount > 0 ? 201 : 400).json({
+    success: okCount > 0,
+    data: {
+      ok_count: okCount,
+      reject_count: rowsRaw.length - okCount,
+      results,
+    },
+  });
+}));
+
 // POST /:id/redeem — Redeem gift card (at POS)
 // SC3-equivalent: Guarded atomic decrement prevents parallel double-spend.
 // SEC-H25: redeeming a gift card is a financial write — gate behind gift_cards.redeem.

@@ -2780,12 +2780,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->
 
-- [!] WEB-UIUX-1460. **[MAJOR] No web UI to issue a customer e-sign URL. `estimateSign.routes.ts:233-310` ships `POST /api/v1/estimates/:id/sign-url` (HMAC-signed, single-use, signature pad capture) but `endpoints.ts:893-913` deliberately omits the `estimateApi.signUrl` wrapper with a comment "mobile-only today" — meaning **web-only shops cannot capture customer signatures at all**. The `EstimateDetailPage` has Send (SMS quote with no sign link), Approve (admin override, no signature), Convert, Reject — but no "Send for signature" button. Counter-signed work-orders are a legal requirement in many states for electronics repair. Wire `estimateApi.signUrl(id, ttl)` + a `<SignLinkModal>` that copies the URL / triggers SMS via existing `/send` and shows captured signatures via existing `/signatures` GET (`estimateSign.routes.ts:316-352`).** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: web sign-URL flow requires wiring estimateApi.signUrl + a <SignLinkModal> (copy URL / SMS / list signatures). Server endpoint ready; UI scaffolding is product-spec territory.]**
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:190-256`
-  `packages/web/src/api/endpoints.ts:886-896`
-  `packages/server/src/routes/estimateSign.routes.ts:233-352`
-  <!-- meta: fix=add-estimateApi.signUrl(id,ttl_minutes)+estimateApi.signatures(id)+SignLinkModal-with-copy/SMS/QR+section-on-EstimateDetail-listing-captured-signatures+make-mobile-only-comment-obsolete -->
-
 - [!] WEB-UIUX-1461. **[MAJOR] Send button on `EstimateDetailPage.tsx:191-205` and `EstimateListPage.tsx:737-764` confirms `'Send this estimate to the customer via SMS?'` with no preview of (a) destination phone, (b) message body, (c) channel choice. Server hardcodes the message `Hi ${first_name}, your estimate ${order_id} for $${total} is ready. Reply YES to approve or view details at your repair shop.` (`estimates.routes.ts:984`) — operator can't see what customer will receive, can't see masked recipient phone, can't catch a stale customer record. Standard SaaS pattern: confirm shows "To: ***-***-1234 — [Edit phone]" plus a collapsible "Message preview". Bonus: "Reply YES to approve" is a promise the inbound-SMS handler may not honor (no YES auto-approval handler in `sms.routes.ts` last grep) — see WEB-UIUX-1462.** L7 feedback, L1 findability. **STATUS: BLOCKED — Send button needs full SendEstimateModal redesign with phone-mask + message preview + edit; multi-component, defer**
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:193-204`
   `packages/web/src/pages/estimates/EstimateListPage.tsx:744-763`
@@ -2918,54 +2912,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
 ### Web UI/UX Audit — Pass 35 (2026-05-05, flow walk: Issue Gift Card — entry, reveal-once, code reveal truthfulness, recipient delivery, end-to-end redeem path)
 
 #### Blocker — broken end-to-end flow / lying copy / missing controls
-
-- [!] WEB-UIUX-1556. **[MAJOR] No bulk issue. `IssueModal` issues one card per submission. HR wanting to drop 50 holiday gift cards has to repeat the form 50 times. Add a "Bulk issue" path that takes a CSV (recipient_name, recipient_email, amount, expires_at) or a count + flat amount, returns a downloadable CSV of {recipient, code} for handoff.** L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: bulk-issue flow needs a CSV upload endpoint + per-row issue + downloadable manifest. Multi-component.]**
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:84-248`
-  `packages/server/src/routes/giftCards.routes.ts:253-323`
-  <!-- meta: fix=server-POST-/gift-cards/bulk-{rows}-loops-with-single-tx-+-rate-cap;-client-BulkIssueModal-with-CSV-paste-+-download-result -->
-
-#### Minor — clarity / consistency / a11y
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
-  `packages/server/src/routes/giftCards.routes.ts:29,262-264`
-  <!-- meta: fix=add-max="10000"+helper-"Maximum-$10,000-per-card";-disable-Submit-when-amount>10000 -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:90-104`
-  <!-- meta: fix=onSuccess(res)→toast.success(`Reloaded ${formatCurrency(amount)} — new balance ${formatCurrency(res.data.data.new_balance)}`) -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:251-254`
-  <!-- meta: fix=loadedTotal=initial_balance+sum(adjustment-reload-tx);-render-"of-${formatBalance(loadedTotal)}-loaded";-OR-suppress-line-when-current>initial -->
-
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:55-61`
-  `packages/server/src/routes/giftCards.routes.ts:421-424`
-  <!-- meta: fix=widen-tx.type-enum-to-include-'reload'+migration-to-relabel-existing-adjustments-where-notes='Reloaded' -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
-  <!-- meta: fix=add-autoFocus-to-amount-input;-mirror-pattern-from-ReloadModal -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:163-247`
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:115-155`
-  <!-- meta: fix=use-shared-Modal-primitive-OR-react-focus-lock-around-inner-card;-restore-focus-to-trigger-button-on-close -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:65-68,370-372`
-  `packages/server/src/routes/giftCards.routes.ts:112-116`
-  <!-- meta: fix=if-keyword-looks-like-code-prefix-(/^[A-F0-9]{4,}/i)-render-${prefix}****${suffix};-else-mask-fully -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:204-215`
-  `packages/server/src/routes/giftCards.routes.ts:281-283`
-  <!-- meta: fix=client-/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.recipient_email)-before-mutate;-server-add-validateEmail-helper -->
-
-#### Nit — copy / polish
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:138,171,292`
-  `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:124`
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:182-190`
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:387-389`
-
-
----
 
 
 ## PASS 2 — DEEP DIVE
