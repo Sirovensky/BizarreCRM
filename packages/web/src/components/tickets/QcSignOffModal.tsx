@@ -488,7 +488,16 @@ export function QcSignOffModal({
         ) : items.length === 0 ? (
           <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
             <p>
-              No QC checklist items are configured for this device category. Ask an admin to add some under Settings → Bench / QC.
+              No QC checklist items are configured for this device category.{' '}
+              <a
+                href="/settings/qc-checklist"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline hover:text-yellow-900 dark:hover:text-yellow-100"
+              >
+                Open QC checklist admin
+              </a>{' '}
+              (admin only) to add items.
             </p>
             {/* WEB-UIUX-1103: Recovery affordance — point to the migration that seeds defaults. */}
             <p className="mt-1.5 text-xs opacity-75">

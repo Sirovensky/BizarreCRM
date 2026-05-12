@@ -77,6 +77,7 @@ const PurchaseOrdersPage = lazy(() => import('./pages/inventory/PurchaseOrdersPa
 const CashRegisterPage = lazy(() => import('./pages/pos/CashRegisterPage').then(m => ({ default: m.CashRegisterPage })));
 const ShiftHistoryPage = lazy(() => import('./pages/pos/ShiftHistoryPage').then(m => ({ default: m.ShiftHistoryPage })));
 const QcPendingPage = lazy(() => import('./pages/qc/QcPendingPage').then(m => ({ default: m.QcPendingPage })));
+const QcChecklistPage = lazy(() => import('./pages/settings/QcChecklistPage').then(m => ({ default: m.QcChecklistPage })));
 const VoiceCallDetailPage = lazy(() => import('./pages/voice/VoiceCallDetailPage').then(m => ({ default: m.VoiceCallDetailPage })));
 const CommunicationPage = lazy(() => import('./pages/communications/CommunicationPage').then(m => ({ default: m.CommunicationPage })));
 const EmployeeListPage = lazy(() => import('./pages/employees/EmployeeListPage').then(m => ({ default: m.EmployeeListPage })));
@@ -576,6 +577,8 @@ export default function App() {
                         <Route path="/pos/shifts/history" element={<ShiftHistoryPage />} />
                         {/* WEB-UIUX-1088: tickets pending QC sign-off worklist. */}
                         <Route path="/qc/pending" element={<QcPendingPage />} />
+                        {/* WEB-UIUX-1080: QC checklist admin CRUD. */}
+                        <Route path="/settings/qc-checklist" element={<QcChecklistPage />} />
                         <Route path="/communications" element={<CommunicationPage />} />
                         <Route path="/employees" element={<RequireRole roles={['admin', 'manager']}><EmployeeListPage /></RequireRole>} />
                         <Route path="/settings/*" element={<RequireRole roles={['admin', 'manager']}><SettingsPage /></RequireRole>} />

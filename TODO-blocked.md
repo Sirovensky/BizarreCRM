@@ -2367,23 +2367,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
 #### Blocker — broken contract, unwired status, missing admin surfaces
 
-- [!] WEB-UIUX-1080. **[BLOCKER] No admin UI for QC checklist CRUD — and the modal's empty-state copy points to that nonexistent page.** Server has `POST/PUT/DELETE /bench/qc-checklist` admin-gated routes (`bench.routes.ts:614-700`) with no client wrapper besides `checklist()` (read). Empty-state in modal: `"Ask an admin to add some under Settings → Bench / QC."` (`QcSignOffModal.tsx:218`) — that path doesn't exist. Tech reads guidance, admin follows guidance, both dead-end. L1, L2, L4, L8. **STATUS: BLOCKED — needs new pages/settings/QcChecklistPage admin UI with row CRUD + drag-sort + endpoints; multi-component, defer to QC sprint**
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:217-219`
-  `packages/web/src/api/endpoints.ts:1366-1374`
-  <!-- meta: fix=add-pages/settings/QcChecklistPage.tsx+row-CRUD+device-category-filter+drag-sort_order+wire-endpoints.bench.qc.{create,update,delete}+update-empty-state-link-to-real-route -->
-
-  `packages/web/src/pages/tickets/TicketDetailPage.tsx:591-597`
-  `packages/server/src/routes/bench.routes.ts:703-753`
-  <!-- meta: fix=add-useQuery(['qc-status',ticketId])-in-TicketDetail+badge-"QC signed by {name} at {time}"+disable-button-if-already-signed-or-show-"Re-sign-(needs-manager)"+add-UNIQUE(ticket_id)-via-migration-OR-explicit-INSERT-OR-REPLACE-with-confirm -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:170-173`
-  <!-- meta: fix=import-formatApiError-from-utils+toast.error(formatApiError(err))+also-special-case-403{upgrade_required:true}-to-show-upgrade-CTA -->
-
-#### Major — fail-path missing, role gates, identity, hierarchy, visual context
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:136-174`
-  <!-- meta: fix=add-row-level-pass/fail-radio+if-any-fail-replace-CTA-with-Mark-failed-routes-ticket-to-In-Progress-and-creates-defect-report-with-reason -->
-
 - [!] WEB-UIUX-1085. **[MAJOR] Signature canvas content not bound to the signing user's identity — `tech_user_id = req.user.id` regardless of squiggle drawn.** No PIN re-auth, no name typed, no biometric, no hash of the captured image vs. a baseline signature on file. A manager who hands their tablet to an apprentice gets "signed by manager" stored on a record actually signed by apprentice. Repudiation risk in warranty / dispute scenarios. L8. **STATUS: BLOCKED — needs server schema (typed_name+pin_verified_at cols) + PIN re-auth modal + signature hash; defer to QC sprint**
   `packages/web/src/components/tickets/QcSignOffModal.tsx:289-307`
   `packages/server/src/routes/bench.routes.ts:885-902`
