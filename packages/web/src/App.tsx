@@ -77,6 +77,7 @@ const PurchaseOrdersPage = lazy(() => import('./pages/inventory/PurchaseOrdersPa
 const CashRegisterPage = lazy(() => import('./pages/pos/CashRegisterPage').then(m => ({ default: m.CashRegisterPage })));
 const ShiftHistoryPage = lazy(() => import('./pages/pos/ShiftHistoryPage').then(m => ({ default: m.ShiftHistoryPage })));
 const QcPendingPage = lazy(() => import('./pages/qc/QcPendingPage').then(m => ({ default: m.QcPendingPage })));
+const VoiceCallDetailPage = lazy(() => import('./pages/voice/VoiceCallDetailPage').then(m => ({ default: m.VoiceCallDetailPage })));
 const CommunicationPage = lazy(() => import('./pages/communications/CommunicationPage').then(m => ({ default: m.CommunicationPage })));
 const EmployeeListPage = lazy(() => import('./pages/employees/EmployeeListPage').then(m => ({ default: m.EmployeeListPage })));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
@@ -609,6 +610,8 @@ export default function App() {
                         <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                         {/* Voice calls list. */}
                         <Route path="/voice" element={<VoiceCallsListPage />} />
+                        {/* WEB-UIUX-381: single-call detail page so list rows can link to it. */}
+                        <Route path="/voice/:id" element={<VoiceCallDetailPage />} />
                         {/* Customer review moderation. */}
                         <Route path="/reviews" element={<ReviewsPage />} />
                         {/* Marketing / Growth enrichment (§54). */}

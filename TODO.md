@@ -1930,7 +1930,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:23-72`
 
-- [!] WEB-UIUX-381. **[MAJOR · BLOCKED] VoiceCallsListPage table rows have no link/click affordance to call detail.** Dead-end UX. L5. **STATUS 2026-05-07: critique valid, but blocked because the web router only registers `/voice` and there is no `VoiceCallDetailPage` / `/voice/:id` detail route to target. Adding row links inside `VoiceCallsListPage` would send operators to a 404; needs a detail page/route in scope first.**
+- [x] WEB-UIUX-381. **[MAJOR] Voice call detail page + row link shipped 2026-05-12.** New `VoiceCallDetailPage` at `/voice/:id` consumes existing `voiceApi.callDetail` + `voiceApi.recordingSignedUrl`. Renders direction/status/duration, From/To/Operator/Linked-entity grid (entity backlinks for customer/ticket/lead/invoice/estimate), Notes, and an audio playback widget with "Load recording" → `<audio controls>` + download link. VoiceCallsListPage's `created_at` cell now links to the detail page; phone-cell link to customer is unchanged. 404/403 handled with structured copy.
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:160-217`
 
   `packages/web/src/pages/voice/VoiceCallsListPage.tsx:81-87`
