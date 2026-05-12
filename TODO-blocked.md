@@ -3556,13 +3556,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Nit — copy / polish
 
-- [!] WEB-UIUX-1525. **[BLOCKER] Same-amount-same-user dedup window (5s in-memory + 10s DB at `invoices.routes.ts:763-776`) blocks a legitimate split tender. Two friends each hand the cashier $50 cash for a $100 invoice. Cashier records first $50 → success. Records second $50 immediately → server returns 409 "Duplicate payment detected. Please wait before retrying." Toast message implies the prior write didn't land, so cashier waits, retries, fails again. Common workarounds: change second amount to $50.01, or split into two payments by method (cash + cash again later) — both falsify the ledger. Either (a) require an explicit `force` flag with an "Yes, this is a separate tender" confirmation when dedup hits, or (b) include an idempotency key from the client so the dedup is keyed on intent not amount.** L2 truthfulness, L4 flow integrity, L8 recovery. **STATUS: BLOCKED — server invoices.routes.ts dedup needs idempotency-key based check + force flag; backend, defer to billing sprint**
-  `packages/server/src/routes/invoices.routes.ts:760-777`
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:94-105`
-  <!-- meta: fix=client-sends-Idempotency-Key-uuid-on-mutate;-server-dedup-on-key-not-amount;-on-409-toast-"Looks-like-duplicate-(prior-payment-of-$X-recorded-Ns-ago).-Record-this-as-a-separate-tender?"-with-Force-button -->
-
-#### Major — recovery / hierarchy / feedback
-
 - [!] WEB-UIUX-1526. **[MAJOR] No way to reverse a single mis-typed payment. Cashier fat-fingers $5,000 instead of $50; only paths back are (a) Void Invoice (`InvoiceDetailPage.tsx:384-388`) which marks every payment on the invoice as `[VOIDED]` (`invoices.routes.ts:930`) — including legitimate prior payments — and restores stock + cancels commission, or (b) Credit Note (`:377-380`) which is capped at `amount_paid`, requires a structured reason picker, and is bookkept as a refund. The payment timeline (`:484-547`) renders each payment row but offers no per-row action. Add a per-payment "Reverse" affordance (manager-PIN gated, time-windowed e.g. 30 min, marks the row [VOIDED] without nuking the rest of the invoice).** L8 recovery, L13 forgiveness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-payment Reverse needs a new server `PATCH /payments/:id/reverse` (manager-PIN gate + 30-min window + audit) and the row-level action UI. Multi-component.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:484-547`
   `packages/server/src/routes/invoices.routes.ts:925-935`

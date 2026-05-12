@@ -226,7 +226,28 @@ export function InvoiceDetailPage() {
       setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
       setShowReceiptPrompt(true);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record payment'),
+    onError: (e: any, vars: any) => {
+      // WEB-UIUX-1525: same-amount-same-user dedup fires when two friends each
+      // hand the cashier the same tender on a single invoice. Server returns
+      // 409 ERR_PAYMENT_DUPLICATE; offer a single confirmation to retry with
+      // force_duplicate=true so the cashier doesn't have to falsify the
+      // amount (e.g. $50.01) or split methods. Only the first retry sets the
+      // force flag — a fresh failure resets the dialog.
+      const status = e?.response?.status;
+      const code = e?.response?.data?.code;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 409 && code === 'ERR_PAYMENT_DUPLICATE' && vars && !vars.force_duplicate) {
+        // eslint-disable-next-line no-alert
+        const ok = window.confirm(
+          `${serverMsg || 'A payment with this exact amount was just recorded.'}\n\nRecord this as a separate tender?`
+        );
+        if (ok) {
+          payMutation.mutate({ ...vars, force_duplicate: true });
+          return;
+        }
+      }
+      toast.error(serverMsg || 'Failed to record payment');
+    },
   });
 
   // WEB-UIUX-712: redeem store credit toward this invoice.

@@ -1,5 +1,6 @@
 import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import { requirePermission } from '../middleware/auth.js';
 import {
   validatePrice,
@@ -803,6 +804,11 @@ interface RecordInvoicePaymentArgs {
   tenantSlug?: string | null;
   expectedCustomerId?: unknown;
   deduplicate?: boolean;
+  // WEB-UIUX-1525: cashier-confirmed bypass of the same-amount dedup window.
+  // When true, the dedup check is skipped and the action is audited so a
+  // legitimate split tender (two friends each paying the same amount) can
+  // be recorded without falsifying the amount.
+  forceDuplicate?: boolean;
 }
 
 interface RecordInvoicePaymentResult {
@@ -845,10 +851,18 @@ async function assertNoRecentDuplicatePayment(
 ): Promise<void> {
   // Double-submit guard: same invoice + amount within 5 seconds = reject
   // SEC-M9: In-memory fast check + DB-backed check (survives restart)
+  // WEB-UIUX-1525: emit ERR_PAYMENT_DUPLICATE so the client can offer a
+  // "Yes, this is a separate tender" confirmation and retry with force=true
+  // instead of forcing the cashier to falsify the amount (e.g. $50.01) or
+  // split the same-amount tender into a different method.
   const dedupKey = `${invoiceId}:${amount.toFixed(2)}:${userId}`;
   const lastPayment = recentPayments.get(dedupKey);
   if (lastPayment && Date.now() - lastPayment < 5000) {
-    throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
+    throw new AppError(
+      'A payment with this exact amount was just recorded. If this is a separate tender (e.g. two friends each paying the same amount), confirm to record it anyway.',
+      409,
+      ERROR_CODES.ERR_PAYMENT_DUPLICATE,
+    );
   }
   // DB-backed dedup: check for same invoice+amount+user within last 10 seconds
   const recentDbPayment = await adb.get<any>(`
@@ -858,7 +872,11 @@ async function assertNoRecentDuplicatePayment(
     LIMIT 1
   `, invoiceId, amount, userId);
   if (recentDbPayment) {
-    throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
+    throw new AppError(
+      'A payment with this exact amount was just recorded. If this is a separate tender (e.g. two friends each paying the same amount), confirm to record it anyway.',
+      409,
+      ERROR_CODES.ERR_PAYMENT_DUPLICATE,
+    );
   }
   recentPayments.set(dedupKey, Date.now());
 }
@@ -880,6 +898,7 @@ async function recordInvoicePayment({
   tenantSlug,
   expectedCustomerId,
   deduplicate = true,
+  forceDuplicate = false,
 }: RecordInvoicePaymentArgs): Promise<RecordInvoicePaymentResult> {
   const invoice = providedInvoice ?? await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invoiceId);
   if (!invoice) throw new AppError('Invoice not found', 404);
@@ -934,7 +953,7 @@ async function recordInvoicePayment({
     throw new AppError(`Invalid payment_type. Must be one of: ${validPaymentTypes.join(', ')}`, 400);
   }
 
-  if (deduplicate) {
+  if (deduplicate && !forceDuplicate) {
     await assertNoRecentDuplicatePayment(adb, invoice.id, amount, userId);
   }
 
@@ -1040,6 +1059,11 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   const db = req.db;
   const adb = req.asyncDb;
   const { method = 'cash', method_detail, transaction_id, notes, payment_type = 'payment' } = req.body;
+  // WEB-UIUX-1525: opt-in dedup bypass after the cashier confirms in the UI
+  // that the same-amount second payment is a legitimate separate tender.
+  // Body sends `force_duplicate: true` only on the retry of a 409
+  // ERR_PAYMENT_DUPLICATE response.
+  const forceDuplicate = req.body?.force_duplicate === true;
   const payment = await recordInvoicePayment({
     adb,
     db,
@@ -1056,7 +1080,15 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
     tenantSlug: req.tenantSlug || null,
     expectedCustomerId: req.body?.customer_id,
     deduplicate: true,
+    forceDuplicate,
   });
+  if (forceDuplicate) {
+    audit(db, 'payment_force_duplicate', req.user!.id, req.ip || 'unknown', {
+      invoice_id: Number(req.params.id),
+      amount: Number(req.body.amount),
+      method,
+    });
+  }
 
   res.status(201).json({ success: true, data: payment.updatedInvoice });
 });
