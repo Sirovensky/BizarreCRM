@@ -1058,6 +1058,68 @@ router.get(
   }),
 );
 
+/**
+ * WEB-UIUX-1158: bulk-lock every closed payroll period whose end_date is
+ * before the supplied cutoff. Saves admin clicks for monthly catch-up
+ * (4 weekly periods × N months) while preserving safety: only periods
+ * with end_date strictly < cutoff are locked, and already-locked rows
+ * are silently skipped (returned as `skipped_already_locked` count).
+ * Each lock writes its own audit row so a future investigation can
+ * see the operator + timestamp per period, not just the bulk action.
+ */
+router.post(
+  '/payroll/lock-bulk',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const adb: AsyncDb = req.asyncDb;
+    const beforeDate = validateIsoDate(req.body?.before_date, 'before_date', true)!;
+    // Find every unlocked period with end_date strictly before the cutoff.
+    // We snapshot the ids first so the audit log lines up with what we
+    // actually mutated — concurrent writes inside the transaction would
+    // otherwise diverge from the count we return.
+    const targets = await adb.all<{ id: number; name: string; end_date: string }>(
+      `SELECT id, name, end_date FROM payroll_periods
+        WHERE end_date < ? AND locked_at IS NULL
+        ORDER BY end_date ASC`,
+      beforeDate,
+    );
+    if (targets.length === 0) {
+      res.json({ success: true, data: { locked: 0, period_ids: [], cutoff: beforeDate } });
+      return;
+    }
+    const now = new Date().toISOString();
+    const userId = requireUserId(req);
+    const lockedIds: number[] = [];
+    for (const target of targets) {
+      const result = await adb.run(
+        `UPDATE payroll_periods SET locked_at = ?, locked_by_user_id = ?
+          WHERE id = ? AND locked_at IS NULL`,
+        now, userId, target.id,
+      );
+      if (result.changes && result.changes > 0) {
+        lockedIds.push(target.id);
+        audit(req.db, 'payroll_period_locked', userId, req.ip || 'unknown', {
+          period_id: target.id,
+          via: 'bulk_lock',
+          cutoff: beforeDate,
+        });
+      }
+    }
+    audit(req.db, 'payroll_period_bulk_locked', userId, req.ip || 'unknown', {
+      cutoff: beforeDate,
+      locked_count: lockedIds.length,
+    });
+    res.json({
+      success: true,
+      data: {
+        locked: lockedIds.length,
+        period_ids: lockedIds,
+        cutoff: beforeDate,
+      },
+    });
+  }),
+);
+
 router.post(
   '/payroll/lock/:periodId',
   asyncHandler(async (req, res) => {

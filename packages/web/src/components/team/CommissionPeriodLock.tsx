@@ -204,6 +204,53 @@ export function CommissionPeriodLock() {
     },
   });
 
+  // WEB-UIUX-1158: bulk-lock every unlocked period whose end_date is strictly
+  // before the cutoff. Confirm dialog spells out the irreversible scope so
+  // the admin doesn't fat-finger a 6-month freeze. Default cutoff = today
+  // so the typical "lock everything up to yesterday" gesture is one click.
+  const bulkLockMut = useMutation({
+    mutationFn: async (cutoff: string) => {
+      const res = await api.post<{
+        success: boolean;
+        data: { locked: number; period_ids: number[]; cutoff: string };
+      }>('/team/payroll/lock-bulk', { before_date: cutoff });
+      return res.data.data;
+    },
+    onSuccess: (d) => {
+      if (d.locked === 0) {
+        toast(`No unlocked periods ended before ${d.cutoff}.`, { icon: 'ℹ️' });
+      } else {
+        toast.success(`Locked ${d.locked} period${d.locked === 1 ? '' : 's'} ending before ${d.cutoff}.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['team', 'payroll', 'periods'] });
+    },
+    onError: (e: unknown) => {
+      toast.error(parseApiError(e) || 'Bulk lock failed');
+    },
+  });
+
+  async function handleBulkLock() {
+    const today = new Date().toISOString().slice(0, 10);
+    const cutoff = window.prompt(
+      'Lock every unlocked period whose end_date is strictly before this date (YYYY-MM-DD).\n\nThis cannot be undone.',
+      today,
+    );
+    if (!cutoff) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff.trim())) {
+      toast.error('Cutoff must be YYYY-MM-DD');
+      return;
+    }
+    const ok = await confirm(
+      `Lock every payroll period ending before ${cutoff}? Locked periods refuse all commission / time-entry / tip edits in their range. This cannot be undone.`,
+      {
+        title: 'Bulk lock payroll periods?',
+        confirmLabel: 'Lock all',
+        danger: true,
+      },
+    );
+    if (ok) bulkLockMut.mutate(cutoff.trim());
+  }
+
   async function downloadCsv(periodId: number) {
     // WEB-FD-021 (Fixer-C5 2026-04-25): replaced `window.open(/api/v1/...)`
     // with an axios blob fetch + anchor-trigger download so the request
@@ -267,6 +314,15 @@ export function CommissionPeriodLock() {
             aria-label="Filter by year"
             className="w-20 rounded border dark:border-surface-600 bg-white dark:bg-surface-700 px-2 py-1 text-xs"
           />
+          {/* WEB-UIUX-1158: bulk-lock saves 4×N clicks for monthly catch-up. */}
+          <button
+            className="px-2 py-1 rounded text-xs inline-flex items-center bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleBulkLock}
+            disabled={bulkLockMut.isPending}
+            title="Lock every unlocked period whose end_date is before a chosen cutoff"
+          >
+            <Lock className="w-3 h-3 mr-1" /> {bulkLockMut.isPending ? 'Locking…' : 'Bulk lock…'}
+          </button>
           <button
             className="px-2 py-1 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 rounded text-xs inline-flex items-center"
             onClick={() => setShowNew(true)}

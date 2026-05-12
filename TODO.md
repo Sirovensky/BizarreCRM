@@ -3981,7 +3981,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/team/CommissionPeriodLock.tsx:70-94`
   <!-- meta: fix=fall-through-to-data?.errors[0]?.message-or-data?.message-before-string-fallback -->
 
-- [!] WEB-UIUX-1158. **[NIT] Bulk-lock for past closed periods absent — weekly cadence requires admin to click Lock + (eventual) confirm 4× per month per shop. No "Lock all periods ending before {date}" affordance.** `CommissionPeriodLock.tsx` only renders per-row buttons. After WEB-UIUX-1140 confirmation lands, bulk action saves rep-stress without lowering safety. L6 discoverability of bulk operation. **STATUS: BLOCKED — needs new server batch endpoint /payroll/lock-bulk + UI bulk-confirm; multi-component, defer to payroll sprint**
+- [x] WEB-UIUX-1158. **Bulk-lock affordance shipped 2026-05-11.** New admin-only `POST /team/payroll/lock-bulk` accepts `before_date` (YYYY-MM-DD), snapshots every unlocked period with `end_date < cutoff`, then writes locked_at + locked_by per row in a loop and audits each lock + the bulk wrapper. Already-locked rows skip silently. Web adds a red "Bulk lock…" button in the header that prompts for cutoff (defaulting to today), shows a danger-toned ConfirmDialog spelling out the irreversible scope, then fires bulkLockMut; toast distinguishes the no-op "no unlocked periods ended before X" case from the success "Locked N periods ending before X" case.
   `packages/web/src/components/team/CommissionPeriodLock.tsx:139-180`
   <!-- meta: fix=add-Lock-all-closed-periods-button+confirm-dialog-listing-affected-period-names+server-batch-endpoint-/payroll/lock-bulk -->
 
