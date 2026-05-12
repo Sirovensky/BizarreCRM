@@ -111,6 +111,11 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   // WEB-UIUX-1121: Default to recent_purchases — most common bulk send use-case
   const [segment, setSegment] = useState<Segment>('recent_purchases');
   const [templateId, setTemplateId] = useState<number | null>(null);
+  // WEB-UIUX-1519: client-side filter so admins with >20 templates can search
+  // by name or body excerpt instead of scrolling the native <select>. Filter
+  // is case-insensitive and matches name + content; the underlying <select>
+  // still renders so keyboard semantics (up/down/Enter) carry over.
+  const [templateFilter, setTemplateFilter] = useState('');
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   // WEB-UIUX-1122: TCPA quiet-hours warning state
   const [quietHoursWarning, setQuietHoursWarning] = useState<string | null>(null);
@@ -599,6 +604,16 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <label className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300">
               Template
             </label>
+            {templates.length > 8 && (
+              <input
+                type="search"
+                value={templateFilter}
+                onChange={(e) => setTemplateFilter(e.target.value)}
+                placeholder="Filter templates by name or content…"
+                className="mb-1.5 w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                aria-label="Filter templates"
+              />
+            )}
             <select
               value={templateId ?? ''}
               onChange={(e) => {
@@ -609,11 +624,24 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               className="w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             >
               <option value="">Pick a template…</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+              {(() => {
+                const q = templateFilter.trim().toLowerCase();
+                const filtered = q
+                  ? templates.filter(
+                      (t) =>
+                        t.name.toLowerCase().includes(q) ||
+                        (t.content || '').toLowerCase().includes(q),
+                    )
+                  : templates;
+                if (filtered.length === 0 && q) {
+                  return <option value="" disabled>No templates match "{templateFilter}"</option>;
+                }
+                return filtered.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ));
+              })()}
             </select>
             {/* WEB-UIUX-1112: render the resolved template body + segment math
                 so the admin sees the exact text + cost before blasting. */}

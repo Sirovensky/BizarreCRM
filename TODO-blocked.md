@@ -2841,18 +2841,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/communications/components/ScheduledSendModal.tsx`
   <!-- meta: fix=add-"Schedule-for-later"-toggle+datetime-picker;-on-confirm-route-to-scheduled-bulk-send-endpoint-instead-of-immediate-/inbox/bulk-send -->
 
-- [!] WEB-UIUX-1519. **[MINOR] Template `<select>` shows name only — no search. Native `<select>` dropdown becomes ungrep-able past ~20 templates; admin scrolls. Replace with a searchable combobox (Headless UI `Combobox` or existing template-picker component used elsewhere in the app); show body excerpt as supporting text.** L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: template combobox refactor needs a shared searchable picker component (Headless UI Combobox or similar) reused across all template surfaces (BulkSms, QuickSms, ReplyComposer). Multi-callsite.]**
-  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:171-185`
-  <!-- meta: fix=swap-native-<select>-for-Combobox-with-content-excerpt-as-secondary-line;-preserve-aria-labelling -->
-
-  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:188-223`
-  <!-- meta: fix=render-"Re-Preview"-button-when-preview-non-null;-on-click-setPreview(null)+previewMut.mutate() -->
-
-  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:111-135`
-  <!-- meta: fix=use-shared-Modal-primitive-with-focus-trap-(see-other-modals-in-pages/);-or-add-react-focus-lock;-autoFocus-segment[0] -->
-
-#### Nit — copy / polish
-
 - [!] WEB-UIUX-1533. **[MAJOR] Invoice list has no inline "Record Payment" — collections workflow loses scroll/filter on every row. `InvoiceListPage.tsx:533-538` action column shows "View" only; the row is also clickable as a whole, so selection or quick action requires `e.stopPropagation()` plumbing already in place. A cashier reviewing the overdue tab (50 rows) and calling each customer in turn must click row → land on detail → click Record Payment → record → navigate back → scroll back to position. Add a small "$" / "Pay" icon button beside View on rows with `amount_due > 0`, opening the same payment modal in-list (or via a side drawer).** L4 flow integrity, L6 discoverability. **STATUS: BLOCKED — needs RecordPaymentModal extracted into shared component + InvoiceListPage row action; multi-component, defer**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:483-540`
   <!-- meta: fix=add-quick-pay-button-on-rows-with-amount_due>0;-mount-shared-PaymentModal-component-with-invoiceId-+-onClose;-extract-modal-from-InvoiceDetailPage.tsx-into-components/billing/RecordPaymentModal.tsx -->
