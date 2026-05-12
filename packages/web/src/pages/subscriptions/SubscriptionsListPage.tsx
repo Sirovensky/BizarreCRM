@@ -127,11 +127,30 @@ export function SubscriptionsListPage() {
     mutationFn: (vars: { id: number; immediate: boolean; reason: string; note: string }) =>
       membershipApi.cancel(vars.id, { immediate: vars.immediate, reason: vars.reason, note: vars.note || undefined }),
     // WEB-UIUX-1070: also invalidate customer membership cache so CustomerDetailPage stays in sync
-    onSuccess: (_data, vars) => {
+    onSuccess: (response, vars) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       const sub = (data ?? []).find((s) => s.id === vars.id);
-      if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
-      toast.success(vars.immediate ? 'Subscription cancelled immediately' : 'Subscription will cancel at period end');
+      if (sub) {
+        queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
+        // WEB-UIUX-1499: invalidate the customer's store-credit cache so the
+        // CustomerDetailPage credit balance reflects the prorated grant.
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', sub.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['store-credit', sub.customer_id] });
+      }
+      // WEB-UIUX-1499: surface the prorated store-credit grant in the toast
+      // so the operator can mention the amount to the customer at cancel time
+      // ("$X.XX credited to your account for unused days").
+      const proration = (response?.data as { data?: { proration_credit?: { amount: number } } })
+        ?.data?.proration_credit;
+      const credited = proration?.amount;
+      if (vars.immediate && credited && credited > 0) {
+        toast.success(
+          `Subscription cancelled — ${formatCurrency(credited)} credited to customer's store credit for unused days`,
+          { duration: 7000 },
+        );
+      } else {
+        toast.success(vars.immediate ? 'Subscription cancelled immediately' : 'Subscription will cancel at period end');
+      }
       setCancellingId(null);
     },
     onError: (err: unknown) => {

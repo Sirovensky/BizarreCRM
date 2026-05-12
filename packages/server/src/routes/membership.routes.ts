@@ -462,7 +462,79 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
   const cleanReason = typeof reason === 'string' && CANCELLATION_REASONS.has(reason) ? reason : null;
   const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) || null : null;
 
+  // WEB-UIUX-1499: when immediate cancel runs against a subscription that the
+  // customer has already paid for the current period, post a prorated store
+  // credit so they aren't left short. Computed as
+  //   (remaining_seconds / period_seconds) * last_charge_amount
+  // rounded to 2dp. Store credit (not cash refund) so the operator isn't
+  // forced into a tender choice at cancel time; customer can spend the
+  // credit on a future invoice or escalate to a manual refund manually.
+  // Skipped when sub was never charged, period already ended, or
+  // last_charge_amount is 0/null (free tier).
+  let prorationAmount = 0;
+  let prorationCreditId: number | null = null;
+
   if (immediate) {
+    const subBeforeCancel = await adb.get<AnyRow>(
+      `SELECT customer_id, current_period_start, current_period_end, last_charge_amount
+         FROM customer_subscriptions WHERE id = ?`,
+      id,
+    );
+    if (subBeforeCancel) {
+      const lastCharge = Number((subBeforeCancel as AnyRow).last_charge_amount) || 0;
+      const startStr = (subBeforeCancel as AnyRow).current_period_start as string | null;
+      const endStr = (subBeforeCancel as AnyRow).current_period_end as string | null;
+      const startMs = startStr ? new Date(startStr).getTime() : NaN;
+      const endMs = endStr ? new Date(endStr).getTime() : NaN;
+      const nowMs = Date.now();
+      if (
+        lastCharge > 0
+        && Number.isFinite(startMs)
+        && Number.isFinite(endMs)
+        && endMs > nowMs
+        && endMs > startMs
+      ) {
+        const remaining = endMs - nowMs;
+        const period = endMs - startMs;
+        prorationAmount = Math.round((remaining / period) * lastCharge * 100) / 100;
+        if (prorationAmount > 0) {
+          const customerId = Number((subBeforeCancel as AnyRow).customer_id);
+          await adb.run(
+            `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(customer_id) DO UPDATE
+               SET amount = amount + excluded.amount,
+                   updated_at = excluded.updated_at`,
+            customerId,
+            prorationAmount,
+            now(),
+            now(),
+          );
+          const txResult = await adb.run(
+            `INSERT INTO store_credit_transactions
+               (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+             VALUES (?, ?, 'credit', 'subscription_cancellation', ?, ?, ?, ?)`,
+            customerId,
+            prorationAmount,
+            id,
+            `Prorated refund for unused days on subscription #${id}`,
+            req.user!.id,
+            now(),
+          );
+          prorationCreditId = Number(txResult.lastInsertRowid);
+          audit(req.db, 'subscription_proration_credited', req.user!.id, req.ip || 'unknown', {
+            subscription_id: id,
+            customer_id: customerId,
+            amount: prorationAmount,
+            credit_transaction_id: prorationCreditId,
+            period_start: startStr,
+            period_end: endStr,
+            last_charge_amount: lastCharge,
+          });
+        }
+      }
+    }
+
     await adb.run(
       `UPDATE customer_subscriptions
           SET status = 'cancelled',
@@ -502,7 +574,20 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
     reason: cleanReason,
     note: cleanNote,
   });
-  res.json({ success: true, data: { cancelled: true, immediate: !!immediate, reason: cleanReason } });
+  res.json({
+    success: true,
+    data: {
+      cancelled: true,
+      immediate: !!immediate,
+      reason: cleanReason,
+      // WEB-UIUX-1499: surface the prorated credit so the cancel toast can
+      // tell the operator exactly how much landed on the customer's store
+      // credit. 0 = no proration (free tier, ended period, never charged).
+      proration_credit: prorationAmount > 0
+        ? { amount: prorationAmount, credit_transaction_id: prorationCreditId }
+        : null,
+    },
+  });
 }));
 
 // WEB-UIUX-828: change-tier so operators don't have to cancel + re-subscribe
