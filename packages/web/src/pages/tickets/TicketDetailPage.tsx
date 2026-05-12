@@ -867,32 +867,40 @@ export function TicketDetailPage() {
             );
           })()}
 
-          {/* Audit 44.10 — QC sign-off launcher */}
-          <button
-            type="button"
-            onClick={() => {
-              if (isTerminalTicketStatus) return;
-              setShowQcSignOff(true);
-            }}
-            disabled={isTerminalTicketStatus}
-            aria-describedby={qcSignOffBlockedMessage ? 'qc-signoff-terminal-note' : undefined}
-            title={qcSignOffBlockedMessage ?? undefined}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-              isTerminalTicketStatus
-                ? 'cursor-not-allowed border-surface-200 bg-surface-50 text-surface-400 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-500'
-                : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40'
-            }`}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            {isTerminalTicketStatus ? 'QC sign-off locked' : 'QC sign-off'}
-          </button>
-          {qcSignOffBlockedMessage && (
-            <p
-              id="qc-signoff-terminal-note"
-              className="-mt-2 text-xs leading-5 text-surface-500 dark:text-surface-400"
-            >
-              {qcSignOffBlockedMessage}
-            </p>
+          {/* WEB-UIUX-1098: only show QC launcher when the shop has qc_required
+              enabled AND the ticket hasn't already been signed off. The signed
+              summary card above replaces the launcher once a pass row exists.
+              Terminal-status (closed/cancelled) keeps the disabled-with-reason
+              affordance instead of disappearing, so admins know why it's gone. */}
+          {qcStatus?.qc_required && !qcStatus.signed && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isTerminalTicketStatus) return;
+                  setShowQcSignOff(true);
+                }}
+                disabled={isTerminalTicketStatus}
+                aria-describedby={qcSignOffBlockedMessage ? 'qc-signoff-terminal-note' : undefined}
+                title={qcSignOffBlockedMessage ?? undefined}
+                className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                  isTerminalTicketStatus
+                    ? 'cursor-not-allowed border-surface-200 bg-surface-50 text-surface-400 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-500'
+                    : 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/40'
+                }`}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {isTerminalTicketStatus ? 'QC sign-off locked' : 'QC sign-off'}
+              </button>
+              {qcSignOffBlockedMessage && (
+                <p
+                  id="qc-signoff-terminal-note"
+                  className="-mt-2 text-xs leading-5 text-surface-500 dark:text-surface-400"
+                >
+                  {qcSignOffBlockedMessage}
+                </p>
+              )}
+            </>
           )}
 
           {/* Billing + Invoice cards */}

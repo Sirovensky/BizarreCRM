@@ -3750,7 +3750,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
 #### Minor — copy, hierarchy, edge cases
 
-- [!] WEB-UIUX-1098. **[MINOR] "QC sign-off" green button on TicketDetail always rendered, regardless of ticket status or `qc_required` flag.** `TicketDetailPage.tsx:590-597`. Tech can sign QC on a ticket still in `'Awaiting parts'` — bypasses any process intent. Should be hidden until status is `'Repaired'` / `'Repaired - Pending QC'`, or always visible but disabled with tooltip "Status must be Repaired". L1, L9. **PARTIAL 2026-05-10: TicketDetailPage.tsx:815 already disables QC button when ticket reaches terminal (closed/cancelled) status. Tighter gate to `'Repaired'`/`'Repaired - Pending QC'` requires server-side `is_repair_complete` flag on ticket_statuses; defer to data-model pass.**
+- [x] WEB-UIUX-1098. **[MINOR] QC launcher now gated by `qc_required` + unsigned state 2026-05-12.** Launcher renders only when `qcStatus.qc_required` is true AND `qcStatus.signed` is false. Shops with QC disabled no longer see a dead green button; signed tickets keep the read-only summary card without a duplicate "QC sign-off" CTA. Terminal-status (closed/cancelled) disabled affordance preserved so admins still see "QC sign-off locked" with the reason. Status-based gate (`'Repaired'` / `'Repaired - Pending QC'` only) still deferred — needs `is_repair_complete` flag on ticket_statuses.
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-597`
   <!-- meta: fix=gate-button-on-isRepairableStatus(ticket.status)+optionally-hide-when-bench-config.qc_required==false -->
 

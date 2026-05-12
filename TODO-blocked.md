@@ -2496,25 +2496,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:248-285`
   <!-- meta: fix=schema-add-qc_sign_off_photos-table-(sign_off_id,path,kind:before|after|other)+UI-multi-upload+server-multipart-array -->
 
-- [!] WEB-UIUX-1098. **[MINOR] "QC sign-off" green button on TicketDetail always rendered, regardless of ticket status or `qc_required` flag.** `TicketDetailPage.tsx:590-597`. Tech can sign QC on a ticket still in `'Awaiting parts'` — bypasses any process intent. Should be hidden until status is `'Repaired'` / `'Repaired - Pending QC'`, or always visible but disabled with tooltip "Status must be Repaired". L1, L9. **PARTIAL 2026-05-10: TicketDetailPage.tsx:815 already disables QC button when ticket reaches terminal (closed/cancelled) status. Tighter gate to `'Repaired'`/`'Repaired - Pending QC'` requires server-side `is_repair_complete` flag on ticket_statuses; defer to data-model pass.**
-  `packages/web/src/pages/tickets/TicketDetailPage.tsx:590-597`
-  <!-- meta: fix=gate-button-on-isRepairableStatus(ticket.status)+optionally-hide-when-bench-config.qc_required==false -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:128-134`
-  <!-- meta: fix=if-file.size>10*1024*1024-toast.error+offer-client-side-resize-via-canvas -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:227-244`
-  <!-- meta: fix=wrap-row-in-<label-className=cursor-pointer>+keep-checkbox-and-span-as-children -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:324-343`
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:319-321`
-  <!-- meta: fix=change-placeholder-to-"Internal-notes-for-the-record"-or-actually-route-to-customer-email-when-WEB-UIUX-1089-lands -->
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:216-220`
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:176-180`
-
 - [!] WEB-UIUX-1127. **[MAJOR] "New Ticket" link from TicketListPage routes to POS surface, not a ticket-creation form.** `TicketListPage.tsx:1205-1211` `<Link to="/tickets/new">New Ticket</Link>` → `App.tsx:483` `<Route path="/tickets/new" element={<UnifiedPosPage />} />`. User clicks "New Ticket", lands on Unified POS — three tabs (Repairs / Products / Misc), Cash Drawer widget, "Open Drawer" button, Cash In/Out controls, Z-Report — none of which a user creating a ticket needs. Tab defaults to `repairs` (`store.ts:247`) but URL/intent mismatch is unfixed: bookmarking `/tickets/new` always lands in cash-drawer chrome. Consider either a dedicated ticket-creation route that hides POS-only chrome OR rename the button + URL to "New Sale / Repair". L3 route correctness, L6 discoverability. **STATUS: BLOCKED — needs route restructure (/tickets/new on dedicated stripped POS shell vs full POS); design decision; defer to POS sprint**
   `packages/web/src/pages/tickets/TicketListPage.tsx:1205-1211`
   `packages/web/src/App.tsx:483`
