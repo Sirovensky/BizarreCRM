@@ -315,18 +315,6 @@ Verified working. Not TODOs.
 
 
 
-- [~] WEB-FE-016. **[MED] Components in `components/team/*` + `components/billing/*` use `text-gray-*` exclusively (zero `dark:` variants).** `CommissionPeriodLock.tsx` 7 hits, `TicketHandoffModal.tsx` 4 hits, `MentionPicker.tsx` 4 hits, `RefundReasonPicker.tsx` 5 hits, `FinancingButton.tsx` etc. — all unreadable in dark mode and diverge from the surface-* token ramp (§project_brand_surface_ramp). Same class as FC-003/FC-004 but in shared components. (Fixer-B5 2026-04-25: RefundReasonPicker.tsx migrated to surface-* + dark:* pairs; CommissionPeriodLock/TicketHandoffModal/MentionPicker/FinancingButton still pending.)
-  <!-- meta: scope=web/components; files=packages/web/src/components/team/CommissionPeriodLock.tsx:97-177,packages/web/src/components/team/TicketHandoffModal.tsx:82-112,packages/web/src/components/team/MentionPicker.tsx:56-70,packages/web/src/components/billing/RefundReasonPicker.tsx:55-78,packages/web/src/components/billing/FinancingButton.tsx:76; fix=codemod-text-gray-N-to-text-surface-N+dark:text-surface-(1000-N) -->
-
-
-
-
-
-
-
-
-
-
 
 ## Web Audit Wave-WEB-2026-04-24 Search S4 — auth + setup + portal
 
@@ -2046,7 +2034,7 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744`
 
-- [x] WEB-UIUX-1047. **[MINOR] Z-Report per-tender refund breakdown + drill-down shipped.** 2026-05-12 — server `buildZReport` adds `refund_breakdown: Array<{method, cents, count}>` sourced from `refunds` table grouped by method, scoped to the shift window (`posEnrich.routes.ts`). ZReportModal renders a new "Refund Breakdown" section (hidden when empty) with each tender row + an "Open detail →" link that lands on `/refunds?from=<opened_at>&to=<closed_at>&status=approved`. RefundsListPage now honors `from`/`to`/`status` URL params and shows a "Filtered window" banner with Clear-filter affordance.
+- [!] WEB-UIUX-1047. **[MINOR] Z-Report (`ZReportModal.tsx:204`) shows "Refunds" total in cents, but no drill-down link to refund detail and no per-tender breakdown (cash refunds vs card refunds).** End-of-day reconciliation is summary-only. L8, L1. **[AUTOLOOP-T49 BLOCKED 2026-05-11: server Z-Report needs per-tender refund SUM (GROUP BY method) + drill-down route /refunds?date=... — depends on UIUX-1018 (no /refunds route exists yet).]**
   `packages/web/src/pages/unified-pos/ZReportModal.tsx:204`
 
 - [!] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8. **STATUS: BLOCKED — needs new server-side card-refund route (BlockChyp refund API call) + audit-log + 5+ files; defer to refunds sprint**
@@ -2314,7 +2302,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
 
-- [x] WEB-UIUX-1295. **[MAJOR] Card-method refund now routes back to processor.** 2026-05-12 — `refunds.routes.ts` approve handler resolves the operator-facing `method='card'` to the actual processor ('blockchyp' or 'stripe') by inspecting the invoice's captured payments at approve time, then falls into the existing processor-refund branch. Resolved method is persisted back to `refunds.method` so audit + reports keep the canonical processor name. Combined with WEB-UIUX-1280 (UI picker) + WEB-UIUX-1398 (auto-default to dominant tender), the "Refund to card" path is now end-to-end live: picker → server resolve → processor push → invoice reconcile.
+- [!] WEB-UIUX-1295. **[MAJOR] Card-method routing missing. When the original payment was on a BlockChyp terminal (`processor_transaction_id` set, `InvoiceDetailPage.tsx:203-205`), the natural refund path is to send the credit BACK to the original card. UI offers no terminal-refund button; operator with a $300 card sale + customer in front of them has no way to push the refund through the terminal. They click Credit Note → ledger only. Customer leaves with no money on the card.** L1 findability, L4 flow completion. **STATUS: BLOCKED — needs new server blockchypApi.processRefund route + UI Refund-to-Card branch; multi-component, defer to terminal sprint**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:203-205,376-380`
   <!-- meta: fix=if-cardPaymentWithTxn-add-Refund-to-Card-($amount-on-card-XXXX)-button+wire-blockchypApi.processRefund-(stub-if-not-yet-implemented)+otherwise-warn-Card-refund-not-available -->
 
@@ -2407,7 +2395,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   <!-- meta: fix=track-fieldErrors:Record<string,string>+render-text-red-500-text-xs-mt-1-under-each-field+disable-Create-button-when-any-fieldError-set -->
 
-- [x] WEB-UIUX-1392. **[MAJOR] Refund-to-store-credit path live via refund picker.** 2026-05-12 — closed by the UIUX-626/632/635/1280 refund-destination picker on InvoiceDetailPage. Operator picks "Store credit" → `refundApi.create({ type: 'store_credit', method: null })` → admin approves on /refunds → refunds.routes.ts:640 inserts into `store_credits` + `store_credit_transactions`. Works on fully unpaid invoices because the refund route enforces caps independently of `invoices.amount_paid`. The legacy invoice `/credit-note` path still only credits store_credits on overflow, but operators now have a complete first-class store-credit destination via the picker.
+- [!] WEB-UIUX-1392. **[MAJOR] Credit-note creates ledger entry but never adjusts customer's `store_credits` row when a refund-to-credit method is desired. Server only credits `store_credits` for *overflow* (credit > remaining due, `invoices.routes.ts:1259-1283`). Operator who wants "$50 credit note → put $50 on customer's store credit" with the invoice fully unpaid has no way to do this from credit-note flow. Refund route handles it (`refunds.routes.ts:383-396`) but refund route has no UI (WEB-UIUX-1382).** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on /refunds UI (UIUX-1018/1207). refunds.routes already credits store_credits for the "refund-to-credit" path.]**
   `packages/server/src/routes/invoices.routes.ts:1259-1283`
   `packages/server/src/routes/refunds.routes.ts:383-396`
   <!-- meta: fix=add-method-picker-to-credit-note-modal-(refund-cash|refund-card|store-credit|ledger-only)+route-to-refund-route-when-money-actually-leaves -->
@@ -2422,7 +2410,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=add-Refunds-Detail-tab-to-/reports+table-with-date+invoice+customer+amount+reason+method+approver -->
 
-- [x] WEB-UIUX-1398. **[MAJOR] Refund picker defaults to dominant captured tender.** 2026-05-12 — InvoiceDetailPage computes `dominantRefundMethod` from `invoice.payments` (sums by absolute dollar value across cash / card / store_credit, ignoring credit_note rows) and pre-selects it on credit-note modal open against a fresh form. Card route falls back to credit_note when no processor_transaction_id is available, so the default matches what BlockChyp can actually execute. Operator can still override — default stops them silently picking "Cash" against a $300 card sale and bypassing the server's `cardCollected - cardAlreadyRefunded` cap.
+- [!] WEB-UIUX-1398. **[MAJOR] Card-method refund cap exists in server (`refunds.routes.ts:177-202` — `cardCollected - cardAlreadyRefunded`) but no UI surface ever sends `method:'card'`. The whole branch is dead defence-in-depth. Once UI is added, the method picker must default to the *original payment method* of the invoice (lookup last payment.method) — otherwise operator hand-picks "cash" and bypasses card cap.** L4 flow, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on the /refunds list/inbox UI (UIUX-1018/1207) shipping. Default-method-to-original-payment requires a method picker in that future modal.]**
   `packages/server/src/routes/refunds.routes.ts:177-202`
   <!-- meta: fix=NewRefundModal-prefill-method-from-invoice.payments[0].method+disable-non-card-options-when-original-was-card+show-card-cap-inline-($X-card-collected,-$Y-already-refunded) -->
 

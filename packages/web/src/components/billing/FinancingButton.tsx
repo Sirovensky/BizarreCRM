@@ -127,7 +127,7 @@ export function FinancingButton({
             <h3 id="financing-stub-title" className="mb-2 text-lg font-semibold">
               {providerLabel} financing
             </h3>
-            <p className="mb-4 text-sm text-gray-600 dark:text-surface-300">
+            <p className="mb-4 text-sm text-surface-600 dark:text-surface-300">
               {errorMsg
                 ? errorMsg
                 : (<>Customer would be redirected to {providerLabel}'s hosted flow to finance
@@ -137,7 +137,7 @@ export function FinancingButton({
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-surface-700 dark:text-surface-50 dark:hover:bg-surface-700"
+                className="rounded-md border border-surface-300 px-4 py-2 text-sm hover:bg-surface-50 dark:border-surface-700 dark:text-surface-50 dark:hover:bg-surface-700"
                 onClick={() => setShowModal(false)}
               >
                 Close
