@@ -1171,7 +1171,7 @@ L14-Copy L15-Perf L16-Trust.
   `packages/web/src/components/shared/PrintPreviewModal.tsx`, `QuickSmsModal.tsx`, `UpgradeModal.tsx`
   <!-- meta: fix=add-focus-trap-and-focus-restore -->
 
-- [!] WEB-UIUX-26. **[NIT] PinModal backdrop click-to-close is intentionally blocked/stale.** Blocked/stale 2026-05-06 — ordinary modal consistency is less important here than the security/POS PIN flow: the modal already has explicit X, Cancel, and Escape dismissal, while backdrop dismissal would make kiosk/tablet outside taps silently discard a partially typed PIN.
+- [x] WEB-UIUX-26. **[NIT] STALE/CLOSED 2026-05-12 — PinModal backdrop intentionally non-dismissive for kiosk-safety reasons.** Original critique 2026-05-06 already acknowledged the design decision: X + Cancel + Escape provide explicit dismissal; backdrop tap would silently discard partially-typed PIN on kiosk/tablet. No code change warranted.
   `packages/web/src/components/shared/PinModal.tsx`
   <!-- meta: decision=do-not-add-backdrop-click-close-for-security-pin-modal; behavior=documented-in-PinModal -->
 
@@ -1286,7 +1286,7 @@ L14-Copy L15-Perf L16-Trust.
 
   <!-- meta: fix=add-Edit-and-Cancel-buttons -->
 
-- [!] WEB-UIUX-86. **[MAJOR · STALE/BLOCKED] LostReasonModal sr-only radio inputs lack arrow-key navigation.** Reviewed 2026-05-06 — critique: the current LostReasonModal uses real focusable `<input type="radio" name="lost_reason">` controls, only visually hidden with `sr-only`, so native browser radio arrow-key behavior is already present and replacing it with custom ARIA would be lower-quality than the platform control. Also, the modal currently lives inside `LeadDetailPage.tsx`, which this pass explicitly forbids editing. If reopened, track the separate visible-focus/group-label polish instead of this arrow-key claim.
+- [x] WEB-UIUX-86. **[MAJOR] STALE/CLOSED 2026-05-12 — LostReasonModal already has native radio arrow-key navigation.** Reviewed 2026-05-06: real focusable `<input type="radio" name="lost_reason">` controls visually hidden with `sr-only`. Native browser radio arrow-key behavior is already present. Custom ARIA replacement would be lower-quality than platform control. No code change warranted.
   `packages/web/src/pages/leads/LeadDetailPage.tsx:122-137`
   <!-- meta: blocked=stale-native-radio-arrow-navigation-already-present; scope=LeadDetailPage-edit-forbidden -->
 
@@ -2312,7 +2312,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 #### Cross-Cutting (Pass 8)
 
 
-- [!] WEB-UIUX-558. **[BLOCKER] No keyboard alternative for any drag-drop UI (Kanban, planned drag).** Operators using only keyboard cannot transition tickets via Kanban. L12. **STALE/BLOCKED 2026-05-07: stale for current Kanban because each card already exposes a focusable "Move to..." status dropdown with listbox semantics, ArrowUp/ArrowDown/Escape handling, focus return, and the same transition guard/confirmation flow as drag/drop; broad "planned drag" surfaces remain too undefined for a safe patch here.**
+- [x] WEB-UIUX-558. **[BLOCKER] STALE/CLOSED 2026-05-12 — Kanban already has keyboard-accessible status transitions.** Each card exposes a focusable "Move to..." status dropdown with listbox semantics, ArrowUp/ArrowDown/Escape handling, focus return, and the same transition guard/confirmation flow as drag/drop. Broad "planned drag" surfaces remain undefined; if future drag surfaces ship they should carry per-surface keyboard parity at design time.
 
   <!-- meta: fix=zod-validate-axios-response-once-at-client -->
 

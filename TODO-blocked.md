@@ -694,13 +694,6 @@ Verified working. Not TODOs.
 
   <!-- meta: scope=web/all; fix=replace-with-formatDate-formatDateTime -->
 
-- [!] WEB-UIUX-26. **[NIT] PinModal backdrop click-to-close is intentionally blocked/stale.** Blocked/stale 2026-05-06 — ordinary modal consistency is less important here than the security/POS PIN flow: the modal already has explicit X, Cancel, and Escape dismissal, while backdrop dismissal would make kiosk/tablet outside taps silently discard a partially typed PIN.
-  `packages/web/src/components/shared/PinModal.tsx`
-  <!-- meta: decision=do-not-add-backdrop-click-close-for-security-pin-modal; behavior=documented-in-PinModal -->
-
-  `packages/web/src/styles/globals.css`
-  <!-- meta: fix=migrate-to-surface-vars -->
-
 - [!] WEB-UIUX-28. **[NIT] globals.css `.btn-*` class system duplicates the React `<Button>` component.** BLOCKED 2026-05-07 — true, but removing/deprecating these classes before the 1000+ raw/button-class migration would break existing screens. Track with WEB-UIUX-1 and retire after adoption, not before.
   `packages/web/src/styles/globals.css:272-331`
   <!-- meta: fix=deprecate-btn-classes-after-Button-migration -->
@@ -808,99 +801,6 @@ Verified working. Not TODOs.
 ### Tier 2: Leads + Estimates + Reports
 
   <!-- meta: fix=add-Edit-and-Cancel-buttons -->
-
-- [!] WEB-UIUX-86. **[MAJOR · STALE/BLOCKED] LostReasonModal sr-only radio inputs lack arrow-key navigation.** Reviewed 2026-05-06 — critique: the current LostReasonModal uses real focusable `<input type="radio" name="lost_reason">` controls, only visually hidden with `sr-only`, so native browser radio arrow-key behavior is already present and replacing it with custom ARIA would be lower-quality than the platform control. Also, the modal currently lives inside `LeadDetailPage.tsx`, which this pass explicitly forbids editing. If reopened, track the separate visible-focus/group-label polish instead of this arrow-key claim.
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:122-137`
-  <!-- meta: blocked=stale-native-radio-arrow-navigation-already-present; scope=LeadDetailPage-edit-forbidden -->
-
-### Tier 2: Expenses + PO + Catalog + Loaners + GiftCards + Subscriptions + Reviews + Voice + Inventory Sub-Pages
-
-### Tier 3: Admin & Team
-
-  `packages/web/src/pages/team/ShiftSchedulePage.tsx`
-  <!-- meta: fix=add-dark-mode -->
-
-### Tier 4: Auth, Setup, Customer-Facing
-
-  `packages/web/src/pages/signup/SignupPage.tsx`
-
-  `packages/web/src/pages/landing/LandingPage.tsx`
-  <!-- meta: fix=rewrite-with-Tailwind+dark-mode -->
-
-  `packages/web/src/pages/landing/LandingPage.tsx`
-  <!-- meta: fix=add-real-testimonials-or-remove-section -->
-
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx:121`
-
-  `packages/web/src/pages/auth/ResetPasswordPage.tsx`
-
-### Recommended Sequencing
-
-**Phase 1 — Blockers (ship-stoppers):**
-WEB-UIUX-131 (SignupPage), WEB-UIUX-132 (LandingPage)
-
-**Phase 2 — High-impact systemic:**
-WEB-UIUX-1 (Button adoption), WEB-UIUX-2 (semantic tokens),
-WEB-UIUX-3 (bg-white dark gaps), WEB-UIUX-12 (reduced-motion),
-WEB-UIUX-101 (inventory dark-mode cluster), WEB-UIUX-102 (item picker)
-
-**Phase 3 — POS critical path:**
-WEB-UIUX-30 (hardcoded $), WEB-UIUX-34 (decimal input),
-WEB-UIUX-35 (action hierarchy), WEB-UIUX-36-038 (focus/teal)
-
-**Phase 4 — Accessibility sweep:**
-WEB-UIUX-4 (icon labels), WEB-UIUX-16 (CommandPalette ARIA),
-WEB-UIUX-50-054 (hover-only elements), WEB-UIUX-105-106 (modal ARIA)
-
-**Phase 5 — Dark-mode completion:**
-WEB-UIUX-121-128 (admin/team pages), WEB-UIUX-135 (public pages)
-
-**Phase 6 — Workflow + forms:**
-WEB-UIUX-15 (dead routes), WEB-UIUX-49 (window.prompt),
-WEB-UIUX-51 (mobile kanban), WEB-UIUX-56 (dirty guard),
-WEB-UIUX-84 (calendar form)
-
-
-### Web UI/UX Audit — Pass 2 (2026-05-04, post-research)
-
-Continuing from WEB-UIUX-141. Pass 2 covers settings tabs, super-admin/marketing/billing,
-and WCAG 2.2 / online research findings. Sources cited: w3.org/TR/WCAG22, snabble.io,
-creativenavy POS guides, Tailwind dark-mode docs.
-
-#### Settings Tabs
-
-  `packages/web/src/pages/settings/TicketsRepairsSettings.tsx:238-251`
-  <!-- meta: fix=add-TICKETS_OWNED_KEYS-pattern -->
-
-  `packages/web/src/pages/settings/SmsVoiceSettings.tsx:117-145, 270-321`
-  <!-- meta: fix=convert-to-controlled-useState -->
-
-  `packages/web/src/pages/settings/BlockChypSettings.tsx:282-288`
-  <!-- meta: fix=track-hasServerCreds-flag-from-GET-response -->
-
-  Files: AutomationsTab.tsx:402-501, NotificationTemplatesTab.tsx:60-181, DangerZoneTab.tsx:182-271, DeviceTemplatesPage.tsx:317-563, MembershipSettings.tsx:188-339
-  <!-- meta: fix=adopt-shared-Modal-or-focus-trap-react -->
-
-  <!-- meta: fix=extract-Switch-component-shared -->
-
-  `packages/web/src/pages/settings/RepairPricingTab.tsx:600-820`
-  <!-- meta: fix=add-edit-in-place-parallel-to-ServicesSubTab -->
-
-  <!-- meta: fix=sticky-top-save-bar-or-footer-bar -->
-
-  `packages/web/src/pages/settings/ConditionsTab.tsx:145,355-361`
-  <!-- meta: fix=wrap-in-confirm-store -->
-
-  `packages/web/src/pages/settings/BlockChypSettings.tsx:222-231`
-
-  `packages/web/src/pages/settings/NotificationTemplatesTab.tsx:11-22, 351`
-  <!-- meta: fix=add-show_in_canned-to-interface -->
-
-  `packages/web/src/pages/settings/RepairPricingTab.tsx:426-428`
-
-  `packages/web/src/pages/settings/RepairPricingTab.tsx:430-484`
-
-  `RepairPricingTab.tsx:781,937-950`, `BillingTab.tsx:111,200`, `DeviceTemplatesPage.tsx:287`
 
 - [!] WEB-UIUX-160. **[MINOR] Settings settings tabs use 4 different sub-tab visual languages.** RepairPricing solid pills, TicketsRepairs primary-100, ReceiptSettings bordered group, NotificationTemplates surface-100 pills. L4. **BLOCKED 2026-05-10: 4-tab visual unification requires design-token choice; defer to design-system sprint.**
   <!-- meta: fix=extract-Tabs-primitive -->
@@ -1651,10 +1551,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### Cross-Cutting (Pass 8)
 
-
-- [!] WEB-UIUX-558. **[BLOCKER] No keyboard alternative for any drag-drop UI (Kanban, planned drag).** Operators using only keyboard cannot transition tickets via Kanban. L12. **STALE/BLOCKED 2026-05-07: stale for current Kanban because each card already exposes a focusable "Move to..." status dropdown with listbox semantics, ArrowUp/ArrowDown/Escape handling, focus return, and the same transition guard/confirmation flow as drag/drop; broad "planned drag" surfaces remain too undefined for a safe patch here.**
-
-  <!-- meta: fix=zod-validate-axios-response-once-at-client -->
 
 - [!] WEB-UIUX-560. **[MAJOR] Hardcoded color tokens (`text-teal-*`, `bg-green-*`, `bg-red-100`) outside the surface/primary/brand semantic system span 30+ usages this pass.** L9, L10. **BLOCKED 2026-05-10: 30+ codemod, intent-preserving rewrite needs semantic-token taxonomy first. Tracked with WEB-UIUX-6.**
 
