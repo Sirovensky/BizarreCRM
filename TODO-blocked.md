@@ -2071,7 +2071,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/api/client.ts:65`
 
-- [!] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **STATUS: BLOCKED — needs server reachability heartbeat field on /blockchyp/status; backend infra change, defer to terminal sprint**
+- [!] WEB-UIUX-937. **[BLOCKER] `/blockchyp/status` reports configured-state, NEVER reachability.** No "online/last-heartbeat" field. Configured-but-offline terminal silently passes gate, fails during charge. L8, L11. **PARTIAL 2026-05-12: GET /blockchyp/status now surfaces a `heartbeat` block with `lastSeenAt`, `lastCheckedAt`, `lastError`, `firmwareVersion`, `online` (true if last successful ping within 5 min), and `stale` (true if last ping is older than the window). In-process cache fed by every `testConnection()` call (POST /test-connection). UI wiring (gate Charge button / show offline pill / prompt operator to power-cycle) is the follow-up. Folding charge/void/capture/refund success into the heartbeat is open scope.**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:170-178`
 
   `packages/web/src/pages/settings/BlockChypSettings.tsx:282-296`
