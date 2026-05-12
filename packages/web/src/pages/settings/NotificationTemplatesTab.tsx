@@ -338,24 +338,26 @@ export function NotificationTemplatesTab() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
+              {/* WEB-FE-013: sr-only caption + scope=col for screen-reader association. */}
+              <caption className="sr-only">Notification templates per event with channel toggles.</caption>
               <thead>
                 <tr className="border-b border-surface-100 dark:border-surface-800">
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Event</th>
-                  <th className="text-center px-4 py-3 font-medium text-surface-500 w-24">
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Event</th>
+                  <th scope="col" className="text-center px-4 py-3 font-medium text-surface-500 w-24">
                     <div className="flex items-center justify-center gap-1">
                       <Mail className="h-3.5 w-3.5" /> Email
                     </div>
                   </th>
-                  <th className="text-center px-4 py-3 font-medium text-surface-500 w-24">
+                  <th scope="col" className="text-center px-4 py-3 font-medium text-surface-500 w-24">
                     <div className="flex items-center justify-center gap-1">
                       <MessageSquare className="h-3.5 w-3.5" /> SMS
                     </div>
                   </th>
-                  <th className="text-center px-4 py-3 font-medium text-surface-500 w-24">
+                  <th scope="col" className="text-center px-4 py-3 font-medium text-surface-500 w-24">
                     <div className="flex items-center justify-center gap-1 text-xs">Canned</div>
                   </th>
-                  <th className="text-left px-4 py-3 font-medium text-surface-500">Subject</th>
-                  <th className="text-right px-4 py-3 font-medium text-surface-500 w-24">Action</th>
+                  <th scope="col" className="text-left px-4 py-3 font-medium text-surface-500">Subject</th>
+                  <th scope="col" className="text-right px-4 py-3 font-medium text-surface-500 w-24">Action</th>
                 </tr>
               </thead>
               <tbody>

@@ -484,7 +484,7 @@ Verified working. Not TODOs.
 
 
 
-- [~] WEB-FE-013 (PARTIAL). **[MED] App-wide tables (`CustomerListPage`, `CustomerDetailPage`, `NotificationTemplatesTab`, `SettingsPage`, `AuditLogsTab`) have zero `scope="col"` / `scope="row"` / `<caption>` — screen readers can't associate cells to headers.** *(PARTIAL Fixer-OOO 2026-04-25 — `AuditLogsTab.tsx` table now ships `scope="col"` on all 5 `<th>` cells + an sr-only `<caption>`. CustomerListPage / CustomerDetailPage / NotificationTemplatesTab / SettingsPage still pending; same pattern applies (1 line per th + 1 caption).)*
+- [~] WEB-FE-013 (PARTIAL). **[MED] App-wide tables (`CustomerListPage`, `CustomerDetailPage`, `NotificationTemplatesTab`, `SettingsPage`, `AuditLogsTab`) have zero `scope="col"` / `scope="row"` / `<caption>` — screen readers can't associate cells to headers.** *(PARTIAL 2026-05-12 — `NotificationTemplatesTab.tsx` table now ships `scope="col"` on all 6 `<th>` cells + sr-only `<caption>` (autoloop tick). `AuditLogsTab.tsx` already done (Fixer-OOO 2026-04-25). CustomerListPage / CustomerDetailPage / SettingsPage still pending; same pattern (1 line per th + 1 caption).)*
   <!-- meta: scope=web/a11y; files=packages/web/src/pages/customers/CustomerListPage.tsx:705-710,packages/web/src/pages/settings/AuditLogsTab.tsx,packages/web/src/pages/settings/NotificationTemplatesTab.tsx; fix=add-scope=col-on-th+visually-hidden-caption -->
 
 
@@ -4692,7 +4692,7 @@ Flow walked: nav → Calendar (`/leads/calendar`) → "New Appointment" → fill
   `packages/web/src/pages/leads/CalendarPage.tsx:132-137`
   <!-- meta: fix=STATUS_LABELS-map-(scheduled→Scheduled,no-show→No-Show)+drop-capitalize-class -->
 
-- [!] WEB-UIUX-1336. **[NIT] No SMS/email confirmation toggle on create. If server auto-sends confirmation (per location settings), staff has no way to opt out for internal-only blocks. If server doesn't, staff has no way to send. Either way, opaque.** L7 feedback, L6 discoverability. **STATUS: BLOCKED — needs server flag in /leads/appointments + SMS infrastructure (deferred per user 2026-05-05); defer to messaging sprint**
+- [!] WEB-UIUX-1336. **[NIT] No SMS/email confirmation toggle on create. If server auto-sends confirmation (per location settings), staff has no way to opt out for internal-only blocks. If server doesn't, staff has no way to send. Either way, opaque.** L7 feedback, L6 discoverability. **PARTIAL 2026-05-12: closed the "opaque" half — `CreateAppointmentModal` (CalendarPage.tsx) now surfaces an inline notice "No automatic confirmation is sent. Booking the appointment does not message the customer — copy the date and time over manually until automated reminders ship." so staff aren't left guessing. The auto-send + opt-out toggle still waits on SMS infrastructure (deferred per user 2026-05-05); defer to messaging sprint.**
   `packages/web/src/pages/leads/CalendarPage.tsx:288-440`
   <!-- meta: fix=checkbox-"Send-SMS-confirmation-to-customer"-(default-on-when-customer-selected)+wire-server-to-honor-flag -->
 
@@ -5314,7 +5314,7 @@ Flow audited: cashier wants to sell a $50 gift card to a walk-in, hand the recip
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:158-161`
   <!-- meta: fix=confirm-body-include-tier-name+last_charge_amount+current_period_end+'No-refund'-line+benefits-list -->
 
-- [!] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: immediate-cancel proration / refund flow needs a server `/membership/:id/cancel` flag + automatic credit-note path keyed to days remaining. Multi-component finance change.]**
+- [x] WEB-UIUX-1499. **[MINOR] Proration credit on immediate membership cancel live.** CLOSED 2026-05-12 by b22dadac. `POST /membership/:id/cancel` with `immediate=true` computes `(remaining_seconds / period_seconds) * last_charge_amount` and posts the prorated amount to the customer's `store_credits` row + writes a `store_credit_transactions(type='credit', reference_type='subscription_cancellation')` row referencing the sub id. Skipped for free tiers, ended periods, never-charged subs. Response carries `proration_credit: { amount, credit_transaction_id }` so SubscriptionsListPage's cancel toast announces the exact dollar credit. Audited as `subscription_proration_credited`. Manual cash-refund escalation still available via /refunds.
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->
 

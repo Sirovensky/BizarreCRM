@@ -1041,6 +1041,17 @@ function CreateAppointmentModal({
               <strong>Scheduling conflict:</strong> {overlapWarning} Submit again to create anyway.
             </div>
           )}
+          {/* WEB-UIUX-1336: surface server send-behaviour so staff aren't left
+              guessing. `POST /appointments` does not auto-send a confirmation
+              today (messaging-sprint work), so booked customers won't receive
+              any notification until the operator messages them. Closes the
+              "opaque" half of the bullet; the actual auto-send + opt-out
+              toggle still waits on SMS infrastructure. */}
+          <p className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-xs text-surface-600 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-400">
+            <strong className="font-semibold text-surface-700 dark:text-surface-300">No automatic confirmation is sent.</strong>{' '}
+            Booking the appointment does not message the customer — copy the
+            date and time over manually until automated reminders ship.
+          </p>
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
