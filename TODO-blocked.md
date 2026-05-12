@@ -3466,22 +3466,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:233-247`
   <!-- meta: fix=conditional-confirm-body-string-when-estimate.status==='approved'-or-'signed'-with-approved_at-formatted -->
 
-- [!] WEB-UIUX-1478. **[MINOR] EstimateDetailPage Approve+Convert+Send+Reject all use `await confirm(...)` wrapped in try/catch with `formatApiError(err)` (`:197,210,223,239`). The `confirm()` rejection on backdrop-cancel is treated as an error path — toast.error fires with whatever `formatApiError` returns from a non-Error rejection. Backdrop-cancel should be a no-op, not an error toast. (Same pattern in `EstimateListPage.tsx:751,776,798` — comment WEB-FM-020 documents this as deliberate but the user-facing effect is a noisy spurious toast on every cancel.)** L7 feedback, L8 recovery. **STATUS: BLOCKED — confirmStore reject-on-cancel behavior change is shared-store risk; needs design review across all callers, defer**
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:193-247`
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:744-820`
-  `packages/web/src/stores/confirmStore.ts`
-  <!-- meta: fix=confirm()-resolves-false-on-cancel/Esc/backdrop-(not-rejects)+remove-try/catch-or-narrow-catch-to-unexpected-throws -->
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:85-92`
-  `packages/server/src/routes/estimates.routes.ts:1187-1204`
-  <!-- meta: fix=server-returns-ticket_status_changed:{id,name}-in-approve-response+UI-toast-with-link+queryClient.invalidateQueries(['ticket',ticketId]) -->
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:74,88,107,119,131`
-  <!-- meta: fix=add-invalidateQueries(['estimates'])-alongside-each-invalidateQueries(['estimate',id]) -->
-
-  `packages/web/src/pages/portal/PortalEstimatesView.tsx:158-169`
-  <!-- meta: fix=labelMap={sent:'Awaiting-approval',approved:'Approved',signed:'Signed',rejected:'Declined',converted:'In-progress',draft:'Draft'}+badge-uses-label-not-status -->
-
 - [!] WEB-UIUX-1482. **[NIT] Portal `EstimateSummary.line_items[].discount` (`portalApi.ts:155`) is always `0` — server `portal.routes.ts:1421-1428` hardcodes `discount: 0` even when the estimate has a header-level discount. Customer sees Total = subtotal+tax with no Discount line, then questions "where did the discount go?". Render header-level discount above Total (server already returns `discount` on the summary `:1414`).** L7 feedback, L2 truthfulness. **STATUS: BLOCKED — server portal.routes.ts hardcoded discount:0; backend, defer to portal sprint**
   `packages/web/src/pages/portal/PortalEstimatesView.tsx:120-125`
   `packages/server/src/routes/portal.routes.ts:1421-1428`
