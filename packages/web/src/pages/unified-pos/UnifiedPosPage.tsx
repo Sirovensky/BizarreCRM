@@ -56,6 +56,8 @@ import { cn } from '@/utils/cn';
 import { formatCurrency, formatDateTime, formatTime, generateIdempotencyKey, toLocalDateString } from '@/utils/format';
 import { stripPhone, formatPhoneAsYouType } from '@/utils/phoneFormat';
 import { PinModal } from '@/components/shared/PinModal';
+import { useSettings } from '@/hooks/useSettings';
+import { useAuthStore } from '@/stores/authStore';
 import { computePosTotals } from './totals';
 import { useUnifiedPosStore } from './store';
 import { genId } from './types';
@@ -901,6 +903,15 @@ export function UnifiedPosPage() {
     find();
     return () => { cancelled = true; setHeaderSlot(null); };
   }, []);
+  // WEB-UIUX-1227: pre-flight manager-PIN gate driven by store_config.
+  // `pos_require_manager_for_discount === '1'` plus non-(admin|manager)
+  // role triggers the PinModal BEFORE checkout. Without this the server
+  // rejects safely at checkout time but the cashier discovers the gate
+  // only after entering a discount + queueing tender.
+  const { getSetting } = useSettings();
+  const requireManagerForDiscount = getSetting('pos_require_manager_for_discount', '0') === '1';
+  const currentUserRole = useAuthStore((s) => s.user?.role) ?? '';
+  const cashierCanApplyDiscount = currentUserRole === 'admin' || currentUserRole === 'manager';
   const [lineEditing, setLineEditing] = useState<CartItem | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountDraft, setDiscountDraft] = useState('');
@@ -2182,7 +2193,15 @@ export function UnifiedPosPage() {
 
   const applyDiscount = () => {
     const amount = parseMoney(discountDraft);
-    if (totals.subtotal > 0 && amount > totals.subtotal * 0.25) {
+    // WEB-UIUX-1227: pre-flight gates that park the apply in `pendingDiscount`
+    // and let the PinModal commit on success.
+    //   1. >25% subtotal — historical advisory turned hard gate.
+    //   2. pos_require_manager_for_discount + non-(admin|manager) cashier —
+    //      server enforces with a 403 at checkout; gating here saves the
+    //      cashier from typing tender and discovering the block too late.
+    const needsManagerForRule = requireManagerForDiscount && !cashierCanApplyDiscount && amount > 0;
+    const needsManagerForSize = totals.subtotal > 0 && amount > totals.subtotal * 0.25;
+    if (needsManagerForRule || needsManagerForSize) {
       setPendingDiscount({ amount, reason: discountReasonDraft || 'cashier adjustment' });
       return;
     }
