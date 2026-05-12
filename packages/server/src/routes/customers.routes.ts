@@ -2150,10 +2150,14 @@ router.get(
     const countParams: unknown[] = [];
 
     // SMS messages
+    // WEB-UIUX-882: pad with duration_secs / recording_url / transcription_status
+    // NULLs so call-only fields stay aligned across the UNION ALL.
     if ((!typeFilter || typeFilter === 'sms') && phones.length > 0) {
       unionParts.push(`
         SELECT id, 'sms' AS comm_type, direction, from_number AS from_addr, to_number AS to_addr,
-               message AS content, NULL AS subject, status, created_at
+               message AS content, NULL AS subject, status,
+               NULL AS duration_secs, NULL AS recording_url, NULL AS transcription_status,
+               created_at
         FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})
       `);
       countParts.push(`SELECT COUNT(*) AS n FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`);
@@ -2162,10 +2166,16 @@ router.get(
     }
 
     // Call logs
+    // WEB-UIUX-882: surface duration_secs + recording_url + transcription_status
+    // so the customer-detail Communications tab can render the same call
+    // affordances (duration pill, ▶ play recording, transcript link) as the
+    // standalone CommunicationPage.
     if ((!typeFilter || typeFilter === 'call') && phones.length > 0) {
       unionParts.push(`
         SELECT id, 'call' AS comm_type, direction, from_number AS from_addr, to_number AS to_addr,
-               transcription AS content, NULL AS subject, status, created_at
+               transcription AS content, NULL AS subject, status,
+               duration_secs, recording_url, transcription_status,
+               created_at
         FROM call_logs WHERE conv_phone IN (${phonePlaceholders})
       `);
       countParts.push(`SELECT COUNT(*) AS n FROM call_logs WHERE conv_phone IN (${phonePlaceholders})`);
@@ -2177,7 +2187,9 @@ router.get(
     if ((!typeFilter || typeFilter === 'email') && emails.length > 0) {
       unionParts.push(`
         SELECT id, 'email' AS comm_type, 'outbound' AS direction, from_address AS from_addr, to_address AS to_addr,
-               body AS content, subject, status, created_at
+               body AS content, subject, status,
+               NULL AS duration_secs, NULL AS recording_url, NULL AS transcription_status,
+               created_at
         FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})
       `);
       countParts.push(`SELECT COUNT(*) AS n FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`);
