@@ -1391,10 +1391,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   <!-- meta: fix=zod-validate-at-API-client-boundary -->
 
-- [!] WEB-UIUX-415. **[MINOR] At least 4 different loading strings: "...", "Loading...", "Loading…", "Looking up…", "Sending…".** BLOCKED/REJECTED 2026-05-07 — critique: this is not a coherent CRM fix as written. "Looking up..." and "Sending..." are useful contextual progress verbs, not drift; standardizing every async label to one shared phrase would make payment/SMS/search states less clear. The real reusable primitive concern is already tracked separately by WEB-UIUX-564.
-  Pattern across web/src
-  <!-- meta: fix=standardize-on-shared-LoadingText-component -->
-
 - [!] WEB-UIUX-416. **[MINOR] Toast strings English-only across staff surfaces.** Portal has i18n; Communications/Billing/Super-admin don't translate. L14. **BLOCKED 2026-05-07: valid product gap, but not a safe single TODO patch. Staff-surface i18n requires adopting a staff i18n runtime, key namespaces, extraction policy, and hundreds of string migrations across Communications/Billing/Super-admin/Team/Tickets/Print/TV; small piecemeal translation would create mixed-language UX and false completion.**
 
 
@@ -1526,15 +1522,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:178-186`
 
 #### Cross-Cutting (Pass 8)
-
-
-- [!] WEB-UIUX-560. **[MAJOR] Hardcoded color tokens (`text-teal-*`, `bg-green-*`, `bg-red-100`) outside the surface/primary/brand semantic system span 30+ usages this pass.** L9, L10. **BLOCKED 2026-05-10: 30+ codemod, intent-preserving rewrite needs semantic-token taxonomy first. Tracked with WEB-UIUX-6.**
-
-  <!-- meta: fix=top-of-stack-modal-handler-via-shared-Modal-primitive -->
-
-
-- [!] WEB-UIUX-563. **[MAJOR] Toast strings + section titles English-only across staff surfaces (Team/Tickets/Print/TV).** Spanish-tenant staff get mixed English UI. L14. **BLOCKED 2026-05-07: duplicate of WEB-UIUX-416. Staff-surface i18n requires an app-wide translation runtime and extraction pass; patching only Team/Tickets/Print/TV strings would leave mixed-language workflows and no maintainable key strategy.**
-
 
 
 - [!] WEB-UIUX-566. **[MINOR] Rounded-corner inconsistency: `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl` mixed within single page.** TicketDetailPage MergeDialog `rounded-xl`, FaqTooltip `rounded-md`, Pin `rounded-xl` but inputs `rounded-lg`. L11. **BLOCKED 2026-05-07: critique valid but too broad as written; this needs a per-surface radius pass or formal radius token adoption, not a blind repo-wide `rounded-*` codemod. No safe single shared-component change was identified beyond preserving existing `Button`/`Modal` radius defaults.**
@@ -1763,12 +1750,6 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 - [!] WEB-UIUX-653. **[MAJOR] No per-device pickup state — ticket-level "Ready for Pickup" all-or-nothing.** Multi-device ticket: device 1 done, device 2 waits parts → no UI for partial pickup. L5, L11. **[AUTOLOOP-T30 BLOCKED: per-device pickup state requires server schema (per-device status field) + multi-component UI.]**
   `packages/web/src/pages/tickets/TicketDevices.tsx:797-1149`
-
-- [!] WEB-UIUX-656. **[MAJOR] No optimistic-concurrency guard on status or handoff.** Two techs flipping status simultaneously → last-write-wins silently. Loser's optimistic UI flips silently with no toast. L11, L4. **BLOCKED 2026-05-10: cross-cutting — version columns + If-Match + UI conflict prompts; tracked with WEB-UIUX-734.**
-  `packages/web/src/pages/tickets/TicketDetailPage.tsx:271-316`
-  `packages/web/src/components/team/TicketHandoffModal.tsx:50-72`
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:191-247`
 
 - [!] WEB-UIUX-659. **[MAJOR] Convert estimate→ticket doesn't snapshot pricing — profit margin set 90 days ago even if parts costs changed.** L13. **[AUTOLOOP-T30 BLOCKED: estimate_line_items has no cost_price column; server snapshot on creation/convert requires schema migration.]**
 

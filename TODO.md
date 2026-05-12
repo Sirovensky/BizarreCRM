@@ -1992,7 +1992,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   <!-- meta: fix=zod-validate-at-API-client-boundary -->
 
-- [!] WEB-UIUX-415. **[MINOR] At least 4 different loading strings: "...", "Loading...", "Loading…", "Looking up…", "Sending…".** BLOCKED/REJECTED 2026-05-07 — critique: this is not a coherent CRM fix as written. "Looking up..." and "Sending..." are useful contextual progress verbs, not drift; standardizing every async label to one shared phrase would make payment/SMS/search states less clear. The real reusable primitive concern is already tracked separately by WEB-UIUX-564.
+- [x] WEB-UIUX-415. **[MINOR] STALE/REJECTED 2026-05-12 — Contextual progress verbs are not drift.** "Looking up..." + "Sending..." carry flow-specific semantics; standardizing every async label to one shared phrase would make payment/SMS/search states less clear. Reusable-primitive concern tracked by WEB-UIUX-564.
   Pattern across web/src
   <!-- meta: fix=standardize-on-shared-LoadingText-component -->
 
@@ -2316,12 +2316,12 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
   <!-- meta: fix=zod-validate-axios-response-once-at-client -->
 
-- [!] WEB-UIUX-560. **[MAJOR] Hardcoded color tokens (`text-teal-*`, `bg-green-*`, `bg-red-100`) outside the surface/primary/brand semantic system span 30+ usages this pass.** L9, L10. **BLOCKED 2026-05-10: 30+ codemod, intent-preserving rewrite needs semantic-token taxonomy first. Tracked with WEB-UIUX-6.**
+- [x] WEB-UIUX-560. **[MAJOR] STALE/DUPLICATE 2026-05-12 — Tracked by WEB-UIUX-6.** Same hardcoded color-token debt; closing as duplicate to keep blocked list deduplicated.
 
   <!-- meta: fix=top-of-stack-modal-handler-via-shared-Modal-primitive -->
 
 
-- [!] WEB-UIUX-563. **[MAJOR] Toast strings + section titles English-only across staff surfaces (Team/Tickets/Print/TV).** Spanish-tenant staff get mixed English UI. L14. **BLOCKED 2026-05-07: duplicate of WEB-UIUX-416. Staff-surface i18n requires an app-wide translation runtime and extraction pass; patching only Team/Tickets/Print/TV strings would leave mixed-language workflows and no maintainable key strategy.**
+- [x] WEB-UIUX-563. **[MAJOR] STALE/DUPLICATE 2026-05-12 — Tracked by WEB-UIUX-416.** Same i18n gap on staff surfaces; closing as duplicate to keep the blocked list deduplicated.
 
 
 
@@ -2558,7 +2558,7 @@ Walking real user flow: cashier wants to refund customer. Entry point: invoice d
 
   `packages/web/src/pages/tickets/TicketDevices.tsx:996-1005`
 
-- [!] WEB-UIUX-656. **[MAJOR] No optimistic-concurrency guard on status or handoff.** Two techs flipping status simultaneously → last-write-wins silently. Loser's optimistic UI flips silently with no toast. L11, L4. **BLOCKED 2026-05-10: cross-cutting — version columns + If-Match + UI conflict prompts; tracked with WEB-UIUX-734.**
+- [x] WEB-UIUX-656. **[MAJOR] STALE/DUPLICATE 2026-05-12 — Tracked by WEB-UIUX-734.** Same optimistic-concurrency gap; closing as duplicate.
   `packages/web/src/pages/tickets/TicketDetailPage.tsx:271-316`
   `packages/web/src/components/team/TicketHandoffModal.tsx:50-72`
 
