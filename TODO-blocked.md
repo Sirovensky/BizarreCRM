@@ -3071,10 +3071,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
 
-- [!] WEB-UIUX-1292. **[MAJOR] Credit-note amount input `type=number max=amount_paid` is browser-advisory only. Pasting `99999` or arrow-keys past max does NOT clamp; only the manual JS check in `handleCreditNote` (`InvoiceDetailPage.tsx:298-303`) catches it on submit. Operator is rewarded with an error toast after typing — no inline bound enforcement, no live "exceeds max" hint.** L7 deferred error. **[AUTOLOOP-T49 BLOCKED 2026-05-11: input already clamps to maxCreditNoteAmount in onChange (UIUX-1407). Live "exceeds max" hint vs current clamp behavior needs UX decision — both prevent the bad submit.]**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:761-771`
-  <!-- meta: fix=onChange-clamp-to-Math.min(parsed,amount_paid)+inline-amber-helper-when-input-exceeds-max+disable-Submit-while-out-of-bounds -->
-
 - [!] WEB-UIUX-1293. **[MAJOR] No commission reversal on the credit-note path. `/refunds` PATCH approve calls `reverseCommission()` (`refunds.routes.ts:10`); `/invoices/:id/credit-note` does NOT. Tech who earned $40 commission on a $400 invoice that's then credit-noted keeps the $40; payroll-period lock never trips. Operator processing a returned-product credit note has no idea this is happening.** L13 ledger integrity, L7 silent side-effect. **STATUS: BLOCKED — server invoices.routes.ts credit-note path needs reverseCommission integration; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1162-1317` (no commission reversal)
   `packages/server/src/routes/refunds.routes.ts:10` (vs. has it)
