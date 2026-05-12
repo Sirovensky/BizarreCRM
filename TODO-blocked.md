@@ -2034,9 +2034,6 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:744`
 
-- [!] WEB-UIUX-1047. **[MINOR] Z-Report (`ZReportModal.tsx:204`) shows "Refunds" total in cents, but no drill-down link to refund detail and no per-tender breakdown (cash refunds vs card refunds).** End-of-day reconciliation is summary-only. L8, L1. **[AUTOLOOP-T49 BLOCKED 2026-05-11: server Z-Report needs per-tender refund SUM (GROUP BY method) + drill-down route /refunds?date=... — depends on UIUX-1018 (no /refunds route exists yet).]**
-  `packages/web/src/pages/unified-pos/ZReportModal.tsx:204`
-
 - [!] WEB-UIUX-1048. **[MINOR] BlockChyp settings page references "refund" but no card-refund-back-to-original-tender flow is wired in any UI.** `blockchypApi` likely has no `refund(transactionId)` method despite the processor supporting it. Card customers expecting refund back to card get cash or "credit on file" instead. L8. **STATUS: BLOCKED — needs new server-side card-refund route (BlockChyp refund API call) + audit-log + 5+ files; defer to refunds sprint**
   `packages/web/src/pages/settings/BlockChypSettings.tsx`
 
@@ -2302,10 +2299,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/server/src/routes/invoices.routes.ts:1180-1230`
   <!-- meta: fix=migration-back-fill-credit_note_code-from-reason-where-prefix-matches-known-code+drop-reason-or-derive-it-server-side-from-code+note -->
 
-- [!] WEB-UIUX-1295. **[MAJOR] Card-method routing missing. When the original payment was on a BlockChyp terminal (`processor_transaction_id` set, `InvoiceDetailPage.tsx:203-205`), the natural refund path is to send the credit BACK to the original card. UI offers no terminal-refund button; operator with a $300 card sale + customer in front of them has no way to push the refund through the terminal. They click Credit Note → ledger only. Customer leaves with no money on the card.** L1 findability, L4 flow completion. **STATUS: BLOCKED — needs new server blockchypApi.processRefund route + UI Refund-to-Card branch; multi-component, defer to terminal sprint**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:203-205,376-380`
-  <!-- meta: fix=if-cardPaymentWithTxn-add-Refund-to-Card-($amount-on-card-XXXX)-button+wire-blockchypApi.processRefund-(stub-if-not-yet-implemented)+otherwise-warn-Card-refund-not-available -->
-
 - [!] WEB-UIUX-1296. **[MAJOR] No partial-line-item picker — credit-note modal accepts only a free-form total amount. To return 1 of 3 phone cases ($25 each on a $75 line), operator types $25, but the line items table still shows "qty 3"; stock untouched; no reference to the specific item being returned. Compare orphan `/pos/return` (per-line, with stock restoration).** L1 findability of the right primitive, L4 flow completion. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-line-item picker = significant flow change; depends on UIUX-1020 (POS return flow with line-item picker). Defer until /pos/return UI ships.]**
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:737-805`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:425-450` (line items table is read-only)
@@ -2394,35 +2387,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:288-311`
   <!-- meta: fix=track-fieldErrors:Record<string,string>+render-text-red-500-text-xs-mt-1-under-each-field+disable-Create-button-when-any-fieldError-set -->
-
-- [!] WEB-UIUX-1392. **[MAJOR] Credit-note creates ledger entry but never adjusts customer's `store_credits` row when a refund-to-credit method is desired. Server only credits `store_credits` for *overflow* (credit > remaining due, `invoices.routes.ts:1259-1283`). Operator who wants "$50 credit note → put $50 on customer's store credit" with the invoice fully unpaid has no way to do this from credit-note flow. Refund route handles it (`refunds.routes.ts:383-396`) but refund route has no UI (WEB-UIUX-1382).** L4 flow, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on /refunds UI (UIUX-1018/1207). refunds.routes already credits store_credits for the "refund-to-credit" path.]**
-  `packages/server/src/routes/invoices.routes.ts:1259-1283`
-  `packages/server/src/routes/refunds.routes.ts:383-396`
-  <!-- meta: fix=add-method-picker-to-credit-note-modal-(refund-cash|refund-card|store-credit|ledger-only)+route-to-refund-route-when-money-actually-leaves -->
-
-  `packages/web/src/pages/invoices/InvoiceListPage.tsx:33,41`
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:1685`
-  `packages/server/src/routes/refunds.routes.ts:253-412`
-  <!-- meta: fix=on-refund-approve-set-invoice.status='refunded'-when-cumulative-refunds>=amount_paid+OR-remove-the-status-colour-decoration -->
-
-- [!] WEB-UIUX-1397. **[MAJOR] Reports do not surface refund detail. Dashboard KPI shows aggregate (`kpis.refunds`); `/reports` page (linked from KPI siblings) has no per-refund breakdown — server's `GET /refunds` returns paginated detail with customer name + invoice order_id + creator, but the data is unread by any frontend.** L6 discoverability, L4 flow. **STATUS: BLOCKED — Reports refund detail tab needs server pagination + UI table; multi-component, defer**
-  `packages/server/src/routes/refunds.routes.ts:74-95`
-  `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
-  <!-- meta: fix=add-Refunds-Detail-tab-to-/reports+table-with-date+invoice+customer+amount+reason+method+approver -->
-
-- [!] WEB-UIUX-1398. **[MAJOR] Card-method refund cap exists in server (`refunds.routes.ts:177-202` — `cardCollected - cardAlreadyRefunded`) but no UI surface ever sends `method:'card'`. The whole branch is dead defence-in-depth. Once UI is added, the method picker must default to the *original payment method* of the invoice (lookup last payment.method) — otherwise operator hand-picks "cash" and bypasses card cap.** L4 flow, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: depends on the /refunds list/inbox UI (UIUX-1018/1207) shipping. Default-method-to-original-payment requires a method picker in that future modal.]**
-  `packages/server/src/routes/refunds.routes.ts:177-202`
-  <!-- meta: fix=NewRefundModal-prefill-method-from-invoice.payments[0].method+disable-non-card-options-when-original-was-card+show-card-cap-inline-($X-card-collected,-$Y-already-refunded) -->
-
-- [!] WEB-UIUX-1399. **[MAJOR] Capture-state precondition (`refunds.routes.ts:140-153` — refunds blocked while any payment is `authorized` or `voided` not yet captured) — no UI hint. Operator on an invoice with an auth-only BlockChyp payment will hit a 400 "Cannot refund — N payment(s) on this invoice are not captured" with no path to "Capture or void the authorization first" the error tells them to do. Capture flow itself buried/nonexistent.** L4 flow dead-end, L7 feedback unactionable. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); capture-state hint pairs with that sprint**
-  `packages/server/src/routes/refunds.routes.ts:133-153`
-  <!-- meta: fix=Refund-button-disabled-with-tooltip-"Capture-pending-authorization-first"-when-any-payment.capture_state!='captured'+CTA-link-to-capture-flow -->
-
-  `packages/server/src/routes/refunds.routes.ts:439-454`
-  `packages/web/src/pages/unified-pos/CheckoutModal.tsx`
-  <!-- meta: fix=at-customer-select-fetch-credits.balance+show-pill-"Store-credit:-$X"+payment-method-includes-store_credit-with-cap-at-balance+POST-/refunds/credits/:id/use-on-apply -->
-
-#### Major — recovery + concurrency surfacing
 
 - [!] WEB-UIUX-1427. **[BLOCKER] No POS payment method for gift cards. CheckoutModal `PaymentMethod = 'Cash' | 'Card' | 'Other'` (`CheckoutModal.tsx:16,23-27`). Server's `/gift-cards/lookup/:code` + `POST /gift-cards/:id/redeem` (`giftCards.routes.ts:172,328`) cannot be reached from any sale UI. Recipient walks in with the code → cashier rings up sale → no "Gift Card" tile in payment methods → cashier hand-codes "Other" → no balance check, no redemption row written → server gift-card balance never decremented → physical card stays at full balance forever, customer can spend it again at next visit.** L1 primary action findability, L4 flow completion (entire redemption loop dead), L6 discoverability. **STATUS: BLOCKED — needs PaymentMethod GiftCard tile + lookup→balance pill + redeem POST chain + invoice gift_card_id linkage; multi-component, defer to gift-card sprint**
   `packages/web/src/pages/unified-pos/CheckoutModal.tsx:16,23-27,530-575`
