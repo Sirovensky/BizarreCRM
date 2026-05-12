@@ -1971,26 +1971,6 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/components/tickets/CustomerHistorySidebar.tsx:90-92`
 
-- [!] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
-
-#### DATA1: Data Flow Consistency
-
-  `packages/web/src/pages/unified-pos/CheckoutModal.tsx:228-230`
-
-  `packages/web/src/pages/unified-pos/ProductsTab.tsx:40`
-
-  `packages/web/src/pages/inventory/StocktakePage.tsx:141-145`
-
-  `packages/web/src/pages/inventory/PurchaseOrdersPage.tsx:553-555`
-
-  **STATUS: BLOCKED** — deferred until messaging/SMS infrastructure work begins (per user 2026-05-05).
-  `packages/web/src/pages/communications/CommunicationPage.tsx:50,68,91,1440,1651-1655`
-
-  `packages/web/src/pages/portal/portalApi.ts:194-195`
-
-  `packages/web/src/pages/customers/CustomerDetailPage.tsx:1154-1157`
-
-
 - [!] WEB-UIUX-911. **[MAJOR] 30+ `role="dialog"` sites lack focus-restore on close.** Only ConfirmDialog implements lastFocused capture/restore. PinModal, UpgradeModal, QuickSmsModal, CheckoutModal, WidgetCustomizeModal, SwitchUserModal, ReviewPromptModal, 5 InventoryListPage modals — focus drops to body. L12. **STATUS: BLOCKED — codemod across 30+ dialog sites; useFocusTrap hook already capture/restores so fix is calling it everywhere**
 
   TicketDevices.tsx:559,581,611,988,1008; TicketSidebar.tsx:232; KanbanBoard.tsx:114; DashboardPage.tsx:860; RepairsTab.tsx:1366,1372; ConditionsTab.tsx:337

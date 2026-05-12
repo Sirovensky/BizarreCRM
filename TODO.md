@@ -3122,7 +3122,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   **STATUS: BLOCKED** — deferred until messaging (email/SMS) infrastructure work begins (per user 2026-05-05).
 
-- [!] WEB-UIUX-886. **[MINOR] Note-taking is slow — customer-level notes via `comments` textarea (free-form string), no "+ Add Note", no timestamp/author.** L7, L13. **[AUTOLOOP-T41 BLOCKED: structured customer notes (timestamp+author+append) need new customer_notes server table + routes; schema migration required first.]**
+- [x] WEB-UIUX-886. **[MINOR] Customer notes wrappers landed 2026-05-12 (server existed; client API + Notes-card UI follow-up).** Original blocker note claimed schema didn't exist — false: migration 102 already added `customer_notes(id, customer_id, author_user_id, body, created_at)`, and `customers.routes.ts:2845+` exposes GET/POST/DELETE routes. This pass adds the client API surface: `customerApi.notes(id)`, `customerApi.addNote(id, body)`, `customerApi.deleteNote(id, noteId)`. CustomerDetailPage Notes-card UI (timeline + Add input) is the next step.
 
 #### DATA1: Data Flow Consistency
 

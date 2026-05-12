@@ -154,6 +154,21 @@ export const customerApi = {
   repeat: (params?: { min_tickets?: number; months?: number }) =>
     api.get('/customers/repeat', { params }),
   // Sub-resources
+  // WEB-UIUX-886: structured per-customer notes (separate from the
+  // single-line `comments` sticky note on the customer record). Each row
+  // carries timestamp + author so the CustomerDetailPage Notes card can
+  // render a real timeline. Server routes at customers.routes.ts:2845+.
+  notes: (id: number) =>
+    api.get<{ success: boolean; data: Array<{ id: number; author_user_id: number | null; author_name: string | null; body: string; created_at: string }> }>(
+      `/customers/${id}/notes`,
+    ),
+  addNote: (id: number, body: string) =>
+    api.post<{ success: boolean; data: { id: number } }>(
+      `/customers/${id}/notes`,
+      { body },
+    ),
+  deleteNote: (id: number, noteId: number) =>
+    api.delete(`/customers/${id}/notes/${noteId}`),
   getTickets: (id: number, params?: { page?: number }) =>
     api.get(`/customers/${id}/tickets`, { params }),
   getInvoices: (id: number, params?: { page?: number }) =>
