@@ -601,15 +601,6 @@ Verified working. Not TODOs.
 
 
 
-- [~] WEB-FAD-006. **[MED] `KanbanBoard.tsx:131` polls `tickets-kanban` every 30s while WS already invalidates `['tickets']` on TICKET_CREATED/UPDATED/STATUS_CHANGED/NOTE_ADDED/DELETED — no prefix-match because the kanban key is `['tickets-kanban']` (hyphen) not `['tickets', 'kanban']`.** WS map at `useWebSocket.ts:57-77` invalidates `['tickets']` on 5 ticket events but the kanban query key is `['tickets-kanban']` so WS DOESN'T touch it. Either rename to `['tickets', 'kanban']` so WS prefix-match catches it, OR drop the 30s poll and explicitly add `tickets-kanban` to the invalidation map. Same pattern likely repeats for `[tv-display]` (`TvDisplayPage.tsx:61` 30s poll, no WS link) and `[my-queue]` (`MyQueuePage.tsx:58`). <!-- PARTIAL Fixer-B24 2026-04-25: KanbanBoard renamed `['tickets-kanban']` → `['tickets', 'kanban']` (all 6 sites: useQuery + cancelQueries + getQueryData + setQueryData ×2 + invalidateQueries). WS prefix-match on `['tickets']` now catches kanban automatically. Loosened poll 30s → 60s (kept as fallback for WS-down). `[tv-display]` + `[my-queue]` siblings still pending. -->
-  <!-- meta: scope=web/pages/tickets+tv+team; files=packages/web/src/pages/tickets/KanbanBoard.tsx:128-132,packages/web/src/pages/tv/TvDisplayPage.tsx:58-62,packages/web/src/pages/team/MyQueuePage.tsx:58; fix=normalize-queryKeys-to-['tickets','kanban']/['tickets','tv']/['tickets','my-queue']+drop-explicit-refetchInterval+rely-on-WS-prefix-invalidation -->
-
-
-
-
-
-### Wave-Loop Finder-AE run 2026-04-25 — tenant + role isolation
-
 
 ## Web UI/UX Audit (WEB-UIUX) — 2026-05-04
 
