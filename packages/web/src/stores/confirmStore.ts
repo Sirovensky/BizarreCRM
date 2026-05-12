@@ -104,9 +104,9 @@ export const useConfirmStore = create<ConfirmStore>((set, get) => ({
   },
 }));
 
-/** Shorthand: await confirm('Delete this item?') */
+/** Shorthand: await confirm('Delete this item?') — message may be a ReactNode for rich previews. */
 export function confirm(
-  message: string,
+  message: string | ReactNode,
   opts?: { title?: string; confirmLabel?: string; danger?: boolean; requireTyping?: boolean; confirmText?: string },
 ): Promise<boolean> {
   return useConfirmStore.getState().confirm({ message, ...opts });

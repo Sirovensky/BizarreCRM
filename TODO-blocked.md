@@ -2736,25 +2736,6 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->
 
-- [!] WEB-UIUX-1461. **[MAJOR] Send button on `EstimateDetailPage.tsx:191-205` and `EstimateListPage.tsx:737-764` confirms `'Send this estimate to the customer via SMS?'` with no preview of (a) destination phone, (b) message body, (c) channel choice. Server hardcodes the message `Hi ${first_name}, your estimate ${order_id} for $${total} is ready. Reply YES to approve or view details at your repair shop.` (`estimates.routes.ts:984`) — operator can't see what customer will receive, can't see masked recipient phone, can't catch a stale customer record. Standard SaaS pattern: confirm shows "To: ***-***-1234 — [Edit phone]" plus a collapsible "Message preview". Bonus: "Reply YES to approve" is a promise the inbound-SMS handler may not honor (no YES auto-approval handler in `sms.routes.ts` last grep) — see WEB-UIUX-1462.** L7 feedback, L1 findability. **STATUS: BLOCKED — Send button needs full SendEstimateModal redesign with phone-mask + message preview + edit; multi-component, defer**
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:193-204`
-  `packages/web/src/pages/estimates/EstimateListPage.tsx:744-763`
-  `packages/server/src/routes/estimates.routes.ts:984`
-  <!-- meta: fix=replace-confirm()-with-SendEstimateModal:-show-masked-phone+message-preview+"Edit-phone"-link+optional-edit-message-textarea -->
-
-  `packages/server/src/routes/estimates.routes.ts:984`
-  <!-- meta: fix=verify-no-YES-handler-then-either-(a)-replace-template-with-"View+approve:-${portalLink}"-OR-(b)-implement-inbound-YES-handler-with-1-recent-estimate-disambiguation -->
-
-  `packages/web/src/pages/estimates/EstimateDetailPage.tsx:206-218`
-  `packages/server/src/routes/estimates.routes.ts:1138-1143`
-  <!-- meta: fix=use-useAuthStore-currentUser.id-vs-estimate.created_by+disable+tooltip+also-grey-out-on-list-row-action-button -->
-
-  `packages/server/src/routes/estimates.routes.ts:1021-1047`
-  <!-- meta: fix=mirror-self-approve-block:-if-(req.user?.id===existing.created_by)-throw-403-OR-explicitly-document-asymmetric-policy-via-comment+changelog -->
-
-  `packages/web/src/pages/portal/PortalDashboard.tsx:89-103,144-162`
-  <!-- meta: fix=always-render-Estimates-CTA-(disabled-grey-when-total=0)+badge-shows-pending-count-only-when>0+secondary-style-when-no-action-needed -->
-
 - [!] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: immediate-cancel proration / refund flow needs a server `/membership/:id/cancel` flag + automatic credit-note path keyed to days remaining. Multi-component finance change.]**
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->

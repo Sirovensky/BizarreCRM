@@ -645,14 +645,27 @@ export function EstimateDetailPage() {
                   // typo'd phone gets caught before the SMS fires (Twilio
                   // charge + status flip to "sent" both happen otherwise).
                   const dest = formatPhone(estimate.customer_mobile || estimate.customer_phone) || '(no phone on file)';
-                  const msg = estimate.status === 'sent'
-                    ? `Resend this estimate to ${dest}?`
-                    : `Send this estimate via SMS to ${dest}?`;
+                  // WEB-UIUX-1461: also surface the message body so the
+                  // operator can see exactly what the customer will receive
+                  // before committing. Server template (estimates.routes.ts:1251):
+                  //   "Hi ${first_name}, your estimate ${order_id} for
+                  //   $${total} is ready. Open the link your repair shop sent
+                  //   you to review and approve."
+                  const firstName = estimate.customer_first_name || 'there';
+                  const totalStr = Number(estimate.total ?? 0).toFixed(2);
+                  const bodyPreview = `Hi ${firstName}, your estimate ${estimate.order_id} for $${totalStr} is ready. Open the link your repair shop sent you to review and approve.`;
+                  const verb = estimate.status === 'sent' ? 'Resend' : 'Send';
+                  const msg = (
+                    <div className="space-y-2">
+                      <p>{verb} this estimate via SMS to <strong>{dest}</strong>?</p>
+                      <pre className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs whitespace-pre-wrap font-mono text-surface-700 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-300">{bodyPreview}</pre>
+                    </div>
+                  );
                   // WEB-UIUX-975: explicit confirmLabel so the dialog button
                   // names match the action (Send/Resend) instead of generic OK.
                   if (await confirm(msg, {
                     title: estimate.status === 'sent' ? 'Resend estimate?' : 'Send estimate?',
-                    confirmLabel: estimate.status === 'sent' ? 'Resend' : 'Send',
+                    confirmLabel: verb,
                   })) sendMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}

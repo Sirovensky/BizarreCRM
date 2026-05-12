@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { estimateApi, customerApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatPhone } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 
 // ─── Status config ───────────────────────────────────────────────
@@ -1001,7 +1001,25 @@ export function EstimateListPage() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
+                                  // WEB-UIUX-1461: surface destination phone +
+                                  // exact message body the customer will receive
+                                  // (mirrors EstimateDetailPage confirm). Server
+                                  // template at estimates.routes.ts:1251.
+                                  const dest = formatPhone(est.customer_mobile || est.customer_phone) || '(no phone on file)';
+                                  const firstName = est.customer_first_name || 'there';
+                                  const totalStr = Number(est.total ?? 0).toFixed(2);
+                                  const bodyPreview = `Hi ${firstName}, your estimate ${est.order_id} for $${totalStr} is ready. Open the link your repair shop sent you to review and approve.`;
+                                  const verb = est.status === 'sent' ? 'Resend' : 'Send';
+                                  const msg = (
+                                    <div className="space-y-2">
+                                      <p>{verb} this estimate via SMS to <strong>{dest}</strong>?</p>
+                                      <pre className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs whitespace-pre-wrap font-mono text-surface-700 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-300">{bodyPreview}</pre>
+                                    </div>
+                                  );
+                                  if (await confirm(msg, {
+                                    title: est.status === 'sent' ? 'Resend estimate?' : 'Send estimate?',
+                                    confirmLabel: verb,
+                                  })) {
                                     sendMut.mutate({ id: est.id, customer_id: est.customer_id ?? null });
                                   }
                                 } catch (err) {
