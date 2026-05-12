@@ -157,7 +157,9 @@ router.get('/', asyncHandler(async (req, res) => {
   const [countRow, cards, summary] = await Promise.all([
     adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM gift_cards gc ${whereClause}`, ...params),
     adb.all(`
-      SELECT gc.*, c.first_name, c.last_name
+      SELECT gc.*,
+             c.first_name AS customer_first_name,
+             c.last_name  AS customer_last_name
       FROM gift_cards gc
       LEFT JOIN customers c ON c.id = gc.customer_id
       ${whereClause}

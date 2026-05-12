@@ -32,6 +32,7 @@ import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { logActivity } from '../utils/activityLog.js';
 import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
+import { getInvoicePitSnapshot } from '../utils/invoiceSnapshot.js';
 import { normalizePhone } from '../utils/phone.js';
 import {
   GENERAL_IMAGE_UPLOAD_MAX_BYTES,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail, WalletCards } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi, customerApi, type PendingGiftCardIssuance } from '@/api/endpoints';
@@ -25,6 +25,12 @@ interface GiftCard {
   recipient_email: string | null;
   expires_at: string | null;
   created_at: string;
+  // WEB-UIUX-988: server LEFT-JOINs customers so the row can show the
+  // linked customer name + deep-link to the profile. Null for unlinked
+  // walk-in cards.
+  customer_id?: number | null;
+  customer_first_name?: string | null;
+  customer_last_name?: string | null;
 }
 
 interface GiftCardListData {
@@ -1016,6 +1022,20 @@ export function GiftCardsListPage() {
                         title={card.recipient_email}
                       >
                         {card.recipient_email}
+                      </div>
+                    )}
+                    {/* WEB-UIUX-988: deep-link to the linked customer profile when
+                        the card was issued against a customer record. Drops the
+                        "retype the name to find the card" friction. */}
+                    {card.customer_id && (
+                      <div className="text-xs">
+                        <Link
+                          to={`/customers/${card.customer_id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-primary-600 dark:text-primary-400 hover:underline"
+                        >
+                          {[card.customer_first_name, card.customer_last_name].filter(Boolean).join(' ') || `Customer #${card.customer_id}`}
+                        </Link>
                       </div>
                     )}
                   </td>

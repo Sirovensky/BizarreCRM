@@ -2086,12 +2086,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 
 #### Major — Truthfulness, label/hierarchy, recovery
 
-- [!] WEB-UIUX-988. **[MAJOR] IssueModal collects no `customer_id` — server accepts it, list endpoint LEFT-JOINs customers, both wasted.** `giftCards.routes.ts:128` joins `customers c ON c.id = gc.customer_id`, returns `c.first_name, c.last_name`. UI's `IssueFormState` has only amount/recipient_name/recipient_email/expires_at. Operator selling to existing customer with full profile must retype name. Card never appears on customer's profile. L1, L4. **STATUS: BLOCKED — needs new CustomerPicker component + customer_id wiring on issue + customer link on list/detail; defer to gift-card hardening sprint**
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:38-43,86-91,104-109`
-  <!-- meta: fix=add-CustomerPicker-component+pass-customer_id+show-customer-link-on-list+detail -->
-
-  `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:177-227`
-
 - [!] WEB-UIUX-1009. **[MINOR] List status filter chip not visually grouped with keyword search — separate `<select>` is plain styled, no chip pattern.** Most filter UIs in this app use chip toggles (LeadPipelinePage etc). Inconsistency. L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: chip refactor needs a shared FilterChipGroup component to avoid duplicating LeadPipelinePage's bespoke styling across all list pages. Not a one-page change.]**
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
 

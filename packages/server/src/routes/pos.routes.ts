@@ -28,6 +28,7 @@ import { isCommissionLocked } from './_team.payroll.js';
 import { buildKitDecrementTxQueries } from './inventory.routes.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
+import { getInvoicePitSnapshot } from '../utils/invoiceSnapshot.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
 // BUGHUNT-2026-05-10-04: per-user rate limit on financial POS routes so a
@@ -698,11 +699,18 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
 
   const txQueries: TxQuery[] = [];
 
+  // WEB-UIUX-895: capture customer/store/jurisdiction at create time so a
+  // POS-sale reprint 6 months later doesn't lie about a renamed customer
+  // profile, store banner, or shifted jurisdiction. Print pages prefer the
+  // snapshot when populated and fall back to the live row when NULL.
+  const pit = await getInvoicePitSnapshot(adb, resolvedCustomerId);
+
   // 1. Invoice
   txQueries.push({
     sql: `INSERT INTO invoices
-            (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by,
+             customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       orderId,
       resolvedCustomerId,
@@ -715,6 +723,10 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
       status,
       notes ?? null,
       cashierId,
+      pit.customer_name_snapshot,
+      pit.customer_address_snapshot,
+      pit.store_name_snapshot,
+      pit.tax_jurisdiction_snapshot,
     ],
   });
   const INVOICE_RESULT_INDEX = 0;
@@ -1304,11 +1316,17 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
   // ---- Build atomic transaction queue ------------------------------------
   const txQueries: TxQuery[] = [];
 
+  // WEB-UIUX-895: capture customer/store/jurisdiction at create time so a
+  // ticket-checkout reprint stays accurate after renames or jurisdiction
+  // changes. Print pages fall back to live row when these are NULL.
+  const pitTicket = await getInvoicePitSnapshot(adb, resolvedCustomerId);
+
   txQueries.push({
     sql: `INSERT INTO invoices
             (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-             amount_paid, amount_due, status, notes, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             amount_paid, amount_due, status, notes, created_by,
+             customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       invoiceOrderId,
       resolvedCustomerId,
@@ -1322,6 +1340,10 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
       amountDue > 0 ? 'partial' : 'paid',
       typeof notes === 'string' ? notes.slice(0, 5000) : null,
       cashierId,
+      pitTicket.customer_name_snapshot,
+      pitTicket.customer_address_snapshot,
+      pitTicket.store_name_snapshot,
+      pitTicket.tax_jurisdiction_snapshot,
     ],
   });
 
@@ -2546,11 +2568,14 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         && ticketData.discount_reason.trim()
         ? ticketData.discount_reason.trim().slice(0, 500)
         : null;
+    // WEB-UIUX-895: PIT snapshot for retail / product-only checkout invoice.
+    const pitRetail = await getInvoicePitSnapshot(adb, customerId);
     txQueries.push({
       sql: `
         INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason, total_tax, total,
-                              amount_paid, amount_due, status, created_by, created_at, updated_at)
-        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              amount_paid, amount_due, status, created_by, created_at, updated_at,
+                              customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       params: [
         invoiceOrderId,
@@ -2567,6 +2592,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         userId,
         now(),
         now(),
+        pitRetail.customer_name_snapshot,
+        pitRetail.customer_address_snapshot,
+        pitRetail.store_name_snapshot,
+        pitRetail.tax_jurisdiction_snapshot,
       ],
     });
   }
@@ -2998,9 +3027,14 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     creditOrderId = generateOrderId('CRN', seqRow!.next_num);
   }
 
+  // WEB-UIUX-895: snapshot the credit note's customer/store/jurisdiction
+  // at creation time so a reprint of the credit note 6 months later
+  // mirrors the live receipt's behaviour.
+  const pitCredit = await getInvoicePitSnapshot(adb, invoice.customer_id);
   const creditResult = await adb.run(`
-    INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 0, 0, ?, 0, 0, 'credit_note', ?, ?, datetime('now'), datetime('now'))
+    INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at,
+                          customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, 0, 0, ?, 0, 0, 'credit_note', ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)
   `,
     creditOrderId,
     invoice.customer_id,
@@ -3008,6 +3042,10 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     -creditTotal,
     `Credit note for return on ${invoice.order_id}. Items: ${returnDetails.map(d => `${d.description} x${d.quantity} (${d.reason})`).join('; ')}`,
     userId,
+    pitCredit.customer_name_snapshot,
+    pitCredit.customer_address_snapshot,
+    pitCredit.store_name_snapshot,
+    pitCredit.tax_jurisdiction_snapshot,
   );
 
   const creditNoteId = Number(creditResult.lastInsertRowid);
