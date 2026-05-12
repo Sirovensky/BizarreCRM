@@ -241,12 +241,41 @@ export function CustomerPortalPage() {
 }
 
 /** Lightweight widget: track repair only, no auth/accounts */
+// BUGHUNT-2026-05-10-42: client-side brute-force lockout for the widget
+// QuickTrack form. Server already 429s after the configured threshold; this
+// is defense-in-depth so a script that ignores the server's Retry-After
+// can't keep firing requests at the network. After
+// `LOCKOUT_FAILURE_THRESHOLD` failed attempts within
+// `LOCKOUT_WINDOW_MS`, the submit button is disabled for
+// `LOCKOUT_DURATION_MS` with a visible countdown.
+const LOCKOUT_FAILURE_THRESHOLD = 5;
+const LOCKOUT_WINDOW_MS = 60_000;
+const LOCKOUT_DURATION_MS = 60_000;
+
 function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl: string }) {
   const [orderId, setOrderId] = useState('');
   const [phoneLast4, setPhoneLast4] = useState('');
   const [ticket, setTicket] = useState<api.TicketDetail | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // BUGHUNT-2026-05-10-42: failure timestamps within the sliding window.
+  const [failureTimes, setFailureTimes] = useState<number[]>([]);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const interval = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= lockedUntil) {
+        setLockedUntil(null);
+        setFailureTimes([]);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockedUntil]);
+  const lockoutRemainingSec = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
+  const isLocked = lockoutRemainingSec > 0;
   // WEB-S4-022: capture parent origin from handshake message
   const [parentOrigin, setParentOrigin] = useState<string | null>(null);
   useEffect(() => {
@@ -286,6 +315,10 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
   async function handleTrack(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (isLocked) {
+      setError(`Too many attempts. Please wait ${lockoutRemainingSec}s before trying again.`);
+      return;
+    }
     if (!orderId.trim() || phoneLast4.length !== 4) {
       setError('Enter your ticket ID and last 4 digits of your phone');
       return;
@@ -295,8 +328,25 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
       const result = await api.quickTrack(orderId.trim(), phoneLast4);
       sessionStorage.setItem('portal_token', result.token);
       setTicket(result.ticket);
+      // Clear failure tracking on success.
+      setFailureTimes([]);
     } catch (err: unknown) {
       const status = (err as any)?.response?.status;
+      // Record this failure for the sliding-window lockout. 404 = wrong
+      // ticket/phone (brute-force candidate), 429 = server already locked
+      // us out. Connection errors don't count toward the lockout.
+      if (status === 404 || status === 429) {
+        const tNow = Date.now();
+        setFailureTimes(prev => {
+          const recent = [...prev.filter(t => tNow - t < LOCKOUT_WINDOW_MS), tNow];
+          if (recent.length >= LOCKOUT_FAILURE_THRESHOLD) {
+            setLockedUntil(tNow + LOCKOUT_DURATION_MS);
+            setNow(tNow);
+            return [];
+          }
+          return recent;
+        });
+      }
       if (!status) {
         setError('Unable to connect. Please check your internet connection.');
       } else if (status === 404) {
@@ -366,10 +416,14 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
           </div>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isLocked}
             className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
           >
-            {loading ? 'Looking up...' : 'Track My Repair'}
+            {isLocked
+              ? `Try again in ${lockoutRemainingSec}s`
+              : loading
+                ? 'Looking up...'
+                : 'Track My Repair'}
           </button>
         </form>
 

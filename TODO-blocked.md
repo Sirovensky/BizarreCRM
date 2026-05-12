@@ -2642,30 +2642,6 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx`
   <!-- meta: fix=consolidate-into-single-cash-drawer-domain:-make-/pos/cash-in-/pos/cash-out-also-write-to-cash_drawer_shifts.adjustments+OR-deprecate-CashRegisterPage-and-add-an-In-shift-Cash-Adjustments-section-on-CashDrawerWidget-modal -->
 
-- [!] WEB-UIUX-1165. **[MAJOR] Open shift requires no role; close requires manager/admin (`requireManagerOrAdmin`). Asymmetric — cashier opens, then can't close at end of shift if no manager onsite.** `posEnrich.routes.ts:245-301` no role check on open; `:303-307` requires manager on close. End-of-shift cashier stuck staring at "Close Shift" button that 403s — error toast surfaces server message but no path forward (no "request manager approval" affordance, no manager-PIN inline gate like the high-value-sale path). L8 recovery, L1 findability of next step. **STATUS: BLOCKED — needs server auth flow with manager-PIN co-sign + UI fallback modal; security review; defer to cash sprint**
-  `packages/server/src/routes/posEnrich.routes.ts:245-307`
-  `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:225-244`
-  <!-- meta: fix=add-inline-ManagerPinModal-fallback-when-close-returns-403+OR-allow-cashier-to-close-with-manager-PIN-co-sign-(server-accepts-pin-field-bypass-of-role-check) -->
-
-  `packages/web/src/pages/unified-pos/ZReportModal.tsx:170-176`
-  <!-- meta: fix=server-include-variance_warn_cents-in-z-report-payload-driven-by-store_config+default-500+UI-uses-the-payload-value-not-magic-number -->
-
-  `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:225-244`
-  `packages/server/src/routes/posEnrich.routes.ts:383`
-  <!-- meta: fix=consume-close-response-data+seed-react-query-cache-with-queryClient.setQueryData(['pos-enrich','z-report',shiftId],-resp.data.data)-before-opening-modal -->
-
-- [!] WEB-UIUX-1168. **[MAJOR] Z-Report viewable only at moment of close; no "View Z-report for shift #N" affordance in POS or admin UI. Operator dismisses modal, the printed paper is the only record.** No route at `/pos/shifts/history`, no link in admin reports, no "Reprint Z-report" button on CashDrawerWidget. Server endpoint `GET /pos-enrich/drawer/:id/z-report` exists and accepts any closed shift id but no UI calls it post-dismiss. L6 discoverability, L8 recovery (lost paper, no reprint path), L13. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs new `/pos/shifts/history` route, paginated list of closed shifts, per-row "View Z-report" affordance that reuses ZReportModal. Multi-page feature.]**
-  `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:79-83`
-  <!-- meta: fix=add-Past-Shifts-link-on-CashDrawerWidget+ShiftHistoryPage-listing-cash_drawer_shifts+row-click-opens-ZReportModal-readonly -->
-
-  `packages/web/src/pages/unified-pos/BottomActions.tsx:37-56`
-  `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:68-75`
-  <!-- meta: fix=on-cash-in/out-success-call-queryClient.invalidateQueries({queryKey:['pos-enrich','drawer-current']})+also-invalidate-cash-register -->
-
-  `packages/server/src/routes/posEnrich.routes.ts:391-459`
-  `packages/web/src/pages/unified-pos/ZReportModal.tsx:142-211`
-  <!-- meta: fix=server-JOIN-users-on-opened_by_user_id-and-closed_by_user_id+include-first/last+include-store_config.station_id-or-similar+UI-renders-Cashier-Manager-Duration-rows-above-totals -->
-
 - [!] WEB-UIUX-1179. **[MINOR] Counting input is single text field — no denomination breakdown (1s/5s/10s/20s/50s/100s + coins). Cashiers ALWAYS count by stack; UI forces them to do mental sum on calculator first, type total, then pray.** `CashDrawerWidget.tsx:262-273`. Industry-standard EOD UI is grid of denomination × count cells with auto-sum. Single-field gives an answer with no audit of how the count was obtained — high-fraud surface. L1 finding right tool, L13 trust/correctness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a DenominationGrid component + cash_drawer_shifts.closing_count_json schema for the per-denomination audit + Z-report integration. Multi-component feature.]**
   `packages/web/src/pages/unified-pos/CashDrawerWidget.tsx:257-292`
   <!-- meta: fix=add-toggle-Count-by-denomination+grid-(1,5,10,20,50,100,coin-buckets)+sum-into-counted_cents+persist-breakdown-as-cash_drawer_shifts.count_breakdown_json-for-audit -->
@@ -3840,7 +3816,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 - [!] BUGHUNT-2026-05-10-18. **[HIGH] POS refund total drops tax allocation.** `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:6506` — refund computed as `line.unit_price * selection.quantity`; tax originally charged on the line is not refunded. A $100+$10 line refunds $100, shop eats $10. Pull the tax_cents allocation from the original invoice and include it in the refund leg. **[AUTOLOOP-T49 BLOCKED 2026-05-11: refund tax allocation requires pulling tax_cents per line from the original invoice and threading it through the refund leg payload + server /pos/return to allocate correctly to the negative invoice line. Multi-step finance change.]**
 - [!] BUGHUNT-2026-05-10-24. **[HIGH] Gift-card reload concurrent-tab balance display goes stale.** `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:102-105` — `reloadMutation` invalidates `['gift-card', cardId]` but query has no version/etag. Two reloads on two tabs can show whichever response wins the race, masking the other. Use server-returned version and reject older responses. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-row version/etag on gift_cards requires schema column + server stamp on every mutating route + client conflict handling. Multi-component.]**
 - [!] BUGHUNT-2026-05-10-40. **[CRITICAL] BulkSmsModal trusts server to filter opt-outs — no client-side preview of opted-out count.** `packages/web/src/pages/communications/components/BulkSmsModal.tsx:33-37` — UI claims "opted-in only" but neither preview nor send confirms an opt-out filter ran. If the server filter regresses, admin sees no signal until TCPA complaint. Preview response must return `excluded_optout_count` and the modal must display it; refuse send if not present. **[AUTOLOOP-T49 BLOCKED 2026-05-11: client cannot enforce opt-out filtering — needs server preview to return excluded_optout_count + audit a refusal-to-send when absent. Cross-component TCPA guarantee.]**
-- [!] BUGHUNT-2026-05-10-42. **[HIGH] Portal QuickTrack has no client debounce; last-4-digit phone verification is brute-forceable.** `packages/web/src/pages/portal/CustomerPortalPage.tsx:304-305` — server 429 surfaces, but no client throttle and only 10,000 last-4 combinations per known ticket id. Add client debounce + lockout, escalate to full phone match after N failures. **[AUTOLOOP-T49 BLOCKED 2026-05-11: brute-force lockout on portal quick-track needs a server-side per-IP/per-ticket counter + escalation to full phone match. Multi-component portal-auth hardening.]**
 - [!] BUGHUNT-2026-05-10-46. **[HIGH] CustomerListPage paginates by offset — rows inserted mid-browse shift pages.** `packages/web/src/pages/customers/CustomerListPage.tsx:187-188` — duplicate or missing rows on concurrent INSERT during paging. Audit-relevant when CSV-exporting page-by-page. Move to cursor (id-keyset) pagination. **[AUTOLOOP-T49 BLOCKED 2026-05-11: cursor (keyset) pagination must replace offset across the customer list query + server-side cursor field. Multi-component query refactor; defer pending a shared list-pagination helper.]**
 
 ### Inventory / Tickets / Print / Misc
