@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X, AlertTriangle } from 'lucide-react';
+import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, X, AlertTriangle, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { inventoryApi, benchApi } from '@/api/endpoints';
@@ -374,7 +374,7 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
                     <span className="text-xs text-green-600 dark:text-green-400 font-medium">Fully received</span>
                   )}
                   {!canReceive && status !== 'received' && status !== 'cancelled' && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-surface-400">Change status to &ldquo;ordered&rdquo; before receiving.</span>
                       <button
                         onClick={(e) => { e.stopPropagation(); markOrderedMut.mutate(); }}
@@ -384,6 +384,14 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
                         {markOrderedMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                         Mark as Ordered
                       </button>
+                      {/* WEB-UIUX-1191: "Email supplier" composes a mailto: link
+                          pre-filled with the PO order_id + line-item summary so
+                          the operator can send a purchase request without
+                          retyping. Disabled when no supplier email on file —
+                          tooltip explains. Uses mailto: rather than a server
+                          email send so this works in any environment without
+                          per-tenant SMTP setup. */}
+                      <PoEmailSupplierButton po={po} lineItems={lineItems} onMarkOrdered={() => markOrderedMut.mutate()} />
                     </div>
                   )}
                 </div>
@@ -393,6 +401,84 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
         </tr>
       )}
     </>
+  );
+}
+
+// WEB-UIUX-1191: Email-supplier button — builds a mailto: URL with the PO
+// summary in the body so a draft / pending PO can be sent without leaving the
+// app. Disabled with explanatory tooltip when no supplier email is on file.
+function PoEmailSupplierButton({
+  po,
+  lineItems,
+  onMarkOrdered,
+}: {
+  po: Record<string, unknown>;
+  lineItems: any[];
+  onMarkOrdered: () => void;
+}) {
+  const supplierEmail = (po.supplier_email as string | null | undefined) ?? null;
+  const supplierName = (po.supplier_name as string | null | undefined) ?? 'supplier';
+  const supplierContact = (po.supplier_contact as string | null | undefined) ?? null;
+  const orderId = (po.order_id as string | null | undefined) ?? `PO-${po.id}`;
+  const expectedDate = (po.expected_date as string | null | undefined) ?? null;
+  const notes = (po.notes as string | null | undefined) ?? null;
+  const total = Number(po.total) || 0;
+
+  const disabled = !supplierEmail;
+  const disabledReason = !supplierEmail
+    ? 'No email on file for this supplier — add one under Inventory → Suppliers.'
+    : '';
+
+  function buildMailto(): string {
+    const greeting = supplierContact ? `Hi ${supplierContact},` : `Hi ${supplierName} team,`;
+    const lines: string[] = [
+      greeting,
+      '',
+      `Please process purchase order ${orderId}:`,
+      '',
+    ];
+    if (lineItems.length > 0) {
+      for (const li of lineItems) {
+        const sku = li.sku ? ` [${li.sku}]` : '';
+        const qty = li.quantity_ordered ?? 0;
+        const cost = Number(li.cost_price) || 0;
+        const lineTotal = qty * cost;
+        lines.push(`  • ${li.item_name}${sku} — qty ${qty} @ ${formatCurrency(cost)} = ${formatCurrency(lineTotal)}`);
+      }
+      lines.push('');
+    }
+    lines.push(`Order total: ${formatCurrency(total)}`);
+    if (expectedDate) lines.push(`Requested delivery: ${expectedDate}`);
+    if (notes) {
+      lines.push('');
+      lines.push('Notes:');
+      lines.push(notes);
+    }
+    lines.push('');
+    lines.push('Reply to this email to confirm. Thanks.');
+    const subject = `Purchase Order ${orderId}`;
+    const body = lines.join('\n');
+    return `mailto:${encodeURIComponent(supplierEmail!)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  return (
+    <button
+      type="button"
+      title={disabledReason || `Compose email to ${supplierEmail}`}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (disabled) return;
+        window.location.href = buildMailto();
+        // Auto-advance to "ordered" once the operator has triggered the
+        // email; reduces the chance of a draft PO sitting forever after the
+        // supplier was contacted. Operator can still revert via PUT.
+        onMarkOrdered();
+      }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-surface-300 rounded-md text-xs font-semibold text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    >
+      <Send className="h-3 w-3" /> Email supplier
+    </button>
   );
 }
 

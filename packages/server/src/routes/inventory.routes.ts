@@ -1593,7 +1593,11 @@ router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
   const [totalRow, orders] = await Promise.all([
     adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM purchase_orders po ${where}`, ...params),
     adb.all(`
-      SELECT po.*, s.name as supplier_name, u.first_name || ' ' || u.last_name as created_by_name
+      SELECT po.*,
+             s.name as supplier_name,
+             s.email as supplier_email,
+             s.contact_name as supplier_contact,
+             u.first_name || ' ' || u.last_name as created_by_name
       FROM purchase_orders po
       LEFT JOIN suppliers s ON s.id = po.supplier_id
       LEFT JOIN users u ON u.id = po.created_by
