@@ -2743,12 +2743,14 @@ export function CommunicationPage() {
 
           {/* Quick actions */}
           <div className="border-t border-surface-200 px-4 py-3 dark:border-surface-700">
+            {/* WEB-UIUX-1127: relabelled to match the POS destination — link goes to
+                /tickets/new which renders UnifiedPosPage seeded with the customer. */}
             <Link
               to={`/tickets/new?customer=${threadCustomer.id}`}
               className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-on-primary hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
-              New Ticket
+              New Sale / Repair
             </Link>
           </div>
         </div>

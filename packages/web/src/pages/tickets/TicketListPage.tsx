@@ -1442,12 +1442,17 @@ export function TicketListPage() {
               <CalendarDays className="h-4 w-4" />
             </button>
           </div>
+          {/* WEB-UIUX-1127: relabelled "New Ticket" → "New Sale / Repair" so
+              the button matches the destination (Unified POS with Repairs/
+              Products/Misc tabs + cash drawer chrome), not a hypothetical
+              ticket-only form. URL stays /tickets/new to keep existing
+              bookmarks/Communications deep-links intact. */}
           <Link
             to="/tickets/new"
             className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
-            New Ticket
+            New Sale / Repair
           </Link>
         </div>
       </div>
@@ -2062,7 +2067,8 @@ export function TicketListPage() {
                           to="/tickets/new"
                           className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
                         >
-                          <Plus className="h-4 w-4" /> New Ticket
+                          {/* WEB-UIUX-1127: relabelled to match destination (POS Repairs flow). */}
+                          <Plus className="h-4 w-4" /> New Sale / Repair
                         </Link>
                       )}
                     </div>

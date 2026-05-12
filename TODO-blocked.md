@@ -2020,51 +2020,6 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
   `packages/server/src/routes/bench.routes.ts:703-910`
   <!-- meta: fix=add-GET-/qc/sign-off/:id/pdf-uses-existing-pdf-pipeline+after-success-toast-render-button-Send-to-customer-emails-PDF -->
 
-- [!] WEB-UIUX-1127. **[MAJOR] "New Ticket" link from TicketListPage routes to POS surface, not a ticket-creation form.** `TicketListPage.tsx:1205-1211` `<Link to="/tickets/new">New Ticket</Link>` → `App.tsx:483` `<Route path="/tickets/new" element={<UnifiedPosPage />} />`. User clicks "New Ticket", lands on Unified POS — three tabs (Repairs / Products / Misc), Cash Drawer widget, "Open Drawer" button, Cash In/Out controls, Z-Report — none of which a user creating a ticket needs. Tab defaults to `repairs` (`store.ts:247`) but URL/intent mismatch is unfixed: bookmarking `/tickets/new` always lands in cash-drawer chrome. Consider either a dedicated ticket-creation route that hides POS-only chrome OR rename the button + URL to "New Sale / Repair". L3 route correctness, L6 discoverability. **STATUS: BLOCKED — needs route restructure (/tickets/new on dedicated stripped POS shell vs full POS); design decision; defer to POS sprint**
-  `packages/web/src/pages/tickets/TicketListPage.tsx:1205-1211`
-  `packages/web/src/App.tsx:483`
-  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:375-422`
-  <!-- meta: fix=`/tickets/new`-renders-stripped-shell:LeftPanel+RepairsTab+`Create-Ticket`-only;-no-Products/Misc-tabs;-no-Cash-Drawer-Widget;-no-Open-Drawer-button -->
-
-  `packages/web/src/pages/unified-pos/BottomActions.tsx:174-181,215-221,280,402-416,528-531`
-  <!-- meta: fix=gate-bypass-behind-PinModal('manager'-or-'pos_require_pin_signature_skip')+audit-log-the-skip-with-userId+ticketId -->
-
-  `packages/web/src/pages/unified-pos/BottomActions.tsx:448-464`
-  <!-- meta: fix=disabled+={!customer}+title='Select-a-customer-first'+onClick-fallback-scrollIntoView-on-customer-search-input -->
-
-  `packages/web/src/pages/unified-pos/BottomActions.tsx:429-443`
-  <!-- meta: fix=add-pos_require_pin_drawer-setting+gate-onClick-behind-PinModal-when-set+server-side-log-cash_drawer_opens(user_id,reason,opened_at) -->
-
-  `packages/web/src/pages/unified-pos/UnifiedPosPage.tsx:48-58`
-  <!-- meta: fix=if-cart.length>0||customer-non-null-then-confirm('Leave-and-discard-current-ticket?')-or-stash-draft-in-localStorage+restore-on-return -->
-
-  `packages/web/src/pages/unified-pos/SuccessScreen.tsx:184-296`
-  <!-- meta: fix=add-Send-Drop-off-Confirmation-(SMS+Email)-buttons-in-the-isTicketOnly-branch+wire-to-existing-smsApi.send/notificationApi.sendReceipt(entity_type:'ticket',entity_id) -->
-
-  `packages/web/src/pages/unified-pos/SuccessScreen.tsx:143-165`
-  <!-- meta: fix=window.open(url,'_blank')-for-print-routes;-keep-resetAll-only-for-`New-Check-in`-and-`View-Ticket`(navigate-only,no-reset) -->
-
-#### Major — feedback / state-transition mismatch
-
-  `packages/web/src/pages/unified-pos/BottomActions.tsx:366-372`
-  `packages/server/src/middleware/idempotent.ts` (cache header)
-  <!-- meta: fix=server-emit-`X-Idempotent-Replay:1`+UI-toast('Already-saved-as-{order_id}','info')-instead-of-2nd-success-screen -->
-
-  `packages/web/src/pages/unified-pos/RepairsTab.tsx:1149-1162`
-  `packages/web/src/utils/phoneFormat.ts` (`stripPhone`)
-  <!-- meta: fix=setQuery(stripPhone(newForm.phone))+verify-customerApi.search-handles-digit-string-or-add-search-by=phone-param -->
-
-#### Minor — copy + hierarchy polish
-
-  `packages/web/src/pages/unified-pos/BottomActions.tsx:298-303`
-  <!-- meta: fix=if(sourceTicketId)-confirm(`Discard-changes-to-${sourceTicketOrderId}?`)-else-existing-string -->
-
-  `packages/web/src/pages/unified-pos/SuccessScreen.tsx:55-67,231-234,256-260`
-  <!-- meta: fix=AbortController+8s-timeout+show-Retry-link-on-timeout-or-show-fallback-staff-app-instructions -->
-
-  `packages/web/src/pages/unified-pos/RepairsTab.tsx:795`
-  <!-- meta: fix=toast.success(...,{icon:'✓'})+briefly-pulse-the-Create-Ticket-button-via-store-flag+ring-2-ring-primary-500-for-1.5s -->
-
 - [!] WEB-UIUX-1139. **[MINOR] "Photo reminder" amber strip in DetailsStep tells the cashier to take photos but offers no in-flow capture button — the QR/photo widget is on the next-screen success view.** `RepairsTab.tsx:980-985` "Remember to take device photos after check-in for pre-repair documentation." — passive copy, no link or trigger. By the time the success screen renders, the device may already be on the bench. Inline "Capture now (camera)" or "Email me the link" would complete the loop. L6 discoverability. **STATUS: BLOCKED — needs new PhotoCaptureModal opened pre-create OR success-screen QR promoted into details step; multi-component, defer to POS sprint**
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:980-985`
   <!-- meta: fix=replace-static-strip-with-button-that-opens-PhotoCaptureModal-pre-create-OR-promotes-the-success-screen-QR-into-this-step -->
@@ -2287,7 +2242,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:38-53`
   <!-- meta: fix=spike-server-→-emit-cents-only-on-/gift-cards-routes+remove-heuristic+single-formatCurrencyShared(amountCents/100) -->
 
-- [x] WEB-UIUX-1499. **[MINOR] Immediate-cancel proration shipped as store-credit grant.** 2026-05-12 — `POST /membership/:id/cancel` with `immediate=true` computes `(remaining_seconds / period_seconds) * last_charge_amount` and posts the prorated amount to the customer's `store_credits` + writes a `store_credit_transactions(type='credit', reference_type='subscription_cancellation')` row referencing the subscription id. Skipped for free tiers, ended periods, or never-charged subs. Response carries `proration_credit: { amount, credit_transaction_id }` so SubscriptionsListPage's cancel toast announces the exact dollar credit ("$X credited to customer's store credit for unused days"). Audited as `subscription_proration_credited`. Customer can spend the credit on a future invoice; manual cash-refund escalation remains available via /refunds.
+- [!] WEB-UIUX-1499. **[MINOR] No proration / refund logic on immediate cancel. Server immediately flips status + nulls active_subscription_id (`membership.routes.ts:229-232`); customer paid for month, loses access today, receives no refund. Either the cancel flow should offer "Cancel at period end" (preferred default — see -1485) or trigger a prorated credit-note. Currently there is no automatic refund and the UI shows no refund affordance after cancel.** L8 recovery, L1 truthfulness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: immediate-cancel proration / refund flow needs a server `/membership/:id/cancel` flag + automatic credit-note path keyed to days remaining. Multi-component finance change.]**
   `packages/server/src/routes/membership.routes.ts:222-239`
   <!-- meta: fix=on-immediate-cancel-compute-prorated-amount=last_charge*(remaining_days/period_days)+offer-refund-or-credit-note+OR-default-to-cancel-at-period-end -->
 
