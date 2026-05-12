@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, XCircle, Link as LinkIcon } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, XCircle, Link as LinkIcon, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { MembershipSettings } from '@/pages/settings/MembershipSettings';
@@ -439,6 +439,18 @@ export function SubscriptionsListPage() {
             )}
           </div>
         </div>
+        <div className="flex items-center gap-2">
+          {/* WEB-UIUX-1075: surface enrolment entry-point on the page itself so
+              admins don't have to remember "go to a customer profile". Routes
+              to the customer list — the operator picks a customer there and
+              taps "Enroll in Membership" on their profile (existing flow). */}
+          <Link
+            to="/customers"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary-500 bg-primary-500 px-3 py-2 text-sm font-medium text-on-primary transition-colors hover:bg-primary-400"
+          >
+            <UserPlus className="h-4 w-4" />
+            Enroll customer
+          </Link>
         <div
           className="inline-flex w-fit rounded-xl border border-surface-200 bg-white p-1 dark:border-surface-800 dark:bg-surface-900"
           role="tablist"
@@ -464,6 +476,7 @@ export function SubscriptionsListPage() {
               Tiers
             </button>
           </AdminOnly>
+        </div>
         </div>
       </div>
 

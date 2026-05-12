@@ -2051,24 +2051,6 @@ Walk of "Process Refund" end-to-end. Server `/api/v1/refunds` (mounted at `index
   `packages/web/src/pages/customers/CustomerDetailPage.tsx:913-920,990-997`
   <!-- meta: fix=replace-pauseMut.mutate()-with-prompt(reason)-or-modal-with-preset-reasons[customer-request|payment-fail|seasonal|other]+pass-as-body -->
 
-- [!] WEB-UIUX-1075. **[MINOR] Subscription list missing primary "Add subscription / Enroll customer" action.** Page is the recurring-revenue dashboard yet has no entry-point to enrolment workflow — admin must remember "go to a customer profile". Industry baseline: Stripe Dashboard → Subscriptions → Create subscription opens customer-picker first. L1, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a customer-picker → plan-picker → confirm modal that reuses CustomerSelector + plansApi.list. Spec needs to nail whether "Add subscription" should also seed a first invoice or wait for the cycle.]**
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:175-189`
-  <!-- meta: fix=add-primary-button-New-subscription-opens-modal-CustomerPicker+TierPicker+CardOnFile-or-PaymentLink -->
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:130-134`
-  <!-- meta: fix=destructure-only-the-args-actually-used -->
-
-#### Nit — visual contrast
-
-  `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:47,201`
-  <!-- meta: fix=upgrade-to-text-surface-400-icon+text-surface-600-badge-text -->
-
-### Web UI/UX Audit — Pass 15 (2026-05-05, flow walk: QC Sign-Off — bench QC modal, server gates, admin surfaces)
-
-Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green "QC sign-off" button → fills checklist + photo + signature + signs → ticket status moves on. Cross-checked `packages/web/src/components/tickets/QcSignOffModal.tsx`, `packages/web/src/pages/tickets/TicketDetailPage.tsx:32,390,591-597,649-658`, `packages/server/src/routes/bench.routes.ts:255-275,596-910`, `packages/server/src/db/migrations/088_bench_timer_qc_defects.sql`, `packages/server/src/services/ticketStatus.ts`, `packages/web/src/api/endpoints.ts:1355-1375`, `packages/web/src/pages/settings/` (no Bench/QC page exists).
-
-#### Blocker — broken contract, unwired status, missing admin surfaces
-
 - [!] WEB-UIUX-1089. **[MAJOR] Signed sign-off is not printable / emailable / PDF-exportable — customer never receives a copy.** Migration 088 stores signature + photo + checklist results, but no `/qc/sign-off/:id/pdf` route, no print template, no `Email customer` button on TicketDetail post-sign. Customer who was promised "we'll send you the QC certificate" gets nothing. L1, L4, L8. **STATUS: BLOCKED — needs new /qc/queue page + Sidebar badge + LEFT-JOIN-IS-NULL query; multi-component, defer to QC sprint**
   `packages/server/src/routes/bench.routes.ts:703-910`
   <!-- meta: fix=add-GET-/qc/sign-off/:id/pdf-uses-existing-pdf-pipeline+after-success-toast-render-button-Send-to-customer-emails-PDF -->

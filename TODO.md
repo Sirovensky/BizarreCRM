@@ -3652,7 +3652,7 @@ Walked end-to-end: admin navigates to membership list → clicks Cancel on a pay
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:259-274`
   <!-- meta: fix=when-no-blockchyp_token-render-secondary-button-Send-payment-link-calling-membershipApi.createPaymentLink+toast-with-copyable-URL -->
 
-- [!] WEB-UIUX-1075. **[MINOR] Subscription list missing primary "Add subscription / Enroll customer" action.** Page is the recurring-revenue dashboard yet has no entry-point to enrolment workflow — admin must remember "go to a customer profile". Industry baseline: Stripe Dashboard → Subscriptions → Create subscription opens customer-picker first. L1, L8. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a customer-picker → plan-picker → confirm modal that reuses CustomerSelector + plansApi.list. Spec needs to nail whether "Add subscription" should also seed a first invoice or wait for the cycle.]**
+- [x] WEB-UIUX-1075. **[MINOR] Subscription list missing primary "Add subscription / Enroll customer" action.** FIXED 2026-05-12 — added "Enroll customer" header button on `SubscriptionsListPage` linking to `/customers`. Operator picks a customer there and taps the existing "Enroll in Membership" affordance on the profile (the canonical enrolment flow). Defers the full Stripe-style customer-picker → plan-picker → confirm modal (which still needs the "seed first invoice or wait for cycle" spec call) but closes the no-entry-point gap.
   `packages/web/src/pages/subscriptions/SubscriptionsListPage.tsx:175-189`
   <!-- meta: fix=add-primary-button-New-subscription-opens-modal-CustomerPicker+TierPicker+CardOnFile-or-PaymentLink -->
 
