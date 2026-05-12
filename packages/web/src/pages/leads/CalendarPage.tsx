@@ -651,12 +651,16 @@ function CreateAppointmentModal({
   open,
   onClose,
   defaultDate,
+  defaultHour,
   users,
   existingAppointments,
 }: {
   open: boolean;
   onClose: () => void;
   defaultDate: Date;
+  // WEB-UIUX-1328: override the hardcoded 9am start when the modal was opened
+  // via click-to-create on a Week/Day slot. End time is start + 1h.
+  defaultHour?: number;
   users: { id: number; first_name: string; last_name: string }[];
   existingAppointments: Appointment[];
 }) {
@@ -672,21 +676,28 @@ function CreateAppointmentModal({
   };
   const dateStr = toLocalDateStr(defaultDate);
 
-  const createInitialForm = useCallback(() => ({
-    title: '',
-    start_date: dateStr,
-    start_hour: '09',
-    start_min: '00',
-    end_hour: '10',
-    end_min: '00',
-    assigned_to: '',
-    status: 'scheduled',
-    notes: '',
-    location_id: '1', // WEB-UIUX-1321: default location; overridable via select below
-    customer_id: '' as string,
-    customer_label: '' as string,
-    recurrence: 'none' as 'none' | 'weekly' | 'biweekly' | 'monthly',
-  }), [dateStr]);
+  const createInitialForm = useCallback(() => {
+    // WEB-UIUX-1328: honor click-to-create slot hour. Clamp to 0..23 and
+    // compute end as start+1h (also clamped, wrapping at 23→23 keeps the
+    // form valid; the operator can edit to span past midnight via dates).
+    const startH = Number.isInteger(defaultHour) && defaultHour! >= 0 && defaultHour! <= 23 ? defaultHour! : 9;
+    const endH = Math.min(startH + 1, 23);
+    return {
+      title: '',
+      start_date: dateStr,
+      start_hour: String(startH).padStart(2, '0'),
+      start_min: '00',
+      end_hour: String(endH).padStart(2, '0'),
+      end_min: '00',
+      assigned_to: '',
+      status: 'scheduled',
+      notes: '',
+      location_id: '1', // WEB-UIUX-1321: default location; overridable via select below
+      customer_id: '' as string,
+      customer_label: '' as string,
+      recurrence: 'none' as 'none' | 'weekly' | 'biweekly' | 'monthly',
+    };
+  }, [dateStr, defaultHour]);
 
   const [form, setForm] = useState(() => createInitialForm());
   // WEB-UIUX-1315: customer picker — typeahead against /customers/search.
@@ -1081,6 +1092,7 @@ function MonthView({
   appointments,
   onSelectAppointment,
   onDrillDown,
+  onCreateAt,
   shopTz,
 }: {
   currentDate: Date;
@@ -1088,6 +1100,9 @@ function MonthView({
   onSelectAppointment: (a: Appointment) => void;
   // WEB-UIUX-1327: callback to switch to day view on a given date when "+N more" is clicked
   onDrillDown?: (day: Date) => void;
+  // WEB-UIUX-1328: callback fires when the user clicks empty space on a day cell,
+  // opening CreateAppointmentModal pre-filled with that calendar day.
+  onCreateAt?: (slot: Date) => void;
   shopTz?: string;
 }) {
   const year = currentDate.getFullYear();
@@ -1133,9 +1148,19 @@ function MonthView({
         return (
           <div
             key={i}
+            // WEB-UIUX-1328: click empty space on a populated day cell to open
+            // the create modal pre-filled with that day. Skipped on padding
+            // cells (no day) and only fires when the click target IS the cell
+            // itself (so appt buttons + "+N more" keep their existing behavior
+            // via event bubbling).
+            onClick={(e) => {
+              if (!day || !cellDate || !onCreateAt) return;
+              if (e.target === e.currentTarget) onCreateAt(cellDate);
+            }}
             className={cn(
               'min-h-[100px] border-b border-r border-surface-200 p-1.5 dark:border-surface-700',
               !day && 'bg-surface-50/50 dark:bg-surface-800/30',
+              day && onCreateAt && 'cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/50',
             )}
           >
             {day && (
@@ -1187,6 +1212,7 @@ function WeekView({
   currentDate,
   appointments,
   onSelectAppointment,
+  onCreateAt,
   hours = DEFAULT_HOURS,
   shopTz,
 }: {
@@ -1194,6 +1220,9 @@ function WeekView({
   appointments: Appointment[];
   hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
+  // WEB-UIUX-1328: click an empty hour slot to open the create modal pre-filled
+  // with that day + hour. `slot.getHours()` is the start hour for the new appt.
+  onCreateAt?: (slot: Date) => void;
   shopTz?: string;
 }) {
   const weekStart = startOfWeek(currentDate);
@@ -1262,7 +1291,19 @@ function WeekView({
             return (
               <div
                 key={day.toISOString()}
-                className="min-h-[48px] border-b border-r border-surface-200 p-0.5 dark:border-surface-700"
+                // WEB-UIUX-1328: click an empty hour slot to create. Skipped
+                // when the click target is one of the inner appt buttons so
+                // existing select-detail behavior keeps working via bubbling.
+                onClick={(e) => {
+                  if (!onCreateAt) return;
+                  if (e.target !== e.currentTarget) return;
+                  const slot = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0);
+                  onCreateAt(slot);
+                }}
+                className={cn(
+                  'min-h-[48px] border-b border-r border-surface-200 p-0.5 dark:border-surface-700',
+                  onCreateAt && 'cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/50',
+                )}
               >
                 {hourAppts.map((appt) => {
                   const color = getStatusColor(appt.status);
@@ -1292,6 +1333,7 @@ function DayView({
   currentDate,
   appointments,
   onSelectAppointment,
+  onCreateAt,
   hours = DEFAULT_HOURS,
   shopTz,
 }: {
@@ -1299,6 +1341,9 @@ function DayView({
   appointments: Appointment[];
   hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
+  // WEB-UIUX-1328: click an empty hour row to open the create modal pre-filled
+  // with this day + the clicked hour.
+  onCreateAt?: (slot: Date) => void;
   shopTz?: string;
 }) {
   const dayAppts = appointments.filter((a) => isSameDay(new Date(a.start_time), currentDate));
@@ -1334,7 +1379,19 @@ function DayView({
             <div className="w-20 shrink-0 border-r border-surface-200 px-2 py-3 text-right text-xs text-surface-400 dark:border-surface-700">
               {label}
             </div>
-            <div className="flex-1 min-h-[56px] p-1 space-y-1">
+            <div
+              // WEB-UIUX-1328: click empty hour slot creates an appt at that hour.
+              onClick={(e) => {
+                if (!onCreateAt) return;
+                if (e.target !== e.currentTarget) return;
+                const slot = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hour, 0, 0, 0);
+                onCreateAt(slot);
+              }}
+              className={cn(
+                'flex-1 min-h-[56px] p-1 space-y-1',
+                onCreateAt && 'cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/50',
+              )}
+            >
               {hourAppts.map((appt) => {
                 const color = getStatusColor(appt.status);
                 return (
@@ -1383,6 +1440,15 @@ export function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // WEB-UIUX-1328: click-to-create slot Date — when set, CreateAppointmentModal
+  // pre-fills date AND start hour from the clicked Month/Week/Day cell. Reset
+  // to null when the modal closes so the next "+ New Appointment" button click
+  // reverts to the today/9am default.
+  const [createSlot, setCreateSlot] = useState<Date | null>(null);
+  const openCreateAt = useCallback((slot: Date) => {
+    setCreateSlot(slot);
+    setShowCreate(true);
+  }, []);
   const { getSetting } = useSettings();
 
   // WEB-UIUX-780: read shop timezone from store_config so display times are
@@ -1593,6 +1659,7 @@ export function CalendarPage() {
                 onSelectAppointment={setSelectedAppt}
                 // WEB-UIUX-1327: drill down to day view when "+N more" is clicked
                 onDrillDown={(day) => { setCurrentDate(day); setViewMode('day'); }}
+                onCreateAt={openCreateAt}
                 shopTz={shopTz}
               />
             )}
@@ -1601,6 +1668,7 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                onCreateAt={openCreateAt}
                 hours={hours}
                 shopTz={shopTz}
               />
@@ -1610,6 +1678,7 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                onCreateAt={openCreateAt}
                 hours={hours}
                 shopTz={shopTz}
               />
@@ -1649,8 +1718,14 @@ export function CalendarPage() {
       {/* Create modal */}
       <CreateAppointmentModal
         open={showCreate}
-        onClose={() => setShowCreate(false)}
-        defaultDate={currentDate}
+        onClose={() => { setShowCreate(false); setCreateSlot(null); }}
+        defaultDate={createSlot ?? currentDate}
+        // WEB-UIUX-1328: when the user click-to-creates from a Week/Day slot,
+        // honor the clicked hour. Month-cell clicks pass a date at midnight
+        // (hour=0), which we treat as "no preference" so the default 9am rule
+        // still applies. createSlot is null when "+ New Appointment" button
+        // is used, also keeping the default.
+        defaultHour={createSlot && createSlot.getHours() !== 0 ? createSlot.getHours() : undefined}
         users={users}
         existingAppointments={appointments}
       />

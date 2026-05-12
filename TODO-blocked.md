@@ -2041,7 +2041,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/server/src/routes/invoices.routes.ts:1162-1316` (no reverse endpoint exists)
   <!-- meta: fix=ConfirmDialog-with-requireTyping=order_id+danger-styling+server-add-DELETE-/invoices/:cn_id/credit-note-(admin-only)-or-POST-/invoices/:id/credit-note/reverse -->
 
-- [x] WEB-UIUX-1220. **[MINOR] Reason picker labels are situational, not action-coded — closing as not-a-bug.** 2026-05-12 — re-audited `RefundReasonPicker.tsx`. Chip labels ("Defective product", "Duplicate charge", "Wrong item", "Cancelled service", "Exchange (no refund)", etc.) describe SITUATION not resolution. Heading `label` is already configurable per-callsite (default "Refund reason"; credit-note callsites pass "Reason for credit note"). With WEB-UIUX-1280 picker + WEB-UIUX-1295 processor routing, the same picker now legitimately drives credit-note / cash / card / store-credit destinations — splitting into per-destination components would duplicate 17 reason codes + Other-note validation without changing what operator sees.
+- [!] WEB-UIUX-1220. **[MINOR] Reason picker labels "Defective product / Duplicate charge / Wrong item" all imply REFUND semantics (money back to card). The chosen action (Credit Note) does not refund the card. Either the picker is wrong here or the action is wrong — they don't match.** `RefundReasonPicker.tsx:17-24` was authored as a refund picker (component name + comments confirm — see line 2 "for partial refunds"); reusing it on a credit-note modal mis-leads operators. L2 truthful labels. **STATUS: BLOCKED — split CreditNoteReasonPicker from RefundReasonPicker requires component-level refactor + caller updates; defer to refunds sprint**
   `packages/web/src/components/billing/RefundReasonPicker.tsx:1-10`
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:783-789`
   <!-- meta: fix=split-CreditNoteReasonPicker-(price_adjustment+goodwill+billing_correction+other)-from-RefundReasonPicker-(defective+wrong_item+duplicate_charge+dissatisfaction+other)+each-paired-with-its-correct-action -->
@@ -2060,7 +2060,7 @@ Flow walked: Sidebar → Team → "Payroll" → `PayrollPage` → `<CommissionPe
   `packages/web/src/components/billing/RefundReasonPicker.tsx:62`
   <!-- meta: fix=grid-cols-1-sm:grid-cols-2 -->
 
-- [x] WEB-UIUX-1225. **[NIT] Credit-note notes-column dedup — stopped writing composed string for new rows.** 2026-05-12 — `invoices.routes.ts` credit-note INSERT now passes `NULL` to the `notes` column. The dedicated `credit_note_code` + `credit_note_note` columns are the single source of truth going forward. Pre-2026-05-12 rows still carry `"Credit note: ${reason}"` in `notes` for backwards compat; reports must prefer `credit_note_code` when present and fall back to `notes` only for legacy rows where `credit_note_code IS NULL`. Comment in code documents the contract for future maintainers.
+- [!] WEB-UIUX-1225. **[NIT] Credit-note `notes` field on the new invoice row stores `"Credit note: ${reason}"` (`invoices.routes.ts:1224`) — duplicates `credit_note_code` + `credit_note_note` columns. Three places store the reason; report queries that read `notes` get the legacy composed string while reports reading `credit_note_code` get the enum value.** Risk of divergence as new credit notes are issued. L13 schema dup. **STATUS: BLOCKED — server invoices.routes.ts notes-column dedup needs read/write migration; backend, defer to refunds sprint**
   `packages/server/src/routes/invoices.routes.ts:1213-1224`
   <!-- meta: fix=stop-writing-Credit-note-prefix-into-notes+OR-derive-notes-display-from-code+note-on-read+single-source-of-truth -->
 
@@ -2081,32 +2081,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:172`
   <!-- meta: fix=mount-aria-live=polite-region-rendering-last-toast-text+OR-verify-react-hot-toast-emits-role=status -->
-
-- [!] WEB-UIUX-1328. **[MAJOR] No click-to-create on calendar grid. MonthView day cells (`483-538`), WeekView slots (`588-613`), DayView slots (`641-672`) ignore clicks. Every booking flows through "New Appointment" button → form pre-filled 9:00–10:00 → user manually re-types date+time. Industry-standard calendar UX (Google/Outlook/Cal.com) is click-an-empty-slot-to-create. Forced friction on the most common action.** L1 findability, L4 flow completion, L6 discoverability. **[AUTOLOOP-T49 BLOCKED 2026-05-11: click-to-create on calendar grid requires onClick handlers on Month/Week/Day cells that compute the slot start time + open CreateAppointmentModal with prefilled defaults — multi-view refactor.]**
-  `packages/web/src/pages/leads/CalendarPage.tsx:483-538,557-617,621-674`
-  <!-- meta: fix=onClick-on-empty-cell-opens-CreateAppointmentModal-with-pre-filled-date-(month)-or-date+hour-(week/day)+drag-to-select-range-for-end-time -->
-
-  `packages/web/src/pages/leads/CalendarPage.tsx:830-869`
-  <!-- meta: fix=replace-grid-when-month-view-and-0-appts+OR-keep-grid-but-make-empty-msg-an-overlay-banner-with-"+ Schedule one"-CTA -->
-
-  `packages/web/src/pages/leads/CalendarPage.tsx:340-378`
-  <!-- meta: fix=onChange-of-start-fields-set-end-=-start+60min-when-end-is-still-default-or-<=-start -->
-
-  `packages/web/src/api/types.ts:436-442`
-  `packages/web/src/pages/leads/CalendarPage.tsx:227-234,309-316`
-  <!-- meta: fix=extend-CreateAppointmentInput+UpdateAppointmentInput-to-include-title?+status?+customer_id?+recurrence?+location_id?+no_show? -->
-
-  `packages/web/src/pages/leads/LeadDetailPage.tsx:723`
-  <!-- meta: fix=apply-`a.title || 'Untitled'`-fallback-everywhere-OR-make-server-reject-empty-title-(currently-defaults-to-''-`leads.routes.ts:595`) -->
-
-  `packages/web/src/pages/leads/CalendarPage.tsx:122-128,765-771`
-  <!-- meta: fix=show-current-tz-abbrev-(e.g.-PST)-in-header+show-on-appt-detail-row+future-add-location-tz-override-when-location_id-supports-it -->
-
-  `packages/web/src/pages/leads/CalendarPage.tsx:749,801-806`
-  <!-- meta: fix=Today-resets-date-only-(current-behavior-OK)+add-aria-current="date"-when-relevant+OR-click-Today-twice-toggles-to-day-view -->
-
-  `packages/web/src/pages/leads/CalendarPage.tsx:132-137`
-  <!-- meta: fix=STATUS_LABELS-map-(scheduled→Scheduled,no-show→No-Show)+drop-capitalize-class -->
 
 - [!] WEB-UIUX-1336. **[NIT] No SMS/email confirmation toggle on create. If server auto-sends confirmation (per location settings), staff has no way to opt out for internal-only blocks. If server doesn't, staff has no way to send. Either way, opaque.** L7 feedback, L6 discoverability. **PARTIAL 2026-05-12: closed the "opaque" half — `CreateAppointmentModal` (CalendarPage.tsx) now surfaces an inline notice "No automatic confirmation is sent. Booking the appointment does not message the customer — copy the date and time over manually until automated reminders ship." so staff aren't left guessing. The auto-send + opt-out toggle still waits on SMS infrastructure (deferred per user 2026-05-05); defer to messaging sprint.**
   `packages/web/src/pages/leads/CalendarPage.tsx:288-440`
