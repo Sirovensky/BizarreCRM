@@ -53,7 +53,13 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-1278: typed-confirm gate for high-value credit notes.
   const [showCreditNoteConfirm, setShowCreditNoteConfirm] = useState(false);
   // WEB-UIUX-1531: added transaction_id field for structured reference capture on non-cash payments.
-  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '', transaction_id: '' });
+  // WEB-UIUX-1532: payment_type defaults to 'payment'; cashier toggles
+  // 'deposit' on the Record Payment modal when the funds should be booked as
+  // deferred revenue (custom-build prepayments, layaways). Server already
+  // distinguishes the two via `payment_type ∈ {payment, deposit}` and writes
+  // separate ledger buckets; the toggle exposes the choice that was always
+  // available on the wire.
+  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' as 'payment' | 'deposit' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
   const [showCreditNote, setShowCreditNote] = useState(false);
   // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
@@ -223,7 +229,7 @@ export function InvoiceDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['reports'] });
       toast.success('Payment recorded');
       setShowPayment(false);
-      setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
+      setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' });
       setShowReceiptPrompt(true);
     },
     onError: (e: any, vars: any) => {
@@ -1118,11 +1124,11 @@ export function InvoiceDetailPage() {
           // a partially-entered payment; operator must confirm before data is discarded.
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
-            if (paymentForm.amount || paymentForm.notes || paymentForm.method !== 'cash') {
+            if (paymentForm.amount || paymentForm.notes || paymentForm.method !== 'cash' || paymentForm.payment_type !== 'payment') {
               if (!window.confirm('Discard payment entry?')) return;
             }
             setShowPayment(false);
-            setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '' });
+            setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' });
           }}
         >
           {/* WEB-UIUX-1539: paymentDialogRef wired here so useFocusTrap traps focus inside Payment modal. */}
@@ -1191,6 +1197,23 @@ export function InvoiceDetailPage() {
                 {/* WEB-UIUX-1540: now that transaction_id is its own field, notes is for free-form memo text */}
                 <input value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Memo (e.g., 'invoice paid at front desk')" />
               </div>
+              {/* WEB-UIUX-1532: deposit toggle. Server already distinguishes
+                  payment_type ∈ {payment, deposit}; checkbox surfaces the
+                  choice so shops taking prepayments on custom builds can
+                  book deferred revenue separately from collected revenue.
+                  Defaults off — operator opts in. */}
+              <label className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={paymentForm.payment_type === 'deposit'}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, payment_type: e.target.checked ? 'deposit' : 'payment' })}
+                  className="mt-0.5 h-4 w-4 rounded border-surface-300 dark:border-surface-600"
+                />
+                <span>
+                  Record as <span className="font-medium">deposit</span>
+                  <span className="block text-xs text-surface-500 dark:text-surface-400">Deferred revenue — for prepayments on custom builds, layaways, or work-in-progress. Default is regular payment.</span>
+                </span>
+              </label>
             </div>
             {blockchypEnabled && (
               <button
