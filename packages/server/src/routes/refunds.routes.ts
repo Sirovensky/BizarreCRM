@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
 import { idempotent } from '../middleware/idempotency.js';
@@ -189,9 +190,18 @@ router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(a
       invoice_id,
     );
     if (nonCapturedRow && nonCapturedRow.count > 0) {
+      // WEB-UIUX-1399: carry structured `non_captured_count` + `states` on
+      // the error envelope so the InvoiceDetail UI can render an actionable
+      // recovery branch ("Capture or void these N payments first") instead
+      // of dumping the raw message.
       throw new AppError(
         `Cannot refund — ${nonCapturedRow.count} payment(s) on this invoice are not captured (state: ${nonCapturedRow.states}). Capture or void the authorization first.`,
         400,
+        ERROR_CODES.ERR_REFUND_PAYMENTS_NOT_CAPTURED,
+        {
+          non_captured_count: nonCapturedRow.count,
+          states: nonCapturedRow.states,
+        },
       );
     }
 

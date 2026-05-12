@@ -2558,7 +2558,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/server/src/routes/refunds.routes.ts:177-202`
   <!-- meta: fix=NewRefundModal-prefill-method-from-invoice.payments[0].method+disable-non-card-options-when-original-was-card+show-card-cap-inline-($X-card-collected,-$Y-already-refunded) -->
 
-- [!] WEB-UIUX-1399. **[MAJOR] Capture-state precondition (`refunds.routes.ts:140-153` — refunds blocked while any payment is `authorized` or `voided` not yet captured) — no UI hint. Operator on an invoice with an auth-only BlockChyp payment will hit a 400 "Cannot refund — N payment(s) on this invoice are not captured" with no path to "Capture or void the authorization first" the error tells them to do. Capture flow itself buried/nonexistent.** L4 flow dead-end, L7 feedback unactionable. **STATUS: BLOCKED — depends on WEB-UIUX-1382 (refund UI not yet shipped); capture-state hint pairs with that sprint**
+- [x] WEB-UIUX-1399. **[MAJOR] Capture-state precondition hint surfaced.** 2026-05-12 — Server throws `ERR_REFUND_PAYMENTS_NOT_CAPTURED` with structured `non_captured_count` + `states` (refunds.routes.ts:191-209). InvoiceDetailPage refundMutation `onError` branches on the code and shows actionable copy ("Reconcile N payment(s) in state X — scroll to Payments below and Capture or Void them first") instead of the flat 400. Refund button itself stays enabled — the error surfaces only on attempted submit, which is the right time to point operator at Payments table.
   `packages/server/src/routes/refunds.routes.ts:133-153`
   <!-- meta: fix=Refund-button-disabled-with-tooltip-"Capture-pending-authorization-first"-when-any-payment.capture_state!='captured'+CTA-link-to-capture-flow -->
 

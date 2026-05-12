@@ -101,6 +101,16 @@ export const ERROR_CODES = {
   ERR_RESOURCE_CONFLICT: 'ERR_RESOURCE_CONFLICT',
   /** Same invoice + amount + user posted within the dedup window. Client may retry with force=true after explicit "separate tender" confirmation (WEB-UIUX-1525). */
   ERR_PAYMENT_DUPLICATE: 'ERR_PAYMENT_DUPLICATE',
+  /**
+   * Refund blocked because at least one payment on the invoice is in a
+   * non-captured state (authorized but never captured, or voided). The
+   * operator must reconcile those payments first — capture the auth or void
+   * it cleanly — before a refund can be processed. Client surfaces this as
+   * an actionable hint pointing at the offending payments (WEB-UIUX-1399).
+   * `extra` carries `non_captured_count` and `states` so the UI can render
+   * an accurate recovery message.
+   */
+  ERR_REFUND_PAYMENTS_NOT_CAPTURED: 'ERR_REFUND_PAYMENTS_NOT_CAPTURED',
 
   // ── User management (409) ────────────────────────────────────────
   /** Attempt to demote or deactivate the last active admin — at least one must remain. */

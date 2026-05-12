@@ -529,7 +529,24 @@ export function InvoiceDetailPage() {
       setCreditNoteError({});
     },
     onError: (e: any) => {
-      const serverMsg: string = e?.response?.data?.message || e?.message || 'Failed to queue refund';
+      const body = e?.response?.data;
+      const code: string | undefined = body?.code;
+      const serverMsg: string = body?.message || e?.message || 'Failed to queue refund';
+      // WEB-UIUX-1399: capture-state precondition. Server blocks refund
+      // whenever any payment row is authorized-only or voided (not captured).
+      // Show actionable copy that names the offending count + state, and
+      // point the operator at the Payments section on this same page so
+      // they can capture / void without leaving.
+      if (code === 'ERR_REFUND_PAYMENTS_NOT_CAPTURED') {
+        const count = Number(body?.non_captured_count) || 0;
+        const states = typeof body?.states === 'string' ? body.states : '';
+        const hint = states
+          ? `Reconcile ${count} payment(s) in state "${states}" — scroll to Payments below and Capture or Void them first, then retry the refund.`
+          : `Reconcile ${count} non-captured payment(s) on this invoice before retrying the refund.`;
+        setCreditNoteError({ _general: hint });
+        toast.error(hint, { duration: 8000 });
+        return;
+      }
       setCreditNoteError({ _general: serverMsg });
       toast.error(serverMsg);
     },
