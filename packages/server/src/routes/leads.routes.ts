@@ -528,6 +528,68 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// GET /appointments/overlaps – Cross-window conflict scan (WEB-UIUX-1324)
+//
+// CalendarPage's pre-flight overlap check uses `existingAppointments`, which
+// is just the current month/week/day viewport. A booking on the last day of
+// the viewed month against an appt on the first day of the next month gets a
+// false-clear. This endpoint runs the same SQL the POST /appointments path
+// uses (line ~575) but with no viewport limit, so the client can ask "does
+// this assignee already have an appt that overlaps [start_time, end_time]?"
+// regardless of what month is rendered.
+//
+// Required: assigned_to, start_time. end_time falls back to start_time
+// (point-in-time check). Returns up to 5 conflicting rows.
+// ---------------------------------------------------------------------------
+router.get(
+  '/appointments/overlaps',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string, 10) : NaN;
+    const startTime = (req.query.start_time as string || '').trim();
+    const endTime = (req.query.end_time as string || '').trim() || startTime;
+    const excludeId = req.query.exclude_id ? parseInt(req.query.exclude_id as string, 10) : null;
+
+    if (!Number.isInteger(assignedTo) || assignedTo < 1) {
+      throw new AppError('assigned_to is required', 400);
+    }
+    if (!startTime) {
+      throw new AppError('start_time is required', 400);
+    }
+    if (new Date(endTime).getTime() < new Date(startTime).getTime()) {
+      throw new AppError('end_time must be >= start_time', 400);
+    }
+
+    const params: unknown[] = [assignedTo, endTime, startTime];
+    let excludeClause = '';
+    if (excludeId && Number.isInteger(excludeId)) {
+      excludeClause = ' AND a.id != ?';
+      params.push(excludeId);
+    }
+
+    const overlaps = await adb.all<any>(`
+      SELECT a.id, a.title, a.start_time, a.end_time, a.status,
+        c.first_name AS customer_first_name, c.last_name AS customer_last_name
+      FROM appointments a
+      LEFT JOIN customers c ON c.id = a.customer_id
+      WHERE a.assigned_to = ?
+        AND a.is_deleted = 0
+        AND a.status != 'cancelled'
+        AND a.start_time < ?
+        AND COALESCE(a.end_time, a.start_time) > ?
+        ${excludeClause}
+      ORDER BY a.start_time ASC
+      LIMIT 5
+    `, ...params);
+
+    res.json({
+      success: true,
+      data: { overlaps, count: overlaps.length },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // POST /appointments – Create appointment
 // ---------------------------------------------------------------------------
 router.post(
