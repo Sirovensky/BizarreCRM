@@ -1100,6 +1100,86 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   res.status(201).json({ success: true, data: payment.updatedInvoice });
 });
 
+// WEB-UIUX-1526: per-payment reverse. Cashier fat-fingers $5,000 instead of
+// $50 — Void Invoice would VOID every payment on the invoice (destroys
+// legitimate prior payments + restores stock + reverses commission). This
+// route reverses one specific payment row inside a 30-minute window from
+// its creation. Manager/admin only; payment must not already carry
+// `[VOIDED]` in notes. Recomputes invoice amount_paid + status from the
+// remaining positive payment rows after marking the row voided. Refunds /
+// credit-notes recorded as separate payment rows are intentionally NOT
+// reversible via this route — they have their own lifecycle.
+router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: string }>, res) => {
+  const adb = req.asyncDb;
+  const role = (req as any)?.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager required to reverse a payment', 403);
+  }
+  const paymentId = parseInt(req.params.paymentId, 10);
+  if (!Number.isFinite(paymentId) || paymentId <= 0) {
+    throw new AppError('Invalid payment id', 400);
+  }
+  const payment = await adb.get<any>(
+    'SELECT id, invoice_id, amount, notes, created_at FROM payments WHERE id = ?',
+    paymentId,
+  );
+  if (!payment) throw new AppError('Payment not found', 404);
+  if (typeof payment.notes === 'string' && payment.notes.includes('[VOIDED]')) {
+    throw new AppError('Payment is already voided', 409);
+  }
+  const createdMs = Date.parse(String(payment.created_at).replace(' ', 'T'));
+  if (!Number.isFinite(createdMs)) {
+    throw new AppError('Payment created_at is unparseable — refuse reverse', 409);
+  }
+  const ageMs = Date.now() - createdMs;
+  const REVERSE_WINDOW_MS = 30 * 60 * 1000;
+  if (ageMs > REVERSE_WINDOW_MS) {
+    throw new AppError(
+      `Reverse window expired (${Math.floor(ageMs / 60000)} min old; window is 30 min). Use Credit Note instead.`,
+      409,
+    );
+  }
+  const reasonRaw = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
+  if (!reasonRaw) {
+    throw new AppError('reason is required to reverse a payment', 400);
+  }
+
+  await adb.run(
+    "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED] ' || ? WHERE id = ?",
+    reasonRaw, paymentId,
+  );
+  // Recompute invoice state from the remaining positive (non-VOIDED)
+  // payment rows. We use the same positive-payment-total helper the
+  // recordInvoicePayment path uses, then re-derive amount_due + status.
+  const invoiceRow = await adb.get<any>('SELECT id, total FROM invoices WHERE id = ?', payment.invoice_id);
+  if (invoiceRow) {
+    const remainingPaid = await adb.get<{ t: number }>(
+      "SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END) AS t FROM payments WHERE invoice_id = ?",
+      payment.invoice_id,
+    );
+    const totalPaid = roundCents(remainingPaid?.t || 0);
+    const invoiceTotal = Number(invoiceRow.total ?? 0);
+    const rawAmountDue = roundCents(invoiceTotal - totalPaid);
+    const displayAmountDue = Math.max(0, rawAmountDue);
+    const newStatus = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+    await adb.run(
+      "UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
+      totalPaid, displayAmountDue, newStatus, payment.invoice_id,
+    );
+  }
+
+  audit(req.db, 'payment_reversed', req.user!.id, req.ip || 'unknown', {
+    payment_id: paymentId,
+    invoice_id: payment.invoice_id,
+    amount: Number(payment.amount),
+    age_minutes: Math.floor(ageMs / 60000),
+    reason: reasonRaw,
+  });
+
+  const updatedInvoice = await getInvoiceDetail(adb, payment.invoice_id);
+  res.json({ success: true, data: updatedInvoice });
+});
+
 // POST /invoices/:id/void (rate limited: 1 per minute per user)
 // SA5-1: rate-limit state lives in the tenant DB `rate_limits` table so
 // restarts / crashes / multi-process runs cannot reset the window. Category

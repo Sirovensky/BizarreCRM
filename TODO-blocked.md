@@ -2994,20 +2994,6 @@ Flow audited: cashier needs to refund a customer who paid for an invoice. Walk: 
 
 #### Nit — copy / polish
 
-- [!] WEB-UIUX-1526. **[MAJOR] No way to reverse a single mis-typed payment. Cashier fat-fingers $5,000 instead of $50; only paths back are (a) Void Invoice (`InvoiceDetailPage.tsx:384-388`) which marks every payment on the invoice as `[VOIDED]` (`invoices.routes.ts:930`) — including legitimate prior payments — and restores stock + cancels commission, or (b) Credit Note (`:377-380`) which is capped at `amount_paid`, requires a structured reason picker, and is bookkept as a refund. The payment timeline (`:484-547`) renders each payment row but offers no per-row action. Add a per-payment "Reverse" affordance (manager-PIN gated, time-windowed e.g. 30 min, marks the row [VOIDED] without nuking the rest of the invoice).** L8 recovery, L13 forgiveness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: per-payment Reverse needs a new server `PATCH /payments/:id/reverse` (manager-PIN gate + 30-min window + audit) and the row-level action UI. Multi-component.]**
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:484-547`
-  `packages/server/src/routes/invoices.routes.ts:925-935`
-  <!-- meta: fix=add-DELETE-/invoices/:id/payments/:paymentId-(or-POST-/payments/:id/void)-gated-on-invoices.void_payment-+-time-window;-render-Reverse-button-on-each-non-voided-row-in-timeline -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:677-735`
-  <!-- meta: fix=remove-backdrop-onClose-OR-on-dismiss-toast.success("Receipt-skipped — Re-send-from-Payment-Timeline")-with-link-to-resend-flow -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:700-714`
-  <!-- meta: fix=template="Received-${formatCurrency(paid)}-${method}-on-${order_id}.${amount_due>0?`-Balance:-${formatCurrency(amount_due)}.`:`-Paid-in-full.`}-Thanks!" -->
-
-  `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:591-672`
-  <!-- meta: fix=remove-backdrop-close;-or-on-dismiss-when-(amount||notes||method!=='cash')-show-confirm-"Discard-payment-entry?" -->
-
 - [!] WEB-UIUX-1533. **[MAJOR] Invoice list has no inline "Record Payment" — collections workflow loses scroll/filter on every row. `InvoiceListPage.tsx:533-538` action column shows "View" only; the row is also clickable as a whole, so selection or quick action requires `e.stopPropagation()` plumbing already in place. A cashier reviewing the overdue tab (50 rows) and calling each customer in turn must click row → land on detail → click Record Payment → record → navigate back → scroll back to position. Add a small "$" / "Pay" icon button beside View on rows with `amount_due > 0`, opening the same payment modal in-list (or via a side drawer).** L4 flow integrity, L6 discoverability. **STATUS: BLOCKED — needs RecordPaymentModal extracted into shared component + InvoiceListPage row action; multi-component, defer**
   `packages/web/src/pages/invoices/InvoiceListPage.tsx:483-540`
   <!-- meta: fix=add-quick-pay-button-on-rows-with-amount_due>0;-mount-shared-PaymentModal-component-with-invoiceId-+-onClose;-extract-modal-from-InvoiceDetailPage.tsx-into-components/billing/RecordPaymentModal.tsx -->
