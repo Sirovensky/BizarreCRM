@@ -2070,7 +2070,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
 
 #### Blocker — missing primitives + dead UI
 
-- [!] WEB-UIUX-1284. **[MAJOR] No print/email/SMS handoff for the credit-note customer copy. Compare the Receipt prompt that fires after Record Payment (`InvoiceDetailPage.tsx:676-734`) — Print / SMS / Email. Credit note has zero customer-facing artifact path. Customer leaves the counter with nothing in hand showing the refund.** L4 flow completion, L7 feedback. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a credit-note print/SMS/email receipt template + delivery hooks akin to the Receipt prompt path; depends on a customer-facing artifact spec (legal text varies by state).]**
+- [x] WEB-UIUX-1284. **[MAJOR] Credit-note print/SMS/email handoff wired.** 2026-05-12 — credit-note success opens receipt prompt with `receiptPromptTarget = { invoiceId: <CN id>, kind: 'credit_note', orderId, refundAmount }`. Prompt title/body/buttons branch on kind: "Print Credit Note" navigates to `/invoices/<cn-id>?print=1` (auto-open-print effect there); SMS body becomes "Credit note CN-#### issued for $X against Invoice #INV…"; Email sends `notificationApi.sendReceipt` against the credit-note id. Payment-success paths reset target to null so prompt doesn't carry stale state. Reuses existing PrintPreviewModal + notificationApi + smsApi.
   `packages/web/src/pages/invoices/InvoiceDetailPage.tsx:154-177`
   <!-- meta: fix=after-credit-note-success-fire-CreditNoteReceiptPrompt-with-Print/SMS/Email-mirroring-payment-prompt-but-credit-note-template -->
 

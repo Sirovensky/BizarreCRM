@@ -244,6 +244,22 @@ export function InvoiceDetailPage() {
     next.delete('record_payment');
     setSearchParams(next, { replace: true });
   }, [recordPaymentParam, invoice, searchParams, setSearchParams]);
+
+  // WEB-UIUX-1284: auto-open Print modal when arriving with `?print=1`. Lets
+  // the credit-note receipt prompt navigate the operator straight into the
+  // credit-note's print flow rather than dumping them on a detail page they
+  // then have to click "Print" on.
+  const printParamRef = useRef(false);
+  useEffect(() => {
+    if (printParamRef.current) return;
+    if (searchParams.get('print') !== '1') return;
+    if (!invoice) return;
+    printParamRef.current = true;
+    setShowPrintModal(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('print');
+    setSearchParams(next, { replace: true });
+  }, [invoice, searchParams, setSearchParams]);
   // WEB-UIUX-1524: server returns `{ success: true, data: <array> }` (see
   // settings.routes.ts:840-841 and SettingsPage which already reads
   // res.data.data correctly). The previous `pmData?.data?.data?.payment_methods`
