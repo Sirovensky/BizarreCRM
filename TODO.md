@@ -4340,7 +4340,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/LeftPanel.tsx:949-961`
   <!-- meta: fix=show-asterisk-whenever-requireReason+OR-show-helper-text-Reason-becomes-required-once-amount-is-entered -->
 
-- [!] WEB-UIUX-1243. **[MINOR] `manualDiscount` validation in `pos.routes.ts:1874` allows zero but not via the same code path as the rest — `ticketData?.discount ? validatePrice(...) : 0`.** Edge: a client sending the literal string `"0.00"` (truthy) goes through validatePrice (fine), but `0` (falsy) skips. Inconsistent with `tip` handling on the same form. L13 input contract. **STATUS: BLOCKED — server pos.routes.ts manualDiscount input contract change; backend, defer to discount sprint**
+- [x] WEB-UIUX-1243. **STALE/CLOSED 2026-05-12** — claim is incorrect. `pos.routes.ts:2006` (`manualDiscount = ticketData?.discount ? validatePrice(ticketData.discount, 'discount') : 0`) and `pos.routes.ts:341` (`tipAmount = rawTip ? validatePrice(rawTip, 'tip') : 0`) use the IDENTICAL `value ? validatePrice(value, name) : 0` pattern. No inconsistency between manualDiscount and tip. Truthy `'0.00'` → validatePrice → 0; falsy `0` → 0; both paths terminate at 0. Original audit note retained for sweep: [MINOR] `manualDiscount` validation in `pos.routes.ts:1874` allows zero but not via the same code path as the rest — `ticketData?.discount ? validatePrice(...) : 0`. Inconsistent with `tip` handling on the same form.
   `packages/server/src/routes/pos.routes.ts:1874-1876`
   <!-- meta: fix=use-rawDiscount!=null?validatePrice(rawDiscount,'discount'):0+match-existing-tip-style -->
 

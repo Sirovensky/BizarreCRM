@@ -2491,13 +2491,6 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/unified-pos/RepairsTab.tsx:790` (init only, never updated)
   <!-- meta: fix=wire-LineItemDiscountMenu-into-RepairRow-(LeftPanel.tsx:574-)+anchor-on-click-of-the-laborPrice-cell-or-add-a-Percent-icon-button+onApply=updateCartItem(item.id,{lineDiscount:laborPrice*p/100,lineDiscountReason:reason})+extend-types.ts-RepairCartItem-with-lineDiscountReason+include-in-buildTicketPayload+server-already-accepts -->
 
-- [!] WEB-UIUX-1243. **[MINOR] `manualDiscount` validation in `pos.routes.ts:1874` allows zero but not via the same code path as the rest — `ticketData?.discount ? validatePrice(...) : 0`.** Edge: a client sending the literal string `"0.00"` (truthy) goes through validatePrice (fine), but `0` (falsy) skips. Inconsistent with `tip` handling on the same form. L13 input contract. **STATUS: BLOCKED — server pos.routes.ts manualDiscount input contract change; backend, defer to discount sprint**
-  `packages/server/src/routes/pos.routes.ts:1874-1876`
-  <!-- meta: fix=use-rawDiscount!=null?validatePrice(rawDiscount,'discount'):0+match-existing-tip-style -->
-
-  `packages/web/src/pages/unified-pos/LeftPanel.tsx:921-981`
-  <!-- meta: fix=on-resetAll-also-reset-DiscountEditor-(via-effect-listening-on-cartItems.length===0)+OR-key-the-component-on-cartId-so-it-remounts-clean -->
-
 - [!] WEB-UIUX-1276. **[BLOCKER] `/pos/return` (line-item return + stock restoration) is an orphan endpoint. Built `pos.routes.ts:2496` with admin-only gate, per-line quantity/reason, automatic inventory restoration via `stock_movements`, and credit-note generation — and ZERO web callers (`grep posApi.return` returns only the wrapper definition).** Manager who returns "1 of the 3 chargers from invoice INV-44" has no UI: forced to use the full-amount Credit Note modal which does NOT restore stock. Inventory shrinkage hidden, COGS skewed. L3, L4, L13 inventory integrity. **STATUS: BLOCKED — needs ReturnItemsModal with line-item checkboxes + per-line qty + posApi.return wiring; multi-component, defer to refunds sprint**
   `packages/server/src/routes/pos.routes.ts:2492-2637`
   `packages/web/src/api/endpoints.ts:753-761` (wrapper exists, no caller)
