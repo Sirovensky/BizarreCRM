@@ -3774,7 +3774,7 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:317-321`
 
-- [!] WEB-UIUX-1107. **[NIT] Title icon `CheckCircle2 text-primary-500` reads as "completed" — overloaded with the dashboard's "task complete" green check.** Status before action; user expects success ICON only post-sign. L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: nit; needs a design decision on a pre-sign-off icon (clipboard-check / shield-check / clock?) and consistent reuse across QC + bench surfaces. Not a one-line swap.]**
+- [x] WEB-UIUX-1107. **[NIT] QC Sign-Off pre-action title icon swapped to `ClipboardCheck` 2026-05-12.** `CheckCircle2` carried "completed" semantics overloaded with the dashboard task-done green check; `ClipboardCheck` reads explicitly as inspection-pending. One-line lucide-react swap on `QcSignOffModal.tsx:436` plus import cleanup. Other QC/bench surfaces continue to use `CheckCircle2` for post-action success states (e.g. portal Approved row, sign-off history), preserving the action-state semantic split.
   `packages/web/src/components/tickets/QcSignOffModal.tsx:200-201`
 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:264-266`

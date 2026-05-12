@@ -2740,27 +2740,6 @@ Walked end-to-end: tech finishes repair → opens TicketDetail → clicks green 
 
   `packages/web/src/components/tickets/QcSignOffModal.tsx:176-180`
 
-- [!] WEB-UIUX-1107. **[NIT] Title icon `CheckCircle2 text-primary-500` reads as "completed" — overloaded with the dashboard's "task complete" green check.** Status before action; user expects success ICON only post-sign. L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: nit; needs a design decision on a pre-sign-off icon (clipboard-check / shield-check / clock?) and consistent reuse across QC + bench surfaces. Not a one-line swap.]**
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:200-201`
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:264-266`
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:249-251`
-
-  `packages/web/src/components/tickets/QcSignOffModal.tsx:255`
-
-### Web UI/UX Audit — Pass 16 (2026-05-05, flow walk: Send Bulk SMS — preview, confirm, dispatch, feedback)
-
-Walked end-to-end: admin opens Communications page → Messages view → clicks "Bulk" → BulkSmsModal opens → picks segment + template → Preview → Send to N → server two-step token verify → sequential dispatch → toast. Cross-checked `packages/web/src/pages/communications/components/BulkSmsModal.tsx`, `packages/web/src/pages/communications/CommunicationPage.tsx:1545-1563,2472`, `packages/server/src/routes/inbox.routes.ts:381-705` (preview + bulk-send), template select query path, segment consent filters, sms_retry_queue side effects.
-
-#### Blocker — Feedback truthfulness, label vs body, recovery
-
-  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:47-51,91-96`
-  <!-- meta: fix=update-ConfirmResponse-to-{attempted,sent,failed,segment,template,confirmed}+toast=`Sent ${r.sent} of ${r.attempted}${r.failed?` (${r.failed} failed — see retry queue)`:''}`+keep-modal-open-when-failed>0 -->
-
-  `packages/web/src/pages/communications/components/BulkSmsModal.tsx:167-186`
-  <!-- meta: fix=on-templateId-change-set-tplPreview-from-templates.find(t=>t.id===id).content+render-160char-preview+character-count-vs-160-segment-cost -->
-
 - [!] WEB-UIUX-1127. **[MAJOR] "New Ticket" link from TicketListPage routes to POS surface, not a ticket-creation form.** `TicketListPage.tsx:1205-1211` `<Link to="/tickets/new">New Ticket</Link>` → `App.tsx:483` `<Route path="/tickets/new" element={<UnifiedPosPage />} />`. User clicks "New Ticket", lands on Unified POS — three tabs (Repairs / Products / Misc), Cash Drawer widget, "Open Drawer" button, Cash In/Out controls, Z-Report — none of which a user creating a ticket needs. Tab defaults to `repairs` (`store.ts:247`) but URL/intent mismatch is unfixed: bookmarking `/tickets/new` always lands in cash-drawer chrome. Consider either a dedicated ticket-creation route that hides POS-only chrome OR rename the button + URL to "New Sale / Repair". L3 route correctness, L6 discoverability. **STATUS: BLOCKED — needs route restructure (/tickets/new on dedicated stripped POS shell vs full POS); design decision; defer to POS sprint**
   `packages/web/src/pages/tickets/TicketListPage.tsx:1205-1211`
   `packages/web/src/App.tsx:483`

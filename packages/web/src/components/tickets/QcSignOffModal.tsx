@@ -16,7 +16,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Camera, Eraser, Check, X, Loader2, CheckCircle2, AlertTriangle, History } from 'lucide-react';
+import { Camera, Eraser, Check, X, Loader2, ClipboardCheck, AlertTriangle, History } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi, settingsApi, ticketApi } from '@/api/endpoints';
 import { formatApiError } from '@/utils/apiError';
@@ -433,7 +433,11 @@ export function QcSignOffModal({
               id="qc-signoff-title"
               className="flex items-center gap-2 text-lg font-semibold text-surface-900 dark:text-surface-100"
             >
-              <CheckCircle2 className="h-5 w-5 text-primary-500" />
+              {/* WEB-UIUX-1107: pre-action icon — CheckCircle2 read as
+                  "completed" (overloaded with dashboard task-done green
+                  check). ClipboardCheck carries an explicit QC/inspection
+                  semantic before the tech has signed. */}
+              <ClipboardCheck className="h-5 w-5 text-primary-500" />
               QC Sign-Off
               {/* WEB-UIUX-1096: surface ticket id so a tech with two tabs
                   open cannot sign against the wrong job. */}
