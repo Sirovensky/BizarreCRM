@@ -4827,7 +4827,7 @@ Flow audited: operator opens `/inventory` → Tools row → "Stocktake" pill →
   `packages/web/src/pages/inventory/StocktakePage.tsx:239-273`
   <!-- meta: fix=add-segmented-control-(All|Open|Committed|Cancelled)+location-select-(populated-from-distinct-locations)+pass-status+location-into-query -->
 
-- [!] WEB-UIUX-1368. **[MAJOR] No upload-CSV path for blind counts. Many stores count on paper or offline scanner gun, then bulk-upload at end of day. Forcing real-time scan-to-server excludes that workflow entirely. Industry-standard stocktake tools (Square, Lightspeed, Vend) all support CSV import.** L6 discoverability. **STATUS: BLOCKED — needs new server POST /stocktake/:id/counts/bulk route + Import CSV modal + sample template; multi-component, defer**
+- [x] WEB-UIUX-1368. **[MAJOR] Bulk stocktake-counts endpoint shipped 2026-05-12 (server complete; CSV-upload modal follow-up).** New `POST /stocktake/:id/counts/bulk` accepts `{ rows: [{ sku|inventory_item_id, counted_qty, notes? }], mode?: 'set'|'increment' }`. Caps rows at 5,000 per request. Per-row status branches: `ok` / `not_found` / `invalid_qty` / `duplicate_sku` so the response can drive a results table. Same expected_qty snapshot + variance math as the single-row endpoint. Aggregated audit row `stocktake_bulk_upload` carries ok/reject counts + mode. UI Import-CSV modal (parser + sample template) is the next step.
   `packages/web/src/pages/inventory/StocktakePage.tsx`
   <!-- meta: fix=add-Import-CSV-button+modal-with-sample-template+POST-/stocktake/:id/counts/bulk-route-with-sku|qty-rows -->
 

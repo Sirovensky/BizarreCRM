@@ -401,6 +401,157 @@ router.post(
 );
 
 // --------------------------------------------------------------------------
+// POST /stocktake/:id/counts/bulk — WEB-UIUX-1368: bulk CSV-style upload
+// for blind counts. Stores that count on paper or offline scanners can
+// submit `{ rows: [{ sku|inventory_item_id, counted_qty, notes? }, ...] }`
+// in a single request; the server upserts each row using the same
+// expected_qty snapshot logic as the single-row endpoint.
+// Mode defaults to 'set' (replace) to match CSV semantics; pass
+// `mode: 'increment'` if the upload is intended as a delta.
+// --------------------------------------------------------------------------
+router.post(
+  '/:id/counts/bulk',
+  asyncHandler(async (req, res) => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager' && role !== 'technician') {
+      throw new AppError('Admin, manager, or technician role required', 403);
+    }
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseInt(qs(req.params.id), 10);
+    if (!id || isNaN(id)) throw new AppError('Invalid stocktake id', 400);
+
+    const session = await adb.get<StocktakeRow>(
+      'SELECT * FROM stocktakes WHERE id = ?',
+      id,
+    );
+    if (!session) throw new AppError('Stocktake not found', 404);
+    if (session.status !== 'open') {
+      throw new AppError(`Cannot add counts to a ${session.status} stocktake`, 400);
+    }
+
+    const rowsRaw = (req.body?.rows ?? []) as Array<Record<string, unknown>>;
+    if (!Array.isArray(rowsRaw) || rowsRaw.length === 0) {
+      throw new AppError('rows array required (at least one row)', 400);
+    }
+    if (rowsRaw.length > 5000) {
+      throw new AppError('rows capped at 5,000 per upload', 400);
+    }
+    const mode: 'set' | 'increment' = req.body?.mode === 'increment' ? 'increment' : 'set';
+
+    const results: Array<{
+      sku?: string | null;
+      inventory_item_id?: number | null;
+      status: 'ok' | 'not_found' | 'invalid_qty' | 'duplicate_sku';
+      counted_qty?: number;
+      variance?: number;
+      message?: string;
+    }> = [];
+    let okCount = 0;
+
+    for (const row of rowsRaw) {
+      const skuRaw = typeof row.sku === 'string' ? row.sku.trim() : '';
+      const itemIdRaw = row.inventory_item_id;
+      let inventoryItemId: number | null = null;
+      if (Number.isFinite(Number(itemIdRaw)) && Number(itemIdRaw) > 0) {
+        inventoryItemId = Number(itemIdRaw);
+      } else if (skuRaw) {
+        const matches = await adb.all<{ id: number }>(
+          'SELECT id FROM inventory_items WHERE LOWER(sku) = LOWER(?) AND is_active = 1',
+          skuRaw,
+        );
+        if (matches.length === 0) {
+          results.push({ sku: skuRaw, status: 'not_found', message: `SKU '${skuRaw}' not found` });
+          continue;
+        }
+        if (matches.length > 1) {
+          results.push({ sku: skuRaw, status: 'duplicate_sku', message: `Multiple active items share SKU '${skuRaw}' — resolve in Inventory` });
+          continue;
+        }
+        inventoryItemId = matches[0].id;
+      }
+      if (!inventoryItemId) {
+        results.push({ sku: skuRaw || null, status: 'not_found', message: 'inventory_item_id or sku required' });
+        continue;
+      }
+      const countedQtyRaw = Number(row.counted_qty);
+      if (!Number.isFinite(countedQtyRaw) || !Number.isInteger(countedQtyRaw) || countedQtyRaw < 0) {
+        results.push({ sku: skuRaw || null, inventory_item_id: inventoryItemId, status: 'invalid_qty', message: 'counted_qty must be a non-negative integer' });
+        continue;
+      }
+      const notes = typeof row.notes === 'string' ? row.notes.trim().slice(0, 500) || null : null;
+      const item = await adb.get<{ in_stock: number; name: string }>(
+        'SELECT in_stock, name FROM inventory_items WHERE id = ? AND is_active = 1',
+        inventoryItemId,
+      );
+      if (!item) {
+        results.push({ sku: skuRaw || null, inventory_item_id: inventoryItemId, status: 'not_found', message: 'Inventory item not active' });
+        continue;
+      }
+      const expectedQty = item.in_stock;
+      if (mode === 'increment') {
+        await adb.run(
+          `INSERT INTO stocktake_counts
+             (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+             expected_qty = excluded.expected_qty,
+             counted_qty  = stocktake_counts.counted_qty + excluded.counted_qty,
+             variance     = (stocktake_counts.counted_qty + excluded.counted_qty) - excluded.expected_qty,
+             notes        = COALESCE(excluded.notes, stocktake_counts.notes),
+             counted_at   = datetime('now')`,
+          id, inventoryItemId, expectedQty, countedQtyRaw, countedQtyRaw - expectedQty, notes,
+        );
+      } else {
+        const variance = countedQtyRaw - expectedQty;
+        await adb.run(
+          `INSERT INTO stocktake_counts
+             (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+             expected_qty = excluded.expected_qty,
+             counted_qty  = excluded.counted_qty,
+             variance     = excluded.variance,
+             notes        = COALESCE(excluded.notes, stocktake_counts.notes),
+             counted_at   = datetime('now')`,
+          id, inventoryItemId, expectedQty, countedQtyRaw, variance, notes,
+        );
+      }
+      const stored = await adb.get<{ counted_qty: number; variance: number }>(
+        'SELECT counted_qty, variance FROM stocktake_counts WHERE stocktake_id = ? AND inventory_item_id = ?',
+        id, inventoryItemId,
+      );
+      results.push({
+        sku: skuRaw || null,
+        inventory_item_id: inventoryItemId,
+        status: 'ok',
+        counted_qty: stored?.counted_qty ?? countedQtyRaw,
+        variance: stored?.variance ?? (countedQtyRaw - expectedQty),
+      });
+      okCount++;
+    }
+
+    audit(req.db, 'stocktake_bulk_upload', req.user!.id, req.ip || 'unknown', {
+      stocktake_id: id,
+      row_count: rowsRaw.length,
+      ok_count: okCount,
+      reject_count: rowsRaw.length - okCount,
+      mode,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        stocktake_id: id,
+        mode,
+        ok_count: okCount,
+        reject_count: rowsRaw.length - okCount,
+        results,
+      },
+    });
+  }),
+);
+
+// --------------------------------------------------------------------------
 // DELETE /stocktake/:id/counts/:itemId — remove a typo'd row (WEB-UIUX-1354)
 // --------------------------------------------------------------------------
 // Operator scanned the wrong SKU or fat-fingered a qty on a row mid-session.
