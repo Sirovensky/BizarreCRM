@@ -39,13 +39,15 @@ import { PartsUsageTab } from './components/PartsUsageTab';
 import { TechnicianHoursTab } from './components/TechnicianHoursTab';
 import { StalledTicketsTab } from './components/StalledTicketsTab';
 import { CustomerAcquisitionTab } from './components/CustomerAcquisitionTab';
+import { RefundsReportTab } from './components/RefundsReportTab';
 import { SummaryCard, LoadingState, EmptyState, ErrorState } from './components/ReportHelpers';
 import { DateRangePicker } from '@/components/shared/DateRangePicker';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = 'sales' | 'tickets' | 'employees' | 'inventory' | 'tax' | 'insights'
-  | 'warranty' | 'devices' | 'parts' | 'tech-hours' | 'stalled' | 'acquisition';
+  | 'warranty' | 'devices' | 'parts' | 'tech-hours' | 'stalled' | 'acquisition'
+  | 'refunds';
 type DateRangeState = { from?: string; to?: string; preset?: string };
 type SalesGroupBy = 'day' | 'week' | 'month';
 type InsightsSubTab = 'tickets' | 'sales';
@@ -223,6 +225,9 @@ const TABS: ReportTabConfig[] = [
   { key: 'employees', label: 'Employees', icon: Users },
   { key: 'inventory', label: 'Inventory', icon: Package },
   { key: 'tax', label: 'Tax', icon: Receipt },
+  // WEB-UIUX-1397: per-refund breakdown — server's GET /refunds was unread
+  // by Reports until now. Free tier; the data is already on Dashboard KPI.
+  { key: 'refunds', label: 'Refunds', icon: Receipt },
   { key: 'insights', label: 'Insights', icon: BarChart3, proFeature: 'advancedReports' },
   { key: 'warranty', label: 'Warranty', icon: ShieldAlert, proFeature: 'advancedReports' },
   { key: 'devices', label: 'Devices', icon: Smartphone, proFeature: 'advancedReports' },
@@ -1843,6 +1848,7 @@ export function ReportsPage() {
       {activeTab === 'employees' && <EmployeesTab from={fromDate} to={toDate} />}
       {activeTab === 'inventory' && <InventoryTab />}
       {activeTab === 'tax' && <TaxTab from={fromDate} to={toDate} />}
+      {activeTab === 'refunds' && <RefundsReportTab from={fromDate} to={toDate} />}
       {activeTab === 'insights' && (
         <>
           <InsightsTab

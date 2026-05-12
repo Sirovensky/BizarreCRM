@@ -2549,7 +2549,7 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
   `packages/server/src/routes/refunds.routes.ts:253-412`
   <!-- meta: fix=on-refund-approve-set-invoice.status='refunded'-when-cumulative-refunds>=amount_paid+OR-remove-the-status-colour-decoration -->
 
-- [!] WEB-UIUX-1397. **[MAJOR] Reports do not surface refund detail. Dashboard KPI shows aggregate (`kpis.refunds`); `/reports` page (linked from KPI siblings) has no per-refund breakdown — server's `GET /refunds` returns paginated detail with customer name + invoice order_id + creator, but the data is unread by any frontend.** L6 discoverability, L4 flow. **STATUS: BLOCKED — Reports refund detail tab needs server pagination + UI table; multi-component, defer**
+- [x] WEB-UIUX-1397. **[MAJOR] Reports refund detail tab shipped.** 2026-05-12 — new RefundsReportTab under Reports (`packages/web/src/pages/reports/components/RefundsReportTab.tsx`) renders a paginated per-refund table sourced from `GET /refunds`, scoped to the parent report's date window. Columns: id, customer (linked), invoice (linked), amount, type, method, status, reason, created (with author). Status tab strip (Approved default, Pending, Declined, All), page-local summary cards (count / total / cash-card split), and a CTA out to /refunds for approve/decline.
   `packages/server/src/routes/refunds.routes.ts:74-95`
   `packages/web/src/pages/dashboard/DashboardPage.tsx:2120`
   <!-- meta: fix=add-Refunds-Detail-tab-to-/reports+table-with-date+invoice+customer+amount+reason+method+approver -->
