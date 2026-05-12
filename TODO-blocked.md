@@ -3257,4 +3257,3 @@ Walk: lead detail "Convert to Ticket" green CTA → confirm() → POST /leads/:i
 
 ### Inventory / Tickets / Print / Misc
 
-- [!] BUGHUNT-2026-05-10-49. **[HIGH] Print label drops payment lines and full discount breakdown on multi-tender invoices.** `packages/web/src/pages/print/PrintPage.tsx:1277` — recent edit added "+N more" for devices, but the same label still omits per-payment lines on multi-tender invoices and the discount breakdown for stacked promos. Receipts must show every tender leg. **[AUTOLOOP-T49 BLOCKED 2026-05-11: print-label payment-leg / discount breakdown requires template changes + helper that aggregates payments + discount stack across the receipt + line-item layout pass.]**
