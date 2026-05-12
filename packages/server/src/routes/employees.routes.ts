@@ -180,6 +180,19 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+    // WEB-UIUX-1267: payroll_week_start_day drives the weekly_hours window so
+    // Sun-Sat / Sat-Fri stores see numbers that match their payroll reports.
+    // SQLite `weekday N` modifier convention: 0=Sunday, 1=Monday (default
+    // fallback when missing / out of range) … 6=Saturday. The `weekday N,
+    // -7 days, start of day` chain resolves to "the most recent Nth weekday
+    // at midnight" for any value 0..6.
+    const cfgRow = await adb.get<{ value: string | null }>(
+      "SELECT value FROM store_config WHERE key = 'payroll_week_start_day'",
+    );
+    const rawWeekStart = cfgRow?.value;
+    const weekStartDay = (rawWeekStart != null && /^[0-6]$/.test(rawWeekStart))
+      ? Number(rawWeekStart)
+      : 1;
     const employees = await adb.all(`
       SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.role,
              u.avatar_url, u.is_active, u.pin IS NOT NULL AS has_pin,
@@ -203,12 +216,12 @@ router.get(
                )
                FROM clock_entries ce
                WHERE ce.user_id = u.id
-                 AND ce.clock_in >= datetime('now', 'weekday 1', '-7 days', 'start of day')
+                 AND ce.clock_in >= datetime('now', 'weekday ' || ?, '-7 days', 'start of day')
              ), 0.0) AS weekly_hours
       FROM users u
       WHERE u.is_active = 1
       ORDER BY u.first_name, u.last_name
-    `);
+    `, weekStartDay);
 
     res.json({ success: true, data: employees });
   }),

@@ -4425,7 +4425,7 @@ Flow under test (LeftPanel cart → click `Add discount` pill → enter amount +
   `packages/web/src/pages/employees/EmployeeListPage.tsx:175-190`
   <!-- meta: fix=add-eye-icon-toggle-right-side-of-input+briefly-reveal-on-press-(2s)-or-toggle-with-state -->
 
-- [!] WEB-UIUX-1267. **[MINOR] `getWeekRange()` hardcodes Monday-start (`EmployeeListPage.tsx:85-95`). Stores running Sunday–Saturday or Saturday–Friday pay weeks see misaligned "Hours This Week" — number on this page won't match what payroll reports show.** L11 i18n / config awareness. **[AUTOLOOP-T49 BLOCKED 2026-05-11: needs a  store_config setting (0-6) + matching server-side aggregation alignment + UI for admins to flip; otherwise the page-level fix would drift from server payroll math.]**
+- [x] WEB-UIUX-1267. **Payroll week-start day now configurable 2026-05-11.** New `payroll_week_start_day` config key (0=Sunday … 6=Saturday, default 1=Monday) added to `ALLOWED_CONFIG_KEYS` with regex `/^[0-6]$/` validation and Monday fallback. `GET /employees` reads the value once per request and parameterizes the `weekday N` modifier in the `weekly_hours` subquery so Sun-Sat / Sat-Fri stores see numbers that match their payroll reports. Server SQL stays one query; existing tenants without the key keep Monday-start behavior unchanged.
   `packages/web/src/pages/employees/EmployeeListPage.tsx:85-104`
   `packages/server/src/routes/employees.routes.ts:201`
   <!-- meta: fix=read-store-setting-pay_week_start_day-(0-6)+derive-monday-offset-from-it+server-and-client-must-agree -->

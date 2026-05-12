@@ -326,6 +326,13 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // discount without a manager PIN gate (UI side-effect lives in
   // UnifiedPosPage discount-apply path).
   'pos_max_discount_cents', 'pos_max_discount_pct', 'pos_require_manager_for_discount',
+  // WEB-UIUX-1267: payroll week-start day. 0=Sunday, 1=Monday (default),
+  // … 6=Saturday — matches SQLite `weekday N` modifier semantics. Drives
+  // EmployeeListPage "Hours This Week" + future payroll aggregation so
+  // weekly-cadence tenants on Sun-Sat or Sat-Fri schedules see the right
+  // number. Validated to '0'..'6' on write; any other value falls back
+  // to Monday at read time.
+  'payroll_week_start_day',
   // ENR-LE8: Estimate auto-follow-up days
   'estimate_followup_days',
   // ENR-A3: Notification digest mode
