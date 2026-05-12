@@ -36,9 +36,21 @@ function now(): string {
 // SCAN-783: null-safe expiry check. null/undefined means "never expires".
 // Malformed dates fail-open (warn + return false) so a bad DB value never
 // blocks a valid card.
+//
+// WEB-UIUX-1434: bare YYYY-MM-DD values (the common storage shape — write
+// path runs validateIsoDate which trims to date-only) are interpreted as
+// END of that day UTC. Previously Date.parse('2026-12-31') resolved to
+// midnight UTC, killing a card 4–8h before the user expected on
+// US-East/-West clocks. End-of-UTC-day gives a small false-negative bias
+// (card stays valid up to ~24h longer in the worst-case eastern timezone)
+// — far better than striking it early. Tenant-tz aware refinement is
+// tracked separately; this UTC-end-of-day shift is the safe minimum.
 function isExpired(expiresAt: string | null | undefined): boolean {
   if (!expiresAt) return false;
-  const ts = Date.parse(expiresAt);
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(expiresAt)
+    ? `${expiresAt}T23:59:59.999Z`
+    : expiresAt;
+  const ts = Date.parse(normalized);
   if (Number.isNaN(ts)) {
     logger.warn('gift card has unparseable expires_at', { raw: expiresAt });
     return false;
@@ -124,7 +136,12 @@ router.get('/', asyncHandler(async (req, res) => {
   // direct equality matches.
   if (status === 'expired') {
     conditions.push("gc.expires_at IS NOT NULL");
-    conditions.push("gc.expires_at < datetime('now')");
+    // WEB-UIUX-1434: bare YYYY-MM-DD storage means "valid through end of
+    // that day". `datetime(substr(expires_at,1,10), '+1 day')` resolves
+    // to next-day midnight UTC; comparing < now() flags as expired only
+    // after the full local-day window has elapsed (UTC-end-of-day bias,
+    // safe in every tz).
+    conditions.push("datetime(substr(gc.expires_at, 1, 10), '+1 day') < datetime('now')");
     conditions.push("gc.status NOT IN ('used','disabled')");
   } else if (status) {
     conditions.push('gc.status = ?');
@@ -499,7 +516,8 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
                      END,
             updated_at = ?
       WHERE id = ? AND status = 'active' AND current_balance >= ?
-        AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+        AND (expires_at IS NULL
+             OR datetime(substr(expires_at, 1, 10), '+1 day') > datetime('now'))`,
     amount, amount, now(), cardId, amount,
   );
   if (dec.changes === 0) {
