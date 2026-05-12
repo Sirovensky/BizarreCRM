@@ -144,6 +144,30 @@ router.patch('/clock-entries/:id', asyncHandler(async (req: any, res: any) => {
   );
   if (!existing) throw new AppError('Clock entry not found', 404);
 
+  // BUGHUNT-2026-05-10-14: backdating clock entries beyond a 7-day window
+  // is a payroll-fraud vector — gate it behind admin (not just
+  // manager-or-admin) so a single rogue manager cannot retroactively edit
+  // last quarter's hours. Window applies to either the existing clock_in
+  // OR the new clock_in (whichever is older), so re-targeting an old row
+  // to a different old date still trips the gate.
+  const BACKDATE_GUARD_MS = 7 * 24 * 60 * 60 * 1000;
+  const proposedClockIn = req.body?.clock_in != null ? String(req.body.clock_in) : null;
+  const existingClockInMs = Date.parse(existing.clock_in) || 0;
+  const proposedClockInMs = proposedClockIn ? Date.parse(proposedClockIn) : 0;
+  const oldestRelevantMs = Math.min(
+    existingClockInMs || Date.now(),
+    proposedClockInMs || Date.now(),
+  );
+  const ageMs = Date.now() - oldestRelevantMs;
+  const isBackdatedEdit = ageMs > BACKDATE_GUARD_MS;
+  const callerRole = (req as any)?.user?.role;
+  if (isBackdatedEdit && callerRole !== 'admin') {
+    throw new AppError(
+      'Editing clock entries older than 7 days requires an admin. Ask an admin to apply this change.',
+      403,
+    );
+  }
+
   // reason is mandatory for every manager edit (audit requirement).
   const reason = req.body?.reason;
   if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
@@ -214,6 +238,10 @@ router.patch('/clock-entries/:id', asyncHandler(async (req: any, res: any) => {
     clock_entry_id: id,
     user_id: existing.user_id,
     reason: reasonTrimmed,
+    // BUGHUNT-2026-05-10-14: tag the audit row when the edit reached past
+    // the 7-day guard so payroll-fraud detectors can filter on it.
+    backdated_admin_override: isBackdatedEdit,
+    age_days: Math.floor(ageMs / (24 * 60 * 60 * 1000)),
   });
 
   const row = await adb.get<ClockEntry>('SELECT * FROM clock_entries WHERE id = ?', id);
