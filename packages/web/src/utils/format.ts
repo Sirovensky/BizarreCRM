@@ -244,20 +244,25 @@ export function generateIdempotencyKey(prefix = 'req'): string {
   );
 }
 
-// ─── Gift-card amount heuristic ─────────────────────────────────────────────
+// ─── Gift-card amount formatter ─────────────────────────────────────────────
 
 /**
- * Server is mid-migration from float-dollars to integer-cents.
- * Treat large integers (>= 1000 in magnitude) as cents so a silent server
- * schema flip doesn't render every balance 100× wrong.
+ * WEB-UIUX-1454 (2026-05-12): the previous `cents-if-integer-and->=1000`
+ * heuristic 100×-divided $1000–$10,000 corporate gift cards (server stores
+ * `gift_cards.current_balance` as REAL dollars, capped by
+ * `GIFT_CARD_MAX_AMOUNT = 10_000`; an integer 1500 IS $1,500, not 1500 cents).
  *
- * Consolidates duplicates from GiftCardsListPage and GiftCardDetailPage
- * (WEB-UIUX-550). Call `formatCurrency(dollarsFromMaybeCents(v))` or use
- * the convenience wrappers on those pages.
+ * Heuristic dropped — the server schema is unambiguous today (REAL dollars,
+ * float OR integer both interpreted as dollars). When SEC-H34-money-refactor
+ * eventually flips the column to INTEGER cents, this helper is the single
+ * place to update.
+ *
+ * Kept as a wrapper (rather than removed) so existing callsites continue to
+ * compile while the conversion semantics get documented in one place.
  */
 export function dollarsFromMaybeCents(amount: number): number {
   if (!Number.isFinite(amount)) return 0;
-  return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
+  return amount;
 }
 
 // WEB-UIUX-1014: shared currency formatter that applies the maybe-cents
