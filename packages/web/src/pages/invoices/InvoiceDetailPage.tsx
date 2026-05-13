@@ -722,11 +722,15 @@ export function InvoiceDetailPage() {
     (acc, cn) => acc + Math.abs(Number(cn.total) || 0),
     0,
   );
+  // WEB-UIUX-1386 (post-1208): align with server cap (`total - alreadyCredited`).
+  // amount_paid no longer inflates on credit-note (see WEB-UIUX-1208) so write-
+  // off semantics are safe — operator can credit an unpaid $200 invoice as
+  // bad debt without faking a $200 cash collection. Server matches and accepts.
   const serverCapForTotal = Math.max(0, Number(invoice.total) - sumOfPriorCreditNotes);
   const maxCreditNoteAmount = Math.max(
     0,
     Number(invoice.total) > 0
-      ? Math.min(Number(invoice.amount_paid) || 0, serverCapForTotal)
+      ? serverCapForTotal
       : Number(invoice.amount_paid) || 0,
   );
   const canCreateCreditNote = invoice.status !== 'void' && (Number(invoice.total) > 0 || Number(invoice.amount_paid) > 0) && maxCreditNoteAmount > 0;
