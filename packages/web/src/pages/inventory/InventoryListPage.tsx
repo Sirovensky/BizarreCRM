@@ -439,9 +439,10 @@ export function InventoryListPage() {
   const bulkPriceRef = useFocusTrap(showBulkPriceModal) as React.RefObject<HTMLDivElement>;
   const importRef = useFocusTrap(showImportModal) as React.RefObject<HTMLDivElement>;
   // WEB-UIUX-911: add focus-trap + restore to the remaining inline modals
-  // (dismiss-low-stock, order-all) so keyboard operators don't drop to <body>
-  // on close.
+  // (dismiss-low-stock, stock-confirm) so keyboard operators don't drop to
+  // <body> on close.
   const dismissLowStockRef = useFocusTrap(!!dismissConfirm) as React.RefObject<HTMLDivElement>;
+  const stockConfirmRef = useFocusTrap(!!stockConfirm) as React.RefObject<HTMLDivElement>;
   useEscClose(() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }, showBulkPriceModal);
   useEscClose(() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }, showImportModal);
 
@@ -1326,6 +1327,7 @@ export function InventoryListPage() {
           }}
         >
           <div
+            ref={stockConfirmRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="adjust-stock-title"
