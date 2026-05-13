@@ -1847,7 +1847,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:461-507`
 
-- [!] WEB-UIUX-967. **[MAJOR] Inline line-item editor exposes raw `tax_amount` cell with no `tax_class_id` picker.** `EstimateDetailPage:345-350`. Modal create at `EstimateListPage:287-296` has tax-class dropdown that auto-computes. Editor forces operator to do mental math + paste cents into tax field. Inconsistent within same flow. L4, L7. **STATUS: BLOCKED — inline editor needs tax_class_id picker mirroring CreateEstimateModal; multi-component refactor + auto-compute logic, defer to estimates sprint**
+- [x] WEB-UIUX-967. **[MAJOR] Inline tax_class_id picker shipped on EstimateDetail editor.** 2026-05-12 — replaced the raw `tax_amount` number input with the tax-class dropdown (mirrors CreateEstimateModal). Picker fetches `settingsApi.getTaxClasses` (60s cache), labels as "Name (X%)". Selecting a class auto-computes `tax_amount = unit_price × quantity × (rate/100)` and keeps it synced on quantity / unit_price changes. Best-effort reverse-lookup on edit-open derives `tax_class_id` from the persisted `tax_amount` by rate-match so existing line items show the right selection. Server still receives `tax_amount` only — `tax_class_id` is stripped client-side before submit. Auto-compute eliminates the mental-math step.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:323-359`
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:309`

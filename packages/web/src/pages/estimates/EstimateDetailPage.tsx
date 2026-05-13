@@ -6,7 +6,7 @@ import {
   FileSignature, Link2, Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { estimateApi } from '@/api/endpoints';
+import { estimateApi, settingsApi } from '@/api/endpoints';
 import type { EstimateSignature, EstimateSignPublicSummary } from '@/api/endpoints';
 import { confirm, useConfirmStore } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
@@ -298,7 +298,22 @@ export function EstimateDetailPage() {
     quantity: number;
     unit_price: number;
     tax_amount: number;
+    // WEB-UIUX-967: tax_class_id picker mirrors CreateEstimateModal flow.
+    // Stored client-side so the dropdown remembers its selection across
+    // re-renders; on submit the derived `tax_amount = qty * unit_price *
+    // (rate / 100)` is sent and tax_class_id is dropped from the payload
+    // since the server stores only the dollar value.
+    tax_class_id?: number | '' | null;
   }>>([]);
+
+  // WEB-UIUX-967: load the same tax-classes list CreateEstimateModal uses so
+  // the inline editor's picker shows the same rates. Cached 60s.
+  const { data: taxClassData } = useQuery({
+    queryKey: ['tax-classes'],
+    queryFn: () => settingsApi.getTaxClasses(),
+    staleTime: 60_000,
+  });
+  const taxClasses: { id: number; name: string; rate: number }[] = taxClassData?.data?.data || [];
 
   // Guard against a missing route param — `Number(undefined)` is NaN and
   // would otherwise fire the API call with a garbage id.
@@ -512,7 +527,12 @@ export function EstimateDetailPage() {
   // WEB-W2-019: line-item save mutation — reuses the existing PUT /:id endpoint
   const lineItemsMut = useMutation({
     mutationFn: (items: typeof draftItems) =>
-      estimateApi.update(Number(id), { line_items: items }),
+      // WEB-UIUX-967: drop the client-only `tax_class_id` field before POST.
+      // Server stores `tax_amount` (dollars) only; the picker exists solely
+      // for the local entry experience.
+      estimateApi.update(Number(id), {
+        line_items: items.map(({ tax_class_id: _drop, ...rest }) => rest),
+      }),
     onSuccess: (res) => {
       // WEB-UIUX-974: sync cache immediately from server response so the
       // Summary card reflects recomputed totals before the refetch settles.
@@ -905,13 +925,31 @@ export function EstimateDetailPage() {
               {!editingItems && !estimateContentLocked && (
                 <button
                   onClick={() => {
-                    setDraftItems(lineItems.map((li: any) => ({
-                      id: li.id,
-                      description: li.description || li.item_name || li.name || '',
-                      quantity: Number(li.quantity) || 1,
-                      unit_price: Number(li.unit_price ?? li.price ?? 0),
-                      tax_amount: Number(li.tax_amount ?? 0),
-                    })));
+                    setDraftItems(lineItems.map((li: any) => {
+                      const qty = Number(li.quantity) || 1;
+                      const price = Number(li.unit_price ?? li.price ?? 0);
+                      const tax = Number(li.tax_amount ?? 0);
+                      // WEB-UIUX-967: best-effort reverse-lookup of tax_class_id
+                      // from the persisted `tax_amount` so the dropdown reflects
+                      // the existing class on edit-open. Match by `tax_class_id`
+                      // if server returns it; otherwise match by derived rate
+                      // (qty * unit_price * rate/100 ≈ tax_amount).
+                      let tcId: number | '' | null = li.tax_class_id ?? null;
+                      if (tcId == null && qty * price > 0 && tax > 0) {
+                        const computedRate = (tax / (qty * price)) * 100;
+                        const match = taxClasses.find((t) => Math.abs(t.rate - computedRate) < 0.01);
+                        if (match) tcId = match.id;
+                      }
+                      if (tcId == null) tcId = '';
+                      return {
+                        id: li.id,
+                        description: li.description || li.item_name || li.name || '',
+                        quantity: qty,
+                        unit_price: price,
+                        tax_amount: tax,
+                        tax_class_id: tcId,
+                      };
+                    }));
                     setEditingItems(true);
                   }}
                   className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
@@ -947,24 +985,57 @@ export function EstimateDetailPage() {
                     <input
                       type="number" min="1" step="1"
                       value={item.quantity}
-                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, quantity: Number(e.target.value) || 1 } : r))}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => {
+                        if (i !== idx) return r;
+                        const next = { ...r, quantity: Number(e.target.value) || 1 };
+                        // WEB-UIUX-967: keep derived tax in sync on qty change.
+                        const tc = taxClasses.find((t) => t.id === Number(next.tax_class_id));
+                        if (tc) next.tax_amount = +(next.unit_price * next.quantity * (tc.rate / 100)).toFixed(2);
+                        return next;
+                      }))}
                       placeholder="Qty"
                       className="input text-sm w-20 text-right"
                     />
                     <input
                       type="number" min="0" step="0.01"
                       value={item.unit_price}
-                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, unit_price: Number(e.target.value) || 0 } : r))}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => {
+                        if (i !== idx) return r;
+                        const next = { ...r, unit_price: Number(e.target.value) || 0 };
+                        // WEB-UIUX-967: recompute tax when unit_price changes
+                        // and a tax_class is selected so the derived tax stays
+                        // accurate without operator re-entering it.
+                        const tc = taxClasses.find((t) => t.id === Number(next.tax_class_id));
+                        if (tc) next.tax_amount = +(next.unit_price * next.quantity * (tc.rate / 100)).toFixed(2);
+                        return next;
+                      }))}
                       placeholder="Price"
                       className="input text-sm w-28 text-right"
                     />
-                    <input
-                      type="number" min="0" step="0.01"
-                      value={item.tax_amount}
-                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, tax_amount: Number(e.target.value) || 0 } : r))}
-                      placeholder="Tax"
-                      className="input text-sm w-24 text-right"
-                    />
+                    {/* WEB-UIUX-967: tax_class_id picker (matches CreateEstimateModal).
+                        On select, the dollar tax_amount is recomputed from
+                        unit_price × quantity × (rate/100). The hidden numeric
+                        value still ships to the server in the line_items
+                        payload — only the entry surface changed. */}
+                    <select
+                      value={item.tax_class_id ?? ''}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => {
+                        if (i !== idx) return r;
+                        const tcId = e.target.value === '' ? '' : Number(e.target.value);
+                        const tc = taxClasses.find((t) => t.id === Number(tcId));
+                        const tax_amount = tc
+                          ? +(r.unit_price * r.quantity * (tc.rate / 100)).toFixed(2)
+                          : 0;
+                        return { ...r, tax_class_id: tcId, tax_amount };
+                      }))}
+                      className="input text-sm w-32 text-right"
+                      title={`Tax: $${(item.tax_amount || 0).toFixed(2)}`}
+                    >
+                      <option value="">No tax</option>
+                      {taxClasses.map((tc) => (
+                        <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>
+                      ))}
+                    </select>
                     <button
                       onClick={() => setDraftItems((prev) => prev.filter((_, i) => i !== idx))}
                       className="p-1.5 text-red-400 hover:text-red-600 rounded"
@@ -975,7 +1046,7 @@ export function EstimateDetailPage() {
                   </div>
                 ))}
                 <button
-                  onClick={() => setDraftItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0, tax_amount: 0 }])}
+                  onClick={() => setDraftItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0, tax_amount: 0, tax_class_id: '' }])}
                   className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium mt-1"
                 >
                   <Plus className="h-3 w-3" /> Add row
