@@ -243,11 +243,15 @@ export function SubscriptionsListPage() {
     },
   });
 
-  // WEB-UIUX-1074: send-payment-link mutation for subs without blockchyp_token
+  // WEB-UIUX-1074: send-payment-link mutation for subs without blockchyp_token.
+  // Endpoint takes a {tier_id, customer_id} pair (no per-subscription hosted-
+  // link route exists); row-level callers pass the source subscription so we
+  // can pluck both, plus the sub id for in-flight UI state.
   const [paymentLinkId, setPaymentLinkId] = useState<number | null>(null);
   const paymentLinkMut = useMutation({
-    mutationFn: (id: number) => membershipApi.createPaymentLink(id),
-    onSuccess: (res, id) => {
+    mutationFn: (vars: { tier_id: number; customer_id: number; subscription_id?: number }) =>
+      membershipApi.createPaymentLink({ tier_id: vars.tier_id, customer_id: vars.customer_id }),
+    onSuccess: (res, _vars) => {
       const url: string = (res.data as any)?.url ?? '';
       toast(
         (t) => (
@@ -675,7 +679,7 @@ export function SubscriptionsListPage() {
                       {(sub.status === 'active' || sub.status === 'past_due') && !sub.blockchyp_token && (
                         <AdminOnly>
                           <button
-                            onClick={() => { setPaymentLinkId(sub.id); paymentLinkMut.mutate(sub.id); }}
+                            onClick={() => { setPaymentLinkId(sub.id); paymentLinkMut.mutate({ tier_id: sub.tier_id, customer_id: sub.customer_id, subscription_id: sub.id }); }}
                             disabled={paymentLinkId === sub.id}
                             className="flex items-center gap-1 text-surface-500 hover:text-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
                             title="Send payment link"
