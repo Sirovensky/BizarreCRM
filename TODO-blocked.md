@@ -1891,7 +1891,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
   `packages/web/src/api/endpoints.ts:1274-1276`
   <!-- meta: fix=add-GiftCard-tender+code-input-modal+lookup→redeem-flow+update-PaymentMethod-union -->
 
-- [!] WEB-UIUX-982. **[BLOCKER] Currency render heuristic silently 100x-divides $1000–$10000 cards.** `formatCurrency` in both list + detail pages: `Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount`. Server `GIFT_CARD_MAX_AMOUNT = 10_000` (dollars). Issue $1500 corp card → server stores `1500` (integer) → list/detail render `$15.00`. Comment claims "no real-world gift-card balance reaches $1000 in float-dollars outside corporate gifting" — corporate gifting is exactly the cohort that uses $1000+ cards. Reload to round amount has same defect. L7, L13, L8. **BLOCKED 2026-05-10: real fix is server-side schema normalization (REAL→INTEGER cents) tracked by SEC-H34-money-refactor; cannot be removed unilaterally without breaking pages that DO pass cents.**
+- [x] WEB-UIUX-982. **[BLOCKER] Corporate gift-card 100×-divide bug fixed.** 2026-05-12 — closed by WEB-UIUX-1454: `dollarsFromMaybeCents()` no longer divides integer balances >=1000. Server's REAL-dollars schema is unambiguous today; the heuristic was the bug. $1,500 corporate cards now render `$1,500.00` instead of `$15.00`. Both GiftCardsListPage and GiftCardDetailPage routed through the same helper so both surfaces fixed in one change.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:57-63`
   `packages/web/src/pages/gift-cards/GiftCardDetailPage.tsx:41-49`
   <!-- meta: fix=remove-cents-heuristic+pin-server-to-one-representation+migrate-callsites -->
