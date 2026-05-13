@@ -1,5 +1,17 @@
 export const DEFAULT_PRIMARY_ACCENT = '#fdeed0';
 
+// Stored theme_primary_color values that mean "use the canonical brand
+// ramp, not a tenant override". Both the current cream default and the
+// retired caramel default (5c98638f, reverted in 51896b2e) are treated as
+// pass-through so dark-mode cream from globals.css wins over an inline
+// root-level override. Without this, every shop that ran the setup wizard
+// during the caramel window keeps a stuck-orange primary even after we
+// restored the CSS ramp.
+const PASSTHROUGH_PRIMARY_COLORS = new Set([
+  '#fdeed0', // current cream brand default
+  '#a66d1f', // retired caramel default (5c98638f)
+]);
+
 type Rgb = { r: number; g: number; b: number };
 
 const SHADE_KEYS = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
@@ -82,13 +94,15 @@ export function buildPrimaryAccentVars(color: string | null | undefined): Record
 export function applyPrimaryAccent(color: string | null | undefined): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  // Only override when an explicit theme color is configured. Falling back to
-  // DEFAULT_PRIMARY_ACCENT (cream) blew away the mode-aware tokens in
-  // globals.css :root / .dark — light mode lost its caramel primary and
-  // ended up cream-on-white (1.1:1 AA fail). Without a config value, let the
-  // CSS variables in globals.css take effect untouched.
+  // Only override when an explicit non-default theme color is configured.
+  // Empty values and the known canonical defaults (cream / retired caramel)
+  // strip the inline overrides so the cream-everywhere ramp in globals.css
+  // wins. The inline `style` on <html> beats both `:root` and `.dark` CSS
+  // rules, so without this guard every shop that saved cream in setup ended
+  // up with the mix()-derived light ramp overriding the dark-mode cream.
   const trimmed = (color || '').trim();
-  if (!trimmed) {
+  const normalized = trimmed ? normalizeHex(trimmed) : '';
+  if (!trimmed || PASSTHROUGH_PRIMARY_COLORS.has(normalized)) {
     SHADE_KEYS.forEach((shade) => root.style.removeProperty(`--primary-${shade}`));
     root.style.removeProperty('--primary-950');
     return;
