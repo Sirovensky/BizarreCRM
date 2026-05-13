@@ -6,6 +6,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import toast from 'react-hot-toast';
 import DOMPurify from 'dompurify';
 import { ticketApi, smsApi } from '@/api/endpoints';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { useAuthStore } from '@/stores/authStore';
 import { useDraft } from '@/hooks/useDraft';
 import { cn } from '@/utils/cn';
@@ -356,7 +357,11 @@ export function TicketNotes({
           Loading activity...
         </div>
       ) : timelineEntries.length === 0 ? (
-        <p className="py-8 text-center text-sm text-surface-400">No activity yet</p>
+        <EmptyState
+          icon={MessageSquare}
+          title="No activity yet"
+          description="Notes, status changes, and SMS sent on this ticket will appear here."
+        />
       ) : (
         <div className="space-y-3">
           {activityQuery.isError && (

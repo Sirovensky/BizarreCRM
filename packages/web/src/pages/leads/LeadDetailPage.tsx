@@ -8,6 +8,7 @@ import {
 import { useEffect, useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { confirm } from '@/stores/confirmStore';
 import { usePlanStore } from '@/stores/planStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
@@ -662,7 +663,11 @@ export function LeadDetailPage() {
               <Activity className="h-4 w-4" /> Activity Timeline
             </h3>
             {timeline.length === 0 ? (
-              <p className="text-sm text-surface-400 italic">No activity yet</p>
+              <EmptyState
+                icon={Activity}
+                title="No activity yet"
+                description="Notes, status changes, and outreach against this lead will show up here as they happen."
+              />
             ) : (
               <div className="relative space-y-0">
                 {timeline.map((item, idx) => {
