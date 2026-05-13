@@ -1300,6 +1300,22 @@ export function InvoiceDetailPage() {
                 <span className="text-surface-600 dark:text-surface-300">Paid</span>
                 <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(invoice.amount_paid)}</span>
               </div>
+              {/* WEB-UIUX-1208: surface the credit-note ledger offset separately
+                  from real cash. Hidden when zero so the row doesn't add noise
+                  on never-credited invoices. */}
+              {Number(invoice.amount_credited ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span
+                    className="text-surface-600 dark:text-surface-300"
+                    title="Ledger offset from credit notes — does NOT reflect cash collected. Combined with Paid covers the invoice total."
+                  >
+                    Credited <span className="text-surface-400 cursor-help">&#9432;</span>
+                  </span>
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                    {formatCurrency(Number(invoice.amount_credited))}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm border-t border-surface-200 dark:border-surface-700 pt-3 mt-1">
                 <span className="font-semibold text-surface-700 dark:text-surface-200">Balance Due</span>
                 <span className={cn('font-bold text-base', Number(invoice.amount_due) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400')}>

@@ -1642,36 +1642,45 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
     });
   }
 
-  // M5: Adjust the original invoice balance, CLAMPING newAmountPaid at total so
-  // amount_due can never go negative. If the credit would push amount_paid past
-  // the invoice total (i.e. credit > remaining due), record the overflow as a
-  // store credit for the customer instead of silently hiding it in a negative
-  // amount_due column.
+  // WEB-UIUX-1208: stop inflating `amount_paid` to drive `amount_due` to zero.
+  // The credit-note value lands in the dedicated `amount_credited` column
+  // (migration 196). `amount_paid` keeps tracking real cash collected; the
+  // combined ledger (amount_paid + amount_credited) is what zeroes amount_due.
+  //
+  // Overflow semantics: when the cumulative credit exceeds (total - amount_paid)
+  // we still post the excess to store credit (existing behaviour) so the
+  // refund is honoured even on already-collected balances. The overflow
+  // calculation is now driven by the remaining ledger gap, not by inflating
+  // amount_paid past total.
   const prevAmountPaid = roundCents(original.amount_paid || 0);
-  const requested = roundCents(prevAmountPaid + amount);
-  const cappedAmountPaid = Math.min(requested, roundCents(original.total));
-  const creditOverflow = roundCents(requested - cappedAmountPaid);
-  const newAmountDue = Math.max(0, roundCents(original.total - cappedAmountPaid));
+  const prevAmountCredited = roundCents(Number((original as { amount_credited?: number }).amount_credited) || 0);
+  const total = roundCents(original.total);
+  // How much of `amount` is absorbed by the invoice itself vs. parked as
+  // store-credit overflow:
+  const ledgerSlotRemaining = Math.max(0, roundCents(total - prevAmountPaid - prevAmountCredited));
+  const absorbedByInvoice = Math.min(amount, ledgerSlotRemaining);
+  const creditOverflow = roundCents(amount - absorbedByInvoice);
+  const newAmountCredited = roundCents(prevAmountCredited + absorbedByInvoice);
+  const newAmountDue = Math.max(0, roundCents(total - prevAmountPaid - newAmountCredited));
 
   // WEB-UIUX-708: when the cumulative credit-note total covers the full
-  // invoice, mark the source invoice 'refunded' rather than 'paid'. Previously
-  // every native refund landed the invoice at status='paid' and the
-  // 'refunded' status was only ever set by RepairShopr/RepairDesk importers —
-  // donut charts and reports promised a colour swatch the native flow could
-  // never produce. The state machine already allows paid→refunded.
+  // invoice, mark the source invoice 'refunded' rather than 'paid'. Status
+  // ladder now derives from combined ledger so `paid` requires real cash
+  // OR offset that fully covers `total`.
   const totalCreditedAfter = roundCents(alreadyCredited + amount);
-  const fullyRefunded = totalCreditedAfter >= roundCents(original.total);
+  const fullyRefunded = totalCreditedAfter >= total;
+  const combinedLedger = roundCents(prevAmountPaid + newAmountCredited);
   const newStatus = fullyRefunded
     ? 'refunded'
-    : newAmountDue <= 0
+    : combinedLedger >= total
       ? 'paid'
-      : cappedAmountPaid > 0
+      : prevAmountPaid > 0
         ? 'partial'
         : 'unpaid';
 
   // SEC-H113: enforce state-machine transition before writing.
   // 'unpaid' → 'refunded' is not in the standard map; allow it via
-  // a defensive intermediate to 'paid' since amount_paid still rises.
+  // a defensive intermediate to 'paid' since the combined ledger covers total.
   if (original.status === 'unpaid' && newStatus === 'refunded') {
     assertInvoiceTransition(original.status, 'paid');
   } else {
@@ -1679,8 +1688,8 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   }
 
   await adb.run(`
-    UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-  `, cappedAmountPaid, newAmountDue, newStatus, invoiceId);
+    UPDATE invoices SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
+  `, newAmountCredited, newAmountDue, newStatus, invoiceId);
 
   // Record overflow (the part of the credit that exceeded the remaining balance)
   // as a store credit for this customer.
