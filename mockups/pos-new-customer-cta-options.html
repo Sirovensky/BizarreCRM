@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>+ New customer · CTA silencing options</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<style>
+  :root {
+    --primary-500: 253 238 208;     /* #FDEED0 cream */
+    --primary-600: 245 220 167;
+    --primary-400: 253 240 200;
+    --primary-950:  26  11   0;
+    --text-on-primary: 26 11 0;
+    --surface-50:  248 247 245;
+    --surface-200: 224 221 217;
+    --surface-300: 198 194 188;
+    --surface-700:  30  28  26;
+    --surface-800:  22  21  19;
+    --surface-900:  15  14  12;
+  }
+  body {
+    background: rgb(var(--surface-900));
+    color: rgb(var(--surface-50));
+    font-family: 'Jost', system-ui, sans-serif;
+  }
+  h1, h2 { font-family: 'Bebas Neue', Impact, sans-serif; letter-spacing: 0.04em; }
+  .label-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: rgb(var(--surface-300)); }
+  .card { background: rgb(var(--surface-800)); border: 1px solid rgb(var(--surface-700)); border-radius: 16px; padding: 24px; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .row-label { font-size: 11px; color: rgb(var(--surface-300)); margin-top: 6px; font-family: ui-monospace, monospace; }
+
+  /* Walk-in (reference — kept identical across all variants) */
+  .walk-in {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid rgb(var(--surface-700));
+    background: rgb(var(--surface-800));
+    padding: 12px 24px;
+    border-radius: 16px;
+    font-size: 14px; font-weight: 600;
+    color: rgb(var(--surface-200));
+  }
+
+  /* CURRENT — solid wash */
+  .v-current {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgb(var(--primary-500));
+    color: rgb(var(--text-on-primary));
+    padding: 20px 24px;
+    border-radius: 16px;
+    font-size: 15px; font-weight: 700;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.20);
+  }
+
+  /* A — outline + tint */
+  .v-a {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgb(var(--primary-500) / 0.10);
+    border: 1px solid rgb(var(--primary-500));
+    color: rgb(var(--primary-500));
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px; font-weight: 600;
+  }
+
+  /* B — smaller solid + no shadow */
+  .v-b {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgb(var(--primary-500));
+    color: rgb(var(--text-on-primary));
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px; font-weight: 600;
+  }
+
+  /* C — left-edge accent */
+  .v-c {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgb(var(--surface-800));
+    border: 1px solid rgb(var(--surface-700));
+    border-left: 4px solid rgb(var(--primary-500));
+    color: rgb(var(--surface-50));
+    padding: 14px 24px;
+    border-radius: 12px;
+    font-size: 14px; font-weight: 600;
+  }
+
+  /* D — solid w/ tighter type only (light tweak) */
+  .v-d {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgb(var(--primary-500));
+    color: rgb(var(--text-on-primary));
+    padding: 14px 24px;
+    border-radius: 12px;
+    font-size: 14px; font-weight: 600;
+  }
+</style>
+</head>
+<body class="px-10 py-12">
+
+<header class="mb-10">
+  <div class="label-mono mb-2">POS · NEW CUSTOMER CTA</div>
+  <h1 class="text-3xl">Silencing options</h1>
+  <p class="text-sm text-zinc-400 mt-2 max-w-2xl">
+    Comparing the current full-wash cream button against three quieter alternatives.
+    Walk-in shown beside each for size + weight reference (Walk-in is the existing secondary).
+  </p>
+</header>
+
+<!-- Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl">
+
+  <!-- CURRENT -->
+  <div class="card">
+    <div class="label-mono mb-3">Current · loud</div>
+    <div class="stack">
+      <button class="v-current">+ New customer</button>
+      <button class="walk-in">Walk-in · no profile</button>
+    </div>
+    <div class="row-label">bg-primary-500 · py-5 · text-[15px] font-bold · shadow-lg/20 · rounded-2xl</div>
+    <p class="text-xs text-zinc-500 mt-2">Full cream wash, oversized, drop shadow. Reads as "loud" — violates mockup principle "cream never as wash".</p>
+  </div>
+
+  <!-- A · OUTLINE + TINT -->
+  <div class="card">
+    <div class="label-mono mb-3">Option A · outline + tint <span class="ml-2 text-[10px] text-emerald-400 normal-case tracking-normal">recommended</span></div>
+    <div class="stack">
+      <button class="v-a">+ New customer</button>
+      <button class="walk-in">Walk-in · no profile</button>
+    </div>
+    <div class="row-label">bg-primary-500/10 · border 1px primary-500 · text-primary-500 · py-3 · font-semibold</div>
+    <p class="text-xs text-zinc-500 mt-2">Cream pops via edge + text, not fill. Same size as Walk-in. Strongest brand restraint per mockup.</p>
+  </div>
+
+  <!-- B · SMALLER SOLID -->
+  <div class="card">
+    <div class="label-mono mb-3">Option B · smaller solid</div>
+    <div class="stack">
+      <button class="v-b">+ New customer</button>
+      <button class="walk-in">Walk-in · no profile</button>
+    </div>
+    <div class="row-label">bg-primary-500 · text-on-primary · py-3 · font-semibold · no shadow · rounded-xl</div>
+    <p class="text-xs text-zinc-500 mt-2">Keeps the solid cream punch but at Walk-in size, no shadow, lighter weight. Still reads as primary CTA.</p>
+  </div>
+
+  <!-- C · LEFT EDGE -->
+  <div class="card">
+    <div class="label-mono mb-3">Option C · left-edge accent</div>
+    <div class="stack">
+      <button class="v-c">+ New customer</button>
+      <button class="walk-in">Walk-in · no profile</button>
+    </div>
+    <div class="row-label">bg-surface-800 · border-l-4 primary-500 · text-surface-50 · py-3.5</div>
+    <p class="text-xs text-zinc-500 mt-2">Cream as edge mark only. Same surface tone as Walk-in but with a stripe. Most restrained — may not read as primary enough.</p>
+  </div>
+
+</div>
+
+<!-- Side-by-side comparison -->
+<section class="mt-12 max-w-5xl">
+  <div class="label-mono mb-4">All four · side by side · same surface</div>
+  <div class="card">
+    <div class="grid grid-cols-4 gap-4">
+      <div class="stack">
+        <button class="v-current">+ New customer</button>
+        <span class="row-label">Current</span>
+      </div>
+      <div class="stack">
+        <button class="v-a">+ New customer</button>
+        <span class="row-label">A · outline + tint</span>
+      </div>
+      <div class="stack">
+        <button class="v-b">+ New customer</button>
+        <span class="row-label">B · smaller solid</span>
+      </div>
+      <div class="stack">
+        <button class="v-c">+ New customer</button>
+        <span class="row-label">C · left edge</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="mt-12 max-w-3xl text-xs text-zinc-500">
+  <p>
+    Surface, primary, and on-primary tokens taken from <code>packages/web/src/styles/globals.css</code>.
+    Render in dark mode against <code>--surface-900</code>. Walk-in (existing secondary) shown unchanged
+    in every variant so size + weight read against a fixed baseline.
+  </p>
+</footer>
+
+</body>
+</html>
