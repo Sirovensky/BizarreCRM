@@ -1463,7 +1463,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
   `packages/web/src/pages/inventory/ShrinkagePage.tsx:73-99,209-243`
 
-- [!] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8. **BLOCKED 2026-05-10: quick-scan increments counted_qty by 1 per scan, which is the documented behavior (`counted = existingCount.counted_qty + 1` at StocktakePage.tsx:239). Adding a "confirm-existing" mode requires a new UI toggle + mutation variant + cashier-training; feature-scope.**
+- [!] WEB-UIUX-643. **[MAJOR] Stocktake quick-scan default = "current stock + 1" — silently increments.** Scanning twice = +2. No "confirm existing count" mode. L7, L8. **PARTIAL 2026-05-12 (autoloop): the "exact count" affordance was already wired in code (typing a Qty overwrites the running +1 tally) but the helper copy hid it. Helper text rewritten to surface both modes explicitly: blank Qty = +1 increment per scan (running tally), typed Qty = exact on-hand count that overwrites prior +1 rows for the same SKU. Closes the "silent increment" surprise without a UI toggle. A dedicated "confirm existing count" mode is still feature-scope; feature-scope.**
   `packages/web/src/pages/inventory/StocktakePage.tsx:174-181`
 
   `packages/web/src/pages/inventory/StocktakePage.tsx:378-400`
