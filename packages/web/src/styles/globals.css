@@ -2,36 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Brand fonts (DASH-ELEC-024 / WEB brand font partial-implementation):
+ * self-hosted to keep production CSP from needing googleapis. Bebas Neue
+ * (display heading), Jost (body — drop-in Futura replacement until a
+ * licensed Futura Medium asset is purchased and replaces these), and
+ * JetBrains Mono (code). Saved By Zero (logo) is donation-ware; until
+ * a licensed copy is supplied, the logo falls back to Bebas Neue. */
+@font-face {
+  font-family: 'Bebas Neue';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/bebas-neue.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jost-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jost-500.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Jost';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/jost-700.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-500.ttf') format('truetype');
+}
+
 @layer base {
   :root {
     --sidebar-width: 256px;
     --sidebar-collapsed-width: 64px;
     --header-height: 56px;
 
-    /* Runtime primary accent ramp — light mode = caramel.
-     * Per design-system.html: cream (#FDEED0) is the dark-mode primary, caramel
-     * (#A66D1F) is the light-mode primary. Cream on white fails AA at 1.1:1;
-     * caramel passes 5.2:1. The ramp here is centered on caramel-500 with
-     * lighter / darker stops mixed toward white / black. Dark mode swaps the
-     * whole ramp back to the cream family — see the `.dark` block below.
-     * AppShell will still override these from store_config.theme_primary_color
-     * for tenants that customize their accent. */
-    --primary-50:  252 244 230;
-    --primary-100: 247 232 204;
-    --primary-200: 232 207 165;
-    --primary-300: 217 180 122;
-    --primary-400: 195 147  78;
-    --primary-500: 166 109  31;   /* #A66D1F caramel — canonical light primary */
-    --primary-600: 142  93  26;
-    --primary-700: 116  76  21;
-    --primary-800:  90  59  16;
-    --primary-900:  64  41  11;
-    --primary-950:  38  24   6;
+    /* Runtime primary accent ramp — cream-family in both modes.
+     * Brand identity is cream (#FDEED0). Caramel-only light-mode failed the
+     * brand look ("everything turned bright orange"); restore cream-honey
+     * across both modes. Tenants that need a high-contrast accent on white
+     * can still override via store_config.theme_primary_color → AppShell. */
+    --primary-50:  255 254 251;
+    --primary-100: 254 252 244;
+    --primary-200: 253 248 232;
+    --primary-300: 253 244 214;
+    --primary-400: 253 240 200;
+    --primary-500: 253 238 208;   /* #FDEED0 cream — canonical brand primary */
+    --primary-600: 245 220 167;
+    --primary-700: 233 196 119;
+    --primary-800: 214 165  75;
+    --primary-900:  43  20   0;
+    --primary-950:  26  11   0;
 
     /* WEB-UIUX-418: semantic text-on-primary token.
-     * Caramel needs a light text color on top to pass AA. Dark mode (cream
-     * primary) overrides this to near-black — see the `.dark` block. */
-    --text-on-primary: 255 254 251;
+     * Cream primary needs near-black text for legibility on top. */
+    --text-on-primary: 26 11 0;
 
     /* Surface ramp — Option F (Web POS Recolor 2026-05-01).
      * Warm-graphite ramp between stone and neutral. Cream restrained to
@@ -51,6 +96,24 @@
     --surface-800:  22  21  19;
     --surface-900:  15  14  12;
     --surface-950:   8   7   6;
+
+    /* Chart palette — anchored on cream primary, with warm-spectrum accents
+     * (sage/teal/terracotta/clay) so multi-series charts stay coherent with
+     * the brand instead of falling back to Recharts' clashing primaries.
+     * Recharts can't read Tailwind utilities at runtime, so palette tokens
+     * live as CSS vars consumed by chartColors.ts. Light variants here. */
+    --chart-color-1: #fdeed0;   /* cream-500 — primary series */
+    --chart-color-2: #4f7d6a;   /* sage */
+    --chart-color-3: #d4a05a;   /* tan */
+    --chart-color-4: #b85c3c;   /* terracotta */
+    --chart-color-5: #6f7a4a;   /* olive */
+    --chart-color-6: #c4823a;   /* warm amber */
+    --chart-color-7: #8c4a2a;   /* rust */
+    --chart-color-8: #5e6f72;   /* smoke */
+    --chart-color-9: #a8895a;   /* khaki */
+    --chart-color-10: #93513a;  /* clay */
+    --chart-color-neutral: rgb(var(--surface-400));
+    --chart-color-muted:   rgb(var(--surface-300));
   }
 
   /* Dark mode shares the Option F warm-graphite ramp; the variants below
@@ -79,6 +142,22 @@
     --primary-900:  43  20   0;
     --primary-950:  26  11   0;
     --text-on-primary: 26 11 0;
+
+    /* Dark-mode chart palette — anchor flips to cream so the primary series
+     * reads on dark surfaces; secondary tones brightened a step for contrast
+     * on surface-900 without tipping into neon territory. */
+    --chart-color-1: #fdeed0;   /* cream-500 — primary series on dark */
+    --chart-color-2: #7fb39c;   /* sage (lifted) */
+    --chart-color-3: #e6b878;   /* tan (lifted) */
+    --chart-color-4: #d97a5a;   /* terracotta (lifted) */
+    --chart-color-5: #9aa66f;   /* olive (lifted) */
+    --chart-color-6: #e0a05a;   /* amber (lifted) */
+    --chart-color-7: #c47a55;   /* rust (lifted) */
+    --chart-color-8: #8a9aa0;   /* smoke (lifted) */
+    --chart-color-9: #c9aa7a;   /* khaki (lifted) */
+    --chart-color-10: #c47558;  /* clay (lifted) */
+    --chart-color-neutral: rgb(var(--surface-500));
+    --chart-color-muted:   rgb(var(--surface-600));
   }
 
   /* Smooth theme transitions

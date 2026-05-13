@@ -5,7 +5,8 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Send } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { reportApi } from '@/api/endpoints';
 import { formatCurrency } from '@/utils/format';
 
@@ -64,19 +65,45 @@ export function ChurnAlert() {
             customers not seen in {data.threshold_days}+ days
           </div>
 
-          <ul className="space-y-1 max-h-48 overflow-y-auto text-sm">
-            {data.customers.slice(0, 10).map(c => (
-              <li
-                key={c.customer_id}
-                className="flex justify-between gap-2 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-surface-800 text-gray-800 dark:text-surface-200"
-              >
-                <span className="truncate">{c.name}</span>
-                <span className="flex-shrink-0 text-xs text-gray-500 dark:text-surface-400">
-                  {c.days_inactive}d · {formatCurrency(c.lifetime_spent)}
-                </span>
+          {/* Whole list scrollable now (was capped at first 10 rows) so the
+              cashier can scan the full at-risk cohort before launching a
+              win-back. Per-row Link drops them straight on the customer
+              profile to add a note or call. */}
+          <ul className="space-y-1 max-h-[420px] overflow-y-auto text-sm pr-1">
+            {data.customers.map(c => (
+              <li key={c.customer_id}>
+                <Link
+                  to={`/customers/${c.customer_id}`}
+                  className="flex justify-between gap-2 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-surface-800 text-gray-800 dark:text-surface-200"
+                >
+                  <span className="truncate">{c.name}</span>
+                  <span className="flex-shrink-0 text-xs text-gray-500 dark:text-surface-400">
+                    {c.days_inactive}d · {formatCurrency(c.lifetime_spent)}
+                  </span>
+                </Link>
               </li>
             ))}
+            {data.customers.length === 0 && (
+              <li className="px-2 py-3 text-center text-xs text-gray-500 dark:text-surface-400">
+                No customers crossed the {data.threshold_days}-day threshold.
+              </li>
+            )}
           </ul>
+
+          {/* Win-back call-to-action: route the cashier into the marketing
+              campaign builder with the at-risk segment preselected via
+              query string. Campaigns page reads `?segment=` to seed the
+              audience filter; if not present yet, the user still lands on
+              the right page to start one. */}
+          {data.customers.length > 0 && (
+            <Link
+              to={`/marketing/campaigns/new?segment=at_risk_${daysInactive}d`}
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-3 py-2 text-sm font-semibold text-on-primary hover:bg-primary-400"
+            >
+              <Send size={14} />
+              Launch win-back SMS for {data.at_risk_count} customers
+            </Link>
+          )}
         </>
       )}
     </div>

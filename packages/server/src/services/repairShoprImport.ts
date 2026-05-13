@@ -401,17 +401,21 @@ async function importCustomersRS(
       if (cancelFlagsRS.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
-      db.transaction(() => {
-        for (const raw of batch) {
-          const rs = raw as Record<string, any>;
-          try {
+      // BUGHUNT-2026-05-10-55: wrap each record in its own transaction so a
+      // mid-record throw rolls back that record's partial inserts (customer +
+      // mapping + phone rows) instead of riding along on the batch commit.
+      for (const raw of batch) {
+        const rs = raw as Record<string, any>;
+        let outcome: 'imported' | 'skipped' | null = null;
+        try {
+          db.transaction(() => {
             const rsId = String(rs.id);
 
             // Idempotent check
             const existing = stmts.findMapping.get('customer', rsId) as { local_id: number } | undefined;
             if (existing) {
-              skipped++;
-              continue;
+              outcome = 'skipped';
+              return;
             }
 
             const createdAt = toISODate(rs.created_at) || now();
@@ -476,18 +480,20 @@ async function importCustomersRS(
               stmts.insertCustomerEmail.run(localId, email, 'Primary', 1);
             }
 
-            imported++;
-          } catch (err: unknown) {
-            errors++;
-            const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
-            errorLog.push({
-              record_id: (rs as any).id || 'unknown',
-              message,
-              timestamp: now(),
-            });
-          }
+            outcome = 'imported';
+          })();
+          if (outcome === 'imported') imported++;
+          else if (outcome === 'skipped') skipped++;
+        } catch (err: unknown) {
+          errors++;
+          const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
+          errorLog.push({
+            record_id: (rs as any).id || 'unknown',
+            message,
+            timestamp: now(),
+          });
         }
-      })();
+      }
 
       // Update progress after each batch
       stmts.updateRunProgress.run(

@@ -8,12 +8,15 @@ import {
 import { useEffect, useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { confirm } from '@/stores/confirmStore';
+import { usePlanStore } from '@/stores/planStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
+import { LEGAL_LEAD_TRANSITIONS } from '@bizarre-crm/shared';
 
 const LEAD_STATUSES = [
   { value: 'new', label: 'New', color: '#3b82f6' },
@@ -165,6 +168,8 @@ export function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // WEB-UIUX-1349: open the canonical UpgradeModal on a tier-limit 403.
+  const openUpgradeModal = usePlanStore((s) => s.openUpgradeModal);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notes, setNotes] = useState('');
   const [editingStatus, setEditingStatus] = useState(false);
@@ -202,17 +207,33 @@ export function LeadDetailPage() {
   const convertMut = useMutation({
     mutationFn: () => leadApi.convert(Number(id)),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['lead', id] });
-      toast.success('Converted to ticket');
-      const ticketId = res.data?.data?.ticket?.id || res.data?.data?.ticket_id;
+      // WEB-UIUX-1350: include both order_ids so the success copy matches the
+      // list-page version + lets the operator confirm the correct destination.
+      const ticket = res.data?.data?.ticket;
+      const lead = res.data?.data?.lead;
+      const ticketLabel = ticket?.order_id ? `Ticket ${ticket.order_id}` : 'a ticket';
+      const leadLabel = lead?.order_id ? `Lead ${lead.order_id}` : 'Lead';
+      toast.success(`${leadLabel} converted → ${ticketLabel}`);
+      // WEB-UIUX-1348: navigate FIRST, then invalidate, so the operator never
+      // sees a refetched "converted" detail flash. We also drop the
+      // invalidate-self call since we're leaving the route — the lead-list
+      // refetch is enough; the destination ticket has its own loader.
+      const ticketId = ticket?.id || res.data?.data?.ticket_id;
       if (ticketId) navigate(`/tickets/${ticketId}`);
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
-    // WEB-UIUX-1338: surface server error messages instead of swallowing them;
-    // if the server signals a tier/plan limit, prepend a clear upgrade prompt.
+    // WEB-UIUX-1338 / WEB-UIUX-1349: tier-limit 403 → open the canonical
+    // UpgradeModal so the manager lands on a real CTA + Stripe checkout path
+    // instead of a toast that dead-ends on monetization. Non-tier errors
+    // continue to surface as a normal toast.
     onError: (err: any) => {
       const upgradeRequired = err?.response?.data?.upgrade_required === true;
-      const base = formatApiError(err);
-      toast.error(upgradeRequired ? `Tier limit reached: ${base} — Upgrade →` : base);
+      if (upgradeRequired && err?.response?.status === 403) {
+        const feature = (err.response.data?.feature ?? 'ticket_limit') as Parameters<typeof openUpgradeModal>[0];
+        openUpgradeModal(feature);
+        return;
+      }
+      toast.error(formatApiError(err));
     },
   });
 
@@ -371,28 +392,41 @@ export function LeadDetailPage() {
               </h1>
               {editingStatus ? (
                 <div className="flex items-center gap-1 flex-wrap">
-                  {LEAD_STATUSES.map((s) => (
-                    <button
-                      key={s.value}
-                      onClick={() => {
-                        if (s.value === 'lost' && lead.status !== 'lost') {
-                          setShowLostModal(true);
-                          setEditingStatus(false);
-                        } else {
-                          scheduleStatusChange(s.value, lead.status);
-                        }
-                      }}
-                      className={cn(
-                        'rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition-colors',
-                        lead.status === s.value
-                          ? 'ring-2 ring-offset-1 ring-primary-500'
-                          : 'hover:opacity-80',
-                      )}
-                      style={{ backgroundColor: `${s.color}18`, color: s.color }}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
+                  {LEAD_STATUSES
+                    // WEB-UIUX-1343: hide pills that would dead-end on a
+                    // server-side LEGAL_LEAD_TRANSITIONS reject. Unknown
+                    // source statuses (custom tenant states) fall through
+                    // permissively — same contract the server uses — so
+                    // all pills still render in that case. The current
+                    // status itself stays visible so the cashier always
+                    // sees their starting point.
+                    .filter((s) => {
+                      const allowed = LEGAL_LEAD_TRANSITIONS[lead.status];
+                      if (!allowed) return true;
+                      return s.value === lead.status || allowed.includes(s.value);
+                    })
+                    .map((s) => (
+                      <button
+                        key={s.value}
+                        onClick={() => {
+                          if (s.value === 'lost' && lead.status !== 'lost') {
+                            setShowLostModal(true);
+                            setEditingStatus(false);
+                          } else {
+                            scheduleStatusChange(s.value, lead.status);
+                          }
+                        }}
+                        className={cn(
+                          'rounded-full px-2.5 py-0.5 text-xs font-medium capitalize transition-colors',
+                          lead.status === s.value
+                            ? 'ring-2 ring-offset-1 ring-primary-500'
+                            : 'hover:opacity-80',
+                        )}
+                        style={{ backgroundColor: `${s.color}18`, color: s.color }}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
                   <button onClick={() => setEditingStatus(false)} aria-label="Cancel status edit" className="p-0.5 text-surface-400"><X className="h-3.5 w-3.5" /></button>
                 </div>
               ) : (
@@ -429,7 +463,9 @@ export function LeadDetailPage() {
                   // surfaced via toast instead of silently bubbling to
                   // window.onunhandledrejection where ErrorBoundary cannot catch it.
                   try {
-                    if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) {
+                    // WEB-UIUX-1341: spell out every downstream write so the
+                    // operator knows a customer record may also be created.
+                    if (await confirm('Convert this lead to a ticket? This will:\n• Create a new ticket with the lead\'s data\n• Link the lead to an existing customer (matched by email/phone) OR create a new customer record\n• Stamp a lead_converted audit entry\n\nCannot be undone via the status pill — use the canonical Convert flow only.')) {
                       convertMut.mutate();
                     }
                   } catch {
@@ -627,7 +663,11 @@ export function LeadDetailPage() {
               <Activity className="h-4 w-4" /> Activity Timeline
             </h3>
             {timeline.length === 0 ? (
-              <p className="text-sm text-surface-400 italic">No activity yet</p>
+              <EmptyState
+                icon={Activity}
+                title="No activity yet"
+                description="Notes, status changes, and outreach against this lead will show up here as they happen."
+              />
             ) : (
               <div className="relative space-y-0">
                 {timeline.map((item, idx) => {
@@ -756,7 +796,9 @@ export function LeadDetailPage() {
                   return (
                     <div key={a.id} className="rounded-lg border border-surface-200 dark:border-surface-700 p-3 text-sm">
                       <div className="flex items-center justify-between">
-                        <p className="font-medium text-surface-900 dark:text-surface-100">{a.title}</p>
+                        {/* WEB-UIUX-1332: match AppointmentDetailModal fallback so the
+                            same record renders identically across surfaces. */}
+                        <p className="font-medium text-surface-900 dark:text-surface-100">{a.title || 'Untitled'}</p>
                         <span
                           className="rounded-full px-1.5 py-0.5 text-[10px] font-medium capitalize"
                           style={{ backgroundColor: `${apptColor}18`, color: apptColor }}

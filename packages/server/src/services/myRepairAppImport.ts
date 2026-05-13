@@ -504,21 +504,22 @@ export async function importCustomersMRA(
       if (cancelFlagsMRA.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
-      db.transaction(() => {
-        for (const mra of batch) {
-          try {
+      // BUGHUNT-2026-05-10-55: per-record transaction so partial-record FK
+      // writes (customer + mapping + phone) roll back on inner failure.
+      for (const mra of batch) {
+        let outcome: 'imported' | 'skipped' | null = null;
+        try {
+          db.transaction(() => {
             const mraId = String(mra.id || mra.customerId || '');
             if (!mraId) {
-              errors++;
-              errorLog.push({ record_id: 'unknown', message: 'No customer ID found', timestamp: now() });
-              continue;
+              throw new Error('No customer ID found');
             }
 
             // Idempotent check
             const existing = stmts.findMapping.get('customer', mraId) as { local_id: number } | undefined;
             if (existing) {
-              skipped++;
-              continue;
+              outcome = 'skipped';
+              return;
             }
 
             const createdAt = toISODate(mra.createdAt) || toISODate(mra.created_at) || now();
@@ -575,18 +576,20 @@ export async function importCustomersMRA(
               stmts.insertCustomerEmail.run(localId, email, 'Primary', 1);
             }
 
-            imported++;
-          } catch (err: unknown) {
-            errors++;
-            const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
-            errorLog.push({
-              record_id: mra.id || mra.customerId || 'unknown',
-              message,
-              timestamp: now(),
-            });
-          }
+            outcome = 'imported';
+          })();
+          if (outcome === 'imported') imported++;
+          else if (outcome === 'skipped') skipped++;
+        } catch (err: unknown) {
+          errors++;
+          const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
+          errorLog.push({
+            record_id: mra.id || mra.customerId || 'unknown',
+            message,
+            timestamp: now(),
+          });
         }
-      })();
+      }
 
       // Update progress after each batch
       stmts.updateRunProgress.run(
@@ -634,21 +637,21 @@ export async function importTicketsMRA(
       if (cancelFlagsMRA.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
-      db.transaction(() => {
-        for (const mra of batch) {
-          try {
+      // BUGHUNT-2026-05-10-55: per-record transaction.
+      for (const mra of batch) {
+        let outcome: 'imported' | 'skipped' | null = null;
+        try {
+          db.transaction(() => {
             const mraId = String(mra.id || mra.ticketId || '');
             if (!mraId) {
-              errors++;
-              errorLog.push({ record_id: 'unknown', message: 'No ticket ID found', timestamp: now() });
-              continue;
+              throw new Error('No ticket ID found');
             }
 
             // Idempotent check
             const existing = stmts.findMapping.get('ticket', mraId) as { local_id: number } | undefined;
             if (existing) {
-              skipped++;
-              continue;
+              outcome = 'skipped';
+              return;
             }
 
             // Resolve local customer_id from MRA customerId
@@ -714,9 +717,7 @@ export async function importTicketsMRA(
               if (existingTicket) {
                 localTicketId = existingTicket.id;
               } else {
-                errors++;
-                errorLog.push({ record_id: mraId, message: `Ticket ${orderId} insert skipped and not found`, timestamp: now() });
-                continue;
+                throw new Error(`Ticket ${orderId} insert skipped and not found`);
               }
             }
 
@@ -875,18 +876,20 @@ export async function importTicketsMRA(
               createdAt,
             );
 
-            imported++;
-          } catch (err: unknown) {
-            errors++;
-            const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
-            errorLog.push({
-              record_id: mra.id || mra.ticketId || 'unknown',
-              message,
-              timestamp: now(),
-            });
-          }
+            outcome = 'imported';
+          })();
+          if (outcome === 'imported') imported++;
+          else if (outcome === 'skipped') skipped++;
+        } catch (err: unknown) {
+          errors++;
+          const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
+          errorLog.push({
+            record_id: mra.id || mra.ticketId || 'unknown',
+            message,
+            timestamp: now(),
+          });
         }
-      })();
+      }
 
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
@@ -933,21 +936,21 @@ export async function importInvoicesMRA(
       if (cancelFlagsMRA.get(tenantSlug)) break;
 
       const batch = records.slice(i, i + 100);
-      db.transaction(() => {
-        for (const mra of batch) {
-          try {
+      // BUGHUNT-2026-05-10-55: per-record transaction.
+      for (const mra of batch) {
+        let outcome: 'imported' | 'skipped' | null = null;
+        try {
+          db.transaction(() => {
             const mraId = String(mra.id || mra.invoiceId || '');
             if (!mraId) {
-              errors++;
-              errorLog.push({ record_id: 'unknown', message: 'No invoice ID found', timestamp: now() });
-              continue;
+              throw new Error('No invoice ID found');
             }
 
             // Idempotent check
             const existing = stmts.findMapping.get('invoice', mraId) as { local_id: number } | undefined;
             if (existing) {
-              skipped++;
-              continue;
+              outcome = 'skipped';
+              return;
             }
 
             // Resolve customer
@@ -1067,18 +1070,20 @@ export async function importInvoicesMRA(
               }
             }
 
-            imported++;
-          } catch (err: unknown) {
-            errors++;
-            const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
-            errorLog.push({
-              record_id: mra.id || mra.invoiceId || 'unknown',
-              message,
-              timestamp: now(),
-            });
-          }
+            outcome = 'imported';
+          })();
+          if (outcome === 'imported') imported++;
+          else if (outcome === 'skipped') skipped++;
+        } catch (err: unknown) {
+          errors++;
+          const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
+          errorLog.push({
+            record_id: mra.id || mra.invoiceId || 'unknown',
+            message,
+            timestamp: now(),
+          });
         }
-      })();
+      }
 
       stmts.updateRunProgress.run(
         'running', totalRecords, imported, skipped, errors,
@@ -1127,21 +1132,21 @@ export async function importInventoryMRA(
         if (cancelFlagsMRA.get(tenantSlug)) break;
 
         const batch = records.slice(i, i + 100) as any[];
-        db.transaction(() => {
-          for (const mra of batch) {
-            try {
+        // BUGHUNT-2026-05-10-55: per-record transaction.
+        for (const mra of batch) {
+          let outcome: 'imported' | 'skipped' | null = null;
+          try {
+            db.transaction(() => {
               const mraId = String(mra.id || mra.inventoryItemId || '');
               if (!mraId) {
-                errors++;
-                errorLog.push({ record_id: 'unknown', message: 'No inventory item ID found', timestamp: now() });
-                continue;
+                throw new Error('No inventory item ID found');
               }
 
               // Idempotent check
               const existing = stmts.findMapping.get('inventory', mraId) as { local_id: number } | undefined;
               if (existing) {
-                skipped++;
-                continue;
+                outcome = 'skipped';
+                return;
               }
 
               // Map MRA category to local item_type
@@ -1192,18 +1197,20 @@ export async function importInventoryMRA(
               }
               stmts.insertMapping.run(runId, 'inventory', mraId, localId);
 
-              imported++;
-            } catch (err: unknown) {
-              errors++;
-              const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
-              errorLog.push({
-                record_id: mra.id || mra.inventoryItemId || 'unknown',
-                message,
-                timestamp: now(),
-              });
-            }
+              outcome = 'imported';
+            })();
+            if (outcome === 'imported') imported++;
+            else if (outcome === 'skipped') skipped++;
+          } catch (err: unknown) {
+            errors++;
+            const message = err instanceof Error ? err.message.substring(0, 300) : 'Unknown error';
+            errorLog.push({
+              record_id: mra.id || mra.inventoryItemId || 'unknown',
+              message,
+              timestamp: now(),
+            });
           }
-        })();
+        }
 
         stmts.updateRunProgress.run(
           'running', totalRecords, imported, skipped, errors,

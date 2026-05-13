@@ -11,6 +11,9 @@ export interface ImpersonationSession {
   tenant_slug: string;
   tenant_name?: string;
   started_at?: string;
+  // WEB-UIUX-819: server-issued impersonation token id. Persist so the
+  // banner can revoke the active token via POST /impersonate/:jti/end
+  // instead of waiting for TTL.
   jti?: string;
 }
 
@@ -112,6 +115,8 @@ export function ImpersonationBanner() {
 
   if (!session) return null;
 
+  // WEB-UIUX-819: server-revoke the impersonation token via the jti so a
+  // leaked or stolen impersonation cookie can't outlive the Exit click.
   async function handleExit() {
     if (!session || ending) return;
     if (session.jti && superAdminTokenStore.get()) {

@@ -9,6 +9,7 @@ import { isCommissionLocked } from './_team.payroll.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { validateId } from '../utils/validate.js';
+import { getTenantTz, tzModifier } from '../utils/timezone.js';
 
 const router = Router();
 const logger = createLogger('employees');
@@ -180,6 +181,19 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+    // WEB-UIUX-1267: payroll_week_start_day drives the weekly_hours window so
+    // Sun-Sat / Sat-Fri stores see numbers that match their payroll reports.
+    // SQLite `weekday N` modifier convention: 0=Sunday, 1=Monday (default
+    // fallback when missing / out of range) … 6=Saturday. The `weekday N,
+    // -7 days, start of day` chain resolves to "the most recent Nth weekday
+    // at midnight" for any value 0..6.
+    const cfgRow = await adb.get<{ value: string | null }>(
+      "SELECT value FROM store_config WHERE key = 'payroll_week_start_day'",
+    );
+    const rawWeekStart = cfgRow?.value;
+    const weekStartDay = (rawWeekStart != null && /^[0-6]$/.test(rawWeekStart))
+      ? Number(rawWeekStart)
+      : 1;
     const employees = await adb.all(`
       SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.role,
              u.avatar_url, u.is_active, u.pin IS NOT NULL AS has_pin,
@@ -189,6 +203,11 @@ router.get(
                SELECT 1 FROM clock_entries ce
                WHERE ce.user_id = u.id AND ce.clock_out IS NULL
              ) THEN 1 ELSE 0 END AS is_clocked_in,
+             -- WEB-UIUX-1254: timestamp of the currently-open clock entry so
+             -- the client can render a live elapsed timer on the row.
+             (SELECT ce.clock_in FROM clock_entries ce
+                WHERE ce.user_id = u.id AND ce.clock_out IS NULL
+                ORDER BY ce.clock_in DESC LIMIT 1) AS active_clock_in_at,
              COALESCE((
                SELECT SUM(
                  CASE WHEN ce.clock_out IS NULL
@@ -198,12 +217,12 @@ router.get(
                )
                FROM clock_entries ce
                WHERE ce.user_id = u.id
-                 AND ce.clock_in >= datetime('now', 'weekday 1', '-7 days', 'start of day')
+                 AND ce.clock_in >= datetime('now', 'weekday ' || ?, '-7 days', 'start of day')
              ), 0.0) AS weekly_hours
       FROM users u
       WHERE u.is_active = 1
       ORDER BY u.first_name, u.last_name
-    `);
+    `, weekStartDay);
 
     res.json({ success: true, data: employees });
   }),
@@ -407,7 +426,21 @@ router.post(
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
-    const { pin, notes } = req.body;
+    const { pin, notes: rawNotes } = req.body;
+    // WEB-UIUX-1261: cap notes at 1000 chars so a runaway paste from the PIN
+    // modal can't bloat clock_entries.notes. Empty / whitespace-only strings
+    // collapse to null so we don't overwrite a prior note with blank text.
+    let notes: string | null | undefined;
+    if (rawNotes == null) {
+      notes = undefined;
+    } else if (typeof rawNotes !== 'string') {
+      throw new AppError('notes must be a string', 400);
+    } else {
+      const trimmed = rawNotes.trim();
+      if (trimmed.length === 0) notes = null;
+      else if (trimmed.length > 1000) throw new AppError('notes must be ≤ 1000 characters', 400);
+      else notes = trimmed;
+    }
 
     if (req.user?.role !== 'admin' && req.user?.id !== id) {
       throw new AppError('Can only clock yourself out', 403);
@@ -475,6 +508,80 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
+// POST /clock-out-all — WEB-UIUX-1270: admin end-of-day sweep. Closes every
+// open clock entry in one call so the manager doesn't have to expand each
+// row + PIN through one by one. PIN gate is dropped (admin role IS the auth);
+// each closed row carries `admin_bulk_close` in audit so payroll can spot
+// "not actually clocked out, manager swept" entries separately from
+// self-clocked-out ones. Locked-period clock entries are skipped (not failed).
+// ---------------------------------------------------------------------------
+router.post(
+  '/clock-out-all',
+  asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Admin role required to bulk clock-out', 403);
+    }
+    const adb = req.asyncDb;
+    const reasonRaw = typeof req.body?.reason === 'string'
+      ? req.body.reason.trim().slice(0, 500)
+      : '';
+    const openEntries = await adb.all<any>(
+      'SELECT id, user_id, clock_in, notes FROM clock_entries WHERE clock_out IS NULL',
+    );
+    const lunchCfg = await getLunchConfig(adb);
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const results: Array<{ entry_id: number; user_id: number; total_hours?: number; skipped?: string }> = [];
+    for (const entry of openEntries) {
+      // Locked-period guard mirrors single-row /clock-out semantics. Skip
+      // rather than throw so a single stale-locked row doesn't block the
+      // whole sweep.
+      if (
+        (await isCommissionLocked(adb, entry.clock_in)) ||
+        (await isCommissionLocked(adb, nowIso))
+      ) {
+        results.push({ entry_id: entry.id, user_id: entry.user_id, skipped: 'payroll_locked' });
+        continue;
+      }
+      const clockInMs = Date.parse(entry.clock_in);
+      if (!Number.isFinite(clockInMs)) {
+        results.push({ entry_id: entry.id, user_id: entry.user_id, skipped: 'unparseable_clock_in' });
+        continue;
+      }
+      const rawHours = +(((now.getTime() - clockInMs) / 3_600_000).toFixed(2));
+      const totalHours = applyLunchDeduction(rawHours, lunchCfg);
+      const composedNote = reasonRaw
+        ? `${entry.notes ? entry.notes + ' · ' : ''}[Admin bulk close: ${reasonRaw}]`
+        : entry.notes ?? null;
+      await adb.run(
+        'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ?',
+        nowIso, totalHours, composedNote, entry.id,
+      );
+      audit(req.db, 'employee_clocked_out', req.user!.id, req.ip || 'unknown', {
+        employee_id: entry.user_id,
+        entry_id: entry.id,
+        total_hours: totalHours,
+        raw_hours: rawHours,
+        lunch_deducted: lunchCfg.enabled && rawHours > lunchCfg.thresholdHours,
+        admin_bulk_close: true,
+        reason: reasonRaw || null,
+      });
+      results.push({ entry_id: entry.id, user_id: entry.user_id, total_hours: totalHours });
+    }
+    const closedCount = results.filter((r) => r.total_hours != null).length;
+    const skippedCount = results.length - closedCount;
+    res.json({
+      success: true,
+      data: {
+        closed: closedCount,
+        skipped: skippedCount,
+        entries: results,
+      },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // GET /:id/hours – Hours log with date range filter
 // AUTH: admin-only, or self (employee reading their own hours)
 // Fix A2: previously any authenticated user could read anyone's hours.
@@ -497,16 +604,34 @@ router.get(
     const conditions: string[] = ['user_id = ?'];
     const params: unknown[] = [id];
 
+    // BUGHUNT-2026-05-10-15: clock_in is stored as UTC ISO; bare date filters
+    // ('2026-05-10') previously compared as strings against UTC timestamps,
+    // dropping late-shift entries for techs west of UTC (clock-out 23:30 ET
+    // = 03:30 UTC next day was excluded from the same local-calendar report).
+    // Shift the column to tenant-local before comparing when the input is a
+    // bare date, so the window matches the operator's local calendar.
+    const tzMod = tzModifier(getTenantTz(req));
+    const isBareDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
     if (fromDate) {
-      conditions.push('clock_in >= ?');
-      params.push(fromDate);
+      if (isBareDate(fromDate)) {
+        conditions.push("datetime(clock_in, ?) >= ?");
+        params.push(tzMod, `${fromDate} 00:00:00`);
+      } else {
+        conditions.push('clock_in >= ?');
+        params.push(fromDate);
+      }
     }
     if (toDate) {
-      // POST-ENRICH §28: date-only inputs (e.g. 2026-04-11) previously excluded
-      // the entire day because clock_in stores full timestamps. Pad the upper
-      // bound to 23:59:59 when the input looks like a bare date.
-      conditions.push('clock_in <= ?');
-      params.push(/^\d{4}-\d{2}-\d{2}$/.test(toDate) ? `${toDate} 23:59:59` : toDate);
+      if (isBareDate(toDate)) {
+        // POST-ENRICH §28: pad bare-date upper bound to 23:59:59 in tenant tz
+        // so the full local calendar day is included regardless of UTC offset.
+        conditions.push("datetime(clock_in, ?) <= ?");
+        params.push(tzMod, `${toDate} 23:59:59`);
+      } else {
+        conditions.push('clock_in <= ?');
+        params.push(toDate);
+      }
     }
 
     const [entries, { total_hours }] = await Promise.all([
@@ -679,8 +804,17 @@ router.patch(
       resolvedRate = +n.toFixed(2);
     }
 
-    const employee = await adb.get<any>('SELECT id FROM users WHERE id = ? AND is_active = 1', id);
+    const employee = await adb.get<{ id: number; pay_rate: number | null }>(
+      'SELECT id, pay_rate FROM users WHERE id = ? AND is_active = 1',
+      id,
+    );
     if (!employee) throw new AppError('Employee not found', 404);
+
+    // WEB-UIUX-1264: only record a history row when the rate actually changes.
+    // Comparing nullable values: treat NULL ≠ <number>, NULL = NULL.
+    const prevRate = employee.pay_rate != null ? Number(employee.pay_rate) : null;
+    const noteRaw = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+    const rateChanged = prevRate !== resolvedRate;
 
     await adb.run(
       "UPDATE users SET pay_rate = ?, updated_at = datetime('now') WHERE id = ?",
@@ -688,9 +822,28 @@ router.patch(
       id,
     );
 
+    if (rateChanged) {
+      try {
+        await adb.run(
+          `INSERT INTO pay_rate_history (user_id, pay_rate, effective_at, changed_by_user_id, note)
+           VALUES (?, ?, datetime('now'), ?, ?)`,
+          id,
+          resolvedRate,
+          req.user!.id,
+          noteRaw || null,
+        );
+      } catch (err) {
+        // Don't block the rate change on a history-table write failure
+        // (legacy tenants where migration 187 hasn't run yet, schema drift).
+        // Audit row below still captures who/what/when as the durable trail.
+      }
+    }
+
     audit(req.db, 'employee_pay_rate_updated', req.user!.id, req.ip || 'unknown', {
       employee_id: id,
       pay_rate: resolvedRate,
+      prev_pay_rate: prevRate,
+      note: noteRaw || null,
     });
 
     const updated = await adb.get<any>(
@@ -698,6 +851,33 @@ router.patch(
       id,
     );
     res.json({ success: true, data: updated });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// GET /:id/pay-rate-history — WEB-UIUX-1264: list every pay_rate change for
+// an employee so payroll/manager can audit which rate applied on which date.
+// Admin-only, or the employee viewing their own history.
+// ---------------------------------------------------------------------------
+router.get(
+  '/:id/pay-rate-history',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+    if (req.user?.role !== 'admin' && req.user?.id !== id) {
+      throw new AppError('Forbidden — can only view your own pay-rate history', 403);
+    }
+    const rows = await adb.all<any>(
+      `SELECT h.id, h.pay_rate, h.effective_at, h.note,
+              h.changed_by_user_id,
+              cb.first_name || ' ' || cb.last_name AS changed_by_name
+         FROM pay_rate_history h
+         LEFT JOIN users cb ON cb.id = h.changed_by_user_id
+        WHERE h.user_id = ?
+        ORDER BY h.effective_at DESC, h.id DESC`,
+      id,
+    );
+    res.json({ success: true, data: rows });
   }),
 );
 

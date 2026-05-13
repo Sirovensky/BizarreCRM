@@ -224,6 +224,21 @@ function buildEligibleRecipientQuery(
     whereParams.push(campaign.segment_id);
   }
 
+  // WEB-UIUX-879: never request a review from a customer who got a refund
+  // (credit-note invoice or refunds-table row) in the last 14 days. The
+  // automated "How was your repair?" SMS is the worst possible follow-up
+  // to a refund-issuing visit; risk = 1-star review + word-of-mouth churn.
+  // Heuristic uses credit-note invoice rows (positive signal a refund just
+  // happened); covers both native credit-note flow and POS-return flow.
+  if (campaign.type === 'review_request') {
+    where.push(`NOT EXISTS (
+      SELECT 1 FROM invoices i
+       WHERE i.customer_id = c.id
+         AND (i.credit_note_for IS NOT NULL OR i.status = 'credit_note' OR i.status = 'refunded')
+         AND julianday('now') - julianday(i.created_at) <= 14
+    )`);
+  }
+
   if (campaign.type === 'birthday') {
     const days = birthdayDaysBefore(campaign);
     where.push('c.birthday IS NOT NULL');
@@ -786,6 +801,27 @@ router.post(
     );
     if (!campaign) throw new AppError('Campaign not found', 404);
     if (campaign.status === 'archived') throw new AppError('Cannot run an archived campaign', 400);
+
+    // WEB-UIUX-701: per-campaign dispatch lock. The existing per-user
+    // rateLimitCampaignDispatch guard caps 3/min/user, but two different
+    // operators clicking the same campaign within 30s would both fire,
+    // duplicating SMS to every recipient. Look at the last_run_at column
+    // (also written below by dispatch) and reject when it's within
+    // CAMPAIGN_RUN_LOCK_MS. Server-authoritative — no client coordination.
+    const CAMPAIGN_RUN_LOCK_MS = 30_000;
+    if (campaign.last_run_at) {
+      const lastRunMs = new Date(campaign.last_run_at).getTime();
+      if (Number.isFinite(lastRunMs)) {
+        const sinceMs = Date.now() - lastRunMs;
+        if (sinceMs >= 0 && sinceMs < CAMPAIGN_RUN_LOCK_MS) {
+          const waitS = Math.ceil((CAMPAIGN_RUN_LOCK_MS - sinceMs) / 1000);
+          throw new AppError(
+            `This campaign was dispatched ${Math.round(sinceMs / 1000)}s ago. Wait ${waitS}s before running again so recipients don't get duplicate messages.`,
+            429,
+          );
+        }
+      }
+    }
 
     const recipients = await fetchEligibleRecipients(adb, campaign);
     const result = await dispatchCampaign(

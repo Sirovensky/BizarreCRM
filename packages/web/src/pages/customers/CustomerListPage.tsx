@@ -43,7 +43,7 @@ import { useHasRole } from '@/hooks/useHasRole';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
-import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
+import { formatCurrency, formatPhone, formatDate, toLocalDateString } from '@/utils/format';
 import { normalizeListSearchKeyword } from '@/utils/listSearch';
 import type { Customer } from '@bizarre-crm/shared';
 
@@ -62,7 +62,9 @@ export function CustomerListPage() {
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('customers_pagesize') || '25');
   const keyword = searchParams.get('keyword') || '';
   const serverKeyword = normalizeListSearchKeyword(keyword);
-  const todayDate = new Date().toISOString().slice(0, 10);
+  // WEB-UIUX-925: local-date components so the date picker's max stays
+  // on the local day, not the UTC day (off-by-one near midnight).
+  const todayDate = toLocalDateString(new Date());
 
   const [searchInput, setSearchInput] = useState(keyword);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -280,8 +282,17 @@ export function CustomerListPage() {
   const bulkTagMut = useMutation({
     mutationFn: ({ tag }: { tag: string }) =>
       customerApi.bulkTag(Array.from(selected), tag),
-    onSuccess: () => {
+    onSuccess: (_res, _vars, _ctx) => {
       toast.success('Tag applied successfully');
+      // BUGHUNT-2026-05-10-28: invalidate the per-customer detail cache
+      // for every selected id so a tab viewing a single customer doesn't
+      // show stale tags after a bulk apply. Snapshot selection BEFORE
+      // clearing the set.
+      const affected = Array.from(selected);
+      for (const id of affected) {
+        queryClient.invalidateQueries({ queryKey: ['customer', id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-analytics', id] });
+      }
       setSelected(new Set());
       setShowTagInput(false);
       setTagValue('');
@@ -367,7 +378,7 @@ export function CustomerListPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `customers-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `customers-export-${toLocalDateString(new Date())}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success(`Exported ${all.length} customers`);
@@ -688,10 +699,22 @@ export function CustomerListPage() {
       {/* Table */}
       <div className="card overflow-hidden flex-1 flex flex-col min-h-0">
         {/* Bulk action bar */}
-        {selected.size > 0 && (
+        {selected.size > 0 && (() => {
+          // WEB-UIUX-664: cross-page selection clarity. Distinguish "selected
+          // on this page" from "selected across all loaded pages" so the
+          // operator never sees a mystery "50 selected" without seeing 50
+          // checkboxes.
+          const onCurrentPage = customers.filter((c) => selected.has(c.id)).length;
+          const crossPageCount = selected.size - onCurrentPage;
+          return (
           <div className="flex items-center gap-3 border-b border-surface-200 bg-primary-50 px-4 py-2.5 dark:border-surface-700 dark:bg-primary-950/30 shrink-0">
             <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
               {selected.size} selected
+              {crossPageCount > 0 && (
+                <span className="ml-1 text-xs font-normal text-primary-600/80 dark:text-primary-300/70">
+                  ({onCurrentPage} on this page · {crossPageCount} from other pages)
+                </span>
+              )}
             </span>
             {showTagInput ? (
               <div className="flex items-center gap-2">
@@ -741,7 +764,8 @@ export function CustomerListPage() {
               Clear
             </button>
           </div>
-        )}
+          );
+        })()}
 
         {isError ? (
           <div className="flex flex-col items-center justify-center py-12 text-surface-500">
@@ -759,26 +783,48 @@ export function CustomerListPage() {
                 <thead className="sticky top-0 z-10 bg-white dark:bg-surface-900">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <tr key={headerGroup.id} className="border-b border-surface-200 dark:border-surface-700">
-                      {headerGroup.headers.map((header) => (
-                        <th key={header.id}
-                          className={cn(
-                            'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50',
-                            header.column.getCanSort() && 'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200',
-                          )}
-                          style={{ width: header.getSize() }}
-                          onClick={header.column.getToggleSortingHandler()}>
-                          <div className="flex items-center gap-1.5">
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            {header.column.getCanSort() && (
-                              <span className="text-surface-300 dark:text-surface-600">
-                                {header.column.getIsSorted() === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> :
-                                 header.column.getIsSorted() === 'desc' ? <ArrowDown className="h-3.5 w-3.5" /> :
-                                 <ArrowUpDown className="h-3.5 w-3.5" />}
-                              </span>
+                      {headerGroup.headers.map((header) => {
+                        const sorted = header.column.getIsSorted();
+                        const canSort = header.column.getCanSort();
+                        const ariaSort: 'ascending' | 'descending' | 'none' = sorted === 'asc'
+                          ? 'ascending'
+                          : sorted === 'desc'
+                            ? 'descending'
+                            : 'none';
+                        const sortHandler = header.column.getToggleSortingHandler();
+                        return (
+                          <th key={header.id}
+                            scope="col"
+                            aria-sort={canSort ? ariaSort : undefined}
+                            className={cn(
+                              'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50',
+                              canSort && 'cursor-pointer select-none hover:text-surface-700 dark:hover:text-surface-200',
                             )}
-                          </div>
-                        </th>
-                      ))}
+                            style={{ width: header.getSize() }}
+                            tabIndex={canSort ? 0 : -1}
+                            role={canSort ? 'columnheader button' : 'columnheader'}
+                            onClick={canSort ? sortHandler : undefined}
+                            onKeyDown={canSort
+                              ? (e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    sortHandler?.(e);
+                                  }
+                                }
+                              : undefined}>
+                            <div className="flex items-center gap-1.5">
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              {canSort && (
+                                <span className="text-surface-300 dark:text-surface-600">
+                                  {sorted === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> :
+                                   sorted === 'desc' ? <ArrowDown className="h-3.5 w-3.5" /> :
+                                   <ArrowUpDown className="h-3.5 w-3.5" />}
+                                </span>
+                              )}
+                            </div>
+                          </th>
+                        );
+                      })}
                     </tr>
                   ))}
                 </thead>
@@ -875,11 +921,28 @@ export function CustomerListPage() {
             <div className="mb-2">
               <label className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 cursor-pointer">
                 <Upload className="h-4 w-4 inline mr-1" /> Upload File
-                <input type="file" accept=".csv" className="hidden" onChange={e => {
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => {
                   const file = e.target.files?.[0]; if (!file) return;
+                  // WEB-UIUX-762: cap CSV size so a 200MB paste doesn't hang
+                  // the renderer; read as UTF-8 explicitly so Windows-1252 /
+                  // Shift_JIS exports surface mojibake at parse time instead
+                  // of silently corrupting customer names.
+                  const MAX_CSV_BYTES = 25 * 1024 * 1024;
+                  if (file.size > MAX_CSV_BYTES) {
+                    toast.error(`CSV exceeds ${(MAX_CSV_BYTES / 1024 / 1024)}MB cap (${(file.size / 1024 / 1024).toFixed(1)}MB). Split into smaller batches.`);
+                    return;
+                  }
                   const reader = new FileReader();
-                  reader.onload = ev => { const text = ev.target?.result as string; setImportText(text); parseImportCsv(text); };
-                  reader.readAsText(file);
+                  reader.onload = ev => {
+                    const text = ev.target?.result as string;
+                    if (/�/.test(text)) {
+                      toast.error('CSV contains characters that did not decode as UTF-8. Re-export the file as UTF-8 and try again.');
+                      return;
+                    }
+                    setImportText(text);
+                    parseImportCsv(text);
+                  };
+                  reader.readAsText(file, 'utf-8');
                 }} />
               </label>
             </div>
@@ -984,6 +1047,8 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // WEB-UIUX-921: arrow-key navigation across the menu items.
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -994,6 +1059,39 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
+  // WEB-UIUX-921: keyboard interaction — Esc closes, ArrowDown/Up cycle
+  // through items, Home/End jump to ends. Focuses first item on open so
+  // tab-key users land inside the menu, not on the trigger.
+  useEffect(() => {
+    if (!open) return;
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    items?.[0]?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (!menuRef.current) return;
+      const items = Array.from(
+        menuRef.current.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+      );
+      if (items.length === 0) return;
+      const activeIdx = items.findIndex((el) => el === document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); setOpen(false); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[(activeIdx + 1 + items.length) % items.length].focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[(activeIdx - 1 + items.length) % items.length].focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        items[0].focus();
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        items[items.length - 1].focus();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   return (
     <div className="flex items-center justify-end gap-1" ref={ref}>
       <Link to={`/customers/${customer.id}`} onClick={(e) => e.stopPropagation()}
@@ -1002,41 +1100,49 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
       </Link>
       <div className="relative">
         <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+          aria-haspopup="menu"
+          aria-expanded={open}
           className="p-1.5 rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:text-surface-300 dark:hover:bg-surface-700 transition-colors" title="More actions">
           <MoreHorizontal className="h-4 w-4" />
         </button>
         {open && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Customer actions"
+            className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="py-1">
               {phone && (
                 <>
-                  <a href={`tel:${phone}`} rel="noreferrer noopener"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+                  <a role="menuitem" tabIndex={-1} href={`tel:${phone}`} rel="noreferrer noopener"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                     <Phone className="h-3.5 w-3.5 text-blue-500" /> Call
                   </a>
-                  <Link to={`/communications?phone=${encodeURIComponent(phone)}`}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+                  <Link role="menuitem" tabIndex={-1} to={`/communications?phone=${encodeURIComponent(phone)}`}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                     <MessageSquare className="h-3.5 w-3.5 text-emerald-500" /> SMS
                   </Link>
                 </>
               )}
               {customer.email && (
-                <a href={`mailto:${customer.email}`} rel="noreferrer noopener"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+                <a role="menuitem" tabIndex={-1} href={`mailto:${customer.email}`} rel="noreferrer noopener"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                   <Mail className="h-3.5 w-3.5 text-amber-500" /> Email
                 </a>
               )}
-              <Link to={`/pos?customer=${customer.id}`}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+              <Link role="menuitem" tabIndex={-1} to={`/pos?customer=${customer.id}`}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                 <Wrench className="h-3.5 w-3.5 text-green-500" /> New Ticket
               </Link>
-              <Link to={`/customers/${customer.id}?edit=true`}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
+              <Link role="menuitem" tabIndex={-1} to={`/customers/${customer.id}?edit=true`}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:text-surface-300 dark:hover:bg-surface-700 dark:focus:bg-surface-700">
                 <Pencil className="h-3.5 w-3.5 text-amber-500" /> Edit
               </Link>
               <div className="my-1 border-t border-surface-200 dark:border-surface-700" />
-              <button onClick={(e) => { setOpen(false); onDelete(e, customer.id, fullName); }}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
+              <button role="menuitem" tabIndex={-1} onClick={(e) => { setOpen(false); onDelete(e, customer.id, fullName); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 focus:bg-red-50 focus:outline-none dark:text-red-400 dark:hover:bg-red-900/20 dark:focus:bg-red-900/20">
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </button>
             </div>

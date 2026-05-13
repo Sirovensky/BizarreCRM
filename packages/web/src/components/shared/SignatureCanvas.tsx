@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useId } from 'react';
-import { Eraser } from 'lucide-react';
+import { Eraser, Type } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface SignatureCanvasProps {
@@ -350,29 +350,31 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
           onMouseLeave={endDraw}
         />
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <label htmlFor={typedSignatureId} className="sr-only">Typed signature</label>
+      {/* WEB-UIUX-923: typed-signature keyboard alternative. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center" style={{ maxWidth: width }}>
+        <label htmlFor={typedSignatureId} className="sr-only">Type your full name to sign</label>
         <input
           id={typedSignatureId}
           type="text"
           value={typedSignature}
           onChange={(e) => setTypedSignature(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && typedSignature.trim()) {
               e.preventDefault();
               applyTypedSignature();
             }
           }}
-          className="min-h-[36px] min-w-0 flex-1 rounded-md border border-surface-300 bg-white px-3 py-1.5 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
-          placeholder="Typed signature"
+          placeholder="Or type your full name to sign"
+          autoComplete="name"
+          className="min-h-[36px] min-w-0 flex-1 rounded-md border border-surface-300 bg-white px-3 py-1.5 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
         />
         <button
           type="button"
           onClick={applyTypedSignature}
           disabled={!typedSignature.trim()}
-          className="btn btn-xs btn-secondary whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+          className="inline-flex items-center justify-center gap-1 rounded border border-surface-300 bg-surface-50 px-2 py-1 text-xs font-medium text-surface-700 hover:bg-surface-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
         >
-          Use typed signature
+          <Type aria-hidden="true" className="h-3 w-3" /> Use typed signature
         </button>
       </div>
       {hasSignature && (

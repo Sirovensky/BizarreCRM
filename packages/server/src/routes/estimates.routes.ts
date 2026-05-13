@@ -471,9 +471,21 @@ router.post(
     await adb.run('UPDATE estimates SET order_id = ? WHERE id = ?', orderId, estimateId);
 
     for (const item of normalizedItems) {
+      // WEB-UIUX-659: snapshot cost_price from inventory_items at create
+      // time so the estimate's reported margin doesn't silently drift if
+      // the supplier later raises the part cost.
+      let costPrice: number | null = null;
+      if (item.inventory_item_id) {
+        const row = await adb.get<{ cost_price: number | null }>(
+          'SELECT cost_price FROM inventory_items WHERE id = ?', item.inventory_item_id,
+        );
+        if (row?.cost_price != null && Number.isFinite(Number(row.cost_price))) {
+          costPrice = Number(row.cost_price);
+        }
+      }
       await adb.run(`
-        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         estimateId,
         item.inventory_item_id,
@@ -483,6 +495,7 @@ router.post(
         item.tax_amount,
         item.tax_class_id,
         item.line_total,
+        costPrice,
       );
     }
 
@@ -631,6 +644,23 @@ router.post(
           );
         }
 
+        // WEB-UIUX-1472: preserve the customer-signed evidence so a future
+        // "was this signed before we started work?" lookup doesn't need to
+        // re-join estimate_signatures. We take the most-recent signature
+        // row's signer_name + signed_at.
+        const lastSig = await adb.get<AnyRow>(
+          'SELECT signer_name, signed_at FROM estimate_signatures WHERE estimate_id = ? ORDER BY signed_at DESC LIMIT 1',
+          estId,
+        );
+        if (lastSig) {
+          await adb.run(
+            'UPDATE tickets SET signed_at = ?, signed_by_name = ? WHERE id = ?',
+            lastSig.signed_at ?? null,
+            lastSig.signer_name ?? null,
+            ticketId,
+          );
+        }
+
         // Update estimate status
         await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
           ticketId, estId);
@@ -734,8 +764,12 @@ router.put(
     const existing = await adb.get<any>('SELECT * FROM estimates WHERE id = ? AND is_deleted = 0', id);
     if (!existing) throw new AppError('Estimate not found', 404);
 
-    // WEB-UIUX-801: block edits to locked estimates (approved/signed/converted)
-    const LOCKED_STATUSES = ['approved', 'signed', 'converted'];
+    // WEB-UIUX-801 / UIUX-964: block edits to locked estimates. 'rejected' is
+    // a terminal status — the Reject confirm dialog promises "This cannot be
+    // undone", so the server must honor that promise (previously rejected
+    // estimates could be flipped back to draft via PUT body, making the copy
+    // a lie).
+    const LOCKED_STATUSES = ['approved', 'signed', 'converted', 'rejected'];
     if (LOCKED_STATUSES.includes(existing.status)) {
       throw new AppError(
         `Estimate is locked (status: ${existing.status}). Create a revision instead.`,
@@ -835,10 +869,21 @@ router.put(
 
       await adb.run('DELETE FROM estimate_line_items WHERE estimate_id = ?', id);
       for (const item of normalizedItems) {
+        // WEB-UIUX-659: re-snapshot cost_price on PUT replace so the margin
+        // tracks the current supplier price for any newly-added line.
+        let costPrice: number | null = null;
+        if (item.inventory_item_id) {
+          const row = await adb.get<{ cost_price: number | null }>(
+            'SELECT cost_price FROM inventory_items WHERE id = ?', item.inventory_item_id,
+          );
+          if (row?.cost_price != null && Number.isFinite(Number(row.cost_price))) {
+            costPrice = Number(row.cost_price);
+          }
+        }
         await adb.run(`
-          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.tax_class_id, item.line_total);
+          INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, id, item.inventory_item_id, item.description, item.quantity, item.unit_price, item.tax_amount, item.tax_class_id, item.line_total, costPrice);
       }
 
       const total = subtotal - effectiveDiscount + totalTax;
@@ -1065,6 +1110,21 @@ router.post(
         );
       }
 
+      // WEB-UIUX-1472: same signed-evidence preservation as the bulk-convert
+      // path so single-row convert doesn't drop the customer signature.
+      const lastSig = await adb.get<any>(
+        'SELECT signer_name, signed_at FROM estimate_signatures WHERE estimate_id = ? ORDER BY signed_at DESC LIMIT 1',
+        id,
+      );
+      if (lastSig) {
+        await adb.run(
+          'UPDATE tickets SET signed_at = ?, signed_by_name = ? WHERE id = ?',
+          lastSig.signed_at ?? null,
+          lastSig.signer_name ?? null,
+          ticketId,
+        );
+      }
+
       // Update estimate status (success path — advances to 'converted')
       await adb.run("UPDATE estimates SET status = 'converted', converted_ticket_id = ?, updated_at = datetime('now') WHERE id = ?",
         ticketId, id);
@@ -1133,6 +1193,16 @@ router.post(
       FROM estimates e LEFT JOIN customers c ON c.id = e.customer_id WHERE e.id = ? AND e.is_deleted = 0
     `, id);
     if (!estimate) throw new AppError('Estimate not found', 404);
+    // WEB-UIUX-1456: refuse to re-send a rejected estimate. Sending mints a
+    // new approval token + flips status='sent' on success, effectively
+    // reviving the row that the "This cannot be undone" Reject copy
+    // promised was final. Operator must create a new revision instead.
+    if (estimate.status === 'rejected') {
+      throw new AppError("Estimate is rejected — create a new revision before sending.", 409);
+    }
+    if (estimate.status === 'converted') {
+      throw new AppError('Cannot send a converted estimate.', 409);
+    }
 
     // SC4: Issue a fresh, time-limited token on each send. Clear any prior
     // used_at marker since this is a re-send and the new token is unused.
@@ -1149,25 +1219,6 @@ router.post(
     const now = sqlNow();
     const expiresAt = sqlTimestamp(new Date(Date.now() + APPROVAL_TOKEN_TTL_MS));
 
-    // ENR-LE8: Always overwrite sent_at on every send so the audit trail and
-    // the Detail "Sent" field reflect the most recent delivery (v2, v3, …).
-    // COALESCE was previously used here which locked sent_at to the first send
-    // only — re-sending after edits left a stale timestamp (WEB-UIUX-970).
-    // sent_at now means "most recently sent at"; the estimates_audit table
-    // records the full history row-by-row for deeper audit needs.
-    await adb.run(
-      `UPDATE estimates SET
-        approval_token = NULL,
-        approval_token_hash = ?,
-        approval_token_expires_at = ?,
-        approval_token_used_at = NULL,
-        status = ?,
-        sent_at = ?,
-        updated_at = ?
-       WHERE id = ?`,
-      tokenHash, expiresAt, 'sent', now, now, id,
-    );
-
     const rawMethod = (req.body.method as string | undefined) ?? 'sms';
     // Only 'sms' is a supported delivery channel today. Reject 'email' and
     // any other unknown value explicitly so callers get a clear error instead
@@ -1178,8 +1229,11 @@ router.post(
     const method = rawMethod;
     const phone = estimate.phone || estimate.mobile;
 
-    // SC6: Track delivery outcome so we can surface failures rather than
-    // swallowing them silently.
+    // SC6 / WEB-UIUX-955: Track delivery outcome BEFORE writing status. The
+    // previous flow flipped status='sent' first and then attempted SMS, which
+    // left the audit log + customer-facing status claiming "sent" whenever
+    // delivery actually failed. Now: attempt SMS first, then decide which
+    // fields to UPDATE based on the outcome.
     let smsAttempted = false;
     let smsSent = false;
     let smsError: string | null = null;
@@ -1189,7 +1243,12 @@ router.post(
       try {
         const { sendSmsTenant } = await import('../services/smsProvider.js');
         const tenantSlug = (req as any).tenantSlug ?? null;
-        const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Reply YES to approve or view details at your repair shop.`;
+        // WEB-UIUX-1462: dropped "Reply YES to approve" — no inbound SMS
+        // handler maps YES→approve, so the previous copy was a false
+        // promise that left customers texting into the void. Direct them
+        // to the portal link instead (returned in the response body so
+        // the operator can include it manually if needed).
+        const msg = `Hi ${estimate.first_name}, your estimate ${estimate.order_id} for $${Number(estimate.total).toFixed(2)} is ready. Open the link your repair shop sent you to review and approve.`;
         await sendSmsTenant(req.db, tenantSlug, phone, msg);
         smsSent = true;
       } catch (err: unknown) {
@@ -1203,20 +1262,43 @@ router.post(
       }
     }
 
+    // ENR-LE8 + WEB-UIUX-955: persist token + sent_at on every call (so the
+    // operator can still hand-deliver the URL even when SMS failed), but
+    // only flip status='sent' when the customer was actually notified. If
+    // SMS was attempted and failed, status stays at its prior value so the
+    // audit log / Detail page don't lie about delivery.
+    const advanceStatusToSent = smsAttempted ? smsSent : true;
+    const nextStatus = advanceStatusToSent ? 'sent' : estimate.status;
+    await adb.run(
+      `UPDATE estimates SET
+        approval_token = NULL,
+        approval_token_hash = ?,
+        approval_token_expires_at = ?,
+        approval_token_used_at = NULL,
+        status = ?,
+        sent_at = ?,
+        updated_at = ?
+       WHERE id = ?`,
+      tokenHash, expiresAt, nextStatus, now, now, id,
+    );
+
     const responseData: Record<string, unknown> = {
       sent: smsAttempted ? smsSent : true,
       method,
       approval_token: token,
       token_expires_at: expiresAt,
+      // Echo the persisted status so the client can refresh its UI from the
+      // server's truth instead of optimistically assuming 'sent'.
+      status: nextStatus,
     };
 
     if (smsAttempted && !smsSent) {
       responseData.sent = false;
-      responseData.warning = 'SMS delivery failed — token was issued but customer was not notified.';
+      responseData.warning = 'SMS delivery failed — token was issued but customer was not notified. Status kept as ' + estimate.status + '; retry Send or hand-deliver the approval URL.';
       responseData.sms_error = smsError;
     } else if (method === 'sms' && !phone) {
       responseData.sent = false;
-      responseData.warning = 'Customer has no phone number on file.';
+      responseData.warning = 'Customer has no phone number on file. Hand-deliver the approval URL using the token in this response.';
     }
 
     res.json({ success: true, data: responseData });
@@ -1233,14 +1315,27 @@ router.post(
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
 
-    const existing = await adb.get<{ id: number; status: string }>(
-      'SELECT id, status FROM estimates WHERE id = ? AND is_deleted = 0',
+    const existing = await adb.get<{ id: number; status: string; created_by: number | null }>(
+      'SELECT id, status, created_by FROM estimates WHERE id = ? AND is_deleted = 0',
       id,
     );
     if (!existing) throw new AppError('Estimate not found', 404);
 
     if (existing.status === 'rejected') throw new AppError('Estimate is already rejected', 400);
     if (existing.status === 'converted') throw new AppError('Cannot reject a converted estimate', 400);
+    // WEB-UIUX-1464: symmetric with Approve — the creator may not reject
+    // their own estimate. Two-party authorization is the policy on
+    // Approve (self-approval guard); without this an angry creator can
+    // silently kill their own quote without peer review. Admins always
+    // bypass since they are the override path.
+    const role = req.user?.role;
+    if (
+      role !== 'admin'
+      && existing.created_by != null
+      && existing.created_by === req.user!.id
+    ) {
+      throw new AppError('You cannot reject your own estimate. Ask another team member or an admin.', 403);
+    }
 
     await adb.run(
       "UPDATE estimates SET status = 'rejected', updated_at = datetime('now') WHERE id = ?",
@@ -1275,6 +1370,12 @@ router.post(
     if (!estimate) throw new AppError('Estimate not found', 404);
     if (estimate.status === 'approved') throw new AppError('Already approved', 400);
     if (estimate.status === 'converted') throw new AppError('Already converted', 400);
+    // WEB-UIUX-1456: honor the "This cannot be undone" Reject confirm copy
+    // by refusing to flip a rejected estimate back to approved via the API.
+    // Operators who genuinely want to revive a rejected estimate must
+    // create a new revision (the existing edits-locked-after-reject path
+    // from UIUX-964 already nudges them there).
+    if (estimate.status === 'rejected') throw new AppError("Estimate is rejected — create a new revision instead of re-approving.", 409);
 
     // Validate token if provided (for unauthenticated approval)
     // S20-E1 + SEC-H52: prefer hash lookup (`approval_token_hash`). For rows
@@ -1393,6 +1494,8 @@ router.post(
     }
 
     // SW-D7: Auto-change linked ticket status when estimate is approved
+    let advancedTicketId: number | null = null;
+    let advancedTicketStatusName: string | null = null;
     const statusAfterEstimate = await adb.get<any>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");
     if (statusAfterEstimate?.value) {
       const targetStatusId = parseInt(statusAfterEstimate.value);
@@ -1402,16 +1505,146 @@ router.post(
         const ticketId = est?.converted_ticket_id
           || (await adb.get<any>('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0', id))?.id;
         if (ticketId) {
-          const statusExists = await adb.get<any>('SELECT id FROM ticket_statuses WHERE id = ?', targetStatusId);
-          if (statusExists) {
-            await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ? AND is_deleted = 0',
+          const statusRow = await adb.get<{ id: number; name: string }>(
+            'SELECT id, name FROM ticket_statuses WHERE id = ?',
+            targetStatusId,
+          );
+          if (statusRow) {
+            const upd = await adb.run('UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ? AND is_deleted = 0',
               targetStatusId, now, ticketId);
+            if (upd.changes > 0) {
+              advancedTicketId = Number(ticketId);
+              advancedTicketStatusName = statusRow.name;
+            }
           }
         }
       }
     }
 
-    res.json({ success: true, data: { approved: true } });
+    // WEB-UIUX-1479: surface the ticket side-effect so the client can
+    // invalidate the ticket query + tell the operator which status the
+    // linked ticket advanced to.
+    res.json({
+      success: true,
+      data: {
+        approved: true,
+        ticket_id: advancedTicketId,
+        ticket_status_advanced_to: advancedTicketStatusName,
+      },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// WEB-UIUX-658: renew + clone — operator-friendly recovery for expired estimates
+// ---------------------------------------------------------------------------
+// /:id/renew  : extend valid_until + flip status back to draft so customer
+//               can re-approve. Same row, new expiry. Approval token rotated
+//               on the next /:id/send call (existing behaviour).
+// /:id/clone  : creates a fresh draft with the same line items + same
+//               customer; valid_until defaults to +30 days. Original stays
+//               untouched (audit trail / customer-history clarity).
+router.post(
+  '/:id/renew',
+  requirePermission('estimates.edit'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+    const days = Number.isFinite(Number(req.body?.days)) ? Math.max(1, Math.min(365, Number(req.body.days))) : 30;
+    const existing = await adb.get<{ id: number; status: string }>(
+      'SELECT id, status FROM estimates WHERE id = ?', id,
+    );
+    if (!existing) throw new AppError('Estimate not found', 404);
+    const LOCKED_STATUSES = new Set(['approved', 'rejected', 'converted']);
+    if (LOCKED_STATUSES.has(existing.status)) {
+      throw new AppError(`Estimate is ${existing.status}; clone it instead of renewing.`, 409);
+    }
+    const newValidUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await adb.run(
+      `UPDATE estimates
+          SET valid_until = ?, status = 'draft', updated_at = datetime('now')
+        WHERE id = ?`,
+      newValidUntil, id,
+    );
+    audit(req.db, 'estimate_renewed', req.user!.id, req.ip || 'unknown', {
+      estimate_id: id, new_valid_until: newValidUntil, days,
+    });
+    res.json({ success: true, data: { id, valid_until: newValidUntil, status: 'draft' } });
+  }),
+);
+
+router.post(
+  '/:id/clone',
+  requirePermission('estimates.create'),
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+    const days = Number.isFinite(Number(req.body?.days)) ? Math.max(1, Math.min(365, Number(req.body.days))) : 30;
+    const source = await adb.get<{
+      id: number; customer_id: number; discount: number; notes: string | null;
+    }>(
+      'SELECT id, customer_id, discount, notes FROM estimates WHERE id = ?',
+      id,
+    );
+    if (!source) throw new AppError('Estimate not found', 404);
+    const newOrderId = `EST-${Date.now().toString(36).toUpperCase()}`;
+    const newValidUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const insertResult = await adb.run(
+      `INSERT INTO estimates (order_id, customer_id, status, discount, notes, valid_until, created_by, created_at, updated_at)
+         VALUES (?, ?, 'draft', ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      newOrderId,
+      source.customer_id,
+      source.discount ?? 0,
+      source.notes,
+      newValidUntil,
+      req.user!.id,
+    );
+    const newId = Number(insertResult.lastInsertRowid);
+    // Copy line items as-is; pricing snapshot stays current at clone time.
+    // WEB-UIUX-659: re-snapshot cost_price from inventory_items at clone
+    // time so the cloned estimate reports margin against today's supplier
+    // cost, not the price captured on the original quote.
+    const items = await adb.all<{
+      inventory_item_id: number | null;
+      description: string;
+      quantity: number;
+      unit_price: number;
+      tax_amount: number;
+      tax_class_id: number | null;
+      line_subtotal: number;
+      line_total: number;
+      cost_price: number | null;
+    }>(
+      `SELECT inventory_item_id, description, quantity, unit_price, tax_amount,
+              tax_class_id, line_subtotal, line_total, cost_price
+         FROM estimate_line_items WHERE estimate_id = ?`,
+      id,
+    );
+    for (const it of items) {
+      let costPrice: number | null = it.cost_price;
+      if (it.inventory_item_id) {
+        const row = await adb.get<{ cost_price: number | null }>(
+          'SELECT cost_price FROM inventory_items WHERE id = ?', it.inventory_item_id,
+        );
+        if (row?.cost_price != null && Number.isFinite(Number(row.cost_price))) {
+          costPrice = Number(row.cost_price);
+        }
+      }
+      await adb.run(
+        `INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description,
+            quantity, unit_price, tax_amount, tax_class_id, line_subtotal, line_total, cost_price)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        newId, it.inventory_item_id, it.description, it.quantity, it.unit_price,
+        it.tax_amount, it.tax_class_id, it.line_subtotal, it.line_total, costPrice,
+      );
+    }
+    audit(req.db, 'estimate_cloned', req.user!.id, req.ip || 'unknown', {
+      source_estimate_id: id, new_estimate_id: newId, line_count: items.length,
+    });
+    res.status(201).json({
+      success: true,
+      data: { id: newId, order_id: newOrderId, source_id: id, valid_until: newValidUntil, line_count: items.length },
+    });
   }),
 );
 

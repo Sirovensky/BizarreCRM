@@ -35,7 +35,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
-import { consumeWindowRate } from '../utils/rateLimiter.js';
+import { consumeWindowRate, peekWindowRate } from '../utils/rateLimiter.js';
 import {
   validateRequiredString,
   validateEnum,
@@ -429,8 +429,14 @@ function assertBulkSmsProviderConfigured(db: any, tenantSlug?: string | null): v
 async function previewBulkSegment(
   adb: AsyncDb,
   segment: BulkSegment,
-): Promise<{ count: number; phones: string[]; phonesHash: string; recipientSample: BulkPreviewRecipientSample[] }> {
+): Promise<{ count: number; phones: string[]; phonesHash: string; excluded_optout_count: number; recipientSample: BulkPreviewRecipientSample[] }> {
   let rows: BulkPreviewRow[] = [];
+  // BUGHUNT-2026-05-10-40: surface excluded-by-opt-out count separately so the
+  // client can render explicit "we filtered N out for TCPA" evidence instead
+  // of trusting the server filter ran. Same WHERE shape as the main query
+  // but with the opt-in clauses inverted; only phone-bearing customers
+  // count (an empty mobile is already excluded by the main filter).
+  let excluded: { c: number } | undefined;
   switch (segment) {
     case 'open_tickets':
       rows = await adb.all<BulkPreviewRow>(
@@ -445,6 +451,16 @@ async function previewBulkSegment(
             AND COALESCE(c.sms_consent_marketing, 0) = 1
           GROUP BY c.mobile`,
       );
+      excluded = await adb.get<{ c: number }>(
+        `SELECT COUNT(DISTINCT c.id) AS c
+           FROM customers c
+           JOIN tickets t ON t.customer_id = c.id
+           JOIN ticket_statuses s ON s.id = t.status_id
+          WHERE s.is_closed = 0 AND s.is_cancelled = 0
+            AND t.is_deleted = 0
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND (COALESCE(c.sms_opt_in, 0) = 0 OR COALESCE(c.sms_consent_marketing, 0) = 0)`,
+      );
       break;
     case 'all_customers':
       rows = await adb.all<BulkPreviewRow>(
@@ -453,6 +469,11 @@ async function previewBulkSegment(
             AND COALESCE(sms_opt_in, 0) = 1
             AND COALESCE(sms_consent_marketing, 0) = 1
           GROUP BY mobile`,
+      );
+      excluded = await adb.get<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM customers
+          WHERE mobile IS NOT NULL AND mobile <> ''
+            AND (COALESCE(sms_opt_in, 0) = 0 OR COALESCE(sms_consent_marketing, 0) = 0)`,
       );
       break;
     case 'recent_purchases':
@@ -466,6 +487,14 @@ async function previewBulkSegment(
             AND COALESCE(c.sms_consent_marketing, 0) = 1
           GROUP BY c.mobile`,
       );
+      excluded = await adb.get<{ c: number }>(
+        `SELECT COUNT(DISTINCT c.id) AS c
+           FROM customers c
+           JOIN invoices i ON i.customer_id = c.id
+          WHERE i.created_at >= datetime('now','-30 days')
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND (COALESCE(c.sms_opt_in, 0) = 0 OR COALESCE(c.sms_consent_marketing, 0) = 0)`,
+      );
       break;
   }
   const phones = rows.map((r) => normalizePhone(r.phone)).filter(Boolean) as string[];
@@ -477,7 +506,13 @@ async function previewBulkSegment(
     .update([...phones].sort().join('|'))
     .digest('hex')
     .slice(0, 32);
-  return { count: phones.length, phones, phonesHash, recipientSample };
+  return {
+    count: phones.length,
+    phones,
+    phonesHash,
+    excluded_optout_count: Number(excluded?.c ?? 0),
+    recipientSample,
+  };
 }
 
 /**
@@ -584,6 +619,144 @@ function verifyBulkToken(
   return payloadObj;
 }
 
+/**
+ * WEB-UIUX-1512: live segment counts so the bulk-SMS modal can label each
+ * segment button with its actual reach before the admin commits to one.
+ * Re-uses the same WHERE-clause shape as previewBulkSegment so the count
+ * matches what step-1 preview would return. Admin-only (matches the post
+ * route gating).
+ */
+router.get(
+  '/bulk-send-segment-counts',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const adb = req.asyncDb;
+    const [openTickets, allCustomers, recentPurchases] = await Promise.all([
+      adb.get<{ count: number }>(
+        `SELECT COUNT(DISTINCT c.mobile) AS count
+           FROM customers c
+           JOIN tickets t ON t.customer_id = c.id
+           JOIN ticket_statuses s ON s.id = t.status_id
+          WHERE s.is_closed = 0 AND s.is_cancelled = 0
+            AND t.is_deleted = 0
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND COALESCE(c.sms_opt_in, 0) = 1
+            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
+      ),
+      adb.get<{ count: number }>(
+        `SELECT COUNT(DISTINCT mobile) AS count FROM customers
+          WHERE mobile IS NOT NULL AND mobile <> ''
+            AND COALESCE(sms_opt_in, 0) = 1
+            AND COALESCE(sms_consent_marketing, 0) = 1`,
+      ),
+      adb.get<{ count: number }>(
+        `SELECT COUNT(DISTINCT c.mobile) AS count
+           FROM customers c
+           JOIN invoices i ON i.customer_id = c.id
+          WHERE i.created_at >= datetime('now','-30 days')
+            AND c.mobile IS NOT NULL AND c.mobile <> ''
+            AND COALESCE(c.sms_opt_in, 0) = 1
+            AND COALESCE(c.sms_consent_marketing, 0) = 1`,
+      ),
+    ]);
+    res.json({
+      success: true,
+      data: {
+        open_tickets: openTickets?.count ?? 0,
+        all_customers: allCustomers?.count ?? 0,
+        recent_purchases: recentPurchases?.count ?? 0,
+      },
+    });
+  }),
+);
+
+/**
+ * WEB-UIUX-1508: send a single test SMS to the admin's own mobile (or an
+ * explicit override) so wording/links/variable substitution can be verified
+ * before the 12k-recipient blast goes out. Quota-free path — separate from
+ * `/bulk-send` so a worried admin doesn't burn their hourly cap on tests.
+ * Provider-not-configured still throws so the admin sees the same failure
+ * mode the real send would hit.
+ */
+router.post(
+  '/bulk-send-test',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const db = req.db;
+    const adb = req.asyncDb;
+    const templateId = requirePositiveInt((req.body ?? {}).template_id, 'template_id');
+    const overrideRaw = typeof req.body?.to_phone === 'string' ? req.body.to_phone : '';
+    const tpl = await adb.get<{ id: number; content: string; name: string }>(
+      'SELECT id, content, name FROM sms_templates WHERE id = ?',
+      templateId,
+    );
+    if (!tpl) throw new AppError('Template not found', 404);
+
+    // Resolve destination: explicit override first (admin testing on a
+    // co-worker's phone is common), else the admin's own mobile_number.
+    // No silent fallback — refuse cleanly if neither produces a valid
+    // phone so the admin doesn't think the test "succeeded" by SMS-ing
+    // a number that wasn't theirs.
+    let toPhone: string;
+    if (overrideRaw.trim()) {
+      toPhone = requirePhone(overrideRaw, 'to_phone');
+    } else {
+      const me = await adb.get<{ mobile_number: string | null }>(
+        'SELECT mobile_number FROM users WHERE id = ?',
+        req.user!.id,
+      );
+      if (!me?.mobile_number) {
+        throw new AppError(
+          'No mobile_number on your profile — add one in Settings → Account or pass to_phone override.',
+          400,
+        );
+      }
+      toPhone = requirePhone(me.mobile_number, 'mobile_number');
+    }
+
+    // Same provider gate the real send uses so the admin sees the same
+    // failure mode (configure provider before blasting) at test time.
+    const provider = getSmsProvider();
+    const providerStatus = isProviderRealOrSimulated(provider);
+    if (!providerStatus.real) {
+      throw new AppError(
+        'SMS provider is not configured — test refused. Configure a real provider (Twilio, Telnyx, Bandwidth, Plivo, Vonage) in Settings before sending tests.',
+        400,
+      );
+    }
+
+    const tenantSlug = (req as any).tenantSlug ?? null;
+    try {
+      const result = await sendSmsTenant(db, tenantSlug, toPhone, tpl.content);
+      if (!result?.success) {
+        throw new AppError(
+          `Test send failed: ${result?.error || 'unknown provider error'}`,
+          502,
+        );
+      }
+    } catch (err: unknown) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(
+        `Test send failed: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+      );
+    }
+    audit(db, 'bulk_sms_test_sent', req.user!.id, req.ip || 'unknown', {
+      template_id: templateId,
+      template_name: tpl.name,
+      to_phone_last4: toPhone.slice(-4),
+    });
+    res.json({
+      success: true,
+      data: {
+        sent: true,
+        to_phone_masked: toPhone.length >= 7 ? `${toPhone.slice(0, 3)}•••${toPhone.slice(-4)}` : toPhone,
+        template_name: tpl.name,
+      },
+    });
+  }),
+);
+
 router.post(
   '/bulk-send',
   asyncHandler(async (req, res) => {
@@ -603,8 +776,14 @@ router.post(
     // Step 1: no token → return a preview + fresh token. Caller confirms then
     // re-posts.
     if (!token) {
-      // WEB-UIUX-1510: fail before issuing a token if bulk SMS cannot send.
-      assertBulkSmsProviderConfigured(db, tenantSlug);
+      // WEB-UIUX-1510: surface provider state at preview time so admin sees
+      // "configure provider in Settings" before building a 12k campaign —
+      // not after token verification + segment-drift check at confirm step.
+      // Returned as a flag (not a throw) so the UI can render an inline
+      // banner instead of blocking preview entirely; admin can still review
+      // the audience size, but Send stays disabled.
+      const previewProvider = getSmsProvider();
+      const previewProviderStatus = isProviderRealOrSimulated(previewProvider);
       const preview = await previewBulkSegment(adb, segment);
       // SCAN-602: embed phones_hash + count into the token so step 2 can
       // detect segment drift without storing server-side state.
@@ -615,13 +794,65 @@ router.post(
         preview.phonesHash,
         preview.count,
       );
+      // WEB-UIUX-1113: ship a 5-recipient sample to the UI so the operator
+      // can sanity-check WHO will receive the blast before confirming. The
+      // first 5 phones in the deterministic segment order are enough for
+      // a "is this the right segment" check without leaking the whole list
+      // — full phone-list export would be a separate compliance review.
+      const sampleSize = Math.min(5, preview.phones.length);
+      const samplePhones = preview.phones.slice(0, sampleSize).map((p) => ({
+        // Mask the middle four digits in the sample preview — enough for
+        // the operator to recognise their own format ("555-•••-1234")
+        // without putting raw phones in the response if the modal is
+        // screen-recorded / accidentally shared.
+        masked: p.length >= 7
+          ? `${p.slice(0, 3)}•••${p.slice(-4)}`
+          : p,
+      }));
+      // WEB-UIUX-1517: tell the operator how many bulk sends they've used in
+      // the current hourly window before they commit to a send. We only PEEK
+      // at the rate-limit bucket here (preview is a free operation; only
+      // step-2 consumes a slot via guardInboxRate).
+      const quotaPeek = peekWindowRate(
+        req.db,
+        INBOX_BULK_SEND_CATEGORY,
+        String(req.user!.id),
+        INBOX_BULK_SEND_WINDOW_MS,
+      );
+      const quotaUsed = quotaPeek?.count ?? 0;
+      const quotaResetAt = quotaPeek?.resetAtMs ?? null;
       res.json({
         success: true,
         data: {
           preview_count: preview.count,
+          // BUGHUNT-2026-05-10-40: surface excluded-by-opt-out count so the
+          // UI can render explicit TCPA-filter evidence ("we filtered N
+          // unconsented phones out") instead of trusting the server filter
+          // ran. Client refuses Send when this field is missing.
+          excluded_optout_count: preview.excluded_optout_count,
           recipient_sample: preview.recipientSample,
           confirmation_token: freshToken,
           confirmed: false,
+          sample_phones: samplePhones,
+          sample_size: sampleSize,
+          quota: {
+            used: quotaUsed,
+            max: INBOX_BULK_SEND_MAX_PER_HOUR,
+            window_ms: INBOX_BULK_SEND_WINDOW_MS,
+            // ISO so the client can compute its own countdown without
+            // worrying about clock skew interpretation (the absolute
+            // wall-clock time is more useful than "ms remaining" when
+            // the page is left open for an hour).
+            reset_at: quotaResetAt ? new Date(quotaResetAt).toISOString() : null,
+          },
+          // WEB-UIUX-1510: provider state echoed at preview time so the UI
+          // can render an inline banner BEFORE Send is clicked. `real=false`
+          // means simulated (logs to console) or unconfigured — either way
+          // the cashier has no business sending a 12k blast yet.
+          provider: {
+            real: previewProviderStatus.real,
+            name: previewProvider?.name ?? null,
+          },
         },
       });
       return;
@@ -668,83 +899,133 @@ router.post(
     if (preview.count === 0) {
       res.json({
         success: true,
-        data: { attempted: 0, sent: 0, failed: 0, segment, confirmed: true },
+        data: { attempted: 0, sent: 0, failed: 0, segment, confirmed: true, job_id: null },
       });
       return;
     }
 
-    // Verify the SMS provider is actually real BEFORE claiming anything will
-    // be delivered. Previously we inserted every phone into `sms_retry_queue`
-    // and returned `{ enqueued: N }`, but no background worker drains that
-    // table — so the rows sat forever and the admin got a false "N sent"
-    // impression. Now we dispatch inline (capped at 500 rows per call by
-    // previewBulkSegment) and report truthful counts.
-    assertBulkSmsProviderConfigured(db, tenantSlug);
-
-    let sent = 0;
-    let failed = 0;
-    for (const phone of preview.phones) {
-      try {
-        const result = await sendSmsTenant(db, tenantSlug, phone, tpl.content);
-        if (result?.success) {
-          sent += 1;
-        } else {
-          failed += 1;
-          // Record the failure in sms_retry_queue with the real error reason
-          // so the existing retry UI surfaces it.
-          await adb.run(
-            `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
-                  VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
-            phone,
-            tpl.content,
-            result?.error ?? 'unknown SMS provider error',
-          );
-        }
-      } catch (err) {
-        failed += 1;
-        // Log the full error server-side for operators; persist only a safe
-        // label. last_error is surfaced via GET /retry-queue and must not
-        // leak DB / stack / filesystem internals to clients.
-        log.error('inbox bulk-send inner send threw', {
-          phone,
-          template_id: templateId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        const safeMsg = sanitizeRetryError(err);
-        await adb.run(
-          `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
-                VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
-          phone,
-          tpl.content,
-          safeMsg,
-        );
-      }
+    // Verify the SMS provider is actually real BEFORE creating a job row.
+    const provider = getSmsProvider();
+    const providerStatus = isProviderRealOrSimulated(provider);
+    if (!providerStatus.real) {
+      throw new AppError(
+        'SMS provider is not configured — bulk send refused. ' +
+        'Configure a real provider (Twilio, Telnyx, Bandwidth, Plivo, Vonage) ' +
+        'in Settings before attempting a bulk send.',
+        400,
+      );
     }
 
-    audit(db, 'inbox_bulk_send_dispatched', req.user!.id, req.ip || 'unknown', {
+    // WEB-UIUX-1117: create a tracked job row, return the id, run the send
+    // loop async via setImmediate. The synchronous 30-100s blocking response
+    // is gone — the modal polls GET /jobs/:id for progress and can fire
+    // POST /jobs/:id/abort. Keeps the inline-send semantics (no separate
+    // worker process to deploy); the loop checks abort_requested between
+    // sends so the cap stays bounded. tenantSlug is already in scope from
+    // the top of this handler.
+    const insertResult = await adb.run(
+      `INSERT INTO bulk_sms_jobs (segment, template_id, template_name, total, status, created_by, started_at)
+        VALUES (?, ?, ?, ?, 'running', ?, datetime('now'))`,
+      segment,
+      templateId,
+      tpl.name,
+      preview.count,
+      req.user!.id,
+    );
+    const jobId = Number(insertResult.lastInsertRowid);
+
+    audit(db, 'inbox_bulk_send_started', req.user!.id, req.ip || 'unknown', {
       segment,
       template_id: templateId,
-      attempted: preview.count,
-      sent,
-      failed,
+      job_id: jobId,
+      total: preview.count,
     });
-    log.info('bulk send dispatched', {
-      segment,
-      template_id: templateId,
-      attempted: preview.count,
-      sent,
-      failed,
+
+    // Fire-and-forget loop. Each iteration commits its delta to the job row
+    // and re-reads abort_requested so the operator's POST /abort lands within
+    // one SMS-send window. Errors are persisted to the job row + sms_retry_queue.
+    setImmediate(() => {
+      void (async () => {
+        let sent = 0;
+        let failed = 0;
+        for (const phone of preview.phones) {
+          const abortCheck = await adb.get<{ abort_requested: number }>(
+            'SELECT abort_requested FROM bulk_sms_jobs WHERE id = ?',
+            jobId,
+          );
+          if (abortCheck?.abort_requested) {
+            await adb.run(
+              `UPDATE bulk_sms_jobs SET status = 'aborted', finished_at = datetime('now'),
+                 sent = ?, failed = ? WHERE id = ?`,
+              sent, failed, jobId,
+            );
+            log.info('bulk-sms job aborted', { job_id: jobId, sent, failed });
+            return;
+          }
+          try {
+            const result = await sendSmsTenant(db, tenantSlug, phone, tpl.content);
+            if (result?.success) {
+              sent += 1;
+            } else {
+              failed += 1;
+              await adb.run(
+                `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
+                      VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
+                phone,
+                tpl.content,
+                result?.error ?? 'unknown SMS provider error',
+              );
+            }
+          } catch (err) {
+            failed += 1;
+            log.error('inbox bulk-send inner send threw', {
+              phone,
+              template_id: templateId,
+              job_id: jobId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            const safeMsg = sanitizeRetryError(err);
+            await adb.run(
+              `INSERT INTO sms_retry_queue (to_phone, body, retry_count, next_retry_at, status, last_error)
+                    VALUES (?, ?, 0, datetime('now','+5 minutes'), 'failed', ?)`,
+              phone,
+              tpl.content,
+              safeMsg,
+            );
+          }
+          // Persist per-iteration progress so the poll endpoint sees live counts.
+          await adb.run(
+            'UPDATE bulk_sms_jobs SET sent = ?, failed = ? WHERE id = ?',
+            sent, failed, jobId,
+          );
+        }
+        await adb.run(
+          `UPDATE bulk_sms_jobs SET status = 'completed', finished_at = datetime('now'),
+            sent = ?, failed = ? WHERE id = ?`,
+          sent, failed, jobId,
+        );
+        log.info('bulk-sms job completed', { job_id: jobId, sent, failed });
+      })().catch((err) => {
+        log.error('bulk-sms job crashed', { job_id: jobId, error: err instanceof Error ? err.message : String(err) });
+        void adb.run(
+          `UPDATE bulk_sms_jobs SET status = 'failed', last_error = ?, finished_at = datetime('now') WHERE id = ?`,
+          err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+          jobId,
+        );
+      });
     });
 
     res.json({
       success: true,
       data: {
         attempted: preview.count,
-        sent,
-        failed,
+        sent: 0,
+        failed: 0,
         segment,
         template: { id: tpl.id, name: tpl.name },
         confirmed: true,
+        job_id: jobId,
+        status: 'running',
       },
     });
   }),
@@ -1202,6 +1483,70 @@ router.get(
         avg_first_response_minutes: Math.round((avgSeconds / 60) * 10) / 10,
       },
     });
+  }),
+);
+
+// WEB-UIUX-1117: bulk-send job progress + abort.
+router.get(
+  '/bulk-send/jobs/:id',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const adb = req.asyncDb;
+    const jobId = Number(req.params.id);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      throw new AppError('Invalid job id', 400);
+    }
+    const row = await adb.get<{
+      id: number; segment: string; template_id: number; template_name: string | null;
+      total: number; sent: number; failed: number; status: string;
+      abort_requested: number; last_error: string | null;
+      created_by: number; created_at: string; started_at: string | null; finished_at: string | null;
+    }>(
+      `SELECT id, segment, template_id, template_name, total, sent, failed, status,
+              abort_requested, last_error, created_by, created_at, started_at, finished_at
+         FROM bulk_sms_jobs WHERE id = ?`,
+      jobId,
+    );
+    if (!row) {
+      res.status(404).json({ success: false, message: 'Bulk SMS job not found.' });
+      return;
+    }
+    res.json({ success: true, data: row });
+  }),
+);
+
+router.post(
+  '/bulk-send/jobs/:id/abort',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const db = req.db;
+    const adb = req.asyncDb;
+    const jobId = Number(req.params.id);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      throw new AppError('Invalid job id', 400);
+    }
+    const job = await adb.get<{ id: number; status: string }>(
+      'SELECT id, status FROM bulk_sms_jobs WHERE id = ?',
+      jobId,
+    );
+    if (!job) {
+      res.status(404).json({ success: false, message: 'Bulk SMS job not found.' });
+      return;
+    }
+    if (job.status !== 'running' && job.status !== 'pending') {
+      res.status(409).json({
+        success: false,
+        code: 'ERR_BULK_SMS_NOT_RUNNING',
+        message: `Job is ${job.status} — cannot abort.`,
+      });
+      return;
+    }
+    await adb.run(
+      'UPDATE bulk_sms_jobs SET abort_requested = 1 WHERE id = ?',
+      jobId,
+    );
+    audit(db, 'inbox_bulk_send_aborted', req.user!.id, req.ip || 'unknown', { job_id: jobId });
+    res.json({ success: true, data: { abort_requested: true, job_id: jobId } });
   }),
 );
 

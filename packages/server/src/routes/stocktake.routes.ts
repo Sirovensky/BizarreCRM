@@ -73,8 +73,19 @@ router.get(
       : null;
     const where = status ? 'WHERE status = ?' : '';
     const params: unknown[] = status ? [status] : [];
-    const rows = await adb.all<StocktakeRow>(
-      `SELECT * FROM stocktakes ${where} ORDER BY opened_at DESC LIMIT 200`,
+    // WEB-UIUX-1362: hydrate each row with `items_counted` +
+    // `items_with_variance` so the session list can surface progress on the
+    // card itself. Without this the operator returning to 5 open sessions
+    // has to drill into each one to remember how far they had gotten.
+    // Subqueries scoped to the row keep the cost bounded — same pattern as
+    // POST /stocktake/:id's variance aggregator.
+    const rows = await adb.all<StocktakeRow & { items_counted?: number; items_with_variance?: number }>(
+      `SELECT s.*,
+              (SELECT COUNT(*) FROM stocktake_counts c
+                WHERE c.stocktake_id = s.id) AS items_counted,
+              (SELECT COUNT(*) FROM stocktake_counts c
+                WHERE c.stocktake_id = s.id AND c.counted_qty <> c.expected_qty) AS items_with_variance
+         FROM stocktakes s ${where} ORDER BY s.opened_at DESC LIMIT 200`,
       ...params,
     );
     res.json({ success: true, data: rows });
@@ -102,6 +113,27 @@ router.post(
     const notes = req.body?.notes
       ? validateTextLength(req.body.notes, 1000, 'notes')
       : null;
+
+    // WEB-UIUX-1371: refuse to open a second OPEN session with the same name
+    // + location. Multi-day counts that "resume by name" would otherwise
+    // create a fresh empty session and orphan day-1 counts in the prior row.
+    // Cancelled / committed rows are fine to share a name — those are
+    // historical and won't be confused with the new session.
+    const dup = await adb.get<{ id: number }>(
+      `SELECT id FROM stocktakes
+        WHERE status = 'open'
+          AND LOWER(name) = LOWER(?)
+          AND COALESCE(LOWER(location), '') = COALESCE(LOWER(?), '')
+        LIMIT 1`,
+      name,
+      location,
+    );
+    if (dup) {
+      throw new AppError(
+        `An open stocktake named "${name}"${location ? ` at "${location}"` : ''} already exists (id=${dup.id}). Resume that session or close it before opening another.`,
+        409,
+      );
+    }
 
     const result = await adb.run(
       `INSERT INTO stocktakes (name, location, opened_by_user_id, notes)
@@ -169,6 +201,75 @@ router.get(
 );
 
 // --------------------------------------------------------------------------
+// WEB-UIUX-1366: GET /stocktake/:id.csv — flat audit export
+// Auditors require a CSV they can attach to year-end paperwork. Mirrors the
+// detail JSON shape but as flat rows: sku, name, expected, counted, variance,
+// current_in_stock, counted_at, notes. SCAN-1161 anti-formula prefix applied
+// per cell so a SKU starting with `=`/`+`/`-`/`@` doesn't execute inside
+// Excel/Calc.
+// --------------------------------------------------------------------------
+router.get(
+  '/:id.csv',
+  asyncHandler(async (req, res) => {
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseInt(qs(req.params.id), 10);
+    if (!id || isNaN(id)) throw new AppError('Invalid stocktake id', 400);
+
+    const session = await adb.get<StocktakeRow>(
+      'SELECT * FROM stocktakes WHERE id = ?',
+      id,
+    );
+    if (!session) throw new AppError('Stocktake not found', 404);
+
+    const counts = await adb.all<StocktakeCountRow>(
+      `SELECT sc.*, i.name, i.sku, i.in_stock as current_in_stock
+         FROM stocktake_counts sc
+         LEFT JOIN inventory_items i ON i.id = sc.inventory_item_id
+        WHERE sc.stocktake_id = ?
+        ORDER BY sc.counted_at ASC`,
+      id,
+    );
+
+    const sanitize = (s: string | number | null | undefined): string => {
+      const str = String(s ?? '').replace(/[",\n\r]/g, ' ').trim();
+      return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+    };
+
+    const csvLines: string[] = [
+      'sku,name,expected_qty,counted_qty,variance,current_in_stock,counted_at,notes',
+    ];
+    for (const c of counts) {
+      const row = c as unknown as {
+        sku?: string | null;
+        name?: string | null;
+        expected_qty: number;
+        counted_qty: number;
+        variance: number;
+        current_in_stock?: number | null;
+        counted_at?: string;
+        notes?: string | null;
+      };
+      csvLines.push([
+        `"${sanitize(row.sku)}"`,
+        `"${sanitize(row.name)}"`,
+        row.expected_qty,
+        row.counted_qty,
+        row.variance,
+        row.current_in_stock ?? '',
+        `"${sanitize(row.counted_at)}"`,
+        `"${sanitize(row.notes)}"`,
+      ].join(','));
+    }
+
+    const csv = csvLines.join('\n');
+    const safeName = session.name.replace(/[^a-z0-9_\-]/gi, '_');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="stocktake_${safeName}_${session.id}.csv"`);
+    res.send(csv);
+  }),
+);
+
+// --------------------------------------------------------------------------
 // POST /stocktake/:id/counts — UPSERT a single item count
 // Body: { inventory_item_id, counted_qty, notes? }
 // Re-scanning the same SKU replaces the prior row (not a duplicate insert).
@@ -204,6 +305,14 @@ router.post(
       ? validateTextLength(req.body.notes, 500, 'notes')
       : null;
 
+    // WEB-UIUX-1352: when the caller is scanning single units (each scan
+    // represents +1 physical unit), pass `mode='increment'` so the server
+    // ADDS counted_qty to any prior count instead of replacing it. The
+    // default `mode='set'` preserves the existing "operator counts a bin
+    // then types the total" semantics so existing integrations keep
+    // working.
+    const mode: 'set' | 'increment' = req.body?.mode === 'increment' ? 'increment' : 'set';
+
     // expected_qty is captured at the moment of scan — we don't re-read it
     // on commit because in_stock may have drifted from concurrent sales.
     const item = await adb.get<{ in_stock: number; name: string }>(
@@ -213,25 +322,55 @@ router.post(
     if (!item) throw new AppError('Inventory item not found', 404);
 
     const expectedQty = item.in_stock;
-    const variance = countedQty - expectedQty;
 
-    await adb.run(
-      `INSERT INTO stocktake_counts
-         (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
-         expected_qty = excluded.expected_qty,
-         counted_qty  = excluded.counted_qty,
-         variance     = excluded.variance,
-         notes        = excluded.notes,
-         counted_at   = datetime('now')`,
-      id,
-      inventoryItemId,
-      expectedQty,
-      countedQty,
-      variance,
-      notes,
+    if (mode === 'increment') {
+      // Atomic add — combines INSERT-new-row with UPDATE-existing-row by
+      // using COALESCE on stocktake_counts.counted_qty.
+      await adb.run(
+        `INSERT INTO stocktake_counts
+           (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+           expected_qty = excluded.expected_qty,
+           counted_qty  = stocktake_counts.counted_qty + excluded.counted_qty,
+           variance     = (stocktake_counts.counted_qty + excluded.counted_qty) - excluded.expected_qty,
+           notes        = COALESCE(excluded.notes, stocktake_counts.notes),
+           counted_at   = datetime('now')`,
+        id,
+        inventoryItemId,
+        expectedQty,
+        countedQty,
+        countedQty - expectedQty,
+        notes,
+      );
+    } else {
+      const variance = countedQty - expectedQty;
+      await adb.run(
+        `INSERT INTO stocktake_counts
+           (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+           expected_qty = excluded.expected_qty,
+           counted_qty  = excluded.counted_qty,
+           variance     = excluded.variance,
+           notes        = excluded.notes,
+           counted_at   = datetime('now')`,
+        id,
+        inventoryItemId,
+        expectedQty,
+        countedQty,
+        variance,
+        notes,
+      );
+    }
+    // Re-fetch the row so the audit + response carry the authoritative
+    // counted_qty after a possible increment (delta vs final total).
+    const stored = await adb.get<{ counted_qty: number; variance: number }>(
+      'SELECT counted_qty, variance FROM stocktake_counts WHERE stocktake_id = ? AND inventory_item_id = ?',
+      id, inventoryItemId,
     );
+    const finalCountedQty = stored?.counted_qty ?? countedQty;
+    const variance = stored?.variance ?? (countedQty - expectedQty);
 
     // Per-scan audit so variance-inflating writes can be traced back to an
     // operator. Commit() audits the whole session, but that's too coarse for
@@ -240,8 +379,10 @@ router.post(
       stocktake_id: id,
       inventory_item_id: inventoryItemId,
       expected_qty: expectedQty,
-      counted_qty: countedQty,
+      counted_qty: finalCountedQty,
+      delta: mode === 'increment' ? countedQty : null,
       variance,
+      mode,
     });
 
     res.json({
@@ -251,10 +392,215 @@ router.post(
         inventory_item_id: inventoryItemId,
         name: item.name,
         expected_qty: expectedQty,
-        counted_qty: countedQty,
+        counted_qty: finalCountedQty,
         variance,
+        mode,
       },
     });
+  }),
+);
+
+// --------------------------------------------------------------------------
+// POST /stocktake/:id/counts/bulk — WEB-UIUX-1368: bulk CSV-style upload
+// for blind counts. Stores that count on paper or offline scanners can
+// submit `{ rows: [{ sku|inventory_item_id, counted_qty, notes? }, ...] }`
+// in a single request; the server upserts each row using the same
+// expected_qty snapshot logic as the single-row endpoint.
+// Mode defaults to 'set' (replace) to match CSV semantics; pass
+// `mode: 'increment'` if the upload is intended as a delta.
+// --------------------------------------------------------------------------
+router.post(
+  '/:id/counts/bulk',
+  asyncHandler(async (req, res) => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager' && role !== 'technician') {
+      throw new AppError('Admin, manager, or technician role required', 403);
+    }
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseInt(qs(req.params.id), 10);
+    if (!id || isNaN(id)) throw new AppError('Invalid stocktake id', 400);
+
+    const session = await adb.get<StocktakeRow>(
+      'SELECT * FROM stocktakes WHERE id = ?',
+      id,
+    );
+    if (!session) throw new AppError('Stocktake not found', 404);
+    if (session.status !== 'open') {
+      throw new AppError(`Cannot add counts to a ${session.status} stocktake`, 400);
+    }
+
+    const rowsRaw = (req.body?.rows ?? []) as Array<Record<string, unknown>>;
+    if (!Array.isArray(rowsRaw) || rowsRaw.length === 0) {
+      throw new AppError('rows array required (at least one row)', 400);
+    }
+    if (rowsRaw.length > 5000) {
+      throw new AppError('rows capped at 5,000 per upload', 400);
+    }
+    const mode: 'set' | 'increment' = req.body?.mode === 'increment' ? 'increment' : 'set';
+
+    const results: Array<{
+      sku?: string | null;
+      inventory_item_id?: number | null;
+      status: 'ok' | 'not_found' | 'invalid_qty' | 'duplicate_sku';
+      counted_qty?: number;
+      variance?: number;
+      message?: string;
+    }> = [];
+    let okCount = 0;
+
+    for (const row of rowsRaw) {
+      const skuRaw = typeof row.sku === 'string' ? row.sku.trim() : '';
+      const itemIdRaw = row.inventory_item_id;
+      let inventoryItemId: number | null = null;
+      if (Number.isFinite(Number(itemIdRaw)) && Number(itemIdRaw) > 0) {
+        inventoryItemId = Number(itemIdRaw);
+      } else if (skuRaw) {
+        const matches = await adb.all<{ id: number }>(
+          'SELECT id FROM inventory_items WHERE LOWER(sku) = LOWER(?) AND is_active = 1',
+          skuRaw,
+        );
+        if (matches.length === 0) {
+          results.push({ sku: skuRaw, status: 'not_found', message: `SKU '${skuRaw}' not found` });
+          continue;
+        }
+        if (matches.length > 1) {
+          results.push({ sku: skuRaw, status: 'duplicate_sku', message: `Multiple active items share SKU '${skuRaw}' — resolve in Inventory` });
+          continue;
+        }
+        inventoryItemId = matches[0].id;
+      }
+      if (!inventoryItemId) {
+        results.push({ sku: skuRaw || null, status: 'not_found', message: 'inventory_item_id or sku required' });
+        continue;
+      }
+      const countedQtyRaw = Number(row.counted_qty);
+      if (!Number.isFinite(countedQtyRaw) || !Number.isInteger(countedQtyRaw) || countedQtyRaw < 0) {
+        results.push({ sku: skuRaw || null, inventory_item_id: inventoryItemId, status: 'invalid_qty', message: 'counted_qty must be a non-negative integer' });
+        continue;
+      }
+      const notes = typeof row.notes === 'string' ? row.notes.trim().slice(0, 500) || null : null;
+      const item = await adb.get<{ in_stock: number; name: string }>(
+        'SELECT in_stock, name FROM inventory_items WHERE id = ? AND is_active = 1',
+        inventoryItemId,
+      );
+      if (!item) {
+        results.push({ sku: skuRaw || null, inventory_item_id: inventoryItemId, status: 'not_found', message: 'Inventory item not active' });
+        continue;
+      }
+      const expectedQty = item.in_stock;
+      if (mode === 'increment') {
+        await adb.run(
+          `INSERT INTO stocktake_counts
+             (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+             expected_qty = excluded.expected_qty,
+             counted_qty  = stocktake_counts.counted_qty + excluded.counted_qty,
+             variance     = (stocktake_counts.counted_qty + excluded.counted_qty) - excluded.expected_qty,
+             notes        = COALESCE(excluded.notes, stocktake_counts.notes),
+             counted_at   = datetime('now')`,
+          id, inventoryItemId, expectedQty, countedQtyRaw, countedQtyRaw - expectedQty, notes,
+        );
+      } else {
+        const variance = countedQtyRaw - expectedQty;
+        await adb.run(
+          `INSERT INTO stocktake_counts
+             (stocktake_id, inventory_item_id, expected_qty, counted_qty, variance, notes)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(stocktake_id, inventory_item_id) DO UPDATE SET
+             expected_qty = excluded.expected_qty,
+             counted_qty  = excluded.counted_qty,
+             variance     = excluded.variance,
+             notes        = COALESCE(excluded.notes, stocktake_counts.notes),
+             counted_at   = datetime('now')`,
+          id, inventoryItemId, expectedQty, countedQtyRaw, variance, notes,
+        );
+      }
+      const stored = await adb.get<{ counted_qty: number; variance: number }>(
+        'SELECT counted_qty, variance FROM stocktake_counts WHERE stocktake_id = ? AND inventory_item_id = ?',
+        id, inventoryItemId,
+      );
+      results.push({
+        sku: skuRaw || null,
+        inventory_item_id: inventoryItemId,
+        status: 'ok',
+        counted_qty: stored?.counted_qty ?? countedQtyRaw,
+        variance: stored?.variance ?? (countedQtyRaw - expectedQty),
+      });
+      okCount++;
+    }
+
+    audit(req.db, 'stocktake_bulk_upload', req.user!.id, req.ip || 'unknown', {
+      stocktake_id: id,
+      row_count: rowsRaw.length,
+      ok_count: okCount,
+      reject_count: rowsRaw.length - okCount,
+      mode,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        stocktake_id: id,
+        mode,
+        ok_count: okCount,
+        reject_count: rowsRaw.length - okCount,
+        results,
+      },
+    });
+  }),
+);
+
+// --------------------------------------------------------------------------
+// DELETE /stocktake/:id/counts/:itemId — remove a typo'd row (WEB-UIUX-1354)
+// --------------------------------------------------------------------------
+// Operator scanned the wrong SKU or fat-fingered a qty on a row mid-session.
+// Without a per-row remove, the typo persists until commit and corrupts the
+// variance report. Only allowed while the session is still in-progress —
+// committed/cancelled stocktakes are immutable.
+router.delete(
+  '/:id/counts/:itemId',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const stocktakeId = parseInt(req.params.id as string, 10);
+    const inventoryItemId = parseInt(req.params.itemId as string, 10);
+    if (!Number.isInteger(stocktakeId) || stocktakeId <= 0) {
+      res.status(400).json({ success: false, message: 'Invalid stocktake id.' });
+      return;
+    }
+    if (!Number.isInteger(inventoryItemId) || inventoryItemId <= 0) {
+      res.status(400).json({ success: false, message: 'Invalid inventory item id.' });
+      return;
+    }
+    const session = await adb.get<{ status: string }>(
+      'SELECT status FROM stocktakes WHERE id = ?',
+      stocktakeId,
+    );
+    if (!session) {
+      res.status(404).json({ success: false, message: 'Stocktake not found.' });
+      return;
+    }
+    if (session.status !== 'open') {
+      res.status(409).json({
+        success: false,
+        code: 'ERR_STOCKTAKE_LOCKED',
+        message: `Stocktake is ${session.status}; rows can no longer be removed.`,
+      });
+      return;
+    }
+    const result = await adb.run(
+      'DELETE FROM stocktake_counts WHERE stocktake_id = ? AND inventory_item_id = ?',
+      stocktakeId, inventoryItemId,
+    );
+    if (result.changes === 0) {
+      res.status(404).json({ success: false, message: 'Count row not found for this item.' });
+      return;
+    }
+    audit(req.db, 'stocktake_count_removed', req.user!.id, req.ip || 'unknown', {
+      stocktake_id: stocktakeId,
+      inventory_item_id: inventoryItemId,
+    });
+    res.json({ success: true, data: { stocktake_id: stocktakeId, inventory_item_id: inventoryItemId } });
   }),
 );
 

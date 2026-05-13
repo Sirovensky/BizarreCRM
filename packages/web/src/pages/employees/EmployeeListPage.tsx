@@ -5,11 +5,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { employeeApi } from '@/api/endpoints';
+import { employeeApi, locationApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -27,6 +28,7 @@ interface Employee {
   updated_at: string;
   // WEB-S6-033: list endpoint now includes these fields so no per-row fetch needed
   is_clocked_in?: number | boolean;
+  active_clock_in_at?: string | null;
   weekly_hours?: number;
 }
 
@@ -129,7 +131,11 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
   employee: Employee;
   action: 'clock-in' | 'clock-out';
   onClose: () => void;
-  onSubmit: (pin: string) => void;
+  // WEB-UIUX-1252: locationId is the operator's selected punch location;
+  // null when there is one active location (server falls back to user's
+  // home_location_id / global default).
+  // WEB-UIUX-1261: notes is the optional clock-out memo (clock-in ignores it).
+  onSubmit: (pin: string, locationId: number | null, notes: string | null) => void;
   isPending: boolean;
   // WEB-UIUX-1262: parent passes lockout info parsed from server rate-limit error
   lockedUntilProp?: Date | null;
@@ -138,6 +144,33 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
   const [pin, setPin] = useState('');
   // WEB-UIUX-1257: need current user role to show the right no-PIN guidance
   const { user: currentUser } = useAuthStore();
+  // WEB-UIUX-1252: pull active locations so multi-location stores can pick
+  // the punch site. Single-location tenants skip the picker entirely. Cache
+  // for 5 min — locations rarely change inside a shift.
+  const { data: locationsData } = useQuery({
+    queryKey: ['locations', 'active'],
+    queryFn: () => locationApi.list(true).then((r) => r.data.data ?? []),
+    staleTime: 5 * 60_000,
+    enabled: !!employee.has_pin,
+  });
+  const locations = locationsData ?? [];
+  const showLocationPicker = locations.length > 1;
+  const defaultLocationId = (
+    locations.find((l) => l.is_default)?.id
+    ?? locations[0]?.id
+    ?? null
+  );
+  const [locationId, setLocationId] = useState<number | null>(defaultLocationId);
+  useEffect(() => {
+    // Re-default once locations resolve.
+    if (locationId == null && defaultLocationId != null) setLocationId(defaultLocationId);
+  }, [defaultLocationId, locationId]);
+  // WEB-UIUX-1261: optional clock-out memo. Hidden on clock-in to keep the
+  // common-case PIN entry uncluttered; server-side, clock-in route doesn't
+  // accept this field anyway.
+  const [notes, setNotes] = useState('');
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   // WEB-UIUX-1262: rate-limit lockout countdown state (seeded from parent prop)
   const [lockedUntil, setLockedUntil] = useState<Date | null>(lockedUntilProp ?? null);
   const [attemptsRemaining, setAttemptsRemaining] = useState<number | null>(attemptsRemainingProp ?? null);
@@ -193,7 +226,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
           <h3 id="pin-modal-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {!employee.has_pin
               ? 'PIN Required'
-              : `${action === 'clock-in' ? 'Clock In' : 'Clock Out'} — ${employee.first_name}`}
+              : `${action === 'clock-in' ? 'Clock In' : 'Clock Out'} — ${[employee.first_name, employee.last_name].filter(Boolean).join(' ')}`}
           </h3>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5 text-surface-500" />
@@ -213,7 +246,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
           {!employee.has_pin ? (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
               <p className="font-semibold">PIN required to clock in/out.</p>
-              {currentUser?.role === 'admin' ? (
+              {isAdmin ? (
                 <p className="mt-1">
                   {employee.first_name} {employee.last_name} has no PIN set.{' '}
                   <Link
@@ -230,13 +263,16 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
             </div>
           ) : (
             <>
-              <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
+              <label htmlFor="pin-modal-input" className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
                 Enter PIN
               </label>
               <div className="relative">
                 <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
                 {/* WEB-UIUX-1266: type toggles between password and text via Eye/EyeOff icon */}
+                {/* WEB-UIUX-1271: aria-describedby points at the visible hint
+                    below so SR users hear the 4-6 digit length constraint. */}
                 <input
+                  id="pin-modal-input"
                   type={showPin ? 'text' : 'password'}
                   inputMode="numeric"
                   maxLength={6}
@@ -246,11 +282,14 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
                     // WEB-UIUX-1253: PIN is 4–6 digits; do NOT auto-submit at length 4 because
                     // the employee may still be typing a 5- or 6-digit PIN. Submit only on
                     // Enter when PIN is at max length (6); the explicit Submit button covers all lengths.
-                    if (e.key === 'Enter' && pin.length === 6) onSubmit(pin);
+                    if (e.key === 'Enter' && pin.length === 6) {
+                      onSubmit(pin, locationId, action === 'clock-out' ? (notes.trim() || null) : null);
+                    }
                   }}
                   placeholder="4-6 digit PIN"
                   autoFocus
                   disabled={!!lockedUntil}
+                  aria-describedby="pin-modal-hint"
                   className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-10 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 disabled:opacity-50"
                 />
                 {/* WEB-UIUX-1266: show/hide toggle button */}
@@ -263,6 +302,67 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
                   {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {/* WEB-UIUX-1271: visible-on-screen hint paired with aria-describedby
+                  so the length constraint is announced to SR users. */}
+              <p id="pin-modal-hint" className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                4–6 digit PIN (digits only)
+              </p>
+              {/* WEB-UIUX-1261: optional clock-out memo. Hidden on clock-in
+                  to keep the common-case PIN entry uncluttered; the server
+                  clock-in route ignores `notes` anyway. */}
+              {action === 'clock-out' && (
+                <div className="mt-3">
+                  <label
+                    htmlFor="pin-modal-notes"
+                    className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300"
+                  >
+                    Shift note (optional)
+                  </label>
+                  <textarea
+                    id="pin-modal-notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value.slice(0, 1000))}
+                    disabled={!!lockedUntil}
+                    rows={2}
+                    maxLength={1000}
+                    placeholder="e.g. covered for sick teammate, client meeting ran late"
+                    className="w-full resize-none rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  />
+                  <p className="mt-0.5 text-right text-[10px] text-surface-400">
+                    {notes.length}/1000
+                  </p>
+                </div>
+              )}
+              {/* WEB-UIUX-1252: multi-location punch picker. Single-location
+                  stores never see this row; server falls back to the user's
+                  home_location_id when locationId is null. */}
+              {showLocationPicker && (
+                <div className="mt-3">
+                  <label
+                    htmlFor="pin-modal-location"
+                    className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300"
+                  >
+                    Punch location
+                  </label>
+                  <select
+                    id="pin-modal-location"
+                    value={locationId ?? ''}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setLocationId(next ? Number(next) : null);
+                    }}
+                    disabled={!!lockedUntil}
+                    className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  >
+                    {locations.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                        {l.is_default ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {/* WEB-UIUX-1262: rate-limit lockout feedback — live countdown + attempts remaining */}
               {lockedUntil && countdown && (
                 <div className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-300">
@@ -284,7 +384,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
         {/* WEB-UIUX-1274: header X already closes. Footer secondary slot:
             when no PIN + admin → "Set PIN" link; otherwise no Cancel button. */}
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
-          {!employee.has_pin && currentUser?.role === 'admin' ? (
+          {!employee.has_pin && isAdmin ? (
             <Link
               to={`/settings/users?employee=${employee.id}`}
               onClick={onClose}
@@ -294,7 +394,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending, lockedUntilP
             </Link>
           ) : null}
           <button type="button"
-            onClick={() => onSubmit(pin)}
+            onClick={() => onSubmit(pin, locationId, action === 'clock-out' ? (notes.trim() || null) : null)}
             disabled={!employee.has_pin || pin.length < 4 || isPending || !!lockedUntil}
             className={cn(
               'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
@@ -348,6 +448,15 @@ function PayRateEditor({ employeeId, currentRate }: { employeeId: number; curren
     if (trimmed !== '' && (isNaN(rate!) || rate! < 0 || rate! > 9999.99)) {
       toast.error('Pay rate must be a number between 0 and 9999.99');
       return;
+    }
+    // WEB-UIUX-1265: $0 or sub-$1 pay rates are almost certainly typos.
+    // Confirm before banking a value that silently zeros out future
+    // commissions/hours math for this employee.
+    if (rate !== null && rate < 1) {
+      const label = rate === 0 ? '$0.00/hr (no pay)' : `$${rate.toFixed(2)}/hr`;
+      // eslint-disable-next-line no-alert
+      const ok = window.confirm(`Set pay rate to ${label}? This will be used for all future timesheet + commission math.`);
+      if (!ok) return;
     }
     mutation.mutate(rate);
   }
@@ -458,7 +567,9 @@ function EmployeeExpandedRow({
             {isDetailLoading && !detail ? (
               <p className="text-sm text-surface-400">Loading clock entries...</p>
             ) : recentClock.length === 0 ? (
-              <p className="text-sm text-surface-400">No clock entries yet. Use the clock in/out buttons above.</p>
+              // WEB-UIUX-1269: spatial reference depends on viewport; just
+              // point to the action label.
+              <p className="text-sm text-surface-400">No clock entries yet. Use the Clock In button on this row to log a shift.</p>
             ) : (
               <div className="space-y-1">
                 {recentClock.map((entry) => (
@@ -566,6 +677,8 @@ export function EmployeeListPage() {
   // WEB-UIUX-1259: client-side search filter (name + email substring)
   const [searchQuery, setSearchQuery] = useState('');
   const { user: currentUser } = useAuthStore();
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   // WEB-UIUX-1262: rate-limit lockout state parsed from server error response
   const [pinLockedUntil, setPinLockedUntil] = useState<Date | null>(null);
   const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState<number | null>(null);
@@ -593,7 +706,10 @@ export function EmployeeListPage() {
 
   // Clock in mutation
   const clockInMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockIn(id, pin),
+    // WEB-UIUX-1252: thread the selected location_id through; server falls
+    // back to home_location_id when undefined.
+    mutationFn: ({ id, pin, locationId }: { id: number; pin: string; locationId: number | null }) =>
+      employeeApi.clockIn(id, pin, locationId ?? undefined),
     onSuccess: (response) => {
       toast.success('Clocked in successfully');
       // WEB-UIUX-1255: server sends auto_closed_entry when a stale open shift was
@@ -625,9 +741,23 @@ export function EmployeeListPage() {
 
   // Clock out mutation
   const clockOutMutation = useMutation({
-    mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockOut(id, pin),
-    onSuccess: () => {
-      toast.success('Clocked out successfully');
+    mutationFn: ({ id, pin, locationId, notes }: { id: number; pin: string; locationId: number | null; notes: string | null }) =>
+      employeeApi.clockOut(id, pin, locationId ?? undefined, notes ?? undefined),
+    onSuccess: (res: any) => {
+      // WEB-UIUX-1256: surface total hours banked + (when available)
+      // clock-in time so the worker has explicit confirmation of what
+      // was logged. Server returns total_hours on the response payload
+      // (employees.routes.ts:457,473).
+      const data = res?.data?.data ?? res?.data ?? {};
+      const totalHours = Number(data.total_hours ?? 0);
+      const clockInAt = data.clock_in ?? data.clock_in_at ?? null;
+      let msg = 'Clocked out successfully';
+      if (totalHours > 0) {
+        const h = Math.floor(totalHours);
+        const m = Math.round((totalHours - h) * 60);
+        msg = `Clocked out — ${h}h ${m}m logged${clockInAt ? ` since ${new Date(clockInAt).toLocaleTimeString()}` : ''}`;
+      }
+      toast.success(msg);
       setPinModal(null);
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       queryClient.invalidateQueries({ queryKey: ['employee-detail'] });
@@ -644,12 +774,12 @@ export function EmployeeListPage() {
     },
   });
 
-  const handlePinSubmit = (pin: string) => {
+  const handlePinSubmit = (pin: string, locationId: number | null, notes: string | null) => {
     if (!pinModal) return;
     if (pinModal.action === 'clock-in') {
-      clockInMutation.mutate({ id: pinModal.employee.id, pin });
+      clockInMutation.mutate({ id: pinModal.employee.id, pin, locationId });
     } else {
-      clockOutMutation.mutate({ id: pinModal.employee.id, pin });
+      clockOutMutation.mutate({ id: pinModal.employee.id, pin, locationId, notes });
     }
   };
 
@@ -659,14 +789,19 @@ export function EmployeeListPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Employees</h1>
-          <p className="text-surface-500 dark:text-surface-400">Manage technicians and staff</p>
+          {/* WEB-UIUX-1263: subtitle covers every staff role, not just techs. */}
+          <p className="text-surface-500 dark:text-surface-400">Employees, time clock, and payroll roster</p>
         </div>
+        {/* WEB-UIUX-1258: label promises action; it's actually navigation to
+            the user-management settings tab. Make the destination explicit. */}
         <a
           href="/settings/users"
           className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+          title="Open Settings → Users to create or invite a new employee"
+          aria-label="Add a new employee — opens Settings > Users"
         >
           <UserCog className="h-4 w-4" />
-          Add Employee
+          Add Employee (in Settings)
         </a>
       </div>
 
@@ -755,6 +890,30 @@ export function EmployeeListPage() {
   );
 }
 
+// WEB-UIUX-1254: tiny live-elapsed display rendered under the on-shift pill.
+// Re-ticks every 30s so the row doesn't thrash on second boundaries while the
+// rest of the list re-renders.
+function ActiveShiftElapsed({ clockInAt }: { clockInAt: string }) {
+  const [, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const startMs = new Date(clockInAt).getTime();
+  if (!Number.isFinite(startMs)) return null;
+  const elapsedMin = Math.max(0, Math.floor((Date.now() - startMs) / 60_000));
+  const h = Math.floor(elapsedMin / 60);
+  const m = elapsedMin % 60;
+  return (
+    <span
+      className="ml-2 text-[11px] font-mono tabular-nums text-surface-500 dark:text-surface-400"
+      title={`Clocked in at ${new Date(clockInAt).toLocaleTimeString()}`}
+    >
+      {h > 0 ? `${h}h ${m}m` : `${m}m`}
+    </span>
+  );
+}
+
 // ─── Employee Row ────────────────────────────────────────────────────
 // WEB-S6-033 / WEB-UIUX-184: clock status + weekly hours are served by the
 // list endpoint, and the expanded panel reuses one detail payload for pay rate,
@@ -766,6 +925,8 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
   onToggle: () => void;
   onClockAction: (action: 'clock-in' | 'clock-out') => void;
 }) {
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   // WEB-S6-033: use list-level fields; only fetch detail when expanded.
   const isClockedIn = !!(employee.is_clocked_in);
   const weeklyHours = Number(employee.weekly_hours ?? 0);
@@ -819,6 +980,8 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
           </span>
         </td>
         {/* WEB-UIUX-1272: pill badge replaces tiny dot for better kiosk legibility */}
+        {/* WEB-UIUX-1254: live elapsed timer under the pill so a worker sees
+            "On shift · 4h 12m" at a glance. */}
         <td className="px-4 py-3">
           <span className={cn(
             'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold',
@@ -828,6 +991,9 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
           )}>
             {isClockedIn ? 'On shift' : 'Off'}
           </span>
+          {isClockedIn && employee.active_clock_in_at && (
+            <ActiveShiftElapsed clockInAt={employee.active_clock_in_at} />
+          )}
         </td>
         <td className="px-4 py-3 text-surface-700 dark:text-surface-300">
           {formatHours(weeklyHours)}
@@ -837,7 +1003,7 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
               may only clock themselves in/out. Disable the button and show a tooltip when
               the current user is not an admin and this row is a different employee. */}
           {(() => {
-            const canClock = currentUser?.role === 'admin' || currentUser?.id === employee.id;
+            const canClock = isAdmin || currentUser?.id === employee.id;
             return (
               <span title={canClock ? undefined : 'Only admins can clock other employees'}>
                 <button
@@ -848,7 +1014,7 @@ function EmployeeRow({ employee, currentUser, isExpanded, onToggle, onClockActio
                     onClockAction(isClockedIn ? 'clock-out' : 'clock-in');
                   }}
                   className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                    'rounded-lg px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
                     isClockedIn
                       ? 'bg-red-600 hover:bg-red-700'
                       : 'bg-green-600 hover:bg-green-700',

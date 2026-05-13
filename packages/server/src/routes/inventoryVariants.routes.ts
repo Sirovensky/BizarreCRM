@@ -6,7 +6,7 @@
  * Bundles  mount: /api/v1/inventory-bundles
  *
  * authMiddleware is applied at the parent router level — NOT re-added here.
- * Role gate: requirePermission('inventory.adjust') on all mutating endpoints.
+ * Role gate: requirePermission('inventory.adjust_stock') on all mutating endpoints.
  * Money: INTEGER cents only (SEC-H34).
  * Rate-limit writes via checkWindowRate / recordWindowAttempt.
  * Audit: variant create, variant stock-adjust, bundle create.
@@ -19,6 +19,7 @@ import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowAttempt } from '../utils/rateLimiter.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import type { AsyncDb } from '../db/async-db.js';
+import { PERMISSIONS } from '@bizarre-crm/shared';
 
 // ---------------------------------------------------------------------------
 // Shared constants
@@ -83,7 +84,7 @@ variantsRouter.get('/items/:itemId/variants', asyncHandler(async (req: Request, 
 // ---------------------------------------------------------------------------
 variantsRouter.post(
   '/items/:itemId/variants',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -139,7 +140,7 @@ variantsRouter.post(
 // ---------------------------------------------------------------------------
 variantsRouter.patch(
   '/variants/:id',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -200,7 +201,7 @@ variantsRouter.patch(
 // ---------------------------------------------------------------------------
 variantsRouter.delete(
   '/variants/:id',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -230,7 +231,7 @@ variantsRouter.delete(
 // ---------------------------------------------------------------------------
 variantsRouter.patch(
   '/variants/:id/stock',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -346,7 +347,7 @@ bundlesRouter.get('/:id', asyncHandler(async (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 bundlesRouter.post(
   '/',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -440,7 +441,7 @@ bundlesRouter.post(
 // ---------------------------------------------------------------------------
 bundlesRouter.patch(
   '/:id',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -496,7 +497,7 @@ bundlesRouter.patch(
 // ---------------------------------------------------------------------------
 bundlesRouter.delete(
   '/:id',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -523,7 +524,7 @@ bundlesRouter.delete(
 // ---------------------------------------------------------------------------
 bundlesRouter.post(
   '/:id/items',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;
@@ -572,7 +573,7 @@ bundlesRouter.post(
 // ---------------------------------------------------------------------------
 bundlesRouter.delete(
   '/:id/items/:bundleItemId',
-  requirePermission('inventory.adjust'),
+  requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK),
   asyncHandler(async (req: Request, res: Response) => {
     const db  = req.db;
     const adb: AsyncDb = req.asyncDb;

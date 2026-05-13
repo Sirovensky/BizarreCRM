@@ -9,6 +9,7 @@
 import React, { useEffect, useState } from 'react';
 import { submitReview } from './enrichApi';
 import { usePortalI18n } from '../i18n';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ReviewPromptModalProps {
   ticketId: number;
@@ -30,6 +31,11 @@ export function ReviewPromptModal({
   const [phase, setPhase] = useState<'ask' | 'thanks' | 'google'>('ask');
   const [googleUrl, setGoogleUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  // WEB-UIUX-911: trap focus inside the dialog panel while open and restore focus
+  // to the trigger (the post-pickup CTA) on close so the operator's keyboard
+  // position isn't lost in `<body>`.
+  const containerRef = useFocusTrap<HTMLDivElement>(open);
 
   useEffect(() => {
     if (!open) return;
@@ -71,6 +77,7 @@ export function ReviewPromptModal({
       onClick={onClose}
     >
       <div
+        ref={containerRef}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm rounded-lg border border-surface-200 bg-white p-6 shadow-xl dark:border-surface-700 dark:bg-surface-800"
       >

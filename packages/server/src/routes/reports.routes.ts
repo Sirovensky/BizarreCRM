@@ -9,6 +9,7 @@ import { audit } from '../utils/audit.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { validateId } from '../utils/validate.js';
+import { getTenantTz, tzModifier } from '../utils/timezone.js';
 
 const router = Router();
 
@@ -42,8 +43,11 @@ function validateReportDateRange(req: any, from: string, to: string): void {
   if (!isAdmin && days > REPORTS_DATE_RANGE_DAYS_DEFAULT) {
     throw new AppError('Date range exceeds 90 days (admin override required)', 400);
   }
-  if (isAdmin && days > REPORTS_DATE_RANGE_DAYS_ADMIN) {
-    throw new AppError('Date range exceeds 365 days (long-range requires async report job)', 400);
+  // Admin cap raised to 10 years so This Year / Last Year / All Time presets
+  // resolve in-process. Async long-range job still TODO; small-shop datasets
+  // tolerate the synchronous path comfortably.
+  if (isAdmin && days > 3650) {
+    throw new AppError('Date range exceeds 10 years (long-range requires async report job)', 400);
   }
 }
 
@@ -142,7 +146,15 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       SELECT COUNT(*) AS n FROM appointments
       WHERE DATE(start_time) = ?
     `, today),
-    // Status group counts (matching ticket list overview bar)
+    // Status group counts (matching ticket list overview bar).
+    // On-hold bucket = anything blocked on a non-shop actor (customer hasn't
+    // picked up, parts in transit, manager hasn't approved). The original
+    // pattern set covered hold/waiting/pending/transit but missed the most
+    // common ready-for-pickup names ("Repaired - QC Passed", "Ready",
+    // "Awaiting pickup"), so post-QC tickets bled into "Open" and inflated
+    // the active-work count. Pattern list mirrored across tickets.routes.ts
+    // and the client-side TicketListPage isOnHold helper — keep all three
+    // in sync.
     adb.get<any>(`
       SELECT
         COUNT(*) AS total,
@@ -151,12 +163,20 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
                     AND LOWER(ts.name) NOT LIKE '%waiting%'
                     AND LOWER(ts.name) NOT LIKE '%pending%'
                     AND LOWER(ts.name) NOT LIKE '%transit%'
+                    AND LOWER(ts.name) NOT LIKE '%qc passed%'
+                    AND LOWER(ts.name) NOT LIKE '%ready%'
+                    AND LOWER(ts.name) NOT LIKE '%pickup%'
+                    AND LOWER(ts.name) NOT LIKE '%approval%'
               THEN 1 END) AS open_count,
         COUNT(CASE WHEN ts.is_closed = 0 AND ts.is_cancelled = 0
                     AND (LOWER(ts.name) LIKE '%hold%'
                       OR LOWER(ts.name) LIKE '%waiting%'
                       OR LOWER(ts.name) LIKE '%pending%'
-                      OR LOWER(ts.name) LIKE '%transit%')
+                      OR LOWER(ts.name) LIKE '%transit%'
+                      OR LOWER(ts.name) LIKE '%qc passed%'
+                      OR LOWER(ts.name) LIKE '%ready%'
+                      OR LOWER(ts.name) LIKE '%pickup%'
+                      OR LOWER(ts.name) LIKE '%approval%')
               THEN 1 END) AS on_hold_count,
         COUNT(CASE WHEN ts.is_closed = 1 THEN 1 END) AS closed_count,
         COUNT(CASE WHEN ts.is_cancelled = 1 THEN 1 END) AS cancelled_count
@@ -204,14 +224,23 @@ router.get('/dashboard', asyncHandler(async (req, res) => {
       ORDER BY revenue DESC
       LIMIT 5
     `),
-    // ENR-D3: Customer acquisition trend — new customers per month, last 6 months
+    // ENR-D3: Customer acquisition trend — new customers per month, last 6 months.
+    // Effective acquisition date = MIN(earliest ticket date, customers.created_at)
+    // so RepairDesk-imported customers (whose row created_at == import time) get
+    // bucketed by their first real ticket — not the day the import ran.
     adb.all<any>(`
       SELECT
-        STRFTIME('%Y-%m', created_at) AS month,
+        STRFTIME('%Y-%m', effective_created_at) AS month,
         COUNT(*) AS new_customers
-      FROM customers
-      WHERE is_deleted = 0
-        AND DATE(created_at) >= DATE('now', '-6 months')
+      FROM (
+        SELECT MIN(
+          COALESCE((SELECT MIN(t.created_at) FROM tickets t WHERE t.customer_id = c.id AND t.is_deleted = 0), c.created_at),
+          c.created_at
+        ) AS effective_created_at
+        FROM customers c
+        WHERE c.is_deleted = 0
+      )
+      WHERE DATE(effective_created_at) >= DATE('now', '-6 months')
       GROUP BY month
       ORDER BY month ASC
     `),
@@ -370,9 +399,16 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       ) sc_min ON ii.cost_price = 0 AND sc_min.norm_name = LOWER(TRIM(ii.name))
       WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?${empFilter}
     `, from, to, ...empParams),
-    // Refunds
+    // Refunds — WEB-UIUX-1312: also return refund_count (distinct refund
+    // rows in the period) so the dashboard can surface "$X across N
+    // refunds" instead of a single opaque dollar total. The two signals
+    // diverge informatively: a manager seeing "$0 / 0 refunds" knows
+    // nothing happened; "$2000 / 3 refunds" vs "$2000 / 47 refunds"
+    // points at a process problem even at the same dollar level.
     adb.get<any>(`
-      SELECT COALESCE(SUM(p.amount), 0) AS v
+      SELECT
+        COALESCE(SUM(p.amount), 0) AS v,
+        COUNT(DISTINCT i.id) AS refund_count
       FROM payments p
       JOIN invoices i ON i.id = p.invoice_id
       WHERE i.status = 'refunded' AND DATE(p.created_at) BETWEEN ? AND ?${empFilterInv}
@@ -500,6 +536,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
   const cogs = cogsRow?.v ?? 0;
   const net_profit = totalSales - cogs - discounts;
   const refunds = refundsRow?.v ?? 0;
+  const refund_count = refundsRow?.refund_count ?? 0;
   const expenses = expensesRow?.v ?? 0;
   const receivables = receivablesRow?.v ?? 0;
 
@@ -533,6 +570,7 @@ router.get('/dashboard-kpis', asyncHandler(async (req, res) => {
       cogs,
       net_profit,
       refunds,
+      refund_count,
       expenses,
       receivables,
       sales_by_type,
@@ -568,14 +606,25 @@ router.get('/insights', asyncHandler(async (req, res) => {
       ORDER BY count DESC
       LIMIT 10
     `, from, to),
-    // Repairs by month
-    adb.all<any>(`
-      SELECT STRFTIME('%Y-%m', t.created_at) AS month, COUNT(*) AS count
-      FROM tickets t
-      WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?
-      GROUP BY month
-      ORDER BY month ASC
-    `, from, to),
+    // Repairs over time — adaptive bucket so a single-month range still
+    // produces a usable bar series. ≤31 days → daily, ≤92 days → weekly,
+    // otherwise monthly. Field stays `month` for client compat (it really
+    // means "bucket label" now). Frontend treats it as a category string.
+    (() => {
+      const spanDays = Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000));
+      const bucketExpr = spanDays <= 31
+        ? `STRFTIME('%Y-%m-%d', t.created_at)`
+        : spanDays <= 92
+          ? `STRFTIME('%Y-W%W', t.created_at)`
+          : `STRFTIME('%Y-%m', t.created_at)`;
+      return adb.all<any>(`
+        SELECT ${bucketExpr} AS month, COUNT(*) AS count
+        FROM tickets t
+        WHERE t.is_deleted = 0 AND DATE(t.created_at) BETWEEN ? AND ?
+        GROUP BY month
+        ORDER BY month ASC
+      `, from, to);
+    })(),
     // Revenue by model (top 10)
     adb.all<any>(`
       SELECT td.device_name AS name, COALESCE(SUM(td.price), 0) AS revenue
@@ -916,18 +965,18 @@ router.get('/tax', asyncHandler(async (req, res) => {
 
   const hasLineItemTax = lineItemRows.some((r: any) => r.tax_collected > 0);
 
+  // Fallback: aggregate invoice-level tax. invoices has no tax_class_id column
+  // (line-item path above is the only place tax_class lives), so bucket the
+  // total under a single synthetic class instead of joining tax_classes.
   const rows = hasLineItemTax ? lineItemRows : await adb.all<any>(`
     SELECT
-      COALESCE(tc.name, 'Tax (from invoice totals)') AS tax_class,
-      tc.rate,
+      'Tax (from invoice totals)' AS tax_class,
+      NULL AS rate,
       SUM(i.total_tax) AS tax_collected,
       SUM(i.total - i.total_tax) AS revenue
     FROM invoices i
-    LEFT JOIN tax_classes tc ON tc.id = i.tax_class_id
     WHERE i.status != 'void' AND DATE(i.created_at) BETWEEN ? AND ?
       AND i.total_tax > 0
-    GROUP BY i.tax_class_id
-    ORDER BY tax_collected DESC
   `, from, to);
 
   res.json({ success: true, data: { rows, from, to } });
@@ -1100,7 +1149,7 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const today = new Date().toISOString().slice(0, 10);
 
-  const [stale_tickets, missingPartsRow, overdue_invoices, lowStockRow] = await Promise.all([
+  const [stale_tickets, missingPartsRow, overdue_invoices, lowStockRow, pendingRefundsRow] = await Promise.all([
     // Stale tickets: open, not updated in 3+ days
     adb.all<any>(`
       SELECT t.id, t.order_id,
@@ -1150,10 +1199,19 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
         AND low_stock_dismissed_at IS NULL
         AND in_stock <= reorder_level
     `),
+    // WEB-UIUX-1049: surface pending-refund count so admin landing page
+    // points at the approval queue instead of relying on operators to
+    // remember to navigate to /refunds. is_deleted scrubs the row only;
+    // the refund-status enum already excludes 'declined'/'completed' here.
+    adb.get<any>(`
+      SELECT COUNT(*) AS n FROM refunds
+      WHERE status = 'pending' AND is_deleted = 0
+    `),
   ]);
 
   const missing_parts_count = missingPartsRow?.n ?? 0;
   const low_stock_count = lowStockRow?.n ?? 0;
+  const pending_refunds_count = pendingRefundsRow?.n ?? 0;
 
   res.json({
     success: true,
@@ -1162,6 +1220,7 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
       missing_parts_count,
       overdue_invoices,
       low_stock_count,
+      pending_refunds_count,
     },
   });
 }));
@@ -1354,26 +1413,43 @@ router.get('/customer-acquisition', requireFeature('advancedReports'), asyncHand
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
   validateReportDateRange(req, from, to);
 
+  // Effective acquisition date = MIN(earliest ticket date, customers.created_at).
+  // Imported customers default to import time, so without this fallback every
+  // RepairDesk-imported row would be bucketed under the day the import ran.
   const [rows, monthly_totals] = await Promise.all([
     adb.all<any>(`
       SELECT
-        STRFTIME('%Y-%m', created_at) AS month,
+        STRFTIME('%Y-%m', effective_created_at) AS month,
         COUNT(*) AS new_customers,
-        COALESCE(referred_by, source, 'Unknown') AS acquisition_source
-      FROM customers
-      WHERE is_deleted = 0
-        AND DATE(created_at) BETWEEN ? AND ?
+        acquisition_source
+      FROM (
+        SELECT
+          MIN(
+            COALESCE((SELECT MIN(t.created_at) FROM tickets t WHERE t.customer_id = c.id AND t.is_deleted = 0), c.created_at),
+            c.created_at
+          ) AS effective_created_at,
+          COALESCE(c.referred_by, c.source, 'Unknown') AS acquisition_source
+        FROM customers c
+        WHERE c.is_deleted = 0
+      )
+      WHERE DATE(effective_created_at) BETWEEN ? AND ?
       GROUP BY month, acquisition_source
       ORDER BY month DESC, new_customers DESC
     `, from, to),
     // Also provide a monthly summary without source breakdown
     adb.all<any>(`
       SELECT
-        STRFTIME('%Y-%m', created_at) AS month,
+        STRFTIME('%Y-%m', effective_created_at) AS month,
         COUNT(*) AS new_customers
-      FROM customers
-      WHERE is_deleted = 0
-        AND DATE(created_at) BETWEEN ? AND ?
+      FROM (
+        SELECT MIN(
+          COALESCE((SELECT MIN(t.created_at) FROM tickets t WHERE t.customer_id = c.id AND t.is_deleted = 0), c.created_at),
+          c.created_at
+        ) AS effective_created_at
+        FROM customers c
+        WHERE c.is_deleted = 0
+      )
+      WHERE DATE(effective_created_at) BETWEEN ? AND ?
       GROUP BY month
       ORDER BY month DESC
     `, from, to),
@@ -1794,9 +1870,17 @@ const reportQueries: Record<string, (adb: any, from: string, to: string) => Prom
   `, from, to),
 
   'customer-acquisition': (adb, from, to) => adb.all(`
-    SELECT STRFTIME('%Y-%m', created_at) AS month, COUNT(*) AS new_customers,
-      COALESCE(referred_by, source, 'Unknown') AS acquisition_source
-    FROM customers WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
+    SELECT STRFTIME('%Y-%m', effective_created_at) AS month, COUNT(*) AS new_customers, acquisition_source
+    FROM (
+      SELECT
+        MIN(
+          COALESCE((SELECT MIN(t.created_at) FROM tickets t WHERE t.customer_id = c.id AND t.is_deleted = 0), c.created_at),
+          c.created_at
+        ) AS effective_created_at,
+        COALESCE(c.referred_by, c.source, 'Unknown') AS acquisition_source
+      FROM customers c WHERE c.is_deleted = 0
+    )
+    WHERE DATE(effective_created_at) BETWEEN ? AND ?
     GROUP BY month, acquisition_source ORDER BY month DESC, new_customers DESC
   `, from, to),
 };
@@ -1923,62 +2007,8 @@ function parseBiDays(raw: unknown, fallback: number, max: number): number {
   return Math.min(Math.floor(n), max);
 }
 
-/**
- * RPT-TZ1: Read the tenant's configured IANA timezone from store_config so
- * date-bucketing queries (hour-of-day, day-of-week, daily totals) group on
- * the owner's local calendar rather than UTC. Falls back to UTC so existing
- * behaviour is preserved when the setting is missing.
- *
- * Uses the synchronous `req.db` wrapper because the rest of this file calls
- * `adb.get/all` in hot paths — the store_config lookup is a single-row cache
- * hit and cheaper through the sync binding than round-tripping Promise.all.
- */
-function getTenantTz(req: any): string {
-  try {
-    const row = req.db
-      ?.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'")
-      .get() as { value?: string } | undefined;
-    return row?.value || 'UTC';
-  } catch {
-    return 'UTC';
-  }
-}
-
-/**
- * Convert an IANA timezone name into a SQLite strftime modifier that shifts a
- * UTC datetime to local time for date/hour bucketing. SQLite does not have
- * real timezone support, so we compute the current offset via Intl and emit
- * a `'±HH:MM'` modifier (e.g. `'-07:00'`). Returns a literal the query can
- * embed inside a strftime() call: `strftime('%w', col, '${tzModifier(tz)}')`.
- *
- * Note: offset is computed at query time from "now" so DST boundaries within
- * the selected range drift by one hour. For report accuracy that's acceptable
- * — DoW/hour reports are trend-shape indicators, not tax-time numbers.
- *
- * Returns an empty-effect modifier ('+00:00') when the timezone is UTC or
- * unrecognised so the SQL shape stays constant.
- */
-function tzModifier(timezone: string): string {
-  if (!timezone || timezone === 'UTC') return '+00:00';
-  try {
-    // Use Intl to compute the current offset in minutes for the given TZ.
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      timeZoneName: 'shortOffset',
-    });
-    const parts = fmt.formatToParts(new Date());
-    const offset = parts.find(p => p.type === 'timeZoneName')?.value || 'GMT';
-    // offset looks like 'GMT-7' or 'GMT+5:30'. Normalize to SQLite '-07:00' form.
-    const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-    if (!match) return '+00:00';
-    const sign = match[1];
-    const hh = match[2].padStart(2, '0');
-    const mm = (match[3] || '00').padStart(2, '0');
-    return `${sign}${hh}:${mm}`;
-  } catch {
-    return '+00:00';
-  }
-}
+// RPT-TZ1: getTenantTz + tzModifier moved to ../utils/timezone.js so other
+// routes (employees hours, etc.) can reuse the SQLite-friendly offset shape.
 
 // ─── 1. Profit hero KPI ──────────────────────────────────────────────────
 
@@ -2495,46 +2525,165 @@ router.get('/demand-forecast', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
   const months = parseBiDays(req.query.months, 12, 36);
+  const monthKeys = (() => {
+    const result: string[] = [];
+    const current = new Date();
+    current.setUTCDate(1);
+    current.setUTCHours(0, 0, 0, 0);
+    current.setUTCMonth(current.getUTCMonth() - (months - 1));
+    for (let i = 0; i < months; i++) {
+      result.push(current.toISOString().slice(0, 7));
+      current.setUTCMonth(current.getUTCMonth() + 1);
+    }
+    return result;
+  })();
 
-  const rows = await adb.all<{ ym: string; category: string; units: number }>(
-    `SELECT strftime('%Y-%m', tdp.created_at) AS ym,
-            COALESCE(ii.category, 'Other') AS category,
-            SUM(tdp.quantity) AS units
-     FROM ticket_device_parts tdp
-     JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
-     WHERE DATE(tdp.created_at) >= DATE('now', '-' || ? || ' months')
+  let rows = await adb.all<{ ym: string; category: string; units: number }>(
+    `WITH device_rollup AS (
+       SELECT ticket_id,
+              COUNT(*) AS device_count,
+              SUM(CASE WHEN total > 0 THEN total ELSE 0 END) AS device_total_sum
+       FROM ticket_devices
+       GROUP BY ticket_id
+     ),
+     categorized_devices AS (
+       SELECT td.id,
+              td.ticket_id,
+              td.total,
+              COALESCE(
+                NULLIF(TRIM(td.service_name), ''),
+                NULLIF(TRIM(CASE
+                  WHEN INSTR(td.device_name, ' - ') > 0 THEN SUBSTR(td.device_name, INSTR(td.device_name, ' - ') + 3)
+                  ELSE NULL
+                END), ''),
+                NULLIF(TRIM(dm.category), ''),
+                CASE
+                  WHEN td.device_type IS NOT NULL
+                    AND TRIM(td.device_type) != ''
+                    AND TRIM(td.device_type) NOT GLOB '[0-9]*'
+                  THEN TRIM(td.device_type)
+                  ELSE NULL
+                END,
+                NULLIF(TRIM(td.device_name), ''),
+                'Repair Revenue'
+              ) AS category
+       FROM ticket_devices td
+       LEFT JOIN device_models dm ON dm.id = td.device_model_id
+     )
+     SELECT ym, category, SUM(units) AS units
+     FROM (
+       SELECT strftime('%Y-%m', COALESCE(i.created_at, t.created_at)) AS ym,
+              cd.category AS category,
+              CASE
+                WHEN dr.device_total_sum > 0 AND cd.total > 0 THEN i.total * (cd.total / dr.device_total_sum)
+                WHEN dr.device_count > 0 THEN i.total / dr.device_count
+                ELSE i.total
+              END AS units
+       FROM invoices i
+       JOIN tickets t ON t.id = i.ticket_id AND t.is_deleted = 0
+       JOIN device_rollup dr ON dr.ticket_id = t.id
+       JOIN categorized_devices cd ON cd.ticket_id = t.id
+       WHERE COALESCE(i.status, '') NOT IN ('void', 'credit_note')
+         AND i.total > 0
+         AND DATE(COALESCE(i.created_at, t.created_at)) >= DATE('now', 'start of month', '-' || ? || ' months')
+
+       UNION ALL
+
+       SELECT strftime('%Y-%m', i.created_at) AS ym,
+              'Invoice Revenue' AS category,
+              i.total AS units
+       FROM invoices i
+       WHERE (i.ticket_id IS NULL OR NOT EXISTS (SELECT 1 FROM ticket_devices td WHERE td.ticket_id = i.ticket_id))
+         AND COALESCE(i.status, '') NOT IN ('void', 'credit_note')
+         AND i.total > 0
+         AND DATE(i.created_at) >= DATE('now', 'start of month', '-' || ? || ' months')
+     )
      GROUP BY ym, category
      ORDER BY ym ASC`,
-    months
+    months - 1,
+    months - 1
   );
+  let source: 'invoice_revenue' | 'parts' | 'repairs' = 'invoice_revenue';
+  let metric: 'revenue' | 'units' = 'revenue';
 
-  // Group by category, compute simple trailing average + linear slope
-  const byCategory = new Map<string, { ym: string; units: number }[]>();
-  for (const r of rows) {
-    const list = byCategory.get(r.category) || [];
-    list.push({ ym: r.ym, units: Number(r.units) });
-    byCategory.set(r.category, list);
+  if (rows.length === 0) {
+    source = 'parts';
+    metric = 'units';
+    rows = await adb.all<{ ym: string; category: string; units: number }>(
+      `SELECT strftime('%Y-%m', tdp.created_at) AS ym,
+            COALESCE(ii.category, 'Other') AS category,
+            SUM(tdp.quantity) AS units
+       FROM ticket_device_parts tdp
+       JOIN inventory_items ii ON ii.id = tdp.inventory_item_id
+       WHERE DATE(tdp.created_at) >= DATE('now', 'start of month', '-' || ? || ' months')
+       GROUP BY ym, category
+       ORDER BY ym ASC`,
+      months - 1
+    );
   }
 
-  const forecast = Array.from(byCategory.entries()).map(([category, data]) => {
-    const total = data.reduce((sum, d) => sum + d.units, 0);
-    const avg = data.length > 0 ? total / data.length : 0;
+  if (rows.length === 0) {
+    source = 'repairs';
+    rows = await adb.all<{ ym: string; category: string; units: number }>(
+      `SELECT strftime('%Y-%m', td.created_at) AS ym,
+              COALESCE(
+                NULLIF(TRIM(td.service_name), ''),
+                NULLIF(TRIM(CASE
+                  WHEN INSTR(td.device_name, ' - ') > 0 THEN SUBSTR(td.device_name, INSTR(td.device_name, ' - ') + 3)
+                  ELSE NULL
+                END), ''),
+                NULLIF(TRIM(dm.category), ''),
+                CASE
+                  WHEN td.device_type IS NOT NULL
+                    AND TRIM(td.device_type) != ''
+                    AND TRIM(td.device_type) NOT GLOB '[0-9]*'
+                  THEN TRIM(td.device_type)
+                  ELSE NULL
+                END,
+                NULLIF(TRIM(td.device_name), ''),
+                'Other Repair'
+              ) AS category,
+              COUNT(*) AS units
+       FROM ticket_devices td
+       JOIN tickets t ON t.id = td.ticket_id AND t.is_deleted = 0
+       LEFT JOIN device_models dm ON dm.id = td.device_model_id
+       WHERE DATE(td.created_at) >= DATE('now', 'start of month', '-' || ? || ' months')
+       GROUP BY ym, category
+       ORDER BY ym ASC`,
+      months - 1
+    );
+  }
+
+  // Group by category, compute simple trailing average + linear slope
+  const byCategory = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    const monthMap = byCategory.get(r.category) || new Map<string, number>();
+    monthMap.set(r.ym, (monthMap.get(r.ym) || 0) + Number(r.units));
+    byCategory.set(r.category, monthMap);
+  }
+
+  const forecast = Array.from(byCategory.entries()).map(([category, monthMap]) => {
+    const history = monthKeys.map((ym) => ({ ym, units: Number(monthMap.get(ym) || 0) }));
+    const total = history.reduce((sum, d) => sum + d.units, 0);
+    const avg = months > 0 ? total / months : 0;
     // Simple YoY trend: compare last 3 months to prior 3 months
-    const recent = data.slice(-3).reduce((s, d) => s + d.units, 0) / Math.max(1, Math.min(3, data.length));
-    const older = data.slice(-6, -3).reduce((s, d) => s + d.units, 0) / Math.max(1, Math.min(3, data.length - 3));
+    const recentWindow = history.slice(-3);
+    const olderWindow = history.slice(-6, -3);
+    const recent = recentWindow.reduce((s, d) => s + d.units, 0) / Math.max(1, recentWindow.length);
+    const older = olderWindow.reduce((s, d) => s + d.units, 0) / Math.max(1, olderWindow.length);
     const trendPct = older > 0 ? Math.round(((recent - older) / older) * 1000) / 10 : 0;
     return {
       category,
-      history: data,
+      history,
       avg_monthly: Math.round(avg * 10) / 10,
       next_month_forecast: Math.round(recent * 10) / 10,
       trend_pct: trendPct,
     };
-  });
+  }).filter((row) => row.avg_monthly > 0 || row.next_month_forecast > 0);
 
   forecast.sort((a, b) => b.avg_monthly - a.avg_monthly);
 
-  res.json({ success: true, data: { forecast, months_analyzed: months } });
+  res.json({ success: true, data: { forecast, months_analyzed: months, source, metric } });
 }));
 
 // ─── 11. Churn detection ─────────────────────────────────────────────────

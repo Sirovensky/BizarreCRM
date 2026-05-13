@@ -287,7 +287,7 @@ function TooltipCard({
             type="button"
             onClick={onSkipFlow}
             tabIndex={0}
-            className="rounded-md px-2 py-1 text-xs font-medium text-surface-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-surface-400 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+            className="rounded-md px-2 py-1 text-xs font-medium text-amber-600 transition-colors hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20 dark:hover:text-amber-300"
           >
             End tutorial
           </button>
@@ -400,6 +400,8 @@ export function SpotlightCoach() {
       return;
     }
 
+    // WEB-UIUX-577: MutationObserver that catches the target the moment it
+    // mounts, with a timeout fallback if the element never appears.
     let cancelled = false;
     let mutationObserver: MutationObserver | null = null;
     let fallbackTimer: number | undefined;

@@ -349,11 +349,43 @@ export interface TestConnectionResult {
   error?: string;
 }
 
+/**
+ * WEB-UIUX-937: Reachability heartbeat cache. Each terminal's last successful
+ * ping (or last failure) is recorded here so GET /blockchyp/status can answer
+ * "is the terminal actually online?" without forcing a synchronous ping on
+ * every status poll. In-memory by design — survives single-process; PM2
+ * cluster mode would need a shared store but the BlockChyp client itself is
+ * already per-process anyway, so equal scope.
+ */
+interface TerminalHeartbeat {
+  lastSeenAt: string | null;
+  lastCheckedAt: string;
+  lastError: string | null;
+  firmwareVersion: string | null;
+}
+const terminalHeartbeats = new Map<string, TerminalHeartbeat>();
+
+function recordHeartbeat(terminalName: string, result: TestConnectionResult): void {
+  const now = new Date().toISOString();
+  const prev = terminalHeartbeats.get(terminalName);
+  terminalHeartbeats.set(terminalName, {
+    lastSeenAt: result.success ? now : (prev?.lastSeenAt ?? null),
+    lastCheckedAt: now,
+    lastError: result.success ? null : (result.error ?? 'Unknown error'),
+    firmwareVersion: result.firmwareVersion ?? prev?.firmwareVersion ?? null,
+  });
+}
+
+export function getTerminalHeartbeat(terminalName: string): TerminalHeartbeat | null {
+  return terminalHeartbeats.get(terminalName) ?? null;
+}
+
 export async function testConnection(db: Database.Database, terminalNameOverride?: string): Promise<TestConnectionResult> {
   const cfg = getBlockChypConfig(db);
   const client = getClient(db);
   const terminalName = terminalNameOverride || cfg.terminalName;
 
+  let result: TestConnectionResult;
   try {
     const request = new BlockChyp.PingRequest();
     request.terminalName = terminalName;
@@ -362,7 +394,7 @@ export async function testConnection(db: Database.Database, terminalNameOverride
     const response = await blockchypBreaker.run(() => client.ping(request));
     const data = response.data;
 
-    return {
+    result = {
       success: !!data.success,
       terminalName,
       firmwareVersion: (data as any).firmwareVersion ?? undefined,
@@ -370,8 +402,10 @@ export async function testConnection(db: Database.Database, terminalNameOverride
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Connection failed';
-    return { success: false, terminalName, error: message };
+    result = { success: false, terminalName, error: message };
   }
+  recordHeartbeat(terminalName, result);
+  return result;
 }
 
 export async function testConnectionWithCredentials(input: {

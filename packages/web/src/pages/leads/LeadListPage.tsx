@@ -9,6 +9,7 @@ import {
 import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
+import { usePlanStore } from '@/stores/planStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatPhone, formatDate } from '@/utils/format';
@@ -336,10 +337,23 @@ function SortHeader({
   onSort: (col: string) => void;
 }) {
   const active = sortBy === column;
+  const ariaSort: 'ascending' | 'descending' | 'none' = active
+    ? (sortOrder === 'ASC' ? 'ascending' : 'descending')
+    : 'none';
   return (
     <th
+      scope="col"
+      role="columnheader button"
+      tabIndex={0}
+      aria-sort={ariaSort}
       className="cursor-pointer select-none px-4 py-3 font-medium text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
       onClick={() => onSort(column)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSort(column);
+        }
+      }}
     >
       <span className="inline-flex items-center gap-1">
         {label}
@@ -358,6 +372,8 @@ export function LeadListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  // WEB-UIUX-1349: open the canonical UpgradeModal on 403 upgrade_required.
+  const openUpgradeModal = usePlanStore((s) => s.openUpgradeModal);
 
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('leads_pagesize') || '25');
@@ -467,16 +483,33 @@ export function LeadListPage() {
   const convertMut = useMutation({
     mutationFn: (id: number) => leadApi.convert(id),
     onSuccess: (res, leadId) => {
-      const ticketId = res?.data?.data?.ticket?.id;
-      toast.success('Lead converted to ticket');
+      const ticket = res?.data?.data?.ticket;
+      const lead = res?.data?.data?.lead;
+      // WEB-UIUX-1350: unify success copy between list + detail with both
+      // stable order_ids so the operator can confirm the right destination.
+      const ticketLabel = ticket?.order_id ? `Ticket ${ticket.order_id}` : 'a ticket';
+      const leadLabel = lead?.order_id ? `Lead ${lead.order_id}` : 'Lead';
+      toast.success(`${leadLabel} converted → ${ticketLabel}`);
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       // Invalidate the specific lead detail cache so its page reflects the converted state
       queryClient.invalidateQueries({ queryKey: ['leads', leadId] });
       queryClient.invalidateQueries({ queryKey: ['lead', leadId] });
-      if (ticketId) navigate(`/tickets/${ticketId}`);
+      if (ticket?.id) navigate(`/tickets/${ticket.id}`);
     },
     onError: (err: unknown) => {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      // WEB-UIUX-1349: tier-limit reject (`leads.routes.ts:1066-1076`) is a 403
+      // with `upgrade_required:true` + structured `feature` field. Open the
+      // canonical UpgradeModal so the manager lands on a real CTA instead of
+      // a generic toast that dead-ends on monetization.
+      const e = err as {
+        response?: { status?: number; data?: { message?: string; upgrade_required?: boolean; feature?: string } };
+        message?: string;
+      };
+      if (e?.response?.status === 403 && e.response?.data?.upgrade_required) {
+        const feature = (e.response.data.feature ?? 'ticket_limit') as Parameters<typeof openUpgradeModal>[0];
+        openUpgradeModal(feature);
+        return;
+      }
       const msg = e?.response?.data?.message
         || e?.message
         || 'Failed to convert lead. Please try again.';
@@ -863,7 +896,8 @@ export function LeadListPage() {
                               // WEB-FM-020 — Fixer-C28: try/catch swallows confirm-modal teardown rejection
                               e.stopPropagation();
                               try {
-                                if (await confirm('Convert this lead to a ticket?')) {
+                                // WEB-UIUX-1341: mention customer side effect.
+                                if (await confirm('Convert this lead to a ticket?\n\nThis will also link the lead to an existing customer (matched by email/phone) OR create a new customer record.')) {
                                   setPendingConvertId(lead.id);
                                   try {
                                     await convertMut.mutateAsync(lead.id);

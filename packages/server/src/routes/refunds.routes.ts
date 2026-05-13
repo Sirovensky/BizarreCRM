@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requirePermission } from '../middleware/auth.js';
 import { idempotent } from '../middleware/idempotency.js';
@@ -87,8 +88,40 @@ router.get('/', asyncHandler(async (req, res) => {
   const pageSize = parsePageSize(req.query.pagesize, 25);
   const offset = validatePaginationOffset((page - 1) * pageSize, 'offset');
 
+  // WEB-UIUX-1018/1019: optional status filter — admin approval queue calls
+  // ?status=pending; the list page also offers approved/declined views.
+  const statusRaw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
+  const allowedStatuses = ['pending', 'approved', 'declined', 'cancelled', 'completed'];
+  const status = allowedStatuses.includes(statusRaw) ? statusRaw : '';
+
+  // WEB-UIUX-1286: optional invoice_id filter so the credit-note modal can
+  // detect a separate /refunds-path refund already exists against the same
+  // invoice + warn the operator before they double-credit. Same `customer_id`
+  // axis lets the customer profile pull every refund without paging the
+  // full list.
+  const invoiceIdRaw = typeof req.query.invoice_id === 'string' ? req.query.invoice_id.trim() : '';
+  const invoiceIdFilter = /^\d+$/.test(invoiceIdRaw) ? Number(invoiceIdRaw) : null;
+  const customerIdRaw = typeof req.query.customer_id === 'string' ? req.query.customer_id.trim() : '';
+  const customerIdFilter = /^\d+$/.test(customerIdRaw) ? Number(customerIdRaw) : null;
+
+  const whereClauses: string[] = [];
+  const whereArgs: unknown[] = [];
+  if (status) {
+    whereClauses.push('r.status = ?');
+    whereArgs.push(status);
+  }
+  if (invoiceIdFilter !== null) {
+    whereClauses.push('r.invoice_id = ?');
+    whereArgs.push(invoiceIdFilter);
+  }
+  if (customerIdFilter !== null) {
+    whereClauses.push('r.customer_id = ?');
+    whereArgs.push(customerIdFilter);
+  }
+  const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
   const [countRow, refunds] = await Promise.all([
-    adb.get<{ c: number }>('SELECT COUNT(*) as c FROM refunds'),
+    adb.get<{ c: number }>(`SELECT COUNT(*) as c FROM refunds r ${where}`, ...whereArgs),
     adb.all(`
       SELECT r.*, c.first_name, c.last_name, i.order_id AS invoice_order_id,
              u.first_name AS created_first, u.last_name AS created_last
@@ -96,8 +129,9 @@ router.get('/', asyncHandler(async (req, res) => {
       LEFT JOIN customers c ON c.id = r.customer_id
       LEFT JOIN invoices i ON i.id = r.invoice_id
       LEFT JOIN users u ON u.id = r.created_by
+      ${where}
       ORDER BY r.created_at DESC LIMIT ? OFFSET ?
-    `, pageSize, offset),
+    `, ...whereArgs, pageSize, offset),
   ]);
   const total = countRow!.c;
 
@@ -156,9 +190,18 @@ router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(a
       invoice_id,
     );
     if (nonCapturedRow && nonCapturedRow.count > 0) {
+      // WEB-UIUX-1399: carry structured `non_captured_count` + `states` on
+      // the error envelope so the InvoiceDetail UI can render an actionable
+      // recovery branch ("Capture or void these N payments first") instead
+      // of dumping the raw message.
       throw new AppError(
         `Cannot refund — ${nonCapturedRow.count} payment(s) on this invoice are not captured (state: ${nonCapturedRow.states}). Capture or void the authorization first.`,
         400,
+        ERROR_CODES.ERR_REFUND_PAYMENTS_NOT_CAPTURED,
+        {
+          non_captured_count: nonCapturedRow.count,
+          states: nonCapturedRow.states,
+        },
       );
     }
 
@@ -248,7 +291,7 @@ router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(a
   res.status(201).json({ success: true, data: { id: refundId } });
 }));
 
-// PATCH /:id/approve — Approve refund (admin only)
+// PATCH /:id/approve — Approve refund
 // SC1: Replace SQLite MAX(0, ...) scalar inside UPDATE SET with a safe two-step
 //      SELECT-then-UPDATE. Even though sqlite supports MAX() as a variadic scalar
 //      we avoid version/parser flakiness by computing the clamped value in JS.
@@ -258,13 +301,10 @@ router.post('/', idempotent, requirePermission('refunds.create'), asyncHandler(a
 //      the refund UPDATE. This blocks the double-approve race: two concurrent
 //      admins used to both pass the precheck, then both fire UPDATEs, causing
 //      the invoice to be decremented twice.
-// SEC-H25: gate behind refunds.approve permission. The inline role check below
-// is kept as defence-in-depth.
+// SEC-H25: gate behind refunds.approve permission.
 router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(async (req, res) => {
   const db = req.db;
   const adb: AsyncDb = req.asyncDb;
-  // Defence-in-depth: requirePermission above is authoritative.
-  if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid refund id', 400);
 
@@ -310,7 +350,40 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
     },
   ];
 
-  const refundMethod = String(refund.method ?? '').toLowerCase();
+  // WEB-UIUX-1295: client-side refund picker sends method='card' (the operator-
+  // facing label). At approve time, resolve that to the actual processor
+  // ('blockchyp' or 'stripe') based on what the invoice's captured payments
+  // came in on. This makes the picker's "Refund to card" choice push the
+  // credit back to the original card via the processor rather than silently
+  // landing in the ledger.
+  let refundMethod = String(refund.method ?? '').toLowerCase();
+  if (refundMethod === 'card' && refund.invoice_id && refund.type === 'refund') {
+    const processorRow = await adb.get<{ processor: string | null }>(
+      `SELECT
+         CASE
+           WHEN LOWER(method) = 'blockchyp' OR LOWER(COALESCE(processor, '')) = 'blockchyp' THEN 'blockchyp'
+           WHEN LOWER(method) = 'stripe' OR LOWER(COALESCE(processor, '')) = 'stripe' THEN 'stripe'
+           ELSE NULL
+         END AS processor
+       FROM payments
+       WHERE invoice_id = ?
+         AND COALESCE(capture_state, 'captured') = 'captured'
+         AND COALESCE(processor_transaction_id, transaction_id, reference) IS NOT NULL
+       ORDER BY amount DESC, created_at DESC, id DESC
+       LIMIT 1`,
+      refund.invoice_id,
+    );
+    if (processorRow?.processor) {
+      refundMethod = processorRow.processor;
+      // Persist the resolved method so the audit + reports keep the
+      // canonical processor name, not the operator-facing alias.
+      await adb.run(`UPDATE refunds SET method = ? WHERE id = ?`, refundMethod, id);
+    }
+    // If no processor row found, refundMethod stays 'card' — falls through to
+    // the no-op branch (ledger-only) and the approve flow completes without
+    // attempting a processor call. Operator will see the refund approved
+    // without any card movement; the invoice will reconcile via amount_paid.
+  }
   const needsProcessorClaim = Boolean(
     refund.invoice_id
     && refund.type === 'refund'
@@ -601,13 +674,10 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
 }));
 
 // PATCH /:id/decline — Decline refund
-// SEC-H25: declining a refund requires admin-tier access — gate behind
-// refunds.approve (same elevated permission as approve). The inline role check
-// below is kept as defence-in-depth.
+// SEC-H25: declining a refund requires elevated access — gate behind
+// refunds.approve (same elevated permission as approve).
 router.patch('/:id/decline', requirePermission('refunds.approve'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  // Defence-in-depth: requirePermission above is authoritative.
-  if (req.user?.role !== 'admin') throw new AppError('Admin only', 403);
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid refund id', 400);
 

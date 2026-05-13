@@ -65,6 +65,11 @@ export interface InvoiceDetail {
   total_tax: number;
   total: number;
   amount_paid: number;
+  // WEB-UIUX-1208: ledger offset from credit-notes. amount_paid tracks REAL
+  // cash collected; amount_credited tracks the credit-note ledger offset.
+  // The invoice is settled when (amount_paid + amount_credited) >= total.
+  // Pre-2026-05-12 legacy rows are back-filled by migration 196.
+  amount_credited?: number;
   amount_due: number;
   notes?: string | null;
   due_on?: string | null;

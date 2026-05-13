@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { CommissionPeriodLock } from '@/components/team/CommissionPeriodLock';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { extractApiError } from '@/utils/apiError';
 import { formatDateTime } from '@/utils/format';
 
@@ -75,7 +75,8 @@ function formatPeriodRange(period: PayrollPeriod): string {
 }
 
 export function PayrollPage() {
-  const userRole = useAuthStore((s) => s.user?.role);
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const isManager = useHasRole('manager');
   const {
     data,
     isLoading,
@@ -124,7 +125,7 @@ export function PayrollPage() {
         </div>
       </header>
 
-      {userRole === 'manager' && (
+      {isManager && (
         <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
           <ShieldAlert className="mt-0.5 h-5 w-5 flex-none" />
           <div>
@@ -161,7 +162,7 @@ export function PayrollPage() {
                 type="button"
                 onClick={() => void refetch()}
                 disabled={isFetching}
-                className="mt-3 inline-flex items-center rounded border border-error-300 px-3 py-1.5 text-xs font-semibold text-error-800 hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-error-800 dark:text-error-100 dark:hover:bg-error-900/40"
+                className="mt-3 inline-flex items-center rounded border border-error-300 px-3 py-1.5 text-xs font-semibold text-error-800 hover:bg-error-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-error-800 dark:text-error-100 dark:hover:bg-error-900/40"
               >
                 {isFetching && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                 Retry
@@ -220,13 +221,13 @@ export function PayrollPage() {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-surface-50 text-left text-xs uppercase text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+                <thead className="bg-surface-100 text-left text-xs uppercase tracking-wider text-surface-700 dark:bg-surface-800 dark:text-surface-200">
                   <tr>
-                    <th className="px-4 py-3 font-medium">Period</th>
-                    <th className="px-4 py-3 font-medium">Range</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Locked at</th>
-                    <th className="px-4 py-3 font-medium">Notes</th>
+                    <th className="px-4 py-3 font-semibold">Period</th>
+                    <th className="px-4 py-3 font-semibold">Range</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">Locked at</th>
+                    <th className="px-4 py-3 font-semibold">Notes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
@@ -234,8 +235,8 @@ export function PayrollPage() {
                     const locked = !!period.locked_at;
                     return (
                       <tr key={period.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
-                        <td className="px-4 py-3 font-medium text-surface-900 dark:text-surface-50">{period.name}</td>
-                        <td className="px-4 py-3 text-surface-600 dark:text-surface-300">{formatPeriodRange(period)}</td>
+                        <td className="px-4 py-3 font-semibold text-surface-900 dark:text-surface-50">{period.name}</td>
+                        <td className="px-4 py-3 font-mono text-surface-700 dark:text-surface-200">{formatPeriodRange(period)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                             locked
@@ -247,10 +248,10 @@ export function PayrollPage() {
                             {locked ? 'Locked' : 'Open'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-surface-600 dark:text-surface-300">
+                        <td className="px-4 py-3 font-mono text-surface-700 dark:text-surface-200">
                           {locked ? formatDateTime(period.locked_at) : '--'}
                         </td>
-                        <td className="max-w-xs truncate px-4 py-3 text-surface-500 dark:text-surface-400">
+                        <td className="max-w-xs truncate px-4 py-3 text-surface-700 dark:text-surface-300">
                           {period.notes || '--'}
                         </td>
                       </tr>

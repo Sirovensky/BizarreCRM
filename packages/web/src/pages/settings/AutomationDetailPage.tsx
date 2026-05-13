@@ -12,7 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Loader2, AlertCircle, Zap, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { automationsApi, settingsApi } from '@/api/endpoints';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { formatDateTime } from '@/utils/format';
 import {
   AutomationModal,
@@ -29,8 +29,8 @@ export function AutomationDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const userRole = useAuthStore((s) => s.user?.role);
-  const isAdmin = userRole === 'admin';
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const isAdmin = useHasRole('admin');
   const [showEdit, setShowEdit] = useState(false);
 
   const ruleId = id ? parseInt(id, 10) : NaN;

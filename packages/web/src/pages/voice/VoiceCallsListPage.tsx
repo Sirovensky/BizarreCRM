@@ -328,7 +328,10 @@ function CallRow({ call, callerMap }: CallRowProps) {
         </span>
       </td>
       <td className="px-4 py-3 text-xs text-surface-500 dark:text-surface-400 whitespace-nowrap">
-        {formatDateTime(call.created_at)}
+        {/* WEB-UIUX-381: created_at links to the call detail page. */}
+        <Link to={`/voice/${call.id}`} className="hover:text-primary-600 dark:hover:text-primary-400 hover:underline">
+          {formatDateTime(call.created_at)}
+        </Link>
       </td>
       <td className="px-4 py-3">
         {hasRecording(call) ? (

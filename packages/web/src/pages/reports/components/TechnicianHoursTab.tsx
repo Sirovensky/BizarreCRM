@@ -92,13 +92,13 @@ export function TechnicianHoursTab({ from, to }: { from: string; to: string }) {
                   }}
                 />
                 <Bar yAxisId="hours" dataKey="hours" fill={CHART_COLOR_PRIMARY} radius={[4, 4, 0, 0]} name="hours">
-                  {chartData.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={0.6} />
+                  {chartData.map((entry, i) => (
+                    <Cell key={`hours:${entry.name}`} fill={CHART_COLORS[i % CHART_COLORS.length]} opacity={0.6} />
                   ))}
                 </Bar>
                 <Bar yAxisId="revenue" dataKey="revenue" fill={CHART_COLOR_SUCCESS} radius={[4, 4, 0, 0]} name="revenue">
-                  {chartData.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  {chartData.map((entry, i) => (
+                    <Cell key={`revenue:${entry.name}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                   ))}
                 </Bar>
               </BarChart>

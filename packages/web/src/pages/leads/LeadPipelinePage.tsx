@@ -242,6 +242,10 @@ function PipelineColumn({
 export function LeadPipelinePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // WEB-UIUX-1346: Converted is a closed state; hide its column from the
+  // active pipeline view by default. Operators can flip the toggle when
+  // they need to recover an accidental conversion.
+  const [showConverted, setShowConverted] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['leads', 'pipeline'],
@@ -249,6 +253,10 @@ export function LeadPipelinePage() {
   });
 
   const pipeline: Record<string, any[]> = data?.data?.data ?? {};
+  const visibleStages = showConverted
+    ? PIPELINE_STAGES
+    : PIPELINE_STAGES.filter((s) => s.key !== 'converted');
+  const convertedCount = (pipeline['converted'] ?? []).length;
 
   // WEB-FF-004 (Fixer-RRR 2026-04-25): optimistic update + rollback. On a
   // 1.5 s mobile request the card used to stay in the OLD column for ~2 s,
@@ -340,7 +348,7 @@ export function LeadPipelinePage() {
       ) : (
         <div className="overflow-x-auto">
           <div className="flex gap-3 min-w-max pb-4">
-            {PIPELINE_STAGES.map((stage) => (
+            {visibleStages.map((stage) => (
               <PipelineColumn
                 key={stage.key}
                 stage={stage}
@@ -349,6 +357,17 @@ export function LeadPipelinePage() {
                 onNavigate={handleNavigate}
               />
             ))}
+            {/* WEB-UIUX-1346: toggle slot to expose hidden Converted column. */}
+            {!showConverted && convertedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowConverted(true)}
+                className="flex h-auto min-w-[14rem] items-center justify-center self-stretch rounded-lg border-2 border-dashed border-surface-300 px-3 py-2 text-xs font-medium text-surface-500 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 dark:border-surface-700 dark:text-surface-400 dark:hover:border-primary-700 dark:hover:bg-primary-950/30 dark:hover:text-primary-300"
+                title="Show the Converted column (closed leads — recovery only)"
+              >
+                Show Converted ({convertedCount})
+              </button>
+            )}
           </div>
         </div>
       )}

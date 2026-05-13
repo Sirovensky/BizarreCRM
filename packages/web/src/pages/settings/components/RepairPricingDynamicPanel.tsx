@@ -32,7 +32,7 @@ import type {
 import { confirm } from '@/stores/confirmStore';
 import { formatApiError } from '@/utils/apiError';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate, formatDateTime, formatNumber, timeAgo } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatNumber, timeAgo, toLocalDateString } from '@/utils/format';
 
 type EditableTier = Exclude<RepairPricingTier, 'unknown'>;
 type PresentableTier = EditableTier | 'unknown';
@@ -305,7 +305,7 @@ function CurrencyInput({
         disabled={disabled}
         aria-label={ariaLabel}
         onChange={(event) => onChange(event.target.value)}
-        className="h-8 w-full rounded-md border border-surface-300 bg-white pl-6 pr-2 text-right text-sm font-medium text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+        className="h-8 w-full rounded-md border border-surface-300 bg-white pl-6 pr-2 text-right text-sm font-medium text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
       />
     </div>
   );
@@ -400,7 +400,7 @@ export function RepairPricingStatusStrip() {
             type="button"
             onClick={() => ackRebaseMutation.mutate()}
             disabled={ackRebaseMutation.isPending}
-            className="btn btn-xs rounded-md bg-white px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-60 dark:bg-amber-950/40 dark:text-amber-100"
+            className="btn btn-xs rounded-md bg-white px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:bg-amber-950/40 dark:text-amber-100"
           >
             {ackRebaseMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
             Ack
@@ -743,7 +743,7 @@ export function RepairPricingMatrixSubTab() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `repair-prices-${category}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `repair-prices-${category}-${toLocalDateString(new Date())}.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();

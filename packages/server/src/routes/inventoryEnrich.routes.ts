@@ -867,6 +867,156 @@ router.post(
   }),
 );
 
+// WEB-UIUX-640: PATCH /shrinkage/:id and DELETE /shrinkage/:id — allow an
+// admin/manager to correct a mis-reported shrinkage event (wrong reason,
+// wrong qty) or remove it entirely. Both flows are stock-aware: changing
+// quantity diffs the inventory_items.in_stock counter, and delete restores
+// the original quantity. Each transition is audited; compliance/insurance
+// callers can read the audit trail.
+router.patch(
+  '/shrinkage/:id',
+  asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
+    const id = parseInt(qs(req.params.id), 10);
+    if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid shrinkage id', 400);
+
+    const existing = (await req.asyncDb.get(
+      `SELECT id, inventory_item_id, quantity, reason, notes
+         FROM inventory_shrinkage WHERE id = ?`,
+      id,
+    )) as
+      | { id: number; inventory_item_id: number; quantity: number; reason: string; notes: string | null }
+      | undefined;
+    if (!existing) throw new AppError('Shrinkage event not found', 404);
+
+    const nextReason =
+      req.body?.reason !== undefined
+        ? validateEnum(req.body.reason, ['damaged', 'stolen', 'lost', 'expired', 'other'] as const, 'reason', true)!
+        : existing.reason;
+    const nextNotes =
+      req.body?.notes !== undefined
+        ? (req.body.notes === null ? null : validateTextLength(req.body.notes, 1000, 'notes'))
+        : existing.notes;
+    const nextQuantity =
+      req.body?.quantity !== undefined
+        ? validateIntegerQuantity(req.body.quantity, 'quantity')
+        : existing.quantity;
+
+    const db = req.db;
+    const tx = db.transaction(() => {
+      // Reconcile in_stock and stock_movements if quantity changed.
+      // qty went UP   ⇒ stock should drop by (next - prev).
+      // qty went DOWN ⇒ stock should restore by (prev - next).
+      const delta = nextQuantity - existing.quantity;
+      if (delta !== 0) {
+        const item = db
+          .prepare('SELECT in_stock FROM inventory_items WHERE id = ? AND is_active = 1')
+          .get(existing.inventory_item_id) as { in_stock: number } | undefined;
+        if (!item) throw new AppError('Inventory item not found', 404);
+        if (delta > 0) {
+          const upd = db
+            .prepare(
+              `UPDATE inventory_items
+                 SET in_stock = in_stock - ?, updated_at = datetime('now')
+               WHERE id = ? AND in_stock >= ?`,
+            )
+            .run(delta, existing.inventory_item_id, delta);
+          if (upd.changes === 0) {
+            throw new AppError(
+              `Cannot increase shrinkage by ${delta} — only ${item.in_stock} in stock`,
+              400,
+            );
+          }
+        } else {
+          db.prepare(
+            `UPDATE inventory_items
+               SET in_stock = in_stock + ?, updated_at = datetime('now')
+             WHERE id = ?`,
+          ).run(-delta, existing.inventory_item_id);
+        }
+        // Stamp a corrective stock_movement for audit (do NOT mutate the
+        // original shrinkage row's referenced movement — preserve history).
+        db.prepare(
+          `INSERT INTO stock_movements
+             (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+           VALUES (?, 'shrinkage_adjustment', ?, 'shrinkage', ?, ?, ?)`,
+        ).run(
+          existing.inventory_item_id,
+          -delta,
+          existing.id,
+          `Shrinkage qty corrected: ${existing.quantity} → ${nextQuantity}`,
+          req.user!.id,
+        );
+      }
+
+      db.prepare(
+        `UPDATE inventory_shrinkage
+            SET quantity = ?, reason = ?, notes = ?
+          WHERE id = ?`,
+      ).run(nextQuantity, nextReason, nextNotes, id);
+    });
+    tx();
+
+    audit(req.db, 'shrinkage_event_updated', req.user!.id, req.ip || 'unknown', {
+      shrinkage_id: id,
+      inventory_item_id: existing.inventory_item_id,
+      prev_quantity: existing.quantity,
+      next_quantity: nextQuantity,
+      prev_reason: existing.reason,
+      next_reason: nextReason,
+    });
+
+    const updated = await req.asyncDb.get('SELECT * FROM inventory_shrinkage WHERE id = ?', id);
+    res.json({ success: true, data: updated });
+  }),
+);
+
+router.delete(
+  '/shrinkage/:id',
+  asyncHandler(async (req, res) => {
+    requireManagerOrAdmin(req);
+    const id = parseInt(qs(req.params.id), 10);
+    if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid shrinkage id', 400);
+
+    const existing = (await req.asyncDb.get(
+      `SELECT id, inventory_item_id, quantity FROM inventory_shrinkage WHERE id = ?`,
+      id,
+    )) as { id: number; inventory_item_id: number; quantity: number } | undefined;
+    if (!existing) throw new AppError('Shrinkage event not found', 404);
+
+    const db = req.db;
+    const tx = db.transaction(() => {
+      // Restore the shrunk quantity.
+      db.prepare(
+        `UPDATE inventory_items
+            SET in_stock = in_stock + ?, updated_at = datetime('now')
+          WHERE id = ?`,
+      ).run(existing.quantity, existing.inventory_item_id);
+      // Reversing stock movement preserves the audit trail.
+      db.prepare(
+        `INSERT INTO stock_movements
+           (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+         VALUES (?, 'shrinkage_reversal', ?, 'shrinkage', ?, ?, ?)`,
+      ).run(
+        existing.inventory_item_id,
+        existing.quantity,
+        existing.id,
+        'Shrinkage event deleted; quantity restored',
+        req.user!.id,
+      );
+      db.prepare('DELETE FROM inventory_shrinkage WHERE id = ?').run(id);
+    });
+    tx();
+
+    audit(req.db, 'shrinkage_event_deleted', req.user!.id, req.ip || 'unknown', {
+      shrinkage_id: id,
+      inventory_item_id: existing.inventory_item_id,
+      restored_quantity: existing.quantity,
+    });
+    res.json({ success: true, data: { id, deleted: true, restored_quantity: existing.quantity } });
+  }),
+);
+
 // ============================================================================
 // ABC ANALYSIS — top sellers vs dead stock
 // ============================================================================

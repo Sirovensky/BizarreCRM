@@ -31,20 +31,36 @@ const authBroadcastChannel = typeof window !== 'undefined' && 'BroadcastChannel'
 const REQUEST_LOGIN_NAV_EVENT = 'bizarre-crm:request-login-nav';
 function requestLoginNav(): void {
   if (typeof window === 'undefined') return;
+  // WEB-UIUX-813: when an impersonation session is/was active, bounce to
+  // the super-admin login instead of the tenant login. Without this, an
+  // SA who walks away mid-impersonation gets their token expired (15min),
+  // then their browser lands on /login — at which point the next person
+  // at the same kiosk can sign in as a *real* tenant admin and the UI
+  // looks normal, with no signal that the previous user was an SA. By
+  // routing to /super-admin/login (and surfacing a banner there) we keep
+  // the separation visible.
+  let target = '/login';
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const raw = sessionStorage.getItem('impersonation_session');
+      if (raw) target = '/super-admin/login?impersonation_ended=1';
+    }
+  } catch { /* sessionStorage may be disabled */ }
+
   // If nothing is listening yet (App not mounted, Suspense fallback), the
   // listener that DOES eventually mount won't help — fall back to a hard
   // nav after a microtask in that case so we never get stuck on a stale
   // protected page. Bridge handler sets `window.__bizarreLoginNavReady`
   // when it's wired up.
   try {
-    window.dispatchEvent(new CustomEvent(REQUEST_LOGIN_NAV_EVENT));
+    window.dispatchEvent(new CustomEvent(REQUEST_LOGIN_NAV_EVENT, { detail: { target } }));
   } catch (err) {
     console.warn('Failed to emit request-login-nav event', err);
   }
   setTimeout(() => {
-    if (window.location.pathname.startsWith('/login')) return;
+    if (window.location.pathname.startsWith('/login') || window.location.pathname.startsWith('/super-admin/login')) return;
     if (!(window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady) {
-      window.location.href = '/login';
+      window.location.href = target;
     }
   }, 0);
 }
@@ -99,13 +115,25 @@ export { AUTH_CLEAR_EVENT, AUTH_READY_EVENT };
 //   4. The warning should offer "Extend session" (calls /auth/refresh) or "Logout".
 //   5. Clear the interval on logout / unmount.
 
+// WEB-UIUX-742: snapshot of who was signed in *before* the current
+// switchUser PIN flow. Lets Header render a "Acting as X — switch back"
+// banner so the manager-override path doesn't stay sticky forever.
+export interface ActingAsSnapshot {
+  id: number;
+  name: string;
+  role: string;
+}
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  actingAs: ActingAsSnapshot | null;
   completeLogin: (accessToken: string, refreshToken: string, user: User) => void;
   logout: () => Promise<void>;
   switchUser: (pin: string) => Promise<void>;
+  switchBack: () => Promise<void>;
+  clearActingAs: () => void;
   checkAuth: () => Promise<void>;
   setUser: (user: User) => void;
 }
@@ -114,6 +142,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
+  actingAs: null,
 
   completeLogin: (_accessToken, _refreshToken, user) => {
     // Clear any previous tenant's cached data before storing new credentials.
@@ -152,13 +181,44 @@ export const useAuthStore = create<AuthState>((set) => ({
     // the outgoing user. Emit the clear BEFORE calling the API so listeners
     // tear down state while the PIN is still being validated.
     const prevUser = useAuthStore.getState().user;
+    // WEB-UIUX-742: snapshot the prior user so Header can render a
+    // "Acting as <new> — switch back to <prev>" banner. The PIN itself
+    // is not persisted (would be a credential-leak); switchBack falls
+    // through to a logout + redirect to /login.
+    const actingAs: ActingAsSnapshot | null = prevUser
+      ? {
+          id: prevUser.id,
+          name: [prevUser.first_name, prevUser.last_name].filter(Boolean).join(' ') || prevUser.username,
+          role: prevUser.role,
+        }
+      : null;
     emitAuthCleared(false, prevUser?.id ?? null);
     const res = await api.post('/auth/switch-user', { pin });
     const { user } = res.data.data;
     clearLegacyAccessToken();
-    set({ user, isAuthenticated: true });
+    set({ user, isAuthenticated: true, actingAs });
     emitAuthReady();
   },
+
+  switchBack: async () => {
+    // WEB-UIUX-742: full logout — we never persist the original PIN, so
+    // returning to the prior user requires their fresh credentials.
+    // Clearing actingAs first stops the banner from flashing during the
+    // /login redirect.
+    set({ actingAs: null });
+    const prevUser = useAuthStore.getState().user;
+    try { await api.post('/auth/logout'); } catch (err) {
+      console.warn('[auth] /auth/logout failed during switchBack; clearing local session anyway', err);
+    }
+    clearLegacyAccessToken();
+    set({ user: null, isAuthenticated: false, isLoading: false });
+    emitAuthCleared(true, prevUser?.id ?? null);
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login?switch_back=1';
+    }
+  },
+
+  clearActingAs: () => set({ actingAs: null }),
 
   checkAuth: async () => {
     clearLegacyAccessToken();
@@ -288,8 +348,12 @@ function handleAuthBroadcastMessage(msg: AuthBroadcastMessage): void {
         toast.error('Logged out from another tab. Drafts saved locally — re-login to recover.');
         setTimeout(requestLoginNav, 700);
       } else {
-        toast.success('Signed out from another tab.');
-        requestLoginNav();
+        // WEB-UIUX-904: always surface a cross-tab logout toast even when
+        // there are no drafts, so the sibling tab doesn't just blink to the
+        // login screen with no explanation. The 700ms nav delay matches the
+        // hasSavedDrafts branch so the user has a chance to read the toast.
+        toast('Signed out from another tab.', { duration: 4000, id: 'cross-tab-logout' });
+        setTimeout(requestLoginNav, 700);
       }
     }
     return;
@@ -353,10 +417,15 @@ if (typeof window !== 'undefined') {
 if (typeof window !== 'undefined') {
   window.addEventListener(LOGOUT_REQUIRED_EVENT, (e: Event) => {
     const detail = (e as CustomEvent<{ reason: string }>).detail;
+    const prevUserId = useAuthStore.getState().user?.id ?? null;
     useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
     // @audit-fixed: forced logout (refresh-failed, session-expired, etc.) must
     // also wipe per-user caches so the next sign-in starts clean.
-    emitAuthCleared();
+    // WEB-UIUX-745: pass prevUserId so the useDraft listener can compare it
+    // to the post-relogin user_id and decline to wipe drafts when the same
+    // person signs back in after a mid-action 401. Cross-user kiosk handoff
+    // (different prevUserId vs new user) still triggers a full sweep.
+    emitAuthCleared(true, prevUserId);
     if (detail?.reason === 'refresh-failed' || detail?.reason === 'session-expired') {
       toast.error('Your session has expired. Please sign in again.');
     }

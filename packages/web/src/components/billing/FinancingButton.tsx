@@ -19,9 +19,11 @@ import React, { useEffect, useState } from 'react';
 import { formatCents } from '@/utils/format';
 import { ComingSoonBadge } from '@/pages/settings/components/ComingSoonBadge';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { financingApi } from '@/api/endpoints';
 
 interface FinancingButtonProps {
   amountCents: number;
+  invoiceId?: number;
   minCents?: number;
   enabled?: boolean;
   providerKey?: string;
@@ -31,6 +33,7 @@ interface FinancingButtonProps {
 
 export function FinancingButton({
   amountCents,
+  invoiceId,
   minCents = 50_000,
   enabled = true,
   providerKey,
@@ -38,6 +41,8 @@ export function FinancingButton({
   onFlowStart,
 }: FinancingButtonProps) {
   const [showModal, setShowModal] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Hide entirely when the provider API key is missing, even if the toggle is on.
   const hasProviderKey = typeof providerKey === 'string' && providerKey.trim().length > 0;
@@ -54,8 +59,35 @@ export function FinancingButton({
   const providerLabel = provider === 'affirm' ? 'Affirm' : 'Klarna';
   const formatted = formatCents(amountCents);
 
-  const handleClick = () => {
+  const handleClick = async () => {
     onFlowStart?.();
+    // WEB-UNWIRED-007: real provider call when we have an invoice context.
+    // Until live sandbox creds land the server returns 503 + not_configured,
+    // which we surface in-modal instead of a silent redirect.
+    if (invoiceId) {
+      setRequesting(true);
+      setErrorMsg(null);
+      try {
+        const res = await financingApi.createCheckoutSession({
+          invoice_id: invoiceId,
+          amount_cents: amountCents,
+        });
+        const data = res.data?.data;
+        if (data?.redirect_url) {
+          window.location.assign(data.redirect_url);
+          return;
+        }
+        setErrorMsg(res.data?.message || 'Financing redirect URL missing from server response.');
+      } catch (err) {
+        const e = err as { response?: { data?: { message?: string; code?: string } } };
+        setErrorMsg(e?.response?.data?.message
+          ?? `Financing is not yet configured for this shop. Settings → Payments → Financing.`);
+      } finally {
+        setRequesting(false);
+        setShowModal(true);
+      }
+      return;
+    }
     setShowModal(true);
   };
 
@@ -75,10 +107,11 @@ export function FinancingButton({
       <button
         type="button"
         onClick={handleClick}
-        className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700"
+        disabled={requesting}
+        className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
       >
-        Pay over time with {providerLabel}
-        <ComingSoonBadge status="coming_soon" compact />
+        {requesting ? 'Starting…' : `Pay over time with ${providerLabel}`}
+        {!invoiceId && <ComingSoonBadge status="coming_soon" compact />}
       </button>
 
       {showModal ? (
@@ -92,17 +125,19 @@ export function FinancingButton({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="financing-stub-title" className="mb-2 text-lg font-semibold">
-              {providerLabel} financing (stub)
+              {providerLabel} financing
             </h3>
-            <p className="mb-4 text-sm text-gray-600 dark:text-surface-300">
-              Customer would be redirected to {providerLabel}'s hosted flow to finance
-              <strong> {formatted}</strong>. Live API keys need to be configured in
-              Settings &rarr; Payments before this works end-to-end.
+            <p className="mb-4 text-sm text-surface-600 dark:text-surface-300">
+              {errorMsg
+                ? errorMsg
+                : (<>Customer would be redirected to {providerLabel}'s hosted flow to finance
+                  <strong> {formatted}</strong>. Live API keys need to be configured in
+                  Settings &rarr; Payments before this works end-to-end.</>)}
             </p>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50 dark:border-surface-700 dark:text-surface-50 dark:hover:bg-surface-700"
+                className="rounded-md border border-surface-300 px-4 py-2 text-sm hover:bg-surface-50 dark:border-surface-700 dark:text-surface-50 dark:hover:bg-surface-700"
                 onClick={() => setShowModal(false)}
               >
                 Close

@@ -32,28 +32,36 @@ export type RefundReasonCode =
   | 'goodwill_gesture'
   | 'chargeback_prevention'
   | 'warranty_invocation'
+  // WEB-UIUX-1290: retail-cluster codes added 2026-05-11 so staff stop
+  // falling through to 'other' for the most-frequent real-world reasons.
+  | 'cancelled_service'
+  | 'exchange_no_refund'
+  | 'tax_adjustment'
+  | 'shipping_issue'
+  | 'loyalty_promo_retroactive'
   | 'other';
 
 // WEB-UIUX-1042: hint strings omit terminal periods to match the app-wide
 // convention for dropdown labels (no trailing punctuation).
 const REASONS: ReadonlyArray<{ code: RefundReasonCode; label: string; hint: string }> = [
-  { code: 'defective',             label: 'Defective product',      hint: 'Arrived broken or malfunctioned' },
-  { code: 'dissatisfaction',       label: 'Customer dissatisfied',  hint: 'Changed mind, unhappy with result' },
-  { code: 'wrong_item',            label: 'Wrong item',             hint: 'Received/ordered the wrong SKU' },
-  { code: 'duplicate_charge',      label: 'Duplicate charge',       hint: 'Billed twice by mistake' },
-  { code: 'price_adjustment',      label: 'Price adjustment',       hint: 'Price match or sale adjustment' },
-  { code: 'cancelled_service',     label: 'Cancelled service',      hint: 'Appointment or work order cancelled before completion' },
-  { code: 'exchange_return',       label: 'Returned for exchange',  hint: 'Replacement or store credit instead of cash back' },
-  { code: 'tax_adjustment',        label: 'Tax adjustment',         hint: 'Tax exemption or rate correction' },
-  { code: 'shipping_issue',        label: 'Shipping issue',         hint: 'Late, lost, or damaged shipment' },
-  { code: 'loyalty_promo',         label: 'Loyalty / promo',        hint: 'Retroactive loyalty reward or promo discount' },
-  { code: 'failed_repair',         label: 'Failed repair',          hint: 'Service repair did not resolve the issue' },
-  { code: 'lost_data',             label: 'Lost data',              hint: 'Customer data lost during service' },
-  { code: 'extended_delay',        label: 'Extended delay',         hint: 'Service took significantly longer than quoted' },
-  { code: 'goodwill_gesture',      label: 'Manager comp / goodwill', hint: 'Discretionary credit to preserve customer relationship' },
-  { code: 'chargeback_prevention', label: 'Chargeback prevention',  hint: 'Pre-emptive refund to avoid a payment dispute' },
-  { code: 'warranty_invocation',   label: 'Warranty invocation',    hint: 'Refund issued under product or service warranty' },
-  { code: 'other',                 label: 'Other',                  hint: 'Free-form reason in the note' },
+  { code: 'defective',                 label: 'Defective product',         hint: 'Arrived broken or malfunctioned' },
+  { code: 'dissatisfaction',           label: 'Customer dissatisfied',     hint: 'Changed mind, unhappy with result' },
+  { code: 'wrong_item',                label: 'Wrong item',                hint: 'Received/ordered the wrong SKU' },
+  { code: 'duplicate_charge',          label: 'Duplicate charge',          hint: 'Billed twice by mistake' },
+  { code: 'price_adjustment',          label: 'Price adjustment',          hint: 'Retroactive discount / price match' },
+  { code: 'failed_repair',             label: 'Failed repair',             hint: 'Service repair did not resolve the issue' },
+  { code: 'lost_data',                 label: 'Lost data',                 hint: 'Customer data lost during service' },
+  { code: 'extended_delay',            label: 'Extended delay',            hint: 'Service took significantly longer than quoted' },
+  { code: 'goodwill_gesture',          label: 'Goodwill gesture',          hint: 'Discretionary credit to preserve customer relationship' },
+  { code: 'chargeback_prevention',     label: 'Chargeback prevention',     hint: 'Pre-emptive refund to avoid a payment dispute' },
+  { code: 'warranty_invocation',       label: 'Warranty invocation',       hint: 'Refund issued under product or service warranty' },
+  // WEB-UIUX-1290: cluster of high-frequency retail reasons.
+  { code: 'cancelled_service',         label: 'Cancelled service',         hint: 'Appointment / service cancelled before work started' },
+  { code: 'exchange_no_refund',        label: 'Exchange (no refund)',      hint: 'Returned for swap, no money moved' },
+  { code: 'tax_adjustment',            label: 'Tax adjustment',            hint: 'Sales-tax correction (rate, exemption, jurisdiction)' },
+  { code: 'shipping_issue',            label: 'Shipping issue',            hint: 'Lost / damaged / never delivered' },
+  { code: 'loyalty_promo_retroactive', label: 'Loyalty / promo retro',     hint: 'Discount honored after the sale (missed code, member tier)' },
+  { code: 'other',                     label: 'Other',                     hint: 'Free-form reason in the note' },
 ];
 
 const OTHER_NOTE_MIN = 5;
@@ -134,14 +142,18 @@ export function RefundReasonPicker({
               type="button"
               key={r.code}
               onClick={() => handleReasonChange(r.code)}
-              className={`min-h-[44px] rounded-md border px-3 py-2 text-left text-sm transition ${
+              // WEB-UIUX-1303: `min-w-0` lets the flex/grid track shrink the
+              // chip below its content's intrinsic width so long labels
+              // ("Customer dissatisfied", "Loyalty / promo retro") wrap at
+              // word boundaries instead of mid-word on narrow viewports.
+              className={`min-h-[44px] min-w-0 rounded-md border px-3 py-2 text-left text-sm transition ${
                 localReason === r.code
                   ? 'border-primary-500 bg-primary-50 text-primary-900 dark:bg-primary-900/30 dark:text-primary-200'
                   : 'border-surface-300 dark:border-surface-700 text-surface-900 dark:text-surface-100 hover:border-surface-400 dark:hover:border-surface-600'
               }`}
             >
-              <div className="font-medium">{r.label}</div>
-              <div className="text-xs text-surface-500 dark:text-surface-400">{r.hint}</div>
+              <div className="font-medium break-words">{r.label}</div>
+              <div className="text-xs text-surface-500 dark:text-surface-400 break-words">{r.hint}</div>
             </button>
           ))}
         </div>
@@ -158,9 +170,18 @@ export function RefundReasonPicker({
         <textarea
           value={localNote}
           onChange={(e) => handleNoteChange(e.target.value)}
-          onPaste={handleNotePaste}
+          // WEB-UIUX-726: warn the operator when a paste is silently truncated.
+          onPaste={(e) => {
+            const pasted = e.clipboardData.getData('text');
+            const projected = (localNote ?? '').length + pasted.length;
+            if (projected > 500) {
+              const dropped = projected - 500;
+              toast(`Note was truncated — ${dropped} characters dropped (500 max).`, { icon: '⚠️' });
+            }
+            handleNotePaste(e);
+          }}
           onBlur={() => isOtherSelected && setNoteTouched(true)}
-          placeholder={isOtherSelected ? 'Please describe the reason…' : 'Free-form context to help with reporting…'}
+          placeholder={isOtherSelected ? 'Please describe the reason…' : 'What happened? (optional)'}
           className={`w-full rounded-md border bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${
             isOtherSelected && noteTouched && noteIsShort
               ? 'border-red-500 dark:border-red-400'

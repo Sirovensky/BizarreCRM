@@ -202,8 +202,16 @@ export function StepSmsProvider({
     setTestResult(null);
   };
 
+  // WEB-UIUX-855: client-side cooldown so double-click doesn't fire two
+  // Twilio charges. The server is the authoritative rate-limit (it must be,
+  // because cooldown state per browser tab is cosmetic), but for the
+  // happy-path test-button most cost-spend bugs come from impatient
+  // clicking before the first send returns. Hold the button disabled
+  // for 10s after the most recent send.
+  const TEST_SMS_COOLDOWN_MS = 10_000;
   const handleTestSms = async () => {
     if (choice === 'none' || !testPhone.trim()) return;
+    if (testing) return;
     setTesting(true);
     setTestResult(null);
     try {
@@ -224,7 +232,12 @@ export function StepSmsProvider({
           ?.message || 'SMS send failed.';
       setTestResult({ ok: false, message: msg });
     } finally {
-      setTesting(false);
+      // WEB-UIUX-855: keep the button locked for the cooldown window even
+      // after the request settles, so an operator who clicks again at t+200ms
+      // expecting "first one failed silently" doesn't burn another Twilio
+      // segment. The inflight guard above stops the second click during the
+      // request; this `setTimeout` extends the lockout past resolution.
+      setTimeout(() => setTesting(false), TEST_SMS_COOLDOWN_MS);
     }
   };
 

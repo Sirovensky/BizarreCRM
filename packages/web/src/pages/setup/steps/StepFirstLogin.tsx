@@ -106,7 +106,7 @@ export function StepFirstLogin({ onNext }: StepProps): JSX.Element {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-lg border border-surface-300 bg-surface-50 py-3 pl-9 pr-4 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 disabled:opacity-60 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                className="w-full rounded-lg border border-surface-300 bg-surface-50 py-3 pl-9 pr-4 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 disabled:opacity-50 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
               />
             </div>
           </div>
@@ -132,7 +132,7 @@ export function StepFirstLogin({ onNext }: StepProps): JSX.Element {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={submitting}
                 placeholder="admin123"
-                className="w-full rounded-lg border border-surface-300 bg-surface-50 py-3 pl-9 pr-4 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 disabled:opacity-60 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                className="w-full rounded-lg border border-surface-300 bg-surface-50 py-3 pl-9 pr-4 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 disabled:opacity-50 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
               />
             </div>
           </div>

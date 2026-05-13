@@ -22,6 +22,7 @@ import {
 } from '@/utils/format';
 import { obfuscatePhoneForStorageKey } from '@/utils/phoneFormat';
 import { useDraft } from '@/hooks/useDraft';
+import { useHasRole } from '@/hooks/useHasRole';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
@@ -1258,6 +1259,11 @@ function ThreadSearchBar({
 export function CommunicationPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  // WEB-UIUX-898: role gate for the Bulk SMS trigger — server requires
+  // admin/manager; mirror client-side so cashiers never see the modal
+  // (which would leak segment recipient counts before the 403).
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canBulkSms = useHasRole(['admin', 'manager']);
   const reminderParam = searchParams.get('reminder_id');
   const reminderDeepLinkId = reminderParam ? Number(reminderParam) : null;
   const [mainView, setMainView] = useState<'messages' | 'calls' | 'email'>('messages');
@@ -1343,7 +1349,7 @@ export function CommunicationPage() {
   // WEB-FO-010 (Fixer-426B 2026-04-26): opt in to refetchOnWindowFocus.
   // The conversation list is shared-workflow state (multiple staff tabs) so a
   // tech returning from another app should see newly received threads.
-  const { data: convData, isLoading: convLoading } = useQuery({
+  const { data: convData, isLoading: convLoading, isError: convIsError, error: convError } = useQuery({
     // WEB-S6-034: include debouncedSearch in the cache key so a new search
     // triggers a fresh server-side fetch.
     queryKey: ['sms-conversations', includeArchived, debouncedSearch, assignedFilter],
@@ -1807,17 +1813,24 @@ export function CommunicationPage() {
               Email
             </button>
           </div>
-          {/* WEB-UIUX-898/1119: Bulk SMS is available across views, but only
-              admins can open the modal and preview recipient counts. */}
+          {/* WEB-UIUX-1119: Bulk SMS button visible across all views (not gated on messages tab).
+              WEB-UIUX-898: client-side role gate so a cashier doesn't see the
+              segment + template pickers (which leak recipient counts as PII
+              hints) before the server 403s on send. Server gate kept as the
+              authoritative line. New message button remains messages-only. */}
           <div className="flex items-center gap-1">
-            {canUseBulkSms && (
+            {canBulkSms && (
+              // WEB-UIUX-1118: spell the channel out — "Bulk" alone reads as
+              // bulk-archive/tag on a comms screen; "Bulk SMS" matches the
+              // Postscript/Attentive convention and screen-reader expectation.
               <button
                 onClick={() => setShowBulkSms(true)}
                 className="flex items-center gap-1 rounded-lg border border-surface-300 px-2 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-400 dark:hover:bg-surface-700"
-                title="Bulk SMS"
+                title="Send a Bulk SMS to a segment of opted-in customers"
+                aria-label="Bulk SMS — send to a segment of opted-in customers"
               >
                 <Users className="h-3.5 w-3.5" />
-                Bulk
+                Bulk SMS
               </button>
             )}
             {mainView === 'messages' && (
@@ -1905,6 +1918,31 @@ export function CommunicationPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : convIsError ? (
+            <div
+              role="alert"
+              className="m-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm dark:border-red-500/30 dark:bg-red-500/10"
+            >
+              <p className="font-medium text-red-700 dark:text-red-300">
+                Couldn't load conversations
+              </p>
+              <p className="mt-1 text-red-700/80 dark:text-red-300/80">
+                {(() => {
+                  const e = convError as {
+                    response?: { status?: number; data?: { message?: string } };
+                    message?: string;
+                  };
+                  const status = e?.response?.status;
+                  if (status === 401 || status === 403) {
+                    return 'You may not be signed in or lack permission. Reload the page or contact your admin.';
+                  }
+                  if (status === 503) {
+                    return 'SMS service is not configured for this shop. Settings → SMS & Voice.';
+                  }
+                  return e?.response?.data?.message ?? e?.message ?? 'Network error. Try reloading the page.';
+                })()}
+              </p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-surface-400">
@@ -2860,12 +2898,14 @@ export function CommunicationPage() {
 
           {/* Quick actions */}
           <div className="border-t border-surface-200 px-4 py-3 dark:border-surface-700">
+            {/* WEB-UIUX-1127: relabelled to match the POS destination — link goes to
+                /tickets/new which renders UnifiedPosPage seeded with the customer. */}
             <Link
               to={`/tickets/new?customer=${threadCustomer.id}`}
               className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-on-primary hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
-              New Ticket
+              New Sale / Repair
             </Link>
           </div>
         </div>
@@ -2883,7 +2923,7 @@ export function CommunicationPage() {
       )}
 
       {/* Team-inbox modals — audit §51 */}
-      {canUseBulkSms && <BulkSmsModal open={showBulkSms} onClose={() => setShowBulkSms(false)} />}
+      {canBulkSms && <BulkSmsModal open={showBulkSms} onClose={() => setShowBulkSms(false)} />}
       <ScheduledSendModal
         open={showScheduledModal}
         onClose={() => setShowScheduledModal(false)}

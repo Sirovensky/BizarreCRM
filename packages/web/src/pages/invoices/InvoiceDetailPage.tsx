@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button
+import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, Undo2, Mail, Receipt, ReceiptText, AlertTriangle } from 'lucide-react'; // WEB-UIUX-1403: added ReceiptText for Credit Note / Refund button; WEB-UIUX-937: AlertTriangle for terminal-offline pill
 import toast from 'react-hot-toast';
-import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
+import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi, refundApi } from '@/api/endpoints';
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
@@ -12,7 +12,8 @@ import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
+import { useHasPermission } from '@/hooks/useHasPermission';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
@@ -34,6 +35,9 @@ const STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   refunded: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   void: 'bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400',
+  // WEB-UIUX-732: matched against InvoiceListPage / CustomerDetailPage maps so
+  // imported RepairShopr/RepairDesk/MyRepairApp `refunded` invoices render a badge.
+  refunded: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
 type PaymentType = 'payment' | 'deposit';
@@ -82,6 +86,11 @@ export function InvoiceDetailPage() {
   const queryClient = useQueryClient();
   const invoiceId = Number(id);
   const isValidId = id != null && !isNaN(invoiceId) && invoiceId > 0;
+  // WEB-UIUX-1533: support `?record_payment=1` deep-link from the invoice
+  // list so collections staff can jump straight from a row to the payment
+  // modal without bouncing through the read-only detail surface.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const recordPaymentParam = searchParams.get('record_payment');
   // AUDIT-WEB-008: hold a cache snapshot taken just before optimistic void so
   // rollback works regardless of component mount state.
   const voidSnapshotRef = useRef<unknown>(undefined);
@@ -90,9 +99,22 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-1278: typed-confirm gate for high-value credit notes.
   const [showCreditNoteConfirm, setShowCreditNoteConfirm] = useState(false);
   // WEB-UIUX-1531: added transaction_id field for structured reference capture on non-cash payments.
-  const [paymentForm, setPaymentForm] = useState<PaymentFormState>(() => createEmptyPaymentForm());
-  const [lastReceiptPayment, setLastReceiptPayment] = useState<ReceiptPaymentContext | null>(null);
+  // WEB-UIUX-1532: payment_type defaults to 'payment'; cashier toggles
+  // 'deposit' on the Record Payment modal when the funds should be booked as
+  // deferred revenue (custom-build prepayments, layaways). Server already
+  // distinguishes the two via `payment_type ∈ {payment, deposit}` and writes
+  // separate ledger buckets; the toggle exposes the choice that was always
+  // available on the wire.
+  const [paymentForm, setPaymentForm] = useState({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' as 'payment' | 'deposit' });
   const [showReceiptPrompt, setShowReceiptPrompt] = useState(false);
+  // WEB-UIUX-1284: when the prompt fires after a credit-note (not a regular
+  // payment), Print/SMS/Email must target the credit-note's own invoice row
+  // — not the original. Carry both the target id + a kind tag so the prompt
+  // copy + downstream calls land on the right artifact.
+  const [receiptPromptTarget, setReceiptPromptTarget] = useState<
+    { invoiceId: number; kind: 'payment' | 'credit_note'; orderId: string | null; refundAmount: number | null }
+    | null
+  >(null);
   const [showCreditNote, setShowCreditNote] = useState(false);
   // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
   const [showRefundPinGate, setShowRefundPinGate] = useState(false);
@@ -101,11 +123,20 @@ export function InvoiceDetailPage() {
   // what it actually holds (a RefundReasonCode enum value). The composed
   // `reason` string (code + note) is still what we send to the server — see
   // creditNoteMutation.mutationFn below.
+  // WEB-UIUX-626/632/635/1280: refund-destination picker. method=credit_note
+  // routes to the existing /invoices/:id/credit-note path (immediate ledger
+  // entry, capped at amount_paid). method=cash | card | store_credit routes
+  // through /api/v1/refunds create → admin /approve, which posts the actual
+  // money movement (cash drawer payout, BlockChyp processor refund, store
+  // credit grant). Card option is gated on a captured BlockChyp payment with
+  // a processor_transaction_id.
+  type RefundMethod = 'credit_note' | 'cash' | 'card' | 'store_credit';
   const [creditNoteForm, setCreditNoteForm] = useState<{
     amount: string;
     code: RefundReasonCode | null;
     note: string;
-  }>({ amount: '', code: null, note: '' });
+    method: RefundMethod;
+  }>({ amount: '', code: null, note: '', method: 'credit_note' });
   // WEB-UIUX-731: field-level error state for credit note form.
   // Populated from server error.response.data.fields (e.g. { amount: 'msg' })
   // or a generic fallback; cleared on any form change or successful mutation.
@@ -125,28 +156,38 @@ export function InvoiceDetailPage() {
 
   // Esc-to-close for the inline payment modal (Fixer-TT a11y). The credit-note
   // dialog handles Escape on its own overlay so the behavior stays scoped there.
+  // WEB-UIUX-730: if both modals are open simultaneously (shouldn't happen via
+  // normal flow but defensively) the credit-note dialog takes priority — Esc
+  // closes it first; subsequent Esc closes the payment modal.
   useEffect(() => {
     if (!showPayment) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return;
-      if (isPaymentFormDirty(paymentForm)) {
-        if (!window.confirm('Discard payment entry?')) return;
-      }
+      // Credit-note overlay owns Esc when both open.
+      if (showCreditNote) return;
       setShowPayment(false);
       setPaymentForm(createEmptyPaymentForm());
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [paymentForm, showPayment]);
+  }, [showPayment, showCreditNote]);
 
   // WEB-UIUX-729: focus-trap + Esc for the Credit Note dialog.
   // useFocusTrap returns a ref that must be attached to the inner dialog div.
   const creditNoteDialogRef = useFocusTrap(showCreditNote);
   // WEB-UIUX-1539: focus-trap for the Record Payment modal — mirrors credit-note pattern.
   const paymentDialogRef = useFocusTrap(showPayment);
-  const user = useAuthStore((s) => s.user);
-  const canIssueCreditNote = hasInvoicePermission(user, 'invoices.credit_note');
-  const canVoidInvoice = hasInvoicePermission(user, 'invoices.void');
+  // WEB-UIUX-1210: gate Credit Note + Void behind admin/manager role.
+  // WEB-UIUX-1051: prefer permission-string gating so per-user custom-role
+  // grants/denies (`invoices.credit_note`) are honoured. Void stays role-only
+  // — there is no `invoices.void` permission key.
+  const canCreditNote = useHasPermission('invoices.credit_note');
+  // Bug-review fix: refund-destination picker also exposes cash/card/store_credit
+  // paths that route to /api/v1/refunds. Server gates POST /refunds on
+  // `refunds.create`; mirror that on the client so the option pills don't
+  // tempt a cashier-tier user who would only hit a 403 on submit.
+  const canCreateRefund = useHasPermission('refunds.create');
+  const canVoid = useHasRole(['admin', 'manager']);
   // WEB-UIUX-1218: Esc handler checks dirty state before closing credit-note modal.
   useEscClose(() => {
     if (creditNoteForm.amount || creditNoteForm.code || creditNoteForm.note.trim()) {
@@ -171,39 +212,157 @@ export function InvoiceDetailPage() {
     queryFn: () => blockchypApi.status(),
     staleTime: 60000,
   });
+
+  // WEB-UIUX-712: fetch the customer's outstanding store-credit balance so
+  // the Record Payment area can offer an "Apply credit" CTA. Server endpoint
+  // is /refunds/credits/:customerId. enabled only when we have a customer id
+  // and the invoice still has balance to redeem against.
+  const customerIdForCredits = data?.data?.data?.customer_id ?? null;
+  const { data: creditData } = useQuery({
+    queryKey: ['customer-credits', customerIdForCredits],
+    queryFn: () => refundApi.getCredits(customerIdForCredits as number),
+    enabled: !!customerIdForCredits,
+  });
+  const customerCreditBalance = Number(creditData?.data?.data?.balance ?? 0) || 0;
+
+  // WEB-UIUX-1286: refunds-path rows scoped to this invoice. Powers the
+  // duplicate-credit warning inside the credit-note modal — operator with
+  // a $50 prior cash refund sees it before issuing a $50 credit note for
+  // the same complaint. Only fires while the modal is open so closed-modal
+  // page time doesn't burn a request. 60s staleTime is safe — refund
+  // mutations on this invoice would only come from this page anyway.
+  const invoiceNumericIdForRefundLookup = Number(id);
+  const { data: priorRefundsData } = useQuery({
+    queryKey: ['refunds-for-invoice', invoiceNumericIdForRefundLookup],
+    queryFn: async () => {
+      const res = await refundApi.list({ invoice_id: invoiceNumericIdForRefundLookup });
+      // refundApi.list returns the raw axios response (no generic), so the
+      // server `{ refunds, pagination }` shape is at res.data.data.
+      const d = (res.data as { data?: { refunds?: unknown[] } })?.data;
+      return Array.isArray(d?.refunds) ? d!.refunds! : [];
+    },
+    enabled: Number.isFinite(invoiceNumericIdForRefundLookup) && invoiceNumericIdForRefundLookup > 0 && showCreditNote,
+    staleTime: 60_000,
+  });
+  const priorRefunds = (priorRefundsData ?? []) as Array<{
+    id: number;
+    amount: number;
+    status: string;
+    type?: string | null;
+    method?: string | null;
+    reason?: string | null;
+    created_at: string;
+  }>;
   const blockchypEnabled = bcData?.data?.data?.enabled ?? false;
+  // WEB-UIUX-937: heartbeat-aware reachability. `null` heartbeat = no ping
+  // yet this process; treated as "unknown" (Charge proceeds — caller hits
+  // /test-connection which seeds the cache). `online === false` means the
+  // last ping failed or is older than the freshness window.
+  const blockchypHeartbeat = bcData?.data?.data?.heartbeat ?? null;
+  const blockchypOffline = !!blockchypHeartbeat && !blockchypHeartbeat.online;
+  const blockchypOfflineReason = blockchypHeartbeat?.lastError
+    ? `Last error: ${blockchypHeartbeat.lastError}`
+    : blockchypHeartbeat?.stale
+      ? 'No recent ping — terminal may be unplugged'
+      : null;
   const [terminalProcessing, setTerminalProcessing] = useState(false);
 
   // Server: res.json({ success: true, data: <flat invoice> }) — no extra .invoice nesting.
   const invoice: InvoiceDetail | undefined = data?.data?.data;
-  const paymentMethods: any[] = pmData?.data?.data?.payment_methods || [];
+  // WEB-UIUX-1533: when the deep-link `?record_payment=1` is present and the
+  // invoice has outstanding balance, open the payment modal once and prefill
+  // amount with the full amount_due. Param is stripped after firing so a
+  // refresh / back-nav doesn't re-trigger.
+  const recordPaymentFiredRef = useRef(false);
+  useEffect(() => {
+    if (recordPaymentFiredRef.current) return;
+    if (!recordPaymentParam) return;
+    if (!invoice) return;
+    if (Number(invoice.amount_due) <= 0) return;
+    recordPaymentFiredRef.current = true;
+    setPaymentForm((prev) => ({ ...prev, amount: Number(invoice.amount_due).toFixed(2) }));
+    setShowPayment(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('record_payment');
+    setSearchParams(next, { replace: true });
+  }, [recordPaymentParam, invoice, searchParams, setSearchParams]);
+
+  // WEB-UIUX-1284: auto-open Print modal when arriving with `?print=1`. Lets
+  // the credit-note receipt prompt navigate the operator straight into the
+  // credit-note's print flow rather than dumping them on a detail page they
+  // then have to click "Print" on.
+  const printParamRef = useRef(false);
+  useEffect(() => {
+    if (printParamRef.current) return;
+    if (searchParams.get('print') !== '1') return;
+    if (!invoice) return;
+    printParamRef.current = true;
+    setShowPrintModal(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('print');
+    setSearchParams(next, { replace: true });
+  }, [invoice, searchParams, setSearchParams]);
+  // WEB-UIUX-1524: server returns `{ success: true, data: <array> }` (see
+  // settings.routes.ts:840-841 and SettingsPage which already reads
+  // res.data.data correctly). The previous `pmData?.data?.data?.payment_methods`
+  // chain looked for a `.payment_methods` key that the array doesn't have,
+  // so this fell through to the hardcoded fallback every time and every
+  // tenant-added method (Zelle, Wire, Cashier's Check, etc.) was invisible
+  // on Record Payment.
+  const paymentMethods: any[] = Array.isArray(pmData?.data?.data) ? pmData!.data!.data : [];
   const currencySymbol = formatCurrencySymbol();
 
-  const getPaymentMethodLabel = (method: string) => {
-    const configuredMethod = paymentMethods.find(
-      (pm: any) => pm.name?.toLowerCase().replace(/\s+/g, '_') === method,
-    );
-    return configuredMethod?.name ?? method.replace(/_/g, ' ');
-  };
-
-  const buildReceiptSmsMessage = (receipt: ReceiptPaymentContext) => {
-    const methodLabel = getPaymentMethodLabel(receipt.method).toLowerCase();
-    const paymentTypeLabel = receipt.paymentType === 'deposit' ? ' deposit' : '';
-    const balanceText = receipt.balanceDue > 0.004
-      ? `Balance remaining: ${formatCurrency(receipt.balanceDue)}.`
-      : 'Paid in full.';
-    return `Received ${formatCurrency(receipt.amount)} ${methodLabel}${paymentTypeLabel} on ${receipt.orderId}. ${balanceText} Thank you for your business!`;
-  };
-
-  const invalidateInvoiceDetailCaches = (nextInvoice?: Partial<InvoiceDetail>) => {
-    queryClient.invalidateQueries({ queryKey: ['invoice', id] });
-    queryClient.invalidateQueries({ queryKey: ['invoices'] });
-    queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
-    const customerId = nextInvoice?.customer_id ?? invoice?.customer_id;
-    if (customerId) {
-      queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
+  // WEB-UIUX-1398: derive the dominant captured tender on this invoice so the
+  // refund-destination picker can default to the same method instead of
+  // letting the operator silently pick "Cash" against a card sale. Maps each
+  // payment.method to one of our refund destinations:
+  //   any 'card'-flavour method (credit_card, debit_card, blockchyp_*) → 'card'
+  //   exact 'cash' → 'cash'
+  //   'store_credit' / 'credit'-without-card → 'store_credit'
+  //   anything else → 'credit_note' (the legacy ledger-only default)
+  // Picks by total dollar value, not row count — a $200 card + $5 cash sale
+  // refunds to card. Ignores prior credit_note rows since those don't
+  // represent collected money.
+  const dominantRefundMethod: 'credit_note' | 'cash' | 'card' | 'store_credit' = useMemo(() => {
+    const rows = invoice?.payments ?? [];
+    const totals = { cash: 0, card: 0, store_credit: 0 };
+    for (const p of rows) {
+      const m = (p.method ?? '').toLowerCase();
+      const amt = Math.abs(Number(p.amount) || 0);
+      if (m === 'credit_note' || m === '' || amt === 0) continue;
+      if (m.includes('card') || m === 'blockchyp' || m.startsWith('blockchyp_')) {
+        totals.card += amt;
+      } else if (m === 'cash') {
+        totals.cash += amt;
+      } else if (m === 'store_credit' || m === 'credit') {
+        totals.store_credit += amt;
+      }
     }
-  };
+    const best = (Object.entries(totals) as Array<['cash' | 'card' | 'store_credit', number]>)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])[0];
+    return best ? best[0] : 'credit_note';
+  }, [invoice?.payments]);
+
+  // Pre-select the dominant tender as the refund destination the moment the
+  // modal opens, but only on a fresh open (don't clobber an in-progress form
+  // the operator has already touched). Empty amount + null code + empty note
+  // is our "fresh state" sentinel — matches the reset payload used on close.
+  useEffect(() => {
+    if (!showCreditNote) return;
+    setCreditNoteForm((f) => {
+      const isFresh = !f.amount && !f.code && !f.note.trim();
+      if (!isFresh) return f;
+      // Card route additionally needs a captured BlockChyp txn to be useful;
+      // if there isn't one fall back to credit_note so the operator gets a
+      // valid default rather than an option they'll have to switch away from.
+      const hasCardWithTxn = (invoice?.payments ?? []).some(
+        (p) => p.processor_transaction_id && (p.method ?? '').toLowerCase().includes('card'),
+      );
+      const next = dominantRefundMethod === 'card' && !hasCardWithTxn ? 'credit_note' : dominantRefundMethod;
+      return { ...f, method: next };
+    });
+  }, [showCreditNote, dominantRefundMethod, invoice?.payments]);
 
   // WEB-UIUX-1537: align paymentForm.method with the first enabled payment method when
   // paymentMethods loads, so 'cash' default doesn't silently mismatch a tenant that
@@ -217,26 +376,71 @@ export function InvoiceDetailPage() {
 
   const payMutation = useMutation({
     mutationFn: (d: any) => invoiceApi.recordPayment(invoiceId, d),
-    onSuccess: (res, variables) => {
-      const updatedInvoice = res?.data?.data as InvoiceDetail | undefined;
-      const paidAmount = Number(variables?.amount) || 0;
-      const balanceDue = Number.isFinite(Number(updatedInvoice?.amount_due))
-        ? Number(updatedInvoice?.amount_due)
-        : Math.max(0, (Number(invoice?.amount_due) || 0) - paidAmount);
-      invalidateInvoiceDetailCaches(updatedInvoice);
-      setLastReceiptPayment({
-        amount: paidAmount,
-        method: variables?.method || 'cash',
-        paymentType: variables?.payment_type === 'deposit' ? 'deposit' : 'payment',
-        balanceDue,
-        orderId: updatedInvoice?.order_id || invoice?.order_id || `INV-${id}`,
-      });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+      // WEB-UIUX-1538: server `recordCustomerInteraction` updates customer
+      // LTV + outstanding balance on payment. Invalidate the customer
+      // queries so the profile page reflects the new state instead of
+      // waiting for staleTime or a manual nav-away-and-back.
+      if (invoice?.customer_id) {
+        queryClient.invalidateQueries({ queryKey: ['customer', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-analytics', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', invoice.customer_id] });
+      }
+      // AR aging + dashboard receivables tiles read from these keys.
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       toast.success('Payment recorded');
       setShowPayment(false);
-      setPaymentForm(createEmptyPaymentForm());
+      setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' });
+      setReceiptPromptTarget(null);
       setShowReceiptPrompt(true);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record payment'),
+    onError: (e: any, vars: any) => {
+      // WEB-UIUX-1525: same-amount-same-user dedup fires when two friends each
+      // hand the cashier the same tender on a single invoice. Server returns
+      // 409 ERR_PAYMENT_DUPLICATE; offer a single confirmation to retry with
+      // force_duplicate=true so the cashier doesn't have to falsify the
+      // amount (e.g. $50.01) or split methods. Only the first retry sets the
+      // force flag — a fresh failure resets the dialog.
+      const status = e?.response?.status;
+      const code = e?.response?.data?.code;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 409 && code === 'ERR_PAYMENT_DUPLICATE' && vars && !vars.force_duplicate) {
+        // eslint-disable-next-line no-alert
+        const ok = window.confirm(
+          `${serverMsg || 'A payment with this exact amount was just recorded.'}\n\nRecord this as a separate tender?`
+        );
+        if (ok) {
+          payMutation.mutate({ ...vars, force_duplicate: true });
+          return;
+        }
+      }
+      toast.error(serverMsg || 'Failed to record payment');
+    },
+  });
+
+  // WEB-UIUX-712: redeem store credit toward this invoice.
+  const applyCreditMut = useMutation({
+    mutationFn: (amount: number) =>
+      refundApi.useCredits(customerIdForCredits as number, { amount, invoice_id: invoiceId }),
+    onSuccess: (res) => {
+      const newBalance = Number(res.data?.data?.new_balance ?? 0);
+      toast.success(`Credit applied. Remaining store credit: ${formatCurrency(newBalance)}`);
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (customerIdForCredits) {
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', customerIdForCredits] });
+        queryClient.invalidateQueries({ queryKey: ['customer', customerIdForCredits] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { message?: string } } };
+      toast.error(e?.response?.data?.message ?? 'Could not apply credit');
+    },
   });
 
   // Void is wrapped in a 5s undo window (D4-5). We optimistically show the
@@ -289,18 +493,39 @@ export function InvoiceDetailPage() {
     // columns to invoices. Send code + note as dedicated fields; also keep
     // a composed `reason` string in case older server builds are still running.
     mutationFn: (d: { amount: number; code: RefundReasonCode; note: string }) => {
-      const reason = d.note
-        ? `${d.code}: ${d.note}`
-        : d.code;
+      // WEB-UIUX-1034: use ` — ` (en-dash) as the code/note separator instead
+      // of a colon. A note like "see ticket #123 12:30pm" reintroduces the
+      // colon and breaks any legacy `split(':')`-based reverse parser.
+      // The dedicated credit_note_code + credit_note_note columns (migration
+      // WEB-UIUX-733: server now derives the audit-log `reason` from `code`
+      // + `note` when `reason` is omitted (invoices.routes.ts resolvedReason),
+      // so we no longer need the composed-string fallback. Ship the structured
+      // fields only; legacy callers can still pass `reason` if they like.
       return invoiceApi.createCreditNote(invoiceId, {
         amount: d.amount,
-        reason,
         code: d.code,
         note: d.note,
       });
     },
     onSuccess: (_data, variables) => {
-      invalidateInvoiceDetailCaches();
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      // WEB-UIUX-715: status distribution donut chart reads ['invoice-stats'].
+      queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
+      // WEB-UIUX-1213: invalidate downstream caches that the credit-note path
+      // mutates. Server writes a refunds row (UIUX-1026), a payments row may
+      // need re-fetching for the invoice detail, and the customer's store
+      // credit balance + transactions may have moved via the overflow path.
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['refunds'] });
+      if (invoice?.customer_id) {
+        queryClient.invalidateQueries({ queryKey: ['store-credit', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-analytics', invoice.customer_id] });
+      }
+      // AR aging + dashboard refund tiles read from these keys.
+      queryClient.invalidateQueries({ queryKey: ['aging-report'] });
+      queryClient.invalidateQueries({ queryKey: ['reports'] });
       // WEB-UIUX-431: build an informative refund destination message when
       // card info is available so operators can relay it to the customer.
       const cardPayment = invoice?.payments?.find(
@@ -319,6 +544,16 @@ export function InvoiceDetailPage() {
       const returnedCN = (_data as any)?.data?.data as import('@/types/invoice').InvoiceDetail | undefined;
       const cnOrderId = returnedCN?.order_id;
       const cnId = returnedCN?.id;
+      // WEB-UIUX-1032: server now returns `meta.credit_overflow` and
+      // `meta.store_credit_balance` so operators can tell the customer
+      // exactly how much was parked as store credit + their new balance.
+      const meta = (_data as any)?.data?.meta as { credit_overflow?: number; store_credit_balance?: number | null } | undefined;
+      const overflow = Number(meta?.credit_overflow ?? 0);
+      const newBalance = meta?.store_credit_balance != null ? Number(meta.store_credit_balance) : null;
+      if (overflow > 0) {
+        const balanceFrag = newBalance != null ? ` New balance: ${formatCurrency(newBalance)}.` : '';
+        msg += ` · ${formatCurrency(overflow)} added to store credit.${balanceFrag}`;
+      }
       if (cnOrderId && cnId) {
         toast.custom(
           (t) => (
@@ -326,7 +561,12 @@ export function InvoiceDetailPage() {
               className={`flex items-center gap-3 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg px-4 py-3 text-sm ${t.visible ? 'opacity-100' : 'opacity-0'} transition-opacity`}
             >
               <span className="flex-1 text-surface-800 dark:text-surface-100">
-                Credit note <span className="font-mono font-semibold">{cnOrderId}</span> created for {formattedCreditAmount}
+                Credit note <span className="font-mono font-semibold">{cnOrderId}</span> · {formatCurrency(variables.amount)} refunded
+                {overflow > 0 && (
+                  <span className="block text-xs text-emerald-700 dark:text-emerald-300">
+                    {formatCurrency(overflow)} added to store credit{newBalance != null ? ` · balance ${formatCurrency(newBalance)}` : ''}
+                  </span>
+                )}
               </span>
               <button
                 onClick={() => { toast.dismiss(t.id); navigate(`/invoices/${cnId}`); }}
@@ -349,19 +589,116 @@ export function InvoiceDetailPage() {
       setTimeout(() => setCreditNoteSuccessAnnouncement(''), 4000);
 
       setShowCreditNote(false);
-      setCreditNoteForm({ amount: '', code: null, note: '' });
+      setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
       setCreditNoteError({});
+      // WEB-UIUX-722 / WEB-UIUX-1284: after credit note success, surface the
+      // SMS/email/skip prompt — but target the CREDIT-NOTE invoice id, not
+      // the original. Otherwise the customer would receive a copy of the
+      // sale they're being refunded for instead of proof of refund.
+      if (cnId && cnOrderId) {
+        setReceiptPromptTarget({
+          invoiceId: cnId,
+          kind: 'credit_note',
+          orderId: cnOrderId,
+          refundAmount: variables.amount,
+        });
+      } else {
+        setReceiptPromptTarget(null);
+      }
+      setShowReceiptPrompt(true);
     },
     onError: (e: any) => {
       const serverMsg: string = e?.response?.data?.message || 'Failed to create credit note';
       // WEB-UIUX-731: parse server-side field errors when available.
       // Server may return { fields: { amount?: string, reason?: string, note?: string } }
       const serverFields: Record<string, string> | undefined = e?.response?.data?.fields;
+      // WEB-UIUX-1389: when the server replies with the "already credited
+      // X of Y" cap-exceeded error, extract the numbers and surface a
+      // "Max remaining: $Z" inline hint + clamp the input so the operator
+      // doesn't have to mentally subtract.
+      let parsedMaxRemaining: number | null = null;
+      const capMatch = /already credited\s*\$?([\d.]+)\s*of\s*\$?([\d.]+)/i.exec(serverMsg);
+      if (capMatch) {
+        const credited = parseFloat(capMatch[1]);
+        const total = parseFloat(capMatch[2]);
+        if (Number.isFinite(credited) && Number.isFinite(total)) {
+          parsedMaxRemaining = Math.max(0, +(total - credited).toFixed(2));
+        }
+      }
       if (serverFields && typeof serverFields === 'object' && Object.keys(serverFields).length > 0) {
         setCreditNoteError(serverFields as { amount?: string; reason?: string; note?: string });
+      } else if (parsedMaxRemaining !== null) {
+        setCreditNoteError({ amount: `Server cap: max remaining ${formatCurrency(parsedMaxRemaining)} (prior credits already applied).` });
+        // Clamp the field to the cap so the next submit can succeed.
+        setCreditNoteForm((f) => ({ ...f, amount: parsedMaxRemaining!.toFixed(2) }));
       } else {
         setCreditNoteError({ _general: serverMsg });
       }
+      toast.error(parsedMaxRemaining !== null ? `Cap exceeded — max remaining ${formatCurrency(parsedMaxRemaining)}. Amount field has been adjusted.` : serverMsg);
+    },
+  });
+
+  // WEB-UIUX-626/632/635/1280: refund-method branch that targets /api/v1/refunds
+  // (cash drawer payout, BlockChyp card refund, store credit). Server returns a
+  // pending refund row; admin /approve actually moves the money. Operator
+  // gets a toast pointing them at the /refunds queue.
+  const refundMutation = useMutation({
+    mutationFn: (d: { amount: number; reason: string; method: 'cash' | 'card' | 'store_credit' }) => {
+      if (!invoice?.customer_id) {
+        return Promise.reject(new Error('Invoice has no customer — cannot route refund through /refunds. Use credit note instead.'));
+      }
+      // method=card goes to the BlockChyp processor on approve; method=cash
+      // and method=store_credit just move the money in tenant-local ledgers.
+      // Server treats type='store_credit' as "post credit balance, no money
+      // out"; everything else is type='refund' with the chosen tender method.
+      const type: 'refund' | 'store_credit' = d.method === 'store_credit' ? 'store_credit' : 'refund';
+      const wireMethod = d.method === 'store_credit' ? null : d.method;
+      return refundApi.create({
+        invoice_id: invoiceId,
+        customer_id: invoice.customer_id,
+        amount: d.amount,
+        type,
+        reason: d.reason || null,
+        method: wireMethod,
+      });
+    },
+    onSuccess: (_res, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['refunds'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      if (invoice?.customer_id) {
+        queryClient.invalidateQueries({ queryKey: ['store-credit', invoice.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', invoice.customer_id] });
+      }
+      const label = variables.method === 'cash' ? 'Cash refund'
+        : variables.method === 'card' ? 'Card refund'
+        : 'Store credit';
+      toast.success(`${label} of ${formatCurrency(variables.amount)} queued — admin must approve in /refunds before money moves.`);
+      setShowCreditNote(false);
+      setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
+      setCreditNoteError({});
+    },
+    onError: (e: any) => {
+      const body = e?.response?.data;
+      const code: string | undefined = body?.code;
+      const serverMsg: string = body?.message || e?.message || 'Failed to queue refund';
+      // WEB-UIUX-1399: capture-state precondition. Server blocks refund
+      // whenever any payment row is authorized-only or voided (not captured).
+      // Show actionable copy that names the offending count + state, and
+      // point the operator at the Payments section on this same page so
+      // they can capture / void without leaving.
+      if (code === 'ERR_REFUND_PAYMENTS_NOT_CAPTURED') {
+        const count = Number(body?.non_captured_count) || 0;
+        const states = typeof body?.states === 'string' ? body.states : '';
+        const hint = states
+          ? `Reconcile ${count} payment(s) in state "${states}" — scroll to Payments below and Capture or Void them first, then retry the refund.`
+          : `Reconcile ${count} non-captured payment(s) on this invoice before retrying the refund.`;
+        setCreditNoteError({ _general: hint });
+        toast.error(hint, { duration: 8000 });
+        return;
+      }
+      setCreditNoteError({ _general: serverMsg });
       toast.error(serverMsg);
     },
   });
@@ -426,11 +763,15 @@ export function InvoiceDetailPage() {
     (acc, cn) => acc + Math.abs(Number(cn.total) || 0),
     0,
   );
+  // WEB-UIUX-1386 (post-1208): align with server cap (`total - alreadyCredited`).
+  // amount_paid no longer inflates on credit-note (see WEB-UIUX-1208) so write-
+  // off semantics are safe — operator can credit an unpaid $200 invoice as
+  // bad debt without faking a $200 cash collection. Server matches and accepts.
   const serverCapForTotal = Math.max(0, Number(invoice.total) - sumOfPriorCreditNotes);
   const maxCreditNoteAmount = Math.max(
     0,
     Number(invoice.total) > 0
-      ? Math.min(Number(invoice.amount_paid) || 0, serverCapForTotal)
+      ? serverCapForTotal
       : Number(invoice.amount_paid) || 0,
   );
   const canCreateCreditNote = invoice.status !== 'void' && (Number(invoice.total) > 0 || Number(invoice.amount_paid) > 0) && maxCreditNoteAmount > 0;
@@ -438,7 +779,13 @@ export function InvoiceDetailPage() {
   const isPartialReceipt = receiptBalanceDue > 0.004;
 
   const handlePay = async () => {
-    if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return toast.error('Enter a valid amount');
+    // BUGHUNT-2026-05-10-22: parseFloat('abc') is NaN; `NaN <= 0` is false,
+    // so the prior guard let non-numeric strings through and posted a
+    // NaN amount. Number.isFinite + >0 rejects NaN/Inf/empty/negative.
+    const parsedAmount = parseFloat(paymentForm.amount);
+    if (!paymentForm.amount || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return toast.error('Enter a valid amount');
+    }
     // WEB-FH-021 (Fixer-B4 2026-04-25): warn the cashier before recording an
     // overpayment. The server happily accepts amounts that exceed amount_due
     // (it just leaves amount_due negative), so a fat-fingered extra zero
@@ -448,12 +795,28 @@ export function InvoiceDetailPage() {
     const balanceDue = Number(invoice.amount_due) || 0;
     if (enteredAmount > balanceDue + 0.005) {
       const overage = enteredAmount - balanceDue;
+      // WEB-UIUX-1530: when the overage exceeds 50% of invoice total, gate
+      // the confirm behind a typed amount so a fat-fingered extra zero
+      // ($500 on a $50 invoice) cannot slip through a single Enter press.
+      // Small tips/rounding (under the threshold) keep the cheap one-tap
+      // confirm; only outsized overpayments require the typed amount.
+      const invoiceTotal = Number(invoice.total) || 0;
+      const requireTyped = invoiceTotal > 0 && overage > invoiceTotal * 0.5;
+      const confirmText = requireTyped ? overage.toFixed(2) : undefined;
+      // WEB-UIUX-1530: outcome-preview so the operator sees exactly where the
+      // overage lands. Server posts the overage to the customer's store-credit
+      // balance — surface that destination so "Record" isn't a black box.
+      const overagePreview = `Overage of ${formatCurrency(overage)} will be added to the customer's store credit on this invoice's customer record.`;
       const proceed = await confirm(
-        `Amount ${formatCurrency(enteredAmount)} exceeds the balance due of ${formatCurrency(balanceDue)} by ${formatCurrency(overage)}. Record this overpayment anyway?`,
+        requireTyped
+          ? `Amount ${formatCurrency(enteredAmount)} exceeds the balance due of ${formatCurrency(balanceDue)} by ${formatCurrency(overage)} — more than 50% over invoice total.\n\n${overagePreview}\n\nType ${overage.toFixed(2)} to confirm.`
+          : `Amount ${formatCurrency(enteredAmount)} exceeds the balance due of ${formatCurrency(balanceDue)} by ${formatCurrency(overage)}.\n\n${overagePreview}\n\nRecord this overpayment anyway?`,
         {
           title: 'Record overpayment?',
           confirmLabel: 'Record payment',
           danger: true,
+          requireTyping: requireTyped,
+          confirmText,
         },
       );
       if (!proceed) return;
@@ -504,6 +867,7 @@ export function InvoiceDetailPage() {
         });
         invalidateInvoiceDetailCaches();
         setShowPayment(false);
+        setReceiptPromptTarget(null);
         setShowReceiptPrompt(true);
       } else {
         toast.error(result?.error || result?.responseDescription || 'Payment declined');
@@ -518,8 +882,6 @@ export function InvoiceDetailPage() {
 
   // WEB-UIUX-1278: threshold above which typed-confirm is required.
   // Triggers when amount >= invoice total OR >= $500.
-  const CREDIT_NOTE_TYPED_THRESHOLD = 500;
-
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
     // WEB-UIUX-1390: collect all field errors before showing any feedback so the
@@ -541,30 +903,27 @@ export function InvoiceDetailPage() {
       return;
     }
     setCreditNoteError({});
-    // WEB-UIUX-1278: high-value credit notes (>= invoice total OR >= $500) require
-    // the operator to type the invoice number to confirm — same pattern as Void.
-    // Lower amounts fire immediately; the filled credit-note form itself is the
-    // confirm step (operator has already reviewed amount + reason before clicking).
-    const isHighValue =
-      amount >= Number(invoice.total) || amount >= CREDIT_NOTE_TYPED_THRESHOLD;
-    if (isHighValue) {
-      setShowCreditNoteConfirm(true);
-      return;
-    }
-    creditNoteMutation.mutate({
-      amount,
-      code: creditNoteForm.code as RefundReasonCode,
-      note: creditNoteForm.note.trim(),
-    });
+    // WEB-UIUX-1211: ALL credit notes are irreversible (no /credit-notes/:id/void
+    // endpoint), the negative invoice stays in AR forever, and the overflow can
+    // be spent by the customer before the operator notices. Force the typed
+    // confirm on every amount — not just high-value.
+    setShowCreditNoteConfirm(true);
   };
 
   const handleEmailReceipt = async () => {
     const email = invoice.customer_email;
     if (!email) return toast.error('No email address on file for this customer');
+    // WEB-UIUX-1284: target the credit-note invoice when the prompt is firing
+    // for a credit-note (otherwise customer gets a copy of the original sale).
+    const targetInvoiceId = receiptPromptTarget?.invoiceId ?? invoiceId;
     setEmailReceiptSending(true);
     try {
-      await notificationApi.sendReceipt({ invoice_id: invoiceId, email });
-      toast.success('Receipt emailed to ' + email);
+      await notificationApi.sendReceipt({ invoice_id: targetInvoiceId, email });
+      toast.success(
+        receiptPromptTarget?.kind === 'credit_note'
+          ? `Credit note emailed to ${email}`
+          : `Receipt emailed to ${email}`,
+      );
       setShowReceiptPrompt(false);
       setLastReceiptPayment(null);
     } catch (err: any) {
@@ -606,6 +965,19 @@ export function InvoiceDetailPage() {
                 Credit note for {invoice.credit_note_for_order_id ?? `INV-${invoice.credit_note_for}`}
               </Link>
             )}
+            {/* WEB-UIUX-805: backlink to the originating estimate when this
+                invoice was created from a ticket converted from an estimate.
+                Server joins tickets.estimate_id → estimates so this is a
+                single hop, no extra fetch. */}
+            {(invoice as any).source_estimate_id != null && (
+              <Link
+                to={`/estimates/${(invoice as any).source_estimate_id}`}
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                From estimate {(invoice as any).source_estimate_order_id ?? `EST-${(invoice as any).source_estimate_id}`}
+              </Link>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
@@ -624,6 +996,7 @@ export function InvoiceDetailPage() {
                 {/* FA-L4 — Affirm/Klarna financing CTA. Only renders above
                     the provider min ($500). Stub modal until API keys land. */}
                 <FinancingButton
+                  invoiceId={invoice.id}
                   amountCents={Math.round(Number(invoice.amount_due) * 100)}
                   enabled={Number(invoice.amount_due) > 0}
                 />
@@ -646,7 +1019,58 @@ export function InvoiceDetailPage() {
                 >
                   <Undo2 className="h-4 w-4" /> Refund
                 </button>
-              ) : canIssueCreditNote ? (
+              ) : canCreditNote ? (
+                <>
+                {/* WEB-UIUX-721: refund-to-original-card path. Creates a pending
+                    refund row with method='blockchyp' so the existing approve
+                    flow auto-fires processRefund against the original txn.
+                    Visible only when BlockChyp is enabled AND a captured card
+                    payment with a processor_transaction_id exists on this
+                    invoice. Operator approves from /refunds. */}
+                {blockchypEnabled && cardPaymentWithTxn && Number(invoice.amount_paid) > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const cap = Math.round(Number(invoice.amount_paid) * 100) / 100;
+                      const input = window.prompt(
+                        `Refund to original card.\nMaximum: ${formatCurrency(cap)}.\nEnter amount to refund:`,
+                        cap.toFixed(2),
+                      );
+                      if (input === null) return;
+                      const amt = parseFloat(input);
+                      if (!Number.isFinite(amt) || amt <= 0) {
+                        toast.error('Amount must be a positive number');
+                        return;
+                      }
+                      if (amt > cap) {
+                        toast.error(`Amount exceeds maximum refundable (${formatCurrency(cap)})`);
+                        return;
+                      }
+                      if (!window.confirm(`Queue ${formatCurrency(amt)} card refund? It will appear in /refunds for an admin to approve before the processor fires.`)) {
+                        return;
+                      }
+                      try {
+                        await refundApi.create({
+                          invoice_id: invoiceId,
+                          customer_id: invoice.customer_id as number,
+                          amount: amt,
+                          type: 'refund',
+                          method: 'blockchyp',
+                          reason: 'Card refund requested from invoice detail',
+                        });
+                        toast.success('Refund queued — open Refunds to approve.');
+                        queryClient.invalidateQueries({ queryKey: ['refunds'] });
+                      } catch (err) {
+                        const e = err as { response?: { data?: { message?: string } } };
+                        toast.error(e?.response?.data?.message ?? 'Could not queue card refund');
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                    title="Create a refund row that, on approval, refunds the original card via BlockChyp."
+                  >
+                    <Undo2 className="h-4 w-4" /> Refund to card
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     // WEB-UIUX-877: require manager PIN for refunds above threshold.
@@ -666,6 +1090,7 @@ export function InvoiceDetailPage() {
                 >
                   <ReceiptText className="h-4 w-4" /> Refund
                 </button>
+                </>
               ) : (
                 <button
                   disabled
@@ -681,7 +1106,7 @@ export function InvoiceDetailPage() {
                 is the current workaround per the server's NOT_SUPPORTED response. */}
             {/* Void mirrors the server's invoices.void permission. */}
             {invoice.status !== 'void' && (
-              canVoidInvoice ? (
+              canVoid ? (
                 <button onClick={() => setShowVoidConfirm(true)} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                   <Ban className="h-4 w-4" /> Void
                 </button>
@@ -783,15 +1208,44 @@ export function InvoiceDetailPage() {
           </div>
 
           {/* Payment History Timeline */}
-          {invoice.payments?.length > 0 && (
+          {(invoice.payments?.length > 0 || (invoice.credit_notes ?? []).length > 0) && (
             <div className="card p-6">
               <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-4">Payment Timeline</h2>
               <div className="relative">
                 {/* Vertical line */}
-                {invoice.payments.length > 1 && (
+                {(invoice.payments.length + (invoice.credit_notes ?? []).length) > 1 && (
                   <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-surface-200 dark:bg-surface-700" />
                 )}
                 <div className="space-y-4">
+                  {/* WEB-UIUX-1307: interleave credit notes into the timeline so
+                      a bookkeeper sees "CRN-0001 issued $50" in chronological
+                      order alongside payments instead of in a parallel panel. */}
+                  {(invoice.credit_notes ?? []).map((cn: any) => (
+                    <div key={`cn-${cn.id}`} className="relative flex gap-3">
+                      <div className="relative z-10 mt-0.5 flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full border-2 border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/30">
+                        <Receipt className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-sm font-medium text-surface-900 dark:text-surface-100">Credit note</span>
+                            <Link to={`/invoices/${cn.id}`} className="ml-1 text-xs font-mono text-primary-600 dark:text-primary-400 hover:underline">{cn.order_id}</Link>
+                          </div>
+                          <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                            -{formatCurrency(Math.abs(Number(cn.total) || 0))}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <time className="text-xs text-surface-400">{formatDateTime(cn.created_at)}</time>
+                        </div>
+                        {(cn.credit_note_note || cn.notes) && (
+                          <p className="text-xs text-surface-400 mt-0.5 truncate">
+                            {cn.credit_note_code ? `${cn.credit_note_code}` : ''}{cn.credit_note_code && (cn.credit_note_note || cn.notes) ? ' — ' : ''}{cn.credit_note_note || cn.notes}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                   {invoice.payments.map((p: any, idx: number) => {
                     const isVoided = p.notes?.includes('[VOIDED]');
                     const runningTotal = invoice.payments
@@ -905,6 +1359,22 @@ export function InvoiceDetailPage() {
                 <span className="text-surface-600 dark:text-surface-300">Paid</span>
                 <span className="font-semibold text-green-600 dark:text-green-400">{formatCurrency(invoice.amount_paid)}</span>
               </div>
+              {/* WEB-UIUX-1208: surface the credit-note ledger offset separately
+                  from real cash. Hidden when zero so the row doesn't add noise
+                  on never-credited invoices. */}
+              {Number(invoice.amount_credited ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span
+                    className="text-surface-600 dark:text-surface-300"
+                    title="Ledger offset from credit notes — does NOT reflect cash collected. Combined with Paid covers the invoice total."
+                  >
+                    Credited <span className="text-surface-400 cursor-help">&#9432;</span>
+                  </span>
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">
+                    {formatCurrency(Number(invoice.amount_credited))}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm border-t border-surface-200 dark:border-surface-700 pt-3 mt-1">
                 <span className="font-semibold text-surface-700 dark:text-surface-200">Balance Due</span>
                 <span className={cn('font-bold text-base', Number(invoice.amount_due) > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400')}>
@@ -915,6 +1385,32 @@ export function InvoiceDetailPage() {
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
               <button onClick={() => setShowPayment(true)} className="w-full mt-4 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors">
                 <DollarSign className="h-4 w-4" /> Record Payment
+              </button>
+            )}
+            {/* WEB-UIUX-712: Apply store credit — visible only when customer
+                has a positive balance AND invoice still has dues. Applies the
+                min of (balance, amount_due) by default; operator confirms. */}
+            {invoice.status !== 'void' && invoice.status !== 'paid' && customerCreditBalance > 0 && Number(invoice.amount_due) > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const cap = Math.min(customerCreditBalance, Number(invoice.amount_due));
+                  if (!Number.isFinite(cap) || cap <= 0) {
+                    toast.error('Nothing to apply');
+                    return;
+                  }
+                  const fixed = Math.round(cap * 100) / 100;
+                  if (!window.confirm(`Apply ${formatCurrency(fixed)} of store credit to this invoice? Customer's balance after: ${formatCurrency(customerCreditBalance - fixed)}.`)) {
+                    return;
+                  }
+                  applyCreditMut.mutate(fixed);
+                }}
+                disabled={applyCreditMut.isPending}
+                className="w-full mt-2 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title={`Available store credit: ${formatCurrency(customerCreditBalance)}`}
+              >
+                {applyCreditMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Receipt className="h-4 w-4" />}
+                Apply store credit ({formatCurrency(customerCreditBalance)})
               </button>
             )}
           </div>
@@ -940,11 +1436,11 @@ export function InvoiceDetailPage() {
           // a partially-entered payment; operator must confirm before data is discarded.
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
-            if (isPaymentFormDirty(paymentForm)) {
+            if (paymentForm.amount || paymentForm.notes || paymentForm.method !== 'cash' || paymentForm.payment_type !== 'payment') {
               if (!window.confirm('Discard payment entry?')) return;
             }
             setShowPayment(false);
-            setPaymentForm(createEmptyPaymentForm());
+            setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' });
           }}
         >
           {/* WEB-UIUX-1539: paymentDialogRef wired here so useFocusTrap traps focus inside Payment modal. */}
@@ -1035,19 +1531,57 @@ export function InvoiceDetailPage() {
                 {/* WEB-UIUX-1540: now that transaction_id is its own field, notes is for free-form memo text */}
                 <input value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} className="input w-full" placeholder="Memo (e.g., 'invoice paid at front desk')" />
               </div>
+              {/* WEB-UIUX-1532: deposit toggle. Server already distinguishes
+                  payment_type ∈ {payment, deposit}; checkbox surfaces the
+                  choice so shops taking prepayments on custom builds can
+                  book deferred revenue separately from collected revenue.
+                  Defaults off — operator opts in. */}
+              <label className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={paymentForm.payment_type === 'deposit'}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, payment_type: e.target.checked ? 'deposit' : 'payment' })}
+                  className="mt-0.5 h-4 w-4 rounded border-surface-300 dark:border-surface-600"
+                />
+                <span>
+                  Record as <span className="font-medium">deposit</span>
+                  <span className="block text-xs text-surface-500 dark:text-surface-400">Deferred revenue — for prepayments on custom builds, layaways, or work-in-progress. Default is regular payment.</span>
+                </span>
+              </label>
             </div>
             {blockchypEnabled && (
-              <button
-                onClick={handleTerminalPay}
-                disabled={terminalProcessing || payMutation.isPending}
-                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-              >
-                {terminalProcessing ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Waiting for terminal...</>
-                ) : (
-                  <><Smartphone className="h-4 w-4" /> Pay {formatCurrency(invoice.amount_due)} via Terminal</>
+              <div className="mt-4 space-y-2">
+                {/* WEB-UIUX-937: surface the heartbeat-derived offline state
+                    so the operator sees the terminal is unreachable BEFORE
+                    they tap Pay — the SDK call would otherwise hang for the
+                    full timeout before throwing. */}
+                {blockchypOffline && (
+                  <div
+                    role="status"
+                    className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
+                  >
+                    <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <div className="font-semibold">Terminal offline</div>
+                      <div className="opacity-80">
+                        {blockchypOfflineReason ?? 'Recent ping failed.'} Power-cycle the terminal or run Test Connection in Settings before charging.
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </button>
+                <button
+                  onClick={handleTerminalPay}
+                  disabled={terminalProcessing || payMutation.isPending || blockchypOffline}
+                  title={blockchypOffline ? 'Terminal is offline — reconnect before charging' : undefined}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                >
+                  {terminalProcessing ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Waiting for terminal...</>
+                  ) : (
+                    <><Smartphone className="h-4 w-4" /> Pay {formatCurrency(invoice.amount_due)} via Terminal</>
+                  )}
+                </button>
+              </div>
             )}
             {blockchypEnabled && (
               <div className="relative my-3">
@@ -1071,39 +1605,90 @@ export function InvoiceDetailPage() {
         // so the cashier knows the receipt was skipped and can re-send from Payment Timeline.
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowReceiptPrompt(false); setLastReceiptPayment(null); toast('Receipt skipped — re-send from Payment Timeline'); }}>
           <div className="w-full max-w-sm rounded-xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">{isPartialReceipt ? 'Send Partial Receipt?' : 'Send Receipt?'}</h3>
-              <button aria-label="Close" onClick={() => { setShowReceiptPrompt(false); setLastReceiptPayment(null); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
-              {isPartialReceipt
-                ? `Payment recorded. Balance remaining: ${formatCurrency(receiptBalanceDue)}.`
-                : 'Payment recorded successfully. How would you like to send the receipt?'}
-            </p>
+            {/* WEB-UIUX-1541: partial-payment acknowledgement so the cashier
+                deliberately picks SMS/Email/Skip with full context. */}
+            {(() => {
+              // WEB-UIUX-1284: differentiate copy when prompt fires for a
+              // credit-note (refund proof) versus a regular payment receipt.
+              const isCreditNote = receiptPromptTarget?.kind === 'credit_note';
+              const balance = Number(invoice.amount_due) || 0;
+              const partial = balance > 0;
+              const title = isCreditNote
+                ? 'Send Credit Note?'
+                : (partial ? 'Send Partial Receipt?' : 'Send Receipt?');
+              const refundAmt = receiptPromptTarget?.refundAmount ?? 0;
+              const body = isCreditNote
+                ? <>Credit note <span className="font-mono">{receiptPromptTarget?.orderId}</span> created for <strong>{formatCurrency(refundAmt)}</strong>. How would you like to send the customer's copy?</>
+                : (partial
+                    ? <>Payment recorded. <strong className="text-amber-700 dark:text-amber-300">Balance remaining: {formatCurrency(balance)}</strong>. How would you like to send the receipt?</>
+                    : 'Payment recorded successfully. How would you like to send the receipt?');
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">{title}</h3>
+                    <button aria-label="Close" onClick={() => setShowReceiptPrompt(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">{body}</p>
+                </>
+              );
+            })()}
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => {
+                  // WEB-UIUX-1284: when the prompt is for a credit-note, the
+                  // Print modal must open against the credit-note id, not the
+                  // original invoice. PrintPreviewModal accepts invoiceId so
+                  // we navigate the user there instead — keeps the rest of
+                  // the print flow (size picker, server-rendered receipt)
+                  // intact without duplicating modal state.
                   setShowReceiptPrompt(false);
-                  setLastReceiptPayment(null);
-                  setShowPrintModal(true);
+                  if (receiptPromptTarget?.kind === 'credit_note' && receiptPromptTarget.invoiceId !== invoiceId) {
+                    navigate(`/invoices/${receiptPromptTarget.invoiceId}?print=1`);
+                  } else {
+                    setShowPrintModal(true);
+                  }
                 }}
                 className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
               >
                 <Printer className="h-4 w-4" />
-                Print Receipt
+                {receiptPromptTarget?.kind === 'credit_note' ? 'Print Credit Note' : 'Print Receipt'}
               </button>
               {invoice?.customer_phone && (
                 <button
                   onClick={() => {
                     const phone = invoice.customer_phone;
                     if (!phone) return;
-                    const msg = lastReceiptPayment
-                      ? buildReceiptSmsMessage(lastReceiptPayment)
-                      : `Receipt for invoice ${invoice.order_id || id}. Balance remaining: ${formatCurrency(Number(invoice.amount_due) || 0)}. Thank you for your business!`;
-                    smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: invoiceId })
-                      .then(() => toast.success('Receipt sent via SMS'))
+                    const balanceDue = Number(invoice.amount_due) || 0;
+                    let msg: string;
+                    let entityId: number = invoiceId;
+                    // WEB-UIUX-1284: distinct SMS copy for credit-note path —
+                    // customer needs proof of refund, not a duplicate of the
+                    // original sale receipt.
+                    if (receiptPromptTarget?.kind === 'credit_note') {
+                      const cnAmount = receiptPromptTarget.refundAmount ?? 0;
+                      const cnOrderId = receiptPromptTarget.orderId ?? `CN-${receiptPromptTarget.invoiceId}`;
+                      entityId = receiptPromptTarget.invoiceId;
+                      msg = `Credit note ${cnOrderId} issued for ${formatCurrency(cnAmount)} against Invoice #${invoice.order_id || id}. Thank you.`;
+                    } else {
+                      // WEB-UIUX-1528: payment copy with most-recent leg.
+                      const payments = (invoice as any).payments ?? [];
+                      const lastPayment = payments[payments.length - 1];
+                      if (lastPayment) {
+                        const paid = Number(lastPayment.amount) || 0;
+                        const method = String(lastPayment.method || 'payment').replace(/_/g, ' ');
+                        msg = balanceDue > 0
+                          ? `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Balance remaining: ${formatCurrency(balanceDue)}.`
+                          : `Received ${formatCurrency(paid)} ${method} on Invoice #${invoice.order_id || id}. Paid in full — thank you!`;
+                      } else {
+                        msg = balanceDue > 0
+                          ? `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Balance remaining: ${formatCurrency(balanceDue)}.`
+                          : `Receipt for Invoice #${invoice.order_id || id}: Total ${formatCurrency(invoice.total)}. Paid in full — thank you!`;
+                      }
+                    }
+                    smsApi.send({ to: phone, message: msg, entity_type: 'invoice', entity_id: entityId })
+                      .then(() => toast.success(receiptPromptTarget?.kind === 'credit_note' ? 'Credit note sent via SMS' : 'Receipt sent via SMS'))
                       .catch(() => toast.error('Failed to send SMS'));
                     setShowReceiptPrompt(false);
                     setLastReceiptPayment(null);
@@ -1155,7 +1740,7 @@ export function InvoiceDetailPage() {
               if (!window.confirm('Discard credit-note in progress?')) return;
             }
             setShowCreditNote(false);
-            setCreditNoteForm({ amount: '', code: null, note: '' });
+            setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
           }}
         >
           {/* WEB-UIUX-1302: creditNoteDialogRef wired here so useFocusTrap traps focus inside Credit Note dialog. */}
@@ -1164,10 +1749,40 @@ export function InvoiceDetailPage() {
               {/* WEB-UIUX-1054: "Issue" is more precise — the action issues a
                   credit instrument; "Create" is too generic. */}
               <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Issue Credit Note</h2>
-              <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '' }); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
+              <button aria-label="Close" onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' }); setCreditNoteError({}); }} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
             </div>
+            {/* WEB-UIUX-1286: warn when one or more rows from the separate
+                /refunds path already exist against this invoice. Surfaces
+                amount + when + status so manager doesn't double-credit a
+                complaint that was already settled in cash on Tuesday. */}
+            {priorRefunds.length > 0 && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                <p className="font-semibold text-amber-800 dark:text-amber-200">
+                  Prior refund{priorRefunds.length === 1 ? '' : 's'} already issued on this invoice
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {priorRefunds.slice(0, 5).map((r) => (
+                    <li key={r.id} className="tabular-nums">
+                      {formatCurrency(Math.abs(Number(r.amount) || 0))}
+                      {' · '}
+                      <span className="font-mono">{r.status}</span>
+                      {r.method && <> · {r.method}</>}
+                      {' · '}{formatDate(r.created_at)}
+                    </li>
+                  ))}
+                  {priorRefunds.length > 5 && (
+                    <li className="text-amber-700 dark:text-amber-300">
+                      …and {priorRefunds.length - 5} more
+                    </li>
+                  )}
+                </ul>
+                <p className="mt-1 text-amber-700 dark:text-amber-300">
+                  Server caps prevent double-crediting, but verify the new credit isn't for the same complaint.
+                </p>
+              </div>
+            )}
             {/* WEB-UIUX-1214: when amount_due is 0, every dollar of the credit note
                 becomes store credit — surface this prominently so the operator
                 knows the overflow path is active before they submit. */}
@@ -1217,7 +1832,16 @@ export function InvoiceDetailPage() {
                   // No amount entered yet
                   // WEB-UIUX-1222: copy is accurate for amount_due > 0; the else branch below
                   // handles amount_due = 0 so "reduce the outstanding balance" is never shown falsely.
-                  return <p>Issue a credit note against invoice {invoice.order_id}. This will reduce the outstanding balance.</p>;
+                  // WEB-UIUX-1404: spell out that stock is NOT restored — only
+                  // Void restores stock. Credit-note flow leaves inventory as
+                  // sold, which is correct for "customer keeps the item with a
+                  // refund/credit" but surprises operators expecting return-to-shelf.
+                  return (
+                    <>
+                      <p>Issue a credit note against invoice {invoice.order_id}. This will reduce the outstanding balance.</p>
+                      <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Note: stock is not restored. Use Void if the customer is returning the item to the shelf.</p>
+                    </>
+                  );
                 }
 
                 // Fully paid (amount_due = 0) — credit goes to store credit, not balance reduction
@@ -1245,9 +1869,53 @@ export function InvoiceDetailPage() {
                   {creditNoteError._general}
                 </p>
               )}
+              {/* WEB-UIUX-626/632/635/1280: refund-destination picker. Operator
+                  chooses where the money goes; submission branches into
+                  /credit-note (immediate ledger) vs /refunds (pending →
+                  admin approve → cash drawer / processor refund / store
+                  credit grant). Card option only when a captured BlockChyp
+                  payment exists with a processor_transaction_id. */}
+              <div>
+                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Refund destination</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { key: 'credit_note' as const, label: 'Credit note', desc: 'Ledger only — no money out', disabled: !canCreditNote },
+                    // Bug-review fix: cash / card / store_credit go through
+                    // /api/v1/refunds which the server gates on `refunds.create`.
+                    // Mirror that on the client so a viewer-tier session can't
+                    // even pick those options.
+                    { key: 'cash' as const, label: 'Cash refund', desc: canCreateRefund ? 'Drawer pays out on approve' : 'You lack refunds.create', disabled: !canCreateRefund },
+                    { key: 'card' as const, label: 'Refund to card', desc: !canCreateRefund ? 'You lack refunds.create' : (blockchypEnabled && cardPaymentWithTxn ? 'BlockChyp reverse on approve' : 'No captured card on this invoice'), disabled: !canCreateRefund || !(blockchypEnabled && cardPaymentWithTxn) },
+                    { key: 'store_credit' as const, label: 'Store credit', desc: canCreateRefund ? 'Customer balance on approve' : 'You lack refunds.create', disabled: !canCreateRefund },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setCreditNoteForm({ ...creditNoteForm, method: opt.key })}
+                      disabled={!!opt.disabled}
+                      aria-pressed={creditNoteForm.method === opt.key}
+                      className={cn(
+                        'rounded-lg border px-3 py-2 text-left text-xs transition-colors',
+                        creditNoteForm.method === opt.key
+                          ? 'border-amber-500 bg-amber-50 text-amber-900 dark:border-amber-400 dark:bg-amber-900/30 dark:text-amber-200'
+                          : 'border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800',
+                        opt.disabled && 'opacity-50 cursor-not-allowed',
+                      )}
+                    >
+                      <div className="font-semibold">{opt.label}</div>
+                      <div className="mt-0.5 text-[11px] text-surface-500 dark:text-surface-400">{opt.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                {creditNoteForm.method !== 'credit_note' && (
+                  <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
+                    This destination queues a pending refund. An admin must approve it in the Refunds queue before money actually moves.
+                  </p>
+                )}
+              </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Credit Amount</label>
+                  <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">{creditNoteForm.method === 'credit_note' ? 'Credit Amount' : 'Refund Amount'}</label>
                   <button
                     type="button"
                     onClick={() => { setCreditNoteForm({ ...creditNoteForm, amount: maxCreditNoteAmount.toFixed(2) }); setCreditNoteError((prev) => ({ ...prev, amount: undefined })); }}
@@ -1275,6 +1943,20 @@ export function InvoiceDetailPage() {
                     placeholder={maxCreditNoteAmount.toFixed(2)}
                     aria-invalid={(creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)) || !!creditNoteError.amount ? true : undefined}
                     aria-describedby={creditNoteError.amount ? 'credit-amount-error' : 'credit-amount-label'}
+                    // WEB-UIUX-1301: round to cents on blur so a typed "100"
+                    // displays as "100.00" before submit, reducing the
+                    // "looks like 1000" misread risk.
+                    onBlur={() => {
+                      const trimmed = creditNoteForm.amount.trim();
+                      if (!trimmed) return;
+                      const n = parseFloat(trimmed);
+                      if (Number.isFinite(n) && n > 0) {
+                        const next = n.toFixed(2);
+                        if (next !== creditNoteForm.amount) {
+                          setCreditNoteForm({ ...creditNoteForm, amount: next });
+                        }
+                      }
+                    }}
                     className={`input w-full pl-12${creditNoteError.amount ? ' border-red-500 dark:border-red-500 ring-1 ring-red-500' : ''}`}
                     autoFocus
                   />
@@ -1313,7 +1995,7 @@ export function InvoiceDetailPage() {
                   in reporting, while still accepting a free-form note. */}
               <div>
                 <RefundReasonPicker
-                  label="Reason for credit note"
+                  label={creditNoteForm.method === 'credit_note' ? 'Reason for credit note' : 'Reason for refund'}
                   value={creditNoteForm.code}
                   note={creditNoteForm.note}
                   onChange={(code, note) => {
@@ -1331,33 +2013,39 @@ export function InvoiceDetailPage() {
                 )}
               </div>
             </div>
-            {/* WEB-UIUX-623: stock-restore warning */}
+            {/* WEB-UIUX-623: stock-restore warning.
+                WEB-UIUX-1296: this modal accepts a free-form total only. For
+                returning specific items with per-line stock restoration, point
+                operators at POS → Refund mode (UnifiedPosPage `mode='refund'`,
+                wired to `/pos/return`). */}
             <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mt-4">
-              Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back.
+              Credit Note adjusts the ledger but does NOT return stock to inventory. Use Void if you need stock back, or open this invoice in POS → Refund mode to pick specific line items and restore stock per line.
             </p>
             <div className="flex gap-3 mt-4">
-              <button onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '' }); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
+              {/* WEB-UIUX-1041: give the primary action ~2× width so visual
+                  hierarchy matches importance (Issue is the action; Discard
+                  is the escape hatch). Both buttons keep grow:1 minimums to
+                  stay tappable on narrow viewports. */}
+              <button onClick={() => { setShowCreditNote(false); setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' }); setCreditNoteError({}); }} aria-label="Discard credit note in progress" className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">
                 Discard
               </button>
               <button
                 onClick={handleCreditNote}
                 // WEB-UIUX-1407: also disable when entered amount exceeds cap (onChange clamp + this guard prevent over-cap submission).
-                disabled={creditNoteMutation.isPending || !!(creditNoteError.amount || creditNoteError.reason || creditNoteError.note) || (!Number.isNaN(parseFloat(creditNoteForm.amount)) && parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)}
-                // WEB-UIUX-1040: red ramp matches button in header — irreversible action.
-                // WEB-UIUX-1308: bg-red-600 hover:bg-red-700 (matches Void destructive treatment; verified correct).
-                // WEB-UIUX-1390: also disabled while any field-level validation error is shown.
-                // WEB-UIUX-1405: verified — already bg-red-600 hover:bg-red-700 text-white, consistent with Void's destructive treatment.
-                className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                // WEB-UIUX-626/632/635/1280: also disabled while refundMutation pending.
+                disabled={creditNoteMutation.isPending || refundMutation.isPending || !!(creditNoteError.amount || creditNoteError.reason || creditNoteError.note) || (!Number.isNaN(parseFloat(creditNoteForm.amount)) && parseFloat(creditNoteForm.amount) > maxCreditNoteAmount)}
+                className="flex-[2] px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
-                {/* WEB-UIUX-1300: include amount in label when entered so operator can confirm before clicking */}
-                {creditNoteMutation.isPending
-                  ? 'Issuing...'
-                  : (() => {
-                      const amt = parseFloat(creditNoteForm.amount);
-                      return amt > 0
-                        ? `Issue ${formatCurrency(amt)} credit note`
-                        : 'Issue Credit Note';
-                    })()}
+                {(() => {
+                  if (creditNoteMutation.isPending) return 'Issuing...';
+                  if (refundMutation.isPending) return 'Queuing...';
+                  const amt = parseFloat(creditNoteForm.amount);
+                  const amtStr = amt > 0 ? formatCurrency(amt) : '';
+                  if (creditNoteForm.method === 'credit_note') return amtStr ? `Issue ${amtStr} credit note` : 'Issue Credit Note';
+                  if (creditNoteForm.method === 'cash') return amtStr ? `Queue ${amtStr} cash refund` : 'Queue cash refund';
+                  if (creditNoteForm.method === 'card') return amtStr ? `Queue ${amtStr} card refund` : 'Queue card refund';
+                  return amtStr ? `Queue ${amtStr} store credit` : 'Queue store credit';
+                })()}
               </button>
             </div>
           </div>
@@ -1376,13 +2064,36 @@ export function InvoiceDetailPage() {
         onCancel={() => setShowVoidConfirm(false)}
       />
 
-      {/* WEB-UIUX-1278: typed-confirm for high-value credit notes (>= invoice total or >= $500).
-          Mirrors the Void pattern: operator must type the invoice number before the mutation fires. */}
+      {/* WEB-UIUX-1278: typed-confirm for high-value credit notes. WEB-UIUX-626/632/635/1280: confirm copy + label reflect destination. */}
       <ConfirmDialog
         open={showCreditNoteConfirm}
-        title={`Issue Credit Note — ${invoice?.order_id || id}`}
-        message={`You are issuing a credit note of ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} against invoice ${invoice?.order_id || id}. This adjusts the ledger and cannot be undone.`}
-        confirmLabel="Issue Credit Note"
+        title={
+          creditNoteForm.method === 'credit_note'
+            ? `Issue Credit Note — ${invoice?.order_id || id}`
+            : creditNoteForm.method === 'cash'
+              ? `Cash refund — ${invoice?.order_id || id}`
+              : creditNoteForm.method === 'card'
+                ? `Refund to original card — ${invoice?.order_id || id}`
+                : `Store credit — ${invoice?.order_id || id}`
+        }
+        message={
+          creditNoteForm.method === 'credit_note'
+            ? `You are issuing a credit note of ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} against invoice ${invoice?.order_id || id}. This adjusts the ledger and cannot be undone.`
+            : creditNoteForm.method === 'cash'
+              ? `You are queuing a ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} cash refund. An admin must approve in the Refunds queue before the drawer pays out.`
+              : creditNoteForm.method === 'card'
+                ? `You are queuing a ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} refund back to the original card. An admin must approve in the Refunds queue; the BlockChyp reverse runs at approve time.`
+                : `You are queuing a ${formatCurrency(parseFloat(creditNoteForm.amount) || 0)} store-credit grant. An admin must approve in the Refunds queue before the customer's balance moves.`
+        }
+        confirmLabel={
+          creditNoteForm.method === 'credit_note'
+            ? 'Issue Credit Note'
+            : creditNoteForm.method === 'cash'
+              ? 'Queue cash refund'
+              : creditNoteForm.method === 'card'
+                ? 'Queue card refund'
+                : 'Queue store credit'
+        }
         danger
         requireTyping
         confirmText={String(invoice?.order_id || id)}
@@ -1390,11 +2101,26 @@ export function InvoiceDetailPage() {
           setShowCreditNoteConfirm(false);
           const amount = parseFloat(creditNoteForm.amount);
           if (!amount || !creditNoteForm.code) return;
-          creditNoteMutation.mutate({
-            amount,
-            code: creditNoteForm.code,
-            note: creditNoteForm.note.trim(),
-          });
+          // WEB-UIUX-626/632/635/1280: route to the right server endpoint
+          // based on the chosen refund destination. Cash/card/store-credit
+          // go through /api/v1/refunds (pending → admin approve → money
+          // moves). Credit note is the existing immediate-ledger path.
+          if (creditNoteForm.method === 'credit_note') {
+            creditNoteMutation.mutate({
+              amount,
+              code: creditNoteForm.code,
+              note: creditNoteForm.note.trim(),
+            });
+          } else {
+            const reasonComposed = creditNoteForm.note.trim()
+              ? `${creditNoteForm.code} — ${creditNoteForm.note.trim()}`
+              : creditNoteForm.code;
+            refundMutation.mutate({
+              amount,
+              reason: reasonComposed,
+              method: creditNoteForm.method,
+            });
+          }
         }}
         onCancel={() => setShowCreditNoteConfirm(false)}
       />

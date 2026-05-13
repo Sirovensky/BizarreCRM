@@ -32,10 +32,11 @@ import {
   Plus, ArrowRight, Loader2, Info, Download, TrendingUp,
   Receipt, BadgeDollarSign, CreditCard, Wallet, FileText,
   Calendar, PackageX, FileWarning, BoxSelect,
-  Settings2, ChevronUp, ChevronDown, RotateCcw, X, Eye, EyeOff, CalendarClock, Lightbulb, Check,
+  Settings2, ChevronUp, ChevronDown, RotateCcw, X, Eye, EyeOff, CalendarClock, Lightbulb, Check, BarChart3,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi, onboardingApi, repairPricingApi, type OnboardingState } from '@/api/endpoints';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { GettingStartedWidget } from '@/components/onboarding/GettingStartedWidget';
 import { ImportLaterReminder } from '@/components/onboarding/ImportLaterReminder';
 import { SampleDataCard } from '@/components/onboarding/SampleDataCard';
@@ -53,7 +54,6 @@ import { ProfitHeroCard } from '@/components/reports/ProfitHeroCard';
 import { BusyHoursHeatmap } from '@/components/reports/BusyHoursHeatmap';
 import { TechLeaderboard } from '@/components/reports/TechLeaderboard';
 import { RepeatCustomersCard } from '@/components/reports/RepeatCustomersCard';
-import { CashTrappedCard } from '@/components/reports/CashTrappedCard';
 import { ChurnAlert } from '@/components/reports/ChurnAlert';
 import { ForecastChart } from '@/components/reports/ForecastChart';
 
@@ -66,6 +66,10 @@ interface DashboardKpis {
   cogs: number;
   net_profit: number;
   refunds: number;
+  // WEB-UIUX-1312: per-period refund count so the Refunds KPI can surface
+  // volume alongside total. Distinguishes "$2,000 across 3 refunds" from
+  // "$2,000 across 47 refunds" — same total, very different process signal.
+  refund_count?: number;
   expenses: number;
   receivables: number;
   sales_by_type: { type: string; quantity: number; sales: number; discounts: number; cogs: number; net_profit: number; tax: number }[];
@@ -740,6 +744,9 @@ interface NeedsAttentionData {
   missing_parts_count: number;
   overdue_invoices: { id: number; order_id: string; customer_name: string; amount_due: number; days_overdue: number }[];
   low_stock_count: number;
+  // WEB-UIUX-1049: pending-refund queue depth so admins find the approval
+  // queue from the landing page instead of having to remember to navigate.
+  pending_refunds_count?: number;
 }
 
 function AttentionSection({ title, icon: Icon, iconBg, iconColor, count, children, defaultExpanded = true }: {
@@ -850,16 +857,19 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
   const overdueInvoices = data.overdue_invoices.filter(inv => !isSnoozed(`inv-${inv.id}`));
   const showMissingParts = data.missing_parts_count > 0 && !isSnoozed('missing-parts');
   const showLowStock = data.low_stock_count > 0 && !isSnoozed('low-stock');
+  // WEB-UIUX-1049: surface pending-refund queue as its own snoozable row.
+  const pendingRefundsCount = data.pending_refunds_count ?? 0;
+  const showPendingRefunds = pendingRefundsCount > 0 && !isSnoozed('pending-refunds');
 
-  const totalIssues = staleTickets.length + (showMissingParts ? 1 : 0) + overdueInvoices.length + (showLowStock ? 1 : 0);
+  const totalIssues = staleTickets.length + (showMissingParts ? 1 : 0) + overdueInvoices.length + (showLowStock ? 1 : 0) + (showPendingRefunds ? 1 : 0);
   if (totalIssues === 0) return null;
 
   const visibleStale = showAllStale ? staleTickets : staleTickets.slice(0, SECTION_LIMIT);
   const visibleInvoices = showAllInvoices ? overdueInvoices : overdueInvoices.slice(0, SECTION_LIMIT);
 
-  // Snooze button group (shows on hover)
+  // Snooze button group (shows on hover OR keyboard focus — WEB-UIUX-912)
   const SnoozeButtons = ({ itemKey }: { itemKey: string }) => (
-    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={e => e.stopPropagation()}>
+    <div className="flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0" onClick={e => e.stopPropagation()}>
       {[3, 5, 10].map(d => (
         <button
           key={d}
@@ -998,6 +1008,33 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
               </span>
             </div>
           </AttentionSection>
+
+          {/* WEB-UIUX-1049: Pending refunds queue */}
+          {showPendingRefunds && (
+            <AttentionSection title="Pending Refunds" icon={Receipt} iconBg="bg-rose-50 dark:bg-rose-900/30" iconColor="text-rose-600" count={pendingRefundsCount}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/refunds?status=pending')}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/refunds?status=pending'); } }}
+                className="group flex items-center gap-3 px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer"
+              >
+                <div className="h-8 w-8 rounded-lg bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center flex-shrink-0">
+                  <Receipt className="h-4 w-4 text-rose-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-surface-900 dark:text-surface-100">
+                    {pendingRefundsCount} refund{pendingRefundsCount !== 1 ? 's' : ''} awaiting approval
+                  </p>
+                  <p className="text-xs text-surface-500">Review and approve or decline</p>
+                </div>
+                <SnoozeButtons itemKey="pending-refunds" />
+                <span className="text-xs font-medium px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 flex-shrink-0">
+                  {pendingRefundsCount}
+                </span>
+              </div>
+            </AttentionSection>
+          )}
 
           {/* Missing parts */}
           {showMissingParts && (
@@ -1274,6 +1311,9 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<WidgetConfig[]>(() => [...widgets]);
+  // WEB-UIUX-911: focus-trap + restore so the customize-widgets modal returns
+  // focus to the trigger button instead of <body> when the operator closes it.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
 
   const toggle = (id: string) => {
     setDraft(prev => prev.map(w => w.id === id ? { ...w, visible: !w.visible } : w));
@@ -1303,6 +1343,7 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="dashboard-customize-title"
@@ -2282,22 +2323,24 @@ function AdminOrManagerDashboard() {
       )}
 
       {/* ─── Business Intelligence hero (audit 47) ────────────────────────
-           Profit margin is the #1 thing owners should see. Rendered BEFORE
-           the date range filter so it is the first data on the page.
-           Phase B1: gated behind first_payment_at (isDayOne = false). */}
+           Owner glances here for revenue / profit + cash trapped. Heavier
+           reporting widgets (heatmap, churn, demand forecast, leaderboard,
+           repeat customers) moved to /reports per user feedback 2026-05-09 —
+           dashboard was too dense to scan. The "View full reports →" CTA
+           below opens the deep-dive surface. */}
       {showFinancials && !isDayOne && (
         <div className="mb-6 space-y-4">
           <ProfitHeroCard />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <CashTrappedCard />
-            <ChurnAlert />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <RepeatCustomersCard />
-            <TechLeaderboard />
-          </div>
-          <BusyHoursHeatmap days={30} />
-          <ForecastChart />
+          <Link
+            to="/reports"
+            className="flex items-center justify-between rounded-xl border border-surface-200 bg-surface-50 px-4 py-3 text-sm font-semibold text-surface-700 transition hover:border-primary-500 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200 dark:hover:bg-surface-800"
+          >
+            <span className="flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary-500" />
+              Cash trapped, repeat customers, churn, demand forecast, busy hours, tech leaderboard
+            </span>
+            <span className="font-mono text-xs text-primary-600 dark:text-primary-400">View full reports →</span>
+          </Link>
         </div>
       )}
 
@@ -2396,8 +2439,16 @@ function AdminOrManagerDashboard() {
               { label: 'Tax', value: kpis?.tax ?? 0, tooltip: 'Tax collected on invoices', href: '/reports' },
               { label: 'Discounts', value: kpis?.discounts ?? 0, tooltip: 'Total discounts applied', href: '/invoices' },
               { label: 'COGS', value: kpis?.cogs ?? 0, tooltip: 'Cost of goods sold (parts cost)', href: '/inventory' },
-              { label: 'Net Profit', value: kpis?.net_profit ?? 0, tooltip: `Sales minus COGS and discounts for ${kpiPeriod}. Refunds are shown separately.`, href: '/reports' },
-              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: `Refund payments for ${kpiPeriod}, shown as a positive total. Net Profit does not subtract this KPI.`, href: undefined },
+              // WEB-UIUX-929: clarify Net Profit math + Refunds sign so the
+              // operator knows whether refunds are already subtracted.
+              { label: 'Net Profit', value: kpis?.net_profit ?? 0, tooltip: 'Sales − COGS − discounts − refunds in the selected period', href: '/reports' },
+              // WEB-UIUX-1383: drill into the Credit Notes filter on the
+              // invoice list so an operator hunting "where did $X of refunds
+              // come from?" can see the underlying CN rows.
+              // WEB-UIUX-1312: tooltip now mentions the period refund count
+              // so a manager hovering the tile sees volume + total. Drill-
+              // down still lands on the credit-note filtered invoice list.
+              { label: 'Refunds', value: kpis?.refunds ?? 0, tooltip: `Sum of credit-notes + returns in the selected period (positive value; already subtracted from Net Profit). ${kpis?.refund_count ? `${kpis.refund_count} refund${kpis.refund_count === 1 ? '' : 's'} in this window. ` : ''}Click to see the underlying credit notes.`, href: '/invoices?status=credit_note' },
               { label: 'Expenses', value: kpis?.expenses ?? 0, tooltip: 'Business expenses in period', href: '/expenses' },
               { label: 'Receivables', value: kpis?.receivables ?? 0, tooltip: 'Outstanding unpaid invoice amounts', href: '/invoices?status=unpaid' },
             ];

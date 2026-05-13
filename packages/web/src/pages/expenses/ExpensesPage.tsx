@@ -50,6 +50,9 @@ interface ExpenseRow {
   first_name?: string | null;
   last_name?: string | null;
   location_id?: number | null;
+  is_calculated?: number | boolean;
+  can_edit?: number | boolean;
+  expense_source?: string | null;
   // WEB-FK-014: receipt path stored by expenseReceipts.routes.ts
   receipt_image_path?: string | null;
   [key: string]: unknown;
@@ -115,6 +118,10 @@ export function ExpensesPage() {
   const pagination = data?.data?.data?.pagination || { page: 1, total: 0, total_pages: 1 };
   const summary = data?.data?.data?.summary || { total_amount: 0, total_count: 0 };
   const categories = data?.data?.data?.categories || [];
+  const categoryOptions = Array.from(new Set([
+    ...EXPENSE_CATEGORIES,
+    ...categories.map((c: any) => String(c.category || '')).filter(Boolean),
+  ]));
 
   const createMut = useMutation({
     mutationFn: (d: ExpenseFormPayload) => editingId ? expenseApi.update(editingId, d) : expenseApi.create(d),
@@ -170,7 +177,15 @@ export function ExpensesPage() {
 
   const handleSubmit = () => {
     const errs: { amount?: string; category?: string; date?: string } = {};
-    if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = 'Valid amount required';
+    // BUGHUNT-2026-05-10-23: parseFloat('abc') is NaN; `NaN <= 0` is false,
+    // so the prior guard let non-numeric strings through. Number.isFinite
+    // rejects NaN/Inf so the mutation never posts a NaN amount.
+    {
+      const parsed = parseFloat(form.amount);
+      if (!form.amount || !Number.isFinite(parsed) || parsed <= 0) {
+        errs.amount = 'Valid amount required';
+      }
+    }
     if (!form.category) errs.category = 'Category required';
     // WEB-FK-013: belt-and-suspenders date guard — `max=` HTML attr is only a
     // browser hint; reject future-dated and pre-1900 expenses server-side too.
@@ -190,6 +205,7 @@ export function ExpensesPage() {
   };
 
   const handleEdit = (exp: ExpenseRow) => {
+    if (exp.is_calculated || exp.can_edit === false || exp.can_edit === 0) return;
     setEditingId(exp.id);
     setForm({ category: exp.category, amount: String(exp.amount), description: exp.description || '', date: exp.date || '' });
     setReceiptFile(null);
@@ -253,7 +269,7 @@ export function ExpensesPage() {
             className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
           >
             <option value="">All Categories</option>
-            {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
       </div>
@@ -381,45 +397,59 @@ export function ExpensesPage() {
                 </p>
               </td></tr>
             ) : (
-              expenses.map((exp) => (
-                <tr key={exp.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
-                  <td className="px-4 py-3 text-surface-600 dark:text-surface-400">{exp.date ? formatDate(exp.date) : '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center rounded-full bg-surface-100 dark:bg-surface-700 px-2 py-0.5 text-xs font-medium text-surface-700 dark:text-surface-300">
-                      {exp.category}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-surface-600 dark:text-surface-400 max-w-xs truncate">{exp.description || '—'}</td>
-                  <td className="px-4 py-3 text-surface-500 text-xs">{exp.first_name} {exp.last_name}</td>
-                  <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(Number(exp.amount) || 0)}</td>
-                  <td className="px-4 py-3">
-                    {exp.receipt_image_path ? (
-                      <a
-                        href={exp.receipt_image_path}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
-                        title="View receipt"
-                      >
-                        <ExternalLink className="h-3 w-3" /> View
-                      </a>
-                    ) : (
-                      <span className="text-xs text-surface-300 dark:text-surface-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <button aria-label="Edit" onClick={() => handleEdit(exp)} className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button aria-label="Delete" onClick={() => setDeleteTarget(exp.id)}
-                        className="p-1.5 rounded-md text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              expenses.map((exp) => {
+                const isCalculated = Boolean(exp.is_calculated) || exp.can_edit === false || exp.can_edit === 0;
+                return (
+                  <tr key={exp.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
+                    <td className="px-4 py-3 text-surface-600 dark:text-surface-400">{exp.date ? formatDate(exp.date) : '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                        isCalculated
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+                          : 'bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-300',
+                      )}>
+                        {exp.category}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-surface-600 dark:text-surface-400 max-w-xs truncate">{exp.description || '—'}</td>
+                    <td className="px-4 py-3 text-surface-500 text-xs">
+                      {isCalculated ? 'Calculated' : `${exp.first_name || ''} ${exp.last_name || ''}`.trim() || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(Number(exp.amount) || 0)}</td>
+                    <td className="px-4 py-3">
+                      {exp.receipt_image_path ? (
+                        <a
+                          href={exp.receipt_image_path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                          title="View receipt"
+                        >
+                          <ExternalLink className="h-3 w-3" /> View
+                        </a>
+                      ) : (
+                        <span className="text-xs text-surface-300 dark:text-surface-600">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {isCalculated ? (
+                        <span className="text-xs text-surface-400 dark:text-surface-500">Read-only</span>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          <button aria-label="Edit" onClick={() => handleEdit(exp)} className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button aria-label="Delete" onClick={() => setDeleteTarget(exp.id)}
+                            className="p-1.5 rounded-md text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

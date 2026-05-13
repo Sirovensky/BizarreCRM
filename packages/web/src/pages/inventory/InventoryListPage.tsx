@@ -9,7 +9,7 @@ import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { parseCsvLine } from '@/utils/csv';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace inline `$${n.toFixed(2)}` with formatCurrency to honor tenant currency.
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, toLocalDateString } from '@/utils/format';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
 
@@ -375,7 +375,7 @@ export function InventoryListPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `inventory-export-${toLocalDateString(new Date())}.csv`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -407,6 +407,8 @@ export function InventoryListPage() {
     }
 
     const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+    // WEB-UIUX-760: enforce required-column validation up-front so the
+    // operator gets a clear toast instead of a 400 after submit.
     const missing = REQUIRED_IMPORT_COLUMNS.filter(h => !headers.includes(h));
     if (missing.length > 0) {
       setImportPreview([]);
@@ -475,6 +477,11 @@ export function InventoryListPage() {
   // WEB-UIUX-599: focus traps + Esc-close for the two inline modals.
   const bulkPriceRef = useFocusTrap(showBulkPriceModal) as React.RefObject<HTMLDivElement>;
   const importRef = useFocusTrap(showImportModal) as React.RefObject<HTMLDivElement>;
+  // WEB-UIUX-911: add focus-trap + restore to the remaining inline modals
+  // (dismiss-low-stock, stock-confirm) so keyboard operators don't drop to
+  // <body> on close.
+  const dismissLowStockRef = useFocusTrap(!!dismissConfirm) as React.RefObject<HTMLDivElement>;
+  const stockConfirmRef = useFocusTrap(!!stockConfirm) as React.RefObject<HTMLDivElement>;
   useEscClose(() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }, showBulkPriceModal);
   useEscClose(() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }, showImportModal);
 
@@ -828,9 +835,22 @@ export function InventoryListPage() {
                     {ALL_COLUMNS.filter(c => isColVisible(c.key)).map((c) => {
                       const sortCol = c.key === 'stock' ? 'in_stock' : c.key === 'cost' ? 'cost_price' : c.key === 'price' ? 'retail_price' : c.key;
                       const isSorted = sortBy === sortCol;
+                      const ariaSort: 'ascending' | 'descending' | 'none' = isSorted
+                        ? (sortOrder === 'ASC' ? 'ascending' : 'descending')
+                        : 'none';
                       return (
                         <th key={c.key}
+                          scope="col"
+                          role="columnheader button"
+                          tabIndex={0}
+                          aria-sort={ariaSort}
                           onClick={() => toggleSort(sortCol)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleSort(sortCol);
+                            }
+                          }}
                           className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50 cursor-pointer hover:text-surface-700 dark:hover:text-surface-200 select-none"
                         >
                           {c.label}
@@ -838,7 +858,7 @@ export function InventoryListPage() {
                         </th>
                       );
                     })}
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">Actions</th>
+                    <th scope="col" className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
@@ -1139,7 +1159,7 @@ export function InventoryListPage() {
             <div className="mb-2 flex items-center gap-2">
               <label className="px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 cursor-pointer">
                 <Upload className="h-4 w-4 inline mr-1" /> Upload File
-                <input type="file" accept=".csv" className="hidden" onChange={handleImportFile} />
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportFile} />
               </label>
             </div>
             {importPreview.length > 0 && (
@@ -1189,6 +1209,7 @@ export function InventoryListPage() {
           }}
         >
           <div
+            ref={dismissLowStockRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="dismiss-low-stock-title"
@@ -1325,6 +1346,7 @@ export function InventoryListPage() {
           }}
         >
           <div
+            ref={stockConfirmRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="adjust-stock-title"
@@ -1398,6 +1420,8 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
   const [sessionNotes, setSessionNotes] = useState('');
   const [summary, setSummary] = useState<{ received: number; created: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // WEB-UIUX-911: focus-trap restores focus to the trigger on close.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
 
   // Auto-focus input on mount and after each scan
   useEffect(() => { inputRef.current?.focus(); }, [scannedItems.length]);
@@ -1610,6 +1634,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="receive-items-title"
@@ -1795,6 +1820,8 @@ interface VarianceItem {
 }
 
 function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
+  // WEB-UIUX-911: focus-trap + restore so keyboard ops land back on trigger.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
   const [months, setMonths] = useState(6);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{
@@ -1825,6 +1852,7 @@ function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="variance-analysis-title"

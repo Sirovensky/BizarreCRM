@@ -206,6 +206,9 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'pos_show_out_of_stock', 'pos_show_invoice_notes', 'pos_show_outstanding_alert',
   'pos_show_images', 'pos_show_discount_reason', 'pos_show_cost_price',
   'pos_require_pin_sale', 'pos_require_pin_ticket', 'pos_require_referral',
+  // WEB-UIUX-1166: variance threshold (cents) for the "investigate before next
+  // shift" warning on Z-reports. Default 500 (==$5) preserved when unset.
+  'pos_variance_warn_cents',
   'checkin_default_category', 'checkin_auto_print_label',
   // Invoice/receipt settings
   'invoice_logo', 'invoice_title', 'invoice_payment_terms', 'invoice_slogan', 'invoice_footer',
@@ -299,6 +302,37 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'role_module_visibility',
   // ENR-SMS6: Auto-reply off-hours
   'auto_reply_enabled', 'auto_reply_message',
+  // WEB-UIUX-945: cooldown window (hours) before the same sender gets
+  // another auto-reply. Defaults to 24; bounded [1, 168] in sms.routes.
+  'auto_reply_cooldown_hours',
+  // WEB-UNWIRED-007: financing provider config. Toggle + min + provider
+  // choice are public; the API key + webhook secret are
+  // ENCRYPTED_CONFIG_KEYS so a tenant-DB leak does not expose the
+  // merchant credentials. billing_financing_enabled + billing_financing_min_cents
+  // already land via migration 095_billing_enrichment; the rest are added here
+  // so the settings UI can write them.
+  'billing_financing_enabled', 'billing_financing_min_cents',
+  'billing_financing_provider', 'billing_financing_provider_key',
+  'billing_financing_webhook_secret', 'billing_financing_return_url',
+  'billing_financing_cancel_url',
+  // WEB-UIUX-1001: dual-control threshold (in cents). Manager-tier user
+  // requesting >= threshold lands a pending row that a second admin must
+  // approve before the card is actually issued. Default 50000 ($500).
+  'gift_card_dual_control_threshold_cents',
+  // WEB-UIUX-1227: discount cap + manager-gate policy. pos_max_discount_cents
+  // and pos_max_discount_pct (0-100) are an OR'd ceiling; either trips means
+  // the cart-wide discount is rejected at checkout. pos_require_manager_for_discount
+  // is a 0/1 flag; when '1' a non-admin/manager cashier cannot apply any
+  // discount without a manager PIN gate (UI side-effect lives in
+  // UnifiedPosPage discount-apply path).
+  'pos_max_discount_cents', 'pos_max_discount_pct', 'pos_require_manager_for_discount',
+  // WEB-UIUX-1267: payroll week-start day. 0=Sunday, 1=Monday (default),
+  // … 6=Saturday — matches SQLite `weekday N` modifier semantics. Drives
+  // EmployeeListPage "Hours This Week" + future payroll aggregation so
+  // weekly-cadence tenants on Sun-Sat or Sat-Fri schedules see the right
+  // number. Validated to '0'..'6' on write; any other value falls back
+  // to Monday at read time.
+  'payroll_week_start_day',
   // ENR-LE8: Estimate auto-follow-up days
   'estimate_followup_days',
   // ENR-A3: Notification digest mode
@@ -393,6 +427,12 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'backup_s3_endpoint', 'backup_s3_bucket', 'backup_s3_access_key', 'backup_s3_secret_key',
   // SaaS trial / tier metadata written by Agent 31 signup route + visible in Step 25 Review
   'trial_started_at', 'trial_expires_at', 'tier',
+  // WEB-UIUX-1079: bench timer + QC + defect-alert toggles. Migration 088
+  // seeds defaults ('bench_timer_enabled'='false', 'qc_required'='false',
+  // 'bench_labor_rate_cents', 'defect_alert_threshold_30d'); admin Settings →
+  // Bench/QC tab persists overrides here.
+  'bench_timer_enabled', 'qc_required',
+  'bench_labor_rate_cents', 'defect_alert_threshold_30d',
 ]);
 
 // ==================== Generic Config (key-value) ====================
@@ -423,7 +463,7 @@ router.get('/setup-status', async (req, res) => {
     adb.get<any>("SELECT value FROM store_config WHERE key = 'wizard_completed'"),
     adb.get<any>("SELECT value FROM store_config WHERE key = 'setup_imported_legacy_data'"),
   ]);
-  const completed = row?.value === 'true';
+  const completed = row?.value === true || row?.value === 1 || row?.value === '1' || row?.value === 'true';
   res.json({
     success: true,
     data: {

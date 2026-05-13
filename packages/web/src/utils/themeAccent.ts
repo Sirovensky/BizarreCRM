@@ -79,11 +79,17 @@ export function buildPrimaryAccentVars(color: string | null | undefined): Record
   return vars;
 }
 
-export function applyPrimaryAccent(color: string | null | undefined): void {
+export function applyPrimaryAccent(_color: string | null | undefined): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  const vars = buildPrimaryAccentVars(color);
-  for (const [key, value] of Object.entries(vars)) {
-    root.style.setProperty(key, value);
-  }
+  // Branding is cream-only for now. Cross-mode legibility is handled in
+  // globals.css (:root + .dark blocks). The legacy per-tenant override path
+  // (theme_primary_color → mix-derived ramp written as inline `style` on
+  // <html>) repeatedly leaked orange/caramel from old wizard saves and beat
+  // the CSS ramp on every load. Strip any leftover inline vars on mount so
+  // the CSS-only cream-honey ramp always wins, regardless of stored value.
+  // When per-tenant theming returns it should be applied via a scoped class
+  // (`.themed-primary`) or a data attribute that doesn't outrank base CSS.
+  SHADE_KEYS.forEach((shade) => root.style.removeProperty(`--primary-${shade}`));
+  root.style.removeProperty('--primary-950');
 }

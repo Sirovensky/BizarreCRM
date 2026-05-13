@@ -71,10 +71,11 @@ const CATEGORY_LABELS: Record<string, string> = {
   console: 'Console',
   watch: 'Watch',
   smartwatch: 'Smartwatch',
+  xr: 'VR / XR',
   drone: 'Drone',
   other: 'Other',
 };
-const CANONICAL_FALLBACK = ['phone', 'tablet', 'laptop', 'tv', 'game-console', 'desktop'];
+const CANONICAL_FALLBACK = ['phone', 'tablet', 'laptop', 'tv', 'game-console', 'desktop', 'watch', 'xr'];
 
 router.get('/categories', asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
@@ -180,7 +181,7 @@ router.post('/devices', adminOnly, asyncHandler(async (req, res) => {
   }
   const nameTrimmed = validateRequiredString(name, 'name', 200);
 
-  const VALID_CATS = ['phone', 'tablet', 'laptop', 'console', 'tv', 'other'];
+  const VALID_CATS = ['phone', 'tablet', 'laptop', 'desktop', 'console', 'tv', 'watch', 'xr', 'other'];
   const cat = typeof category === 'string' && VALID_CATS.includes(category) ? category : 'other';
 
   // Auto-generate slug: "<manufacturer_id>-<name-slugified>"

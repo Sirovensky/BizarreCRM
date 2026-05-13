@@ -4,10 +4,12 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { generateOrderId } from '../utils/format.js';
 import { audit } from '../utils/audit.js';
 import { broadcast } from '../ws/server.js';
-import { WS_EVENTS } from '@bizarre-crm/shared';
+import { WS_EVENTS, LEGAL_LEAD_TRANSITIONS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { normalizePhone } from '../utils/phone.js';
+import { createLogger } from '../utils/logger.js';
+const logger = createLogger('leads');
 import { escapeLike } from '../utils/query.js';
 import {
   validateEmail,
@@ -23,24 +25,12 @@ const router = Router();
 
 /**
  * Transition map keyed by the SOURCE lead status.
- * Value is an array of allowed DESTINATION statuses.
- *
- * Only standard status names appear as keys; unrecognised source statuses
- * (custom tenant states) bypass the guard entirely (permissive fall-through).
+ * Now lives in `@bizarre-crm/shared/constants/statuses` (WEB-UIUX-1343) so
+ * the client status-pill picker can hide dead-end transitions instead of
+ * surfacing them and silently rolling back on a server reject. Only
+ * standard status names appear as keys; unrecognised sources (custom
+ * tenant states) bypass the guard entirely (permissive fall-through).
  */
-const LEGAL_LEAD_TRANSITIONS: Record<string, readonly string[]> = {
-  'new':       ['contacted', 'scheduled', 'qualified', 'lost'],
-  'contacted': ['scheduled', 'qualified', 'proposal', 'lost'],
-  'scheduled': ['contacted', 'qualified', 'proposal', 'lost'],
-  'qualified': ['proposal', 'contacted', 'scheduled', 'lost'],
-  'proposal':  ['converted', 'qualified', 'lost'],
-  'lost':      ['new', 'contacted'],      // allow re-opening a lost lead
-  // WEB-W2-036: 'converted' was previously terminal ([]).
-  // Allow re-opening a converted lead back to 'new' or 'contacted' so admins
-  // can recover from accidental conversions (e.g. ticket deleted, wrong lead).
-  // Intentionally does NOT allow 'converted' → 'converted' (no-op guard).
-  'converted': ['new', 'contacted'],
-};
 
 /**
  * Assert that transitioning a lead from `from` to `to` is legal.
@@ -185,9 +175,19 @@ router.get(
     const params: unknown[] = [];
 
     if (keyword) {
-      conditions.push("(l.first_name LIKE ? ESCAPE '\\' OR l.last_name LIKE ? ESCAPE '\\' OR l.email LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\' OR l.order_id LIKE ? ESCAPE '\\')");
       const like = `%${escapeLike(keyword)}%`;
-      params.push(like, like, like, like, like);
+      // WEB-UIUX-662: digit-normalized phone match. "(555) 123-4567"
+      // now hits stored "5551234567" without forcing the operator to
+      // strip punctuation by hand.
+      const digitsOnly = keyword.replace(/\D+/g, '');
+      const digitMatch = digitsOnly.length >= 3 ? `%${escapeLike(digitsOnly)}%` : null;
+      if (digitMatch) {
+        conditions.push("(l.first_name LIKE ? ESCAPE '\\' OR l.last_name LIKE ? ESCAPE '\\' OR l.email LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\' OR l.order_id LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\')");
+        params.push(like, like, like, like, like, digitMatch);
+      } else {
+        conditions.push("(l.first_name LIKE ? ESCAPE '\\' OR l.last_name LIKE ? ESCAPE '\\' OR l.email LIKE ? ESCAPE '\\' OR l.phone LIKE ? ESCAPE '\\' OR l.order_id LIKE ? ESCAPE '\\')");
+        params.push(like, like, like, like, like);
+      }
     }
 
     if (status) {
@@ -528,6 +528,68 @@ router.get(
 );
 
 // ---------------------------------------------------------------------------
+// GET /appointments/overlaps – Cross-window conflict scan (WEB-UIUX-1324)
+//
+// CalendarPage's pre-flight overlap check uses `existingAppointments`, which
+// is just the current month/week/day viewport. A booking on the last day of
+// the viewed month against an appt on the first day of the next month gets a
+// false-clear. This endpoint runs the same SQL the POST /appointments path
+// uses (line ~575) but with no viewport limit, so the client can ask "does
+// this assignee already have an appt that overlaps [start_time, end_time]?"
+// regardless of what month is rendered.
+//
+// Required: assigned_to, start_time. end_time falls back to start_time
+// (point-in-time check). Returns up to 5 conflicting rows.
+// ---------------------------------------------------------------------------
+router.get(
+  '/appointments/overlaps',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const assignedTo = req.query.assigned_to ? parseInt(req.query.assigned_to as string, 10) : NaN;
+    const startTime = (req.query.start_time as string || '').trim();
+    const endTime = (req.query.end_time as string || '').trim() || startTime;
+    const excludeId = req.query.exclude_id ? parseInt(req.query.exclude_id as string, 10) : null;
+
+    if (!Number.isInteger(assignedTo) || assignedTo < 1) {
+      throw new AppError('assigned_to is required', 400);
+    }
+    if (!startTime) {
+      throw new AppError('start_time is required', 400);
+    }
+    if (new Date(endTime).getTime() < new Date(startTime).getTime()) {
+      throw new AppError('end_time must be >= start_time', 400);
+    }
+
+    const params: unknown[] = [assignedTo, endTime, startTime];
+    let excludeClause = '';
+    if (excludeId && Number.isInteger(excludeId)) {
+      excludeClause = ' AND a.id != ?';
+      params.push(excludeId);
+    }
+
+    const overlaps = await adb.all<any>(`
+      SELECT a.id, a.title, a.start_time, a.end_time, a.status,
+        c.first_name AS customer_first_name, c.last_name AS customer_last_name
+      FROM appointments a
+      LEFT JOIN customers c ON c.id = a.customer_id
+      WHERE a.assigned_to = ?
+        AND a.is_deleted = 0
+        AND a.status != 'cancelled'
+        AND a.start_time < ?
+        AND COALESCE(a.end_time, a.start_time) > ?
+        ${excludeClause}
+      ORDER BY a.start_time ASC
+      LIMIT 5
+    `, ...params);
+
+    res.json({
+      success: true,
+      data: { overlaps, count: overlaps.length },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // POST /appointments – Create appointment
 // ---------------------------------------------------------------------------
 router.post(
@@ -849,6 +911,18 @@ router.put(
     // SEC-H113: enforce state-machine transition before writing
     if (status !== undefined && status !== existing.status) {
       assertLeadTransition(existing.status, status);
+      // WEB-UIUX-1337: refuse 'converted' on the generic PUT path. The
+      // /convert endpoint is the canonical entry — it creates the ticket,
+      // dedupes/creates the customer, writes the lead_converted audit, and
+      // broadcasts. PUT-to-converted silently sets the badge with none of
+      // those side effects, leaving the operator believing a ticket exists
+      // when nothing downstream has fired.
+      if (status === 'converted') {
+        throw new AppError(
+          "Use POST /leads/:id/convert to mark a lead converted (it creates the ticket + customer). PUT cannot set status='converted' directly.",
+          400,
+        );
+      }
     }
 
     // V16: trim + enum check — rejects " price " and similar whitespace bypass attempts.
@@ -1068,15 +1142,38 @@ router.post(
       const convertedEmail = lead.email ? validateEmail(lead.email, 'email', false) : null;
       const convertedPhone = lead.phone ? normalizeAndValidatePhone(lead.phone, 'phone') : null;
 
-      const custResult = await adb.run(`
-        INSERT INTO customers (first_name, last_name, email, phone, source)
-        VALUES (?, ?, ?, ?, 'lead')
-      `, lead.first_name, lead.last_name, convertedEmail, convertedPhone);
-      customerId = custResult.lastInsertRowid as number;
-      const code = generateOrderId('C', customerId);
-      await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
-      // Link the new customer to the lead so retries are idempotent
-      await adb.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, id);
+      // WEB-UIUX-1339: dedupe against existing customer rows before INSERT.
+      // Match on email (case-insensitive) OR normalized phone. CustomerCreate
+      // already does this check; convert flow used to silently INSERT a
+      // duplicate, polluting loyalty + dedup + support history. Link the lead
+      // to the existing customer instead of creating a second row.
+      let existingCustomer: { id: number; is_deleted: number } | undefined;
+      if (convertedEmail) {
+        existingCustomer = await adb.get<{ id: number; is_deleted: number }>(
+          'SELECT id, is_deleted FROM customers WHERE LOWER(email) = LOWER(?) ORDER BY is_deleted ASC, id ASC LIMIT 1',
+          convertedEmail,
+        );
+      }
+      if (!existingCustomer && convertedPhone) {
+        existingCustomer = await adb.get<{ id: number; is_deleted: number }>(
+          'SELECT id, is_deleted FROM customers WHERE phone = ? ORDER BY is_deleted ASC, id ASC LIMIT 1',
+          convertedPhone,
+        );
+      }
+      if (existingCustomer && existingCustomer.is_deleted === 0) {
+        customerId = existingCustomer.id;
+        await adb.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, id);
+      } else {
+        const custResult = await adb.run(`
+          INSERT INTO customers (first_name, last_name, email, phone, source)
+          VALUES (?, ?, ?, ?, 'lead')
+        `, lead.first_name, lead.last_name, convertedEmail, convertedPhone);
+        customerId = custResult.lastInsertRowid as number;
+        const code = generateOrderId('C', customerId);
+        await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
+        // Link the new customer to the lead so retries are idempotent
+        await adb.run('UPDATE leads SET customer_id = ? WHERE id = ?', customerId, id);
+      }
     }
 
     if (!customerId) throw new AppError('Cannot convert lead without customer information', 400);
@@ -1121,16 +1218,57 @@ router.post(
     await adb.run('UPDATE tickets SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
       totals.subtotal, totals.total_tax, totals.total, ticketId);
 
+    // WEB-UIUX-1340: carry open lead reminders forward as a ticket note so
+    // the future-Monday follow-up doesn't silently vanish when the lead
+    // closes. No new ticket_reminders table — the reminder text just becomes
+    // a visible ticket-note line so the operator sees it on the ticket
+    // detail's note history. Each reminder gets the remind_at date prefix.
+    try {
+      const openReminders = await adb.all<any>(
+        `SELECT remind_at, note FROM lead_reminders
+          WHERE lead_id = ? AND COALESCE(completed, 0) = 0
+       ORDER BY remind_at ASC`,
+        id,
+      );
+      if (openReminders.length > 0) {
+        const lines = openReminders.map((r) => {
+          const due = r.remind_at ? String(r.remind_at) : 'no date';
+          const text = r.note ? String(r.note).trim() : '(no note)';
+          return `• ${due} — ${text}`;
+        });
+        const noteBody =
+          `[Carried from Lead ${lead.order_id ?? `#${id}`}] ${openReminders.length} open reminder${openReminders.length === 1 ? '' : 's'}:\n`
+          + lines.join('\n');
+        await adb.run(
+          `INSERT INTO ticket_notes (ticket_id, user_id, content, created_at, updated_at)
+           VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+          ticketId, req.user!.id, noteBody.slice(0, 4000),
+        );
+      }
+    } catch (remErr) {
+      logger.warn('lead_convert_reminder_carryover_failed', {
+        error: remErr instanceof Error ? remErr.message : String(remErr),
+        lead_id: id,
+        ticket_id: ticketId,
+      });
+    }
+
     // Update lead status
     await adb.run("UPDATE leads SET status = 'converted', updated_at = datetime('now') WHERE id = ?", id);
 
     const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
+    // WEB-UIUX-1350: include the lead's order_id alongside the ticket so the
+    // client can render "Lead #L042 → Ticket #T117" with both stable IDs and
+    // unify success copy between the list and detail surfaces.
+    const leadStub = await adb.get<{ id: number; order_id: string | null }>(
+      'SELECT id, order_id FROM leads WHERE id = ?', id,
+    );
 
     audit(db, 'lead_converted', req.user!.id, req.ip || 'unknown', { lead_id: id, ticket_id: ticketId });
 
     res.status(201).json({
       success: true,
-      data: { ticket, message: 'Lead converted to ticket' },
+      data: { ticket, lead: leadStub ?? { id, order_id: null }, message: 'Lead converted to ticket' },
     });
   }),
 );

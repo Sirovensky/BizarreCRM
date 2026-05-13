@@ -1,5 +1,6 @@
 import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import { requirePermission } from '../middleware/auth.js';
 import {
   validatePrice,
@@ -20,6 +21,7 @@ import { WS_EVENTS } from '@bizarre-crm/shared';
 import { runAutomations } from '../services/automations.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
+import { getInvoicePitSnapshot } from '../utils/invoiceSnapshot.js';
 import { fireWebhook } from '../services/webhooks.js';
 import type { AsyncDb } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
@@ -82,12 +84,19 @@ async function getInvoiceDetail(adb: AsyncDb, id: number | string) {
       loc.city AS loc_city, loc.state AS loc_state, loc.postcode AS loc_postcode,
       loc.country AS loc_country, loc.phone AS loc_phone, loc.email AS loc_email,
       loc.timezone AS loc_timezone,
-      t.is_deleted AS ticket_is_deleted
+      t.is_deleted AS ticket_is_deleted,
+      -- WEB-UIUX-805: derive estimate backlink via the ticket. The invoice
+      -- carries no estimate_id of its own, but tickets do (set at convert
+      -- time). Expose estimate_id + estimate.order_id so the detail page
+      -- can render "Created from estimate EST-XXX" without a second fetch.
+      t.estimate_id AS source_estimate_id,
+      est.order_id AS source_estimate_order_id
     FROM invoices inv
     LEFT JOIN customers c ON c.id = inv.customer_id
     LEFT JOIN users u ON u.id = inv.created_by
     LEFT JOIN locations loc ON loc.id = inv.location_id
     LEFT JOIN tickets t ON t.id = inv.ticket_id
+    LEFT JOIN estimates est ON est.id = t.estimate_id
     WHERE inv.id = ?
   `, id);
   if (!invoice) return null;
@@ -284,7 +293,7 @@ async function postPaymentSideEffects({
 // GET /invoices
 router.get('/', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
-  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id, sort_by, sort_dir } = req.query as Record<string, string>;
+  const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id, sort_by, sort_dir, include_credit_notes } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page));
   const ps = Math.min(250, Math.max(1, parseInt(pagesize)));
   const offset = (p - 1) * ps;
@@ -295,6 +304,15 @@ router.get('/', requirePermission('invoices.view'), async (req, res) => {
   if (status === 'overdue') {
     where += " AND inv.status IN ('unpaid','partial') AND inv.due_on IS NOT NULL AND inv.due_on < DATE('now')";
   } else if (status) { where += ' AND inv.status = ?'; params.push(status); }
+  // WEB-UIUX-1209: by default exclude negative-total credit-note rows from
+  // the unfiltered listing. AR aging totals + monthly receivables charts no
+  // longer surface phantom CN-XXXX entries unless the caller explicitly
+  // opts in with `?include_credit_notes=true`. Explicit `status=credit_note`
+  // also bypasses the exclusion since the caller is asking for them.
+  const wantCreditNotes = include_credit_notes === 'true' || include_credit_notes === '1' || status === 'credit_note';
+  if (!wantCreditNotes) {
+    where += ' AND inv.credit_note_for IS NULL';
+  }
   if (customer_id) { where += ' AND inv.customer_id = ?'; params.push(customer_id); }
   if (from_date) { where += ' AND DATE(inv.created_at) >= ?'; params.push(from_date); }
   if (to_date) { where += ' AND DATE(inv.created_at) <= ?'; params.push(to_date); }
@@ -599,14 +617,22 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   }
   const amount_due = total;
 
+  // WEB-UIUX-895: capture customer/store/jurisdiction at create time so a
+  // reprint 6 months later doesn't lie about a renamed profile, store
+  // banner, or shifted jurisdiction. Print pages prefer the snapshot when
+  // populated and fall back to the live row when NULL (legacy invoices).
+  const pit = await getInvoicePitSnapshot(adb, customer_id);
+
   const result = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
       total_tax, total, amount_paid, amount_due, notes, due_on, created_by,
-      is_deposit, deposit_amount, parent_invoice_id, location_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_deposit, deposit_amount, parent_invoice_id, location_id,
+      customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
     total_tax, total, amount_due, notes || null, validatedDueDate, req.user!.id,
-    depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId);
+    depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId,
+    pit.customer_name_snapshot, pit.customer_address_snapshot, pit.store_name_snapshot, pit.tax_jurisdiction_snapshot);
 
   const invoiceId = result.lastInsertRowid;
 
@@ -794,6 +820,11 @@ interface RecordInvoicePaymentArgs {
   tenantSlug?: string | null;
   expectedCustomerId?: unknown;
   deduplicate?: boolean;
+  // WEB-UIUX-1525: cashier-confirmed bypass of the same-amount dedup window.
+  // When true, the dedup check is skipped and the action is audited so a
+  // legitimate split tender (two friends each paying the same amount) can
+  // be recorded without falsifying the amount.
+  forceDuplicate?: boolean;
 }
 
 interface RecordInvoicePaymentResult {
@@ -836,10 +867,18 @@ async function assertNoRecentDuplicatePayment(
 ): Promise<void> {
   // Double-submit guard: same invoice + amount within 5 seconds = reject
   // SEC-M9: In-memory fast check + DB-backed check (survives restart)
+  // WEB-UIUX-1525: emit ERR_PAYMENT_DUPLICATE so the client can offer a
+  // "Yes, this is a separate tender" confirmation and retry with force=true
+  // instead of forcing the cashier to falsify the amount (e.g. $50.01) or
+  // split the same-amount tender into a different method.
   const dedupKey = `${invoiceId}:${amount.toFixed(2)}:${userId}`;
   const lastPayment = recentPayments.get(dedupKey);
   if (lastPayment && Date.now() - lastPayment < 5000) {
-    throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
+    throw new AppError(
+      'A payment with this exact amount was just recorded. If this is a separate tender (e.g. two friends each paying the same amount), confirm to record it anyway.',
+      409,
+      ERROR_CODES.ERR_PAYMENT_DUPLICATE,
+    );
   }
   // DB-backed dedup: check for same invoice+amount+user within last 10 seconds
   const recentDbPayment = await adb.get<any>(`
@@ -849,7 +888,11 @@ async function assertNoRecentDuplicatePayment(
     LIMIT 1
   `, invoiceId, amount, userId);
   if (recentDbPayment) {
-    throw new AppError('Duplicate payment detected. Please wait before retrying.', 409);
+    throw new AppError(
+      'A payment with this exact amount was just recorded. If this is a separate tender (e.g. two friends each paying the same amount), confirm to record it anyway.',
+      409,
+      ERROR_CODES.ERR_PAYMENT_DUPLICATE,
+    );
   }
   recentPayments.set(dedupKey, Date.now());
 }
@@ -871,6 +914,7 @@ async function recordInvoicePayment({
   tenantSlug,
   expectedCustomerId,
   deduplicate = true,
+  forceDuplicate = false,
 }: RecordInvoicePaymentArgs): Promise<RecordInvoicePaymentResult> {
   const invoice = providedInvoice ?? await adb.get<any>('SELECT * FROM invoices WHERE id = ?', invoiceId);
   if (!invoice) throw new AppError('Invoice not found', 404);
@@ -925,7 +969,7 @@ async function recordInvoicePayment({
     throw new AppError(`Invalid payment_type. Must be one of: ${validPaymentTypes.join(', ')}`, 400);
   }
 
-  if (deduplicate) {
+  if (deduplicate && !forceDuplicate) {
     await assertNoRecentDuplicatePayment(adb, invoice.id, amount, userId);
   }
 
@@ -980,24 +1024,20 @@ async function recordInvoicePayment({
 
   if (overpayment > 0 && invoice.customer_id) {
     try {
-      // Upsert the customer's running store-credit balance
-      const existingCredit = await adb.get<{ id: number; amount: number }>(
-        'SELECT id, amount FROM store_credits WHERE customer_id = ?',
+      // BUGHUNT-2026-05-10-01: atomic UPSERT — previous SELECT-then-UPDATE
+      // pattern allowed two concurrent overpayments on the same customer
+      // to both read the same pre-state and the second UPDATE clobbered
+      // the first. Now use INSERT ON CONFLICT DO UPDATE so the +=
+      // happens inside a single SQLite statement (atomic per-row).
+      await adb.run(
+        `INSERT INTO store_credits (customer_id, amount)
+         VALUES (?, ?)
+         ON CONFLICT(customer_id) DO UPDATE SET
+           amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
+           updated_at = datetime('now')`,
         invoice.customer_id,
+        overpayment,
       );
-      if (existingCredit) {
-        await adb.run(
-          "UPDATE store_credits SET amount = ?, updated_at = datetime('now') WHERE id = ?",
-          roundCents((existingCredit.amount || 0) + overpayment),
-          existingCredit.id,
-        );
-      } else {
-        await adb.run(
-          'INSERT INTO store_credits (customer_id, amount) VALUES (?, ?)',
-          invoice.customer_id,
-          overpayment,
-        );
-      }
       // Ledger row for the credit transaction
       await adb.run(`
         INSERT INTO store_credit_transactions
@@ -1035,6 +1075,11 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
   const db = req.db;
   const adb = req.asyncDb;
   const { method = 'cash', method_detail, transaction_id, notes, payment_type = 'payment' } = req.body;
+  // WEB-UIUX-1525: opt-in dedup bypass after the cashier confirms in the UI
+  // that the same-amount second payment is a legitimate separate tender.
+  // Body sends `force_duplicate: true` only on the retry of a 409
+  // ERR_PAYMENT_DUPLICATE response.
+  const forceDuplicate = req.body?.force_duplicate === true;
   const payment = await recordInvoicePayment({
     adb,
     db,
@@ -1051,9 +1096,97 @@ router.post('/:id/payments', idempotent, requirePermission('invoices.record_paym
     tenantSlug: req.tenantSlug || null,
     expectedCustomerId: req.body?.customer_id,
     deduplicate: true,
+    forceDuplicate,
   });
+  if (forceDuplicate) {
+    audit(db, 'payment_force_duplicate', req.user!.id, req.ip || 'unknown', {
+      invoice_id: Number(req.params.id),
+      amount: Number(req.body.amount),
+      method,
+    });
+  }
 
   res.status(201).json({ success: true, data: payment.updatedInvoice });
+});
+
+// WEB-UIUX-1526: per-payment reverse. Cashier fat-fingers $5,000 instead of
+// $50 — Void Invoice would VOID every payment on the invoice (destroys
+// legitimate prior payments + restores stock + reverses commission). This
+// route reverses one specific payment row inside a 30-minute window from
+// its creation. Manager/admin only; payment must not already carry
+// `[VOIDED]` in notes. Recomputes invoice amount_paid + status from the
+// remaining positive payment rows after marking the row voided. Refunds /
+// credit-notes recorded as separate payment rows are intentionally NOT
+// reversible via this route — they have their own lifecycle.
+router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: string }>, res) => {
+  const adb = req.asyncDb;
+  const role = (req as any)?.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager required to reverse a payment', 403);
+  }
+  const paymentId = parseInt(req.params.paymentId, 10);
+  if (!Number.isFinite(paymentId) || paymentId <= 0) {
+    throw new AppError('Invalid payment id', 400);
+  }
+  const payment = await adb.get<any>(
+    'SELECT id, invoice_id, amount, notes, created_at FROM payments WHERE id = ?',
+    paymentId,
+  );
+  if (!payment) throw new AppError('Payment not found', 404);
+  if (typeof payment.notes === 'string' && payment.notes.includes('[VOIDED]')) {
+    throw new AppError('Payment is already voided', 409);
+  }
+  const createdMs = Date.parse(String(payment.created_at).replace(' ', 'T'));
+  if (!Number.isFinite(createdMs)) {
+    throw new AppError('Payment created_at is unparseable — refuse reverse', 409);
+  }
+  const ageMs = Date.now() - createdMs;
+  const REVERSE_WINDOW_MS = 30 * 60 * 1000;
+  if (ageMs > REVERSE_WINDOW_MS) {
+    throw new AppError(
+      `Reverse window expired (${Math.floor(ageMs / 60000)} min old; window is 30 min). Use Credit Note instead.`,
+      409,
+    );
+  }
+  const reasonRaw = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
+  if (!reasonRaw) {
+    throw new AppError('reason is required to reverse a payment', 400);
+  }
+
+  await adb.run(
+    "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED] ' || ? WHERE id = ?",
+    reasonRaw, paymentId,
+  );
+  // Recompute invoice state from the remaining positive (non-VOIDED)
+  // payment rows. We use the same positive-payment-total helper the
+  // recordInvoicePayment path uses, then re-derive amount_due + status.
+  const invoiceRow = await adb.get<any>('SELECT id, total FROM invoices WHERE id = ?', payment.invoice_id);
+  if (invoiceRow) {
+    const remainingPaid = await adb.get<{ t: number }>(
+      "SELECT SUM(CASE WHEN amount IS NOT NULL AND amount >= 0 AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%' THEN amount ELSE 0 END) AS t FROM payments WHERE invoice_id = ?",
+      payment.invoice_id,
+    );
+    const totalPaid = roundCents(remainingPaid?.t || 0);
+    const invoiceTotal = Number(invoiceRow.total ?? 0);
+    const rawAmountDue = roundCents(invoiceTotal - totalPaid);
+    const displayAmountDue = Math.max(0, rawAmountDue);
+    const newStatus = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+    await adb.run(
+      "UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
+      totalPaid, displayAmountDue, newStatus, payment.invoice_id,
+    );
+  }
+
+  audit(req.db, 'payment_reversed', req.user!.id, req.ip || 'unknown', {
+    payment_id: paymentId,
+    invoice_id: payment.invoice_id,
+    amount: Number(payment.amount),
+    age_minutes: Math.floor(ageMs / 60000),
+    reason: reasonRaw,
+  });
+
+  const updatedInvoice = await getInvoiceDetail(adb, payment.invoice_id);
+  res.json({ success: true, data: updatedInvoice });
 });
 
 // POST /invoices/:id/void (rate limited: 1 per minute per user)
@@ -1146,19 +1279,13 @@ router.post('/:id/void', requirePermission('invoices.void'), async (req, res) =>
 });
 
 // ===================================================================
-// POST /bulk-action - Batch invoice actions (admin-only)
+// POST /bulk-action - Batch invoice actions
 // ===================================================================
 // SEC-H25: bulk invoice actions (mark_paid, void, send_reminder) are privileged
-// — gate behind invoices.bulk_action permission. The inline role check below is
-// kept as defence-in-depth.
+// — gate behind invoices.bulk_action permission.
 router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (req, res) => {
   const db = req.db;
   const adb = req.asyncDb;
-
-  // Defence-in-depth: requirePermission above is authoritative.
-  if (req.user!.role !== 'admin') {
-    throw new AppError('Only admins can perform bulk invoice actions', 403);
-  }
 
   const { invoice_ids, action } = req.body;
   if (!invoice_ids || !Array.isArray(invoice_ids) || invoice_ids.length === 0) {
@@ -1338,7 +1465,9 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
 // POST /:id/credit-note - Generate credit note for an invoice
 // ===================================================================
 // SEC-H25: credit notes modify the invoice ledger — gate behind invoices.credit_note.
-router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async (req: Request<{ id: string }>, res) => {
+// WEB-UIUX-1294: idempotent middleware coalesces duplicate POSTs (slow-network
+// double-click) onto a single CRN row + audit entry + broadcast.
+router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_note'), async (req: Request<{ id: string }>, res) => {
   const db = req.db;
   const adb = req.asyncDb;
   // @audit-fixed: validate id and use radix 10. Previously parseInt("abc") = NaN
@@ -1356,9 +1485,43 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   // WEB-W2-018: structured refund reason code + free-text note (migration 150
   // added credit_note_code / credit_note_note columns to invoices). Both are
   // optional — existing callers that only send `reason` still work fine.
-  const cnCode: string | null = typeof req.body.code === 'string' && req.body.code.trim()
-    ? req.body.code.trim()
-    : null;
+  // WEB-UIUX-1221: code must be one of the RefundReasonCode enum values; the
+  // UI sends from a fixed dropdown but curl/integration callers could submit
+  // arbitrary strings and pollute reporting aggregations with unbounded
+  // cardinality. Reject anything outside the enum.
+  // WEB-UIUX-1290: enum widened with the retail-cluster reasons the audit
+  // flagged (cancelled service, exchange-no-money, tax adjustment, shipping
+  // issue, loyalty/promo retroactive). Each maps cleanly to a downstream
+  // report bucket; staff no longer have to fall through to 'other' for the
+  // most-frequent real-world cases.
+  const REFUND_REASON_CODES = new Set([
+    'defective', 'dissatisfaction', 'wrong_item', 'duplicate_charge',
+    'price_adjustment', 'failed_repair', 'lost_data', 'extended_delay',
+    'goodwill_gesture', 'chargeback_prevention', 'warranty_invocation',
+    'cancelled_service', 'exchange_no_refund', 'tax_adjustment',
+    'shipping_issue', 'loyalty_promo_retroactive',
+    'other',
+  ]);
+  const cnCodeRaw = typeof req.body.code === 'string' ? req.body.code.trim() : '';
+  if (cnCodeRaw && !REFUND_REASON_CODES.has(cnCodeRaw)) {
+    throw new AppError(
+      `Invalid credit-note code "${cnCodeRaw}". Must be one of: ${[...REFUND_REASON_CODES].join(', ')}`,
+      400,
+    );
+  }
+  const cnCode: string | null = cnCodeRaw || null;
+  // WEB-UIUX-1217: "other" without a note is useless for downstream reporting
+  // (the audit row stores literal "other" with no context). Server enforces
+  // the minimum so curl callers can't bypass the client validation.
+  if (cnCode === 'other') {
+    const noteForOther = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+    if (noteForOther.length < 5) {
+      throw new AppError(
+        'Credit-note code "other" requires a note of at least 5 characters explaining the reason.',
+        400,
+      );
+    }
+  }
   const cnNote: string | null = typeof req.body.note === 'string' && req.body.note.trim()
     ? req.body.note.trim()
     : null;
@@ -1379,8 +1542,17 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
       400,
     );
   }
-  if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
-    throw new AppError('reason is required', 400);
+  // WEB-UIUX-733: server now derives `reason` from `code` + `note` when the
+  // caller ships only the structured fields. Composed-reason callers (legacy
+  // clients, curl callers) keep working unchanged. New clients no longer have
+  // to duplicate `"code: note"` into a `reason` string.
+  let resolvedReason: string;
+  if (reason && typeof reason === 'string' && reason.trim().length > 0) {
+    resolvedReason = reason.trim();
+  } else if (cnCode || cnNote) {
+    resolvedReason = [cnCode, cnNote].filter(Boolean).join(': ').trim() || 'Credit note';
+  } else {
+    throw new AppError('reason (or code + note) is required', 400);
   }
 
   // I5: Atomic counter for the credit-note ID. Replaces the MAX-based lookup
@@ -1388,24 +1560,53 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   const cnSeq = allocateCounter(db, 'credit_note_id');
   const orderId = formatCreditNoteId(cnSeq);
 
+  // WEB-UIUX-1277: split the refunded amount into subtotal + tax portions
+  // proportionally so the credit-note row mirrors the original invoice's
+  // tax composition. Previously `total_tax=0` left state sales-tax filings
+  // showing collected tax with no offsetting refund — customers ended up
+  // short by the tax amount or the till covered it. Pro-rata against the
+  // original invoice's tax/total ratio.
+  const origTotal = Number(original.total) || 0;
+  const origTax = Number(original.total_tax) || 0;
+  const taxFraction = origTotal > 0 ? Math.max(0, Math.min(1, origTax / origTotal)) : 0;
+  const cnTaxPortion = roundCents(amount * taxFraction);
+  const cnSubtotalPortion = roundCents(amount - cnTaxPortion);
+
+  // WEB-UIUX-895: snapshot for the credit-note invoice so its reprint
+  // doesn't bleed live customer/store renames into a historical refund.
+  const pitCn = await getInvoicePitSnapshot(adb, original.customer_id);
+
   // Create the credit note as a negative invoice
   const cnResult = await adb.run(`
     INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
       amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id,
-      credit_note_code, credit_note_note)
-    VALUES (?, ?, ?, ?, 0, 0, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?)
+      credit_note_code, credit_note_note,
+      customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     orderId,
     original.customer_id,
     original.ticket_id,
-    -amount,       // negative subtotal
-    -amount,       // negative total
-    `Credit note: ${reason.trim()}`,
-    invoiceId,     // link to original
+    -cnSubtotalPortion,    // negative subtotal (pre-tax portion of refund)
+    -cnTaxPortion,         // negative tax (proportional share of refund)
+    -amount,               // negative total
+    // WEB-UIUX-1225: stop writing `Credit note: ${reason}` into `notes` for
+    // new credit-note rows. The dedicated `credit_note_code` +
+    // `credit_note_note` columns (set immediately below) are now the
+    // single source of truth. Pre-2026-05-12 rows still carry the composed
+    // string in `notes` for backwards-compat; reports must prefer
+    // `credit_note_code` when present and fall back to `notes` only for
+    // legacy rows where `credit_note_code IS NULL`.
+    null,
+    invoiceId,             // link to original
     req.user!.id,
     original.location_id ?? 1,
     cnCode,
     cnNote,
+    pitCn.customer_name_snapshot,
+    pitCn.customer_address_snapshot,
+    pitCn.store_name_snapshot,
+    pitCn.tax_jurisdiction_snapshot,
   );
 
   const creditNoteId = cnResult.lastInsertRowid;
@@ -1414,48 +1615,98 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
   await adb.run(`
     INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, notes)
     VALUES (?, ?, 1, ?, ?, ?)
-  `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, reason.trim());
+  `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, resolvedReason);
 
-  // M5: Adjust the original invoice balance, CLAMPING newAmountPaid at total so
-  // amount_due can never go negative. If the credit would push amount_paid past
-  // the invoice total (i.e. credit > remaining due), record the overflow as a
-  // store credit for the customer instead of silently hiding it in a negative
-  // amount_due column.
+  // WEB-UIUX-1026: also write a refunds row of type='credit_note' so the
+  // /refunds reporting surface and "show me all refunds processed today"
+  // queries reconcile with the invoices-table credit-note records.
+  // Previously credit notes were invisible to refunds reporting and the two
+  // surfaces never matched.
+  try {
+    await adb.run(`
+      INSERT INTO refunds (invoice_id, ticket_id, customer_id, amount, type, reason, method, status, approved_by, created_by)
+      VALUES (?, ?, ?, ?, 'credit_note', ?, 'store_credit', 'completed', ?, ?)
+    `,
+      invoiceId,
+      original.ticket_id ?? null,
+      original.customer_id ?? null,
+      amount,
+      resolvedReason,
+      req.user!.id,
+      req.user!.id,
+    );
+  } catch (refundsErr) {
+    logger.warn('invoices_credit_note_refund_row_failed', {
+      error: refundsErr instanceof Error ? refundsErr.message : String(refundsErr),
+      credit_note_id: Number(creditNoteId),
+    });
+  }
+
+  // WEB-UIUX-1208: stop inflating `amount_paid` to drive `amount_due` to zero.
+  // The credit-note value lands in the dedicated `amount_credited` column
+  // (migration 196). `amount_paid` keeps tracking real cash collected; the
+  // combined ledger (amount_paid + amount_credited) is what zeroes amount_due.
+  //
+  // Overflow semantics: when the cumulative credit exceeds (total - amount_paid)
+  // we still post the excess to store credit (existing behaviour) so the
+  // refund is honoured even on already-collected balances. The overflow
+  // calculation is now driven by the remaining ledger gap, not by inflating
+  // amount_paid past total.
   const prevAmountPaid = roundCents(original.amount_paid || 0);
-  const requested = roundCents(prevAmountPaid + amount);
-  const cappedAmountPaid = Math.min(requested, roundCents(original.total));
-  const creditOverflow = roundCents(requested - cappedAmountPaid);
-  const newAmountDue = Math.max(0, roundCents(original.total - cappedAmountPaid));
-  const newStatus = newAmountDue <= 0 ? 'paid' : cappedAmountPaid > 0 ? 'partial' : 'unpaid';
+  const prevAmountCredited = roundCents(Number((original as { amount_credited?: number }).amount_credited) || 0);
+  const total = roundCents(original.total);
+  // How much of `amount` is absorbed by the invoice itself vs. parked as
+  // store-credit overflow:
+  const ledgerSlotRemaining = Math.max(0, roundCents(total - prevAmountPaid - prevAmountCredited));
+  const absorbedByInvoice = Math.min(amount, ledgerSlotRemaining);
+  const creditOverflow = roundCents(amount - absorbedByInvoice);
+  const newAmountCredited = roundCents(prevAmountCredited + absorbedByInvoice);
+  const newAmountDue = Math.max(0, roundCents(total - prevAmountPaid - newAmountCredited));
 
-  // SEC-H113: enforce state-machine transition before writing
-  assertInvoiceTransition(original.status, newStatus);
+  // WEB-UIUX-708: when the cumulative credit-note total covers the full
+  // invoice, mark the source invoice 'refunded' rather than 'paid'. Status
+  // ladder now derives from combined ledger so `paid` requires real cash
+  // OR offset that fully covers `total`.
+  const totalCreditedAfter = roundCents(alreadyCredited + amount);
+  const fullyRefunded = totalCreditedAfter >= total;
+  const combinedLedger = roundCents(prevAmountPaid + newAmountCredited);
+  const newStatus = fullyRefunded
+    ? 'refunded'
+    : combinedLedger >= total
+      ? 'paid'
+      : prevAmountPaid > 0
+        ? 'partial'
+        : 'unpaid';
+
+  // SEC-H113: enforce state-machine transition before writing.
+  // 'unpaid' → 'refunded' is not in the standard map; allow it via
+  // a defensive intermediate to 'paid' since the combined ledger covers total.
+  if (original.status === 'unpaid' && newStatus === 'refunded') {
+    assertInvoiceTransition(original.status, 'paid');
+  } else {
+    assertInvoiceTransition(original.status, newStatus);
+  }
 
   await adb.run(`
-    UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-  `, cappedAmountPaid, newAmountDue, newStatus, invoiceId);
+    UPDATE invoices SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
+  `, newAmountCredited, newAmountDue, newStatus, invoiceId);
 
   // Record overflow (the part of the credit that exceeded the remaining balance)
   // as a store credit for this customer.
   if (creditOverflow > 0 && original.customer_id) {
     try {
-      const existingCredit = await adb.get<{ id: number; amount: number }>(
-        'SELECT id, amount FROM store_credits WHERE customer_id = ?',
+      // BUGHUNT-2026-05-10-02: atomic UPSERT — previous SELECT-then-UPDATE
+      // raced identically to the overpayment path. UNIQUE(customer_id)
+      // from migration 109 makes ON CONFLICT DO UPDATE safe.
+      await adb.run(
+        `INSERT INTO store_credits (customer_id, amount)
+         VALUES (?, ?)
+         ON CONFLICT(customer_id) DO UPDATE SET
+           amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
+           updated_at = datetime('now')`,
         original.customer_id,
+        creditOverflow,
       );
-      if (existingCredit) {
-        await adb.run(
-          "UPDATE store_credits SET amount = ?, updated_at = datetime('now') WHERE id = ?",
-          roundCents((existingCredit.amount || 0) + creditOverflow),
-          existingCredit.id,
-        );
-      } else {
-        await adb.run(
-          'INSERT INTO store_credits (customer_id, amount) VALUES (?, ?)',
-          original.customer_id,
-          creditOverflow,
-        );
-      }
       // SEC-M33: this transaction is specifically the OVERFLOW portion of a
       // credit note that exceeded the invoice balance — not a plain credit
       // applied to the invoice. reference_type previously said 'invoice'
@@ -1479,20 +1730,80 @@ router.post('/:id/credit-note', requirePermission('invoices.credit_note'), async
       logger.warn('invoices_credit_note_overflow_store_credit_failed', { error: msg });
     }
   }
+  // WEB-UIUX-1022: reverse commissions for the credit-noted portion. The
+  // refunds.routes.ts approve path already calls reverseCommission;
+  // credit-note (the only currently-reachable refund flow from the web UI)
+  // skipped this, so techs kept full commission on returned/credited work
+  // and payroll overpaid. Reverse proportional to amount / original.total
+  // so partial credits don't claw back the full commission. Both ticket and
+  // invoice sources are reversed since commissions can attach to either.
+  try {
+    const originalTotal = Number(original.total) || 0;
+    if (originalTotal > 0) {
+      const fraction = Math.min(1, Math.max(0, amount / originalTotal));
+      if (fraction > 0) {
+        await reverseCommission(adb, {
+          sourceType: 'invoice',
+          sourceId: invoiceId,
+          fraction,
+          notes: `Credit note ${orderId} for invoice ${original.order_id}`,
+        });
+        if (original.ticket_id) {
+          await reverseCommission(adb, {
+            sourceType: 'ticket',
+            sourceId: original.ticket_id,
+            fraction,
+            notes: `Credit note ${orderId} for invoice ${original.order_id}`,
+          });
+        }
+      }
+    }
+  } catch (commErr) {
+    // Payroll-lock is a 403 we want to surface — otherwise log and continue.
+    if (commErr instanceof AppError && commErr.statusCode === 403) throw commErr;
+    logger.warn('invoices_credit_note_commission_reversal_failed', {
+      error: commErr instanceof Error ? commErr.message : String(commErr),
+      invoice_id: invoiceId,
+      credit_note_id: Number(creditNoteId),
+    });
+  }
+
   const creditNote = await getInvoiceDetail(adb, creditNoteId as number);
 
   audit(db, 'credit_note_created', req.user!.id, req.ip || 'unknown', {
     credit_note_id: Number(creditNoteId),
     original_invoice_id: invoiceId,
     amount,
-    reason: reason.trim(),
+    reason: resolvedReason,
     code: cnCode,
   });
 
   broadcast(WS_EVENTS.INVOICE_CREATED, creditNote, req.tenantSlug || null);
   broadcast(WS_EVENTS.INVOICE_UPDATED, { id: invoiceId }, req.tenantSlug || null);
 
-  res.status(201).json({ success: true, data: creditNote });
+  // WEB-UIUX-1032: surface the overflow portion so the client can show
+  // "Customer now has $X store credit" instead of silently parking the
+  // excess on the store_credits row. Also expose the new running balance
+  // when there is one, so a single toast can summarise the outcome.
+  let store_credit_balance: number | null = null;
+  if (creditOverflow > 0 && original.customer_id) {
+    try {
+      const credit = await adb.get<{ amount: number }>(
+        'SELECT amount FROM store_credits WHERE customer_id = ?',
+        original.customer_id,
+      );
+      store_credit_balance = credit ? Number(credit.amount) : null;
+    } catch { /* non-fatal */ }
+  }
+
+  res.status(201).json({
+    success: true,
+    data: creditNote,
+    meta: {
+      credit_overflow: creditOverflow,
+      store_credit_balance,
+    },
+  });
 });
 
 export default router;

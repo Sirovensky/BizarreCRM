@@ -13,6 +13,7 @@ import {
   voidCharge,
   captureCharge,
   deleteSignatureFile,
+  getTerminalHeartbeat,
   BlockChypIndeterminateError,
 } from '../services/blockchyp.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -906,6 +907,24 @@ router.post('/adjust-tip', asyncHandler(async (req: Request, res: Response) => {
 router.get('/status', (req: Request, res: Response) => {
   const db = req.db;
   const cfg = getBlockChypConfig(db);
+
+  // WEB-UIUX-937: Reachability — previously /status only reported
+  // configured-state (enabled flag + creds present), so a configured-but-
+  // offline terminal silently passed the gate and then failed mid-charge.
+  // We surface the last in-process ping outcome from the heartbeat cache.
+  // `online` is true only when the last ping succeeded within the freshness
+  // window. UI can use it to disable Charge buttons or to prompt operator
+  // to power-cycle / reconnect the terminal before starting a sale.
+  const HEARTBEAT_FRESH_MS = 5 * 60 * 1000; // 5 minutes
+  const heartbeat = getTerminalHeartbeat(cfg.terminalName);
+  let online = false;
+  let stale = false;
+  if (heartbeat?.lastSeenAt) {
+    const ageMs = Date.now() - new Date(heartbeat.lastSeenAt).getTime();
+    online = ageMs <= HEARTBEAT_FRESH_MS;
+    stale = !online;
+  }
+
   res.json({
     success: true,
     data: {
@@ -914,6 +933,17 @@ router.get('/status', (req: Request, res: Response) => {
       tcEnabled: cfg.tcEnabled,
       promptForTip: cfg.promptForTip,
       autoCloseTicket: cfg.autoCloseTicket,
+      heartbeat: heartbeat
+        ? {
+            lastSeenAt: heartbeat.lastSeenAt,
+            lastCheckedAt: heartbeat.lastCheckedAt,
+            lastError: heartbeat.lastError,
+            firmwareVersion: heartbeat.firmwareVersion,
+            online,
+            stale,
+            freshnessWindowMs: HEARTBEAT_FRESH_MS,
+          }
+        : null,
     },
   });
 });

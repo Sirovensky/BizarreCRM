@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
+import { useHasRole } from './hooks/useHasRole';
 import { authApi, settingsApi } from './api/endpoints';
 import { superAdminTokenStore, SUPER_ADMIN_LOGOUT_EVENT } from './api/client';
 import {
@@ -10,6 +11,7 @@ import {
 } from './components/ImpersonationBanner';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary, PageErrorBoundary } from './components/shared/PageErrorBoundary';
+import { CookieConsentBanner } from './components/shared/CookieConsentBanner';
 import { SpotlightCoach } from './components/onboarding/SpotlightCoach';
 import { SettingsProvider } from './hooks/useSettings';
 // WEB-FE-021 (Fixer-C12 2026-04-25): boot/route-fallback screens hoisted out
@@ -54,6 +56,8 @@ const AbcAnalysisPage = lazy(() => import('./pages/inventory/AbcAnalysisPage').t
 const InventoryAgePage = lazy(() => import('./pages/inventory/InventoryAgePage').then(m => ({ default: m.InventoryAgePage })));
 const MassLabelPrintPage = lazy(() => import('./pages/inventory/MassLabelPrintPage').then(m => ({ default: m.MassLabelPrintPage })));
 const InvoiceListPage = lazy(() => import('./pages/invoices/InvoiceListPage').then(m => ({ default: m.InvoiceListPage })));
+const RefundsListPage = lazy(() => import('./pages/refunds/RefundsListPage').then(m => ({ default: m.RefundsListPage })));
+const CreditNotesListPage = lazy(() => import('./pages/credit-notes/CreditNotesListPage').then(m => ({ default: m.CreditNotesListPage })));
 const InvoiceDetailPage = lazy(() => import('./pages/invoices/InvoiceDetailPage').then(m => ({ default: m.InvoiceDetailPage })));
 const PhotoCapturePage = lazy(() => import('./pages/photo-capture/PhotoCapturePage').then(m => ({ default: m.PhotoCapturePage })));
 const LeadListPage = lazy(() => import('./pages/leads/LeadListPage').then(m => ({ default: m.LeadListPage })));
@@ -72,6 +76,10 @@ const TaxReportPage = lazy(() => import('./pages/reports/TaxReportPage').then(m 
 const ExpensesPage = lazy(() => import('./pages/expenses/ExpensesPage').then(m => ({ default: m.ExpensesPage })));
 const PurchaseOrdersPage = lazy(() => import('./pages/inventory/PurchaseOrdersPage').then(m => ({ default: m.PurchaseOrdersPage })));
 const CashRegisterPage = lazy(() => import('./pages/pos/CashRegisterPage').then(m => ({ default: m.CashRegisterPage })));
+const ShiftHistoryPage = lazy(() => import('./pages/pos/ShiftHistoryPage').then(m => ({ default: m.ShiftHistoryPage })));
+const QcPendingPage = lazy(() => import('./pages/qc/QcPendingPage').then(m => ({ default: m.QcPendingPage })));
+const QcChecklistPage = lazy(() => import('./pages/settings/QcChecklistPage').then(m => ({ default: m.QcChecklistPage })));
+const VoiceCallDetailPage = lazy(() => import('./pages/voice/VoiceCallDetailPage').then(m => ({ default: m.VoiceCallDetailPage })));
 const CommunicationPage = lazy(() => import('./pages/communications/CommunicationPage').then(m => ({ default: m.CommunicationPage })));
 const EmployeeListPage = lazy(() => import('./pages/employees/EmployeeListPage').then(m => ({ default: m.EmployeeListPage })));
 const SettingsPage = lazy(() => import('./pages/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
@@ -124,7 +132,10 @@ const ReviewsPage = lazy(() => import('./pages/reviews/ReviewsPage').then(m => (
 // components/shared/LoadingScreen.tsx — see import above.
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, user } = useAuthStore();
+  const { isAuthenticated, isLoading } = useAuthStore();
+  // WEB-UIUX-902: route role checks through useHasRole instead of literal
+  // `user.role === 'admin'` so a future role-rename only touches the hook.
+  const isAdmin = useHasRole('admin');
   const location = useLocation();
   const { data: setupData, isLoading: setupLoading, isError: setupError, error: setupErrorObj, refetch: refetchSetup } = useQuery<
     { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null; wizard_completed: string | null } } }
@@ -176,11 +187,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   const setupCompleted = setupData?.data?.data?.setup_completed;
   const wizardCompleted = setupData?.data?.data?.wizard_completed;
+  const wizardDone =
+    wizardCompleted === 'true' ||
+    wizardCompleted === 'skipped' ||
+    wizardCompleted === 'grandfathered';
 
   // Gate 1: setup_completed=false -> send to /setup (existing behavior, for tenants that
   // have no admin user yet; provisionTenant sets this to true for the password-provided
   // signup path, so in practice this gate mostly doesn't fire for self-serve signups).
-  if (setupCompleted === false && !location.pathname.startsWith('/setup')) {
+  if (setupCompleted === false && !wizardDone && !location.pathname.startsWith('/setup')) {
     return <Navigate to="/setup" replace />;
   }
 
@@ -189,10 +204,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // startup for pre-feature tenants). Any other falsy value (null / undefined / empty
   // string) means this is a brand-new post-feature tenant who hasn't been through the
   // wizard yet.
-  const wizardDone =
-    wizardCompleted === 'true' ||
-    wizardCompleted === 'skipped' ||
-    wizardCompleted === 'grandfathered';
   if (
     setupCompleted === true &&
     !wizardDone &&
@@ -212,7 +223,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // for one navigation tick.
   if (authSetupData !== undefined && !location.pathname.startsWith('/setup')) {
     const { setupWizardCompleted, setupWizardSkipCount, setupWizardSkippedAt } = authSetupData.data.data;
-    const isAdmin = user?.role === 'admin';
     const SKIP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
     const skipCooldownActive =
       setupWizardSkippedAt !== null &&
@@ -312,9 +322,7 @@ const SignupPage = lazy(() => import('./pages/signup/SignupPage').then(m => ({ d
 function isBareHostname(): boolean {
   const host = window.location.hostname; // e.g. "localhost", "example.com", "shop.example.com"
   // Bare domain: localhost, example.com, or an IP address
-  if (host === 'localhost' || host === '127.0.0.1') return true;
-  // Any IPv4 address (LAN, loopback, etc.) — never a tenant subdomain
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+  if (isLocalOrIpHostname(host)) return true;
   // "bizarreelectronics.localhost" = tenant subdomain in dev (2 parts but NOT bare)
   if (host.endsWith('.localhost')) return false;
   // If the host has no subdomain (only one dot: "example.com")
@@ -323,6 +331,13 @@ function isBareHostname(): boolean {
   // "www.example.com" = still bare domain
   if (parts[0] === 'www' && parts.length === 3) return true;
   // "shop.example.com" = 3 parts with non-www prefix = tenant subdomain
+  return false;
+}
+
+function isLocalOrIpHostname(host = window.location.hostname): boolean {
+  if (host === 'localhost' || host === '127.0.0.1') return true;
+  // Any IPv4 address (LAN, loopback, etc.) — never a tenant subdomain
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
   return false;
 }
 
@@ -352,11 +367,18 @@ export default function App() {
 
   useEffect(() => {
     (window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady = true;
-    const handler = () => {
-      // Skip if we're already on the login page; avoids double-render and
-      // wiping the LoginForm's local state on every spurious re-fire.
-      if (window.location.pathname.startsWith('/login')) return;
-      navigate('/login', { replace: true });
+    const handler = (e: Event) => {
+      // WEB-UIUX-813: honor target from the event detail so impersonation
+      // session expiry can route to /super-admin/login instead of /login.
+      const detail = (e as CustomEvent<{ target?: string }>).detail;
+      const target = detail?.target || '/login';
+      // Skip if we're already on the resolved login page; avoids double-render
+      // and wiping the LoginForm's local state on every spurious re-fire.
+      if (
+        window.location.pathname.startsWith('/login') ||
+        window.location.pathname.startsWith('/super-admin/login')
+      ) return;
+      navigate(target, { replace: true });
     };
     window.addEventListener(REQUEST_LOGIN_NAV_EVENT, handler);
     return () => {
@@ -402,16 +424,18 @@ export default function App() {
       })
       .catch((err) => {
         if (cancelled) return;
-        // WEB-FV-003 / FIXED-by-Fixer-ZZ 2026-04-25 — previously this catch
-        // silently flipped to landing with no diagnostic, so a customer hitting
-        // a transient network blip on cold-start saw the marketing page and
-        // assumed the app was gone. Now we leave a console breadcrumb (picked
-        // up by Sentry/Datadog/etc. via console capture) AND flash a non-
-        // blocking toast so the user knows it was a connectivity issue, not a
-        // missing tenant. We still default to landing for the same SaaS-safety
-        // reason as before.
+        const localOrIpHost = isLocalOrIpHostname();
+        // WEB-FV-003 / FIXED-by-Fixer-ZZ 2026-04-25 — leave a console
+        // breadcrumb and toast for setup-status failures. Local/IP single-shop
+        // installs must not look like the SaaS landing page just because the
+        // first API probe failed.
         try {
-          console.warn('[boot] setup/status fetch failed; defaulting to landing', err);
+          console.warn(
+            localOrIpHost
+              ? '[boot] setup/status fetch failed; keeping CRM route tree'
+              : '[boot] setup/status fetch failed; defaulting to landing',
+            err,
+          );
         } catch {
           /* ignore */
         }
@@ -422,13 +446,19 @@ export default function App() {
         // unhandled-promise rejection.
         import('react-hot-toast')
           .then(({ default: t }) => {
-            t.error("Couldn't reach server — showing landing page.", { id: 'boot-status' });
+            t.error(
+              localOrIpHost
+                ? "Couldn't confirm setup status — showing CRM login."
+                : "Couldn't reach server — showing landing page.",
+              { id: 'boot-status' },
+            );
           })
           .catch(() => {
             /* ignore */
           });
-        setShowLanding(true);
+        setShowLanding(!localOrIpHost);
         useAuthStore.setState({ isLoading: false });
+        if (localOrIpHost) checkAuth();
       });
     return () => {
       cancelled = true;
@@ -452,6 +482,7 @@ export default function App() {
             <Route path="*" element={<LandingPage />} />
           </Routes>
         </Suspense>
+        <CookieConsentBanner />
       </RouteScopedPageBoundary>
     );
   }
@@ -504,6 +535,7 @@ export default function App() {
                     <Suspense fallback={<PageLoader />}>
                       <Routes>
                         <Route path="/" element={<DashboardPage />} />
+                        <Route path="/dashboard" element={<Navigate to="/" replace />} />
                         <Route path="/tickets" element={<TicketListPage />} />
                         <Route path="/tickets/new" element={<UnifiedPosPage />} />
                         <Route path="/tickets/:id" element={<TicketDetailPage />} />
@@ -525,6 +557,8 @@ export default function App() {
                         <Route path="/inventory/:id" element={<InventoryDetailPage />} />
                         <Route path="/invoices" element={<InvoiceListPage />} />
                         <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
+                        <Route path="/refunds" element={<RefundsListPage />} />
+                        <Route path="/credit-notes" element={<CreditNotesListPage />} />
                         {/* WEB-FL-008 (Fixer-B7 2026-04-25): dead `/checkin` alias removed.
                             No menu link, no <Link>, no navigate caller — `grep -rn "/checkin"`
                             returned only the route declaration itself. `/pos` is the live entry. */}
@@ -541,6 +575,12 @@ export default function App() {
                         <Route path="/expenses" element={<ExpensesPage />} />
                         <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
                         <Route path="/cash-register" element={<CashRegisterPage />} />
+                        {/* WEB-UIUX-1168: Z-Report reprint surface. */}
+                        <Route path="/pos/shifts/history" element={<ShiftHistoryPage />} />
+                        {/* WEB-UIUX-1088: tickets pending QC sign-off worklist. */}
+                        <Route path="/qc/pending" element={<QcPendingPage />} />
+                        {/* WEB-UIUX-1080: QC checklist admin CRUD. */}
+                        <Route path="/settings/qc-checklist" element={<QcChecklistPage />} />
                         <Route path="/communications" element={<CommunicationPage />} />
                         <Route path="/employees" element={<RequireRole roles={['admin', 'manager']}><EmployeeListPage /></RequireRole>} />
                         <Route path="/settings/*" element={<RequireRole roles={['admin', 'manager']}><SettingsPage /></RequireRole>} />
@@ -561,7 +601,11 @@ export default function App() {
                         {/* Gift Cards (§ orphan). */}
                         <Route path="/gift-cards" element={<GiftCardsListPage />} />
                         <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />
-                        {/* Memberships / Subscriptions admin list (§ orphan). */}
+                        {/* WEB-UIUX-1063: page is operator-facing as "Memberships" everywhere
+                            (header, command palette display, customer-profile card), so /memberships
+                            is now the canonical route. /subscriptions stays as a permanent alias to
+                            avoid breaking existing bookmarks, deep-links, and SMS payment-link URLs. */}
+                        <Route path="/memberships" element={<SubscriptionsListPage />} />
                         <Route path="/subscriptions" element={<SubscriptionsListPage />} />
                         {/* Loaner device management. */}
                         <Route path="/loaners" element={<LoanersPage />} />
@@ -575,6 +619,8 @@ export default function App() {
                         <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                         {/* Voice calls list. */}
                         <Route path="/voice" element={<VoiceCallsListPage />} />
+                        {/* WEB-UIUX-381: single-call detail page so list rows can link to it. */}
+                        <Route path="/voice/:id" element={<VoiceCallDetailPage />} />
                         {/* Customer review moderation. */}
                         <Route path="/reviews" element={<ReviewsPage />} />
                         {/* Marketing / Growth enrichment (§54). */}
@@ -593,6 +639,7 @@ export default function App() {
         />
       </Routes>
     </Suspense>
+    <CookieConsentBanner />
     </ErrorBoundary>
   );
 }

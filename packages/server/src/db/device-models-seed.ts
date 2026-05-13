@@ -12,7 +12,7 @@ export interface DeviceModelSeed {
   manufacturer_slug: string;
   name: string;
   slug: string;
-  category: 'phone' | 'tablet' | 'laptop' | 'console' | 'tv' | 'other';
+  category: 'phone' | 'tablet' | 'laptop' | 'desktop' | 'console' | 'tv' | 'watch' | 'xr' | 'other';
   release_year: number;
   is_popular: boolean;
 }
@@ -46,6 +46,14 @@ export const MANUFACTURERS: ManufacturerSeed[] = [
   { name: 'ZTE',       slug: 'zte' },
   { name: 'Xiaomi',    slug: 'xiaomi' },
   { name: 'realme',    slug: 'realme' },
+  { name: 'Honor',     slug: 'honor' },
+  { name: 'Oppo',      slug: 'oppo' },
+  { name: 'Vivo',      slug: 'vivo' },
+  { name: 'Garmin',    slug: 'garmin' },
+  { name: 'Fitbit',    slug: 'fitbit' },
+  { name: 'Meta',      slug: 'meta' },
+  { name: 'Valve',     slug: 'valve' },
+  { name: 'Pico',      slug: 'pico' },
   { name: 'Other',     slug: 'other' },
 ];
 
@@ -403,4 +411,308 @@ export const DEVICE_MODELS: DeviceModelSeed[] = [
   { manufacturer_slug: 'philips', name: '55PFL5756/F7 55" LED', slug: 'philips-55pfl5756-f7-55-led', category: 'tv', release_year: 2021, is_popular: false },
   { manufacturer_slug: 'philips', name: '65PFL5766/F7 65" LED', slug: 'philips-65pfl5766-f7-65-led', category: 'tv', release_year: 2021, is_popular: false },
   { manufacturer_slug: 'philips', name: '65OLED706 65" OLED',   slug: 'philips-65oled706-65-oled',   category: 'tv', release_year: 2021, is_popular: false },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2024 / 2025 ADDITIONS — keeps the seeder current with shipping flagships.
+  // INSERT OR IGNORE in the runner makes appending here safe across every
+  // existing tenant DB on next server boot.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─── Apple iPhone (2025) ───────────────────────────────────────────────────
+  { manufacturer_slug: 'apple', name: 'iPhone 17 Pro Max',  slug: 'iphone-17-pro-max', category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 17 Pro',      slug: 'iphone-17-pro',     category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 17 Plus',     slug: 'iphone-17-plus',    category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 17',          slug: 'iphone-17',         category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone Air',         slug: 'iphone-air',        category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPhone 16e',         slug: 'iphone-16e',        category: 'phone', release_year: 2025, is_popular: true  },
+
+  // ─── Apple iPad (M4 / 2024-2025) ───────────────────────────────────────────
+  { manufacturer_slug: 'apple', name: 'iPad Pro 13" (M4)',     slug: 'ipad-pro-13-m4',     category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad Pro 11" (M4)',     slug: 'ipad-pro-11-m4',     category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad Air 13" (M2)',     slug: 'ipad-air-13-m2',     category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad Air 11" (M2)',     slug: 'ipad-air-11-m2',     category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad mini (7th Gen)',   slug: 'ipad-mini-7th',      category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad (11th Gen)',       slug: 'ipad-11th',          category: 'tablet', release_year: 2025, is_popular: true  },
+
+  // ─── Apple MacBook / Mac (M4 / 2024-2025) ──────────────────────────────────
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 16" (M4 Max)', slug: 'macbook-pro-16-m4-max', category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 16" (M4 Pro)', slug: 'macbook-pro-16-m4-pro', category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 14" (M4 Max)', slug: 'macbook-pro-14-m4-max', category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 14" (M4 Pro)', slug: 'macbook-pro-14-m4-pro', category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 14" (M4)',     slug: 'macbook-pro-14-m4',     category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Air 15" (M4)',     slug: 'macbook-air-15-m4',     category: 'laptop', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Air 13" (M4)',     slug: 'macbook-air-13-m4',     category: 'laptop', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Air 15" (M3)',     slug: 'macbook-air-15-m3',     category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Air 13" (M3)',     slug: 'macbook-air-13-m3',     category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iMac (M4)',                slug: 'imac-m4',                category: 'desktop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'apple', name: 'Mac mini (M4)',            slug: 'mac-mini-m4',            category: 'desktop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'apple', name: 'Mac mini (M4 Pro)',        slug: 'mac-mini-m4-pro',        category: 'desktop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'apple', name: 'Mac Studio (M4 Max)',      slug: 'mac-studio-m4-max',      category: 'desktop', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'apple', name: 'Mac Studio (M3 Ultra)',    slug: 'mac-studio-m3-ultra',    category: 'desktop', release_year: 2025, is_popular: false },
+
+  // ─── Samsung Galaxy S (2024 FE / 2025) ─────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25 Ultra',  slug: 'galaxy-s25-ultra',  category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25+',       slug: 'galaxy-s25-plus',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25',        slug: 'galaxy-s25',        category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S25 Edge',   slug: 'galaxy-s25-edge',   category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S24 FE',     slug: 'galaxy-s24-fe',     category: 'phone', release_year: 2024, is_popular: true  },
+
+  // ─── Samsung Galaxy A (2025) ───────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy A56',        slug: 'galaxy-a56',        category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A36',        slug: 'galaxy-a36',        category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A26',        slug: 'galaxy-a26',        category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A16',        slug: 'galaxy-a16',        category: 'phone', release_year: 2024, is_popular: false },
+
+  // ─── Samsung Galaxy Z foldables (2024 / 2025) ──────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Fold 7',   slug: 'galaxy-z-fold-7',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 7',   slug: 'galaxy-z-flip-7',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 7 FE', slug: 'galaxy-z-flip-7-fe', category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Fold 6',   slug: 'galaxy-z-fold-6',   category: 'phone', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Z Flip 6',   slug: 'galaxy-z-flip-6',   category: 'phone', release_year: 2024, is_popular: true  },
+
+  // ─── Samsung Tablets (2024) ────────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S10 Ultra', slug: 'galaxy-tab-s10-ultra', category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S10+',      slug: 'galaxy-tab-s10-plus',  category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S10 FE+',   slug: 'galaxy-tab-s10-fe-plus', category: 'tablet', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S10 FE',    slug: 'galaxy-tab-s10-fe',    category: 'tablet', release_year: 2025, is_popular: false },
+
+  // ─── Google Pixel (2025) ───────────────────────────────────────────────────
+  { manufacturer_slug: 'google', name: 'Pixel 10 Pro XL',    slug: 'pixel-10-pro-xl',   category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 10 Pro',       slug: 'pixel-10-pro',      category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 10 Pro Fold',  slug: 'pixel-10-pro-fold', category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'google', name: 'Pixel 10',           slug: 'pixel-10',          category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google', name: 'Pixel 9 Pro Fold',   slug: 'pixel-9-pro-fold',  category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'google', name: 'Pixel 9a',           slug: 'pixel-9a',          category: 'phone', release_year: 2025, is_popular: true  },
+
+  // ─── OnePlus (2024 / 2025) ─────────────────────────────────────────────────
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 13',        slug: 'oneplus-13',        category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 13R',       slug: 'oneplus-13r',       category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 13T',       slug: 'oneplus-13t',       category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 12R',       slug: 'oneplus-12r',       category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus Open',      slug: 'oneplus-open',      category: 'phone', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus Pad',       slug: 'oneplus-pad',       category: 'tablet', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus Pad 2',     slug: 'oneplus-pad-2',     category: 'tablet', release_year: 2024, is_popular: false },
+
+  // ─── Motorola (2024 / 2025) ────────────────────────────────────────────────
+  { manufacturer_slug: 'motorola', name: 'Moto G Power (2025)',  slug: 'moto-g-power-2025',  category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'motorola', name: 'Moto G Stylus (2025)', slug: 'moto-g-stylus-2025', category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'motorola', name: 'Moto G (2025)',        slug: 'moto-g-2025',        category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'motorola', name: 'Razr 50 Ultra',        slug: 'moto-razr-50-ultra', category: 'phone', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'motorola', name: 'Razr 50',              slug: 'moto-razr-50',       category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'motorola', name: 'Edge 50 Ultra',        slug: 'moto-edge-50-ultra', category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'motorola', name: 'Edge 50 Pro',          slug: 'moto-edge-50-pro',   category: 'phone', release_year: 2024, is_popular: false },
+
+  // ─── Xiaomi (2024 / 2025) ──────────────────────────────────────────────────
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 15 Ultra',    slug: 'xiaomi-15-ultra',   category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 15 Pro',      slug: 'xiaomi-15-pro',     category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 15',          slug: 'xiaomi-15',         category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 14 Ultra',    slug: 'xiaomi-14-ultra',   category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 14',          slug: 'xiaomi-14',         category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Redmi Note 14 Pro+', slug: 'redmi-note-14-pro-plus', category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Redmi Note 14 Pro',  slug: 'redmi-note-14-pro', category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Redmi Note 14',      slug: 'redmi-note-14',     category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'POCO X7 Pro',        slug: 'poco-x7-pro',       category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'POCO F7 Pro',        slug: 'poco-f7-pro',       category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Pad 7 Pro',          slug: 'xiaomi-pad-7-pro',  category: 'tablet', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Pad 7',              slug: 'xiaomi-pad-7',      category: 'tablet', release_year: 2025, is_popular: false },
+
+  // ─── realme (2024 / 2025) ──────────────────────────────────────────────────
+  { manufacturer_slug: 'realme', name: 'realme GT 7 Pro',    slug: 'realme-gt-7-pro',   category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'realme', name: 'realme GT 6',        slug: 'realme-gt-6',       category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'realme', name: 'realme 13 Pro+',     slug: 'realme-13-pro-plus', category: 'phone', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'realme', name: 'realme 12 Pro+',     slug: 'realme-12-pro-plus', category: 'phone', release_year: 2024, is_popular: false },
+
+  // ─── Microsoft Surface (2024) ──────────────────────────────────────────────
+  { manufacturer_slug: 'microsoft', name: 'Surface Pro 11',    slug: 'surface-pro-11',    category: 'tablet', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'microsoft', name: 'Surface Pro 10',    slug: 'surface-pro-10',    category: 'tablet', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'microsoft', name: 'Surface Laptop 7',  slug: 'surface-laptop-7',  category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'microsoft', name: 'Surface Laptop 6',  slug: 'surface-laptop-6',  category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'microsoft', name: 'Surface Laptop Studio 2', slug: 'surface-laptop-studio-2', category: 'laptop', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'microsoft', name: 'Surface Laptop Go 3', slug: 'surface-laptop-go-3', category: 'laptop', release_year: 2023, is_popular: false },
+
+  // ─── Dell (2024 / 2025) ────────────────────────────────────────────────────
+  { manufacturer_slug: 'dell', name: 'XPS 13 (9350)',        slug: 'dell-xps-13-9350',  category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'dell', name: 'XPS 14 (9440)',        slug: 'dell-xps-14-9440',  category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'dell', name: 'XPS 16 (9640)',        slug: 'dell-xps-16-9640',  category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'dell', name: 'Latitude 7450',        slug: 'dell-latitude-7450', category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'dell', name: 'Latitude 5450',        slug: 'dell-latitude-5450', category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'dell', name: 'Pro 14 Plus',          slug: 'dell-pro-14-plus',   category: 'laptop', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'dell', name: 'Pro 14 Premium',       slug: 'dell-pro-14-premium', category: 'laptop', release_year: 2025, is_popular: false },
+
+  // ─── HP (2024 / 2025) ──────────────────────────────────────────────────────
+  { manufacturer_slug: 'hp', name: 'EliteBook X G1i',          slug: 'hp-elitebook-x-g1i',          category: 'laptop', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'hp', name: 'EliteBook 1040 G11',       slug: 'hp-elitebook-1040-g11',       category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'hp', name: 'EliteBook 840 G11',        slug: 'hp-elitebook-840-g11',        category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'hp', name: 'OmniBook X 14',            slug: 'hp-omnibook-x-14',            category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'hp', name: 'Spectre x360 16 (2024)',   slug: 'hp-spectre-x360-16-2024',     category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'hp', name: 'OmniBook Ultra Flip 14',   slug: 'hp-omnibook-ultra-flip-14',   category: 'laptop', release_year: 2025, is_popular: false },
+
+  // ─── Lenovo (2024 / 2025) ──────────────────────────────────────────────────
+  { manufacturer_slug: 'lenovo', name: 'ThinkPad X1 Carbon Gen 12', slug: 'lenovo-thinkpad-x1-carbon-gen12', category: 'laptop', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'lenovo', name: 'ThinkPad X1 Carbon Gen 13', slug: 'lenovo-thinkpad-x1-carbon-gen13', category: 'laptop', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'lenovo', name: 'ThinkPad T14 Gen 5',        slug: 'lenovo-thinkpad-t14-gen5',        category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'lenovo', name: 'ThinkPad P1 Gen 7',         slug: 'lenovo-thinkpad-p1-gen7',         category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'lenovo', name: 'Yoga Slim 7x',              slug: 'lenovo-yoga-slim-7x',             category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'lenovo', name: 'IdeaPad Slim 5x',           slug: 'lenovo-ideapad-slim-5x',          category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'lenovo', name: 'Legion Pro 7i Gen 9',       slug: 'lenovo-legion-pro-7i-gen9',       category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'lenovo', name: 'ThinkBook 13x Gen 4',       slug: 'lenovo-thinkbook-13x-gen4',       category: 'laptop', release_year: 2024, is_popular: false },
+
+  // ─── Asus (2024 / 2025) ────────────────────────────────────────────────────
+  { manufacturer_slug: 'asus', name: 'Zenbook S 14',             slug: 'asus-zenbook-s14',            category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'asus', name: 'Zenbook A14',              slug: 'asus-zenbook-a14',            category: 'laptop', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'asus', name: 'ROG Zephyrus G16',         slug: 'asus-rog-zephyrus-g16',       category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'asus', name: 'ROG Strix Scar 18',        slug: 'asus-rog-strix-scar-18',      category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'asus', name: 'ProArt P16',               slug: 'asus-proart-p16',             category: 'laptop', release_year: 2024, is_popular: false },
+
+  // ─── Acer (2024 / 2025) ────────────────────────────────────────────────────
+  { manufacturer_slug: 'acer', name: 'Swift 14 AI',              slug: 'acer-swift-14-ai',            category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'acer', name: 'Swift Go 14',              slug: 'acer-swift-go-14',            category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'acer', name: 'Predator Helios 18 (2024)', slug: 'acer-predator-helios-18-2024', category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'acer', name: 'Predator Triton 14',       slug: 'acer-predator-triton-14',     category: 'laptop', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'acer', name: 'Aspire Go 15',             slug: 'acer-aspire-go-15',           category: 'laptop', release_year: 2024, is_popular: false },
+
+  // ─── Game consoles (2024 / 2025) ───────────────────────────────────────────
+  { manufacturer_slug: 'nintendo',    name: 'Nintendo Switch 2',     slug: 'nintendo-switch-2',     category: 'console', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'playstation', name: 'PlayStation 5 Pro',     slug: 'ps5-pro',               category: 'console', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'playstation', name: 'PlayStation 5 Slim',    slug: 'ps5-slim',              category: 'console', release_year: 2023, is_popular: true  },
+  { manufacturer_slug: 'steam',       name: 'Steam Deck OLED LE',    slug: 'steam-deck-oled-le',    category: 'console', release_year: 2024, is_popular: false },
+
+  // ─── Recent flagship TVs (2023-2025) ───────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'QN90D 65" Neo QLED 4K',  slug: 'samsung-qn90d-65-neo-qled', category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'S95D 65" QD-OLED 4K',    slug: 'samsung-s95d-65-qd-oled',   category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'S90D 55" OLED 4K',       slug: 'samsung-s90d-55-oled',      category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'OLED65G4 65" OLED evo',  slug: 'lg-oled65g4-65-oled-evo',   category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'OLED65C4 65" OLED',      slug: 'lg-oled65c4-65-oled',       category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'QNED85 75" QNED',        slug: 'lg-qned85-75-qned',         category: 'tv', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'sony',    name: 'Bravia 9 65" Mini-LED',  slug: 'sony-bravia-9-65-mini-led', category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'sony',    name: 'Bravia 8 65" OLED',      slug: 'sony-bravia-8-65-oled',     category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'tcl',     name: 'QM8 65" Mini-LED QLED',  slug: 'tcl-qm8-65-mini-led-qled',  category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: 'U8N 65" Mini-LED ULED',  slug: 'hisense-u8n-65-mini-led',   category: 'tv', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'hisense', name: 'U7N 65" ULED',           slug: 'hisense-u7n-65-uled',       category: 'tv', release_year: 2024, is_popular: false },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2025 Q3 / 2026 Q1 expansion — devices launched between Sep 2025 and May 2026.
+  // INSERT OR IGNORE keeps existing rows; new entries flow in on next boot.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─── Apple — Sep 2025 + M5 wave ────────────────────────────────────────────
+  { manufacturer_slug: 'apple', name: 'iPad Pro 13" (M5)',         slug: 'ipad-pro-13-m5',         category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'iPad Pro 11" (M5)',         slug: 'ipad-pro-11-m5',         category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 14" (M5)',      slug: 'macbook-pro-14-m5',      category: 'laptop', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 14" (M5 Pro)',  slug: 'macbook-pro-14-m5-pro',  category: 'laptop', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 14" (M5 Max)',  slug: 'macbook-pro-14-m5-max',  category: 'laptop', release_year: 2026, is_popular: false },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 16" (M5 Pro)',  slug: 'macbook-pro-16-m5-pro',  category: 'laptop', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Pro 16" (M5 Max)',  slug: 'macbook-pro-16-m5-max',  category: 'laptop', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Air 13" (M5)',      slug: 'macbook-air-13-m5',      category: 'laptop', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'apple', name: 'MacBook Air 15" (M5)',      slug: 'macbook-air-15-m5',      category: 'laptop', release_year: 2026, is_popular: true  },
+
+  // ─── Samsung — Galaxy S26 + Tab S11 + 2026 A series ────────────────────────
+  { manufacturer_slug: 'samsung', name: 'Galaxy S26 Ultra',     slug: 'galaxy-s26-ultra',     category: 'phone',  release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S26+',          slug: 'galaxy-s26-plus',      category: 'phone',  release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy S26',           slug: 'galaxy-s26',           category: 'phone',  release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A57 5G',        slug: 'galaxy-a57-5g',        category: 'phone',  release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy A37 5G',        slug: 'galaxy-a37-5g',        category: 'phone',  release_year: 2026, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S11 Ultra', slug: 'galaxy-tab-s11-ultra', category: 'tablet', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Tab S11',       slug: 'galaxy-tab-s11',       category: 'tablet', release_year: 2025, is_popular: true  },
+
+  // ─── Google — Pixel 10a (2026) ─────────────────────────────────────────────
+  { manufacturer_slug: 'google', name: 'Pixel 10a',             slug: 'pixel-10a',            category: 'phone',  release_year: 2026, is_popular: true  },
+
+  // ─── OnePlus — skipped "14" globally (tetraphobia), jumped to OnePlus 15 ───
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 15',           slug: 'oneplus-15',           category: 'phone',  release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus 14R',          slug: 'oneplus-14r',          category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'Nord 5',               slug: 'oneplus-nord-5',       category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'Nord CE 5',            slug: 'oneplus-nord-ce-5',    category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'Nord 4',               slug: 'oneplus-nord-4',       category: 'phone',  release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus Pad 3',        slug: 'oneplus-pad-3',        category: 'tablet', release_year: 2025, is_popular: false },
+
+  // ─── Motorola — 2025/2026 Razr + Edge refresh ──────────────────────────────
+  { manufacturer_slug: 'motorola', name: 'Razr Ultra (2025)',   slug: 'moto-razr-ultra-2025', category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'motorola', name: 'Razr (2025)',         slug: 'moto-razr-2025',       category: 'phone', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'motorola', name: 'Edge 60 Pro',         slug: 'moto-edge-60-pro',     category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'motorola', name: 'Edge 60',             slug: 'moto-edge-60',         category: 'phone', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'motorola', name: 'Edge (2026)',         slug: 'moto-edge-2026',       category: 'phone', release_year: 2026, is_popular: false },
+  { manufacturer_slug: 'motorola', name: 'Moto G Stylus (2026)', slug: 'moto-g-stylus-2026',  category: 'phone', release_year: 2026, is_popular: true  },
+  { manufacturer_slug: 'motorola', name: 'Moto G (2026)',        slug: 'moto-g-2026',         category: 'phone', release_year: 2025, is_popular: true  },
+
+  // ─── Xiaomi — 15T + Xiaomi 16 family + Redmi Note 15 ───────────────────────
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 15T Pro',        slug: 'xiaomi-15t-pro',        category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 15T',            slug: 'xiaomi-15t',            category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 16 Pro Max',     slug: 'xiaomi-16-pro-max',     category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 16 Pro',         slug: 'xiaomi-16-pro',         category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Xiaomi 16',             slug: 'xiaomi-16',             category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Redmi Note 15 Pro+',    slug: 'redmi-note-15-pro-plus', category: 'phone', release_year: 2026, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Redmi Note 15 Pro',     slug: 'redmi-note-15-pro',     category: 'phone',  release_year: 2026, is_popular: false },
+  { manufacturer_slug: 'xiaomi', name: 'Redmi Note 15',         slug: 'redmi-note-15',         category: 'phone',  release_year: 2026, is_popular: false },
+
+  // ─── Foldable specialists (Honor / Oppo / Vivo) ────────────────────────────
+  // Show up at US shops as gray-market repairs more than carrier sales, but
+  // book glass + hinge work is common enough to keep on the picker.
+  { manufacturer_slug: 'honor', name: 'Magic V5',               slug: 'honor-magic-v5',        category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'honor', name: 'Magic V3',               slug: 'honor-magic-v3',        category: 'phone',  release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'oppo',  name: 'Find N5',                slug: 'oppo-find-n5',          category: 'phone',  release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'vivo',  name: 'X Fold 5',               slug: 'vivo-x-fold-5',         category: 'phone',  release_year: 2025, is_popular: false },
+
+  // ─── Consoles — ROG Xbox Ally added Oct 2025 ───────────────────────────────
+  { manufacturer_slug: 'asus', name: 'ROG Xbox Ally X',         slug: 'asus-rog-xbox-ally-x',  category: 'console', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'asus', name: 'ROG Xbox Ally',           slug: 'asus-rog-xbox-ally',    category: 'console', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'asus', name: 'ROG Ally X',              slug: 'asus-rog-ally-x',       category: 'console', release_year: 2024, is_popular: false },
+
+  // ─── 2025 flagship TVs ─────────────────────────────────────────────────────
+  { manufacturer_slug: 'samsung', name: 'S95F 65" QD-OLED',     slug: 'samsung-s95f-65-qd-oled', category: 'tv', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'OLED65G5 65" RGB Tandem OLED', slug: 'lg-oled65g5-65-rgb-tandem', category: 'tv', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'lg',      name: 'OLED65C5 65" OLED',    slug: 'lg-oled65c5-65-oled',     category: 'tv', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'sony',    name: 'Bravia 8 II 65" QD-OLED', slug: 'sony-bravia-8-ii-65-qd-oled', category: 'tv', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'tcl',     name: 'QM8K 65" Mini-LED QLED', slug: 'tcl-qm8k-65-mini-led',  category: 'tv', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'tcl',     name: 'QM7K 65" Mini-LED QLED', slug: 'tcl-qm7k-65-mini-led',  category: 'tv', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'hisense', name: 'U8QG 65" Mini-LED ULED', slug: 'hisense-u8qg-65-mini-led', category: 'tv', release_year: 2025, is_popular: true  },
+
+  // ─── Smartwatches (2023-2026) ──────────────────────────────────────────────
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Series 11',     slug: 'apple-watch-series-11',     category: 'watch', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Ultra 3',       slug: 'apple-watch-ultra-3',       category: 'watch', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch SE 3',          slug: 'apple-watch-se-3',          category: 'watch', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Series 10',     slug: 'apple-watch-series-10',     category: 'watch', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Ultra 2',       slug: 'apple-watch-ultra-2',       category: 'watch', release_year: 2023, is_popular: true  },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Series 9',      slug: 'apple-watch-series-9',      category: 'watch', release_year: 2023, is_popular: true  },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch SE (2nd Gen)',  slug: 'apple-watch-se-2',          category: 'watch', release_year: 2022, is_popular: true  },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Series 8',      slug: 'apple-watch-series-8',      category: 'watch', release_year: 2022, is_popular: false },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Series 7',      slug: 'apple-watch-series-7',      category: 'watch', release_year: 2021, is_popular: false },
+  { manufacturer_slug: 'apple',   name: 'Apple Watch Series 6',      slug: 'apple-watch-series-6',      category: 'watch', release_year: 2020, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Watch Ultra (2025)', slug: 'galaxy-watch-ultra-2025',   category: 'watch', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Watch 8 Classic',    slug: 'galaxy-watch-8-classic',    category: 'watch', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Watch 8',            slug: 'galaxy-watch-8',            category: 'watch', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Watch Ultra',        slug: 'galaxy-watch-ultra',        category: 'watch', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Watch 7',            slug: 'galaxy-watch-7',            category: 'watch', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Watch 6 Classic',    slug: 'galaxy-watch-6-classic',    category: 'watch', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'samsung', name: 'Galaxy Watch 6',            slug: 'galaxy-watch-6',            category: 'watch', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'google',  name: 'Pixel Watch 4',             slug: 'pixel-watch-4',             category: 'watch', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'google',  name: 'Pixel Watch 3 (45mm)',      slug: 'pixel-watch-3-45',          category: 'watch', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'google',  name: 'Pixel Watch 3 (41mm)',      slug: 'pixel-watch-3-41',          category: 'watch', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'google',  name: 'Pixel Watch 2',             slug: 'pixel-watch-2',             category: 'watch', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus Watch 3 (43mm)',    slug: 'oneplus-watch-3-43',        category: 'watch', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'oneplus', name: 'OnePlus Watch 3',           slug: 'oneplus-watch-3',           category: 'watch', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'garmin',  name: 'Fenix 8',                   slug: 'garmin-fenix-8',            category: 'watch', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'garmin',  name: 'Fenix 7 Pro',               slug: 'garmin-fenix-7-pro',        category: 'watch', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'garmin',  name: 'Forerunner 965',            slug: 'garmin-forerunner-965',     category: 'watch', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'garmin',  name: 'Forerunner 570',            slug: 'garmin-forerunner-570',     category: 'watch', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'garmin',  name: 'Venu 3',                    slug: 'garmin-venu-3',             category: 'watch', release_year: 2023, is_popular: false },
+  { manufacturer_slug: 'garmin',  name: 'Instinct 3',                slug: 'garmin-instinct-3',         category: 'watch', release_year: 2025, is_popular: false },
+  { manufacturer_slug: 'fitbit',  name: 'Charge 6',                  slug: 'fitbit-charge-6',           category: 'watch', release_year: 2023, is_popular: true  },
+  { manufacturer_slug: 'fitbit',  name: 'Versa 4',                   slug: 'fitbit-versa-4',            category: 'watch', release_year: 2022, is_popular: false },
+  { manufacturer_slug: 'fitbit',  name: 'Sense 2',                   slug: 'fitbit-sense-2',            category: 'watch', release_year: 2022, is_popular: false },
+  { manufacturer_slug: 'fitbit',  name: 'Inspire 3',                 slug: 'fitbit-inspire-3',          category: 'watch', release_year: 2022, is_popular: false },
+
+  // ─── VR / XR headsets (2023-2025) ──────────────────────────────────────────
+  // Common service work: lens scratches, head-strap replacement, controller
+  // tracking-ring breaks, battery cells (Quest 3/3S), face-cushion swaps.
+  { manufacturer_slug: 'apple',       name: 'Vision Pro (M5)',       slug: 'apple-vision-pro-m5',   category: 'xr', release_year: 2025, is_popular: true  },
+  { manufacturer_slug: 'apple',       name: 'Vision Pro (M2)',       slug: 'apple-vision-pro-m2',   category: 'xr', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'meta',        name: 'Quest 3S',              slug: 'meta-quest-3s',         category: 'xr', release_year: 2024, is_popular: true  },
+  { manufacturer_slug: 'meta',        name: 'Quest 3',               slug: 'meta-quest-3',          category: 'xr', release_year: 2023, is_popular: true  },
+  { manufacturer_slug: 'meta',        name: 'Quest Pro',             slug: 'meta-quest-pro',        category: 'xr', release_year: 2022, is_popular: false },
+  { manufacturer_slug: 'meta',        name: 'Quest 2',               slug: 'meta-quest-2',          category: 'xr', release_year: 2020, is_popular: true  },
+  { manufacturer_slug: 'playstation', name: 'PlayStation VR2',       slug: 'psvr-2',                category: 'xr', release_year: 2023, is_popular: true  },
+  { manufacturer_slug: 'valve',       name: 'Index',                 slug: 'valve-index',           category: 'xr', release_year: 2019, is_popular: false },
+  { manufacturer_slug: 'pico',        name: 'Pico 4 Ultra',          slug: 'pico-4-ultra',          category: 'xr', release_year: 2024, is_popular: false },
+  { manufacturer_slug: 'pico',        name: 'Pico 4',                slug: 'pico-4',                category: 'xr', release_year: 2022, is_popular: false },
 ];

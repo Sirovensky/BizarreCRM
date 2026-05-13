@@ -349,8 +349,47 @@ router.get(
     const adb: AsyncDb = req.asyncDb;
     const userId = requireUserId(req);
 
-    // tickets table uses `assigned_to`, not `assigned_user_id`. Sort: due first
-    // (NULLs last), then oldest unfinished. Excludes soft-deleted + closed.
+    // WEB-UIUX-543: accept keyword + status_id + sort params so the page can
+    // narrow / re-sort the cap of 200 rows server-side instead of hand-
+    // rolling a brittle client-only sort that disagrees with the
+    // due-date-first server default. Sort whitelist is locked to a small
+    // set of columns we know are indexed or selective enough to keep the
+    // query fast.
+    const keyword = (typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '').slice(0, 100);
+    const statusIdRaw = req.query.status_id;
+    const statusId = typeof statusIdRaw === 'string' && /^\d+$/.test(statusIdRaw)
+      ? Number(statusIdRaw)
+      : null;
+    const ALLOWED_SORT = new Map<string, string>([
+      ['due_on', 't.due_on'],
+      ['created_at', 't.created_at'],
+      ['updated_at', 't.updated_at'],
+      ['order_id', 't.order_id'],
+      ['total', 't.total'],
+    ]);
+    const sortBy = typeof req.query.sort_by === 'string' && ALLOWED_SORT.has(req.query.sort_by)
+      ? ALLOWED_SORT.get(req.query.sort_by)!
+      : null;
+    const sortOrder = req.query.sort_order === 'desc' ? 'DESC' : 'ASC';
+
+    const where: string[] = ['t.assigned_to = ?', 't.is_deleted = 0', 'COALESCE(ts.is_closed, 0) = 0'];
+    const params: unknown[] = [userId];
+    if (keyword) {
+      where.push('(t.order_id LIKE ? ESCAPE \'\\\\\' OR c.first_name LIKE ? ESCAPE \'\\\\\' OR c.last_name LIKE ? ESCAPE \'\\\\\')');
+      const k = `%${keyword.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+      params.push(k, k, k);
+    }
+    if (statusId !== null) {
+      where.push('t.status_id = ?');
+      params.push(statusId);
+    }
+
+    const orderBy = sortBy
+      ? `${sortBy} ${sortOrder}, t.id ${sortOrder}`
+      // Default: due first (NULLs last), then oldest unfinished — preserves
+      // the prior contract for callers that don't pass sort_by.
+      : `CASE WHEN t.due_on IS NULL THEN 1 ELSE 0 END, t.due_on ASC, t.created_at ASC`;
+
     const tickets = await adb.all(`
       SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
              t.due_on, t.created_at, t.updated_at, t.total,
@@ -359,15 +398,10 @@ router.get(
       FROM tickets t
       LEFT JOIN ticket_statuses ts ON ts.id = t.status_id
       LEFT JOIN customers c ON c.id = t.customer_id
-      WHERE t.assigned_to = ?
-        AND t.is_deleted = 0
-        AND COALESCE(ts.is_closed, 0) = 0
-      ORDER BY
-        CASE WHEN t.due_on IS NULL THEN 1 ELSE 0 END,
-        t.due_on ASC,
-        t.created_at ASC
+      WHERE ${where.join(' AND ')}
+      ORDER BY ${orderBy}
       LIMIT 200
-    `, userId);
+    `, ...params);
 
     res.json({ success: true, data: tickets });
   }),
@@ -848,10 +882,42 @@ router.get(
   '/payroll/periods',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const rows = await adb.all(
-      `SELECT * FROM payroll_periods ORDER BY start_date DESC LIMIT 100`,
-    );
-    res.json({ success: true, data: rows });
+    // WEB-UIUX-1148: paginate so periods 101+ stop silently falling off
+    // the end on weekly-cadence tenants past the first 2 years.
+    // year filter narrows further when admin is auditing a fiscal window.
+    const yearRaw = typeof req.query.year === 'string' ? req.query.year.trim() : '';
+    const year = /^\d{4}$/.test(yearRaw) ? yearRaw : null;
+    const page = Math.max(1, Number.parseInt(String(req.query.page ?? '1'), 10) || 1);
+    const perPageRaw = Math.max(1, Number.parseInt(String(req.query.per_page ?? '50'), 10) || 50);
+    const perPage = Math.min(perPageRaw, 200);
+    const offset = (page - 1) * perPage;
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (year) {
+      conditions.push("strftime('%Y', start_date) = ?");
+      params.push(year);
+    }
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [{ count } = { count: 0 }, rows] = await Promise.all([
+      adb.get<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM payroll_periods ${whereClause}`,
+        ...params,
+      ).then((r) => r ?? { count: 0 }),
+      adb.all(
+        `SELECT * FROM payroll_periods ${whereClause} ORDER BY start_date DESC LIMIT ? OFFSET ?`,
+        ...params, perPage, offset,
+      ),
+    ]);
+    res.json({
+      success: true,
+      data: rows,
+      pagination: {
+        page,
+        per_page: perPage,
+        total: count,
+        total_pages: Math.max(1, Math.ceil(count / perPage)),
+      },
+    });
   }),
 );
 
@@ -866,6 +932,28 @@ router.post(
     if (new Date(endDate).getTime() < new Date(startDate).getTime()) {
       throw new AppError('end_date must be on/after start_date', 400);
     }
+    // WEB-UIUX-1147: refuse duplicate names + overlapping ranges. Without this
+    // two periods covering the same calendar days both include the overlap
+    // rows in their CSVs (SUM-by-range, not dedup'd), double-counting payroll.
+    const nameClash = await adb.get<{ id: number; name: string }>(
+      'SELECT id, name FROM payroll_periods WHERE name = ?',
+      name,
+    );
+    if (nameClash) {
+      throw new AppError(`A payroll period named "${name}" already exists.`, 409);
+    }
+    const overlap = await adb.get<{ id: number; name: string; start_date: string; end_date: string }>(
+      `SELECT id, name, start_date, end_date FROM payroll_periods
+        WHERE start_date <= ? AND end_date >= ?
+        LIMIT 1`,
+      endDate, startDate,
+    );
+    if (overlap) {
+      throw new AppError(
+        `Date range overlaps existing period "${overlap.name}" (${overlap.start_date} to ${overlap.end_date}). Periods must not overlap — payroll CSVs would double-count rows in the overlap.`,
+        409,
+      );
+    }
     const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : null;
     const result = await adb.run(
       `INSERT INTO payroll_periods (name, start_date, end_date, notes) VALUES (?, ?, ?, ?)`,
@@ -876,6 +964,159 @@ router.post(
     });
     const row = await adb.get('SELECT * FROM payroll_periods WHERE id = ?', result.lastInsertRowid);
     res.json({ success: true, data: row });
+  }),
+);
+
+/**
+ * WEB-UIUX-1145: read-only preview of what a payroll-period lock will freeze.
+ * Drives the "X commissions, Y time entries, Z employees, $W gross" expander
+ * shown next to Lock so admin sees consequences before clicking. Mirrors the
+ * SUM-by-range scoping used by /payroll/export.csv so the preview matches the
+ * CSV that lock will eventually produce.
+ */
+router.get(
+  '/payroll/periods/:periodId/summary',
+  asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseId(req.params.periodId, 'period id');
+    const period = await adb.get<{
+      id: number; name: string; start_date: string; end_date: string; locked_at: string | null;
+    }>('SELECT id, name, start_date, end_date, locked_at FROM payroll_periods WHERE id = ?', id);
+    if (!period) throw new AppError('Payroll period not found', 404);
+
+    const periodStart = period.start_date;
+    const periodEnd = /^\d{4}-\d{2}-\d{2}$/.test(period.end_date)
+      ? `${period.end_date} 23:59:59`
+      : period.end_date;
+
+    // Counts per axis. Same range scoping as /payroll/export.csv (commissions
+    // via created_at, time entries via clock_in + clock_out IS NOT NULL).
+    const [commissionsAgg, timeAgg, tipsAgg] = await Promise.all([
+      adb.get<{ count: number; total: number; employees: number }>(
+        `SELECT COUNT(*) AS count,
+                COALESCE(SUM(amount), 0) AS total,
+                COUNT(DISTINCT user_id) AS employees
+           FROM commissions
+          WHERE created_at BETWEEN ? AND ?`,
+        periodStart, periodEnd,
+      ),
+      adb.get<{ count: number; total_hours: number; employees: number }>(
+        `SELECT COUNT(*) AS count,
+                COALESCE(SUM(total_hours), 0) AS total_hours,
+                COUNT(DISTINCT user_id) AS employees
+           FROM clock_entries
+          WHERE clock_in BETWEEN ? AND ? AND clock_out IS NOT NULL`,
+        periodStart, periodEnd,
+      ),
+      // employee_tips may not exist on older tenants; mirror the try/catch path
+      // already used in /payroll/export.csv so a missing table doesn't 500.
+      (async () => {
+        try {
+          return await adb.get<{ count: number; total: number; employees: number }>(
+            `SELECT COUNT(*) AS count,
+                    COALESCE(SUM(tip_amount), 0) AS total,
+                    COUNT(DISTINCT employee_id) AS employees
+               FROM employee_tips
+              WHERE created_at BETWEEN ? AND ?`,
+            periodStart, periodEnd,
+          );
+        } catch { return { count: 0, total: 0, employees: 0 }; }
+      })(),
+    ]);
+
+    // Distinct employees touched by ANY of the three axes — uses a UNION
+    // subquery so a tech who only worked hours (no commission, no tips) still
+    // counts toward the "Y employees" figure on the lock-consequences row.
+    const distinctRow = await adb.get<{ employees: number }>(
+      `SELECT COUNT(*) AS employees FROM (
+         SELECT user_id FROM commissions WHERE created_at BETWEEN ? AND ?
+         UNION
+         SELECT user_id FROM clock_entries WHERE clock_in BETWEEN ? AND ? AND clock_out IS NOT NULL
+         UNION
+         SELECT employee_id AS user_id FROM employee_tips WHERE created_at BETWEEN ? AND ?
+       )`,
+      periodStart, periodEnd, periodStart, periodEnd, periodStart, periodEnd,
+    );
+
+    const grossTotal = (commissionsAgg?.total ?? 0) + (tipsAgg?.total ?? 0);
+
+    res.json({
+      success: true,
+      data: {
+        period: { id: period.id, name: period.name, start_date: period.start_date, end_date: period.end_date, locked_at: period.locked_at },
+        commission_count: commissionsAgg?.count ?? 0,
+        commission_total: commissionsAgg?.total ?? 0,
+        time_entry_count: timeAgg?.count ?? 0,
+        total_hours: timeAgg?.total_hours ?? 0,
+        tip_count: tipsAgg?.count ?? 0,
+        tip_total: tipsAgg?.total ?? 0,
+        distinct_employee_count: distinctRow?.employees ?? 0,
+        gross_total: grossTotal,
+      },
+    });
+  }),
+);
+
+/**
+ * WEB-UIUX-1158: bulk-lock every closed payroll period whose end_date is
+ * before the supplied cutoff. Saves admin clicks for monthly catch-up
+ * (4 weekly periods × N months) while preserving safety: only periods
+ * with end_date strictly < cutoff are locked, and already-locked rows
+ * are silently skipped (returned as `skipped_already_locked` count).
+ * Each lock writes its own audit row so a future investigation can
+ * see the operator + timestamp per period, not just the bulk action.
+ */
+router.post(
+  '/payroll/lock-bulk',
+  asyncHandler(async (req, res) => {
+    requireAdmin(req);
+    const adb: AsyncDb = req.asyncDb;
+    const beforeDate = validateIsoDate(req.body?.before_date, 'before_date', true)!;
+    // Find every unlocked period with end_date strictly before the cutoff.
+    // We snapshot the ids first so the audit log lines up with what we
+    // actually mutated — concurrent writes inside the transaction would
+    // otherwise diverge from the count we return.
+    const targets = await adb.all<{ id: number; name: string; end_date: string }>(
+      `SELECT id, name, end_date FROM payroll_periods
+        WHERE end_date < ? AND locked_at IS NULL
+        ORDER BY end_date ASC`,
+      beforeDate,
+    );
+    if (targets.length === 0) {
+      res.json({ success: true, data: { locked: 0, period_ids: [], cutoff: beforeDate } });
+      return;
+    }
+    const now = new Date().toISOString();
+    const userId = requireUserId(req);
+    const lockedIds: number[] = [];
+    for (const target of targets) {
+      const result = await adb.run(
+        `UPDATE payroll_periods SET locked_at = ?, locked_by_user_id = ?
+          WHERE id = ? AND locked_at IS NULL`,
+        now, userId, target.id,
+      );
+      if (result.changes && result.changes > 0) {
+        lockedIds.push(target.id);
+        audit(req.db, 'payroll_period_locked', userId, req.ip || 'unknown', {
+          period_id: target.id,
+          via: 'bulk_lock',
+          cutoff: beforeDate,
+        });
+      }
+    }
+    audit(req.db, 'payroll_period_bulk_locked', userId, req.ip || 'unknown', {
+      cutoff: beforeDate,
+      locked_count: lockedIds.length,
+    });
+    res.json({
+      success: true,
+      data: {
+        locked: lockedIds.length,
+        period_ids: lockedIds,
+        cutoff: beforeDate,
+      },
+    });
   }),
 );
 
@@ -978,18 +1219,40 @@ router.get(
       const str = (s ?? '').replace(/[",\n\r]/g, ' ').trim();
       return /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
     };
+    // WEB-UIUX-1156: detect empty payroll periods so the export doesn't
+    // hand the operator a "header + zeros for every employee" CSV without
+    // any signal. We aggregate as we build each row; if every user landed
+    // 0/0/0 we prepend an explicit comment header that names the period
+    // boundaries + a hint to recheck the period selection.
+    let totalActivity = 0;
     for (const u of users) {
       const h = Number(hMap.get(u.id) ?? 0).toFixed(2);
       const c = Number(cMap.get(u.id) ?? 0).toFixed(2);
       const t = Number(tMap.get(u.id) ?? 0).toFixed(2);
       const gross = (Number(h) + Number(c) + Number(t)).toFixed(2);
+      totalActivity += Number(h) + Number(c) + Number(t);
       csvLines.push(
         `${u.id},"${sanitize(u.first_name)}","${sanitize(u.last_name)}",${u.username},${h},0.00,${c},${t},${gross},${period.start_date},${period.end_date}`,
       );
     }
+    const isEmpty = totalActivity === 0;
+    if (isEmpty) {
+      // CSV comment lines starting with `#` are tolerated by every payroll
+      // tool we target (Gusto, ADP, QuickBooks); spreadsheets render them
+      // as a literal first cell, which is preferable to silently shipping a
+      // wall of zeros that looks like real data.
+      csvLines.unshift(
+        `# No payroll data for ${period.name} (${period.start_date} → ${period.end_date}) — zero commissions, time entries, and tips in this window. Verify period selection or check the lock-consequences summary before re-exporting.`,
+      );
+      // Surface the same signal on a response header so callers that
+      // bypass the body (e.g. test harnesses) can detect the empty case.
+      res.setHeader('X-Payroll-Empty', '1');
+    }
 
     const csv = csvLines.join('\n');
-    const filename = `payroll_${period.name.replace(/[^a-z0-9_\-]/gi, '_')}.csv`;
+    const filename = isEmpty
+      ? `payroll_${period.name.replace(/[^a-z0-9_\-]/gi, '_')}_EMPTY.csv`
+      : `payroll_${period.name.replace(/[^a-z0-9_\-]/gi, '_')}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(csv);

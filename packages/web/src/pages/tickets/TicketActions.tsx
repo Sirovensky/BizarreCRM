@@ -23,11 +23,13 @@ function HeaderStatusDropdown({
   statuses,
   onSelect,
   isPending,
+  hasOpenPayments,
 }: {
   currentStatus?: TicketStatus;
   statuses: TicketStatus[];
   onSelect: (id: number) => void;
   isPending: boolean;
+  hasOpenPayments?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -82,6 +84,18 @@ function HeaderStatusDropdown({
                   }
                   if (verdict.kind === 'confirm') {
                     const ok = await confirm(verdict.reason, { title: 'Confirm status change', danger: true });
+                    if (!ok) return;
+                  }
+                  // Close-with-unpaid-balance gate. Closing or shipping a
+                  // ticket that still has an open payment balance buries the
+                  // outstanding amount — receivables go missing in dashboards
+                  // and the customer walks out without paying. Require an
+                  // explicit confirm so the cashier sees the consequence.
+                  if (s.is_closed && hasOpenPayments) {
+                    const ok = await confirm(
+                      'This ticket still has an unpaid balance. Closing it will leave the balance outstanding on receivables. Continue?',
+                      { title: 'Close with unpaid balance?', danger: true },
+                    );
                     if (!ok) return;
                   }
                   onSelect(s.id);
@@ -150,7 +164,7 @@ function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff, onDupl
             </button>
             <button onClick={() => { onCloneWarranty(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
-              <Shield className="h-4 w-4" /> Invite back for free re-repair (warranty)
+              <Shield className="h-4 w-4" /> Warranty re-repair
             </button>
             <button onClick={() => { onDuplicate(); setOpen(false); }}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700">
@@ -165,7 +179,7 @@ function ActionsDropdown({ onDelete, onMerge, onCloneWarranty, onHandoff, onDupl
               onClick={() => { if (!hasOpenPayments) { onDelete(); setOpen(false); } }}
               disabled={hasOpenPayments}
               title={hasOpenPayments ? 'Refund payments first' : undefined}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent dark:disabled:hover:bg-transparent"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent dark:disabled:hover:bg-transparent"
             >
               <Trash2 className="h-4 w-4" /> Delete
             </button>
@@ -274,25 +288,53 @@ export function TicketActions({
             statuses={statuses}
             onSelect={onChangeStatus}
             isPending={isChangingStatus}
+            hasOpenPayments={hasOpenPayments}
           />
 
           {/* Checkout button + other actions */}
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => navigate(`/pos?ticket=${ticketId}`)}
-              data-tutorial-target="checkout:load-ticket-in-pos"
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-5 py-2 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 active:bg-primary-800"
-            >
-              <ShoppingCart className="h-4 w-4" />
-              Checkout
-            </button>
+            {(() => {
+              const hasInvoice = Boolean(ticket.invoice_id);
+              // hasOpenPayments comes from the parent: invoice exists AND
+              // amount_due > 0. If hasInvoice && !hasOpenPayments, invoice
+              // is settled in full → swap Checkout for "View invoice" so the
+              // cashier can't accidentally re-tender (server also rejects via
+              // ERR_RESOURCE_CONFLICT, but we hide the trigger here too).
+              const fullyPaid = hasInvoice && hasOpenPayments === false;
+              if (fullyPaid) {
+                return (
+                  <a
+                    href={`/invoices/${ticket.invoice_id}`}
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-5 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+                    title="Invoice is paid in full — open the invoice page"
+                  >
+                    <Check className="h-4 w-4" />
+                    View invoice · paid
+                  </a>
+                );
+              }
+              const label = hasInvoice && hasOpenPayments
+                ? 'Take payment'
+                : 'Checkout';
+              return (
+                <button
+                  onClick={() => navigate(`/pos?ticket=${ticketId}`)}
+                  data-tutorial-target="checkout:load-ticket-in-pos"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-5 py-2 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 active:bg-primary-800"
+                  title={hasInvoice ? 'Settle the remaining balance' : 'Open this ticket in the POS to checkout'}
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  {label}
+                </button>
+              );
+            })()}
             <button
               onClick={onCloneWarranty}
-              title="Create a new warranty ticket for a free re-repair"
+              title="Open a warranty ticket for free re-repair"
               className="inline-flex items-center gap-1.5 rounded-lg border border-primary-300 bg-primary-50 px-3 py-2 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-100 dark:border-primary-700 dark:bg-primary-950/40 dark:text-primary-300 dark:hover:bg-primary-950/70"
             >
               <RefreshCw className="h-4 w-4" />
-              <span className="hidden sm:inline">Free re-repair</span>
+              <span className="hidden sm:inline">Warranty</span>
             </button>
             <PrintButton ticketId={ticketId} invoiceId={ticket.invoice_id} />
             <ActionsDropdown

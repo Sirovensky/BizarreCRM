@@ -1057,14 +1057,42 @@ function requireManagerOrAdmin(req: Request): void {
   }
 }
 
+// WEB-UIUX-690: known-token registry. Template content uses single-brace
+// `{var}` substitution on the auto-feedback + automations paths; the bulk-
+// SMS customers path uses `{{var}}`. Reject any token outside the known
+// set so a `{first_nam}` typo doesn't silently send the literal text to a
+// thousand recipients. Matches both single and double braces.
+const KNOWN_SMS_TEMPLATE_VARS = new Set([
+  'customer_name', 'first_name', 'last_name',
+  'ticket_id', 'order_id',
+  'device_name', 'store_name', 'store_phone',
+  'amount', 'balance', 'invoice_id',
+  'appointment_date', 'appointment_time',
+  'estimate_id', 'estimate_total',
+]);
+
+function findUnknownTemplateTokens(content: string): string[] {
+  const tokens = new Set<string>();
+  // Match {key} and {{key}} forms; trim outer braces in the capture group.
+  const re = /\{\{?([a-zA-Z0-9_]+)\}?\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    tokens.add(m[1]);
+  }
+  const unknown: string[] = [];
+  for (const t of tokens) {
+    if (!KNOWN_SMS_TEMPLATE_VARS.has(t)) unknown.push(t);
+  }
+  return unknown.sort();
+}
+
 router.get('/templates', async (req, res) => {
   const adb = req.asyncDb;
   const templates = await adb.all<any>('SELECT * FROM sms_templates WHERE is_active = 1 ORDER BY category, name');
-  // ENR-SMS5: Include available template variables for documentation
-  const available_variables = [
-    'customer_name', 'first_name', 'last_name', 'ticket_id',
-    'device_name', 'store_name', 'store_phone', 'order_id',
-  ];
+  // ENR-SMS5: Include available template variables for documentation.
+  // WEB-UIUX-690: this is now the authoritative known-token set; keep
+  // KNOWN_SMS_TEMPLATE_VARS above in sync if you add anything.
+  const available_variables = Array.from(KNOWN_SMS_TEMPLATE_VARS).sort();
   res.json({ success: true, data: { templates, available_variables } });
 });
 
@@ -1073,6 +1101,16 @@ router.post('/templates', async (req, res) => {
   const adb = req.asyncDb;
   const { name, content, category } = req.body;
   if (!name || !content) throw new AppError('Name and content required', 400);
+  // WEB-UIUX-690: reject unknown tokens up-front so the operator catches
+  // the typo at save time, not when 1000 SMS go out with literal
+  // "{first_nam}" in the body.
+  const unknown = findUnknownTemplateTokens(String(content));
+  if (unknown.length > 0) {
+    throw new AppError(
+      `Unknown template token(s): ${unknown.map((t) => `{${t}}`).join(', ')}. Allowed: ${Array.from(KNOWN_SMS_TEMPLATE_VARS).sort().join(', ')}`,
+      400,
+    );
+  }
   const result = await adb.run('INSERT INTO sms_templates (name, content, category) VALUES (?, ?, ?)', name, content, category || null);
   const tpl = await adb.get<any>('SELECT * FROM sms_templates WHERE id = ?', result.lastInsertRowid);
   res.status(201).json({ success: true, data: tpl });
@@ -1082,6 +1120,16 @@ router.put('/templates/:id', async (req, res) => {
   requireManagerOrAdmin(req);
   const adb = req.asyncDb;
   const { name, content, category, is_active } = req.body;
+  // WEB-UIUX-690: same guard on PUT — bad token shape never gets persisted.
+  if (content !== undefined && content !== null) {
+    const unknown = findUnknownTemplateTokens(String(content));
+    if (unknown.length > 0) {
+      throw new AppError(
+        `Unknown template token(s): ${unknown.map((t) => `{${t}}`).join(', ')}. Allowed: ${Array.from(KNOWN_SMS_TEMPLATE_VARS).sort().join(', ')}`,
+        400,
+      );
+    }
+  }
   await adb.run(`
     UPDATE sms_templates SET
       name = COALESCE(?, name), content = COALESCE(?, content),
@@ -1371,6 +1419,74 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
       }
     }
 
+    // WEB-UIUX-954: estimate auto-approve on "YES" reply. The outbound
+    // estimate-send SMS body literally says "Reply YES to approve" — but
+    // before this handler there was no inbound parser for it, so the
+    // promise was hollow. Match a customer who has a `status='sent'`
+    // estimate within the last 30 days and flip it to approved. We do
+    // this AFTER the auto-responder so an operator-configured custom
+    // responder still gets a chance to handle exact-match keywords.
+    if (customer && bodyTrimmed === 'yes') {
+      try {
+        const recentEstimate = await adb.get<{ id: number; order_id: string }>(
+          `SELECT id, order_id FROM estimates
+            WHERE customer_id = ?
+              AND status = 'sent'
+              AND created_at > datetime('now', '-30 days')
+            ORDER BY id DESC LIMIT 1`,
+          customer.id,
+        );
+        if (recentEstimate) {
+          await adb.run(
+            `UPDATE estimates
+               SET status = 'approved',
+                   approved_at = datetime('now'),
+                   updated_at = datetime('now')
+             WHERE id = ?`,
+            recentEstimate.id,
+          );
+          // Mirror portal flow — write an estimate_signatures audit row
+          // anchored to the SMS reply so the shop has compliance evidence.
+          try {
+            const customerName = [customer.first_name, customer.last_name]
+              .filter(Boolean)
+              .join(' ')
+              .trim() || 'SMS reply';
+            await adb.run(
+              `INSERT INTO estimate_signatures
+                 (estimate_id, signer_name, signer_email, signer_ip,
+                  signature_data_url, signed_at, user_agent)
+               VALUES (?, ?, NULL, ?, NULL, datetime('now'), ?)`,
+              recentEstimate.id,
+              `${customerName} (SMS YES reply)`,
+              `sms:${convPhone}`,
+              `inbound-sms:${(req as any).tenantSlug ?? ''}`,
+            );
+          } catch (sigErr) {
+            logger.warn('sms_yes_estimate_signature_write_failed', {
+              estimate_id: recentEstimate.id,
+              error: sigErr instanceof Error ? sigErr.message : String(sigErr),
+            });
+          }
+          audit(db, 'estimate_approved_via_sms', null, 'webhook', {
+            estimate_id: recentEstimate.id,
+            order_id: recentEstimate.order_id,
+            customer_id: customer.id,
+            from: redactPhone(from),
+          });
+          logger.info('estimate approved via SMS YES reply', {
+            estimate_id: recentEstimate.id,
+            customer_id: customer.id,
+          });
+        }
+      } catch (yesErr) {
+        logger.error('sms_yes_estimate_approve_failed', {
+          customer_id: customer.id,
+          error: yesErr instanceof Error ? yesErr.message : String(yesErr),
+        });
+      }
+    }
+
     broadcast(WS_EVENTS.SMS_RECEIVED, { message: msg, customer: customer || null }, req.tenantSlug || null);
 
     // ENR-SMS6: Auto-reply when outside business hours
@@ -1450,6 +1566,42 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
             // `customer` already includes sms_opt_in (fetched above).
             if (customer && customer.sms_opt_in === 0) {
               logger.info('sms auto-reply skipped — customer opted out', {
+                fromRedacted: redactPhone(from),
+              });
+            } else if (
+              // WEB-UIUX-691: loop-detection / per-sender 24h rate-limit.
+              // Without this an auto-reply whose body fragments accidentally
+              // match an automation trigger (or another customer-side
+              // auto-responder) re-fires every inbound message, draining
+              // Twilio credit. Skip when we've already sent an auto-reply
+              // outbound to this conv_phone within the configurable
+              // cooldown window.
+              // WEB-UIUX-945: read auto_reply_cooldown_hours from
+              // store_config so the previously hardcoded 24h is tunable
+              // per tenant (low-volume shops 48h, high-volume 4h, etc.).
+              // Bounded [1, 168] (1h - 1 week) to prevent operator typos
+              // from disabling the suppression entirely.
+              await (async () => {
+                const cooldownRow = await adb.get<{ value?: string }>(
+                  `SELECT value FROM store_config WHERE key = 'auto_reply_cooldown_hours'`,
+                );
+                let cooldownHours = parseInt(cooldownRow?.value ?? '24', 10);
+                if (!Number.isFinite(cooldownHours) || cooldownHours <= 0) cooldownHours = 24;
+                cooldownHours = Math.min(168, Math.max(1, cooldownHours));
+                const row = await adb.get<{ c: number }>(
+                  `SELECT COUNT(*) AS c
+                     FROM sms_messages
+                    WHERE conv_phone = ?
+                      AND direction = 'outbound'
+                      AND provider IN ('auto-reply', 'auto-responder')
+                      AND created_at > datetime('now', ?)`,
+                  convPhone,
+                  `-${cooldownHours} hours`,
+                );
+                return (row?.c ?? 0) > 0;
+              })()
+            ) {
+              logger.info('sms auto-reply suppressed — already replied to this sender within the configured cooldown window', {
                 fromRedacted: redactPhone(from),
               });
             } else {

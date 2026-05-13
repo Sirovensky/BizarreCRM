@@ -2,9 +2,14 @@
  * Commission period lock — criticalaudit.md §53 idea #7.
  *
  * Compact card that lists payroll periods with a Lock button. Once locked,
- * the row shows a lock icon and the locked-by user. The server-side check
- * (isCommissionLocked) refuses any subsequent commission edits in the locked
- * range — so this UI is a one-way switch on purpose.
+ * the row shows a lock icon and the locked-by user. The server-side checks
+ * refuse:
+ *   - commission edits in the locked range (`isCommissionLocked`)
+ *   - clock-in/out edits and timesheet adjustments in the locked range
+ *     (employees.routes :375,447-448)
+ *   - tip edits on payments inside the range (pos.routes :787)
+ * UI is a one-way switch on purpose — the inline copy below mirrors the
+ * same scope so the admin doesn't think they're only freezing commissions.
  *
  * Drop-in for the payroll page or settings; also re-used by GoalsPage in a
  * follow-up if needed.
@@ -16,7 +21,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { formatDate } from '@/utils/format';
+import { formatDate, toLocalDateString } from '@/utils/format';
 
 interface PayrollPeriod {
   id: number;
@@ -26,6 +31,93 @@ interface PayrollPeriod {
   locked_at: string | null;
   locked_by_user_id: number | null;
   notes: string | null;
+}
+
+interface PayrollPeriodSummary {
+  commission_count: number;
+  commission_total: number;
+  time_entry_count: number;
+  total_hours: number;
+  tip_count: number;
+  tip_total: number;
+  distinct_employee_count: number;
+  gross_total: number;
+}
+
+/**
+ * WEB-UIUX-1145: lazy-load the lock-consequences preview only when the row's
+ * <details> is expanded so we don't fan 100 summary queries on every page
+ * render. `enabled: open` keeps the query dormant until the operator opts in.
+ */
+function PeriodLockConsequencesPreview({ period }: { period: PayrollPeriod }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['team', 'payroll', 'period-summary', period.id],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: PayrollPeriodSummary }>(
+        `/team/payroll/periods/${period.id}/summary`,
+      );
+      return res.data.data;
+    },
+    enabled: open,
+    staleTime: 60_000,
+  });
+  return (
+    <details
+      className="mt-1 text-[11px] text-surface-600 dark:text-surface-400"
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer select-none hover:text-surface-800 dark:hover:text-surface-200">
+        What does locking this period affect?
+      </summary>
+      <div className="mt-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 p-2">
+        {isLoading && <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</span>}
+        {isError && <span className="text-red-600 dark:text-red-400">Could not load summary.</span>}
+        {data && (
+          <ul className="space-y-0.5">
+            <li>
+              <strong>{data.commission_count}</strong> commission row{data.commission_count === 1 ? '' : 's'}
+              {' '}(${(data.commission_total ?? 0).toFixed(2)})
+            </li>
+            <li>
+              <strong>{data.time_entry_count}</strong> time entr{data.time_entry_count === 1 ? 'y' : 'ies'}
+              {' '}({(data.total_hours ?? 0).toFixed(2)}h)
+            </li>
+            <li>
+              <strong>{data.tip_count}</strong> tip row{data.tip_count === 1 ? '' : 's'}
+              {' '}(${(data.tip_total ?? 0).toFixed(2)})
+            </li>
+            <li>Touches <strong>{data.distinct_employee_count}</strong> employee{data.distinct_employee_count === 1 ? '' : 's'}</li>
+            <li className="pt-1 border-t border-surface-200 dark:border-surface-700">
+              Gross subject to lock: <strong>${(data.gross_total ?? 0).toFixed(2)}</strong>
+            </li>
+          </ul>
+        )}
+      </div>
+    </details>
+  );
+}
+
+// WEB-UIUX-1157: surface server-side Zod-style array errors instead of
+// collapsing them into the generic "Failed" toast. Accepts `{error}`,
+// `{errors: [{path,message}]}`, or `{message}` response shapes.
+function parseApiError(err: unknown): string | null {
+  if (!err || typeof err !== 'object' || !('response' in err)) return null;
+  const data = (err as { response?: { data?: unknown } }).response?.data as
+    | { error?: string; message?: string; errors?: Array<{ path?: string | string[]; message?: string }> }
+    | undefined;
+  if (!data) return null;
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
+    return data.errors
+      .map((e) => {
+        const path = Array.isArray(e.path) ? e.path.join('.') : e.path;
+        const msg = e.message || '';
+        return path ? `${path}: ${msg}` : msg;
+      })
+      .filter(Boolean)
+      .join('; ');
+  }
+  return data.error || data.message || null;
 }
 
 export function CommissionPeriodLock() {
@@ -38,17 +130,29 @@ export function CommissionPeriodLock() {
     initialFocusSelector: 'input',
   });
 
+  // WEB-UIUX-1148: paginate + optional year filter so periods 101+ stop
+  // silently falling off the end on weekly-cadence tenants past the first
+  // 2 years. Default page-size is 50 (matches server cap of 200).
+  const [yearFilter, setYearFilter] = useState<string>('');
+  const [page, setPage] = useState(1);
+  const perPage = 50;
+
   // WEB-UIUX-1150: destructure isLoading to avoid empty-state false positive on cold load.
   const { data, isLoading } = useQuery({
-    queryKey: ['team', 'payroll', 'periods'],
+    queryKey: ['team', 'payroll', 'periods', yearFilter, page],
     queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: PayrollPeriod[] }>(
-        '/team/payroll/periods',
-      );
-      return res.data.data;
+      const params: Record<string, string | number> = { page, per_page: perPage };
+      if (yearFilter) params.year = yearFilter;
+      const res = await api.get<{
+        success: boolean;
+        data: PayrollPeriod[];
+        pagination?: { page: number; per_page: number; total: number; total_pages: number };
+      }>('/team/payroll/periods', { params });
+      return res.data;
     },
   });
-  const periods: PayrollPeriod[] = data || [];
+  const periods: PayrollPeriod[] = data?.data || [];
+  const pagination = data?.pagination;
 
   // WEB-FX-003: Esc-to-close for new-period dialog.
   // WEB-UIUX-1154: guard Esc with dirty-check so accidental key press doesn't silently discard work.
@@ -83,11 +187,7 @@ export function CommissionPeriodLock() {
       setNewEnd('');
     },
     onError: (e: unknown) => {
-      const msg =
-        e && typeof e === 'object' && 'response' in e
-          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
-          : null;
-      toast.error(msg || 'Failed to create period');
+      toast.error(parseApiError(e) || 'Failed to create period');
     },
   });
 
@@ -100,13 +200,58 @@ export function CommissionPeriodLock() {
       queryClient.invalidateQueries({ queryKey: ['team', 'payroll', 'periods'] });
     },
     onError: (e: unknown) => {
-      const msg =
-        e && typeof e === 'object' && 'response' in e
-          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
-          : null;
-      toast.error(msg || 'Lock failed');
+      toast.error(parseApiError(e) || 'Lock failed');
     },
   });
+
+  // WEB-UIUX-1158: bulk-lock every unlocked period whose end_date is strictly
+  // before the cutoff. Confirm dialog spells out the irreversible scope so
+  // the admin doesn't fat-finger a 6-month freeze. Default cutoff = today
+  // so the typical "lock everything up to yesterday" gesture is one click.
+  const bulkLockMut = useMutation({
+    mutationFn: async (cutoff: string) => {
+      const res = await api.post<{
+        success: boolean;
+        data: { locked: number; period_ids: number[]; cutoff: string };
+      }>('/team/payroll/lock-bulk', { before_date: cutoff });
+      return res.data.data;
+    },
+    onSuccess: (d) => {
+      if (d.locked === 0) {
+        toast(`No unlocked periods ended before ${d.cutoff}.`, { icon: 'ℹ️' });
+      } else {
+        toast.success(`Locked ${d.locked} period${d.locked === 1 ? '' : 's'} ending before ${d.cutoff}.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['team', 'payroll', 'periods'] });
+    },
+    onError: (e: unknown) => {
+      toast.error(parseApiError(e) || 'Bulk lock failed');
+    },
+  });
+
+  async function handleBulkLock() {
+    // WEB-UIUX-788: local-calendar today; the prompt default must reflect
+    // the operator's wall-clock day, not UTC midnight.
+    const today = toLocalDateString(new Date());
+    const cutoff = window.prompt(
+      'Lock every unlocked period whose end_date is strictly before this date (YYYY-MM-DD).\n\nThis cannot be undone.',
+      today,
+    );
+    if (!cutoff) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff.trim())) {
+      toast.error('Cutoff must be YYYY-MM-DD');
+      return;
+    }
+    const ok = await confirm(
+      `Lock every payroll period ending before ${cutoff}? Locked periods refuse all commission / time-entry / tip edits in their range. This cannot be undone.`,
+      {
+        title: 'Bulk lock payroll periods?',
+        confirmLabel: 'Lock all',
+        danger: true,
+      },
+    );
+    if (ok) bulkLockMut.mutate(cutoff.trim());
+  }
 
   async function downloadCsv(periodId: number) {
     // WEB-FD-021 (Fixer-C5 2026-04-25): replaced `window.open(/api/v1/...)`
@@ -140,10 +285,12 @@ export function CommissionPeriodLock() {
   }
 
   async function handleLockPeriod(period: PayrollPeriod) {
+    // WEB-UIUX-1143: spell out every downstream lock so the admin knows
+    // commission, clock-in/out, timesheet, and tip-edit paths all freeze.
     const ok = await confirm(
-      `Lock commission period "${period.name}" (${period.start_date} to ${period.end_date})? Commission edits in this range will be blocked after locking.`,
+      `Lock payroll period "${period.name}" (${period.start_date} to ${period.end_date})?\n\nAfter locking, the following edits in this date range will be blocked:\n• Commission entries\n• Time entries (clock-in/out)\n• Timesheet adjustments\n• Tip edits on payments\n\nThis cannot be undone.`,
       {
-        title: 'Lock commission period?',
+        title: 'Lock payroll period?',
         confirmLabel: 'Lock period',
         danger: true,
       },
@@ -153,14 +300,38 @@ export function CommissionPeriodLock() {
 
   return (
     <div className="bg-white dark:bg-surface-800 rounded-lg shadow border dark:border-surface-700 p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2">
         <h2 className="text-sm font-bold text-surface-800 dark:text-surface-100">Payroll periods</h2>
-        <button
-          className="px-2 py-1 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 rounded text-xs inline-flex items-center"
-          onClick={() => setShowNew(true)}
-        >
-          <Plus className="w-3 h-3 mr-1" /> New period
-        </button>
+        <div className="flex items-center gap-2">
+          {/* WEB-UIUX-1148: year filter narrows audits to a fiscal window
+              without scrolling backwards through paginated history. */}
+          <input
+            type="number"
+            inputMode="numeric"
+            min={2000}
+            max={2100}
+            value={yearFilter}
+            onChange={(e) => { setYearFilter(e.target.value.replace(/[^\d]/g, '').slice(0, 4)); setPage(1); }}
+            placeholder="Year"
+            aria-label="Filter by year"
+            className="w-20 rounded border dark:border-surface-600 bg-white dark:bg-surface-700 px-2 py-1 text-xs"
+          />
+          {/* WEB-UIUX-1158: bulk-lock saves 4×N clicks for monthly catch-up. */}
+          <button
+            className="px-2 py-1 rounded text-xs inline-flex items-center bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleBulkLock}
+            disabled={bulkLockMut.isPending}
+            title="Lock every unlocked period whose end_date is before a chosen cutoff"
+          >
+            <Lock className="w-3 h-3 mr-1" /> {bulkLockMut.isPending ? 'Locking…' : 'Bulk lock…'}
+          </button>
+          <button
+            className="px-2 py-1 bg-surface-100 hover:bg-surface-200 dark:bg-surface-800 dark:hover:bg-surface-700 rounded text-xs inline-flex items-center"
+            onClick={() => setShowNew(true)}
+          >
+            <Plus className="w-3 h-3 mr-1" /> New period
+          </button>
+        </div>
       </div>
       {/* WEB-UIUX-1150: show loading skeleton on cold load to avoid empty-state false positive. */}
       {isLoading && (
@@ -191,9 +362,13 @@ export function CommissionPeriodLock() {
             className={`border dark:border-surface-700 rounded p-2 text-xs ${p.locked_at ? 'bg-surface-50 dark:bg-surface-800/50' : ''}`}
           >
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="font-semibold text-surface-800 dark:text-surface-100">{p.name}</div>
                 <div className="text-surface-500 dark:text-surface-400">{p.start_date} → {p.end_date}</div>
+                {/* WEB-UIUX-1145: only preview unlocked periods — locked rows
+                    are frozen, so the lock-consequences answer is "nothing
+                    new". Keeps the locked row visually compact. */}
+                {!p.locked_at && <PeriodLockConsequencesPreview period={p} />}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -212,12 +387,18 @@ export function CommissionPeriodLock() {
                     </span>
                   </span>
                 ) : (
+                  // WEB-UIUX-1141: irreversible Lock action — red, not amber.
+                  // WEB-UIUX-1151: disable ONLY the row whose lock is in flight
+                  // (variables === p.id) so other rows stay live.
+                  // WEB-UIUX-1155: aria-label includes the period name so SR
+                  // users hear "Lock 2026-W14" rather than just "Lock, button".
                   <button
-                    className="px-2 py-1 bg-amber-600 text-white rounded text-xs inline-flex items-center hover:bg-amber-700"
-                    disabled={lockMut.isPending}
+                    className="px-2 py-1 bg-red-600 text-white rounded text-xs inline-flex items-center hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={lockMut.isPending && lockMut.variables === p.id}
                     onClick={() => handleLockPeriod(p)}
+                    aria-label={`Lock commission period ${p.name} (${p.start_date} to ${p.end_date})`}
                   >
-                    {lockMut.isPending ? (
+                    {lockMut.isPending && lockMut.variables === p.id ? (
                       <Loader2 className="w-3 h-3 animate-spin mr-1" />
                     ) : (
                       <LockOpen className="w-3 h-3 mr-1" />
@@ -230,6 +411,35 @@ export function CommissionPeriodLock() {
           </div>
         ))}
       </div>
+
+      {/* WEB-UIUX-1148: pagination footer when total > per_page. Hidden on
+          single-page results so weekly tenants in their first year see
+          nothing new. */}
+      {pagination && pagination.total_pages > 1 && (
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs text-surface-500 dark:text-surface-400">
+          <span>
+            Page {pagination.page} of {pagination.total_pages} · {pagination.total} period{pagination.total === 1 ? '' : 's'}
+          </span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-50 hover:bg-surface-50 dark:hover:bg-surface-700"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))}
+              disabled={page >= pagination.total_pages}
+              className="rounded border dark:border-surface-600 px-2 py-1 disabled:opacity-50 hover:bg-surface-50 dark:hover:bg-surface-700"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {showNew && (
         <div
@@ -291,8 +501,11 @@ export function CommissionPeriodLock() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center"
-                disabled={!newName || !newStart || !newEnd || createMut.isPending}
+                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                // WEB-UIUX-1153: also block submit when end < start so the cashier
+                // gets immediate visual feedback instead of a server 400 after click.
+                disabled={!newName || !newStart || !newEnd || createMut.isPending || (Boolean(newStart) && Boolean(newEnd) && newEnd < newStart)}
+                title={newStart && newEnd && newEnd < newStart ? 'End date must be on or after start date' : undefined}
                 onClick={() => createMut.mutate()}
               >
                 {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}

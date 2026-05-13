@@ -38,6 +38,16 @@ function requireManagerOrAdmin(req: any): void {
   }
 }
 
+// Admin-only gate for high-stakes reversal operations like reverse-close
+// (WEB-UIUX-1161 / 1171). Manager scope intentionally not granted — the
+// reopen path nukes a frozen z_report + variance audit row and we want a
+// per-shop attestable trail that the elevation happened.
+function requireAdminStrict(req: any): void {
+  if (req?.user?.role !== 'admin') {
+    throw new AppError('Admin role required', 403);
+  }
+}
+
 /**
  * Cents validator — non-negative whole cents. Callers pass an upper bound
  * suited to the specific field so a typo in a PUT body can't silently let
@@ -87,6 +97,9 @@ interface DrawerShiftRow {
   variance_cents: number | null;
   z_report_json: string | null;
   notes: string | null;
+  // WEB-UIUX-679: Z-report print audit (migration 186).
+  printed_at: string | null;
+  printed_by_user_id: number | null;
 }
 
 interface TrainingSessionRow {
@@ -248,7 +261,24 @@ async function computeExpectedCents(
     closedAt,
   );
   const cashIn = row?.cash_cents ?? 0;
-  return openingFloatCents + cashIn;
+  // WEB-UIUX-1159: also fold in `cash_register` rows from the legacy
+  // CashRegisterPage path so paid-in (cash_in) bumps the expected drawer
+  // and paid-out (cash_out, vendor refund / petty cash) reduces it. Prior
+  // computation summed `payments` only, so a shift with $50 cash-in + $0
+  // sales correctly counted as $250 in drawer would have shown a $50 OVER
+  // variance after every shift — phantom investigation for an in-balance
+  // till. Single query so we still keep the original `payments` scan +
+  // the new `cash_register` scan in parallel-friendly shape.
+  const registerRow = await adb.get<{ paid_in: number; paid_out: number }>(
+    `SELECT COALESCE(SUM(CASE WHEN type = 'cash_in'  THEN CAST(ROUND(COALESCE(amount,0) * 100) AS INTEGER) ELSE 0 END), 0) AS paid_in,
+            COALESCE(SUM(CASE WHEN type = 'cash_out' THEN CAST(ROUND(COALESCE(amount,0) * 100) AS INTEGER) ELSE 0 END), 0) AS paid_out
+       FROM cash_register
+      WHERE created_at BETWEEN ? AND ?`,
+    openedAt,
+    closedAt,
+  );
+  const adjustments = (registerRow?.paid_in ?? 0) - (registerRow?.paid_out ?? 0);
+  return openingFloatCents + cashIn + adjustments;
 }
 
 async function getCurrentShift(adb: AsyncDb): Promise<DrawerShiftRow | undefined> {
@@ -260,8 +290,21 @@ async function getCurrentShift(adb: AsyncDb): Promise<DrawerShiftRow | undefined
 router.get(
   '/drawer/current',
   asyncHandler(async (req, res) => {
+    // WEB-UIUX-1172: opening_float_cents + opener id are shop-confidential
+    // (burglary risk). Allow admin/manager unconditionally; allow a cashier
+    // ONLY if they are the opener of the currently open shift. Other
+    // authenticated users (techs, support) get null + a 200 so the POS UI
+    // still renders without leaking the float amount.
     const shift = await getCurrentShift(req.asyncDb);
-    res.json({ success: true, data: shift ?? null });
+    const role = (req as any)?.user?.role;
+    const userId = (req as any)?.user?.id;
+    const isPrivileged = role === 'admin' || role === 'manager';
+    const isOnShift = !!shift && shift.opened_by_user_id === userId;
+    if (!shift || isPrivileged || isOnShift) {
+      res.json({ success: true, data: shift ?? null });
+      return;
+    }
+    res.json({ success: true, data: null });
   }),
 );
 
@@ -326,8 +369,12 @@ router.post(
 router.post(
   '/drawer/:id/close',
   asyncHandler(async (req, res) => {
-    // Closing a drawer writes final variance + z-report — manager/admin only.
-    requireManagerOrAdmin(req);
+    // Closing a drawer writes final variance + z-report. WEB-UIUX-1165:
+    // allow the shift opener to close their own shift even when not a
+    // manager — they own the till for the duration, and the end-of-shift
+    // close is the natural pair to /open which has no role gate. Closing
+    // someone else's shift still requires manager/admin (preserves the
+    // dual-control intent for cross-cashier reconciliation).
     const adb: AsyncDb = req.asyncDb;
     const shiftId = parseInt(qs(req.params.id), 10);
     if (!shiftId || isNaN(shiftId)) throw new AppError('Invalid shift id', 400);
@@ -338,6 +385,14 @@ router.post(
     );
     if (!shift) throw new AppError('Shift not found', 404);
     if (shift.closed_at) throw new AppError('Shift already closed', 409);
+    const role = (req as any)?.user?.role;
+    const isSelfClose = shift.opened_by_user_id === (req as any)?.user?.id;
+    if (!isSelfClose && role !== 'admin' && role !== 'manager') {
+      throw new AppError(
+        'Only the cashier who opened this shift, a manager, or an admin can close it.',
+        403,
+      );
+    }
 
     // Look up the optional high-volume escape hatch. A store that truly
     // does $50k+ per shift can set store_config.pos_high_volume_drawer = '1'.
@@ -414,6 +469,105 @@ router.post(
   }),
 );
 
+/**
+ * WEB-UIUX-1161 / 1171: admin reverse-close. Operator close-with-typo
+ * (`2200` instead of `220.00`) was permanent — variance lived in the audit
+ * trail forever and the next shift inherited a fictitious starting position
+ * if the prior over/undercounted. Endpoint NULLs the close fields so the
+ * shift returns to "open" state, with a fresh audit row capturing reason +
+ * the values that were cleared. Refuses to reopen when another shift is
+ * already open (preserves the "only one open shift" invariant) or when the
+ * shift is older than 7 days (a generous correction window without making
+ * audit timestamps mutable forever).
+ */
+router.post(
+  '/drawer/:id/reopen',
+  asyncHandler(async (req, res) => {
+    requireAdminStrict(req);
+    const adb: AsyncDb = req.asyncDb;
+    const shiftId = parseInt(qs(req.params.id), 10);
+    if (!shiftId || isNaN(shiftId)) throw new AppError('Invalid shift id', 400);
+
+    const reason = req.body?.reason ? validateTextLength(req.body.reason, 500, 'reason') : null;
+    if (!reason || !reason.trim()) {
+      throw new AppError('reason required for reopen (audit trail)', 400);
+    }
+
+    const shift = await adb.get<DrawerShiftRow>(
+      `SELECT * FROM cash_drawer_shifts WHERE id = ?`,
+      shiftId,
+    );
+    if (!shift) throw new AppError('Shift not found', 404);
+    if (!shift.closed_at) throw new AppError('Shift is already open', 409);
+
+    // 7-day correction window keeps the reopen path bounded; older rows
+    // require an explicit audit-tooling intervention rather than silent
+    // mutation of week-old close timestamps.
+    const closedMs = Date.parse(shift.closed_at);
+    if (Number.isFinite(closedMs) && Date.now() - closedMs > 7 * 24 * 60 * 60 * 1000) {
+      throw new AppError('Shift was closed more than 7 days ago — reopen window expired', 409);
+    }
+
+    const conflict = await adb.get<{ id: number }>(
+      `SELECT id FROM cash_drawer_shifts WHERE closed_at IS NULL AND id <> ? LIMIT 1`,
+      shiftId,
+    );
+    if (conflict) {
+      throw new AppError(
+        `Another shift (#${conflict.id}) is currently open — close it before reopening shift #${shiftId}.`,
+        409,
+      );
+    }
+
+    // Snapshot the values we're about to nuke so the audit row has the
+    // full pre-reopen state.
+    const snapshot = {
+      closed_at: shift.closed_at,
+      closing_counted_cents: shift.closing_counted_cents,
+      expected_cents: shift.expected_cents,
+      variance_cents: shift.variance_cents,
+      closed_by_user_id: shift.closed_by_user_id,
+    };
+
+    const db = req.db;
+    const tx = db.transaction(() => {
+      const result = db
+        .prepare(
+          `UPDATE cash_drawer_shifts
+              SET closed_at             = NULL,
+                  closing_counted_cents = NULL,
+                  expected_cents        = NULL,
+                  variance_cents        = NULL,
+                  z_report_json         = NULL,
+                  closed_by_user_id     = NULL
+            WHERE id = ? AND closed_at IS NOT NULL`,
+        )
+        .run(shiftId);
+      if (result.changes !== 1) {
+        throw new AppError('Shift state changed during reopen (race)', 409);
+      }
+    });
+    tx();
+
+    audit(req.db, 'drawer_shift_reopened', req.user!.id, req.ip || 'unknown', {
+      shift_id: shiftId,
+      reason: reason.trim(),
+      cleared: snapshot,
+    });
+    logger.info('drawer_shift_reopened', {
+      shift_id: shiftId,
+      user_id: req.user!.id,
+      variance_cents_cleared: snapshot.variance_cents,
+    });
+
+    const row = await adb.get<DrawerShiftRow>(
+      `SELECT * FROM cash_drawer_shifts WHERE id = ?`,
+      shiftId,
+    );
+    res.json({ success: true, data: row });
+  }),
+);
+
 // ────────────────────────────────────────────────────────────────────────────
 // 3. Z-REPORT (audit §43.4)
 // ────────────────────────────────────────────────────────────────────────────
@@ -428,9 +582,25 @@ interface ZReport {
   station: ZReportStationContext;
   opening_float_cents: number;
   expected_cents: number;
-  counted_cents: number;
-  variance_cents: number;
+  // WEB-UIUX-1162: counted_cents/variance_cents are null while the shift is
+  // open (no till count exists yet); the client renders "in progress" instead
+  // of a phantom variance.
+  counted_cents: number | null;
+  variance_cents: number | null;
+  // WEB-UIUX-1170: include opener / closer name + shift duration + notes so
+  // the printed Z-report carries the audit context many jurisdictions require
+  // on EOD reports. Names are resolved by joining users on opened_by /
+  // closed_by user ids; absent rows fall back to null.
+  opened_by_name: string | null;
+  closed_by_name: string | null;
+  duration_minutes: number | null;
+  notes: string | null;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
+  // WEB-UIUX-1047: per-tender refund breakdown so end-of-day reconciliation
+  // can answer "how much went back to cards vs paid out from the drawer."
+  // Sourced from the refunds table for the shift window, grouped by method.
+  // Approved + completed only — pending refunds don't represent money moved.
+  refund_breakdown: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
     refund_cents: number;
@@ -493,9 +663,9 @@ async function buildZReport(
   adb: AsyncDb,
   shift: DrawerShiftRow,
   closedAt: string,
-  countedCents: number,
+  countedCents: number | null,
   expectedCents: number,
-  varianceCents: number,
+  varianceCents: number | null,
 ): Promise<ZReport> {
   // POST-ENRICH AUDIT §23.1: same fix as computeExpectedCents — payments.method
   // is a TEXT label (not an FK). Group by that column directly so the Z-report
@@ -507,6 +677,22 @@ async function buildZReport(
        FROM payments p
       WHERE p.created_at BETWEEN ? AND ?
       GROUP BY COALESCE(p.method, 'unknown')
+      ORDER BY cents DESC`,
+    shift.opened_at,
+    closedAt,
+  );
+
+  // WEB-UIUX-1047: per-tender refund breakdown — refunds approved/completed
+  // within the shift window grouped by method. NULL methods (legacy /
+  // store-credit) fall under 'unknown' so the row count stays accurate.
+  const refundBreakdown = await adb.all<{ method: string; cents: number; count: number }>(
+    `SELECT COALESCE(r.method, 'unknown') AS method,
+            COALESCE(SUM(CAST(ROUND(r.amount * 100) AS INTEGER)), 0) AS cents,
+            COUNT(*) AS count
+       FROM refunds r
+      WHERE r.created_at BETWEEN ? AND ?
+        AND r.status IN ('approved', 'completed')
+      GROUP BY COALESCE(r.method, 'unknown')
       ORDER BY cents DESC`,
     shift.opened_at,
     closedAt,
@@ -529,7 +715,35 @@ async function buildZReport(
     closedAt,
   );
 
-  const report: ZReport = {
+  // WEB-UIUX-1170: resolve opener + closer names + compute shift duration so
+  // the Z-report can stamp who-opened / who-closed / minutes-on-shift.
+  const openedBy = shift.opened_by_user_id
+    ? await adb.get<{ first_name: string | null; last_name: string | null }>(
+        'SELECT first_name, last_name FROM users WHERE id = ?',
+        shift.opened_by_user_id,
+      )
+    : null;
+  const closedBy = shift.closed_by_user_id
+    ? await adb.get<{ first_name: string | null; last_name: string | null }>(
+        'SELECT first_name, last_name FROM users WHERE id = ?',
+        shift.closed_by_user_id,
+      )
+    : null;
+  const fmtName = (u: { first_name: string | null; last_name: string | null } | null | undefined) => {
+    if (!u) return null;
+    const n = `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim();
+    return n || null;
+  };
+  let durationMinutes: number | null = null;
+  if (shift.opened_at) {
+    const endMs = new Date(closedAt).getTime();
+    const startMs = new Date(shift.opened_at).getTime();
+    if (Number.isFinite(endMs) && Number.isFinite(startMs) && endMs >= startMs) {
+      durationMinutes = Math.round((endMs - startMs) / 60_000);
+    }
+  }
+
+  return {
     shift_id: shift.id,
     opened_at: shift.opened_at,
     closed_at: closedAt,
@@ -545,12 +759,58 @@ async function buildZReport(
     expected_cents: expectedCents,
     counted_cents: countedCents,
     variance_cents: varianceCents,
+    opened_by_name: fmtName(openedBy),
+    closed_by_name: fmtName(closedBy),
+    duration_minutes: durationMinutes,
+    notes: shift.notes ?? null,
     payment_breakdown: breakdown,
+    refund_breakdown: refundBreakdown,
     totals: totalsRow ?? { gross_cents: 0, refund_cents: 0, net_cents: 0, transaction_count: 0 },
   };
 
   return addZReportContext(adb, report, shift);
 }
+
+// WEB-UIUX-1168: paginated list of closed shifts so operators can reprint a
+// Z-report after the modal was dismissed and the paper was lost. Admin /
+// manager only — opening_float + variance are shop-confidential.
+router.get(
+  '/drawer/history',
+  asyncHandler(async (req, res) => {
+    const role = (req as any)?.user?.role;
+    if (role !== 'admin' && role !== 'manager') {
+      throw new AppError('Admin or manager required', 403);
+    }
+    const adb: AsyncDb = req.asyncDb;
+    const page = Math.max(1, parseInt(qs(req.query.page as string) || '1', 10) || 1);
+    const perPageRaw = parseInt(qs(req.query.per_page as string) || '25', 10) || 25;
+    const perPage = Math.max(1, Math.min(100, perPageRaw));
+    const offset = (page - 1) * perPage;
+    const totalRow = await adb.get<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM cash_drawer_shifts WHERE closed_at IS NOT NULL`,
+    );
+    const total = totalRow?.c ?? 0;
+    const rows = await adb.all<any>(
+      `SELECT s.id, s.opened_at, s.closed_at, s.opening_float_cents,
+              s.closing_counted_cents, s.expected_cents, s.variance_cents,
+              s.opened_by_user_id, s.closed_by_user_id,
+              ou.first_name || ' ' || ou.last_name AS opened_by_name,
+              cu.first_name || ' ' || cu.last_name AS closed_by_name
+         FROM cash_drawer_shifts s
+    LEFT JOIN users ou ON ou.id = s.opened_by_user_id
+    LEFT JOIN users cu ON cu.id = s.closed_by_user_id
+        WHERE s.closed_at IS NOT NULL
+     ORDER BY s.closed_at DESC
+        LIMIT ? OFFSET ?`,
+      perPage, offset,
+    );
+    res.json({
+      success: true,
+      data: rows,
+      pagination: { page, per_page: perPage, total, total_pages: Math.max(1, Math.ceil(total / perPage)) },
+    });
+  }),
+);
 
 router.get(
   '/drawer/:id/z-report',
@@ -576,15 +836,67 @@ router.get(
       }
     }
     const now = shift.closed_at ?? new Date().toISOString();
+    // WEB-UIUX-1162: when the shift is still open, an admin previewing the
+    // Z-report should see "in progress" not a phantom $X-short variance
+    // generated from `counted_cents=0`. Build the report without a counted
+    // value and tag it `in_progress=true` so the client can render an
+    // "awaiting close" placeholder instead of the red variance banner.
+    const isInProgress = !shift.closed_at;
     const report = await buildZReport(
       adb,
       shift,
       now,
-      shift.closing_counted_cents ?? 0,
+      isInProgress ? null : (shift.closing_counted_cents ?? 0),
       shift.expected_cents ?? shift.opening_float_cents,
-      shift.variance_cents ?? 0,
+      isInProgress ? null : (shift.variance_cents ?? 0),
     );
-    res.json({ success: true, data: report });
+    res.json({
+      success: true,
+      data: {
+        ...report,
+        in_progress: isInProgress,
+        // WEB-UIUX-679: surface print audit on the z-report response so
+        // ShiftHistoryPage can render "Last printed 2026-05-12 by Alice"
+        // alongside the existing reprint button.
+        printed_at: shift.printed_at ?? null,
+        printed_by_user_id: shift.printed_by_user_id ?? null,
+      },
+    });
+  }),
+);
+
+// WEB-UIUX-679: POST /drawer/:id/mark-printed — stamp printed_at on the
+// shift so the audit trail records every paper or PDF copy. Idempotent in
+// the sense that re-printing simply overwrites the timestamp (operators
+// commonly reprint after a paper jam). Admin/manager only; cashier who
+// closed the shift can also re-print their own.
+router.post(
+  '/drawer/:id/mark-printed',
+  asyncHandler(async (req, res) => {
+    const adb: AsyncDb = req.asyncDb;
+    const shiftId = parseInt(qs(req.params.id), 10);
+    if (!shiftId || isNaN(shiftId)) throw new AppError('Invalid shift id', 400);
+    const shift = await adb.get<DrawerShiftRow>(
+      `SELECT id, closed_by_user_id, closed_at FROM cash_drawer_shifts WHERE id = ?`,
+      shiftId,
+    );
+    if (!shift) throw new AppError('Shift not found', 404);
+    if (!shift.closed_at) throw new AppError('Shift is still open', 409);
+    const role = (req as any)?.user?.role;
+    const callerId = (req as any)?.user?.id;
+    const isSelfClose = shift.closed_by_user_id === callerId;
+    if (role !== 'admin' && role !== 'manager' && !isSelfClose) {
+      throw new AppError(
+        'Only the cashier who closed this shift, a manager, or an admin can mark a Z-report as printed.',
+        403,
+      );
+    }
+    const nowIso = new Date().toISOString();
+    await adb.run(
+      `UPDATE cash_drawer_shifts SET printed_at = ?, printed_by_user_id = ? WHERE id = ?`,
+      nowIso, callerId, shiftId,
+    );
+    res.json({ success: true, data: { printed_at: nowIso, printed_by_user_id: callerId } });
   }),
 );
 

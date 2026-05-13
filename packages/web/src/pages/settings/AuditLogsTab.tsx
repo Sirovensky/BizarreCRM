@@ -28,13 +28,32 @@ interface AuditUser {
 // rendering and the truncated cell never shows them anyway.
 const MAX_DETAIL_LEN = 300;
 
+// WEB-UIUX-906: avoid surfacing hashed PINs / IPs / PII through hover tooltips.
+// Browser title= attributes are visible to screen-share, screenshot OCR, and
+// accessibility tooling. Redact known-sensitive fields before rendering details.
+const REDACTED_KEYS = new Set([
+  'pin', 'pin_hash', 'password', 'password_hash', 'token', 'refresh_token',
+  'ssn', 'ein', 'tax_id', 'card_number', 'cvv', 'cvc', 'fingerprint',
+  'authorization', 'cookie', 'set-cookie',
+]);
+
+function isRedactedKey(k: string): boolean {
+  const lower = k.toLowerCase();
+  if (REDACTED_KEYS.has(lower)) return true;
+  // Heuristic: anything ending in _hash / _token / _secret.
+  return /_hash$|_token$|_secret$/.test(lower);
+}
+
 function formatDetails(details: string | null): string {
   if (!details) return '-';
   let out: string;
   try {
     const obj = JSON.parse(details);
     out = Object.entries(obj)
-      .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      .map(([k, v]) => {
+        if (isRedactedKey(k)) return `${k}: ‹redacted›`;
+        return `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`;
+      })
       .join(', ');
   } catch {
     out = details;
@@ -273,6 +292,44 @@ export function AuditLogsTab() {
           </button>
         )}
         <div className="ml-auto flex items-end gap-2 pb-1">
+          {/* WEB-UIUX-910: CSV export of the current page's logs so admins
+              can hand audit data to compliance / incident response without
+              SSH-ing to the DB. Client-side CSV from `logs` keeps the
+              server response shape unchanged; admins who need the full
+              filtered set can paginate + concat. */}
+          <button
+            type="button"
+            disabled={!data?.logs?.length}
+            onClick={() => {
+              const rows: AuditLog[] = data?.logs ?? [];
+              if (rows.length === 0) return;
+              const header = ['created_at', 'event', 'user_id', 'user_name', 'username', 'ip_address', 'details'];
+              const csvEscape = (v: unknown): string => {
+                const s = v == null ? '' : String(v);
+                return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+              };
+              const body = rows.map((r) => [
+                r.created_at, r.event, r.user_id, r.user_name ?? '', r.username ?? '',
+                r.ip_address ?? '', r.details ?? '',
+              ].map(csvEscape).join(','));
+              const csv = [header.join(','), ...body].join('\n');
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+              a.download = `audit-logs-page${page}-${stamp}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            }}
+            className="btn btn-ghost btn-xs !text-surface-600 hover:!text-surface-900 dark:!text-surface-300 dark:hover:!text-surface-100 disabled:opacity-50"
+            aria-label="Export filtered audit logs (current page) as CSV"
+            title="Export current page as CSV"
+          >
+            Export CSV
+          </button>
           <button
             type="button"
             onClick={() => refetch()}

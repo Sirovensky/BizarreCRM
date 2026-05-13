@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Star, Trash2, Loader2, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 
 interface Employee {
   id: number;
@@ -39,8 +39,8 @@ export function PerformanceReviewsPage() {
   // ?user_id= reviews, and trigger 403 toasts on every selectedUserId
   // flip. Server still enforces; this short-circuits the IDOR-shaped UI
   // surface so non-admins land on a friendly forbidden state instead.
-  const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === 'admin';
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [reviewPage, setReviewPage] = useState(1);
   const [draftNotes, setDraftNotes] = useState('');
@@ -177,7 +177,7 @@ export function PerformanceReviewsPage() {
                 onChange={(e) => setDraftNotes(e.target.value)}
               />
               <button
-                className="mt-2 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center"
+                className="mt-2 px-3 py-2 bg-primary-500 text-on-primary font-semibold rounded text-sm hover:bg-primary-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center"
                 disabled={!draftNotes.trim() || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

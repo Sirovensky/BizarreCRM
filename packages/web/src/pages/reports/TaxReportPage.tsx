@@ -11,6 +11,8 @@ import { toLocalDateString } from '@/utils/format';
 export function TaxReportPage() {
   const thisYear = new Date().getFullYear();
   const [from, setFrom] = useState(`${thisYear}-01-01`);
+  // WEB-UIUX-925: previously `new Date().toISOString().slice(0,10)` returned
+  // the UTC date, so after ~4pm in MST/PST the picker defaulted to "tomorrow".
   const [to, setTo] = useState(toLocalDateString(new Date()));
   const [jurisdiction, setJurisdiction] = useState('default');
 

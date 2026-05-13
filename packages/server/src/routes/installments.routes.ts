@@ -230,14 +230,32 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
     throw new AppError(`Cannot cancel a plan in '${existing.status}' status`, 409);
   }
 
-  await adb.run(
-    `UPDATE installment_plans SET status = 'cancelled' WHERE id = ?`,
-    id,
-  );
+  // BUGHUNT-2026-05-10-53: also void any pending schedule rows so future
+  // automation (charge cron, reminder dispatcher) doesn't pick up leftover
+  // installments that belong to a cancelled plan. Wrap in adb.transaction
+  // so a mid-cancel failure leaves the plan in its prior state instead of
+  // a half-cancelled mix.
+  const cancelResult = await adb.transaction([
+    {
+      sql: `UPDATE installment_plans SET status = 'cancelled' WHERE id = ?`,
+      params: [id],
+    },
+    {
+      sql: `UPDATE installment_schedule SET status = 'cancelled' WHERE plan_id = ? AND status = 'pending'`,
+      params: [id],
+    },
+  ]);
+  const schedRowsCancelled = Array.isArray(cancelResult) ? cancelResult[1]?.changes ?? 0 : 0;
 
-  audit(db, 'installment_plan.cancel', req.user!.id, req.ip ?? '', { plan_id: id });
+  audit(db, 'installment_plan.cancel', req.user!.id, req.ip ?? '', {
+    plan_id: id,
+    pending_schedule_rows_cancelled: schedRowsCancelled,
+  });
 
-  res.json({ success: true, data: { id, status: 'cancelled' } });
+  res.json({
+    success: true,
+    data: { id, status: 'cancelled', pending_schedule_rows_cancelled: schedRowsCancelled },
+  });
 }));
 
 export default router;

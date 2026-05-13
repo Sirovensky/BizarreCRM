@@ -250,6 +250,18 @@ if (typeof window !== 'undefined') {
       tryReloadForChunkError('[main]');
     }
   });
+
+  // WEB-UIUX-754: cancel any drag-drop that bubbles past a feature-specific
+  // handler. Without this, dropping a file onto a non-handler region triggers
+  // the browser default of navigating to file:// — the SPA unloads and every
+  // unsaved form is gone. Handlers that DO want the drop (file uploads, photo
+  // import) must call stopPropagation() so this top-level guard does not fire.
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+  });
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -1412,14 +1412,41 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
   const adb = req.asyncDb;
   const cid = req.portalCustomerId!;
 
-  const estimates = await adb.all<AnyRow>(`
-    SELECT e.id, e.order_id, e.status, e.subtotal, e.discount, e.total_tax, e.total,
-           e.valid_until, e.notes, e.created_at, e.approved_at, e.viewed_at
-    FROM estimates e
-    WHERE e.customer_id = ? AND e.status IN ('draft', 'sent', 'approved', 'converted')
-    ORDER BY e.created_at DESC
-    LIMIT 50
-  `, cid);
+  // WEB-UIUX-1475: paginate so customers with 51+ historical estimates can
+  // browse beyond the prior hard-cap of 50. Hold per_page at 50 max so a
+  // single response stays bounded.
+  const pageRaw = typeof req.query.page === 'string' ? Number.parseInt(req.query.page, 10) : 1;
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
+  const perPageRaw = typeof req.query.per_page === 'string' ? Number.parseInt(req.query.per_page, 10) : 25;
+  const perPage = Number.isFinite(perPageRaw) && perPageRaw >= 1 ? Math.min(perPageRaw, 50) : 25;
+  const offset = (page - 1) * perPage;
+
+  // WEB-UIUX-1466: hide drafts (work-in-progress; not meant for customer
+  // eyes — they render with no Approve button + look like a broken
+  // estimate). Sort by action-required first: status='sent' floats to
+  // the top regardless of age, then everything else (approved /
+  // converted / rejected) falls through by recency. created_at DESC is
+  // the tiebreaker inside each bucket so newest-first behaviour for
+  // history rows is preserved.
+  const [{ count } = { count: 0 }, estimates] = await Promise.all([
+    adb.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM estimates
+        WHERE customer_id = ?
+          AND status IN ('sent', 'approved', 'converted', 'rejected')`,
+      cid,
+    ).then((r) => r ?? { count: 0 }),
+    adb.all<AnyRow>(`
+      SELECT e.id, e.order_id, e.status, e.subtotal, e.discount, e.total_tax, e.total,
+             e.valid_until, e.notes, e.created_at, e.approved_at, e.viewed_at
+      FROM estimates e
+      WHERE e.customer_id = ?
+        AND e.status IN ('sent', 'approved', 'converted', 'rejected')
+      ORDER BY
+        CASE WHEN e.status = 'sent' THEN 0 ELSE 1 END,
+        e.created_at DESC
+      LIMIT ? OFFSET ?
+    `, cid, perPage, offset),
+  ]);
 
   // ENR-LE7: Mark unviewed estimates as viewed when customer opens the list
   const unviewedIds = estimates.filter(e => !e.viewed_at).map(e => e.id);
@@ -1465,7 +1492,16 @@ router.get('/estimates', portalAuth, requireFullScope, asyncHandler(async (req: 
     })),
   }));
 
-  res.json({ success: true, data: result });
+  res.json({
+    success: true,
+    data: result,
+    pagination: {
+      page,
+      per_page: perPage,
+      total: count,
+      total_pages: Math.max(1, Math.ceil(count / perPage)),
+    },
+  });
 }));
 
 // ---------------------------------------------------------------------------
@@ -1480,12 +1516,87 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
   }
 
   const estimate = await adb.get<AnyRow>(
-    "SELECT id, customer_id, status FROM estimates WHERE id = ? AND status = 'sent'",
+    "SELECT id, customer_id, status, valid_until FROM estimates WHERE id = ? AND status = 'sent'",
     estimateId);
 
   if (!estimate || estimate.customer_id !== req.portalCustomerId) {
     res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Estimate not found or already processed' });
     return;
+  }
+
+  // WEB-UIUX-1459: reject portal approval on expired quotes. valid_until is
+  // a date (YYYY-MM-DD); we treat it as "good through end of that day local"
+  // — the shop's tz drives that boundary in the detail-page UI, and here we
+  // mirror with end-of-day UTC since the portal request has no shop tz on
+  // hand. False-negative bias is small (a quote expires at most ~24h late)
+  // and the alternative — silently binding the shop to a stale price — is
+  // far worse.
+  if (estimate.valid_until) {
+    const validUntilStr = String(estimate.valid_until);
+    const cutoff = /^\d{4}-\d{2}-\d{2}$/.test(validUntilStr)
+      ? new Date(`${validUntilStr}T23:59:59Z`).getTime()
+      : Date.parse(validUntilStr);
+    if (Number.isFinite(cutoff) && cutoff < Date.now()) {
+      res.status(409).json({
+        success: false,
+        code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND,
+        message: `This estimate expired on ${validUntilStr} — please contact the shop to request a refreshed quote.`,
+      });
+      return;
+    }
+  }
+
+  // WEB-UIUX-947: write an estimate_signatures audit row for the portal-side
+  // one-click approve so the shop has compliance/chargeback evidence (signer
+  // name pulled from the authenticated portal customer; IP + UA from request).
+  // Pre-WEB-UIUX-947 the portal Approve set status='approved' without writing
+  // any signer attribution row, leaving zero proof the customer pressed
+  // approve. The detached `/public/api/v1/estimate-sign/:token` capture flow
+  // already writes this table; we mirror its shape (no signature_data_url
+  // since the portal click is not a drawn signature). signer_email comes
+  // from the customer record where available.
+  try {
+    const customer = await adb.get<AnyRow>(
+      'SELECT first_name, last_name, email FROM customers WHERE id = ?',
+      req.portalCustomerId,
+    );
+    const signerName = customer
+      ? [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'Portal customer'
+      : 'Portal customer';
+    const signerEmail = (customer?.email as string | null) ?? null;
+    const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? null;
+    const signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
+    const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+    // WEB-UIUX-811: snapshot the estimate totals on the signature row so a
+    // post-approval edit by the operator cannot rewrite what the customer
+    // saw. Migration 175 added the columns; older tenants without the
+    // migration just get NULLs.
+    const totalsRow = await adb.get<AnyRow>(
+      'SELECT subtotal, total_tax, total FROM estimates WHERE id = ?',
+      estimateId,
+    );
+    await adb.run(
+      `INSERT INTO estimate_signatures
+         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+          subtotal_at_signing, tax_at_signing, total_at_signing)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
+      estimateId,
+      signerName,
+      signerEmail,
+      signerIp,
+      userAgent,
+      totalsRow?.subtotal ?? null,
+      totalsRow?.total_tax ?? null,
+      totalsRow?.total ?? null,
+    );
+  } catch (sigErr) {
+    // Don't block approval if the signatures table is unavailable in legacy
+    // tenants — log and continue so compliance gap is visible but recovery
+    // is graceful.
+    logger.warn('portal_estimate_approve_signature_write_failed', {
+      err: sigErr instanceof Error ? sigErr.message : String(sigErr),
+      estimate_id: estimateId,
+    });
   }
 
   await adb.run(`
@@ -1512,6 +1623,95 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
   }
 
   res.json({ success: true, data: { approved: true } });
+}));
+
+// ---------------------------------------------------------------------------
+// POST /estimates/:id/reject — Customer declines a quote (WEB-UIUX-812)
+// ---------------------------------------------------------------------------
+router.post('/estimates/:id/reject', portalAuth, requireCsrfToken, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const estimateId = parseInt(req.params.id as string, 10);
+  if (isNaN(estimateId)) {
+    res.status(400).json({ success: false, message: 'Invalid estimate ID' });
+    return;
+  }
+
+  const estimate = await adb.get<AnyRow>(
+    "SELECT id, customer_id, status FROM estimates WHERE id = ? AND status = 'sent'",
+    estimateId);
+
+  if (!estimate || estimate.customer_id !== req.portalCustomerId) {
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Estimate not found or already processed' });
+    return;
+  }
+
+  // Mirror the approve-path estimate_signatures audit row so the shop has
+  // a tamper-evident record of who declined and when. Reuses the same
+  // signer attribution shape; signature_data_url is NULL because portal
+  // Reject is one-click, not a drawn signature.
+  try {
+    const customer = await adb.get<AnyRow>(
+      'SELECT first_name, last_name, email FROM customers WHERE id = ?',
+      req.portalCustomerId,
+    );
+    const signerName = customer
+      ? [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'Portal customer'
+      : 'Portal customer';
+    const signerEmail = (customer?.email as string | null) ?? null;
+    const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? null;
+    const signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
+    const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+    const totalsRow = await adb.get<AnyRow>(
+      'SELECT subtotal, total_tax, total FROM estimates WHERE id = ?',
+      estimateId,
+    );
+    await adb.run(
+      `INSERT INTO estimate_signatures
+         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+          subtotal_at_signing, tax_at_signing, total_at_signing)
+       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
+      estimateId,
+      `${signerName} (rejected)`,
+      signerEmail,
+      signerIp,
+      userAgent,
+      totalsRow?.subtotal ?? null,
+      totalsRow?.total_tax ?? null,
+      totalsRow?.total ?? null,
+    );
+  } catch (sigErr) {
+    logger.warn('portal_estimate_reject_signature_write_failed', {
+      err: sigErr instanceof Error ? sigErr.message : String(sigErr),
+      estimate_id: estimateId,
+    });
+  }
+
+  await adb.run(`
+    UPDATE estimates SET status = 'rejected', rejected_at = datetime('now'), updated_at = datetime('now')
+    WHERE id = ?
+  `, estimateId);
+
+  // Auto-cancel linked ticket when the shop has configured a rejection
+  // target status. Mirrors the approve path's ticket_status_after_estimate
+  // hook so operators can opt in (default: leave the ticket untouched).
+  const statusAfterReject = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate_rejected'");
+  if (statusAfterReject?.value) {
+    const targetStatusId = parseInt(statusAfterReject.value as string);
+    if (targetStatusId > 0) {
+      const est = await adb.get<AnyRow>('SELECT converted_ticket_id FROM estimates WHERE id = ?', estimateId);
+      const ticketId = est?.converted_ticket_id
+        || (await adb.get<AnyRow>('SELECT id FROM tickets WHERE estimate_id = ? AND is_deleted = 0', estimateId))?.id;
+      if (ticketId) {
+        const statusExists = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE id = ?', targetStatusId);
+        if (statusExists) {
+          await adb.run('UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE id = ? AND is_deleted = 0',
+            targetStatusId, ticketId);
+        }
+      }
+    }
+  }
+
+  res.json({ success: true, data: { rejected: true } });
 }));
 
 // ---------------------------------------------------------------------------
@@ -1604,6 +1804,95 @@ router.get('/invoices/:id', portalAuth, requireFullScope, asyncHandler(async (re
 }));
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Portal self-service membership (WEB-UIUX-1485 unblock)
+// ---------------------------------------------------------------------------
+// GET  /membership            — return the portal customer's active subscription
+// POST /membership/cancel     — request end-of-period cancellation (no immediate
+//                                option from the portal; staff still own immediate
+//                                cancels via /membership/:id/cancel)
+// POST /membership/resume     — undo a pending end-of-period cancel before it
+//                                fires (only valid while cancel_at_period_end=1)
+// Scope: requires full account scope; ticket-only sessions cannot self-cancel.
+router.get('/membership', portalAuth, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = req.portalCustomerId!;
+  const sub = await adb.get<AnyRow>(
+    `SELECT cs.id, cs.status, cs.cancel_at_period_end, cs.current_period_end,
+            cs.next_billing_attempt_at, cs.auto_renew,
+            mt.id AS tier_id, mt.name AS tier_name, mt.monthly_price
+       FROM customer_subscriptions cs
+       LEFT JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.customer_id = ?
+        AND cs.status IN ('active','past_due','paused')
+      LIMIT 1`,
+    customerId,
+  );
+  if (!sub) {
+    res.json({ success: true, data: null });
+    return;
+  }
+  res.json({ success: true, data: sub });
+}));
+
+router.post('/membership/cancel', portalAuth, requireCsrfToken, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = req.portalCustomerId!;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const sub = await adb.get<AnyRow>(
+    `SELECT id, status, cancel_at_period_end FROM customer_subscriptions
+      WHERE customer_id = ? AND status IN ('active','past_due','paused')
+      LIMIT 1`,
+    customerId,
+  );
+  if (!sub) {
+    res.status(404).json({ success: false, message: 'No active membership to cancel.' });
+    return;
+  }
+  if (sub.cancel_at_period_end) {
+    res.status(409).json({ success: false, message: 'Your membership is already scheduled to cancel at period end.' });
+    return;
+  }
+  await adb.run(
+    `UPDATE customer_subscriptions
+        SET cancel_at_period_end = 1,
+            auto_renew = 0,
+            next_billing_attempt_at = NULL,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    sub.id,
+  );
+  audit(req.db, 'membership_cancelled_self_service', customerId, ip, { subscription_id: sub.id, source: 'portal' });
+  res.json({ success: true, data: { cancelled: true, immediate: false, subscription_id: sub.id } });
+}));
+
+router.post('/membership/resume', portalAuth, requireCsrfToken, requireFullScope, asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = req.portalCustomerId!;
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const sub = await adb.get<AnyRow>(
+    `SELECT id FROM customer_subscriptions
+      WHERE customer_id = ? AND cancel_at_period_end = 1
+        AND status IN ('active','past_due')
+      LIMIT 1`,
+    customerId,
+  );
+  if (!sub) {
+    res.status(404).json({ success: false, message: 'No pending cancellation to undo.' });
+    return;
+  }
+  await adb.run(
+    `UPDATE customer_subscriptions
+        SET cancel_at_period_end = 0,
+            auto_renew = 1,
+            updated_at = datetime('now')
+      WHERE id = ?`,
+    sub.id,
+  );
+  audit(req.db, 'membership_resumed_self_service', customerId, ip, { subscription_id: sub.id, source: 'portal' });
+  res.json({ success: true, data: { resumed: true, subscription_id: sub.id } });
+}));
+
 // GET /embed/config — Public store branding for widget
 // ---------------------------------------------------------------------------
 // SEC-M19: IP-rate-limited (60 requests / 5 min) + gated on the tenant's

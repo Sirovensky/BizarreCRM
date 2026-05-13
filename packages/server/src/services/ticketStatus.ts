@@ -96,13 +96,19 @@ const LEGAL_TICKET_TRANSITIONS: Record<string, readonly string[]> = {
   // A closed ticket may be moved to a hold/on-hold state for rework or
   // re-shipment, or cancelled if the job is disputed/voided post-pickup.
   // It may NOT jump to another closed state directly (use the hold state first).
+  // BUGHUNT-2026-05-10-11: removed direct 'In Progress' backtrack from
+  // terminal/near-terminal states. Reopening a Repaired job (e.g. warranty
+  // return) must route through 'Waiting for inspection' first so the
+  // workflow has an explicit review step + audit row instead of silently
+  // re-billing an already-collected ticket. Hold states stay open so a
+  // mid-handoff hiccup can still be parked without a full reopen.
   'Repaired': [
     'Repaired - Waiting for payment',
     'Approval required',
     'Waiting on customer',
     'Waiting for Parts',
-    'In Progress',
     'Repaired - Pending QC',
+    'Waiting for inspection',
     'Cancelled',
     'BER (Beyond Economical Repair)',
   ],
@@ -119,16 +125,30 @@ const LEGAL_TICKET_TRANSITIONS: Record<string, readonly string[]> = {
     'Waiting for asset',
     'Cancelled',
   ],
+  // BUGHUNT-2026-05-10-11: terminal collected states can only reopen via
+  // 'Waiting for inspection' so a warranty return is reviewed (and an
+  // audit row gets created) before the ticket re-enters the active queue.
   'Repaired & Collected': [
     'Cancelled',
-    // Allow reopening for warranty returns.
     'Waiting for inspection',
-    'In Progress',
   ],
   'Payment Received & Picked Up': [
     'Cancelled',
     'Waiting for inspection',
-    'In Progress',
+  ],
+
+  // WEB-UIUX-1086: 'Repaired - Pending QC' is the natural staging state
+  // between tech-finished and customer-pickup-ready. Forward path on a
+  // passing sign-off goes to 'Repaired' (closed); a failed sign-off can
+  // re-route to 'Repaired - Defect found' which already routes elsewhere
+  // (defect_reports flow), or back to an active state for rework.
+  'Repaired - Pending QC': [
+    'Repaired',
+    'Repaired - Waiting for payment',
+    'Waiting on customer',
+    'Waiting for Parts',
+    'Repaired - Defect found',
+    'Cancelled',
   ],
 
   // ── Cancelled → conditional re-open ────────────────────────────────────────
@@ -311,6 +331,28 @@ export async function applyTicketStatusChange(
         const activeTime = calculateActiveRepairTime(db, ticketId);
         if (activeTime === null || activeTime <= 0) {
           throw new AppError('Repair timer must be started before closing the ticket', 400);
+        }
+      }
+
+      // WEB-UIUX-1078: enforce the qc_required gate that migration 088
+      // documented but no route was honouring. When `qc_required=true` in
+      // store_config, refuse to close the ticket until a `pass` sign-off row
+      // exists in qc_sign_offs. A failed sign-off does not unblock — the
+      // tech must resolve the failure and re-sign before close.
+      const requireQc = await adb.get<AnyRow>(
+        "SELECT value FROM store_config WHERE key = 'qc_required'",
+      );
+      const qcEnabled = requireQc?.value === '1' || requireQc?.value === 'true';
+      if (qcEnabled) {
+        const passRow = await adb.get<AnyRow>(
+          "SELECT id FROM qc_sign_offs WHERE ticket_id = ? AND outcome = 'pass' ORDER BY signed_at DESC LIMIT 1",
+          ticketId,
+        );
+        if (!passRow) {
+          throw new AppError(
+            'QC sign-off is required before closing this ticket. Open the QC modal and capture a pass sign-off first.',
+            400,
+          );
         }
       }
     }

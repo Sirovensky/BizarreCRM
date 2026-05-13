@@ -98,6 +98,26 @@ export function clearRateLimit(db: Database.Database, category: string, key: str
   db.prepare('DELETE FROM rate_limits WHERE category = ? AND key = ?').run(category, key);
 }
 
+/**
+ * Read-only inspection of a window-based rate limit. Returns current usage so
+ * a route can surface "X/N used, resets in Yms" without consuming a slot.
+ * Returns null when the bucket is empty or the window has expired.
+ */
+export function peekWindowRate(
+  db: Database.Database, category: string, key: string, windowMs: number,
+): { count: number; firstAttempt: number; resetAtMs: number } | null {
+  const row = db.prepare(
+    'SELECT count, first_attempt FROM rate_limits WHERE category = ? AND key = ?',
+  ).get(category, key) as RateLimitEntry | undefined;
+  if (!row) return null;
+  if (Date.now() - row.first_attempt > windowMs) return null;
+  return {
+    count: row.count,
+    firstAttempt: row.first_attempt,
+    resetAtMs: row.first_attempt + windowMs,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Lockout-based rate limiting (TOTP)
 // ---------------------------------------------------------------------------
@@ -211,7 +231,35 @@ export function consumeWindowRate(
     ).run(cat, k);
     return { allowed: true, retryAfterSeconds: 0 };
   });
-  return tx(category, key, maxAttempts, windowMs);
+
+  // 2026-05-09 fix: held-cart tab thrashing (rapid POST + recall churn)
+  // hammers this rate limiter and used to surface SQLITE_BUSY_SNAPSHOT to
+  // the user as "Internal server error". Two layers of protection:
+  //   1. `.immediate()` upgrades the transaction to IMMEDIATE mode so a
+  //      write lock is acquired up front, eliminating the snapshot race
+  //      that fires after another writer commits between our SELECT and
+  //      UPDATE under default DEFERRED mode.
+  //   2. A bounded retry loop covers the residual BUSY/BUSY_SNAPSHOT
+  //      window for write-write contention. Better-sqlite3 is sync, so a
+  //      tight `Atomics.wait`-style spin-yield is the only knob; cap at
+  //      5 attempts with a few-ms back-off so a stuck lock can't pin the
+  //      request thread for the full busy_timeout (5s).
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      return tx.immediate(category, key, maxAttempts, windowMs);
+    } catch (err: any) {
+      lastErr = err;
+      const code = err?.code;
+      if (code !== 'SQLITE_BUSY' && code !== 'SQLITE_BUSY_SNAPSHOT') throw err;
+      // Sync sleep — better-sqlite3 is synchronous so the transaction
+      // call blocks the request handler regardless. A short SharedArray
+      // wait yields cleanly without burning CPU.
+      const buf = new Int32Array(new SharedArrayBuffer(4));
+      Atomics.wait(buf, 0, 0, 2 + attempt * 5);
+    }
+  }
+  throw lastErr;
 }
 
 // ---------------------------------------------------------------------------

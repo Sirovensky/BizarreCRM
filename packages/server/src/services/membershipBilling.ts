@@ -10,7 +10,8 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
 export type MembershipBillingMode = 'manual' | 'cron';
-export type MembershipBillingSource = 'manual_single' | 'manual_global' | 'cron';
+// WEB-UIUX-1069: 'retry_past_due' = operator-initiated retry on failed renewal.
+export type MembershipBillingSource = 'manual_single' | 'manual_global' | 'cron' | 'retry_past_due';
 
 export interface MembershipBillingSubscription {
   id: number;

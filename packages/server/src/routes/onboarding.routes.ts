@@ -10,6 +10,8 @@
  *   POST   /sample-data       — inserts 5 customers + 10 tickets + 3 invoices.
  *   DELETE /sample-data       — removes everything tracked in sample_data_entities_json.
  *   POST   /set-shop-type     — applies a starter template for the chosen shop type.
+ *   POST   /skip-shop-type    — records that the user advanced past the shop-type step
+ *                                without picking one. Audit-only; no DB write.
  *
  * Response shape is the project-standard { success, data } envelope.
  * Writes are audited via utils/audit. User-facing errors throw AppError so
@@ -27,6 +29,7 @@ import {
   removeSampleDataByEntities,
   type SampleEntity,
 } from '../services/sampleData.js';
+import { seedDeviceModels } from '../db/device-models-seed-runner.js';
 
 const router = Router();
 const logger = createLogger('onboarding');
@@ -498,6 +501,24 @@ router.post(
       `UPDATE onboarding_state SET shop_type = ?, updated_at = datetime('now') WHERE id = 1`,
       shopType,
     );
+    // Mirror to store_config so seedDeviceModels (and other lookups that read
+    // the canonical key) pick up the choice without a server restart.
+    await adb.run(
+      `INSERT INTO store_config (key, value) VALUES ('shop_type', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      shopType,
+    );
+    // Expand the device-models catalog to cover the newly-allowed categories
+    // (e.g. switching from phone_repair to general_electronics surfaces TVs +
+    // watches + XR). INSERT OR IGNORE keeps existing rows untouched.
+    try {
+      seedDeviceModels(req.db);
+    } catch (err) {
+      logger.warn('Failed to re-seed device models for new shop_type', {
+        shop_type: shopType,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     // Install starter SMS templates. Using INSERT OR IGNORE on a natural key
     // (name) keeps this idempotent — running set-shop-type twice is safe.
@@ -532,6 +553,20 @@ router.post(
       success: true,
       data: { state: rowToResponse(updated), templates_installed: installed },
     });
+  }),
+);
+
+/**
+ * POST /skip-shop-type — records that the operator advanced past the shop-type
+ * step without picking one. Audit-only: no DB write. UI emits this from the
+ * setup wizard's "Skip this step" button so the audit trail distinguishes a
+ * real selection from an opaque skip (WEB-UIUX-241).
+ */
+router.post(
+  '/skip-shop-type',
+  asyncHandler(async (req, res) => {
+    audit(req.db, 'onboarding.shop_type_skipped', req.user?.id ?? null, req.ip || 'unknown', {});
+    res.json({ success: true, data: { skipped: true } });
   }),
 );
 

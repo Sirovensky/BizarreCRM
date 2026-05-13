@@ -3,10 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Printer, ArrowRightLeft, Send, Pencil, Save, X,
   CheckCircle, History, ChevronDown, ChevronUp, XCircle, Plus, Trash2,
-  FileSignature, Link2,
+  FileSignature, Link2, Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { estimateApi } from '@/api/endpoints';
+import { estimateApi, settingsApi } from '@/api/endpoints';
 import type { EstimateSignature, EstimateSignPublicSummary } from '@/api/endpoints';
 import { confirm, useConfirmStore } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
@@ -16,6 +16,7 @@ import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { useEffect, useState } from 'react';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -276,7 +277,8 @@ export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const userRole = useAuthStore((s) => s.user?.role);
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canManageSigning = useHasRole(['admin', 'manager']);
   // WEB-UIUX-1463: capture current user id for self-approval guard
   const currentUserId = useAuthStore((s) => s.user?.id);
   const [editing, setEditing] = useState(false);
@@ -284,6 +286,9 @@ export function EstimateDetailPage() {
   const [editingValidUntil, setEditingValidUntil] = useState(false);
   const [draftValidUntil, setDraftValidUntil] = useState('');
   const [showVersions, setShowVersions] = useState(false);
+  // WEB-UIUX-973: when an operator clicks View on a version row we fetch
+  // the full snapshot via estimateApi.versionDetail and open it in a modal.
+  const [viewingVersionId, setViewingVersionId] = useState<number | null>(null);
   const [signSession, setSignSession] = useState<EstimateSignSession | null>(null);
   // WEB-W2-019: inline line-item editing state
   const [editingItems, setEditingItems] = useState(false);
@@ -293,7 +298,22 @@ export function EstimateDetailPage() {
     quantity: number;
     unit_price: number;
     tax_amount: number;
+    // WEB-UIUX-967: tax_class_id picker mirrors CreateEstimateModal flow.
+    // Stored client-side so the dropdown remembers its selection across
+    // re-renders; on submit the derived `tax_amount = qty * unit_price *
+    // (rate / 100)` is sent and tax_class_id is dropped from the payload
+    // since the server stores only the dollar value.
+    tax_class_id?: number | '' | null;
   }>>([]);
+
+  // WEB-UIUX-967: load the same tax-classes list CreateEstimateModal uses so
+  // the inline editor's picker shows the same rates. Cached 60s.
+  const { data: taxClassData } = useQuery({
+    queryKey: ['tax-classes'],
+    queryFn: () => settingsApi.getTaxClasses(),
+    staleTime: 60_000,
+  });
+  const taxClasses: { id: number; name: string; rate: number }[] = taxClassData?.data?.data || [];
 
   // Guard against a missing route param — `Number(undefined)` is NaN and
   // would otherwise fire the API call with a garbage id.
@@ -306,7 +326,6 @@ export function EstimateDetailPage() {
   });
 
   const estimate = data?.data?.data;
-  const canManageSigning = userRole === 'admin' || userRole === 'manager';
 
   // Version history query (ENR-LE6)
   const { data: versionsData, isLoading: versionsLoading } = useQuery({
@@ -316,6 +335,18 @@ export function EstimateDetailPage() {
     staleTime: 60_000, // versions of completed/sent estimates rarely change minute-to-minute
   });
   const versions: EstimateVersion[] = versionsData?.data?.data || [];
+
+  // WEB-UIUX-973: per-version snapshot fetch, lazily enabled when an operator
+  // has clicked View on a row. The server returns the full data blob with
+  // parsed JSON (estimates.routes.ts:898-918).
+  const { data: versionDetailData, isLoading: versionDetailLoading } = useQuery({
+    queryKey: ['estimate-version-detail', id, viewingVersionId],
+    queryFn: () => estimateApi.versionDetail(Number(id), Number(viewingVersionId)),
+    enabled: idIsValid && viewingVersionId != null,
+    staleTime: 5 * 60_000,
+  });
+  const versionDetail: { data?: any; version_number?: number; created_at?: string } | null =
+    versionDetailData?.data?.data ?? null;
 
   const { data: signaturesData, isLoading: signaturesLoading, isError: signaturesError } = useQuery({
     queryKey: ['estimate-signatures', numericId],
@@ -334,7 +365,32 @@ export function EstimateDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['estimates'] });
       const data = res?.data?.data || {};
       if (data.sent === false) {
-        toast.error(data.warning || 'No message was sent');
+        const warning: string = data.warning || 'No message was sent';
+        // WEB-UIUX-1468: server returns `warning: "Customer has no phone
+        // number on file."` when the customer record is missing a phone.
+        // Surface an inline "Edit customer" action that deep-links to the
+        // customer profile so the operator doesn't have to navigate
+        // Customers → search → edit → save → back to estimate → Send again.
+        const isNoPhone = /phone/i.test(warning);
+        const targetCustomerId = (estimate as any)?.customer_id;
+        if (isNoPhone && targetCustomerId) {
+          toast((t) => (
+            <span className="flex items-center gap-2 text-sm">
+              {warning}
+              <button
+                className="ml-2 rounded bg-surface-200 px-3 py-2 min-h-[44px] md:min-h-0 md:px-2 md:py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  navigate(`/customers/${targetCustomerId}`);
+                }}
+              >
+                Edit customer
+              </button>
+            </span>
+          ), { duration: 8000 });
+        } else {
+          toast.error(warning);
+        }
       } else {
         toast.success(data.message || 'Estimate sent to customer');
       }
@@ -344,11 +400,26 @@ export function EstimateDetailPage() {
 
   const approveMut = useMutation({
     mutationFn: () => estimateApi.approve(Number(id)),
-    onSuccess: () => {
+    onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['estimate', id] });
       // WEB-UIUX-1480: keep list-page status badges in sync.
       queryClient.invalidateQueries({ queryKey: ['estimates'] });
-      toast.success('Estimate approved');
+      // WEB-UIUX-1479: server may auto-flip the linked ticket status when
+      // store_config.ticket_status_after_estimate is set. Invalidate the
+      // ticket query so the operator's other-tab view doesn't drift, and
+      // surface the new ticket status in the toast when the server
+      // includes it in the response payload.
+      const data = res?.data?.data ?? {};
+      const tid = data.ticket_id ?? estimate?.ticket_id ?? null;
+      const newTicketStatus: string | null = data.ticket_status_advanced_to ?? null;
+      if (tid) {
+        queryClient.invalidateQueries({ queryKey: ['ticket', String(tid)] });
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      }
+      const msg = newTicketStatus
+        ? `Estimate approved — ticket advanced to "${newTicketStatus}"`
+        : 'Estimate approved';
+      toast.success(msg);
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to approve'),
   });
@@ -383,6 +454,9 @@ export function EstimateDetailPage() {
         { duration: 8000 },
       );
     },
+    // WEB-UIUX-960: surface the server's specific message (Already converted,
+    // Estimate was cancelled, Plan limit reached, etc.) via formatApiError
+    // instead of swallowing it with a generic 'Failed to convert'.
     onError: (err: any) => toast.error(formatApiError(err) || 'Failed to convert'),
   });
 
@@ -409,6 +483,32 @@ export function EstimateDetailPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to reject'),
   });
 
+  // WEB-UIUX-658: renew (extend valid_until + flip to draft) and clone (new
+  // draft, same line items + customer). Server permission checks: estimates.edit
+  // / estimates.create.
+  const renewMut = useMutation({
+    mutationFn: () => estimateApi.renew(Number(id), 30),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      const newValid = res.data?.data?.valid_until;
+      toast.success(`Renewed — valid until ${newValid ?? '+30 days'}.`);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message || 'Failed to renew'),
+  });
+  const cloneMut = useMutation({
+    mutationFn: () => estimateApi.clone(Number(id), 30),
+    onSuccess: (res) => {
+      const newId = res.data?.data?.id;
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      toast.success('Cloned. Opening new draft.');
+      if (newId) navigate(`/estimates/${newId}`);
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message || 'Failed to clone'),
+  });
+
   const createSignUrlMut = useMutation({
     mutationFn: () => estimateApi.createSignUrl(Number(id)),
     onSuccess: (res) => {
@@ -426,7 +526,12 @@ export function EstimateDetailPage() {
   // WEB-W2-019: line-item save mutation — reuses the existing PUT /:id endpoint
   const lineItemsMut = useMutation({
     mutationFn: (items: typeof draftItems) =>
-      estimateApi.update(Number(id), { line_items: items }),
+      // WEB-UIUX-967: drop the client-only `tax_class_id` field before POST.
+      // Server stores `tax_amount` (dollars) only; the picker exists solely
+      // for the local entry experience.
+      estimateApi.update(Number(id), {
+        line_items: items.map(({ tax_class_id: _drop, ...rest }) => rest),
+      }),
     onSuccess: (res) => {
       // WEB-UIUX-974: sync cache immediately from server response so the
       // Summary card reflects recomputed totals before the refetch settles.
@@ -498,12 +603,25 @@ export function EstimateDetailPage() {
   const formattedDestinationPhone = destinationPhone ? formatPhone(destinationPhone) : '';
 
   return (
-    <div>
-      <Breadcrumb items={estimateBreadcrumbItems} />
+    <div data-estimate-print-root>
+      {/* WEB-UIUX-681: visibility-hidden print stylesheet so window.print()
+          on this page produces a clean estimate without sidebar/topbar/breadcrumb
+          chrome. Same pattern as ZReportModal (WEB-UIUX-1182). The detail
+          subtree carries `data-estimate-print-root`; everything outside
+          that subtree gets hidden on paper. */}
+      <style dangerouslySetInnerHTML={{ __html: `
+@media print {
+  body * { visibility: hidden !important; }
+  [data-estimate-print-root], [data-estimate-print-root] * { visibility: visible !important; }
+  [data-estimate-print-root] { position: absolute !important; inset: 0 !important; max-width: none !important; padding: 0 !important; background: white !important; color: black !important; }
+  [data-estimate-print-root] .no-print, [data-estimate-print-root] .no-print * { visibility: hidden !important; }
+}
+` }} />
+      <div className="no-print"><Breadcrumb items={estimateBreadcrumbItems} /></div>
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <button onClick={() => navigate('/estimates')} className="shrink-0 rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+          <button onClick={() => navigate('/estimates')} className="no-print shrink-0 rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="min-w-0">
@@ -526,7 +644,7 @@ export function EstimateDetailPage() {
             <p className="text-sm text-surface-500">Created {formatDate(estimate.created_at)}</p>
           </div>
         </div>
-        <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(8.75rem,1fr))] gap-2 sm:flex sm:flex-wrap sm:items-center lg:w-auto lg:justify-end" data-estimate-actions="true">
+        <div className="no-print grid w-full grid-cols-[repeat(auto-fit,minmax(8.75rem,1fr))] gap-2 sm:flex sm:flex-wrap sm:items-center lg:w-auto lg:justify-end" data-estimate-actions="true">
           {canStartSigning && (
             <button
               onClick={() => createSignUrlMut.mutate()}
@@ -545,10 +663,32 @@ export function EstimateDetailPage() {
             <button
               onClick={async () => {
                 try {
-                  const action = estimate.status === 'sent' ? 'Resend' : 'Send';
-                  const target = formattedDestinationPhone ? ` to ${formattedDestinationPhone}` : ' to the customer';
-                  const msg = `${action} this estimate${target} via SMS?`;
-                  if (await confirm(msg)) sendMut.mutate();
+                  // WEB-UIUX-956: surface the destination number so a
+                  // typo'd phone gets caught before the SMS fires (Twilio
+                  // charge + status flip to "sent" both happen otherwise).
+                  const dest = formatPhone(estimate.customer_mobile || estimate.customer_phone) || '(no phone on file)';
+                  // WEB-UIUX-1461: also surface the message body so the
+                  // operator can see exactly what the customer will receive
+                  // before committing. Server template (estimates.routes.ts:1251):
+                  //   "Hi ${first_name}, your estimate ${order_id} for
+                  //   $${total} is ready. Open the link your repair shop sent
+                  //   you to review and approve."
+                  const firstName = estimate.customer_first_name || 'there';
+                  const totalStr = Number(estimate.total ?? 0).toFixed(2);
+                  const bodyPreview = `Hi ${firstName}, your estimate ${estimate.order_id} for $${totalStr} is ready. Open the link your repair shop sent you to review and approve.`;
+                  const verb = estimate.status === 'sent' ? 'Resend' : 'Send';
+                  const msg = (
+                    <div className="space-y-2">
+                      <p>{verb} this estimate via SMS to <strong>{dest}</strong>?</p>
+                      <pre className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs whitespace-pre-wrap font-mono text-surface-700 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-300">{bodyPreview}</pre>
+                    </div>
+                  );
+                  // WEB-UIUX-975: explicit confirmLabel so the dialog button
+                  // names match the action (Send/Resend) instead of generic OK.
+                  if (await confirm(msg, {
+                    title: estimate.status === 'sent' ? 'Resend estimate?' : 'Send estimate?',
+                    confirmLabel: verb,
+                  })) sendMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending || isExpired}
@@ -569,7 +709,13 @@ export function EstimateDetailPage() {
               onClick={async () => {
                 try {
                   // WEB-UIUX-952: old copy hid audit gap — use danger confirm that surfaces the e-sign bypass
-                  const confirmed = await confirm("Approving on customer's behalf — this skips the customer e-sign and writes no signature row. Continue?", { confirmLabel: 'Approve', danger: true });
+                  // WEB-UIUX-1471: also flag that this is the staff override
+                  // path; jurisdictions like CA BPC §9844, NY GBL §399-aa
+                  // require written customer consent for repair work.
+                  const confirmed = await confirm(
+                    "Approving on customer's behalf — this is the staff override path. It skips the customer e-sign and writes no signature row.\n\nUse only when the customer has authorized in person AND you've noted authorization in the work-order. Many jurisdictions (CA BPC §9844, NY GBL §399-aa) require written customer consent before repair work.\n\nContinue?",
+                    { confirmLabel: 'Approve on behalf', danger: true },
+                  );
                   if (confirmed) { approveMut.mutate(); }
                   else { toast('Approval cancelled.'); }
                 }
@@ -665,7 +811,13 @@ export function EstimateDetailPage() {
             <button
               onClick={async () => {
                 try {
-                  if (await confirm('Reject this estimate? It will leave the active approval flow, but it is not permanently deleted.', { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true }))
+                  // WEB-UIUX-1473: when the customer already approved, the
+                  // reject confirm explicitly flags that we're revoking the
+                  // customer authorization — not just declining a draft.
+                  const rejectMsg = estimate.status === 'approved'
+                    ? `Customer approved this estimate${estimate.approved_at ? ` on ${formatDate(estimate.approved_at)}` : ''}. Rejecting will revoke their authorization and cannot be undone — work cannot proceed unless a new revision is created and re-approved.`
+                    : 'Mark this estimate as rejected? This cannot be undone.';
+                  if (await confirm(rejectMsg, { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true }))
                     rejectMut.mutate();
                 } catch (err) { toast.error(formatApiError(err)); }
               }}
@@ -695,15 +847,33 @@ export function EstimateDetailPage() {
       {isExpired && (
         <div className="mb-6 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700 dark:bg-amber-950/30">
           <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-            Estimate expired on {formatDate(estimate.valid_until)} — pricing may be stale. Re-quote to update.
+            Estimate expired on {formatDate(estimate.valid_until)} — pricing may be stale. Renew to extend by 30 days, clone for a fresh draft, or re-quote from scratch.
           </p>
-          <button
-            type="button"
-            onClick={() => navigate('/estimates/new')}
-            className="shrink-0 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
-          >
-            Re-quote
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              disabled={renewMut.isPending || anyMutationPending}
+              onClick={() => renewMut.mutate()}
+              className="rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+            >
+              {renewMut.isPending ? 'Renewing…' : 'Renew +30d'}
+            </button>
+            <button
+              type="button"
+              disabled={cloneMut.isPending || anyMutationPending}
+              onClick={() => cloneMut.mutate()}
+              className="rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+            >
+              {cloneMut.isPending ? 'Cloning…' : 'Clone'}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/estimates/new')}
+              className="rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-200 dark:hover:bg-amber-900/40"
+            >
+              Re-quote
+            </button>
+          </div>
         </div>
       )}
 
@@ -756,13 +926,31 @@ export function EstimateDetailPage() {
               {!editingItems && !estimateContentLocked && (
                 <button
                   onClick={() => {
-                    setDraftItems(lineItems.map((li: any) => ({
-                      id: li.id,
-                      description: li.description || li.item_name || li.name || '',
-                      quantity: Number(li.quantity) || 1,
-                      unit_price: Number(li.unit_price ?? li.price ?? 0),
-                      tax_amount: Number(li.tax_amount ?? 0),
-                    })));
+                    setDraftItems(lineItems.map((li: any) => {
+                      const qty = Number(li.quantity) || 1;
+                      const price = Number(li.unit_price ?? li.price ?? 0);
+                      const tax = Number(li.tax_amount ?? 0);
+                      // WEB-UIUX-967: best-effort reverse-lookup of tax_class_id
+                      // from the persisted `tax_amount` so the dropdown reflects
+                      // the existing class on edit-open. Match by `tax_class_id`
+                      // if server returns it; otherwise match by derived rate
+                      // (qty * unit_price * rate/100 ≈ tax_amount).
+                      let tcId: number | '' | null = li.tax_class_id ?? null;
+                      if (tcId == null && qty * price > 0 && tax > 0) {
+                        const computedRate = (tax / (qty * price)) * 100;
+                        const match = taxClasses.find((t) => Math.abs(t.rate - computedRate) < 0.01);
+                        if (match) tcId = match.id;
+                      }
+                      if (tcId == null) tcId = '';
+                      return {
+                        id: li.id,
+                        description: li.description || li.item_name || li.name || '',
+                        quantity: qty,
+                        unit_price: price,
+                        tax_amount: tax,
+                        tax_class_id: tcId,
+                      };
+                    }));
                     setEditingItems(true);
                   }}
                   className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
@@ -798,24 +986,57 @@ export function EstimateDetailPage() {
                     <input
                       type="number" min="1" step="1"
                       value={item.quantity}
-                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, quantity: Number(e.target.value) || 1 } : r))}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => {
+                        if (i !== idx) return r;
+                        const next = { ...r, quantity: Number(e.target.value) || 1 };
+                        // WEB-UIUX-967: keep derived tax in sync on qty change.
+                        const tc = taxClasses.find((t) => t.id === Number(next.tax_class_id));
+                        if (tc) next.tax_amount = +(next.unit_price * next.quantity * (tc.rate / 100)).toFixed(2);
+                        return next;
+                      }))}
                       placeholder="Qty"
                       className="input text-sm w-20 text-right"
                     />
                     <input
                       type="number" min="0" step="0.01"
                       value={item.unit_price}
-                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, unit_price: Number(e.target.value) || 0 } : r))}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => {
+                        if (i !== idx) return r;
+                        const next = { ...r, unit_price: Number(e.target.value) || 0 };
+                        // WEB-UIUX-967: recompute tax when unit_price changes
+                        // and a tax_class is selected so the derived tax stays
+                        // accurate without operator re-entering it.
+                        const tc = taxClasses.find((t) => t.id === Number(next.tax_class_id));
+                        if (tc) next.tax_amount = +(next.unit_price * next.quantity * (tc.rate / 100)).toFixed(2);
+                        return next;
+                      }))}
                       placeholder="Price"
                       className="input text-sm w-28 text-right"
                     />
-                    <input
-                      type="number" min="0" step="0.01"
-                      value={item.tax_amount}
-                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, tax_amount: Number(e.target.value) || 0 } : r))}
-                      placeholder="Tax"
-                      className="input text-sm w-24 text-right"
-                    />
+                    {/* WEB-UIUX-967: tax_class_id picker (matches CreateEstimateModal).
+                        On select, the dollar tax_amount is recomputed from
+                        unit_price × quantity × (rate/100). The hidden numeric
+                        value still ships to the server in the line_items
+                        payload — only the entry surface changed. */}
+                    <select
+                      value={item.tax_class_id ?? ''}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => {
+                        if (i !== idx) return r;
+                        const tcId = e.target.value === '' ? '' : Number(e.target.value);
+                        const tc = taxClasses.find((t) => t.id === Number(tcId));
+                        const tax_amount = tc
+                          ? +(r.unit_price * r.quantity * (tc.rate / 100)).toFixed(2)
+                          : 0;
+                        return { ...r, tax_class_id: tcId, tax_amount };
+                      }))}
+                      className="input text-sm w-32 text-right"
+                      title={`Tax: $${(item.tax_amount || 0).toFixed(2)}`}
+                    >
+                      <option value="">No tax</option>
+                      {taxClasses.map((tc) => (
+                        <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>
+                      ))}
+                    </select>
                     <button
                       onClick={() => setDraftItems((prev) => prev.filter((_, i) => i !== idx))}
                       className="p-1.5 text-red-400 hover:text-red-600 rounded"
@@ -826,7 +1047,7 @@ export function EstimateDetailPage() {
                   </div>
                 ))}
                 <button
-                  onClick={() => setDraftItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0, tax_amount: 0 }])}
+                  onClick={() => setDraftItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0, tax_amount: 0, tax_class_id: '' }])}
                   className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium mt-1"
                 >
                   <Plus className="h-3 w-3" /> Add row
@@ -991,12 +1212,22 @@ export function EstimateDetailPage() {
                   <dd className="text-surface-900 dark:text-surface-100">{formatDate(estimate.sent_at)}</dd>
                 </div>
               )}
-              {estimate.approval_token_expires_at && (
-                <div className="flex justify-between">
-                  <dt className="text-surface-500">Approval Link Expires</dt>
-                  <dd className="text-right text-surface-900 dark:text-surface-100">{formatDateTime(estimate.approval_token_expires_at)}</dd>
-                </div>
-              )}
+              {/* WEB-UIUX-966: surface approval link expiry so the operator
+                  knows whether to resend before the customer hits a 410. The
+                  field is null once the customer has approved/signed, and once
+                  the row reaches a terminal status it stops mattering. */}
+              {estimate.approval_token_expires_at && !estimate.approved_at && (estimate.status === 'sent') && (() => {
+                const exp = new Date(estimate.approval_token_expires_at);
+                const expired = exp.getTime() < Date.now();
+                return (
+                  <div className="flex justify-between">
+                    <dt className="text-surface-500">Approval link {expired ? 'expired' : 'expires'}</dt>
+                    <dd className={expired ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}>
+                      {formatDateTime(estimate.approval_token_expires_at)}
+                    </dd>
+                  </div>
+                );
+              })()}
               {estimate.approved_at && (
                 <div className="flex justify-between">
                   <dt className="text-surface-500">Approved</dt>
@@ -1089,9 +1320,20 @@ export function EstimateDetailPage() {
                             v{v.version_number}
                           </span>
                         </div>
-                        <span className="text-xs text-surface-400">
-                          {formatDate(v.created_at)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-surface-400">
+                            {formatDate(v.created_at)}
+                          </span>
+                          {/* WEB-UIUX-973: view snapshot of this version. */}
+                          <button
+                            type="button"
+                            onClick={() => setViewingVersionId(v.id)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30"
+                            title={`View v${v.version_number} snapshot`}
+                          >
+                            <Eye className="h-3 w-3" /> View
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1113,6 +1355,73 @@ export function EstimateDetailPage() {
             queryClient.invalidateQueries({ queryKey: ['estimates'] });
           }}
         />
+      )}
+      {/* WEB-UIUX-973: version snapshot viewer modal. */}
+      {viewingVersionId != null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="version-detail-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setViewingVersionId(null); }}
+        >
+          <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+            <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
+              <h2 id="version-detail-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+                Snapshot: v{versionDetail?.version_number ?? '?'}
+                {versionDetail?.created_at && (
+                  <span className="ml-2 text-xs font-normal text-surface-400">
+                    {formatDate(versionDetail.created_at)}
+                  </span>
+                )}
+              </h2>
+              <button
+                aria-label="Close"
+                onClick={() => setViewingVersionId(null)}
+                className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto px-6 py-4 text-sm">
+              {versionDetailLoading || !versionDetail ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-surface-400" /></div>
+              ) : (() => {
+                const snap = versionDetail.data || {};
+                const items: any[] = Array.isArray(snap.line_items) ? snap.line_items : [];
+                return (
+                  <div className="space-y-3">
+                    <dl className="grid grid-cols-2 gap-2">
+                      <div><dt className="text-surface-500">Status</dt><dd className="text-surface-900 dark:text-surface-100">{snap.status ?? '—'}</dd></div>
+                      <div><dt className="text-surface-500">Order ID</dt><dd className="font-mono text-surface-900 dark:text-surface-100">{snap.order_id ?? '—'}</dd></div>
+                      <div><dt className="text-surface-500">Subtotal</dt><dd className="text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.subtotal ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Tax</dt><dd className="text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.total_tax ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Discount</dt><dd className="text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.discount ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Total</dt><dd className="font-semibold text-surface-900 dark:text-surface-100">{formatCurrency(Number(snap.total ?? 0))}</dd></div>
+                      <div><dt className="text-surface-500">Valid until</dt><dd className="text-surface-900 dark:text-surface-100">{snap.valid_until ? formatDate(snap.valid_until) : '—'}</dd></div>
+                      <div><dt className="text-surface-500">Notes</dt><dd className="text-surface-900 dark:text-surface-100">{snap.notes || '—'}</dd></div>
+                    </dl>
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase text-surface-500">Line items ({items.length})</h3>
+                      <ul className="mt-1 divide-y divide-surface-100 dark:divide-surface-700">
+                        {items.length === 0 ? (
+                          <li className="py-2 text-surface-400 italic">No line items</li>
+                        ) : items.map((li, i) => (
+                          <li key={i} className="flex justify-between gap-3 py-1.5">
+                            <span className="truncate text-surface-700 dark:text-surface-300">{li.description || `Item ${i + 1}`}</span>
+                            <span className="shrink-0 text-surface-600 dark:text-surface-400">
+                              {Number(li.quantity ?? 1)} × {formatCurrency(Number(li.unit_price ?? 0))}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

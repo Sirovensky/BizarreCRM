@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, toLocalDateString } from '@/utils/format';
 
 interface AbcItem {
   id: number;
@@ -87,7 +87,7 @@ export function AbcAnalysisPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `abc-analysis-${days}d-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `abc-analysis-${days}d-${toLocalDateString(new Date())}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

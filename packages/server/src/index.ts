@@ -51,7 +51,8 @@ import { seedDatabase } from './db/seed.js';
 import { backfillGiftCardCodeHashes } from './services/giftCardCodeHashBackfill.js';
 import { backfillEstimateApprovalTokenHashes } from './services/estimateApprovalTokenHashBackfill.js';
 import { errorHandler } from './middleware/errorHandler.js';
-import { authMiddleware } from './middleware/auth.js';
+import { authMiddleware, requirePermission } from './middleware/auth.js';
+import { PERMISSIONS } from '@bizarre-crm/shared';
 import { setupWebSocket, broadcast, allClients, stopWebSocketHeartbeat } from './ws/server.js';
 import { crashGuardMiddleware, getCurrentRoute } from './middleware/crashResiliency.js';
 import { recordCrash, resetDisabledRoutesOnStartup } from './services/crashTracker.js';
@@ -114,6 +115,8 @@ import rmaRoutes from './routes/rma.routes.js';
 import giftCardRoutes from './routes/giftCards.routes.js';
 import tradeInRoutes from './routes/tradeIns.routes.js';
 import blockchypRoutes from './routes/blockchyp.routes.js';
+import financingRoutes from './routes/financing.routes.js';
+import posHandoffRoutes from './routes/posHandoff.routes.js';
 import accountRoutes from './routes/account.routes.js';
 import onboardingRoutes from './routes/onboarding.routes.js';
 import portalRoutes from './routes/portal.routes.js';
@@ -860,7 +863,10 @@ setupWebSocket(wss);
 // Redirect middleware for requests arriving via reverse proxy (x-forwarded-proto)
 // SEC-H5: Sanitize host/URL to prevent CRLF injection in Location header.
 app.use((req, res, next) => {
-  if (req.headers['x-forwarded-proto'] === 'http') {
+  const isDevHttpVisualProxy =
+    config.nodeEnv === 'development' &&
+    req.headers['x-bizarre-dev-http'] === '1';
+  if (req.headers['x-forwarded-proto'] === 'http' && !isDevHttpVisualProxy) {
     const host = sanitizeRedirectHost(req.headers.host || '');
     const safeUrl = sanitizeRedirectUrl(req.url);
     return res.redirect(301, `https://${host}${safeUrl}`);
@@ -1201,7 +1207,21 @@ app.use('/api/v1', (req, res, next) => {
   // Use req.db when available (tenant context), fall back to the module-level db
   // for unauthenticated requests that arrive before tenantResolver runs.
   const limitDb: Database.Database = (req.db as Database.Database | undefined) ?? db;
-  const result = consumeWindowRate(limitDb, 'api_v1', ip, API_RATE_LIMIT, API_RATE_WINDOW);
+  // Fail-open on transient SQLite contention: if the rate-limit row is locked
+  // by another concurrent transaction, swallow the error and allow this
+  // request through. The throttle is a soft-cap signal, not a security
+  // boundary — a handful of unthrottled requests beats user-facing
+  // "Internal server error" toasts during normal page-load bursts. Real
+  // overload still hits the count check on the next non-busy tick.
+  let result;
+  try {
+    result = consumeWindowRate(limitDb, 'api_v1', ip, API_RATE_LIMIT, API_RATE_WINDOW);
+  } catch (err: any) {
+    if (err?.code === 'SQLITE_BUSY' || err?.code === 'SQLITE_BUSY_SNAPSHOT') {
+      return next();
+    }
+    throw err;
+  }
   if (!result.allowed) {
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
     return res.status(429).json({
@@ -1636,12 +1656,12 @@ app.use('/api/v1/inventory-enrich', authMiddleware, inventoryEnrichRoutes);
 app.use('/api/v1/invoices', authMiddleware, invoiceRoutes);
 app.use('/api/v1/leads', authMiddleware, leadRoutes);
 app.use('/api/v1/estimates', authMiddleware, estimateRoutes);
-app.use('/api/v1/pos', authMiddleware, posRoutes);
+app.use('/api/v1/pos', authMiddleware, requirePermission(PERMISSIONS.POS_ACCESS), posRoutes);
 // POS Daily Flow enrichment (criticalaudit.md §43) — cash drawer shifts,
 // top-five quick-add tiles, training sandbox, and the manager PIN gate.
 // Separate namespace so it never collides with pos.routes.ts owned by the
 // POS agent.
-app.use('/api/v1/pos-enrich', authMiddleware, posEnrichRoutes);
+app.use('/api/v1/pos-enrich', authMiddleware, requirePermission(PERMISSIONS.POS_ACCESS), posEnrichRoutes);
 app.use('/api/v1/reports', authMiddleware, reportRoutes);
 app.use('/api/v1/sms', authMiddleware, smsRoutes);
 app.use('/api/v1/employees', authMiddleware, employeeRoutes);
@@ -1679,6 +1699,17 @@ app.use('/api/v1/rma', authMiddleware, rmaRoutes);
 app.use('/api/v1/gift-cards', authMiddleware, giftCardRoutes);
 app.use('/api/v1/trade-ins', authMiddleware, tradeInRoutes);
 app.use('/api/v1/blockchyp', authMiddleware, blockchypRoutes);
+// WEB-UNWIRED-007: financing routes — checkout-session is staff-only (the
+// handler explicitly requires req.user); /webhook/:provider stays open so
+// providers can POST directly with HMAC-signed payloads. We deliberately
+// do NOT wrap this in authMiddleware so the webhook path isn't gated on a
+// session cookie the provider doesn't have.
+app.use('/api/v1/financing', financingRoutes);
+// POS-PHONE-TAP-1: pair-and-poll handoff so a paired mobile drains
+// "call this number" / "send SMS draft" actions from the desktop POS.
+// /pair/complete + /handoff/poll are gated by the device_token inside the
+// route file itself, not authMiddleware — they live on the unauthed mount.
+app.use('/api/v1/pos', posHandoffRoutes);
 app.use('/api/v1/stripe', authMiddleware, tenantStripeRoutes);
 app.use('/api/v1/voice', authMiddleware, voiceRoutes);
 // Audit 44 — Technician bench workflow (device templates + bench timer + QC + defects)
@@ -1697,7 +1728,7 @@ app.use('/api/v1/credit-notes', authMiddleware, creditNotesRoutes);
 app.use('/api/v1/activity', authMiddleware, activityRoutes);
 app.use('/api/v1/notification-preferences', authMiddleware, notificationPrefsRoutes);
 app.use('/api/v1/users/me/notification-prefs', authMiddleware, userNotificationPrefsRouter);
-app.use('/api/v1/pos/held-carts', authMiddleware, heldCartsRoutes);
+app.use('/api/v1/pos/held-carts', authMiddleware, requirePermission(PERMISSIONS.POS_ACCESS), heldCartsRoutes);
 // Web-parity backend wave 2 (2026-04-23).
 // Public estimate-sign endpoints sit OUTSIDE authMiddleware — token IS the credential
 // (HMAC-signed, single-use, TTL bounded). All other wave-2 routes are JWT-gated.

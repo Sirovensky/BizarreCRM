@@ -102,6 +102,27 @@ export function ScheduledSendModal({
     setWhen(toLocalIsoInput(d));
   };
 
+  // WEB-UIUX-696: detect DST spring-forward "lost hour". `new Date(when)` is
+  // permissive — picking 02:30 on a transition Sunday silently rolls to
+  // 03:30. Detect by comparing the components we asked for to the components
+  // the Date actually represents.
+  function dstAnomaly(s: string, d: Date): 'nonexistent' | null {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(s);
+    if (!m) return null;
+    const wantY = Number(m[1]), wantMo = Number(m[2]) - 1, wantD = Number(m[3]);
+    const wantH = Number(m[4]), wantMi = Number(m[5]);
+    if (
+      d.getFullYear() !== wantY ||
+      d.getMonth() !== wantMo ||
+      d.getDate() !== wantD ||
+      d.getHours() !== wantH ||
+      d.getMinutes() !== wantMi
+    ) {
+      return 'nonexistent';
+    }
+    return null;
+  }
+
   async function submit() {
     if (!body.trim() || !toPhone) {
       toast.error('Phone and message are required');
@@ -110,6 +131,10 @@ export function ScheduledSendModal({
     const target = scheduledSendPreview(when);
     if (target.error || !target.date) {
       toast.error(target.error || 'Enter a valid scheduled time');
+      return;
+    }
+    if (dstAnomaly(when, target.date) === 'nonexistent') {
+      toast.error('That local time does not exist on the selected date (daylight-saving spring forward). Pick a different time.');
       return;
     }
     setSending(true);
@@ -185,12 +210,28 @@ export function ScheduledSendModal({
               onChange={(e) => setWhen(e.target.value)}
               className="w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
-            <div className={cn(
-              'mt-1 text-[11px]',
-              preview.error ? 'text-red-600 dark:text-red-400' : 'text-surface-500 dark:text-surface-400',
-            )}>
-              {preview.error ? preview.error : `UTC: ${preview.utc}`}
-            </div>
+            {/* WEB-UIUX-696: show what the picker actually resolves to so the
+                operator sees the absolute instant (UTC) before scheduling, and
+                inline-flag a non-existent local time during DST spring-forward. */}
+            {(() => {
+              const parsed = new Date(when);
+              if (Number.isNaN(parsed.getTime())) return null;
+              const anomaly = dstAnomaly(when, parsed);
+              const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local';
+              return (
+                <div className="mt-1 text-[11px]">
+                  {anomaly === 'nonexistent' ? (
+                    <span className="text-red-600 dark:text-red-400">
+                      This local time does not exist on the selected date (DST).
+                    </span>
+                  ) : (
+                    <span className="text-surface-500 dark:text-surface-400">
+                      Sends at <span className="font-mono">{parsed.toISOString().replace('T', ' ').slice(0, 16)}Z</span> ({tz})
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <div className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-[11px] text-surface-600 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
             <div className="font-medium">To: {toPhone || '—'}</div>

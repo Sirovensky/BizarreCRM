@@ -47,11 +47,45 @@ portalClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Clear stale portal tokens on any 401/403 from a portal endpoint
+// Cache fresh CSRF tokens returned in any portal response body.
 portalClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
+  (response) => {
+    const fresh = (response.data as { csrf_token?: unknown } | undefined)?.csrf_token;
+    if (typeof fresh === 'string' && fresh.length > 0) {
+      rememberCsrfToken(fresh);
+    }
+    return response;
+  },
+  async (error) => {
     const status = error?.response?.status;
+    // BUGHUNT-2026-05-10-45: 403 with code CSRF_INVALID means the cached
+    // token is stale (server forgot to set the header on the prior
+    // response). Pull a fresh one from /portal/csrf and replay the
+    // original request ONCE; further 403s fall through to the existing
+    // session-clear path.
+    const config = error?.config as ({ __csrfRetry?: boolean; headers?: Record<string, string>; method?: string; url?: string } | undefined);
+    const code = error?.response?.data?.code;
+    const message = error?.response?.data?.message;
+    if (
+      status === 403
+      && config
+      && !config.__csrfRetry
+      && (code === 'CSRF_INVALID' || /csrf/i.test(String(message ?? '')))
+    ) {
+      try {
+        config.__csrfRetry = true;
+        const refresh = await axios.get('/api/v1/portal/csrf', { withCredentials: true });
+        const newToken = (refresh.data as { csrf_token?: string; data?: { csrf_token?: string } })?.csrf_token
+          ?? (refresh.data as { data?: { csrf_token?: string } })?.data?.csrf_token;
+        if (typeof newToken === 'string' && newToken.length > 0) {
+          rememberCsrfToken(newToken);
+          if (config.headers) config.headers['X-CSRF-Token'] = newToken;
+          return portalClient.request(config as never);
+        }
+      } catch {
+        /* fall through to default clear-and-reject */
+      }
+    }
     if (status === 401 || status === 403) {
       sessionStorage.removeItem('portal_token');
       clearPortalSecurityTokens();
@@ -279,13 +313,33 @@ export async function submitFeedback(ticketId: number, rating: number, comment?:
   await portalClient.post(`/tickets/${ticketId}/feedback`, { rating, comment });
 }
 
-export async function getEstimates(): Promise<EstimateSummary[]> {
-  const res = await portalClient.get('/estimates');
-  return res.data.data;
+// WEB-UIUX-1475: paginated portal estimates. Server caps per_page at 50;
+// caller can omit params to default to page 1 × 25 rows. Returns the
+// estimate array + pagination meta so the UI can render prev/next.
+export interface PortalPagination {
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
+}
+export async function getEstimates(
+  page = 1,
+  perPage = 25,
+): Promise<{ estimates: EstimateSummary[]; pagination: PortalPagination }> {
+  const res = await portalClient.get('/estimates', { params: { page, per_page: perPage } });
+  return {
+    estimates: res.data.data,
+    pagination: res.data.pagination ?? { page, per_page: perPage, total: 0, total_pages: 1 },
+  };
 }
 
 export async function approveEstimate(id: number): Promise<void> {
   await portalClient.post(`/estimates/${id}/approve`);
+}
+
+// WEB-UIUX-812: portal-side decline path. Mirrors approve shape.
+export async function rejectEstimate(id: number): Promise<void> {
+  await portalClient.post(`/estimates/${id}/reject`);
 }
 
 export async function getInvoices(): Promise<InvoiceSummary[]> {
@@ -300,5 +354,32 @@ export async function getInvoiceDetail(id: number): Promise<InvoiceDetail> {
 
 export async function getEmbedConfig(): Promise<EmbedConfig> {
   const res = await portalClient.get('/embed/config');
+  return res.data.data;
+}
+
+export interface PortalMembership {
+  id: number;
+  status: 'active' | 'past_due' | 'paused';
+  cancel_at_period_end: 0 | 1;
+  current_period_end: string | null;
+  next_billing_attempt_at: string | null;
+  auto_renew: 0 | 1;
+  tier_id: number | null;
+  tier_name: string | null;
+  monthly_price: number | null;
+}
+
+export async function getPortalMembership(): Promise<PortalMembership | null> {
+  const res = await portalClient.get('/membership');
+  return res.data.data;
+}
+
+export async function cancelPortalMembership(): Promise<{ cancelled: true; subscription_id: number }> {
+  const res = await portalClient.post('/membership/cancel');
+  return res.data.data;
+}
+
+export async function resumePortalMembership(): Promise<{ resumed: true; subscription_id: number }> {
+  const res = await portalClient.post('/membership/resume');
   return res.data.data;
 }

@@ -161,6 +161,31 @@ router.get('/customer/:customerId', asyncHandler(async (req: Request, res: Respo
   res.json({ success: true, data: subscription || null });
 }));
 
+// WEB-UIUX-1493: list every subscription a customer has ever had, including
+// cancelled / paused rows. The active /customer/:id endpoint above filters
+// to status IN ('active', 'past_due'); after an immediate cancel that
+// returns null and the CustomerDetailPage membership card vanishes,
+// losing tier/tenure/last-charge context. This endpoint lets the UI
+// render a "past memberships" section with churn dates + cancellation
+// reason (WEB-UIUX-1067 column) for retention review.
+router.get('/customer/:customerId/history', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const customerId = parseInt(req.params.customerId as string, 10);
+  if (!Number.isFinite(customerId)) throw new AppError('Invalid customer id', 400);
+  const rows = await adb.all<AnyRow>(`
+    SELECT cs.id, cs.tier_id, cs.status, cs.cancel_at_period_end,
+           cs.cancellation_reason, cs.cancellation_note,
+           cs.created_at, cs.updated_at, cs.current_period_start, cs.current_period_end,
+           cs.last_charge_at, cs.last_charge_amount, cs.paused_at, cs.pause_reason,
+           mt.name AS tier_name, mt.monthly_price, mt.color
+      FROM customer_subscriptions cs
+      JOIN membership_tiers mt ON mt.id = cs.tier_id
+     WHERE cs.customer_id = ?
+     ORDER BY cs.created_at DESC
+  `, customerId);
+  res.json({ success: true, data: rows });
+}));
+
 // ── Subscribe ────────────────────────────────────────────────────────
 
 router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
@@ -240,30 +265,85 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
   endDate.setMonth(endDate.getMonth() + 1);
   const end = endDate.toISOString().replace('T', ' ').substring(0, 19);
 
+  // WEB-UIUX-1071: prefer reactivating an existing cancelled row over
+  // creating a new one. Stripe pattern: a customer who churns and returns
+  // gets one row in the subscriptions table with full payment_history, not
+  // two rows that LTV/dunning reports must `GROUP BY customer_id` to merge.
+  // We pick the most recently cancelled row for this customer; if found we
+  // UPDATE it in place (preserving id + history), otherwise INSERT new.
+  const reactivatable = await adb.get<AnyRow>(
+    `SELECT id FROM customer_subscriptions
+      WHERE customer_id = ?
+        AND status = 'cancelled'
+      ORDER BY id DESC LIMIT 1`,
+    customer_id,
+  );
+
   // The UNIQUE partial index idx_customer_subscriptions_active_unique on
   // customer_subscriptions(customer_id) WHERE status IN ('active','past_due')
   // (migration 110) is the authoritative guard against concurrent duplicates.
   // A racing second INSERT hits the index and raises SQLITE_CONSTRAINT_UNIQUE,
   // which we catch here and surface as 409 Conflict.
   let result: Awaited<ReturnType<typeof adb.run>>;
-  try {
-    result = await adb.run(
-      `INSERT INTO customer_subscriptions (customer_id, tier_id, blockchyp_token, status,
-       current_period_start, current_period_end, signature_file, last_charge_at, last_charge_amount, payment_provider)
-       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
-      customer_id, tier_id, normalizedToken, start, end,
-      signature_file || null, isPaidTier ? null : start, isPaidTier ? null : monthlyPrice,
-      isPaidTier ? 'blockchyp' : 'none',
-    );
-  } catch (err: unknown) {
-    if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
-      res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
-      return;
+  let subscriptionId: number;
+  let reactivated = false;
+  if (reactivatable) {
+    try {
+      await adb.run(
+        `UPDATE customer_subscriptions
+            SET tier_id = ?, blockchyp_token = ?, status = 'active',
+                current_period_start = ?, current_period_end = ?,
+                signature_file = COALESCE(?, signature_file),
+                last_charge_at = ?, last_charge_amount = ?, payment_provider = ?,
+                cancelled_at = NULL, paused_at = NULL, pause_reason = NULL,
+                updated_at = ?
+          WHERE id = ?`,
+        tier_id,
+        normalizedToken,
+        start,
+        end,
+        signature_file || null,
+        isPaidTier ? null : start,
+        isPaidTier ? null : monthlyPrice,
+        isPaidTier ? 'blockchyp' : 'none',
+        now(),
+        reactivatable.id,
+      );
+    } catch (err: unknown) {
+      if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+        res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
+        return;
+      }
+      throw err;
     }
-    throw err;
+    subscriptionId = Number(reactivatable.id);
+    reactivated = true;
+    result = { lastInsertRowid: subscriptionId } as any;
+  } else {
+    try {
+      result = await adb.run(
+        `INSERT INTO customer_subscriptions (customer_id, tier_id, blockchyp_token, status,
+         current_period_start, current_period_end, signature_file, last_charge_at, last_charge_amount, payment_provider)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
+        customer_id, tier_id, normalizedToken, start, end,
+        signature_file || null, isPaidTier ? null : start, isPaidTier ? null : monthlyPrice,
+        isPaidTier ? 'blockchyp' : 'none',
+      );
+    } catch (err: unknown) {
+      if (err instanceof Error && /UNIQUE constraint/i.test(err.message)) {
+        res.status(409).json({ success: false, message: 'Customer already has an active subscription' });
+        return;
+      }
+      throw err;
+    }
+    subscriptionId = Number(result.lastInsertRowid);
   }
-
-  const subscriptionId = Number(result.lastInsertRowid);
+  audit(db, reactivated ? 'membership_reactivated' : 'membership_subscribed', req.user!.id, req.ip || 'unknown', {
+    customer_id,
+    tier_id,
+    subscription_id: subscriptionId,
+    reactivated,
+  });
   let initialTransactionId: string | null = null;
 
   if (isPaidTier) {
@@ -353,21 +433,119 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
 
 // ── Cancel / Pause / Resume ──────────────────────────────────────────
 
+// WEB-UIUX-1067: allow-listed cancellation reasons mirror the industry-standard
+// MRR-churn taxonomy (Stripe/Recurly/ChartMogul). 'other' lets the operator
+// store an unstructured note when none of the buckets fit; bucket choice still
+// gives the analytics layer something to GROUP BY.
+const CANCELLATION_REASONS = new Set([
+  'too_expensive',
+  'missing_features',
+  'switched_service',
+  'low_value',
+  'customer_service',
+  'business_closed',
+  'no_longer_needed',
+  'other',
+]);
+
 router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
   requireMembershipsFeature(req);
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
-  const { immediate } = req.body;
+  const { immediate, reason, note } = req.body as { immediate?: boolean; reason?: string; note?: string };
+
+  // WEB-UIUX-1067: validate reason against the allow-list; ignore unknown
+  // values so a stale client doesn't poison the analytics column with
+  // free-form strings. Note caps at 500 chars to mirror the discount_reason
+  // / refund_reason ceiling.
+  const cleanReason = typeof reason === 'string' && CANCELLATION_REASONS.has(reason) ? reason : null;
+  const cleanNote = typeof note === 'string' ? note.trim().slice(0, 500) || null : null;
+
+  // WEB-UIUX-1499: when immediate cancel runs against a subscription that the
+  // customer has already paid for the current period, post a prorated store
+  // credit so they aren't left short. Computed as
+  //   (remaining_seconds / period_seconds) * last_charge_amount
+  // rounded to 2dp. Store credit (not cash refund) so the operator isn't
+  // forced into a tender choice at cancel time; customer can spend the
+  // credit on a future invoice or escalate to a manual refund manually.
+  // Skipped when sub was never charged, period already ended, or
+  // last_charge_amount is 0/null (free tier).
+  let prorationAmount = 0;
+  let prorationCreditId: number | null = null;
 
   if (immediate) {
+    const subBeforeCancel = await adb.get<AnyRow>(
+      `SELECT customer_id, current_period_start, current_period_end, last_charge_amount
+         FROM customer_subscriptions WHERE id = ?`,
+      id,
+    );
+    if (subBeforeCancel) {
+      const lastCharge = Number((subBeforeCancel as AnyRow).last_charge_amount) || 0;
+      const startStr = (subBeforeCancel as AnyRow).current_period_start as string | null;
+      const endStr = (subBeforeCancel as AnyRow).current_period_end as string | null;
+      const startMs = startStr ? new Date(startStr).getTime() : NaN;
+      const endMs = endStr ? new Date(endStr).getTime() : NaN;
+      const nowMs = Date.now();
+      if (
+        lastCharge > 0
+        && Number.isFinite(startMs)
+        && Number.isFinite(endMs)
+        && endMs > nowMs
+        && endMs > startMs
+      ) {
+        const remaining = endMs - nowMs;
+        const period = endMs - startMs;
+        prorationAmount = Math.round((remaining / period) * lastCharge * 100) / 100;
+        if (prorationAmount > 0) {
+          const customerId = Number((subBeforeCancel as AnyRow).customer_id);
+          await adb.run(
+            `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(customer_id) DO UPDATE
+               SET amount = amount + excluded.amount,
+                   updated_at = excluded.updated_at`,
+            customerId,
+            prorationAmount,
+            now(),
+            now(),
+          );
+          const txResult = await adb.run(
+            `INSERT INTO store_credit_transactions
+               (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+             VALUES (?, ?, 'credit', 'subscription_cancellation', ?, ?, ?, ?)`,
+            customerId,
+            prorationAmount,
+            id,
+            `Prorated refund for unused days on subscription #${id}`,
+            req.user!.id,
+            now(),
+          );
+          prorationCreditId = Number(txResult.lastInsertRowid);
+          audit(req.db, 'subscription_proration_credited', req.user!.id, req.ip || 'unknown', {
+            subscription_id: id,
+            customer_id: customerId,
+            amount: prorationAmount,
+            credit_transaction_id: prorationCreditId,
+            period_start: startStr,
+            period_end: endStr,
+            last_charge_amount: lastCharge,
+          });
+        }
+      }
+    }
+
     await adb.run(
       `UPDATE customer_subscriptions
           SET status = 'cancelled',
               auto_renew = 0,
               next_billing_attempt_at = NULL,
+              cancellation_reason = ?,
+              cancellation_note = ?,
               updated_at = ?
         WHERE id = ?`,
+      cleanReason,
+      cleanNote,
       now(),
       id,
     );
@@ -379,15 +557,101 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
           SET cancel_at_period_end = 1,
               auto_renew = 0,
               next_billing_attempt_at = NULL,
+              cancellation_reason = ?,
+              cancellation_note = ?,
               updated_at = ?
         WHERE id = ?`,
+      cleanReason,
+      cleanNote,
       now(),
       id,
     );
   }
 
-  audit(req.db, 'membership_cancelled', req.user!.id, req.ip || 'unknown', { subscription_id: id, immediate: !!immediate });
-  res.json({ success: true, data: { cancelled: true, immediate: !!immediate } });
+  audit(req.db, 'membership_cancelled', req.user!.id, req.ip || 'unknown', {
+    subscription_id: id,
+    immediate: !!immediate,
+    reason: cleanReason,
+    note: cleanNote,
+  });
+  res.json({
+    success: true,
+    data: {
+      cancelled: true,
+      immediate: !!immediate,
+      reason: cleanReason,
+      // WEB-UIUX-1499: surface the prorated credit so the cancel toast can
+      // tell the operator exactly how much landed on the customer's store
+      // credit. 0 = no proration (free tier, ended period, never charged).
+      proration_credit: prorationAmount > 0
+        ? { amount: prorationAmount, credit_transaction_id: prorationCreditId }
+        : null,
+    },
+  });
+}));
+
+// WEB-UIUX-828: change-tier so operators don't have to cancel + re-subscribe
+// (which loses tenure, triggers two audit rows, and refuses the customer
+// any in-flight grandfathered pricing). Admin only. The new tier id must
+// reference an active membership_tiers row. Status stays as-is (does not
+// re-activate a cancelled sub — use /subscribe for that). next_billing_attempt_at
+// untouched so the upcoming renewal fires at the new tier's monthly_price.
+router.post('/:id/change-tier', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const adb = req.asyncDb;
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+
+  const newTierIdRaw = req.body?.tier_id;
+  const newTierId = Number(newTierIdRaw);
+  if (!Number.isFinite(newTierId) || newTierId <= 0) {
+    throw new AppError('tier_id required (positive integer)', 400);
+  }
+  const noteRaw = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+
+  const sub = await adb.get<AnyRow>(
+    'SELECT id, tier_id, status FROM customer_subscriptions WHERE id = ?',
+    id,
+  );
+  if (!sub) throw new AppError('Subscription not found', 404);
+  if (sub.status === 'cancelled') {
+    throw new AppError('Cannot change tier on a cancelled subscription. Use /subscribe for re-enrolment.', 409);
+  }
+  if (Number(sub.tier_id) === newTierId) {
+    throw new AppError('Subscription is already on this tier.', 409);
+  }
+  const newTier = await adb.get<AnyRow>(
+    'SELECT id, name, is_active FROM membership_tiers WHERE id = ?',
+    newTierId,
+  );
+  if (!newTier) throw new AppError('Target tier not found', 404);
+  if (Number(newTier.is_active) !== 1) {
+    throw new AppError('Target tier is not active', 400);
+  }
+
+  await adb.run(
+    'UPDATE customer_subscriptions SET tier_id = ?, updated_at = ? WHERE id = ?',
+    newTierId, now(), id,
+  );
+
+  audit(req.db, 'membership_tier_changed', req.user!.id, req.ip || 'unknown', {
+    subscription_id: id,
+    prev_tier_id: Number(sub.tier_id),
+    new_tier_id: newTierId,
+    new_tier_name: newTier.name,
+    note: noteRaw || null,
+  });
+
+  const updated = await adb.get<AnyRow>(
+    `SELECT cs.*, mt.name AS tier_name, mt.monthly_price, mt.discount_pct,
+            mt.discount_applies_to, mt.color
+       FROM customer_subscriptions cs
+       JOIN membership_tiers mt ON mt.id = cs.tier_id
+      WHERE cs.id = ?`,
+    id,
+  );
+  res.json({ success: true, data: updated });
 }));
 
 router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
@@ -405,6 +669,22 @@ router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
+  // WEB-UIUX-1491: cancelled subscriptions cannot be resumed — the immediate-cancel
+  // path nulls customers.active_subscription_id, so silently flipping status back
+  // to 'active' would leave cs.status='active' AND customers.active_subscription_id=NULL,
+  // an unrecoverable inconsistency (POS won't apply membership discount, customer-detail
+  // hides the card). UI already hides Resume for cancelled rows; this is the server-side
+  // matching guard. Operator who wants the customer back must enroll a fresh subscription.
+  const current = await adb.get<AnyRow>(
+    'SELECT status FROM customer_subscriptions WHERE id = ?',
+    id,
+  );
+  if (!current) {
+    throw new AppError('Subscription not found', 404);
+  }
+  if (current.status === 'cancelled') {
+    throw new AppError('Cancelled subscriptions cannot be resumed; enroll the customer in a new subscription instead.', 409);
+  }
   await adb.run(
     `UPDATE customer_subscriptions
         SET status = 'active',
@@ -437,15 +717,24 @@ router.get('/:id/payments', asyncHandler(async (req: Request, res: Response) => 
 router.get('/subscriptions', asyncHandler(async (req: Request, res: Response) => {
   requireAdmin(req);
   const adb = req.asyncDb;
+  // WEB-UIUX-1500: optional ?include_cancelled=1 surfaces churn history so the
+  // admin can answer "did Anya cancel last week or did her card decline?"
+  // without reading audit_logs. Default behaviour (active/past_due/paused) is
+  // unchanged so existing callers see no shift.
+  const includeCancelled = String(req.query.include_cancelled ?? '').trim() === '1';
+  const statuses = includeCancelled
+    ? ['active', 'past_due', 'paused', 'cancelled']
+    : ['active', 'past_due', 'paused'];
+  const placeholders = statuses.map(() => '?').join(', ');
   const subs = await adb.all<AnyRow>(`
     SELECT cs.*, mt.name AS tier_name, mt.monthly_price, mt.color,
            c.first_name, c.last_name, c.phone, c.email
     FROM customer_subscriptions cs
     JOIN membership_tiers mt ON mt.id = cs.tier_id
     JOIN customers c ON c.id = cs.customer_id
-    WHERE cs.status IN ('active', 'past_due', 'paused')
+    WHERE cs.status IN (${placeholders})
     ORDER BY cs.created_at DESC
-  `);
+  `, ...statuses);
   res.json({ success: true, data: subs });
 }));
 
@@ -571,6 +860,43 @@ router.post('/:id/run-billing', asyncHandler(async (req: Request, res: Response)
   }
 
   const updated = await req.asyncDb.get<AnyRow>('SELECT * FROM customer_subscriptions WHERE id = ?', id);
+  res.json({ success: true, data: { subscription: updated, result } });
+}));
+
+// WEB-UIUX-1069: distinct "Retry payment" semantic for past-due subs.
+// Functionally similar to /run-billing but gated on the subscription
+// being in 'past_due' status so the UI can wire a Retry button that's
+// safe to expose to operators outside the admin's bill-now-token path.
+// `force=true` is implicit because past_due means the renewal already
+// failed at least once.
+router.post('/:id/retry-payment', asyncHandler(async (req: Request, res: Response) => {
+  requireMembershipsFeature(req);
+  requireAdmin(req);
+  const db = req.db;
+  const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+  const sub = loadMembershipBillingSubscription(db, id);
+  if (!sub) throw new AppError('Subscription not found', 404);
+  if ((sub as any).status !== 'past_due') {
+    throw new AppError(
+      `Retry payment only applies to past-due subscriptions (current status: ${(sub as any).status}). Use /run-billing for a normal bill-now.`,
+      409,
+    );
+  }
+  const result = await billMembershipSubscription(db, sub, {
+    userId: req.user!.id,
+    ip: req.ip || 'unknown',
+    force: true,
+    source: 'retry_past_due',
+  });
+  if (result.status !== 'success') {
+    throw new AppError(result.message, result.httpStatus ?? 400);
+  }
+  const updated = await req.asyncDb.get<AnyRow>('SELECT * FROM customer_subscriptions WHERE id = ?', id);
+  audit(req.db, 'membership_retry_payment', req.user!.id, req.ip || 'unknown', {
+    subscription_id: id,
+    new_status: (updated as any)?.status ?? null,
+  });
   res.json({ success: true, data: { subscription: updated, result } });
 }));
 

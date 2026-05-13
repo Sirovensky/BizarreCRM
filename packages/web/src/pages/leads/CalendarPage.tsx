@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { leadApi, settingsApi } from '@/api/endpoints';
+import { leadApi, settingsApi, customerApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useSettings } from '@/hooks/useSettings';
 import { toLocalDateString } from '@/utils/format';
@@ -271,11 +271,43 @@ function AppointmentDetailModal({
     return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot.`;
   }
 
+  // WEB-UIUX-1324: cross-viewport overlap check. The local `existingAppointments`
+  // array is just the viewport; this asks the server for any conflicting appt
+  // for the same assignee anywhere in their calendar. Run on submit (not on
+  // every keystroke) so we trade one extra round-trip per save for a true
+  // cross-window guarantee.
+  async function checkOverlapCrossWindow(
+    startIso: string,
+    endIso: string,
+    assignedUserId: number | null,
+    excludeId: number,
+  ): Promise<string | null> {
+    if (!assignedUserId) return null;
+    try {
+      const res = await leadApi.getAppointmentOverlaps({
+        assigned_to: assignedUserId,
+        start_time: startIso,
+        end_time: endIso,
+        exclude_id: excludeId,
+      });
+      const overlaps = res.data?.data?.overlaps ?? [];
+      if (overlaps.length === 0) return null;
+      const conflict = overlaps[0];
+      const name = users.find((u) => u.id === assignedUserId);
+      const assigneeName = name ? `${name.first_name} ${name.last_name}` : 'this person';
+      return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot (outside the current view).`;
+    } catch {
+      // Best-effort — if the cross-window check fails we still let the
+      // server-side POST guard catch it; don't block the operator.
+      return null;
+    }
+  }
+
   function updateAppointment(data: UpdateAppointmentPayload) {
     updateMut.mutate(data);
   }
 
-  function handleSave(e: FormEvent<HTMLFormElement>) {
+  async function handleSave(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const startTime = toISOWithOffset(form.start_date, form.start_hour, form.start_min);
     const endTime = toISOWithOffset(form.start_date, form.end_hour, form.end_min);
@@ -284,7 +316,10 @@ function AppointmentDetailModal({
       return;
     }
     const assignedId = form.assigned_to ? Number(form.assigned_to) : null;
-    const warn = checkOverlap(startTime, endTime, assignedId);
+    // Local-viewport first (cheap), cross-window if local clears (WEB-UIUX-1324).
+    const warn =
+      checkOverlap(startTime, endTime, assignedId)
+      ?? await checkOverlapCrossWindow(startTime, endTime, assignedId, appointment.id);
     if (warn && !overlapWarning) {
       setOverlapWarning(warn);
       return;
@@ -616,32 +651,58 @@ function CreateAppointmentModal({
   open,
   onClose,
   defaultDate,
+  defaultHour,
   users,
   existingAppointments,
 }: {
   open: boolean;
   onClose: () => void;
   defaultDate: Date;
+  // WEB-UIUX-1328: override the hardcoded 9am start when the modal was opened
+  // via click-to-create on a Week/Day slot. End time is start + 1h.
+  defaultHour?: number;
   users: { id: number; first_name: string; last_name: string }[];
   existingAppointments: Appointment[];
 }) {
   const queryClient = useQueryClient();
+  // WEB-UIUX-1322: use the local date components, not toISOString(), so a
+  // user clicking "+New Appointment" at 5pm Dec 31 PST gets Dec 31, not
+  // Jan 1 (UTC). Off-by-one would otherwise fire at every edge hour.
   const dateStr = toLocalDateString(defaultDate);
 
-  const createInitialForm = useCallback(() => ({
-    title: '',
-    start_date: dateStr,
-    start_hour: '09',
-    start_min: '00',
-    end_hour: '10',
-    end_min: '00',
-    assigned_to: '',
-    status: 'scheduled',
-    notes: '',
-    location_id: '1', // WEB-UIUX-1321: default location; overridable via select below
-  }), [dateStr]);
+  const createInitialForm = useCallback(() => {
+    // WEB-UIUX-1328: honor click-to-create slot hour. Clamp to 0..23 and
+    // compute end as start+1h (also clamped, wrapping at 23→23 keeps the
+    // form valid; the operator can edit to span past midnight via dates).
+    const startH = Number.isInteger(defaultHour) && defaultHour! >= 0 && defaultHour! <= 23 ? defaultHour! : 9;
+    const endH = Math.min(startH + 1, 23);
+    return {
+      title: '',
+      start_date: dateStr,
+      start_hour: String(startH).padStart(2, '0'),
+      start_min: '00',
+      end_hour: String(endH).padStart(2, '0'),
+      end_min: '00',
+      assigned_to: '',
+      status: 'scheduled',
+      notes: '',
+      location_id: '1', // WEB-UIUX-1321: default location; overridable via select below
+      customer_id: '' as string,
+      customer_label: '' as string,
+      recurrence: 'none' as 'none' | 'weekly' | 'biweekly' | 'monthly',
+    };
+  }, [dateStr, defaultHour]);
 
   const [form, setForm] = useState(() => createInitialForm());
+  // WEB-UIUX-1315: customer picker — typeahead against /customers/search.
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const { data: customerSearchData } = useQuery({
+    queryKey: ['appt-customer-search', customerQuery],
+    queryFn: ({ signal }) => customerApi.search(customerQuery, signal),
+    enabled: customerQuery.length >= 2 && customerDropdownOpen,
+  });
+  const customerResults = (customerSearchData?.data?.data as Array<{ id: number; first_name?: string; last_name?: string; phone?: string; email?: string }>) ?? [];
   // WEB-FK-015: overlap warning state
   const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
 
@@ -657,6 +718,7 @@ function CreateAppointmentModal({
   // the date from the previous open.
   useEffect(() => {
     if (!open) return;
+    // WEB-UIUX-1322: local-date components, not UTC.
     const newDateStr = toLocalDateString(defaultDate);
     setForm((f) => ({ ...f, start_date: newDateStr }));
   }, [open, defaultDate]);
@@ -671,6 +733,8 @@ function CreateAppointmentModal({
     status: 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show';
     notes?: string;
     location_id?: number; // WEB-UIUX-1321
+    customer_id?: number; // WEB-UIUX-1315
+    recurrence?: 'none' | 'weekly' | 'biweekly' | 'monthly'; // WEB-UIUX-1320
   }
   const createMut = useMutation({
     mutationFn: (data: CreateAppointmentPayload) => leadApi.createAppointment(data),
@@ -716,6 +780,30 @@ function CreateAppointmentModal({
     return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot.`;
   }
 
+  // WEB-UIUX-1324: cross-viewport overlap check via the dedicated server route.
+  async function checkOverlapCrossWindow(
+    startIso: string,
+    endIso: string,
+    assignedUserId: number | null,
+  ): Promise<string | null> {
+    if (!assignedUserId) return null;
+    try {
+      const res = await leadApi.getAppointmentOverlaps({
+        assigned_to: assignedUserId,
+        start_time: startIso,
+        end_time: endIso,
+      });
+      const overlaps = res.data?.data?.overlaps ?? [];
+      if (overlaps.length === 0) return null;
+      const conflict = overlaps[0];
+      const name = users.find((u) => u.id === assignedUserId);
+      const assigneeName = name ? `${name.first_name} ${name.last_name}` : 'this person';
+      return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot (outside the current view).`;
+    } catch {
+      return null;
+    }
+  }
+
   return (
     <div
       role="dialog"
@@ -733,7 +821,7 @@ function CreateAppointmentModal({
         </div>
         <form
           className="space-y-4 px-6 py-4"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             // WEB-FK-015: use TZ-aware ISO strings so the server stores the
             // correct instant regardless of server timezone.
@@ -744,8 +832,11 @@ function CreateAppointmentModal({
               return;
             }
             // Overlap check — warn but still allow user to proceed after seeing the warning.
+            // WEB-UIUX-1324: local-viewport check first (cheap), then cross-window if local clears.
             const assignedId = form.assigned_to ? Number(form.assigned_to) : null;
-            const warn = checkOverlap(startTime, endTime, assignedId);
+            const warn =
+              checkOverlap(startTime, endTime, assignedId)
+              ?? await checkOverlapCrossWindow(startTime, endTime, assignedId);
             if (warn && !overlapWarning) {
               // Show warning on first submit; second submit proceeds.
               setOverlapWarning(warn);
@@ -760,6 +851,8 @@ function CreateAppointmentModal({
               status: form.status as 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no-show',
               notes: form.notes || undefined,
               location_id: form.location_id ? Number(form.location_id) : 1, // WEB-UIUX-1321
+              customer_id: form.customer_id ? Number(form.customer_id) : undefined, // WEB-UIUX-1315
+              recurrence: form.recurrence !== 'none' ? form.recurrence : undefined, // WEB-UIUX-1320
             });
           }}
         >
@@ -772,6 +865,56 @@ function CreateAppointmentModal({
               placeholder="e.g. Screen repair consultation"
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
             />
+          </div>
+          {/* WEB-UIUX-1315: customer picker. Optional but pre-filled when present
+              avoids the "orphan appointment" failure mode where staff book a
+              repair consultation with no customer attached and lose the link. */}
+          <div className="relative">
+            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Customer (optional)</label>
+            {form.customer_id ? (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-sm dark:border-primary-700 dark:bg-primary-900/20">
+                <span className="truncate">{form.customer_label}</span>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, customer_id: '', customer_label: '' }))}
+                  className="text-xs text-primary-700 hover:underline dark:text-primary-300"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <input
+                type="search"
+                value={customerQuery}
+                onChange={(e) => { setCustomerQuery(e.target.value); setCustomerDropdownOpen(true); }}
+                onFocus={() => setCustomerDropdownOpen(true)}
+                placeholder="Search by name, phone, or email"
+                className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+              />
+            )}
+            {customerDropdownOpen && !form.customer_id && customerResults.length > 0 && (
+              <ul role="listbox" className="absolute z-10 mt-1 max-h-44 w-full overflow-y-auto rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+                {customerResults.slice(0, 8).map((c) => {
+                  const label = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.phone || c.email || `#${c.id}`;
+                  return (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((f) => ({ ...f, customer_id: String(c.id), customer_label: label }));
+                          setCustomerDropdownOpen(false);
+                          setCustomerQuery('');
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-100 dark:hover:bg-surface-700"
+                      >
+                        <div className="font-medium text-surface-900 dark:text-surface-100">{label}</div>
+                        <div className="text-xs text-surface-500">{c.phone || c.email || ''}</div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Date</label>
@@ -786,7 +929,14 @@ function CreateAppointmentModal({
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Start Time</label>
               <div className="flex gap-1">
-                <select value={form.start_hour} onChange={(e) => setForm((f) => ({ ...f, start_hour: e.target.value }))}
+                {/* WEB-UIUX-1330: bumping start auto-slides end by +1h so an
+                    operator who picks 18:00 doesn't get blocked by the
+                    "End time must be after start time" toast. */}
+                <select value={form.start_hour} onChange={(e) => setForm((f) => {
+                  const newStartHour = e.target.value;
+                  const newEndHour = String((Number(newStartHour) + 1) % 24).padStart(2, '0');
+                  return { ...f, start_hour: newStartHour, end_hour: newEndHour, end_min: f.start_min };
+                })}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
                   {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
                     const n = Number(h);
@@ -795,7 +945,7 @@ function CreateAppointmentModal({
                   })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
-                <select value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value }))}
+                <select value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value, end_min: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
                   {['00', '15', '30', '45'].map((m) => (
                     <option key={m} value={m}>{m}</option>
@@ -875,12 +1025,38 @@ function CreateAppointmentModal({
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
             />
           </div>
+          {/* WEB-UIUX-1320: recurrence picker. Server auto-creates 4 occurrences
+              for weekly/biweekly/monthly; leave as "none" for a single appt. */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Recurrence</label>
+            <select
+              value={form.recurrence}
+              onChange={(e) => setForm((f) => ({ ...f, recurrence: e.target.value as 'none' | 'weekly' | 'biweekly' | 'monthly' }))}
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+            >
+              <option value="none">One-time only</option>
+              <option value="weekly">Weekly (creates 4 occurrences)</option>
+              <option value="biweekly">Bi-weekly (creates 4 occurrences)</option>
+              <option value="monthly">Monthly (creates 4 occurrences)</option>
+            </select>
+          </div>
           {/* WEB-FK-015: overlap warning — shown after first submit attempt if conflict found */}
           {overlapWarning && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
               <strong>Scheduling conflict:</strong> {overlapWarning} Submit again to create anyway.
             </div>
           )}
+          {/* WEB-UIUX-1336: surface server send-behaviour so staff aren't left
+              guessing. `POST /appointments` does not auto-send a confirmation
+              today (messaging-sprint work), so booked customers won't receive
+              any notification until the operator messages them. Closes the
+              "opaque" half of the bullet; the actual auto-send + opt-out
+              toggle still waits on SMS infrastructure. */}
+          <p className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-xs text-surface-600 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-400">
+            <strong className="font-semibold text-surface-700 dark:text-surface-300">No automatic confirmation is sent.</strong>{' '}
+            Booking the appointment does not message the customer — copy the
+            date and time over manually until automated reminders ship.
+          </p>
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -910,6 +1086,7 @@ function MonthView({
   appointments,
   onSelectAppointment,
   onDrillDown,
+  onCreateAt,
   shopTz,
 }: {
   currentDate: Date;
@@ -917,6 +1094,9 @@ function MonthView({
   onSelectAppointment: (a: Appointment) => void;
   // WEB-UIUX-1327: callback to switch to day view on a given date when "+N more" is clicked
   onDrillDown?: (day: Date) => void;
+  // WEB-UIUX-1328: callback fires when the user clicks empty space on a day cell,
+  // opening CreateAppointmentModal pre-filled with that calendar day.
+  onCreateAt?: (slot: Date) => void;
   shopTz?: string;
 }) {
   const year = currentDate.getFullYear();
@@ -962,9 +1142,19 @@ function MonthView({
         return (
           <div
             key={i}
+            // WEB-UIUX-1328: click empty space on a populated day cell to open
+            // the create modal pre-filled with that day. Skipped on padding
+            // cells (no day) and only fires when the click target IS the cell
+            // itself (so appt buttons + "+N more" keep their existing behavior
+            // via event bubbling).
+            onClick={(e) => {
+              if (!day || !cellDate || !onCreateAt) return;
+              if (e.target === e.currentTarget) onCreateAt(cellDate);
+            }}
             className={cn(
               'min-h-[100px] border-b border-r border-surface-200 p-1.5 dark:border-surface-700',
               !day && 'bg-surface-50/50 dark:bg-surface-800/30',
+              day && onCreateAt && 'cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/50',
             )}
           >
             {day && (
@@ -1016,6 +1206,7 @@ function WeekView({
   currentDate,
   appointments,
   onSelectAppointment,
+  onCreateAt,
   hours = DEFAULT_HOURS,
   shopTz,
 }: {
@@ -1023,13 +1214,39 @@ function WeekView({
   appointments: Appointment[];
   hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
+  // WEB-UIUX-1328: click an empty hour slot to open the create modal pre-filled
+  // with that day + hour. `slot.getHours()` is the start hour for the new appt.
+  onCreateAt?: (slot: Date) => void;
   shopTz?: string;
 }) {
   const weekStart = startOfWeek(currentDate);
   const today = new Date();
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
+  // WEB-UIUX-1318: count appts that fall outside the configured hours range
+  // for any day in this week. The grid only renders rows for `hours`, so
+  // out-of-range rows would silently disappear without this banner.
+  const minHour = hours.length ? hours[0] : 0;
+  const maxHour = hours.length ? hours[hours.length - 1] : 23;
+  const outOfRange = appointments.filter((a) => {
+    const d = new Date(a.start_time);
+    if (!days.some((day) => isSameDay(d, day))) return false;
+    const h = d.getHours();
+    return h < minHour || h > maxHour;
+  });
+
   return (
+    <>
+    {outOfRange.length > 0 && (
+      <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <span aria-hidden="true">⚠</span>
+        <span>
+          <strong>{outOfRange.length}</strong>{' '}
+          appointment{outOfRange.length === 1 ? '' : 's'} this week fall outside the visible hour window
+          ({minHour}:00–{maxHour + 1}:00). Switch to month view or widen <code className="font-mono">calendar_start_hour</code>/<code className="font-mono">calendar_end_hour</code> in Settings.
+        </span>
+      </div>
+    )}
     <div className="grid grid-cols-[60px_repeat(7,1fr)] border-l border-surface-200 dark:border-surface-700">
       {/* Header row */}
       <div className="border-b border-r border-surface-200 dark:border-surface-700" />
@@ -1068,7 +1285,19 @@ function WeekView({
             return (
               <div
                 key={day.toISOString()}
-                className="min-h-[48px] border-b border-r border-surface-200 p-0.5 dark:border-surface-700"
+                // WEB-UIUX-1328: click an empty hour slot to create. Skipped
+                // when the click target is one of the inner appt buttons so
+                // existing select-detail behavior keeps working via bubbling.
+                onClick={(e) => {
+                  if (!onCreateAt) return;
+                  if (e.target !== e.currentTarget) return;
+                  const slot = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0);
+                  onCreateAt(slot);
+                }}
+                className={cn(
+                  'min-h-[48px] border-b border-r border-surface-200 p-0.5 dark:border-surface-700',
+                  onCreateAt && 'cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/50',
+                )}
               >
                 {hourAppts.map((appt) => {
                   const color = getStatusColor(appt.status);
@@ -1089,6 +1318,7 @@ function WeekView({
         </Fragment>
       ))}
     </div>
+    </>
   );
 }
 
@@ -1097,6 +1327,7 @@ function DayView({
   currentDate,
   appointments,
   onSelectAppointment,
+  onCreateAt,
   hours = DEFAULT_HOURS,
   shopTz,
 }: {
@@ -1104,11 +1335,34 @@ function DayView({
   appointments: Appointment[];
   hours?: number[];
   onSelectAppointment: (a: Appointment) => void;
+  // WEB-UIUX-1328: click an empty hour row to open the create modal pre-filled
+  // with this day + the clicked hour.
+  onCreateAt?: (slot: Date) => void;
   shopTz?: string;
 }) {
   const dayAppts = appointments.filter((a) => isSameDay(new Date(a.start_time), currentDate));
 
+  // WEB-UIUX-1318: same out-of-range count for DayView.
+  const dayMinHour = hours.length ? hours[0] : 0;
+  const dayMaxHour = hours.length ? hours[hours.length - 1] : 23;
+  const dayOutOfRange = dayAppts.filter((a) => {
+    const h = new Date(a.start_time).getHours();
+    return h < dayMinHour || h > dayMaxHour;
+  });
+
   return (
+    <>
+    {dayOutOfRange.length > 0 && (
+      <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+        <span aria-hidden="true">⚠</span>
+        <span>
+          <strong>{dayOutOfRange.length}</strong>{' '}
+          appointment{dayOutOfRange.length === 1 ? '' : 's'} on this day fall outside the visible hour window
+          ({dayMinHour}:00–{dayMaxHour + 1}:00). Switch to month view or widen
+          {' '}<code className="font-mono">calendar_start_hour</code>/<code className="font-mono">calendar_end_hour</code> in Settings.
+        </span>
+      </div>
+    )}
     <div className="border-l border-surface-200 dark:border-surface-700">
       {hours.map((hour) => {
         const hourAppts = dayAppts.filter((a) => new Date(a.start_time).getHours() === hour);
@@ -1119,7 +1373,19 @@ function DayView({
             <div className="w-20 shrink-0 border-r border-surface-200 px-2 py-3 text-right text-xs text-surface-400 dark:border-surface-700">
               {label}
             </div>
-            <div className="flex-1 min-h-[56px] p-1 space-y-1">
+            <div
+              // WEB-UIUX-1328: click empty hour slot creates an appt at that hour.
+              onClick={(e) => {
+                if (!onCreateAt) return;
+                if (e.target !== e.currentTarget) return;
+                const slot = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), hour, 0, 0, 0);
+                onCreateAt(slot);
+              }}
+              className={cn(
+                'flex-1 min-h-[56px] p-1 space-y-1',
+                onCreateAt && 'cursor-pointer hover:bg-surface-50 dark:hover:bg-surface-800/50',
+              )}
+            >
               {hourAppts.map((appt) => {
                 const color = getStatusColor(appt.status);
                 return (
@@ -1148,6 +1414,7 @@ function DayView({
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -1155,10 +1422,27 @@ function DayView({
 
 // ─── Main Component ─────────────────────────────────────────────
 export function CalendarPage() {
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  // Honor `?view=day|week|month` so deep-links from the POS gate land on
+  // the right view (gate "+N more · view all" routes to ?view=day for a
+  // vertical timeline). Falls back to month on unknown / missing values.
+  const initialView = (() => {
+    if (typeof window === 'undefined') return 'month' as ViewMode;
+    const param = new URLSearchParams(window.location.search).get('view');
+    return param === 'day' || param === 'week' || param === 'month' ? (param as ViewMode) : 'month';
+  })();
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // WEB-UIUX-1328: click-to-create slot Date — when set, CreateAppointmentModal
+  // pre-fills date AND start hour from the clicked Month/Week/Day cell. Reset
+  // to null when the modal closes so the next "+ New Appointment" button click
+  // reverts to the today/9am default.
+  const [createSlot, setCreateSlot] = useState<Date | null>(null);
+  const openCreateAt = useCallback((slot: Date) => {
+    setCreateSlot(slot);
+    setShowCreate(true);
+  }, []);
   const { getSetting } = useSettings();
 
   // WEB-UIUX-780: read shop timezone from store_config so display times are
@@ -1186,24 +1470,37 @@ export function CalendarPage() {
   const users: { id: number; first_name: string; last_name: string }[] =
     usersData?.data?.data?.users || usersData?.data?.data || [];
 
-  // Compute date range for query
+  // Compute date range for query.
+  // appointments.start_time is stored as a naive `YYYY-MM-DD HH:MM:SS`
+  // string in shop-local time. Passing `toISOString()` (UTC w/ Z suffix)
+  // makes SQLite's lex compare disagree with chronological order — a
+  // PT-shop's `2026-05-08 12:27:51` row falls outside a window that opens
+  // at `2026-05-09T00:00:00.000Z` ("tomorrow" in UTC) even though the
+  // appointment is today. Format the boundary as the same naive shape so
+  // the lex compare matches the wall clock the shop actually uses.
+  const fmtNaive = (d: Date, suffix = '00:00:00') => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day} ${suffix}`;
+  };
   const dateRange = useMemo(() => {
     const y = currentDate.getFullYear();
     const m = currentDate.getMonth();
     if (viewMode === 'month') {
-      const from = new Date(y, m, 1).toISOString();
-      const to = new Date(y, m + 1, 0, 23, 59, 59).toISOString();
+      const from = fmtNaive(new Date(y, m, 1));
+      const to = fmtNaive(new Date(y, m + 1, 0), '23:59:59');
       return { from_date: from, to_date: to };
     }
     if (viewMode === 'week') {
       const ws = startOfWeek(currentDate);
-      const from = ws.toISOString();
-      const to = addDays(ws, 7).toISOString();
+      const from = fmtNaive(ws);
+      const to = fmtNaive(addDays(ws, 6), '23:59:59');
       return { from_date: from, to_date: to };
     }
     // day
-    const from = new Date(y, m, currentDate.getDate()).toISOString();
-    const to = new Date(y, m, currentDate.getDate(), 23, 59, 59).toISOString();
+    const from = fmtNaive(new Date(y, m, currentDate.getDate()));
+    const to = fmtNaive(new Date(y, m, currentDate.getDate()), '23:59:59');
     return { from_date: from, to_date: to };
   }, [currentDate, viewMode]);
 
@@ -1229,7 +1526,12 @@ export function CalendarPage() {
     [viewMode],
   );
 
-  const goToToday = useCallback(() => setCurrentDate(new Date()), []);
+  // WEB-UIUX-1334: Today also swaps to day view so the operator lands on
+  // today's hour grid (the most common "show me right now" intent).
+  const goToToday = useCallback(() => {
+    setCurrentDate(new Date());
+    setViewMode('day');
+  }, []);
 
   // Title
   const title = useMemo(() => {
@@ -1300,9 +1602,13 @@ export function CalendarPage() {
               <ChevronRight className="h-5 w-5" />
             </button>
             <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">{title}</h2>
+            {/* WEB-UIUX-1334: aria-pressed flips when the calendar is
+                already showing today's day-view so SR users hear the active
+                state. */}
             <button
               onClick={goToToday}
-              className="rounded-lg border border-surface-200 px-3 py-1 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-700"
+              aria-pressed={viewMode === 'day' && isSameDay(currentDate, new Date())}
+              className="rounded-lg border border-surface-200 px-3 py-1 text-sm font-medium text-surface-600 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-700 aria-pressed:bg-primary-100 aria-pressed:text-primary-800 dark:aria-pressed:bg-primary-900/40 dark:aria-pressed:text-primary-200"
             >
               Today
             </button>
@@ -1347,6 +1653,7 @@ export function CalendarPage() {
                 onSelectAppointment={setSelectedAppt}
                 // WEB-UIUX-1327: drill down to day view when "+N more" is clicked
                 onDrillDown={(day) => { setCurrentDate(day); setViewMode('day'); }}
+                onCreateAt={openCreateAt}
                 shopTz={shopTz}
               />
             )}
@@ -1355,6 +1662,7 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                onCreateAt={openCreateAt}
                 hours={hours}
                 shopTz={shopTz}
               />
@@ -1364,6 +1672,7 @@ export function CalendarPage() {
                 currentDate={currentDate}
                 appointments={appointments}
                 onSelectAppointment={setSelectedAppt}
+                onCreateAt={openCreateAt}
                 hours={hours}
                 shopTz={shopTz}
               />
@@ -1403,8 +1712,14 @@ export function CalendarPage() {
       {/* Create modal */}
       <CreateAppointmentModal
         open={showCreate}
-        onClose={() => setShowCreate(false)}
-        defaultDate={currentDate}
+        onClose={() => { setShowCreate(false); setCreateSlot(null); }}
+        defaultDate={createSlot ?? currentDate}
+        // WEB-UIUX-1328: when the user click-to-creates from a Week/Day slot,
+        // honor the clicked hour. Month-cell clicks pass a date at midnight
+        // (hour=0), which we treat as "no preference" so the default 9am rule
+        // still applies. createSlot is null when "+ New Appointment" button
+        // is used, also keeping the default.
+        defaultHour={createSlot && createSlot.getHours() !== 0 ? createSlot.getHours() : undefined}
         users={users}
         existingAppointments={appointments}
       />

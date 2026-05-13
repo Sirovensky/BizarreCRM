@@ -16,6 +16,7 @@ import { benchApi } from '@/api/endpoints';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  maybeConvertHeicToJpeg,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -118,8 +119,10 @@ export function DefectReporterButton({
   });
 
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const raw = e.target.files?.[0];
+    if (!raw) return;
+    // WEB-UIUX-1090: transcode iPhone HEIC → JPEG before validation.
+    const file = await maybeConvertHeicToJpeg(raw);
     const error = await validateImageFile(file, {
       maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
       label: `"${file.name}"`,

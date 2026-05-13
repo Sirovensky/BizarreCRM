@@ -7,21 +7,24 @@ import {
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
   ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
   ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles, Rocket, FlaskConical,
+  KeyRound,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi, customerApi, ticketApi, invoiceApi, expenseApi, rolesApi } from '@/api/endpoints';
 import type { RolePermissionEntry, RoleRecord } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { DEFAULT_PRIMARY_ACCENT } from '@/utils/themeAccent';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  maybeConvertHeicToJpeg,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
-import { formatNumber, formatCurrency } from '@/utils/format';
+import { formatNumber, formatCurrency, toLocalDateString } from '@/utils/format';
 // FA-M7: DeviceTemplatesPage is a standalone admin editor. Before this change
 // it was only reachable by typing the URL (/settings/device-templates was
 // never defined). Mount it as a Settings tab so the DeviceTemplatePicker
@@ -58,6 +61,7 @@ const PosSettings = lazy(() => import('./PosSettings').then(m => ({ default: m.P
 const InvoiceSettings = lazy(() => import('./InvoiceSettings').then(m => ({ default: m.InvoiceSettings })));
 const ReceiptSettings = lazy(() => import('./ReceiptSettings').then(m => ({ default: m.ReceiptSettings })));
 const ConditionsTab = lazy(() => import('./ConditionsTab').then(m => ({ default: m.ConditionsTab })));
+const BenchQcTab = lazy(() => import('./BenchQcTab').then(m => ({ default: m.BenchQcTab })));
 const NotificationTemplatesTab = lazy(() => import('./NotificationTemplatesTab').then(m => ({ default: m.NotificationTemplatesTab })));
 const SmsVoiceSettings = lazy(() => import('./SmsVoiceSettings').then(m => ({ default: m.SmsVoiceSettings })));
 const AutomationsTab = lazy(() => import('./AutomationsTab').then(m => ({ default: m.AutomationsTab })));
@@ -65,10 +69,11 @@ const MembershipSettings = lazy(() => import('./MembershipSettings').then(m => (
 const DataTab = lazy(() => import('./DataTab').then(m => ({ default: m.DataTab })));
 const AuditLogsTab = lazy(() => import('./AuditLogsTab').then(m => ({ default: m.AuditLogsTab })));
 const DangerZoneTab = lazy(() => import('./DangerZoneTab').then(m => ({ default: m.DangerZoneTab })));
+const AccountTab = lazy(() => import('./AccountTab').then(m => ({ default: m.AccountTab })));
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'danger-zone';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'bench-qc' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'account' | 'danger-zone';
 
 interface TicketStatus {
   id: number;
@@ -164,6 +169,11 @@ const TABS: TabConfig[] = [
   { key: 'repair-pricing', label: 'Repair Pricing', icon: Wrench },
   { key: 'device-templates', label: 'Device Templates', icon: Wrench },
   { key: 'tickets-repairs', label: 'Tickets & Repairs', icon: ListChecks },
+  // WEB-UIUX-1079: Bench/QC admin controls (qc_required, bench_timer_enabled,
+  // bench_labor_rate_cents, defect_alert_threshold_30d). Previously only
+  // mutable via direct UPDATE store_config; the onboarding wizard promised
+  // a UI toggle that didn't exist.
+  { key: 'bench-qc', label: 'Bench & QC', icon: ClipboardCheck },
   { key: 'pos', label: 'POS', icon: ShoppingCart },
   { key: 'invoices', label: 'Invoices', icon: FileText },
   { key: 'receipts', label: 'Receipts', icon: Printer },
@@ -174,6 +184,7 @@ const TABS: TabConfig[] = [
   { key: 'membership', label: 'Membership', icon: Crown, proFeature: 'memberships' },
   { key: 'data', label: 'Data', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
+  { key: 'account', label: 'Account', icon: KeyRound },
   // PROD59: Danger Zone — multi-step self-service account termination.
   { key: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
@@ -246,8 +257,10 @@ function StoreInfoTab() {
   });
 
   const handleStoreLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+    const raw = e.target.files?.[0];
+    if (raw) {
+      // WEB-UIUX-1090: transcode HEIC → JPEG before validation.
+      const file = await maybeConvertHeicToJpeg(raw);
       const error = await validateImageFile(file, {
         maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
         label: `"${file.name}"`,
@@ -469,7 +482,11 @@ function AppearanceSection() {
   ];
 
   return (
-    <div className="card mt-6">
+    <div
+      id="setting-ui_theme"
+      data-setting-key="ui_theme"
+      className="card mt-6 scroll-mt-24"
+    >
       <div className="p-4 border-b border-surface-100 dark:border-surface-800">
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Appearance</h3>
         <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
@@ -506,7 +523,11 @@ function AppearanceSection() {
 
         {/* WEB-UIUX-295: WCAG 2.1.4 — single-key shortcuts (F2/F3/F4/F6/?) must be
             disableable. Toggle persists to localStorage via uiStore. */}
-        <div className="mt-6 rounded-lg border border-surface-200 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800">
+        <div
+          id="setting-keyboard_shortcuts_enabled"
+          data-setting-key="keyboard_shortcuts_enabled"
+          className="mt-6 rounded-lg border border-surface-200 bg-surface-50 p-4 scroll-mt-24 dark:border-surface-700 dark:bg-surface-800"
+        >
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">
@@ -551,7 +572,7 @@ function AppearanceSection() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => navigate('/setup')}
+                  onClick={() => navigate('/setup?resume=1')}
                   className="btn btn-primary btn-sm mt-3"
                 >
                   Resume setup wizard
@@ -778,6 +799,19 @@ function WebhookConfigSection() {
     onError: () => toast.error('Failed to save webhook settings'),
   });
 
+  // WEB-UIUX-944: dispatch synthetic ticket_created event to the configured
+  // URL so the admin can verify the provider is reachable + signing secret
+  // matches before relying on real events. Server endpoint already exists
+  // (settings.routes.ts:3424 /webhook-test).
+  const testMut = useMutation({
+    mutationFn: () => settingsApi.testWebhook(),
+    onSuccess: (res: any) => {
+      const msg = res?.data?.data?.message || 'Test delivery queued — check dead-letter queue if it does not arrive.';
+      toast.success(msg, { duration: 7000 });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to send test webhook'),
+  });
+
   function toggleEvent(event: string) {
     const updated = webhookEvents.includes(event)
       ? webhookEvents.filter((e) => e !== event)
@@ -820,6 +854,29 @@ function WebhookConfigSection() {
           <p className="text-xs text-surface-400 mt-1">
             POST requests will be sent to this URL when selected events occur. Use with Zapier, Make.com, or custom endpoints.
           </p>
+          {/* WEB-UIUX-944: bilateral connectivity smoke-test. Pushes a
+              synthetic ticket_created event to the configured URL so the
+              admin can verify reachability + signing-secret match before
+              counting on production events. */}
+          <button
+            type="button"
+            onClick={() => {
+              if (dirty) {
+                toast.error('Save the URL first, then send a test webhook.');
+                return;
+              }
+              if (!webhookUrl.trim()) {
+                toast.error('Set a webhook URL before sending a test.');
+                return;
+              }
+              testMut.mutate();
+            }}
+            disabled={testMut.isPending || !webhookUrl.trim() || dirty}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-surface-300 px-3 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+          >
+            {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Globe className="h-3.5 w-3.5" />}
+            Send test webhook
+          </button>
         </div>
         <div>
           <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-2">Events to Send</label>
@@ -857,7 +914,7 @@ function SettingsExportImportSection() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `crm-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `crm-settings-${toLocalDateString(new Date())}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Settings exported');
@@ -1106,13 +1163,14 @@ function StatusesTab() {
                       Cancel
                     </label>
                     <button
+                      aria-label="Save changes"
                       onClick={() => updateMutation.mutate({ id: s.id, data: editForm })}
                       disabled={updateMutation.isPending}
                       className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30"
                     >
                       {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     </button>
-                    <button onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
+                    <button aria-label="Cancel edit" onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
@@ -1169,7 +1227,8 @@ function TaxClassesTab() {
     queryKey: ['settings', 'tax-classes'],
     queryFn: async () => {
       const res = await settingsApi.getTaxClasses();
-      return res.data.data as TaxClass[];
+      const payload: any = res?.data?.data ?? res?.data;
+      return (Array.isArray(payload) ? payload : []) as TaxClass[];
     },
   });
 
@@ -1206,7 +1265,7 @@ function TaxClassesTab() {
   if (isLoading) return <LoadingState />;
   if (isError) return <ErrorState message="Failed to load tax classes" />;
 
-  const taxClasses = data || [];
+  const taxClasses: TaxClass[] = Array.isArray(data) ? data : [];
 
   return (
     <div className="card">
@@ -1298,10 +1357,10 @@ function TaxClassesTab() {
                       </td>
                       <td className="px-4 py-2 text-right">
                         <div className="flex gap-1 justify-end">
-                          <button onClick={() => updateMutation.mutate({ id: tc.id, data: editForm })} className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30">
+                          <button aria-label="Save changes" onClick={() => updateMutation.mutate({ id: tc.id, data: editForm })} className="btn-icon btn-xs text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30">
                             <Check className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
+                          <button aria-label="Cancel edit" onClick={() => setEditing(null)} className="btn-icon btn-xs text-surface-400 hover:text-surface-600">
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -1534,7 +1593,8 @@ function UsersTab() {
   });
 
   const currentUser = useAuthStore((s) => s.user);
-  const isAdminUser = currentUser?.role === 'admin';
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdminUser = useHasRole('admin');
 
   const { data: rolePermissionData, isLoading: rolePermissionsLoading } = useQuery({
     queryKey: ['roles', 'settings-permission-matrix'],
@@ -1975,6 +2035,7 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'repair-pricing': ['repair', 'pricing', 'grade', 'aftermarket', 'oem', 'premium', 'labor'],
   'device-templates': ['device', 'template', 'repair', 'job card', 'iphone', 'ipad', 'samsung', 'macbook', 'labor', 'part', 'reusable'],
   'tickets-repairs': ['ticket', 'repair', 'default', 'prefix', 'auto', 'assign'],
+  'bench-qc': ['bench', 'qc', 'quality', 'sign-off', 'signoff', 'timer', 'labor', 'defect', 'alert', 'threshold', 'tech', 'workflow'],
   'pos': ['pos', 'point of sale', 'checkout', 'receipt', 'cart'],
   'invoices': ['invoice', 'due', 'payment', 'terms', 'numbering'],
   'receipts': ['receipt', 'print', 'thermal', 'logo', 'template', 'header', 'footer'],
@@ -1985,7 +2046,8 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'membership': ['membership', 'subscribe', 'tier', 'vip', 'pro', 'basic', 'recurring', 'discount', 'member'],
   'data': ['import', 'export', 'data', 'repairdesk', 'repairshopr', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'maintenance', 'retention', 'pii', 'gdpr', 'ccpa', 'sweeper', 'purge', 'sms', 'email', 'notes', 'privacy'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
-  'danger-zone': ['danger', 'zone', 'delete', 'terminate', 'close', 'account', 'cancel', 'shutdown'],
+  'account': ['account', 'password', 'change password', '2fa', 'two factor', 'security', 'profile', 'me'],
+  'danger-zone': ['danger', 'zone', 'delete', 'terminate', 'close', 'cancel', 'shutdown'],
 };
 
 export function SettingsPage() {
@@ -2059,8 +2121,8 @@ function SettingsPageInner() {
   // tab still mounted on click, and the 403 toast was the user's first
   // signal that they were not supposed to see it. Filter at the nav
   // layer plus guard the render path below for defense-in-depth.
-  const currentUserRole = useAuthStore((s) => s.user?.role);
-  const isAdmin = currentUserRole === 'admin';
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
   const filteredTabs = TABS.filter((t) => (t.key === 'audit-logs' ? isAdmin : true));
 
   // WEB-FAE-005 (Fixer-B21 2026-04-25): if a non-admin deep-links to
@@ -2073,6 +2135,15 @@ function SettingsPageInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, activeTab]);
+
+  useEffect(() => {
+    if (!location.hash) return;
+    const targetId = decodeURIComponent(location.hash.slice(1));
+    const timer = window.setTimeout(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, location.hash]);
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -2272,6 +2343,7 @@ function SettingsPageInner() {
         {activeTab === 'repair-pricing' && <RepairPricingTab />}
         {activeTab === 'device-templates' && <DeviceTemplatesPage />}
         {activeTab === 'tickets-repairs' && <TicketsRepairsSettings />}
+        {activeTab === 'bench-qc' && <BenchQcTab />}
         {activeTab === 'pos' && <PosSettings />}
         {activeTab === 'invoices' && <InvoiceSettings />}
         {activeTab === 'receipts' && <ReceiptSettings />}
@@ -2282,6 +2354,7 @@ function SettingsPageInner() {
         {activeTab === 'membership' && <MembershipSettings />}
         {activeTab === 'data' && <DataTab importContent={<DataImportTab />} />}
         {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
+        {activeTab === 'account' && <AccountTab />}
         {activeTab === 'danger-zone' && <DangerZoneTab />}
       </Suspense>
       </div>
@@ -2291,7 +2364,7 @@ function SettingsPageInner() {
 
 // ─── Import Section (with category checkboxes) ─────────────────────────────
 
-function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActive: boolean; onStarted: () => void }) {
+function ImportSection({ apiKey, isActive, importStatus, onStarted }: { apiKey: string; isActive: boolean; importStatus?: any; onStarted: () => void }) {
   const [entities, setEntities] = useState<Record<string, boolean>>({
     customers: true,
     tickets: true,
@@ -2320,6 +2393,26 @@ function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActi
     sms: { label: 'SMS Messages', desc: 'SMS conversation history' },
   };
 
+  // Live progress while the import is running. The page-level polling already
+  // refetches every 3 s, so importStatus.overall is fresh; surface it on the
+  // button so a stuck-looking "Import in Progress…" actually shows movement.
+  const overall = importStatus?.overall;
+  const checkpoints: Record<string, { step: number; total: number; status: string } | null> = importStatus?.checkpoints ?? {};
+  const importedSoFar: number = overall?.imported ?? 0;
+  const totalRecords: number = overall?.total_records ?? 0;
+  const completedEntities: number = overall?.completed_entities ?? 0;
+  const totalEntities: number = overall?.total_entities ?? 0;
+  const overallPct = totalRecords > 0
+    ? Math.min(100, Math.round((importedSoFar / totalRecords) * 100))
+    : totalEntities > 0
+      ? Math.min(100, Math.round((completedEntities / totalEntities) * 100))
+      : 0;
+  // The currently-running entity name + its inner progress, for a sub-line.
+  const runningEntity = (Object.entries(checkpoints).find(([, cp]) => cp?.status === 'running') || [null, null]) as [string | null, { step: number; total: number } | null];
+  const runningName = runningEntity[0];
+  const runningStep = runningEntity[1]?.step ?? 0;
+  const runningTotal = runningEntity[1]?.total ?? 0;
+
   return (
     <div className="card p-4">
       <h4 className="text-xs font-semibold uppercase tracking-wide text-surface-500 mb-1">Import from RepairDesk</h4>
@@ -2347,9 +2440,30 @@ function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActi
         disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
         className="btn btn-primary btn-md"
       >
-        {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-        {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
+        {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+        {isActive
+          ? `Importing… ${formatNumber(importedSoFar)}${totalRecords > 0 ? ` / ${formatNumber(totalRecords)}` : ''}`
+          : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
       </button>
+      {isActive && (
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center justify-between text-xs text-surface-600 dark:text-surface-400">
+            <span>{runningName ? `Working on ${runningName}` : 'Working…'}{runningTotal > 0 ? ` · ${formatNumber(runningStep)} / ${formatNumber(runningTotal)}` : runningStep > 0 ? ` · ${formatNumber(runningStep)} processed` : ''}</span>
+            <span>{overallPct}%</span>
+          </div>
+          <div className="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-primary-500 h-2 rounded-full transition-all"
+              style={{ width: `${overallPct}%` }}
+            />
+          </div>
+          {totalEntities > 0 && (
+            <p className="text-[11px] text-surface-400">
+              {completedEntities} of {totalEntities} categories complete
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2880,7 +2994,7 @@ function DownloadAllDataSection() {
       // filename from Content-Disposition; fall back to a safe default.
       const dispo = (res.headers?.['content-disposition'] || '') as string;
       const match = /filename="?([^"]+)"?/i.exec(dispo);
-      const filename = match?.[1] || `bizarre-crm-export-${new Date().toISOString().slice(0, 10)}.json`;
+      const filename = match?.[1] || `bizarre-crm-export-${toLocalDateString(new Date())}.json`;
 
       const blob = new Blob([res.data], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -3023,7 +3137,7 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
       </div>
 
       {/* Standard Import */}
-      <ImportSection apiKey={apiKey} isActive={isActive} onStarted={onStarted} />
+      <ImportSection apiKey={apiKey} isActive={isActive} importStatus={importStatus} onStarted={onStarted} />
 
       {/* Reset & Reimport */}
       <div className="mt-6 rounded-lg border border-amber-300 dark:border-amber-800 bg-white dark:bg-surface-900 p-4">
@@ -3490,9 +3604,11 @@ const SEED_EXPENSES = [
 ];
 
 function seedDaysAgoToIso(n: number): string {
+  // WEB-UIUX-788: local-calendar Y-M-D so seeded historical dates land on
+  // the expected wall-clock day (UTC slice silently rolled forward after ~4pm).
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateString(d);
 }
 
 interface SeedProgress {

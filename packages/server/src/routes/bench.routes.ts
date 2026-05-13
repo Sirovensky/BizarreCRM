@@ -31,6 +31,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { fileUploadValidator, releaseFileCount } from '../middleware/fileUploadValidator.js';
+import { requirePermission } from '../middleware/auth.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
@@ -49,6 +50,14 @@ import {
   sanitizedImageExtension,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
 } from '../utils/imageUploadPolicy.js';
+import {
+  type BenchTimerRow as SharedBenchTimerRow,
+  type PauseSegment as SharedPauseSegment,
+  parseJson as sharedParseJson,
+  computeElapsedSeconds as sharedComputeElapsedSeconds,
+  computeLaborCostCents as sharedComputeLaborCostCents,
+  isCurrentlyPaused as sharedIsCurrentlyPaused,
+} from '../services/benchTimerMath.js';
 
 // Post-enrichment audit §9: per-user cap on defect report POSTs. Every
 // report writes one row + optionally an image + optionally a notification.
@@ -144,14 +153,7 @@ const defectUpload = makeBenchUpload('defects');
 // Helpers
 // ────────────────────────────────────────────────────────────────────────────
 
-function parseJson<T>(val: string | null | undefined, fallback: T): T {
-  if (!val) return fallback;
-  try {
-    return JSON.parse(val) as T;
-  } catch {
-    return fallback;
-  }
-}
+const parseJson = sharedParseJson;
 
 async function getStoreFlag(adb: any, key: string, fallback: string): Promise<string> {
   try {
@@ -164,24 +166,8 @@ async function getStoreFlag(adb: any, key: string, fallback: string): Promise<st
   }
 }
 
-interface BenchTimerRow {
-  id: number;
-  ticket_id: number;
-  ticket_device_id: number | null;
-  user_id: number;
-  started_at: string;
-  ended_at: string | null;
-  pause_log_json: string | null;
-  total_seconds: number | null;
-  labor_rate_cents: number | null;
-  labor_cost_cents: number | null;
-  notes: string | null;
-}
-
-interface PauseSegment {
-  pause_at: string;
-  resume_at?: string;
-}
+type BenchTimerRow = SharedBenchTimerRow;
+type PauseSegment = SharedPauseSegment;
 
 /**
  * Validate a rate in cents — whole non-negative integer, bounded to a
@@ -199,55 +185,12 @@ function validateRateCents(value: unknown, fieldName = 'labor_rate_cents'): numb
   return raw;
 }
 
-/**
- * Integer-safe labor cost: (seconds * rate_cents) / 3600, rounded to the
- * nearest whole cent. Order matters — multiplying first avoids the float
- * drift of `(seconds / 3600) * rate_cents` when the result is not an
- * exact multiple of an hour.
- */
-function computeLaborCostCents(seconds: number, rateCents: number): number {
-  if (!isFinite(seconds) || !isFinite(rateCents)) return 0;
-  if (seconds <= 0 || rateCents <= 0) return 0;
-  // seconds and rateCents are already integers — this stays safe until
-  // seconds * rateCents exceeds Number.MAX_SAFE_INTEGER (~9e15), which is
-  // ~1 billion years at $100/hr. Good enough.
-  return Math.round((seconds * rateCents) / 3600);
-}
-
-/**
- * Computes live elapsed seconds for a timer, subtracting any time spent
- * paused. Works for both finished timers and live ones (uses "now" when
- * ended_at is null).
- */
-function computeElapsedSeconds(row: BenchTimerRow): number {
-  const start = new Date(row.started_at).getTime();
-  const end = row.ended_at ? new Date(row.ended_at).getTime() : Date.now();
-  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
-
-  const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
-  let paused = 0;
-  for (const p of pauses) {
-    const pa = new Date(p.pause_at).getTime();
-    const pr = p.resume_at ? new Date(p.resume_at).getTime() : end;
-    if (Number.isFinite(pa) && Number.isFinite(pr) && pr > pa) paused += pr - pa;
-  }
-
-  const active = end - start - paused;
-  const seconds = Math.max(0, Math.round(active / 1000));
-  const MAX_SECONDS_PER_SESSION = 24 * 3600;
-  if (seconds > MAX_SECONDS_PER_SESSION) {
-    logger.warn('bench timer session exceeds 24h — capping', { start, end, seconds });
-    return MAX_SECONDS_PER_SESSION;
-  }
-  return seconds;
-}
-
-function isCurrentlyPaused(row: BenchTimerRow): boolean {
-  const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
-  if (pauses.length === 0) return false;
-  const last = pauses[pauses.length - 1];
-  return !!last && !last.resume_at;
-}
+// Shared bench-timer math lives in ../services/benchTimerMath so other
+// routes (tickets.routes.ts ticket-close hook, WEB-UIUX-650) compute the
+// same elapsed/labor numbers as the explicit POST /bench/timer/:id/stop.
+const computeLaborCostCents = sharedComputeLaborCostCents;
+const computeElapsedSeconds = sharedComputeElapsedSeconds;
+const isCurrentlyPaused = sharedIsCurrentlyPaused;
 
 async function requireBenchTimerEnabled(adb: any): Promise<void> {
   const flag = await getStoreFlag(adb, 'bench_timer_enabled', 'false');
@@ -500,7 +443,11 @@ router.post(
       | BenchTimerRow
       | undefined;
     if (!row) throw new AppError('Timer not found', 404);
-    if (row.user_id !== req.user?.id) throw new AppError('Not your timer', 403);
+    // WEB-UIUX-652: admins/managers may stop another tech's timer (orphan recovery).
+    const isPrivileged = req.user?.role === 'admin' || req.user?.role === 'manager';
+    if (row.user_id !== req.user?.id && !isPrivileged) {
+      throw new AppError('Not your timer', 403);
+    }
     if (row.ended_at) throw new AppError('Timer already stopped', 400);
 
     // If the timer is still paused, close the pause segment first so the
@@ -760,9 +707,73 @@ router.get(
   }),
 );
 
+// GET /bench/qc/history/:ticketId — full sign-off list for the ticket
+// WEB-UIUX-1105: /qc/status returns only the latest row (LIMIT 1); /qc/history
+// returns every past sign-off so a manager can audit which version captured
+// the working state, when, and by whom. File paths are still stripped for
+// non-admin / non-manager callers.
+router.get(
+  '/qc/history/:ticketId',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const ticketId = Number(req.params.ticketId);
+    if (!Number.isFinite(ticketId)) throw new AppError('Invalid ticket id', 400);
+
+    type SignOff = {
+      id: number;
+      ticket_id: number;
+      tech_user_id: number;
+      checklist_results_json: string;
+      working_photo_path: string | null;
+      tech_signature_path: string | null;
+      outcome: string | null;
+      signed_at: string;
+      first_name: string | null;
+      last_name: string | null;
+    };
+    const rows = (await adb.all<SignOff>(
+      `SELECT qs.*, u.first_name, u.last_name
+         FROM qc_sign_offs qs
+         LEFT JOIN users u ON u.id = qs.tech_user_id
+        WHERE qs.ticket_id = ?
+        ORDER BY qs.signed_at DESC, qs.id DESC`,
+      ticketId,
+    )) as SignOff[];
+
+    const role = req.user?.role;
+    const isPrivileged = role === 'admin' || role === 'manager';
+    const callerId = req.user?.id;
+
+    const items = rows.map((row) => {
+      // WEB-UIUX-1093: the tech who signed must be able to review their own
+      // signature + working photo later (most-common dispute case is "did I
+      // sign that?"). Admin/manager see everything; the signer sees their
+      // own row's media; everyone else gets the paths stripped.
+      const isOwnRow = callerId != null && row.tech_user_id === callerId;
+      const canSeeMedia = isPrivileged || isOwnRow;
+      return {
+        ...row,
+        checklist_results: parseJson<Array<{ item_id: number; passed: boolean }>>(
+          row.checklist_results_json,
+          [],
+        ),
+        tech_signature_path: canSeeMedia ? row.tech_signature_path : undefined,
+        working_photo_path: canSeeMedia ? row.working_photo_path : undefined,
+      };
+    });
+
+    res.json({ success: true, data: { sign_offs: items, total: rows.length } });
+  }),
+);
+
 // POST /bench/qc/sign-off (multipart: photo + signature + JSON fields)
+// WEB-UIUX-1084: gate behind `qc.sign` permission so cashier / viewer / any
+// future low-trust role can't submit a sign-off and have tech_user_id
+// recorded as theirs. Default roles: admin + manager (operational) + tech
+// (explicit grant) carry qc.sign; cashier does not.
 router.post(
   '/qc/sign-off',
+  requirePermission('qc.sign'),
   enforceUploadQuota,
   qcUpload.fields([
     { name: 'working_photo', maxCount: 1 },
@@ -808,30 +819,47 @@ router.post(
       }))
       .filter((r) => Number.isFinite(r.item_id));
 
-    // Must-pass rule: every item in the active list for the ticket's device
-    // category must have a `passed = true` entry.
-    const device = (await adb.get<any>(
-      'SELECT device_type FROM ticket_devices WHERE ticket_id = ? ORDER BY id LIMIT 1',
-      ticketId,
-    )) as { device_type: string | null } | undefined;
-    const category = device?.device_type ?? null;
+    // WEB-UIUX-1083: accept an explicit outcome so techs can record QC fail
+    // (camera misaligned, port loose, etc.) without abandoning the modal.
+    // `pass` keeps the legacy must-pass rule. `fail` skips the must-pass
+    // rule and requires a failure_reason for the audit trail.
+    const outcome = validateEnum(
+      req.body?.outcome,
+      ['pass', 'fail'] as const,
+      'outcome',
+      false,
+    ) ?? 'pass';
+    const failureReason =
+      outcome === 'fail'
+        ? validateRequiredString(req.body?.failure_reason, 'failure_reason').slice(0, 1000)
+        : null;
 
-    const activeItems = (category
-      ? await adb.all(
-          'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND (device_category = ? OR device_category IS NULL)',
-          category,
-        )
-      : await adb.all(
-          'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND device_category IS NULL',
-        )) as Array<{ id: number }>;
+    if (outcome === 'pass') {
+      // Must-pass rule: every item in the active list for the ticket's device
+      // category must have a `passed = true` entry.
+      const device = (await adb.get<any>(
+        'SELECT device_type FROM ticket_devices WHERE ticket_id = ? ORDER BY id LIMIT 1',
+        ticketId,
+      )) as { device_type: string | null } | undefined;
+      const category = device?.device_type ?? null;
 
-    const passedSet = new Set(sanitized.filter((r) => r.passed).map((r) => r.item_id));
-    const missing = activeItems.filter((i) => !passedSet.has(i.id));
-    if (missing.length > 0) {
-      throw new AppError(
-        `QC failed: ${missing.length} checklist item(s) not passed. Every item must be ticked before sign-off.`,
-        400,
-      );
+      const activeItems = (category
+        ? await adb.all(
+            'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND (device_category = ? OR device_category IS NULL)',
+            category,
+          )
+        : await adb.all(
+            'SELECT id FROM qc_checklist_items WHERE is_active = 1 AND device_category IS NULL',
+          )) as Array<{ id: number }>;
+
+      const passedSet = new Set(sanitized.filter((r) => r.passed).map((r) => r.item_id));
+      const missing = activeItems.filter((i) => !passedSet.has(i.id));
+      if (missing.length > 0) {
+        throw new AppError(
+          `QC failed: ${missing.length} checklist item(s) not passed. Every item must be ticked before sign-off, or submit with outcome=fail + a failure_reason.`,
+          400,
+        );
+      }
     }
 
     // Files
@@ -890,11 +918,45 @@ router.post(
         ? validateTextLength(req.body.notes, 1000, 'notes')
         : null;
 
+    // WEB-UIUX-1085: identity binding. typed_name is the operator typing
+    // their full name alongside the drawn signature (capped at 200 chars;
+    // optional but recommended — surfaces in audit when present).
+    const typedName = typeof req.body?.typed_name === 'string'
+      ? validateTextLength(req.body.typed_name.trim(), 200, 'typed_name')
+      : null;
+
+    // Optional PIN re-auth. When the caller submits `pin`, verify it
+    // against the signing user's stored bcrypt PIN and stamp
+    // pin_verified_at. A mismatched PIN refuses the sign-off (cannot
+    // claim identity falsely). When `pin` is absent the sign-off still
+    // records but pin_verified_at stays NULL so reports can distinguish
+    // session-cookie-only signs from PIN-verified signs.
+    let pinVerifiedAt: string | null = null;
+    if (typeof req.body?.pin === 'string' && req.body.pin.length > 0) {
+      const bcrypt = await import('bcryptjs');
+      const user = await adb.get<{ pin: string | null }>(
+        'SELECT pin FROM users WHERE id = ?',
+        userId,
+      );
+      if (!user?.pin) {
+        throw new AppError('No PIN on file for this user — cannot verify signature identity. Ask admin to set one.', 400);
+      }
+      if (!user.pin.startsWith('$2')) {
+        throw new AppError('PIN not properly hashed — contact admin', 500);
+      }
+      const ok = bcrypt.default.compareSync(req.body.pin, user.pin);
+      if (!ok) {
+        throw new AppError('PIN does not match — cannot sign QC under this account.', 401);
+      }
+      pinVerifiedAt = new Date().toISOString();
+    }
+
     const result = await adb.run(
       `INSERT INTO qc_sign_offs
         (ticket_id, ticket_device_id, tech_user_id, checklist_results_json,
-         tech_signature_path, working_photo_path, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         tech_signature_path, working_photo_path, notes, outcome, failure_reason,
+         typed_name, pin_verified_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ticketId,
       qcTicketDeviceId,
       userId,
@@ -902,12 +964,65 @@ router.post(
       signaturePath,
       workingPhotoPath,
       qcNotes || null,
+      outcome,
+      failureReason,
+      typedName || null,
+      pinVerifiedAt,
     );
 
-    audit(req.db, 'qc_sign_off', userId, req.ip ?? 'unknown', {
+    audit(req.db, outcome === 'fail' ? 'qc_sign_off_fail' : 'qc_sign_off', userId, req.ip ?? 'unknown', {
       ticket_id: ticketId,
       sign_off_id: Number(result.lastInsertRowid),
+      outcome,
+      failure_reason: failureReason,
+      // WEB-UIUX-1085: identity binding visible in audit trail.
+      typed_name_present: !!typedName,
+      pin_verified: !!pinVerifiedAt,
     });
+
+    // WEB-UIUX-1086: when QC passes on a ticket currently parked in
+    // 'Repaired - Pending QC', auto-advance to 'Repaired'. Failure path
+    // already has its own status-flip plumbing via defect_reports. Wrapped
+    // in try/catch so a transition-guard mismatch (custom tenant statuses,
+    // ticket already moved by another tech) surfaces as a structured audit
+    // row but doesn't fail the sign-off itself — the sign-off row is the
+    // authoritative compliance artifact.
+    if (outcome !== 'fail') {
+      try {
+        const ticketRow = await adb.get<{ status_id: number }>(
+          'SELECT status_id FROM tickets WHERE id = ? AND is_deleted = 0',
+          ticketId,
+        );
+        if (ticketRow) {
+          const curStatus = await adb.get<{ name: string }>(
+            'SELECT name FROM ticket_statuses WHERE id = ?',
+            ticketRow.status_id,
+          );
+          if (curStatus?.name === 'Repaired - Pending QC') {
+            const repairedStatus = await adb.get<{ id: number }>(
+              "SELECT id FROM ticket_statuses WHERE name = 'Repaired' LIMIT 1",
+            );
+            if (repairedStatus?.id) {
+              const { applyTicketStatusChange } = await import('../services/ticketStatus.js');
+              await applyTicketStatusChange(
+                req.db,
+                ticketId,
+                repairedStatus.id,
+                userId,
+                (req as any).tenantSlug || null,
+                true, // skipGuards — the QC sign-off we just wrote IS the gate
+              );
+            }
+          }
+        }
+      } catch (err) {
+        audit(req.db, 'qc_sign_off_status_advance_failed', userId, req.ip ?? 'unknown', {
+          ticket_id: ticketId,
+          sign_off_id: Number(result.lastInsertRowid),
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     const row = await adb.get(
       'SELECT * FROM qc_sign_offs WHERE id = ?',

@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, Link as LinkIcon, UserPlus } from 'lucide-react';
+import { Crown, Loader2, AlertCircle, RefreshCw, Search, ChevronLeft, ChevronRight, PauseCircle, PlayCircle, XCircle, Link as LinkIcon, UserPlus, X as XIcon, Copy as CopyIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { membershipApi } from '@/api/endpoints';
-import { useAuthStore } from '@/stores/authStore';
+import { customerApi, membershipApi } from '@/api/endpoints';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { MembershipSettings } from '@/pages/settings/MembershipSettings';
+import { useHasRole } from '@/hooks/useHasRole';
 import { confirm } from '@/stores/confirmStore';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
@@ -35,7 +37,7 @@ interface Subscription {
 }
 
 type StatusFilter = 'all' | Exclude<SubStatus, 'cancelled'>;
-type CancelMode = 'period_end' | 'immediate';
+type MembershipView = 'subscriptions' | 'tiers';
 
 const PAGE_SIZE = 10;
 const STATUS_FILTER_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
@@ -84,8 +86,9 @@ function TableSkeleton() {
 // ─── AdminOnly wrapper ────────────────────────────────────────────────────────
 
 function AdminOnly({ children }: { children: React.ReactNode }) {
-  const user = useAuthStore((s) => s.user);
-  return user?.role === 'admin' ? <>{children}</> : null;
+  // WEB-UIUX-902: canonical role gate via useHasRole.
+  const isAdmin = useHasRole('admin');
+  return isAdmin ? <>{children}</> : null;
 }
 
 // WEB-UIUX-1061: RunBillingButton (header) was a decoy — it showed a toast
@@ -103,29 +106,53 @@ export function SubscriptionsListPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
+  const [view, setView] = useState<MembershipView>('subscriptions');
+  // WEB-UIUX-1075: inline enrolment modal — customer picker → tier picker → confirm.
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  // WEB-UIUX-1500: opt-in surfacing of cancelled subs so admins can audit churn.
+  const [showCancelled, setShowCancelled] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['subscriptions'],
+    queryKey: ['subscriptions', { includeCancelled: showCancelled }],
     queryFn: async () => {
-      const res = await membershipApi.getSubscriptions();
+      const res = await membershipApi.getSubscriptions({ includeCancelled: showCancelled });
       return (res.data as { data: Subscription[] }).data;
     },
     staleTime: 30_000,
   });
 
   const cancelMutation = useMutation({
-    mutationFn: ({ sub, immediate }: { sub: Subscription; immediate: boolean }) =>
-      membershipApi.cancel(sub.id, { immediate }),
+    // WEB-UIUX-827: pass `immediate` through so the operator can choose
+    // immediate vs end-of-period cancellation. Server already supports both.
+    // WEB-UIUX-1067: cancellation_reason + free-text note ride along so the
+    // churn analytics column gets populated.
+    mutationFn: (vars: { id: number; immediate: boolean; reason: string; note: string }) =>
+      membershipApi.cancel(vars.id, { immediate: vars.immediate, reason: vars.reason, note: vars.note || undefined }),
     // WEB-UIUX-1070: also invalidate customer membership cache so CustomerDetailPage stays in sync
-    onSuccess: (res, { sub, immediate }) => {
+    onSuccess: (response, vars) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
-      const serverImmediate = ((res.data as { data?: { immediate?: boolean } })?.data?.immediate ?? immediate) === true;
-      toast.success(
-        serverImmediate
-          ? 'Subscription cancelled immediately'
-          : `Cancellation scheduled for ${sub.current_period_end ? formatDate(sub.current_period_end) : 'period end'}`,
-      );
+      const sub = (data ?? []).find((s) => s.id === vars.id);
+      if (sub) {
+        queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
+        // WEB-UIUX-1499: invalidate the customer's store-credit cache so the
+        // CustomerDetailPage credit balance reflects the prorated grant.
+        queryClient.invalidateQueries({ queryKey: ['customer-credits', sub.customer_id] });
+        queryClient.invalidateQueries({ queryKey: ['store-credit', sub.customer_id] });
+      }
+      // WEB-UIUX-1499: surface the prorated store-credit grant in the toast
+      // so the operator can mention the amount to the customer at cancel time
+      // ("$X.XX credited to your account for unused days").
+      const proration = (response?.data as { data?: { proration_credit?: { amount: number } } })
+        ?.data?.proration_credit;
+      const credited = proration?.amount;
+      if (vars.immediate && credited && credited > 0) {
+        toast.success(
+          `Subscription cancelled — ${formatCurrency(credited)} credited to customer's store credit for unused days`,
+          { duration: 7000 },
+        );
+      } else {
+        toast.success(vars.immediate ? 'Subscription cancelled immediately' : 'Subscription will cancel at period end');
+      }
       setCancellingId(null);
       setCancelDialogSub(null);
     },
@@ -148,7 +175,36 @@ export function SubscriptionsListPage() {
       setBillingId(null);
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Billing failed');
+      // WEB-UIUX-834: surface a specific reason when the server (or
+      // upstream processor) returns a structured error code. Maps the
+      // BlockChyp / Stripe + native variants to operator-actionable copy.
+      const code: string | undefined =
+        err?.response?.data?.code ?? err?.response?.data?.error_code;
+      const serverMsg: string | undefined = err?.response?.data?.message;
+      let msg: string;
+      switch (code) {
+        case 'card_expired':
+        case 'expired_card':
+          msg = 'Card on file is expired. Ask the customer for a new card and update Payment Method.';
+          break;
+        case 'insufficient_funds':
+          msg = 'Card declined: insufficient funds. Retry later or ask for a different card.';
+          break;
+        case 'invalid_token':
+        case 'card_not_present':
+          msg = 'Saved card token is no longer valid. Re-tokenize the card via Payment Method.';
+          break;
+        case 'terminal_offline':
+        case 'processor_offline':
+          msg = 'Payment terminal is offline. Check the terminal, retry, or take cash and record manually.';
+          break;
+        case 'card_declined':
+          msg = serverMsg || 'Card declined. Ask the customer for a different card.';
+          break;
+        default:
+          msg = serverMsg || 'Billing failed';
+      }
+      toast.error(msg);
       setBillingId(null);
     },
   });
@@ -157,12 +213,14 @@ export function SubscriptionsListPage() {
   const [pausingId, setPausingId] = useState<number | null>(null);
   const [resumingId, setResumingId] = useState<number | null>(null);
   const pauseMut = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason?: string }) =>
-      membershipApi.pause(id, reason ? { reason } : undefined),
+    // WEB-UIUX-1066: capture a free-form pause reason so the win-back report
+    // can categorise paused-vs-cancelled cohorts. Server stores `pause_reason`.
+    mutationFn: (vars: { id: number; reason: string | null }) =>
+      membershipApi.pause(vars.id, vars.reason ? { reason: vars.reason } : undefined),
     // WEB-UIUX-1070: invalidate both query keys
-    onSuccess: (_result, { id }) => {
+    onSuccess: (_result, vars) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      const sub = (data ?? []).find((s) => s.id === id);
+      const sub = (data ?? []).find((s) => s.id === vars.id);
       if (sub) queryClient.invalidateQueries({ queryKey: ['membership', 'customer', sub.customer_id] });
       toast.success('Subscription paused');
       setPausingId(null);
@@ -188,18 +246,16 @@ export function SubscriptionsListPage() {
     },
   });
 
-  // WEB-UIUX-1074: send-payment-link mutation for subs without blockchyp_token
+  // WEB-UIUX-1074: send-payment-link mutation for subs without blockchyp_token.
+  // Endpoint takes a {tier_id, customer_id} pair (no per-subscription hosted-
+  // link route exists); row-level callers pass the source subscription so we
+  // can pluck both, plus the sub id for in-flight UI state.
   const [paymentLinkId, setPaymentLinkId] = useState<number | null>(null);
   const paymentLinkMut = useMutation({
-    mutationFn: (sub: Subscription) =>
-      membershipApi.createPaymentLink({ tier_id: sub.tier_id, customer_id: sub.customer_id }),
-    onSuccess: (res) => {
-      const url: string = (res.data as { data?: { linkUrl?: string } })?.data?.linkUrl ?? '';
-      if (!url) {
-        toast.error('Payment link was not returned');
-        setPaymentLinkId(null);
-        return;
-      }
+    mutationFn: (vars: { tier_id: number; customer_id: number; subscription_id?: number }) =>
+      membershipApi.createPaymentLink({ tier_id: vars.tier_id, customer_id: vars.customer_id }),
+    onSuccess: (res, _vars) => {
+      const url: string = (res.data as any)?.url ?? '';
       toast(
         (t) => (
           <span>
@@ -236,7 +292,8 @@ export function SubscriptionsListPage() {
     }
   }
 
-  // WEB-UIUX-1065: pause handler
+  // WEB-UIUX-1065 + WEB-UIUX-1066: pause handler — also prompts for a reason so
+  // pause_reason gets populated (used by win-back analytics).
   async function handlePause(sub: Subscription): Promise<void> {
     try {
       const ok = await confirm(
@@ -244,10 +301,10 @@ export function SubscriptionsListPage() {
         { title: 'Pause subscription?', confirmLabel: 'Pause' },
       );
       if (!ok) return;
-      const reasonInput = window.prompt('Reason for pausing this membership (optional):') ?? '';
-      const reason = reasonInput.trim();
+      const reasonRaw = window.prompt('Reason for pause? (optional — used in win-back reports)', '');
+      const reason = reasonRaw === null ? null : reasonRaw.trim() || null;
       setPausingId(sub.id);
-      pauseMut.mutate({ id: sub.id, reason: reason || undefined });
+      pauseMut.mutate({ id: sub.id, reason });
     } catch (err) {
       toast.error(formatApiError(err));
     }
@@ -268,9 +325,76 @@ export function SubscriptionsListPage() {
     }
   }
 
-  function handleCancel(sub: Subscription): void {
-    setCancelMode('period_end');
-    setCancelDialogSub(sub);
+  async function handleCancel(sub: Subscription): Promise<void> {
+    // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
+    try {
+      // WEB-UIUX-827: prompt for cancel semantics first (end-of-period vs now).
+      const choice = window.prompt(
+        'Cancel subscription?\nType "end" to cancel at the end of the current period (customer keeps paid days).\nType "now" to cancel immediately (customer forfeits remaining days).\nLeave blank to abort.',
+        'end',
+      );
+      if (!choice) return;
+      const trimmed = choice.trim().toLowerCase();
+      if (trimmed !== 'end' && trimmed !== 'now') {
+        toast.error('Type "end" or "now" to confirm.');
+        return;
+      }
+      const immediate = trimmed === 'now';
+      // WEB-UIUX-1498: surface cancellation impact so staff know what the customer loses
+      const chargeAmt = sub.last_charge_amount ?? sub.monthly_price;
+      const chargeDate = sub.current_period_end ? formatDate(sub.current_period_end) : null;
+      const impactLine = immediate
+        ? `Customer loses ${sub.tier_name} discount + benefits today.`
+          + (chargeDate && chargeAmt != null ? ` Last charge ${chargeDate}, ${formatCurrency(chargeAmt)}.` : '')
+          + ' No refund issued — see Refund flow if needed.'
+        : `Customer keeps ${sub.tier_name} discount + benefits until ${chargeDate ?? 'period end'}. No further charges.`;
+      const ok = await confirm(
+        `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership?\n\n${impactLine}`,
+        {
+          title: 'Cancel subscription?',
+          confirmLabel: immediate ? 'Cancel now' : 'Cancel at period end',
+          danger: immediate,
+        },
+      );
+      if (!ok) return;
+      // WEB-UIUX-1067: collect cancellation reason after the operator confirms
+      // the cancel-now vs cancel-at-period-end choice. Reason buckets mirror
+      // the server allow-list; free-text note caps at 500 chars on the
+      // backend. Server tolerates blank reason for backwards-compat, but the
+      // analytics column gets NULL in that case so encourage a choice.
+      const reasonChoice = window.prompt(
+        'Why is this customer cancelling? Pick a number (analytics + retention):\n' +
+        '  1. Too expensive\n' +
+        '  2. Missing features\n' +
+        '  3. Switched to another service\n' +
+        '  4. Not getting enough value\n' +
+        '  5. Customer service / experience\n' +
+        '  6. Business closed / moved\n' +
+        '  7. No longer needed\n' +
+        '  8. Other\n' +
+        'Type a number 1–8 or leave blank to skip.',
+        '4',
+      );
+      const REASON_MAP: Record<string, string> = {
+        '1': 'too_expensive',
+        '2': 'missing_features',
+        '3': 'switched_service',
+        '4': 'low_value',
+        '5': 'customer_service',
+        '6': 'business_closed',
+        '7': 'no_longer_needed',
+        '8': 'other',
+      };
+      const reason = reasonChoice ? (REASON_MAP[reasonChoice.trim()] ?? '') : '';
+      let note = '';
+      if (reason === 'other') {
+        note = (window.prompt('Add a short note describing the cancellation reason (max 500 chars).') ?? '').slice(0, 500);
+      }
+      setCancellingId(sub.id);
+      cancelMutation.mutate({ id: sub.id, immediate, reason, note });
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
   }
 
   const subs = data ?? [];
@@ -319,18 +443,19 @@ export function SubscriptionsListPage() {
     setPage(1);
   }
 
-  const cancelPeriodEndLabel = cancelDialogSub?.current_period_end
-    ? formatDate(cancelDialogSub.current_period_end)
-    : 'the current period end';
-  const cancelChargeAmt = cancelDialogSub
-    ? cancelDialogSub.last_charge_amount ?? cancelDialogSub.monthly_price
-    : null;
+  const viewButtonClass = (target: MembershipView) =>
+    [
+      'rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+      view === target
+        ? 'bg-primary-500 text-on-primary'
+        : 'text-surface-500 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-100',
+    ].join(' ');
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header — WEB-UIUX-1061: removed decoy "Run billing now" header button;
           billing runs nightly via cron. Per-row "Bill now" remains the manual trigger. */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Crown className="h-6 w-6 text-primary-600" />
           <div>
@@ -343,15 +468,56 @@ export function SubscriptionsListPage() {
             )}
           </div>
         </div>
-        <Link
-          to="/customers"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700"
+        <div className="flex items-center gap-2">
+          {/* WEB-UIUX-1075: inline Enroll-customer modal — customer picker →
+              tier picker → submit. Free tiers create the subscription
+              immediately via POST /membership/subscribe. Paid tiers route to
+              POST /membership/payment-link (hosted card-capture URL) since
+              the server requires a BlockChyp token on paid tiers and we
+              don't yet have a card-on-file UI in this modal (UIUX-826). */}
+          <AdminOnly>
+            <button
+              type="button"
+              onClick={() => setShowEnrollModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary-500 bg-primary-500 px-3 py-2 text-sm font-medium text-on-primary transition-colors hover:bg-primary-400"
+            >
+              <UserPlus className="h-4 w-4" />
+              Enroll customer
+            </button>
+          </AdminOnly>
+        <div
+          className="inline-flex w-fit rounded-xl border border-surface-200 bg-white p-1 dark:border-surface-800 dark:bg-surface-900"
+          role="tablist"
+          aria-label="Membership view"
         >
-          <UserPlus className="h-4 w-4" />
-          Enroll customer
-        </Link>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'subscriptions'}
+            onClick={() => setView('subscriptions')}
+            className={viewButtonClass('subscriptions')}
+          >
+            Subscriptions
+          </button>
+          <AdminOnly>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'tiers'}
+              onClick={() => setView('tiers')}
+              className={viewButtonClass('tiers')}
+            >
+              Tiers
+            </button>
+          </AdminOnly>
+        </div>
+        </div>
       </div>
 
+      {view === 'tiers' ? (
+        <MembershipSettings showActiveSubscribers={false} />
+      ) : (
+        <>
       {!isLoading && !isError && (subs.length > 0 || filtersActive) ? (
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-md">
@@ -382,6 +548,15 @@ export function SubscriptionsListPage() {
                 </option>
               ))}
             </select>
+            {/* WEB-UIUX-1500: opt-in churn-history toggle. Server filter widens to include 'cancelled'. */}
+            <label className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200">
+              <input
+                type="checkbox"
+                checked={showCancelled}
+                onChange={(e) => setShowCancelled(e.target.checked)}
+              />
+              Show cancelled
+            </label>
           </div>
         </div>
       ) : null}
@@ -405,8 +580,8 @@ export function SubscriptionsListPage() {
               ? 'Try a different search or status.'
               : 'Open a customer profile and tap Enroll in Membership'}
           </p>
-          {/* WEB-UIUX-1064: old copy pointed to settings tab; enrollment lives on
-              customer profile. Added /customers CTA + secondary settings link. */}
+          {/* WEB-UIUX-1064: enrollment lives on customer profiles; tier setup
+              stays inline on this page instead of detouring through Settings. */}
           {filtersActive ? (
             <button
               type="button"
@@ -419,16 +594,19 @@ export function SubscriptionsListPage() {
             <div className="mt-4 flex items-center gap-3">
               <Link
                 to="/customers"
-                className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+                className="rounded-lg bg-primary-500 px-3 py-2 text-sm font-semibold text-on-primary hover:bg-primary-400"
               >
                 Go to Customers
               </Link>
-              <Link
-                to="/settings/memberships"
-                className="rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
-              >
-                Configure tiers
-              </Link>
+              <AdminOnly>
+                <button
+                  type="button"
+                  onClick={() => setView('tiers')}
+                  className="rounded-lg border border-surface-200 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+                >
+                  Configure tiers
+                </button>
+              </AdminOnly>
             </div>
           )}
         </div>
@@ -504,7 +682,7 @@ export function SubscriptionsListPage() {
                       {(sub.status === 'active' || sub.status === 'past_due') && !sub.blockchyp_token && (
                         <AdminOnly>
                           <button
-                            onClick={() => { setPaymentLinkId(sub.id); paymentLinkMut.mutate(sub); }}
+                            onClick={() => { setPaymentLinkId(sub.id); paymentLinkMut.mutate({ tier_id: sub.tier_id, customer_id: sub.customer_id, subscription_id: sub.id }); }}
                             disabled={paymentLinkId === sub.id}
                             className="flex items-center gap-1 text-surface-500 hover:text-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
                             title="Send payment link"
@@ -551,13 +729,19 @@ export function SubscriptionsListPage() {
                           now gated with AdminOnly to match "Bill now" treatment. */}
                       {sub.status !== 'cancelled' && (
                         <AdminOnly>
+                          {/* WEB-UIUX-1495: explicit "Cancel membership" so a
+                              cashier doesn't read it as "cancel dialog".
+                              WEB-UIUX-1501: XCircle icon to match Pause icon. */}
                           <button
                             onClick={() => handleCancel(sub)}
                             disabled={cancellingId === sub.id}
                             className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
+                            title="Cancel membership (terminal — see confirm)"
                           >
-                            {cancellingId === sub.id && <Loader2 className="h-3 w-3 animate-spin" />}
-                            Cancel
+                            {cancellingId === sub.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <XCircle className="h-3 w-3" />}
+                            Cancel membership
                           </button>
                         </AdminOnly>
                       )}
@@ -597,117 +781,334 @@ export function SubscriptionsListPage() {
           </div>
         </div>
       )}
+        </>
+      )}
 
-      {cancelDialogSub && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="presentation"
-          onClick={() => { if (!cancelMutation.isPending) setCancelDialogSub(null); }}
-        >
-          <form
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="subscription-cancel-title"
-            className="w-full max-w-lg rounded-xl border border-surface-200 bg-white p-5 shadow-xl dark:border-surface-700 dark:bg-surface-900"
-            onClick={(event) => event.stopPropagation()}
-            onSubmit={(event) => {
-              event.preventDefault();
-              setCancellingId(cancelDialogSub.id);
-              cancelMutation.mutate({ sub: cancelDialogSub, immediate: cancelMode === 'immediate' });
-            }}
+      {/* WEB-UIUX-1075: Enrolment modal. */}
+      {showEnrollModal && (
+        <EnrollSubscriptionModal
+          onClose={() => setShowEnrollModal(false)}
+          onSuccess={() => {
+            setShowEnrollModal(false);
+            queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Enrol-subscription modal (WEB-UIUX-1075) ────────────────────────────────
+
+interface EnrollCustomerHit {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+interface EnrollTier {
+  id: number;
+  name: string;
+  monthly_price: number;
+  color?: string | null;
+  discount_pct?: number | null;
+  is_active?: number;
+}
+
+function EnrollSubscriptionModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<EnrollCustomerHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<EnrollCustomerHit | null>(null);
+  const [selectedTierId, setSelectedTierId] = useState<number | null>(null);
+  const [paymentLinkUrl, setPaymentLinkUrl] = useState<string | null>(null);
+
+  // Esc closes — only when no link is on display (link state needs explicit
+  // ack before dismissal so the URL isn't lost).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !paymentLinkUrl) onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, paymentLinkUrl]);
+
+  const { data: tiersRaw } = useQuery({
+    queryKey: ['membership', 'tiers', 'enroll'],
+    queryFn: async () => {
+      const res = await membershipApi.getTiers();
+      return (res.data as { data: EnrollTier[] }).data;
+    },
+    staleTime: 60_000,
+  });
+  const tiers: EnrollTier[] = (tiersRaw ?? []).filter((t) => t.is_active !== 0);
+
+  // Debounced search — 2-char minimum, abort on retype.
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await customerApi.search(query.trim(), controller.signal);
+        const raw = (res.data as { data?: unknown })?.data;
+        const list: EnrollCustomerHit[] = Array.isArray(raw)
+          ? (raw as EnrollCustomerHit[])
+          : Array.isArray((raw as { customers?: EnrollCustomerHit[] })?.customers)
+            ? (raw as { customers: EnrollCustomerHit[] }).customers
+            : [];
+        setResults(list.slice(0, 25));
+      } catch {
+        // Aborted searches fire here too — silent failure is fine.
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  const subscribeMut = useMutation({
+    mutationFn: (vars: { customer_id: number; tier_id: number }) =>
+      membershipApi.subscribe(vars),
+    onSuccess: () => {
+      toast.success('Subscription created');
+      onSuccess();
+    },
+    onError: (err: unknown) => toast.error(formatApiError(err)),
+  });
+
+  const paymentLinkMut = useMutation({
+    mutationFn: (vars: { customer_id: number; tier_id: number }) =>
+      membershipApi.paymentLink(vars),
+    onSuccess: (res) => {
+      const url: string = (res.data as { url?: string; data?: { url?: string } })?.url
+        ?? (res.data as { data?: { url?: string } })?.data?.url
+        ?? '';
+      if (!url) {
+        toast.error('Server returned no payment link URL');
+        return;
+      }
+      setPaymentLinkUrl(url);
+    },
+    onError: (err: unknown) => toast.error(formatApiError(err)),
+  });
+
+  const selectedTier = tiers.find((t) => t.id === selectedTierId) ?? null;
+  const isPaidTier = selectedTier ? Number(selectedTier.monthly_price) > 0 : false;
+  const submitting = subscribeMut.isPending || paymentLinkMut.isPending;
+
+  function handleSubmit() {
+    if (!selectedCustomer || !selectedTierId) return;
+    const vars = { customer_id: selectedCustomer.id, tier_id: selectedTierId };
+    // Free tiers create the sub directly. Paid tiers route through the
+    // hosted payment-link endpoint so the customer enters card details
+    // (server requires a BlockChyp token for paid tiers; we don't tokenize
+    // in-modal — that ships with UIUX-826).
+    if (isPaidTier) {
+      paymentLinkMut.mutate(vars);
+    } else {
+      subscribeMut.mutate(vars);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget && !paymentLinkUrl) onClose(); }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="enroll-sub-title"
+        className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl dark:bg-surface-900"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h2 id="enroll-sub-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+            Enroll customer in membership
+          </h2>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="rounded p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200"
           >
-            <div className="flex items-start gap-3">
-              <div className="rounded-lg bg-red-50 p-2 text-red-600 dark:bg-red-900/30 dark:text-red-300">
-                <AlertCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 id="subscription-cancel-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">
-                  Cancel membership
-                </h2>
-                <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
-                  {cancelDialogSub.first_name} {cancelDialogSub.last_name} is on {cancelDialogSub.tier_name}
-                  {cancelChargeAmt != null ? ` at ${formatCurrency(cancelChargeAmt)}/mo` : ''}.
-                </p>
-              </div>
-            </div>
+            <XIcon className="h-5 w-5" />
+          </button>
+        </div>
 
-            <div className="mt-4 space-y-2">
-              <label
-                className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
-                  cancelMode === 'period_end'
-                    ? 'border-primary-400 bg-primary-50 dark:border-primary-500/70 dark:bg-primary-900/20'
-                    : 'border-surface-200 dark:border-surface-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="subscription-cancel-mode"
-                  value="period_end"
-                  checked={cancelMode === 'period_end'}
-                  onChange={() => setCancelMode('period_end')}
-                  className="mt-1 h-4 w-4 border-surface-300 text-primary-600 focus:ring-primary-500"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-surface-900 dark:text-surface-100">
-                    Cancel at period end
-                  </span>
-                  <span className="mt-0.5 block text-xs text-surface-500 dark:text-surface-400">
-                    Keep benefits until {cancelPeriodEndLabel}. No refund is issued automatically.
-                  </span>
-                </span>
-              </label>
-
-              <label
-                className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
-                  cancelMode === 'immediate'
-                    ? 'border-red-400 bg-red-50 dark:border-red-500/70 dark:bg-red-900/20'
-                    : 'border-surface-200 dark:border-surface-700'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="subscription-cancel-mode"
-                  value="immediate"
-                  checked={cancelMode === 'immediate'}
-                  onChange={() => setCancelMode('immediate')}
-                  className="mt-1 h-4 w-4 border-surface-300 text-red-600 focus:ring-red-500"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-surface-900 dark:text-surface-100">
-                    Cancel immediately
-                  </span>
-                  <span className="mt-0.5 block text-xs text-surface-500 dark:text-surface-400">
-                    Stop discounts and membership benefits today. Use Refunds separately if money is owed back.
-                  </span>
-                </span>
-              </label>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-2">
+        {paymentLinkUrl ? (
+          <div className="space-y-3">
+            <p className="text-sm text-surface-700 dark:text-surface-300">
+              Hosted payment link ready. Send to <strong>{selectedCustomer?.first_name} {selectedCustomer?.last_name}</strong>; the subscription activates once they enter card details and confirm.
+            </p>
+            <div className="flex items-center gap-2 rounded-md border border-surface-200 bg-surface-50 p-2 dark:border-surface-700 dark:bg-surface-800">
+              <code className="flex-1 truncate text-xs text-surface-700 dark:text-surface-200">{paymentLinkUrl}</code>
               <button
                 type="button"
-                onClick={() => setCancelDialogSub(null)}
-                disabled={cancelMutation.isPending}
-                className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
+                onClick={() => {
+                  navigator.clipboard.writeText(paymentLinkUrl);
+                  toast.success('Link copied');
+                }}
+                className="inline-flex items-center gap-1 rounded bg-primary-500 px-2 py-1 text-xs font-medium text-on-primary hover:bg-primary-400"
               >
-                Keep membership
-              </button>
-              <button
-                type="submit"
-                disabled={cancelMutation.isPending}
-                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                  cancelMode === 'immediate'
-                    ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
-                }`}
-              >
-                {cancelMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                {cancelMode === 'immediate' ? 'Cancel immediately' : 'Schedule cancel'}
+                <CopyIcon className="h-3.5 w-3.5" /> Copy
               </button>
             </div>
-          </form>
-        </div>
-      )}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onSuccess}
+                className="rounded-lg border border-surface-300 px-3 py-2 text-sm hover:bg-surface-100 dark:border-surface-700 dark:hover:bg-surface-800"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Step 1: customer picker. */}
+            <div>
+              <label htmlFor="enroll-customer-search" className="block text-xs font-medium uppercase tracking-wide text-surface-500">
+                Customer
+              </label>
+              {selectedCustomer ? (
+                <div className="mt-1 flex items-center justify-between rounded-md border border-primary-200 bg-primary-50 px-3 py-2 dark:border-primary-500/30 dark:bg-primary-500/10">
+                  <div className="text-sm">
+                    <div className="font-medium text-surface-900 dark:text-surface-100">
+                      {selectedCustomer.first_name} {selectedCustomer.last_name}
+                    </div>
+                    <div className="text-xs text-surface-500">
+                      {selectedCustomer.email ?? selectedCustomer.phone ?? `#${selectedCustomer.id}`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedCustomer(null); setQuery(''); }}
+                    className="text-xs text-primary-600 hover:underline dark:text-primary-400"
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                  <input
+                    id="enroll-customer-search"
+                    type="search"
+                    autoFocus
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search name, email or phone"
+                    className="mt-1 w-full rounded-md border border-surface-300 py-2 pl-9 pr-3 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-700 dark:bg-surface-800"
+                  />
+                  {searching && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-surface-400" />
+                  )}
+                  {results.length > 0 && (
+                    <ul
+                      role="listbox"
+                      className="mt-1 max-h-48 overflow-auto rounded-md border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-900"
+                    >
+                      {results.map((c) => (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={false}
+                            onClick={() => { setSelectedCustomer(c); setResults([]); }}
+                            className="block w-full px-3 py-2 text-left text-sm hover:bg-surface-50 dark:hover:bg-surface-800"
+                          >
+                            <div className="font-medium">{c.first_name} {c.last_name}</div>
+                            <div className="text-xs text-surface-500">{c.email ?? c.phone ?? `#${c.id}`}</div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: tier picker. */}
+            {selectedCustomer && (
+              <div>
+                <div className="block text-xs font-medium uppercase tracking-wide text-surface-500">Tier</div>
+                {tiers.length === 0 ? (
+                  <p className="mt-1 text-sm text-surface-500">No active tiers — create one in Settings → Memberships first.</p>
+                ) : (
+                  <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {tiers.map((t) => {
+                      const isSelected = t.id === selectedTierId;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setSelectedTierId(t.id)}
+                          className={`rounded-md border px-3 py-2 text-left text-sm transition ${
+                            isSelected
+                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                              : 'border-surface-200 hover:border-surface-300 dark:border-surface-700 dark:hover:border-surface-600'
+                          }`}
+                        >
+                          <div className="font-medium text-surface-900 dark:text-surface-100">{t.name}</div>
+                          <div className="text-xs text-surface-500">
+                            {Number(t.monthly_price) > 0
+                              ? `${formatCurrency(Number(t.monthly_price))}/mo`
+                              : 'Free'}
+                            {t.discount_pct ? ` · ${t.discount_pct}% off` : ''}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Submission hint for paid tiers. */}
+            {selectedCustomer && selectedTier && isPaidTier && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                Paid tiers require a card on file. Submitting will generate a hosted payment link to send to the customer — the subscription activates after they enter card details. (Card-on-file capture inside this modal is tracked by WEB-UIUX-826.)
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-surface-300 px-3 py-2 text-sm hover:bg-surface-100 dark:border-surface-700 dark:hover:bg-surface-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!selectedCustomer || !selectedTierId || submitting}
+                onClick={handleSubmit}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-on-primary hover:bg-primary-400 disabled:opacity-50"
+              >
+                {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {isPaidTier ? 'Generate payment link' : 'Enroll now'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

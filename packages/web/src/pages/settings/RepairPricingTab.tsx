@@ -663,6 +663,29 @@ function PricesSubTab() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to delete'),
   });
 
+  // WEB-UIUX-152: inline edit for labor_price + default_grade so the operator
+  // doesn't have to delete the row (losing grades) and recreate. Server PUT
+  // /repair-pricing/prices/:id is grade-preserving — it only touches the
+  // labor_price + default_grade + is_active fields.
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<{ labor_price: string; default_grade: string }>({
+    labor_price: '',
+    default_grade: '',
+  });
+  const updateMutation = useMutation({
+    mutationFn: (vars: { id: number; labor_price: number; default_grade: string }) =>
+      repairPricingApi.updatePrice(vars.id, {
+        labor_price: vars.labor_price,
+        default_grade: vars.default_grade,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repair-pricing', 'prices'] });
+      setEditingId(null);
+      toast.success('Price updated');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to update'),
+  });
+
   const filtered = useMemo(() => {
     if (!prices) return [];
     if (!deviceSearch) return prices;
@@ -804,28 +827,99 @@ function PricesSubTab() {
                         <span className="text-surface-600 dark:text-surface-300 ml-1">{price.device_model_name}</span>
                       </td>
                       <td className="px-4 py-2.5 text-sm text-surface-700 dark:text-surface-300">{price.repair_service_name}</td>
-                      <td className="px-4 py-2.5 text-sm text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(price.labor_price)}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300">
-                          {price.default_grade}
-                        </span>
+                      {/* WEB-UIUX-152: cells become inline editors when editingId === price.id */}
+                      <td className="px-4 py-2.5 text-sm text-right font-medium text-surface-900 dark:text-surface-100" onClick={(e) => editingId === price.id && e.stopPropagation()}>
+                        {editingId === price.id ? (
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editForm.labor_price}
+                            autoFocus
+                            onChange={(e) => setEditForm({ ...editForm, labor_price: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const lp = parseFloat(editForm.labor_price);
+                                if (!Number.isFinite(lp) || lp < 0) { toast.error('Labor price must be a non-negative number'); return; }
+                                updateMutation.mutate({ id: price.id, labor_price: lp, default_grade: editForm.default_grade });
+                              } else if (e.key === 'Escape') {
+                                setEditingId(null);
+                              }
+                            }}
+                            className="w-24 text-right rounded border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1"
+                          />
+                        ) : (
+                          formatCurrency(price.labor_price)
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-center" onClick={(e) => editingId === price.id && e.stopPropagation()}>
+                        {editingId === price.id ? (
+                          <input
+                            type="text"
+                            value={editForm.default_grade}
+                            onChange={(e) => setEditForm({ ...editForm, default_grade: e.target.value })}
+                            className="w-32 rounded border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1 text-xs"
+                          />
+                        ) : (
+                          <span className="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300">
+                            {price.default_grade}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-center text-sm text-surface-500">{price.grade_count}</td>
                       <td className="px-4 py-2.5 text-center">
                         <span className={cn('inline-block w-2 h-2 rounded-full', price.is_active ? 'bg-green-500' : 'bg-surface-300')} />
                       </td>
                       <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          aria-label={`Delete price for ${rowLabel}`}
-                          onClick={async () => {
-                            try { if (await confirm('Delete this price and all its grades?', { danger: true })) deleteMutation.mutate(price.id); }
-                            catch (err) { toast.error(formatApiError(err)); }
-                          }}
-                          className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {editingId === price.id ? (
+                          <div className="inline-flex gap-1">
+                            <button
+                              type="button"
+                              disabled={updateMutation.isPending}
+                              onClick={() => {
+                                const lp = parseFloat(editForm.labor_price);
+                                if (!Number.isFinite(lp) || lp < 0) { toast.error('Labor price must be a non-negative number'); return; }
+                                updateMutation.mutate({ id: price.id, labor_price: lp, default_grade: editForm.default_grade });
+                              }}
+                              className="px-2 py-1 text-xs font-medium rounded bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingId(null)}
+                              className="px-2 py-1 text-xs font-medium rounded border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="inline-flex gap-1">
+                            <button
+                              type="button"
+                              aria-label={`Edit price for ${rowLabel}`}
+                              onClick={() => {
+                                setEditingId(price.id);
+                                setEditForm({ labor_price: String(price.labor_price), default_grade: price.default_grade });
+                              }}
+                              className="btn-icon btn-xs text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Delete price for ${rowLabel}`}
+                              onClick={async () => {
+                                try { if (await confirm('Delete this price and all its grades?', { danger: true })) deleteMutation.mutate(price.id); }
+                                catch (err) { toast.error(formatApiError(err)); }
+                              }}
+                              className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                     {isExpanded && (

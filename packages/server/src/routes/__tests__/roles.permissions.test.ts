@@ -115,7 +115,8 @@ function buildDb(): Database.Database {
 
     INSERT INTO custom_roles (id, name, description, is_active) VALUES
       (1, 'admin', 'Full administrative access', 1),
-      (2, 'limited_ops', 'Limited operator role', 1);
+      (2, 'limited_ops', 'Limited operator role', 1),
+      (3, 'cashier', 'Point of sale, customers, and basic tickets', 1);
 
     INSERT INTO role_permissions (role_id, permission_key, allowed) VALUES
       (2, '${PERMISSIONS.TICKETS_VIEW}', 1),
@@ -178,6 +179,25 @@ afterEach(() => {
 });
 
 describe('user permission override routes', () => {
+  it('seeds the built-in cashier matrix with counter-safe edit permissions', async () => {
+    db = buildDb();
+    const app = createApp(db, makeUser());
+
+    const response = await requestJson(app, '/roles/3/permissions');
+
+    expect(response.status).toBe(200);
+    const matrix = new Map(
+      response.body.data.matrix.map((entry: { key: string; allowed: boolean }) => [entry.key, entry.allowed]),
+    );
+    expect(matrix.get(PERMISSIONS.CUSTOMERS_EDIT)).toBe(true);
+    expect(matrix.get(PERMISSIONS.TICKETS_CREATE)).toBe(true);
+    expect(matrix.get(PERMISSIONS.TICKETS_EDIT)).toBe(true);
+    expect(matrix.get(PERMISSIONS.INVOICES_EDIT)).toBe(true);
+    expect(matrix.get(PERMISSIONS.TICKETS_DELETE)).toBe(false);
+    expect(matrix.get(PERMISSIONS.INVOICES_VOID)).toBe(false);
+    expect(matrix.get(PERMISSIONS.USERS_MANAGE)).toBe(false);
+  });
+
   it('reports layered effective permissions for custom roles plus user overrides', async () => {
     db = buildDb();
     const app = createApp(db, makeUser());

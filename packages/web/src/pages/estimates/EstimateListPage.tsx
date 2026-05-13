@@ -118,6 +118,10 @@ function CreateEstimateModal({
   ]);
   const [notes, setNotes] = useState('');
   const [validUntil, setValidUntil] = useState('');
+  // WEB-UIUX-969: cart-wide discount input; server accepts a top-level
+  // `discount` field so a one-step create flow can express "$50 off this
+  // estimate" without the create-then-edit two-step.
+  const [discount, setDiscount] = useState<number>(0);
 
   const { data: taxClassData } = useQuery({
     queryKey: ['tax-classes'],
@@ -173,6 +177,7 @@ function CreateEstimateModal({
     setLineItems([{ description: '', quantity: 1, unit_price: 0, tax_class_id: '' }]);
     setNotes('');
     setValidUntil('');
+    setDiscount(0);
   }
 
   function addLineItem() {
@@ -194,7 +199,10 @@ function CreateEstimateModal({
     const tc = taxClasses.find((t) => t.id === Number(li.tax_class_id));
     return sum + (tc ? li.quantity * li.unit_price * (tc.rate / 100) : 0);
   }, 0);
-  const total = subtotal + totalTax;
+  // WEB-UIUX-969: clamp discount at subtotal so we never show a negative total
+  // in the preview; server will validate as well.
+  const clampedDiscount = Math.max(0, Math.min(discount || 0, subtotal));
+  const total = Math.max(0, subtotal + totalTax - clampedDiscount);
 
   if (!open) return null;
 
@@ -234,6 +242,7 @@ function CreateEstimateModal({
               customer_id: selectedCustomer.id,
               notes: notes || null,
               valid_until: validUntil || null,
+              discount: clampedDiscount > 0 ? clampedDiscount : undefined,
               line_items: validItems.map((li) => {
                 const tc = taxClasses.find((t) => t.id === Number(li.tax_class_id));
                 return {
@@ -370,6 +379,23 @@ function CreateEstimateModal({
               <span className="text-surface-500">Tax</span>
               <span className="font-medium text-surface-900 dark:text-surface-100">{formatCurrency(totalTax)}</span>
             </div>
+            {/* WEB-UIUX-969: cart-wide discount input lives next to totals. */}
+            <div className="mt-1 flex items-center justify-between text-sm">
+              <label htmlFor="estimate-create-discount" className="text-surface-500">Discount</label>
+              <div className="flex items-center gap-1">
+                <span className="text-surface-400 text-xs">$</span>
+                <input
+                  id="estimate-create-discount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={discount === 0 ? '' : discount}
+                  onChange={(e) => setDiscount(Number(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className="w-24 rounded border border-surface-200 bg-white px-2 py-1 text-right text-sm dark:border-surface-700 dark:bg-surface-800"
+                />
+              </div>
+            </div>
             <div className="mt-2 flex justify-between border-t border-surface-200 pt-2 text-sm dark:border-surface-700">
               <span className="font-medium text-surface-700 dark:text-surface-300">Total</span>
               <span className="text-base font-bold text-surface-900 dark:text-surface-100">{formatCurrency(total)}</span>
@@ -499,11 +525,34 @@ export function EstimateListPage() {
 
   // Send mutation
   const sendMut = useMutation({
-    mutationFn: (id: number) => estimateApi.send(id),
-    onSuccess: (res) => {
+    mutationFn: (vars: { id: number; customer_id?: number | null }) => estimateApi.send(vars.id),
+    onSuccess: (res, vars) => {
       const data = res?.data?.data || {};
       if (data.sent === false) {
-        toast.error(data.warning || 'No message was sent');
+        const warning: string = data.warning || 'No message was sent';
+        // WEB-UIUX-1468: surface inline "Edit customer" recovery action when
+        // the server reports the customer has no phone on file. Deep-links
+        // to the customer profile instead of forcing manual navigation.
+        const isNoPhone = /phone/i.test(warning);
+        if (isNoPhone && vars.customer_id) {
+          const cid = vars.customer_id;
+          toast((t) => (
+            <span className="flex items-center gap-2 text-sm">
+              {warning}
+              <button
+                className="ml-2 rounded bg-surface-200 px-3 py-2 min-h-[44px] md:min-h-0 md:px-2 md:py-0.5 text-xs font-medium hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600"
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  navigate(`/customers/${cid}`);
+                }}
+              >
+                Edit customer
+              </button>
+            </span>
+          ), { duration: 8000 });
+        } else {
+          toast.error(warning);
+        }
       } else {
         toast.success(data.message || 'Estimate sent to customer');
       }
@@ -544,10 +593,53 @@ export function EstimateListPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to reject estimate'),
   });
 
+  // WEB-UIUX-962: surface the previously-orphaned server bulk-convert.
+  // Server caps the request at 100 ids — we enforce that client-side too,
+  // and require admin-only the same way the per-row Convert button does.
+  const bulkConvertMut = useMutation({
+    mutationFn: (estimate_ids: number[]) => estimateApi.bulkConvert(estimate_ids),
+    onSuccess: (res: { data?: { data?: { converted?: number; failed?: number; ticket_ids?: number[] } } }) => {
+      const d = res?.data?.data ?? {};
+      const converted = d.converted ?? 0;
+      const failed = d.failed ?? 0;
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      if (converted > 0) {
+        toast.success(failed > 0
+          ? `Converted ${converted}, ${failed} failed`
+          : `Converted ${converted} estimate${converted !== 1 ? 's' : ''} to tickets`);
+      } else {
+        toast.error(`No estimates converted — ${failed} failed`);
+      }
+      setSelectedIds(new Set());
+    },
+    onError: (err: { response?: { data?: { message?: string } } }) =>
+      toast.error(err?.response?.data?.message || 'Bulk convert failed'),
+  });
+
+  const handleBulkConvert = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (ids.length > 100) {
+      toast.error('Bulk convert is capped at 100 estimates per request');
+      return;
+    }
+    try {
+      const ok = await confirm(
+        `Convert ${ids.length} estimate${ids.length !== 1 ? 's' : ''} to tickets? Converted estimates can no longer be edited.`,
+        { confirmLabel: 'Convert' },
+      );
+      if (!ok) return;
+    } catch (err) {
+      toast.error(formatApiError(err));
+      return;
+    }
+    bulkConvertMut.mutate(ids);
+  }, [selectedIds, bulkConvertMut]);
+
   // Shared gate so Send/Convert/Delete/Reject row buttons can't fire in parallel
   // and race the convert->navigate transition (SCAN-984b).
   const anyMutationPending =
-    sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending || isBulkDeleting || isBulkConverting;
+    sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending || isBulkDeleting || bulkConvertMut.isPending;
 
   const handleBulkDelete = useCallback(async () => {
     if (anyMutationPending || selectedIds.size === 0) return;
@@ -822,10 +914,24 @@ export function EstimateListPage() {
                           : <Trash2 className="h-3.5 w-3.5" />}
                         {isBulkDeleting ? 'Deleting...' : 'Delete selected'}
                       </button>
+                      {/* WEB-UIUX-962: server bulk-convert (admin-only, tier-limit
+                          + 100-id cap) was orphaned; surface here so an admin
+                          batching 30 approved estimates doesn't click each row. */}
+                      <button
+                        type="button"
+                        onClick={handleBulkConvert}
+                        disabled={anyMutationPending}
+                        className="flex items-center gap-1 text-primary-600 hover:text-primary-700 font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {bulkConvertMut.isPending
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <ArrowRightLeft className="h-3.5 w-3.5" />}
+                        {bulkConvertMut.isPending ? 'Converting...' : 'Convert selected'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => setSelectedIds(new Set())}
-                        disabled={isBulkDeleting || isBulkConverting}
+                        disabled={isBulkDeleting || bulkConvertMut.isPending}
                         aria-label="Clear estimate selection"
                         className="text-surface-400 hover:text-surface-600 ml-auto disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
                       >
@@ -842,7 +948,7 @@ export function EstimateListPage() {
                     type="checkbox"
                     checked={estimates.length > 0 && selectedIds.size === estimates.length}
                     onChange={(e) => toggleSelectAll(e.target.checked)}
-                    disabled={isBulkDeleting || isBulkConverting}
+                    disabled={isBulkDeleting || bulkConvertMut.isPending}
                     className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </th>
@@ -856,20 +962,38 @@ export function EstimateListPage() {
                   { label: 'Actions', col: null, right: true },
                 ] as Array<{ label: string; col: string | null; right?: boolean }>).map(({ label, col, right }) => (
                   col ? (
-                    <th
-                      key={label}
-                      onClick={() => toggleSort(col)}
-                      className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400 cursor-pointer hover:text-surface-700 dark:hover:text-surface-300 select-none${right ? ' text-right' : ''}`}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {label}
-                        {sortBy === col
-                          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
-                          : <ArrowUpDown className="h-3 w-3 opacity-30" />}
-                      </span>
-                    </th>
+                    (() => {
+                      const active = sortBy === col;
+                      const ariaSort: 'ascending' | 'descending' | 'none' = active
+                        ? (sortDir === 'asc' ? 'ascending' : 'descending')
+                        : 'none';
+                      return (
+                        <th
+                          key={label}
+                          scope="col"
+                          role="columnheader button"
+                          tabIndex={0}
+                          aria-sort={ariaSort}
+                          onClick={() => toggleSort(col)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              toggleSort(col);
+                            }
+                          }}
+                          className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400 cursor-pointer hover:text-surface-700 dark:hover:text-surface-300 select-none${right ? ' text-right' : ''}`}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {label}
+                            {active
+                              ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+                              : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                          </span>
+                        </th>
+                      );
+                    })()
                   ) : (
-                    <th key={label} className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400${right ? ' text-right' : ''}`}>{label}</th>
+                    <th key={label} scope="col" className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400${right ? ' text-right' : ''}`}>{label}</th>
                   )
                 ))}
               </tr>
@@ -886,8 +1010,18 @@ export function EstimateListPage() {
                       <p className="mt-1 max-w-sm text-center text-sm text-surface-400 dark:text-surface-500">
                         {keyword || statusFilter
                           ? 'No estimates match your filters. Try adjusting your search or status filter.'
-                          : 'Create an estimate to give customers a repair quote. Click "New Estimate" above to get started.'}
+                          : 'Create an estimate to give customers a repair quote.'}
                       </p>
+                      {/* WEB-UIUX-977: surface the primary CTA inline so the
+                          operator does not have to scroll up to find it. */}
+                      {!(keyword || statusFilter) && (
+                        <button
+                          onClick={() => setShowCreate(true)}
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+                        >
+                          <Plus className="h-4 w-4" /> New Estimate
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -907,7 +1041,7 @@ export function EstimateListPage() {
                           type="checkbox"
                           checked={selectedIds.has(est.id)}
                           onChange={() => toggleSelect(est.id)}
-                          disabled={isBulkDeleting || isBulkConverting}
+                          disabled={isBulkDeleting || bulkConvertMut.isPending}
                           className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </td>
@@ -977,10 +1111,26 @@ export function EstimateListPage() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  const action = est.status === 'sent' ? 'Resend' : 'Send';
-                                  const target = formattedDestinationPhone ? ` to ${formattedDestinationPhone}` : ' to the customer';
-                                  if (await confirm(`${action} this estimate${target} via SMS?`)) {
-                                    sendMut.mutate(est.id);
+                                  // WEB-UIUX-1461: surface destination phone +
+                                  // exact message body the customer will receive
+                                  // (mirrors EstimateDetailPage confirm). Server
+                                  // template at estimates.routes.ts:1251.
+                                  const dest = formatPhone(est.customer_mobile || est.customer_phone) || '(no phone on file)';
+                                  const firstName = est.customer_first_name || 'there';
+                                  const totalStr = Number(est.total ?? 0).toFixed(2);
+                                  const bodyPreview = `Hi ${firstName}, your estimate ${est.order_id} for $${totalStr} is ready. Open the link your repair shop sent you to review and approve.`;
+                                  const verb = est.status === 'sent' ? 'Resend' : 'Send';
+                                  const msg = (
+                                    <div className="space-y-2">
+                                      <p>{verb} this estimate via SMS to <strong>{dest}</strong>?</p>
+                                      <pre className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs whitespace-pre-wrap font-mono text-surface-700 dark:border-surface-700 dark:bg-surface-900/40 dark:text-surface-300">{bodyPreview}</pre>
+                                    </div>
+                                  );
+                                  if (await confirm(msg, {
+                                    title: est.status === 'sent' ? 'Resend estimate?' : 'Send estimate?',
+                                    confirmLabel: verb,
+                                  })) {
+                                    sendMut.mutate({ id: est.id, customer_id: est.customer_id ?? null });
                                   }
                                 } catch (err) {
                                   toast.error(formatApiError(err));
@@ -1005,7 +1155,8 @@ export function EstimateListPage() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
-                                  if (await confirm('Convert this estimate to a ticket?')) {
+                                  // WEB-UIUX-1483: verb-matching confirmLabel
+                                  if (await confirm('Convert this estimate to a ticket?', { title: 'Convert estimate?', confirmLabel: 'Convert' })) {
                                     convertMut.mutate(est.id);
                                   }
                                 } catch (err) {
@@ -1048,7 +1199,8 @@ export function EstimateListPage() {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
-                                if (await confirm('Delete this estimate?', { danger: true })) {
+                                // WEB-UIUX-1483: verb-matching confirmLabel
+                                if (await confirm('Delete this estimate?', { title: 'Delete estimate?', confirmLabel: 'Delete', danger: true })) {
                                   deleteMut.mutate(est.id);
                                 }
                               } catch (err) {

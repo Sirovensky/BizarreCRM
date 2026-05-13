@@ -32,11 +32,14 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import type Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../config.js';
 import { createLogger } from '../utils/logger.js';
 import { validateFileOnDisk, scanFileForViruses } from '../utils/fileValidation.js';
+
+type BetterSqlite3Db = Database.Database;
 
 const logger = createLogger('fileUploadValidator');
 
@@ -210,13 +213,73 @@ async function adjustFileCounter(
   tenantDir: string,
   delta: number,
   quota?: number,
+  db?: BetterSqlite3Db,
 ): Promise<void> {
+  // BUGHUNT-2026-05-10-05: cross-process atomic guard via SQLite. The
+  // in-memory `withCounterLock` only protects within a single Node process —
+  // PM2 cluster mode or future multi-worker rollouts could let two workers
+  // both pass the pre-check and overflow the tenant quota. When a `db` is
+  // available, do the read-check-write entirely inside SQLite via a
+  // conditional UPDATE so concurrent workers serialize through SQLite's
+  // writer lock. fs counter remains the on-disk truth for visibility +
+  // legacy compatibility; SQLite is the authoritative gate.
+  if (db && delta > 0 && quota !== undefined) {
+    try {
+      // Ensure the row exists. INSERT OR IGNORE keeps it idempotent across
+      // concurrent first-uploaders.
+      db.prepare(
+        `INSERT OR IGNORE INTO store_config (key, value) VALUES ('file_count_used', '0')`,
+      ).run();
+      // Atomic compare-and-swap: only succeeds if (current + delta) <= quota.
+      const stmt = db.prepare(
+        `UPDATE store_config
+            SET value = CAST(CAST(value AS INTEGER) + ? AS TEXT)
+          WHERE key = 'file_count_used'
+            AND CAST(value AS INTEGER) + ? <= ?`,
+      );
+      const result = stmt.run(delta, delta, quota);
+      if (result.changes === 0) {
+        // Read the current value to report a precise error.
+        const row = db.prepare(
+          `SELECT value FROM store_config WHERE key = 'file_count_used'`,
+        ).get() as { value?: string } | undefined;
+        const current = Number.parseInt(row?.value ?? '0', 10) || 0;
+        throw new FileCountQuotaExceededError(current, quota, delta);
+      }
+    } catch (err) {
+      if (err instanceof FileCountQuotaExceededError) throw err;
+      logger.warn('SQLite file-count guard failed, falling back to fs counter', {
+        tenantDir,
+        delta,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+    }
+  } else if (db && delta < 0) {
+    // Negative delta = rollback. Decrement the SQLite counter too (no cap).
+    try {
+      db.prepare(
+        `UPDATE store_config
+            SET value = CAST(MAX(0, CAST(value AS INTEGER) + ?) AS TEXT)
+          WHERE key = 'file_count_used'`,
+      ).run(delta);
+    } catch (err) {
+      logger.warn('SQLite file-count decrement failed', {
+        tenantDir,
+        delta,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+    }
+  }
+
   return withCounterLock(tenantDir, async () => {
     try {
       if (!fs.existsSync(tenantDir)) fs.mkdirSync(tenantDir, { recursive: true });
       const counterPath = path.join(tenantDir, COUNTER_FILENAME);
       const current = readFileCounter(tenantDir);
-      if (quota !== undefined && delta > 0 && current + delta > quota) {
+      // Legacy fs guard kept for environments without a tenant DB (single-
+      // tenant dev) AND to maintain the on-disk truth. When SQLite handled
+      // the gate above, this check is a no-op consistency guard.
+      if (!db && quota !== undefined && delta > 0 && current + delta > quota) {
         throw new FileCountQuotaExceededError(current, quota, delta);
       }
       const nextCount = Math.max(0, current + delta);
@@ -363,7 +426,9 @@ export function fileUploadValidator(options: FileUploadValidatorOptions = {}) {
     // increment. The pre-check is kept as a fast-fail for clearly-over-cap
     // requests so we don't waste magic-byte + virus work first.
     try {
-      await adjustFileCounter(tenantDir, files.length, quota);
+      // BUGHUNT-2026-05-10-05: pass the tenant DB so the atomic SQLite gate
+      // can serialize concurrent workers (cross-process protection).
+      await adjustFileCounter(tenantDir, files.length, quota, (req as any).db as BetterSqlite3Db | undefined);
     } catch (err) {
       if (err instanceof FileCountQuotaExceededError) {
         for (const f of files) safeUnlink(f.path);
@@ -394,5 +459,6 @@ export function fileUploadValidator(options: FileUploadValidatorOptions = {}) {
  */
 export function releaseFileCount(req: Request, count: number): Promise<void> {
   const tenantDir = resolveTenantDir(req);
-  return adjustFileCounter(tenantDir, -Math.abs(count));
+  // BUGHUNT-2026-05-10-05: also decrement the SQLite counter on rollback.
+  return adjustFileCounter(tenantDir, -Math.abs(count), undefined, (req as any).db as BetterSqlite3Db | undefined);
 }

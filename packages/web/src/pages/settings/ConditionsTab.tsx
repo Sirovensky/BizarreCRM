@@ -352,7 +352,9 @@ function TemplateCard({
             )}
 
             {/* Actions */}
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* WEB-UIUX-912: also reveal on keyboard focus so tab-navigation
+                doesn't surface focus rings with no visible context. */}
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
               <button
                 onClick={() => {
                   setEditingCheckId(check.id);

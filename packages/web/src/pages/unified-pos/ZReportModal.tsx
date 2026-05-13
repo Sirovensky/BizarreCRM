@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
+import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle, RotateCcw } from 'lucide-react';
 import { api } from '@/api/client';
+import { settingsApi } from '@/api/endpoints';
 import { formatCents, formatDateTime } from '@/utils/format';
 
 /**
@@ -17,33 +18,30 @@ interface ZReport {
   shift_id: number;
   opened_at: string;
   closed_at: string;
-  shift_duration_minutes: number | null;
-  cashier: ZReportActor | null;
-  manager: ZReportActor | null;
-  station: ZReportStationContext;
   opening_float_cents: number;
   expected_cents: number;
-  counted_cents: number;
-  variance_cents: number;
+  // WEB-UIUX-1162: null while the shift is in progress — no till count yet.
+  counted_cents: number | null;
+  variance_cents: number | null;
+  /** Server-tagged when the shift is still open. Client renders an
+   * "awaiting close" placeholder instead of a phantom variance banner. */
+  in_progress?: boolean;
+  // WEB-UIUX-1170: audit context surfaced on the Z-report — opener/closer
+  // name, total minutes on shift, and any manager notes captured at close.
+  opened_by_name?: string | null;
+  closed_by_name?: string | null;
+  duration_minutes?: number | null;
+  notes?: string | null;
   payment_breakdown: Array<{ method: string; cents: number; count: number }>;
+  // WEB-UIUX-1047: per-tender refund breakdown (cash refunds vs card refunds
+  // vs store credit). Refunds approved + completed within the shift window.
+  refund_breakdown?: Array<{ method: string; cents: number; count: number }>;
   totals: {
     gross_cents: number;
     refund_cents: number;
     net_cents: number;
     transaction_count: number;
   };
-}
-
-interface ZReportActor {
-  id: number;
-  name: string;
-  role: string | null;
-}
-
-interface ZReportStationContext {
-  id: number | null;
-  name: string | null;
-  unavailable_reason?: string;
 }
 
 interface ZReportResponse {
@@ -56,59 +54,91 @@ interface ZReportModalProps {
 }
 
 /**
- * Signed money formatter. Defers to formatCents() so the locale/currency
- * from store settings is respected — we can't just prepend "$" because
- * non-USD stores would see the wrong glyph.
+ * Locale-aware cents → currency formatter. Pre WEB-UIUX-1174 this helper was
+ * named `formatSignedCents` and implied +/- sign handling that it never did —
+ * locale formatCents() already encodes negatives via the locale's convention
+ * (parentheses or hyphen). Kept as a thin wrapper purely to coerce NaN/∞
+ * inputs to $0.00 instead of leaking "NaN" into the printable report.
  */
-function formatSignedCents(cents: number): string {
+function formatMoney(cents: number): string {
   if (!Number.isFinite(cents)) return formatCents(0);
   return formatCents(cents);
 }
 
-function formatActor(actor: ZReportActor | null, fallback: string): string {
-  if (!actor) return fallback;
-  return actor.role ? `${actor.name} (${actor.role})` : actor.name;
-}
-
-function formatDuration(minutes: number | null): string {
-  if (minutes === null || !Number.isFinite(minutes)) return 'Unavailable';
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours === 0) return `${mins} min`;
-  if (mins === 0) return `${hours} hr${hours === 1 ? '' : 's'}`;
-  return `${hours} hr${hours === 1 ? '' : 's'} ${mins} min`;
-}
-
 export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['pos-enrich', 'z-report', shiftId],
     queryFn: async () => {
       const res = await api.get<ZReportResponse>(`/pos-enrich/drawer/${shiftId}/z-report`);
       return res.data.data;
     },
   });
+  // WEB-UIUX-1166: variance warn threshold lives in store_config so high-volume
+  // stores can raise it past $5 without code changes. Default 500 cents.
+  const { data: cfgData } = useQuery<Record<string, string>>({
+    queryKey: ['settings', 'config'],
+    queryFn: async () => {
+      const res = await settingsApi.getConfig();
+      return res.data.data as Record<string, string>;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const varianceWarnCents = Math.max(0, parseInt(cfgData?.['pos_variance_warn_cents'] ?? '500', 10) || 500);
+  // Restore focus to the opener button after the modal unmounts so keyboard
+  // users land back where they were.
+  const triggerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    triggerRef.current = (document.activeElement as HTMLElement) ?? null;
+    return () => {
+      const el = triggerRef.current;
+      if (el && document.contains(el)) {
+        try { el.focus({ preventScroll: true }); } catch { /* noop */ }
+      }
+    };
+  }, []);
 
-  // WEB-W3-016: inject a print-only <style> that hides everything on the page
-  // EXCEPT the modal content, then call window.print(). The style tag is
-  // mounted once (on modal open) and removed on unmount so it never leaks into
-  // other print contexts. Using a data attribute instead of a class selector
-  // avoids any coupling to Tailwind utility names that could change.
+  // WEB-W3-016 / WEB-UIUX-1182: print-only <style> scoped via visibility
+  // toggles instead of `display: none` on every body child. The display
+  // approach yanked unrelated modals out of the DOM during the print
+  // preview window — a confirm dialog popped mid-print blanked too. With
+  // `visibility: hidden`, layout is preserved but only the z-report tree
+  // paints, and any other `role="dialog"` still occupies space if the
+  // user dismisses print and returns. Outline reset on the root preserves
+  // the static positioning fix.
   useEffect(() => {
     const style = document.createElement('style');
     style.setAttribute('data-z-report-print', 'true');
     style.textContent = `
 @media print {
-  body > * { display: none !important; }
-  [data-z-report-modal] { display: block !important; position: static !important; }
-  [data-z-report-modal] > * { display: block !important; }
-  [data-z-report-modal] .no-print { display: none !important; }
+  body * { visibility: hidden !important; }
+  [data-z-report-modal], [data-z-report-modal] * { visibility: visible !important; }
+  [data-z-report-modal] {
+    position: absolute !important;
+    inset: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    background: white !important;
+  }
+  [data-z-report-modal] .no-print, [data-z-report-modal] .no-print * { visibility: hidden !important; }
 }
     `.trim();
     document.head.appendChild(style);
     return () => { style.remove(); };
   }, []);
 
-  const handlePrint = () => window.print();
+  // WEB-UIUX-679: fire the print AND record the audit row. Fire-and-forget
+  // on the server call — paper still prints even if the mark-printed POST
+  // fails (network blip, no server). The audit gap is acceptable; the
+  // print itself isn't blocked.
+  const handlePrint = () => {
+    window.print();
+    if (data?.shift_id && !data.in_progress) {
+      api.post(`/pos-enrich/drawer/${data.shift_id}/mark-printed`).catch(() => {
+        // Swallow — print already happened, server audit is best-effort.
+      });
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -156,9 +186,31 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
           </div>
         </div>
         <div className="space-y-4 p-5">
-          {isLoading && <div className="text-center text-sm text-surface-500">Loading…</div>}
-          {isError && <div className="text-center text-sm text-red-500">Failed to load Z-report</div>}
-          {data && <ZReportBody report={data} />}
+          {isLoading && (
+            <div aria-busy="true" aria-label="Loading Z-report" className="space-y-2">
+              {[0, 1, 2].map((i) => (
+                <div key={i} aria-hidden="true" className="h-8 motion-safe:animate-pulse rounded bg-surface-100 dark:bg-surface-800" />
+              ))}
+            </div>
+          )}
+          {isError && (
+            <div role="alert" aria-live="assertive" className="space-y-3 text-center">
+              <div className="inline-flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                Failed to load Z-report
+              </div>
+              <button
+                type="button"
+                onClick={() => refetch()}
+                disabled={isFetching}
+                className="inline-flex items-center gap-1 rounded-md border border-surface-200 bg-white px-3 py-1.5 text-xs font-semibold text-surface-700 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+              >
+                <RotateCcw className={`h-3 w-3 ${isFetching ? 'motion-safe:animate-spin' : ''}`} aria-hidden="true" />
+                {isFetching ? 'Retrying…' : 'Retry'}
+              </button>
+            </div>
+          )}
+          {data && <ZReportBody report={data} varianceWarnCents={varianceWarnCents} />}
         </div>
       </div>
     </div>
@@ -167,53 +219,72 @@ export function ZReportModal({ shiftId, onClose }: ZReportModalProps) {
 
 interface ZReportBodyProps {
   report: ZReport;
+  varianceWarnCents: number;
 }
 
-function ZReportBody({ report }: ZReportBodyProps) {
-  const variance = report.variance_cents;
+function ZReportBody({ report, varianceWarnCents }: ZReportBodyProps) {
+  // WEB-UIUX-1162: when the shift is still open, the server returns
+  // counted_cents/variance_cents = null + in_progress=true. Render an
+  // "awaiting close" placeholder instead of the red phantom-short banner.
+  const inProgress = report.in_progress || report.variance_cents === null;
+  const variance = report.variance_cents ?? 0;
   const varianceClass =
-    variance === 0
-      ? 'text-green-600 dark:text-green-400'
-      : variance > 0
-        ? 'text-blue-600 dark:text-blue-400'
-        : 'text-red-600 dark:text-red-400';
-  const VarianceIcon = variance === 0 ? Minus : variance > 0 ? TrendingUp : TrendingDown;
+    inProgress
+      ? 'text-surface-500 dark:text-surface-400'
+      : variance === 0
+        ? 'text-green-600 dark:text-green-400'
+        : variance > 0
+          ? 'text-blue-600 dark:text-blue-400'
+          : 'text-red-600 dark:text-red-400';
+  const VarianceIcon = inProgress
+    ? AlertTriangle
+    : variance === 0 ? Minus : variance > 0 ? TrendingUp : TrendingDown;
 
   return (
     <>
       <div className="space-y-1 text-xs text-surface-500 dark:text-surface-400">
-        <div>Opened: {formatDateTime(report.opened_at)}</div>
-        <div>Closed: {formatDateTime(report.closed_at)}</div>
-      </div>
-
-      <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
-        <ReportRow label="Cashier" value={formatActor(report.cashier, 'Unavailable')} />
-        <ReportRow label="Manager" value={formatActor(report.manager, 'Not closed yet')} />
-        <ReportRow label="Duration" value={formatDuration(report.shift_duration_minutes)} />
-        <ReportRow label="Station" value={report.station.name ?? 'Not captured'} />
-        {!report.station.name && report.station.unavailable_reason && (
-          <div className="pt-1 text-[11px] leading-snug text-surface-500 dark:text-surface-400">
-            {report.station.unavailable_reason}
+        <div>
+          Opened: {formatDateTime(report.opened_at)}
+          {report.opened_by_name && <span> · by {report.opened_by_name}</span>}
+        </div>
+        <div>
+          Closed: {inProgress ? 'In progress — shift not yet closed' : formatDateTime(report.closed_at)}
+          {!inProgress && report.closed_by_name && <span> · by {report.closed_by_name}</span>}
+        </div>
+        {report.duration_minutes != null && (
+          <div>
+            Duration: {Math.floor(report.duration_minutes / 60)}h {report.duration_minutes % 60}m
+            <span className="ml-1 text-surface-400">(shift #{report.shift_id})</span>
           </div>
+        )}
+        {report.notes && (
+          <div className="mt-1 italic text-surface-600 dark:text-surface-300">Note: {report.notes}</div>
         )}
       </div>
 
       <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
-        <ReportRow label="Opening Float" value={formatSignedCents(report.opening_float_cents)} />
-        <ReportRow label="Expected" value={formatSignedCents(report.expected_cents)} />
-        <ReportRow label="Counted" value={formatSignedCents(report.counted_cents)} />
+        <ReportRow label="Opening Float" value={formatMoney(report.opening_float_cents)} />
+        <ReportRow label="Expected" value={formatMoney(report.expected_cents)} />
+        <ReportRow
+          label="Counted"
+          value={report.counted_cents === null ? 'Awaiting close' : formatMoney(report.counted_cents)}
+        />
         <div className="mt-2 border-t border-surface-200 pt-2 dark:border-surface-700">
           <div className={`flex items-center justify-between text-sm font-semibold ${varianceClass}`}>
             <span className="flex items-center gap-1.5">
               <VarianceIcon className="h-4 w-4" />
               Variance
             </span>
-            <span>{variance === 0 ? 'Balanced' : variance > 0 ? `Over by ${formatCents(variance)}` : `Short by ${formatCents(Math.abs(variance))}`}</span>
+            <span>
+              {inProgress
+                ? 'Awaiting close'
+                : variance === 0 ? 'Balanced' : variance > 0 ? `Over by ${formatCents(variance)}` : `Short by ${formatCents(Math.abs(variance))}`}
+            </span>
           </div>
-          {Math.abs(variance) >= 500 && (
+          {!inProgress && varianceWarnCents > 0 && Math.abs(variance) >= varianceWarnCents && (
             <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
               <AlertTriangle className="h-3 w-3" />
-              Variance ≥ $5 — investigate before next shift
+              Variance ≥ {formatCents(varianceWarnCents)} — investigate before next shift
             </div>
           )}
         </div>
@@ -233,7 +304,7 @@ function ZReportBody({ report }: ZReportBodyProps) {
             <ReportRow
               key={p.method}
               label={`${p.method} (${p.count})`}
-              value={formatSignedCents(p.cents)}
+              value={formatMoney(p.cents)}
             />
           ))}
         </div>
@@ -244,12 +315,55 @@ function ZReportBody({ report }: ZReportBodyProps) {
           Shift Totals
         </div>
         <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
-          <ReportRow label="Gross Sales" value={formatSignedCents(report.totals.gross_cents)} />
-          <ReportRow label="Refunds" value={formatSignedCents(report.totals.refund_cents)} />
-          <ReportRow label="Net" value={formatSignedCents(report.totals.net_cents)} bold />
+          <ReportRow label="Gross Sales" value={formatMoney(report.totals.gross_cents)} />
+          <ReportRow label="Refunds" value={formatMoney(report.totals.refund_cents)} />
+          <ReportRow label="Net" value={formatMoney(report.totals.net_cents)} bold />
           <ReportRow label="Transactions" value={String(report.totals.transaction_count)} />
         </div>
       </div>
+
+      {/* WEB-UIUX-1047: per-tender refund breakdown + drill-down link to
+          /refunds filtered to the shift window. Hidden when there were no
+          approved refunds in this shift so the modal stays compact for the
+          common no-refunds case. Drill-down is print:hidden because operators
+          carry the printed copy off-system; the link only matters on-screen. */}
+      {(report.refund_breakdown?.length ?? 0) > 0 && (
+        <div>
+          <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">
+            <span>Refund Breakdown</span>
+            <a
+              href={`/refunds?from=${encodeURIComponent(report.opened_at)}&to=${encodeURIComponent(report.closed_at)}&status=approved`}
+              className="print:hidden text-[10px] font-normal normal-case tracking-normal text-primary-600 hover:underline dark:text-primary-400"
+            >
+              Open detail →
+            </a>
+          </div>
+          <div className="space-y-1 rounded-lg border border-surface-200 p-3 dark:border-surface-700">
+            {report.refund_breakdown!.map((r) => (
+              <ReportRow
+                key={r.method}
+                label={`${r.method} (${r.count})`}
+                value={formatMoney(r.cents)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* WEB-UIUX-1185: EOD signature lines for cashier + manager handover.
+          Only visible on print so the on-screen modal stays compact. */}
+      {!inProgress && (
+        <div className="hidden print:block mt-6 grid grid-cols-2 gap-8 text-xs text-surface-700">
+          <div>
+            <div className="border-b border-surface-700 h-8" />
+            <div className="mt-1">Cashier signature{report.closed_by_name ? ` — ${report.closed_by_name}` : ''}</div>
+          </div>
+          <div>
+            <div className="border-b border-surface-700 h-8" />
+            <div className="mt-1">Manager signature</div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Smartphone, Hash, DollarSign, Wrench } from 'lucide-react';
 import { reportApi } from '@/api/endpoints';
@@ -32,7 +31,7 @@ export function DeviceModelsTab({ from, to }: { from: string; to: string }) {
   const { rows } = reportState.data;
   const totalRepairs = rows.reduce((sum, r) => sum + r.repair_count, 0);
   const totalPartsCost = rows.reduce((sum, r) => sum + r.total_parts_cost, 0);
-  const maxRepairs = useMemo(() => Math.max(...rows.map((x) => x.repair_count), 1), [rows]);
+  const maxRepairs = Math.max(...rows.map((x) => x.repair_count), 1);
 
   return (
     <div className="space-y-6">

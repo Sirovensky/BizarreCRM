@@ -118,6 +118,29 @@ async function performRefresh(): Promise<void> {
       if (res.data?.success !== true) {
         throw new Error('Refresh response was not successful');
       }
+      // WEB-UIUX-743: after a successful refresh, re-fetch /auth/me so the
+      // client picks up role/permission downgrades that happened mid-session.
+      // Without this a demoted user keeps using manager-only pages until they
+      // manually log out, because the React state still holds the pre-refresh
+      // user record. Failure here is non-fatal — the auth-ready event still
+      // fires; the next request that needs a stricter scope will 403 and the
+      // axios interceptor will re-enter the refresh + fetch cycle.
+      try {
+        const meRes = await axios.get(`${API_BASE}/auth/me`, {
+          withCredentials: true,
+          timeout: 10_000,
+        });
+        const user = meRes.data?.data;
+        if (user) {
+          const { useAuthStore } = await import('@/stores/authStore.js').catch(
+            () => import('@/stores/authStore'),
+          );
+          useAuthStore.getState().setUser?.(user);
+        }
+      } catch (meErr) {
+        // Best-effort — proactive refresh still succeeded, just no fresh /me.
+        devWarn('Refresh /auth/me follow-up failed:', meErr);
+      }
       emitAuthReady();
       scheduleTokenRefresh();
     } finally {
@@ -179,6 +202,28 @@ client.interceptors.request.use((config) => {
   const method = config.method?.toUpperCase();
   if (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') {
     if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken;
+    // Server CSRF guard (index.ts: ERR_CONTENT_TYPE) rejects state-changing
+    // requests without `application/json` or `multipart/form-data`. axios
+    // strips Content-Type on body-less DELETE/POST; force the header so
+    // body-less calls (e.g. DELETE /held-carts/:id, POST /recall) survive
+    // the guard. Multipart uploads override this themselves before send.
+    const ct = config.headers['Content-Type'] || config.headers['content-type'];
+    if (!ct) {
+      config.headers['Content-Type'] = 'application/json';
+    }
+    // Axios v1 drops Content-Type from the outgoing request when `data` is
+    // undefined — the header gets set above but never reaches the wire on
+    // body-less DELETE/POST, so the server's CSRF guard rejects with
+    // "State-changing requests must use application/json or multipart/form-
+    // data". Force a real body ("{}") whenever the header is JSON so the
+    // header survives serialisation. Multipart paths set their own data
+    // before this interceptor runs and aren't affected.
+    if (
+      (config.data === undefined || config.data === null)
+      && (config.headers['Content-Type'] === 'application/json' || config.headers['content-type'] === 'application/json')
+    ) {
+      config.data = {};
+    }
   }
   return config;
 });
@@ -290,6 +335,18 @@ client.interceptors.response.use(
 
     // Tier gate 403: open the upgrade modal globally so the user sees it
     if (error.response?.status === 403 && error.response?.data?.upgrade_required) {
+      // WEB-UIUX-749: persist any in-flight POS cart BEFORE we hand the
+      // upgrade modal control of the screen, so a trial expiry mid-sale
+      // doesn't silently nuke the cashier's cart. The unified-pos store
+      // already auto-persists on cart mutation, but the modal handoff
+      // can trigger a sign-out path that calls wipeAllDrafts; emitting
+      // this event lets the POS store snapshot itself to sessionStorage
+      // first.
+      try {
+        window.dispatchEvent(new CustomEvent('bizarre-crm:upgrade-required', {
+          detail: { feature: error.response?.data?.feature ?? null },
+        }));
+      } catch { /* non-fatal */ }
       // Lazy import to avoid circular deps with planStore
       import('@/stores/planStore')
         .then(({ usePlanStore, isUpgradeFeatureKey }) => {

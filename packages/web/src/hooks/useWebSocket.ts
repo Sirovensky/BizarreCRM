@@ -196,7 +196,18 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
       toast: () => 'New customer added',
     },
     'customer:updated': {
-      queryKeys: [['customers']],
+      // WEB-UIUX-893: customer name/email/phone surfaces denormalized into
+      // tickets, invoices, estimates, leads, sms-conversations row caches.
+      // Invalidate all of them so a rename doesn't leave "J Doe" on the
+      // ticket list while the detail page shows "Jane Doe-Smith".
+      queryKeys: [
+        ['customers'],
+        ['tickets'],
+        ['invoices'],
+        ['estimates'],
+        ['leads'],
+        ['sms-conversations'],
+      ],
       toast: undefined,
     },
     'payment:created': {
@@ -419,6 +430,29 @@ export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
         // Invalidate relevant query keys
         const entry = invalidationMap.current[type];
         if (entry) {
+          // WEB-UIUX-737: defer WS-driven invalidation when a local mutation
+          // is mid-flight for that mutation key. The user's optimistic update
+          // already won the cache and the server-side write is in progress;
+          // re-invalidating on top of it lets a co-worker's race-event flip
+          // the pill mid-render before our own mutation onSettled runs. The
+          // mutation's own onSettled handler will trigger the canonical
+          // refresh once it completes. We use `getMutationCache()` to detect
+          // active mutations rather than tag every callsite.
+          const isMutating = (qc: typeof queryClientRef.current): boolean => {
+            try {
+              const cache = (qc as unknown as { getMutationCache: () => { findAll: (f: { predicate: (m: { state: { status: string } }) => boolean }) => unknown[] } })
+                .getMutationCache?.();
+              if (!cache) return false;
+              const pending = cache.findAll({
+                predicate: (m) => m.state.status === 'pending',
+              });
+              return pending.length > 0;
+            } catch {
+              return false;
+            }
+          };
+          const skipDueToMutation = isMutating(queryClientRef.current);
+
           for (const qk of entry.queryKeys) {
             // WEB-FI-010 (Fixer-SSS 2026-04-25): the previous code did
             // `qk.filter((k) => k !== undefined)` which silently demoted
@@ -433,6 +467,7 @@ export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
             // handles the targeted `['ticket', id]` refresh when the
             // server DOES send a usable id.
             if (qk.some((k) => k === undefined)) continue;
+            if (skipDueToMutation) continue;
             queryClientRef.current.invalidateQueries({ queryKey: qk });
           }
 
@@ -441,7 +476,10 @@ export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
           // ids, so legit entity invalidations were silently skipped. Accept
           // any defined, non-null id and let the query layer decide what to
           // match.
-          if (data != null && data.id !== undefined && data.id !== null && data.id !== '') {
+          if (
+            !skipDueToMutation &&
+            data != null && data.id !== undefined && data.id !== null && data.id !== ''
+          ) {
             if (type.startsWith('ticket:')) {
               queryClientRef.current.invalidateQueries({ queryKey: ['ticket', String(data.id)] });
               queryClientRef.current.invalidateQueries({ queryKey: ['ticket', Number(data.id)] });

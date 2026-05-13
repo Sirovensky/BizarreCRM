@@ -59,6 +59,14 @@ interface DunningSummary {
   failures: number;
   rate_limited?: boolean;
   warnings: string[];
+  /** WEB-UIUX-830: per-invoice failure detail so operators can see which 5 of 200 failed. */
+  failure_details?: Array<{
+    invoice_id: number;
+    order_id: string | null;
+    reason: string;
+    sequence_id: number;
+    step_index: number;
+  }>;
 }
 
 // WEB-W3-019: default blank step for the structured editor
@@ -222,6 +230,32 @@ export function DunningPage() {
               ))}
             </ul>
           ) : null}
+          {/* WEB-UIUX-830: list which invoices failed so operators can chase the 5 of 200. */}
+          {lastSummary.failure_details && lastSummary.failure_details.length > 0 ? (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-900 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-semibold">Failed invoices ({lastSummary.failure_details.length})</span>
+                <button
+                  type="button"
+                  onClick={() => runNowMutation.mutate()}
+                  disabled={runNowMutation.isPending}
+                  className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  title="Re-run dunning — failed steps will be retried since they were not marked as recorded."
+                >
+                  Retry failed
+                </button>
+              </div>
+              <ul className="max-h-48 space-y-1 overflow-y-auto">
+                {lastSummary.failure_details.map((f, idx) => (
+                  <li key={`${f.invoice_id}-${f.step_index}-${idx}`} className="flex items-baseline gap-2">
+                    <span className="font-mono">{f.order_id ?? `#${f.invoice_id}`}</span>
+                    <span className="text-red-700 dark:text-red-300">step {f.step_index + 1}</span>
+                    <span className="truncate">— {f.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -276,6 +310,10 @@ export function DunningPage() {
                   <option value="sms">SMS</option>
                   <option value="call_queue">Call queue</option>
                   <option value="escalate">Escalate</option>
+                  {/* WEB-UIUX-838: card-on-file expired workflow — non-dispatch,
+                      logs a step the admin follows up with via Payment Method
+                      update link or the BillingTab portal. */}
+                  <option value="request_card_update">Request card update</option>
                 </select>
                 {(step.action === 'email' || step.action === 'sms') && (
                   <select
@@ -306,7 +344,24 @@ export function DunningPage() {
           ))}
         </div>
         <button type="button"
-          onClick={() => createMutation.mutate()}
+          onClick={() => {
+            // WEB-UIUX-840: dry-run warning when a step has days_offset = 0
+            // with a destructive non-dispatch action. A "d+0 escalate" or
+            // "d+0 call_queue" sequence fires against every overdue
+            // invoice the moment the sequence is enabled, escalating
+            // hundreds of customers day-zero. Force explicit confirm so
+            // the admin can't fat-finger an immediate-blast.
+            const dangerousImmediate = steps.find((s) =>
+              s.days_offset === 0 && (s.action === 'escalate' || s.action === 'call_queue' || s.action === 'request_card_update'),
+            );
+            if (dangerousImmediate) {
+              const ok = window.confirm(
+                `Step at day 0 with action "${dangerousImmediate.action}" will fire against EVERY currently-overdue invoice the moment this sequence is active. There is no batch dry-run before that fans out. Continue?`,
+              );
+              if (!ok) return;
+            }
+            createMutation.mutate();
+          }}
           disabled={!name.trim() || steps.length === 0 || createMutation.isPending}
           className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >

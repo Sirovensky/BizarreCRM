@@ -1,11 +1,44 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, Search, X } from 'lucide-react';
+import { Plus, Package, ChevronLeft, ChevronRight, Loader2, ChevronDown, ChevronUp, PackageCheck, Search, X, AlertTriangle, Send, ScanBarcode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { inventoryApi } from '@/api/endpoints';
+import { inventoryApi, benchApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
+
+// WEB-UIUX-654: surface recent defect reports next to a PO line item so the
+// operator sees "this exact SKU was reported defective N times in the last
+// 30 days" before re-ordering more of it. Server endpoint is admin/manager
+// only; non-privileged users see nothing (component returns null on 403).
+function DefectWarningChip({ inventoryItemId }: { inventoryItemId: number | '' }) {
+  const enabled = typeof inventoryItemId === 'number' && inventoryItemId > 0;
+  const { data } = useQuery({
+    queryKey: ['po-defect-warning', inventoryItemId],
+    queryFn: () => benchApi.defects.byItem(inventoryItemId as number),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
+  if (!enabled) return null;
+  const rows = (data?.data?.data as Array<{ reported_at: string }> | undefined) ?? [];
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const recent = rows.filter((r) => {
+    const t = Date.parse(r.reported_at);
+    return Number.isFinite(t) && t >= cutoff;
+  });
+  if (recent.length === 0) return null;
+  return (
+    <span
+      role="alert"
+      className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+      title={`${recent.length} defect report${recent.length === 1 ? '' : 's'} in the last 30 days. Confirm before re-ordering.`}
+    >
+      <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+      {recent.length} defect{recent.length === 1 ? '' : 's'} 30d
+    </span>
+  );
+}
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-100 text-surface-600 dark:bg-surface-700 dark:text-surface-400',
@@ -27,6 +60,9 @@ interface PoLineItem {
 
 interface NewPoForm {
   supplier_id: number | '';
+  // WEB-UIUX-1190: expected delivery date — server accepts it on POST and
+  // uses it for late-shipment alerting + aging.
+  expected_date: string;
   notes: string;
   items: PoLineItem[];
 }
@@ -62,6 +98,11 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
         sku: it.sku,
         quantity_ordered: it.quantity_ordered,
         quantity_received: it.quantity_received || 0,
+        // WEB-UIUX-1188: default the receive draft to 0, not the full
+        // remaining. Pre-filling with the optimistic total lets a careless
+        // "Confirm Receive" click silently post phantom units that
+        // inventory cannot undo (no /reverse-receipt endpoint). Force the
+        // cashier to type the physical count.
         receive_qty: 0,
       })),
   );
@@ -99,10 +140,52 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
     },
   });
 
+  // WEB-UIUX-1193: in-modal barcode scan path. Operator hits the scan field
+  // with a handheld scanner gun; on Enter the modal looks up the matching
+  // PO line by SKU (case-insensitive) and increments its receive_qty by 1,
+  // capped at the remaining count. Surfaces success/no-match/already-full
+  // states inline so the cashier doesn't have to switch focus.
+  const [scanValue, setScanValue] = useState('');
+  const [scanFeedback, setScanFeedback] = useState<{ tone: 'ok' | 'warn' | 'err'; msg: string } | null>(null);
+  const scanInputRef = useRef<HTMLInputElement>(null);
+
+  const handleScan = useCallback((raw: string) => {
+    const sku = raw.trim();
+    if (!sku) return;
+    const skuLower = sku.toLowerCase();
+    const idx = receiving.findIndex((r) => (r.sku ?? '').toLowerCase() === skuLower);
+    if (idx === -1) {
+      setScanFeedback({ tone: 'err', msg: `No PO line matches SKU "${sku}".` });
+      return;
+    }
+    const target = receiving[idx];
+    const remaining = target.quantity_ordered - target.quantity_received;
+    if (target.receive_qty >= remaining) {
+      setScanFeedback({ tone: 'warn', msg: `"${target.item_name}" already at remaining cap (${remaining}).` });
+      return;
+    }
+    setReceiving((prev) =>
+      prev.map((item, i) =>
+        i === idx ? { ...item, receive_qty: Math.min(remaining, item.receive_qty + 1) } : item,
+      ),
+    );
+    setScanFeedback({ tone: 'ok', msg: `+1 ${target.item_name} (now ${target.receive_qty + 1} / ${remaining})` });
+  }, [receiving]);
+
   const totalToReceive = receiving.reduce((s, r) => s + r.receive_qty, 0);
+  // WEB-UIUX-1194: dirty-state guard on close. The modal captures physical
+  // counts; an accidental dismiss = recount the entire shipment. Warn if
+  // any line has a non-zero draft before discarding.
   const closeModal = useCallback(() => {
-    if (!receiveMut.isPending) onClose();
-  }, [onClose, receiveMut.isPending]);
+    if (receiveMut.isPending) return;
+    if (totalToReceive > 0) {
+      const ok = window.confirm(
+        `Discard counts for ${totalToReceive} item${totalToReceive === 1 ? '' : 's'}? You'll have to recount the shipment.`,
+      );
+      if (!ok) return;
+    }
+    onClose();
+  }, [onClose, receiveMut.isPending, totalToReceive]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -137,6 +220,48 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* WEB-UIUX-1193: barcode-scan path surfaced inline so the cashier
+            with a handheld scanner gun doesn't have to type qty per row. */}
+        {receiving.length > 0 && (
+          <div className="border-b border-surface-200 dark:border-surface-700 p-4">
+            <label htmlFor="po-receive-scan-input" className="flex items-center gap-2 text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5">
+              <ScanBarcode className="h-3.5 w-3.5" />
+              Scan to receive (+1 per scan)
+            </label>
+            <input
+              id="po-receive-scan-input"
+              ref={scanInputRef}
+              type="text"
+              value={scanValue}
+              onChange={(e) => setScanValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleScan(scanValue);
+                  setScanValue('');
+                  scanInputRef.current?.focus();
+                }
+              }}
+              placeholder="Scan or type SKU then Enter…"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-mono text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:placeholder:text-surface-500"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {scanFeedback && (
+              <p
+                className={cn(
+                  'mt-1.5 text-xs',
+                  scanFeedback.tone === 'ok' && 'text-emerald-600 dark:text-emerald-400',
+                  scanFeedback.tone === 'warn' && 'text-amber-600 dark:text-amber-400',
+                  scanFeedback.tone === 'err' && 'text-red-600 dark:text-red-400',
+                )}
+              >
+                {scanFeedback.msg}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {receiving.length === 0 ? (
@@ -326,7 +451,7 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
                     <span className="text-xs text-green-600 dark:text-green-400 font-medium">Fully received</span>
                   )}
                   {!canReceive && status !== 'received' && status !== 'cancelled' && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-surface-400">Change status to &ldquo;ordered&rdquo; before receiving.</span>
                       <button
                         onClick={(e) => { e.stopPropagation(); markOrderedMut.mutate(); }}
@@ -336,6 +461,14 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
                         {markOrderedMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                         Mark as Ordered
                       </button>
+                      {/* WEB-UIUX-1191: "Email supplier" composes a mailto: link
+                          pre-filled with the PO order_id + line-item summary so
+                          the operator can send a purchase request without
+                          retyping. Disabled when no supplier email on file —
+                          tooltip explains. Uses mailto: rather than a server
+                          email send so this works in any environment without
+                          per-tenant SMTP setup. */}
+                      <PoEmailSupplierButton po={po} lineItems={lineItems} onMarkOrdered={() => markOrderedMut.mutate()} />
                     </div>
                   )}
                 </div>
@@ -348,17 +481,109 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
   );
 }
 
+// WEB-UIUX-1191: Email-supplier button — builds a mailto: URL with the PO
+// summary in the body so a draft / pending PO can be sent without leaving the
+// app. Disabled with explanatory tooltip when no supplier email is on file.
+function PoEmailSupplierButton({
+  po,
+  lineItems,
+  onMarkOrdered,
+}: {
+  po: Record<string, unknown>;
+  lineItems: any[];
+  onMarkOrdered: () => void;
+}) {
+  const supplierEmail = (po.supplier_email as string | null | undefined) ?? null;
+  const supplierName = (po.supplier_name as string | null | undefined) ?? 'supplier';
+  const supplierContact = (po.supplier_contact as string | null | undefined) ?? null;
+  const orderId = (po.order_id as string | null | undefined) ?? `PO-${po.id}`;
+  const expectedDate = (po.expected_date as string | null | undefined) ?? null;
+  const notes = (po.notes as string | null | undefined) ?? null;
+  const total = Number(po.total) || 0;
+
+  const disabled = !supplierEmail;
+  const disabledReason = !supplierEmail
+    ? 'No email on file for this supplier — add one under Inventory → Suppliers.'
+    : '';
+
+  function buildMailto(): string {
+    const greeting = supplierContact ? `Hi ${supplierContact},` : `Hi ${supplierName} team,`;
+    const lines: string[] = [
+      greeting,
+      '',
+      `Please process purchase order ${orderId}:`,
+      '',
+    ];
+    if (lineItems.length > 0) {
+      for (const li of lineItems) {
+        const sku = li.sku ? ` [${li.sku}]` : '';
+        const qty = li.quantity_ordered ?? 0;
+        const cost = Number(li.cost_price) || 0;
+        const lineTotal = qty * cost;
+        lines.push(`  • ${li.item_name}${sku} — qty ${qty} @ ${formatCurrency(cost)} = ${formatCurrency(lineTotal)}`);
+      }
+      lines.push('');
+    }
+    lines.push(`Order total: ${formatCurrency(total)}`);
+    if (expectedDate) lines.push(`Requested delivery: ${expectedDate}`);
+    if (notes) {
+      lines.push('');
+      lines.push('Notes:');
+      lines.push(notes);
+    }
+    lines.push('');
+    lines.push('Reply to this email to confirm. Thanks.');
+    const subject = `Purchase Order ${orderId}`;
+    const body = lines.join('\n');
+    return `mailto:${encodeURIComponent(supplierEmail!)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  return (
+    <button
+      type="button"
+      title={disabledReason || `Compose email to ${supplierEmail}`}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (disabled) return;
+        window.location.href = buildMailto();
+        // Auto-advance to "ordered" once the operator has triggered the
+        // email; reduces the chance of a draft PO sitting forever after the
+        // supplier was contacted. Operator can still revert via PUT.
+        onMarkOrdered();
+      }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-surface-300 rounded-md text-xs font-semibold text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    >
+      <Send className="h-3 w-3" /> Email supplier
+    </button>
+  );
+}
+
 export function PurchaseOrdersPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [newPo, setNewPo] = useState<NewPoForm>({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
+  const [newPo, setNewPo] = useState<NewPoForm>({ supplier_id: '', expected_date: '', notes: '', items: [{ ...EMPTY_ITEM }] });
 
   // WEB-W3-003: receive modal state
   const [receiveModal, setReceiveModal] = useState<{ po: Record<string, unknown>; items: any[] } | null>(null);
   const poSearch = searchInput.trim();
+  const poListParams = {
+    page,
+    pagesize: 25,
+    status: statusFilter || undefined,
+    q: poSearch || undefined,
+  };
+  const hasListFilters = Boolean(poSearch || statusFilter);
+
+  // WEB-UIUX-1192: status filter + keyword search, debounced.
+  const [poSearch, setPoSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setPoSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
   const poListParams = {
     page,
     pagesize: 25,
@@ -402,6 +627,7 @@ export function PurchaseOrdersPage() {
       );
       return inventoryApi.createPurchaseOrder({
         supplier_id: newPo.supplier_id as number,
+        expected_date: newPo.expected_date || undefined,
         notes: newPo.notes || undefined,
         items: validItems,
       });
@@ -410,7 +636,7 @@ export function PurchaseOrdersPage() {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       toast.success('Purchase order created');
       setShowCreate(false);
-      setNewPo({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
+      setNewPo({ supplier_id: '', expected_date: '', notes: '', items: [{ ...EMPTY_ITEM }] });
     },
     onError: (e: unknown) => {
       const msg =
@@ -455,11 +681,37 @@ export function PurchaseOrdersPage() {
         </button>
       </div>
 
+      {/* WEB-UIUX-1192: status filter + keyword search for the PO list. */}
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(e) => { setSearchInput(e.target.value); setPage(1); }}
+          placeholder="Search PO number or supplier name…"
+          className="flex-1 rounded-lg border border-surface-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+          aria-label="Search purchase orders by PO number or supplier name"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          aria-label="Filter purchase orders by status"
+          className="rounded-lg border border-surface-300 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+        >
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="ordered">Ordered</option>
+          <option value="partial">Partial</option>
+          <option value="backordered">Backordered</option>
+          <option value="received">Received</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+
       {/* Create form */}
       {showCreate && (
         <div className="card p-5 mb-6">
           <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">New Purchase Order</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div>
               <label htmlFor="po-supplier" className="block text-xs font-medium text-surface-500 mb-1">Supplier <span className="text-red-500">*</span></label>
               <select
@@ -467,7 +719,7 @@ export function PurchaseOrdersPage() {
                 value={newPo.supplier_id}
                 disabled={suppliersLoading}
                 onChange={(e) => setNewPo({ ...newPo, supplier_id: e.target.value ? Number(e.target.value) : '' })}
-                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-60"
+                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-50"
               >
                 {suppliersLoading
                   ? <option disabled>Loading…</option>
@@ -477,6 +729,18 @@ export function PurchaseOrdersPage() {
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
+            </div>
+            {/* WEB-UIUX-1190: expected delivery date — server stores it for
+                late-shipment alerting + aging reports. */}
+            <div>
+              <label htmlFor="po-expected-date" className="block text-xs font-medium text-surface-500 mb-1">Expected date</label>
+              <input
+                id="po-expected-date"
+                type="date"
+                value={newPo.expected_date}
+                onChange={(e) => setNewPo({ ...newPo, expected_date: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
+              />
             </div>
             <div>
               <label htmlFor="po-notes" className="block text-xs font-medium text-surface-500 mb-1">Notes</label>
@@ -508,7 +772,7 @@ export function PurchaseOrdersPage() {
                       cost_price: found ? found.cost_price : item.cost_price,
                     });
                   }}
-                  className="flex-1 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-60"
+                  className="flex-1 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 disabled:opacity-50"
                 >
                   {inventoryLoading
                     ? <option disabled>Loading…</option>
@@ -539,6 +803,7 @@ export function PurchaseOrdersPage() {
                   className="w-28 px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100"
                   placeholder="Unit cost"
                 />
+                <DefectWarningChip inventoryItemId={item.inventory_item_id} />
                 {newPo.items.length > 1 && (
                   <button onClick={() => removeItem(i)} aria-label={`Remove purchase order line ${i + 1}`} className="text-red-400 hover:text-red-600 text-xs">
                     Remove
@@ -556,7 +821,7 @@ export function PurchaseOrdersPage() {
               <button
                 onClick={() => {
                   setShowCreate(false);
-                  setNewPo({ supplier_id: '', notes: '', items: [{ ...EMPTY_ITEM }] });
+                  setNewPo({ supplier_id: '', expected_date: '', notes: '', items: [{ ...EMPTY_ITEM }] });
                 }}
                 className="px-3 py-1.5 text-sm text-surface-500"
               >

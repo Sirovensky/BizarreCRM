@@ -249,6 +249,13 @@ export function InventoryCreatePage() {
                     )}
                     {taxClasses.map((tc) => <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>)}
                   </select>
+                  {/* WEB-UIUX-862: the setup wizard's Tax step writes default
+                      rates to `store_config.tax_default_parts/_services` but
+                      does NOT seed the `tax_classes` table — so this dropdown
+                      shows only "No Tax" on a fresh shop and the owner picks
+                      that silently. Flag the empty state + link to Settings
+                      so they create a Tax Class before booking the first
+                      taxable line. */}
                   {taxClassesQuery.isError ? (
                     <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200" role="alert">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

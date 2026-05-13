@@ -47,18 +47,34 @@ interface CurrentShiftResponse {
 function centsFromInput(value: string): { ok: boolean; cents: number; reason?: string } {
   const trimmed = value.trim();
   if (!trimmed) return { ok: false, cents: 0, reason: 'Enter an amount' };
-  const n = parseFloat(trimmed);
-  if (!Number.isFinite(n) || isNaN(n) || n < 0) {
+  // BUGHUNT-2026-05-10-21: parse dollars + fractional cents as separate
+  // integer strings instead of `Math.round(parseFloat(x) * 100)`. The float
+  // path miscounts a small set of inputs at IEEE-754 boundaries (10.99,
+  // 0.29 etc) — rare but pollutes the cash-drawer ledger. Accepts optional
+  // leading $/space, optional thousands separators, 0..2 fractional digits.
+  const match = /^\$?\s*(\d{1,12}(?:,\d{3})*|\d{1,12})(?:\.(\d{1,2}))?$/.exec(trimmed);
+  if (!match) {
     return { ok: false, cents: 0, reason: 'Enter a non-negative amount' };
   }
-  if (n > DRAWER_CAP_DOLLARS) {
+  const dollars = parseInt(match[1].replace(/,/g, ''), 10);
+  const fracDigits = match[2] ?? '';
+  const fracCents = fracDigits.length === 0
+    ? 0
+    : fracDigits.length === 1
+      ? parseInt(fracDigits, 10) * 10
+      : parseInt(fracDigits, 10);
+  if (!Number.isFinite(dollars) || dollars < 0) {
+    return { ok: false, cents: 0, reason: 'Enter a non-negative amount' };
+  }
+  const cents = dollars * 100 + fracCents;
+  if (cents > DRAWER_CAP_DOLLARS * 100) {
     return {
       ok: false,
       cents: 0,
       reason: `Amount exceeds ${formatCurrency(DRAWER_CAP_DOLLARS)} drawer cap`,
     };
   }
-  return { ok: true, cents: Math.round(n * 100) };
+  return { ok: true, cents };
 }
 
 export function CashDrawerWidget() {
@@ -80,7 +96,12 @@ export function CashDrawerWidget() {
   // does not shift (returning null collapses the widget's reserved space).
   if (isLoading) {
     return (
-      <button disabled className="btn btn-sm border border-surface-300 bg-surface-50 text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-500 opacity-60 cursor-not-allowed">
+      <button
+        disabled
+        aria-busy="true"
+        aria-label="Loading cash-drawer status"
+        className="btn btn-sm border border-surface-300 bg-surface-50 text-surface-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-500 opacity-60 cursor-not-allowed"
+      >
         Loading…
       </button>
     );
@@ -199,10 +220,17 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
   };
 
   return (
+    // WEB-UIUX-1181: dialog semantics so SR users hear the title and tab order
+    // is trapped to the modal.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="open-shift-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="open-shift-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Open Cash Drawer Shift
           </h3>
           <button onClick={onClose} className="btn-icon btn-xs" aria-label="Close">
@@ -226,9 +254,11 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
               aria-describedby={`open-shift-hint${error ? ' open-shift-error' : ''}`}
             />
           </label>
-          {/* WEB-UIUX-1184: always-visible hint for screen readers + sighted users */}
+          {/* WEB-UIUX-1184: always-visible hint for screen readers + sighted users.
+              WEB-UIUX-1176: also surface the upper cap inline so a $60,000 typo
+              gets caught before submit instead of via a toast on click. */}
           <p id="open-shift-hint" className="text-xs text-surface-400 dark:text-surface-500">
-            Enter amount in dollars and cents
+            Enter amount in dollars and cents (max $50,000)
           </p>
           {error && (
             <p id="open-shift-error" role="alert" aria-live="polite" className="text-xs text-red-500">
@@ -313,10 +343,17 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
   };
 
   return (
+    // WEB-UIUX-1181: dialog semantics so SR users hear the title and tab order
+    // is trapped to the modal.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="close-shift-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="close-shift-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Close Shift & Count Drawer
           </h3>
           <button onClick={onClose} className="btn-icon btn-xs" aria-label="Close">
@@ -362,7 +399,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
             disabled={submitting}
             className="btn btn-md w-full bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
-            {submitting ? 'Closing...' : 'Close Shift & View Z-Report'}
+            {submitting ? 'Closing...' : 'Close Shift'}
           </button>
         </div>
       </div>

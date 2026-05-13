@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { settingsApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 
 interface PaymentLink {
   id: number;
@@ -45,8 +45,8 @@ const EMPTY_FORM: CreateForm = {
 
 export function PaymentLinksPage() {
   const qc = useQueryClient();
-  const userRole = useAuthStore((s) => s.user?.role);
-  const canManagePaymentLinks = userRole === 'admin' || userRole === 'manager';
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canManagePaymentLinks = useHasRole(['admin', 'manager']);
   const [filter, setFilter] = useState<'all' | 'active' | 'paid' | 'cancelled'>('all');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateForm>(EMPTY_FORM);

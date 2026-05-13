@@ -359,6 +359,8 @@ const CUSTOMER_COLUMNS = [
   'contact_person', 'contact_relation',
   'referred_by', 'customer_group_id',
   'tax_number', 'tax_class_id',
+  // WEB-UIUX-765: per-customer exempt flag + free-form reason (resale cert / state code).
+  'tax_exempt', 'tax_exempt_reason',
   'email_opt_in', 'sms_opt_in',
   'sms_consent_marketing', 'sms_consent_transactional',
   'sms_quiet_hours_start', 'sms_quiet_hours_end',
@@ -376,7 +378,11 @@ function ftsMatchExpr(keyword: string): string {
   const cleaned = bounded.replace(/[^a-zA-Z0-9\s\-@.]/g, '').trim();
   const tokens = cleaned.split(/\s+/).filter(Boolean).slice(0, 16);
   if (tokens.length === 0) return '';
-  return tokens.map(t => `"${t}"*`).join(' OR ');
+  // AND across tokens: typing "luna d" should require BOTH a "luna" prefix
+  // AND a "d" prefix in the same row, not "any record matching luna OR
+  // anything starting with d" (which previously returned every Davila /
+  // D'Souza / Detomasi alongside the actual Luna match).
+  return tokens.map(t => `"${t}"*`).join(' AND ');
 }
 
 // ---------------------------------------------------------------------------
@@ -633,6 +639,31 @@ async function likeSearch(adb: AsyncDb, q: string) {
   // (enumeration / DoS). ESCAPE '\' makes SQLite honour the backslashes
   // inserted by escapeLike().
   const like = `%${escapeLike(q)}%`;
+  // WEB-UIUX-662: phone digit-normalization. Searching "(555) 123-4567"
+  // never matched stored "5551234567" because LIKE is character-literal.
+  // When the query has at least 3 digits, strip non-digits and OR-match
+  // phone/mobile against the digit-only form. Names + email + organization
+  // stay character-literal because letters are meaningful in those fields.
+  const digitsOnly = q.replace(/\D+/g, '');
+  const digitMatch = digitsOnly.length >= 3 ? `%${escapeLike(digitsOnly)}%` : null;
+  if (digitMatch) {
+    return adb.all<AnyRow>(
+      `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
+              c.customer_group_id, cg.name AS customer_group_name,
+              cg.discount_pct AS group_discount_pct, cg.discount_type AS group_discount_type,
+              cg.auto_apply AS group_auto_apply
+       FROM customers c
+       LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
+       WHERE c.is_deleted = 0
+         AND (c.code IS NULL OR c.code != 'WALK-IN')
+         AND (c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\'
+              OR c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\'
+              OR c.email LIKE ? ESCAPE '\\' OR c.organization LIKE ? ESCAPE '\\'
+              OR c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\')
+       LIMIT 10`,
+      like, like, like, like, like, like, digitMatch, digitMatch,
+    );
+  }
   return adb.all<AnyRow>(
     `SELECT c.id, c.code, c.first_name, c.last_name, c.phone, c.mobile, c.email, c.organization,
             c.customer_group_id, cg.name AS customer_group_name,
@@ -765,14 +796,11 @@ router.post(
 // ENR-C1: Move all tickets, invoices, SMS, assets from merge_id → keep_id.
 //         Merge phone numbers and emails (avoid duplicates). Soft-delete merged.
 // SEC-H25: merge is a destructive bulk operation — gate behind customers.merge.
-// The inline role check below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.post(
   '/merge',
   requirePermission('customers.merge'),
   asyncHandler(async (req, res) => {
-    // Defence-in-depth: requirePermission above is authoritative.
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const { keep_id, merge_id } = req.body;
 
@@ -881,6 +909,33 @@ router.post(
     const combinedTags = [...new Set([...keepTags, ...mergeTags])];
     await adb.run('UPDATE customers SET tags = ? WHERE id = ?', JSON.stringify(combinedTags), kid);
 
+    // Reconcile opt-in / consent flags — most-restrictive wins (TCPA/GDPR).
+    // If either row has opted out / revoked consent, the merged customer inherits
+    // the restriction. Schema defaults: email_opt_in=0, sms_opt_in=0,
+    // sms_consent_marketing=1, sms_consent_transactional=1.
+    const minFlag = (a: unknown, b: unknown, def: number): number => {
+      const na = a == null ? def : Number(a) || 0;
+      const nb = b == null ? def : Number(b) || 0;
+      return Math.min(na, nb);
+    };
+    const reconciledEmailOptIn = minFlag(keepCustomer.email_opt_in, mergeCustomer.email_opt_in, 0);
+    const reconciledSmsOptIn = minFlag(keepCustomer.sms_opt_in, mergeCustomer.sms_opt_in, 0);
+    const reconciledSmsMarketing = minFlag(keepCustomer.sms_consent_marketing, mergeCustomer.sms_consent_marketing, 1);
+    const reconciledSmsTransactional = minFlag(keepCustomer.sms_consent_transactional, mergeCustomer.sms_consent_transactional, 1);
+    await adb.run(
+      `UPDATE customers
+         SET email_opt_in = ?,
+             sms_opt_in = ?,
+             sms_consent_marketing = ?,
+             sms_consent_transactional = ?
+       WHERE id = ?`,
+      reconciledEmailOptIn,
+      reconciledSmsOptIn,
+      reconciledSmsMarketing,
+      reconciledSmsTransactional,
+      kid,
+    );
+
     // Soft-delete the merged customer
     await adb.run("UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", mid);
 
@@ -891,6 +946,12 @@ router.post(
     audit(req.db, 'customer_merged', req.user!.id, req.ip || 'unknown', {
       keep_id: Number(keep_id),
       merge_id: Number(merge_id),
+      reconciled_consent: {
+        email_opt_in: reconciledEmailOptIn,
+        sms_opt_in: reconciledSmsOptIn,
+        sms_consent_marketing: reconciledSmsMarketing,
+        sms_consent_transactional: reconciledSmsTransactional,
+      },
     });
 
     // Return the updated keep customer
@@ -1054,14 +1115,11 @@ router.post(
 // POST /archive-inactive – Mark customers as inactive if no recent activity
 // ENR-C9: Inactive customer archival
 // SEC-H25: archiving customers is a bulk write — gate behind customers.archive.
-// The inline role check below is kept as defence-in-depth.
 // ---------------------------------------------------------------------------
 router.post(
   '/archive-inactive',
   requirePermission('customers.archive'),
   asyncHandler(async (req, res) => {
-    // Defence-in-depth: requirePermission above is authoritative.
-    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const { months } = req.body;
 
@@ -1345,7 +1403,7 @@ router.post(
          address1, address2, city, state, postcode, country,
          contact_person, contact_relation,
          referred_by, customer_group_id,
-         tax_number, tax_class_id,
+         tax_number, tax_class_id, tax_exempt, tax_exempt_reason,
          email_opt_in, sms_opt_in,
          comments, source, tags,
          lat, lng)
@@ -1355,7 +1413,7 @@ router.post(
          ?, ?, ?, ?, ?, ?,
          ?, ?,
          ?, ?,
-         ?, ?,
+         ?, ?, ?, ?,
          ?, ?,
          ?, ?, ?,
          ?, ?)`,
@@ -1379,6 +1437,11 @@ router.post(
       input.customer_group_id ?? null,
       input.tax_number ?? null,
       input.tax_class_id ?? null,
+      // WEB-UIUX-765: tax_exempt + reason (0/1 + free-form).
+      (input as { tax_exempt?: unknown }).tax_exempt ? 1 : 0,
+      (input as { tax_exempt_reason?: unknown }).tax_exempt_reason
+        ? String((input as { tax_exempt_reason?: unknown }).tax_exempt_reason).slice(0, 500)
+        : null,
       input.email_opt_in ? 1 : 0,
       input.sms_opt_in ? 1 : 0,
       input.comments ?? null,
@@ -1725,6 +1788,39 @@ router.put(
       await adb.run(`UPDATE customers SET ${sets.join(', ')} WHERE id = ?`, ...values);
     }
 
+    // WEB-UIUX-891: when the primary phone or mobile changes, re-key any
+    // sms_messages.conv_phone rows that pointed at the OLD number to the
+    // NEW one so the SMS thread follows the customer instead of becoming
+    // an orphan "stranger" conversation. Old number is also recorded in
+    // customer_phones (history) below via the phones replace path; this
+    // re-key handles the inbox-side continuity gap.
+    {
+      const oldPhone = (existing as { phone?: string | null }).phone || null;
+      const oldMobile = (existing as { mobile?: string | null }).mobile || null;
+      const newPhone = 'phone' in input ? (input as { phone?: string | null }).phone || null : oldPhone;
+      const newMobile = 'mobile' in input ? (input as { mobile?: string | null }).mobile || null : oldMobile;
+      const newPrimary = newPhone || newMobile;
+      const rekeyFroms: string[] = [];
+      if (oldPhone && newPrimary && oldPhone !== newPrimary) rekeyFroms.push(oldPhone);
+      if (oldMobile && newPrimary && oldMobile !== newPrimary && oldMobile !== oldPhone) rekeyFroms.push(oldMobile);
+      for (const oldNumber of rekeyFroms) {
+        try {
+          await adb.run(
+            `UPDATE sms_messages SET conv_phone = ? WHERE conv_phone = ?`,
+            newPrimary,
+            oldNumber,
+          );
+          await adb.run(
+            `UPDATE sms_conversation_reads SET conv_phone = ? WHERE conv_phone = ?`,
+            newPrimary,
+            oldNumber,
+          );
+        } catch {
+          /* non-fatal — at worst the old thread stays orphaned. */
+        }
+      }
+    }
+
     // Replace phones
     if (input.phones !== undefined) {
       await adb.run('DELETE FROM customer_phones WHERE customer_id = ?', id);
@@ -1866,13 +1962,35 @@ router.get(
       WHERE t.customer_id = ? AND t.is_deleted = 0
     `, id);
 
+    // WEB-UIUX-883: aggregate refund history per customer. Credit notes are
+    // tracked either by status='credit_note' or by credit_note_for pointing
+    // to the original invoice (legacy + manual refund path). `i.total` is
+    // negative on credit notes, so we sum ABS to expose a positive "refunded"
+    // figure and a ratio against gross lifetime_value.
+    const refundStats = await adb.get<any>(`
+      SELECT
+        COUNT(*) AS refund_count,
+        COALESCE(SUM(ABS(total)), 0) AS total_refunded
+      FROM invoices
+      WHERE customer_id = ?
+        AND (status = 'credit_note' OR credit_note_for IS NOT NULL)
+    `, id);
+
+    const lifetimeValue = Math.round((stats.lifetime_value || 0) * 100) / 100;
+    const totalRefunded = Math.round((refundStats?.total_refunded || 0) * 100) / 100;
+    const refundCount = Number(refundStats?.refund_count || 0);
+    const refundRatio = lifetimeValue > 0 ? Math.round((totalRefunded / lifetimeValue) * 1000) / 1000 : 0;
+
     res.json({ success: true, data: {
       total_tickets: stats.total_tickets || 0,
-      lifetime_value: Math.round((stats.lifetime_value || 0) * 100) / 100,
+      lifetime_value: lifetimeValue,
       avg_ticket_value: Math.round((stats.avg_ticket_value || 0) * 100) / 100,
       first_visit: stats.first_visit,
       last_visit: stats.last_visit,
       days_since_last_visit: stats.days_since_last_visit || null,
+      total_refunded: totalRefunded,
+      refund_count: refundCount,
+      refund_ratio: refundRatio,
     }});
   }),
 );
@@ -2032,10 +2150,14 @@ router.get(
     const countParams: unknown[] = [];
 
     // SMS messages
+    // WEB-UIUX-882: pad with duration_secs / recording_url / transcription_status
+    // NULLs so call-only fields stay aligned across the UNION ALL.
     if ((!typeFilter || typeFilter === 'sms') && phones.length > 0) {
       unionParts.push(`
         SELECT id, 'sms' AS comm_type, direction, from_number AS from_addr, to_number AS to_addr,
-               message AS content, NULL AS subject, status, created_at
+               message AS content, NULL AS subject, status,
+               NULL AS duration_secs, NULL AS recording_url, NULL AS transcription_status,
+               created_at
         FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})
       `);
       countParts.push(`SELECT COUNT(*) AS n FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`);
@@ -2044,10 +2166,16 @@ router.get(
     }
 
     // Call logs
+    // WEB-UIUX-882: surface duration_secs + recording_url + transcription_status
+    // so the customer-detail Communications tab can render the same call
+    // affordances (duration pill, ▶ play recording, transcript link) as the
+    // standalone CommunicationPage.
     if ((!typeFilter || typeFilter === 'call') && phones.length > 0) {
       unionParts.push(`
         SELECT id, 'call' AS comm_type, direction, from_number AS from_addr, to_number AS to_addr,
-               transcription AS content, NULL AS subject, status, created_at
+               transcription AS content, NULL AS subject, status,
+               duration_secs, recording_url, transcription_status,
+               created_at
         FROM call_logs WHERE conv_phone IN (${phonePlaceholders})
       `);
       countParts.push(`SELECT COUNT(*) AS n FROM call_logs WHERE conv_phone IN (${phonePlaceholders})`);
@@ -2059,7 +2187,9 @@ router.get(
     if ((!typeFilter || typeFilter === 'email') && emails.length > 0) {
       unionParts.push(`
         SELECT id, 'email' AS comm_type, 'outbound' AS direction, from_address AS from_addr, to_address AS to_addr,
-               body AS content, subject, status, created_at
+               body AS content, subject, status,
+               NULL AS duration_secs, NULL AS recording_url, NULL AS transcription_status,
+               created_at
         FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})
       `);
       countParts.push(`SELECT COUNT(*) AS n FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`);

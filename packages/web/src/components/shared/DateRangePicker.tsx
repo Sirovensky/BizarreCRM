@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Calendar, ChevronDown } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { toLocalDateString } from '@/utils/format';
 import { Button } from './Button';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -31,6 +32,9 @@ const DEFAULT_PRESETS: Preset[] = [
   { label: 'Last 30 Days', value: 'last_30' },
   { label: 'This Month', value: 'this_month' },
   { label: 'Last Month', value: 'last_month' },
+  { label: 'This Year', value: 'this_year' },
+  { label: 'Last Year', value: 'last_year' },
+  { label: 'All Time', value: 'all_time' },
   { label: 'Custom', value: 'custom' },
 ];
 
@@ -52,7 +56,9 @@ function getPresetLabel(presets: Preset[], value: DateRangeValue): string {
 // ─── Component ───────────────────────────────────────────────────────
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  // WEB-UIUX-788: local-calendar Y-M-D — preserves the user's wall-clock
+  // "today" instead of rolling forward to tomorrow after ~4pm west of UTC.
+  return toLocalDateString(new Date());
 }
 
 export function DateRangePicker({

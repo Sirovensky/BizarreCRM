@@ -56,7 +56,17 @@ async function normalizeOrientation(file: File): Promise<Blob> {
       // Font scales with image size so it remains legible on both thumbnails
       // and full-res exports (floor at 14px, cap at 36px).
       const fontSize = Math.min(36, Math.max(14, Math.round(canvas.width * 0.022)));
-      const label = formatTimestamp(new Date());
+      // BUGHUNT-2026-05-10-43: prefer the file's capture timestamp
+      // (`file.lastModified`) over `Date.now()` so the burned-in stamp
+      // reflects WHEN the photo was taken — not when the user uploaded
+      // it minutes/hours later. Chain-of-custody evidence depends on
+      // capture time, not upload time. Fall back to `now` only when the
+      // browser provides no lastModified (unusual but possible for
+      // synthesized Blobs).
+      const captureMs = Number.isFinite(file.lastModified) && file.lastModified > 0
+        ? file.lastModified
+        : Date.now();
+      const label = formatTimestamp(new Date(captureMs));
       const padding = Math.round(fontSize * 0.6);
       ctx.font = `bold ${fontSize}px monospace`;
       const textWidth = ctx.measureText(label).width;
@@ -120,6 +130,7 @@ export function PhotoCapturePage() {
   const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const [error, setError] = useState('');
   const [tokenExpired, setTokenExpired] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -190,6 +201,14 @@ export function PhotoCapturePage() {
     if (!photos.length || !ticketId || !deviceId || !token) return;
     setUploading(true);
     setError('');
+    // WEB-UIUX-756: AbortController + extended timeout for cellular. Without
+    // it the user has no escape hatch if the radio drops mid-multipart; the
+    // bundle keeps retrying until the global 30s axios cap aborts with a
+    // generic "timeout" toast. With an explicit controller the Cancel button
+    // (rendered below when uploading) can abort cleanly and the timeout is
+    // raised to 5 min so a 200MB cellular upload has a fair window.
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
     try {
       // WEB-UIUX-510: normalise orientation + strip EXIF before upload.
       const blobs = await Promise.all(photos.map((p) => normalizeOrientation(p.file)));
@@ -202,10 +221,17 @@ export function PhotoCapturePage() {
       formData.append('type', 'pre');
       await api.post(`/tickets/${ticketId}/photos`, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+        signal: controller.signal,
+        timeout: 5 * 60 * 1000,
       });
       setUploaded(true);
     } catch (e: unknown) {
-      const err = e as { response?: { status?: number; data?: { message?: string } } } | undefined;
+      const err = e as { name?: string; code?: string; response?: { status?: number; data?: { message?: string } } } | undefined;
+      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') {
+        setError('Upload cancelled. Tap Upload again to retry.');
+        toast('Upload cancelled');
+        return;
+      }
       const status = err?.response?.status;
       // WEB-S4-028: distinguish expired/invalid link from generic upload failure
       if (status === 401 || status === 403) {
@@ -218,8 +244,14 @@ export function PhotoCapturePage() {
       // the failure impossible to miss even if the page is scrolled.
       toast.error(msg);
     } finally {
+      uploadAbortRef.current = null;
       setUploading(false);
     }
+  };
+
+  // WEB-UIUX-756: Cancel button for the in-flight upload.
+  const cancelUpload = () => {
+    uploadAbortRef.current?.abort();
   };
 
   if (!token) {
@@ -365,17 +397,31 @@ export function PhotoCapturePage() {
 
         {/* Upload */}
         {photos.length > 0 && (
-          <button
-            onClick={handleUpload}
-            disabled={uploading}
-            className="flex items-center justify-center gap-3 w-full py-5 bg-green-600 active:bg-green-700 text-white rounded-2xl font-semibold text-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none shadow-lg"
-          >
-            {uploading ? (
-              <><Loader2 className="h-6 w-6 animate-spin" /> Uploading...</>
-            ) : (
-              <><Upload className="h-6 w-6" /> Save {photos.length} Photo{photos.length !== 1 ? 's' : ''}</>
+          <>
+            <button
+              onClick={handleUpload}
+              disabled={uploading}
+              className="flex items-center justify-center gap-3 w-full py-5 bg-green-600 active:bg-green-700 text-white rounded-2xl font-semibold text-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none shadow-lg"
+            >
+              {uploading ? (
+                <><Loader2 className="h-6 w-6 animate-spin" /> Uploading...</>
+              ) : (
+                <><Upload className="h-6 w-6" /> Save {photos.length} Photo{photos.length !== 1 ? 's' : ''}</>
+              )}
+            </button>
+            {/* WEB-UIUX-756: explicit Cancel button surfaces only while the
+                multipart upload is in flight. AbortController short-circuits
+                the request so a dropped cellular connection has an escape
+                hatch instead of waiting for the 5-minute timeout. */}
+            {uploading && (
+              <button
+                onClick={cancelUpload}
+                className="flex items-center justify-center gap-2 w-full py-3 bg-surface-700 hover:bg-surface-600 active:bg-surface-800 text-surface-50 rounded-xl font-medium text-sm transition-colors"
+              >
+                Cancel upload
+              </button>
             )}
-          </button>
+          </>
         )}
 
         <p className="text-surface-600 text-xs text-center">

@@ -90,7 +90,9 @@ coverage/
 *.md
 !README.md
 !TODO.md
+!TODO-blocked.md
 !DONETODOS.md
+!CLAUDE.md
 !SECURITY.md
 !LICENSES.md
 !CODE_OF_CONDUCT.md

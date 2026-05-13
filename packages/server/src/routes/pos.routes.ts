@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { AppError } from '../middleware/errorHandler.js';
+import { ERROR_CODES } from '../utils/errorCodes.js';
 import {
   validatePrice,
   validateIntegerQuantity,
@@ -8,11 +9,11 @@ import {
   roundCents,
   toCents,
 } from '../utils/validate.js';
-import { writeCommission } from '../utils/commissions.js';
+import { writeCommission, reverseCommission } from '../utils/commissions.js';
 import { accruePaymentPoints } from '../services/notifications.js';
 import { generateOrderId } from '../utils/format.js';
 import { broadcast } from '../ws/server.js';
-import { WS_EVENTS } from '@bizarre-crm/shared';
+import { PERMISSIONS, WS_EVENTS } from '@bizarre-crm/shared';
 import { roundCurrency } from '../utils/currency.js';
 import { idempotent } from '../middleware/idempotency.js';
 import { config } from '../config.js';
@@ -27,14 +28,57 @@ import { isCommissionLocked } from './_team.payroll.js';
 import { buildKitDecrementTxQueries } from './inventory.routes.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
+import { getInvoicePitSnapshot } from '../utils/invoiceSnapshot.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePermission } from '../middleware/auth.js';
+// BUGHUNT-2026-05-10-04: per-user rate limit on financial POS routes so a
+// compromised session can't burst-spam /sales, /refund, /cash-in, etc.
+import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { requirePosPinSale, requirePosPinByMode } from '../middleware/requirePosPin.js';
 import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
-import { verifyTenantStripePaymentIntent } from '../services/tenantStripe.js';
+import { verifyTenantStripePaymentIntent, refundTenantStripePayment } from '../services/tenantStripe.js';
+import { isBlockChypEnabled, processRefund as blockchypProcessRefund } from '../services/blockchyp.js';
 
 const logger = createLogger('pos');
 
 const router = Router();
+
+// BUGHUNT-2026-05-10-04: per-user rate-limit caps for financial POS surfaces.
+// Defaults sized for a busy cashier in a high-volume shop:
+//   60 sales / refunds per minute (1/s sustained burst with headroom)
+//   30 cash-in / cash-out / drawer ops per minute
+// Window is 60s wall-clock per category+user. A compromised session that
+// tries to burst >60 sales/min hits a 429 with retry-after seconds; the
+// legitimate cashier has zero practical risk of tripping it.
+const POS_FINANCIAL_RATE_WINDOW_MS = 60_000;
+const POS_FINANCIAL_RATE_MAX_SALES = 60;
+const POS_FINANCIAL_RATE_MAX_DRAWER = 30;
+
+function guardPosFinancialRate(
+  req: any,
+  // Bug-review fix: dropped unused 'pos_refunds' category (no callsite passed
+  // it). /return is the cashier refund flow and shares the sales cap.
+  category: 'pos_sales' | 'pos_return' | 'pos_drawer',
+): void {
+  const userId = req?.user?.id;
+  if (!userId) return; // unauthenticated requests fail earlier; just skip
+  const cap = category === 'pos_drawer'
+    ? POS_FINANCIAL_RATE_MAX_DRAWER
+    : POS_FINANCIAL_RATE_MAX_SALES;
+  const result = consumeWindowRate(
+    req.db,
+    category,
+    String(userId),
+    cap,
+    POS_FINANCIAL_RATE_WINDOW_MS,
+  );
+  if (!result.allowed) {
+    throw new AppError(
+      `Too many ${category.replace('pos_', '')} operations — slow down and retry in ${result.retryAfterSeconds}s.`,
+      429,
+    );
+  }
+}
 
 const POS_SIGNATURE_MAX_CHARS = 100 * 1024;
 function validateOptionalSignatureDataUrl(value: unknown): string | null {
@@ -189,7 +233,7 @@ router.get('/products', asyncHandler(async (req, res) => {
 }));
 
 // GET /pos/register - current register state
-router.get('/register', asyncHandler(async (req, res) => {
+router.get('/register', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const [cashInRow, cashOutRow, cashPaymentsRow, recentEntries] = await Promise.all([
     adb.get<any>('SELECT COALESCE(SUM(amount),0) as t FROM cash_register WHERE type = \'cash_in\' AND DATE(created_at) = DATE(\'now\')'),
@@ -223,7 +267,8 @@ router.get('/register', asyncHandler(async (req, res) => {
 }));
 
 // POST /pos/cash-in
-router.post('/cash-in', idempotent, asyncHandler(async (req, res) => {
+router.post('/cash-in', requirePermission(PERMISSIONS.POS_CASH_REGISTER), idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_drawer');
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -239,7 +284,8 @@ router.post('/cash-in', idempotent, asyncHandler(async (req, res) => {
 }));
 
 // POST /pos/cash-out
-router.post('/cash-out', idempotent, asyncHandler(async (req, res) => {
+router.post('/cash-out', requirePermission(PERMISSIONS.POS_CASH_REGISTER), idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_drawer');
   requireAdminOrManagerRole(req);
   const adb = req.asyncDb;
   const { amount, reason } = req.body;
@@ -273,6 +319,7 @@ router.post('/cash-out', idempotent, asyncHandler(async (req, res) => {
 //          transaction — no precheck/deduct race.
 //   EM6:   inserts employee_tips row linking tip to cashier.
 router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_sales');
   const adb = req.asyncDb;
   const db = req.db;
   const cashierId = req.user!.id;
@@ -544,6 +591,30 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
     throw new AppError('Discount cannot exceed subtotal + tax', 400);
   }
 
+  // WEB-UIUX-766: server-enforced cashier discount cap. `pos_max_cashier_discount_pct`
+  // store_config (0-100, integer) caps the per-sale manual discount for
+  // non-admin/non-manager users. Admin and manager bypass the cap because
+  // they own pricing decisions; everyone else is blocked. Membership
+  // discount is computed server-side from the tier and bypasses the cap
+  // (already a contractual benefit) — we only constrain the explicit
+  // `discount` field. Skipped when the cap is empty or 100.
+  if (subtotal > 0 && discount > 0 && req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    const capRow = await adb.get<{ value: string }>(
+      "SELECT value FROM store_config WHERE key = 'pos_max_cashier_discount_pct'",
+    );
+    const rawCap = capRow?.value ?? '';
+    const capPct = Number.parseFloat(rawCap);
+    if (Number.isFinite(capPct) && capPct >= 0 && capPct < 100) {
+      const maxDiscount = roundCents(subtotal * (capPct / 100));
+      if (discount > maxDiscount) {
+        throw new AppError(
+          `Discount exceeds your role cap (${capPct}% = ${maxDiscount.toFixed(2)}). Manager approval required.`,
+          403,
+        );
+      }
+    }
+  }
+
   // Final total = subtotal − discount + tax + tip. Because tax was computed
   // on line net (already discount-adjusted), re-subtracting `effectiveDiscount`
   // would double-count. Instead we subtract the DELTA between effectiveDiscount
@@ -628,11 +699,18 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
 
   const txQueries: TxQuery[] = [];
 
+  // WEB-UIUX-895: capture customer/store/jurisdiction at create time so a
+  // POS-sale reprint 6 months later doesn't lie about a renamed customer
+  // profile, store banner, or shifted jurisdiction. Print pages prefer the
+  // snapshot when populated and fall back to the live row when NULL.
+  const pit = await getInvoicePitSnapshot(adb, resolvedCustomerId);
+
   // 1. Invoice
   txQueries.push({
     sql: `INSERT INTO invoices
-            (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by,
+             customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       orderId,
       resolvedCustomerId,
@@ -645,6 +723,10 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
       status,
       notes ?? null,
       cashierId,
+      pit.customer_name_snapshot,
+      pit.customer_address_snapshot,
+      pit.store_name_snapshot,
+      pit.tax_jurisdiction_snapshot,
     ],
   });
   const INVOICE_RESULT_INDEX = 0;
@@ -961,6 +1043,7 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
 // header dedupes retries (middleware.idempotent).
 // ---------------------------------------------------------------------------
 router.post('/sales', idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_sales');
   const adb = req.asyncDb;
   const db = req.db;
   const cashierId = req.user!.id;
@@ -1133,6 +1216,24 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
     });
   }
 
+  // WEB-UIUX-766: same cashier-discount cap on checkout-with-ticket path.
+  if (subtotal > 0 && cartDiscount > 0 && req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    const capRow = await adb.get<{ value: string }>(
+      "SELECT value FROM store_config WHERE key = 'pos_max_cashier_discount_pct'",
+    );
+    const rawCap = capRow?.value ?? '';
+    const capPct = Number.parseFloat(rawCap);
+    if (Number.isFinite(capPct) && capPct >= 0 && capPct < 100) {
+      const maxDiscount = roundCents(subtotal * (capPct / 100));
+      if (cartDiscount > maxDiscount) {
+        throw new AppError(
+          `Cart discount exceeds your role cap (${capPct}% = ${maxDiscount.toFixed(2)}). Manager approval required.`,
+          403,
+        );
+      }
+    }
+  }
+
   if (cartDiscount > roundCents(subtotal + total_tax)) {
     throw new AppError('Cart discount cannot exceed subtotal + tax', 400);
   }
@@ -1215,11 +1316,17 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
   // ---- Build atomic transaction queue ------------------------------------
   const txQueries: TxQuery[] = [];
 
+  // WEB-UIUX-895: capture customer/store/jurisdiction at create time so a
+  // ticket-checkout reprint stays accurate after renames or jurisdiction
+  // changes. Print pages fall back to live row when these are NULL.
+  const pitTicket = await getInvoicePitSnapshot(adb, resolvedCustomerId);
+
   txQueries.push({
     sql: `INSERT INTO invoices
             (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-             amount_paid, amount_due, status, notes, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             amount_paid, amount_due, status, notes, created_by,
+             customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       invoiceOrderId,
       resolvedCustomerId,
@@ -1233,6 +1340,10 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
       amountDue > 0 ? 'partial' : 'paid',
       typeof notes === 'string' ? notes.slice(0, 5000) : null,
       cashierId,
+      pitTicket.customer_name_snapshot,
+      pitTicket.customer_address_snapshot,
+      pitTicket.store_name_snapshot,
+      pitTicket.tax_jurisdiction_snapshot,
     ],
   });
 
@@ -1404,6 +1515,7 @@ async function calcTaxAsync(adb: AsyncDb, price: number, taxClassId: number | nu
 
 // POST /pos/checkout-with-ticket - Create ticket + invoice + optional payment in one transaction
 router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_sales');
   const adb = req.asyncDb;
   const db = req.db;
   const userId = req.user!.id;
@@ -1429,7 +1541,9 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   // Pre-transaction async reads
   const [requireReferral, customerRow, defaultTaxClass, membershipEnabled, customerMembership] = await Promise.all([
     adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_require_referral'"),
-    customer_id ? adb.get<AnyRow>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id) : Promise.resolve(undefined),
+    // WEB-UIUX-765: also pull tax_exempt + reason so the totals path can
+    // zero-tax every line for resale / non-profit / govt customers.
+    customer_id ? adb.get<AnyRow>('SELECT id, tax_exempt, tax_exempt_reason FROM customers WHERE id = ? AND is_deleted = 0', customer_id) : Promise.resolve(undefined),
     adb.get<AnyRow>("SELECT id, rate FROM tax_classes WHERE is_default = 1 LIMIT 1"),
     adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'membership_enabled'"),
     customer_id ? adb.get<AnyRow>(`
@@ -1440,6 +1554,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       ORDER BY cs.created_at DESC LIMIT 1
     `, customer_id) : Promise.resolve(undefined),
   ]);
+  // WEB-UIUX-765: top-level flag used below to zero out tax_class_id on every
+  // taxable line so totals.ts computes zero tax. Reason copy lives on the
+  // customer row + the invoice notes for audit.
+  const customerIsTaxExempt = Number((customerRow as { tax_exempt?: number } | undefined)?.tax_exempt) === 1;
 
   // POS7: walk-in sales are allowed, but instead of storing customer_id = null
   // (which leaves rows orphaned from every customer-scoped report) we resolve
@@ -1456,7 +1574,9 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   }
 
   // Get default tax class for taxable items
-  const defaultTaxClassId = defaultTaxClass?.id ?? null;
+  // WEB-UIUX-765: tax-exempt customer forces the default class to null so
+  // computeLineItemTax sees no class and returns 0 for every line.
+  const defaultTaxClassId = customerIsTaxExempt ? null : (defaultTaxClass?.id ?? null);
 
   let ticketId: number | null = existing_ticket_id ? Number(existing_ticket_id) : null;
   let ticketOrderId: string | null = null;
@@ -1522,6 +1642,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   interface PreparedDevice {
     device_name: string;
     device_type: string | null;
+    device_model_id: number | null;
     imei: string | null;
     serial: string | null;
     security_code: string | null;
@@ -1653,9 +1774,14 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     for (const dev of ticketData.devices) {
       const devicePrice = dev.price ?? dev.labor_price ?? 0;
       const lineDiscount = dev.line_discount ?? 0;
-      // Repairs (labor) default to non-taxable; explicit taxable flag overrides
-      const devTaxClassId = dev.tax_class_id ?? (dev.taxable === true ? defaultTaxClassId : null);
-      const taxAmount = await calcTaxAsync(adb, devicePrice - lineDiscount, devTaxClassId, dev.tax_inclusive ?? false);
+      // Repairs (labor) default to non-taxable; explicit taxable flag overrides.
+      // WEB-UIUX-765: customerIsTaxExempt zeroes everything regardless.
+      const devTaxClassId = customerIsTaxExempt
+        ? null
+        : (dev.tax_class_id ?? (dev.taxable === true ? defaultTaxClassId : null));
+      const taxAmount = customerIsTaxExempt
+        ? 0
+        : await calcTaxAsync(adb, devicePrice - lineDiscount, devTaxClassId, dev.tax_inclusive ?? false);
       const deviceTotal = roundCurrency(devicePrice - lineDiscount + taxAmount);
 
       const warrantyDays = (dev.warranty_days === undefined || dev.warranty_days === null)
@@ -1680,6 +1806,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       preparedDevices.push({
         device_name: dev.device_name ?? '',
         device_type: dev.device_type ?? null,
+        device_model_id: dev.device_model_id ?? null,
         imei: dev.imei ?? null,
         serial: dev.serial ?? null,
         security_code: dev.security_code ?? null,
@@ -1830,8 +1957,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     const unitPrice = validatePrice(inv.retail_price ?? 0, 'retail_price');
     const lineGross = roundCents(qty * unitPrice);
     const lineSubtotal = lineGross;
-    const taxClassId = inv.tax_class_id ?? null;
-    const lineTax = inv.tax_inclusive
+    // WEB-UIUX-765: exempt customer forces taxClassId to null so calcTaxAsync
+    // returns 0 regardless of the item's own class.
+    const taxClassId = customerIsTaxExempt ? null : (inv.tax_class_id ?? null);
+    const lineTax = inv.tax_inclusive || customerIsTaxExempt
       ? 0
       : roundCents(await calcTaxAsync(adb, lineSubtotal, taxClassId, false));
 
@@ -1899,11 +2028,79 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   const manualDiscount = ticketData?.discount
     ? validatePrice(ticketData.discount, 'discount')
     : 0;
+  // WEB-UIUX-1227: pos_max_discount_cents + pos_max_discount_pct + manager
+  // gate. Either cap trips rejects the checkout outright; manager flag
+  // requires admin/manager role to apply any discount > 0. Membership-tier
+  // discounts bypass these caps (those are policy-driven, not operator
+  // discretion).
+  if (manualDiscount > 0) {
+    const [maxCentsRow, maxPctRow, requireManagerRow] = await Promise.all([
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_max_discount_cents'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_max_discount_pct'"),
+      adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'pos_require_manager_for_discount'"),
+    ]);
+    const maxCents = Number(maxCentsRow?.value);
+    if (Number.isFinite(maxCents) && maxCents > 0) {
+      const manualCents = Math.round(manualDiscount * 100);
+      if (manualCents > maxCents) {
+        throw new AppError(
+          `Discount of $${manualDiscount.toFixed(2)} exceeds the configured cap of $${(maxCents / 100).toFixed(2)}.`,
+          400,
+        );
+      }
+    }
+    const maxPct = Number(maxPctRow?.value);
+    if (Number.isFinite(maxPct) && maxPct > 0 && maxPct <= 100 && invoiceSubtotal > 0) {
+      const appliedPct = (manualDiscount / invoiceSubtotal) * 100;
+      if (appliedPct > maxPct + 0.001) {
+        throw new AppError(
+          `Discount of ${appliedPct.toFixed(1)}% exceeds the configured cap of ${maxPct}%.`,
+          400,
+        );
+      }
+    }
+    const requireManager = String(requireManagerRow?.value ?? '').toLowerCase() === '1'
+      || String(requireManagerRow?.value ?? '').toLowerCase() === 'true';
+    if (requireManager) {
+      const role = req.user?.role;
+      if (role !== 'admin' && role !== 'manager') {
+        throw new AppError(
+          'Discounts require manager approval. Have a manager PIN-gate the discount before checkout.',
+          403,
+        );
+      }
+    }
+  }
   const membershipPct = await getMembershipDiscountPct(adb, customerId);
   const membershipDiscountAmt = membershipPct > 0
     ? roundCents(invoiceSubtotal * (membershipPct / 100))
     : 0;
-  const discount = roundCents(Math.max(manualDiscount, membershipDiscountAmt));
+  // WEB-UIUX-1228: surface which discount path won + whether they could
+  // stack. Default still takes Math.max (membership wins when larger), but
+  // when `stack_membership` is passed we sum both, capped at invoiceSubtotal.
+  // The response payload below ships `discount_breakdown` so the cashier UI
+  // can render "membership ($30) replaced manual ($5)" instead of silently
+  // dropping the manual reason.
+  const stackMembership = req.body?.stack_membership === true;
+  let discount: number;
+  let discountSource: 'manual' | 'membership' | 'stacked' | 'none';
+  if (stackMembership) {
+    discount = roundCents(Math.min(manualDiscount + membershipDiscountAmt, invoiceSubtotal));
+    discountSource = discount > 0 ? 'stacked' : 'none';
+  } else if (membershipDiscountAmt > manualDiscount) {
+    discount = membershipDiscountAmt;
+    discountSource = membershipDiscountAmt > 0 ? 'membership' : 'none';
+  } else {
+    discount = manualDiscount;
+    discountSource = manualDiscount > 0 ? 'manual' : 'none';
+  }
+  const discountBreakdown = {
+    manual: manualDiscount,
+    membership: membershipDiscountAmt,
+    applied: discount,
+    source: discountSource,
+    manual_dropped: !stackMembership && membershipDiscountAmt > manualDiscount && manualDiscount > 0,
+  };
 
   // Round subtotal + tax, then cap discount, then compute total.
   const roundedSubtotal = roundCents(invoiceSubtotal);
@@ -1926,10 +2123,47 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
 
   // Check if invoice already exists for this ticket (created during check-in).
   // Existing ticket → UPDATE + DELETE-and-reinsert lines. New ticket → INSERT.
+  // Layer-1 guard: an already-paid invoice MUST NOT be silently re-tendered.
+  // Previous behaviour wiped `amount_paid`, deleted the line items, and added
+  // duplicate payment rows — so the same ticket could be "checked out" any
+  // number of times and the server happily clobbered INV-N each pass. Read
+  // status + paid totals up-front; refuse with 409 when the invoice is
+  // already settled.
   let existingInvoiceId: number | null = null;
+  let existingInvoicePaidCents = 0;
+  let existingInvoiceTotalCents = 0;
+  let existingInvoiceStatus: string | null = null;
+  let existingInvoiceOrderId: string | null = null;
   if (ticketId) {
-    const existingInvoice = await adb.get<AnyRow>('SELECT id FROM invoices WHERE ticket_id = ?', ticketId);
-    if (existingInvoice) existingInvoiceId = existingInvoice.id;
+    const existingInvoice = await adb.get<AnyRow>(
+      'SELECT id, order_id, status, amount_paid, total FROM invoices WHERE ticket_id = ?',
+      ticketId,
+    );
+    if (existingInvoice) {
+      existingInvoiceId = existingInvoice.id;
+      existingInvoiceStatus = String(existingInvoice.status ?? '');
+      existingInvoiceOrderId = existingInvoice.order_id ?? null;
+      existingInvoicePaidCents = roundCents(Number(existingInvoice.amount_paid ?? 0));
+      existingInvoiceTotalCents = roundCents(Number(existingInvoice.total ?? 0));
+    }
+  }
+  if (
+    mode === 'checkout'
+    && existingInvoiceId
+    && existingInvoiceStatus === 'paid'
+  ) {
+    throw new AppError(
+      `Invoice ${existingInvoiceOrderId ?? `#${existingInvoiceId}`} is already paid in full. Refund or void it before re-tendering.`,
+      409,
+      ERROR_CODES.ERR_RESOURCE_CONFLICT,
+      {
+        invoice_id: existingInvoiceId,
+        invoice_order_id: existingInvoiceOrderId,
+        status: existingInvoiceStatus,
+        amount_paid_cents: existingInvoicePaidCents,
+        total_cents: existingInvoiceTotalCents,
+      },
+    );
   }
 
   // POS7 safety net: if the flow somehow reaches here without a customerId
@@ -2183,17 +2417,18 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
     for (const d of preparedDevices) {
       txQueries.push({
         sql: `
-          INSERT INTO ticket_devices (ticket_id, device_name, device_type, imei, serial, security_code,
+          INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, imei, serial, security_code,
                                       color, network, status_id, assigned_to, service_id, service_name, price, line_discount,
                                       tax_amount, tax_class_id, tax_inclusive, total, warranty, warranty_days,
                                       due_on, device_location, additional_notes, pre_conditions, post_conditions,
                                       created_at, updated_at)
-          VALUES (${TICKET_ID_SQL}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (${TICKET_ID_SQL}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         params: [
           ticketIdParam(),
           d.device_name,
           d.device_type,
+          d.device_model_id,
           d.imei,
           d.serial,
           d.security_code,
@@ -2273,6 +2508,19 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
 
   // 5b. Invoice (create or update)
   if (existingInvoiceId) {
+    // Layer-2: accumulate prior amount_paid with this run's tendered amount
+    // so installments / additional payments don't clobber earlier ones. The
+    // legacy code wrote `amount_paid = paidAmount`, throwing away every prior
+    // payment. We're guaranteed at this point that the invoice is NOT 'paid'
+    // (the Layer-1 guard above bails on that), so combining is safe.
+    const combinedPaid = roundCents(existingInvoicePaidCents + (isPaid ? paidAmount : 0));
+    const cappedPaid = Math.min(combinedPaid, invoiceTotal);
+    const remainingDue = roundCents(Math.max(0, invoiceTotal - cappedPaid));
+    const nextStatus = cappedPaid >= invoiceTotal && invoiceTotal > 0
+      ? 'paid'
+      : cappedPaid > 0
+        ? 'partial'
+        : 'unpaid';
     txQueries.push({
       sql: `
         UPDATE invoices SET
@@ -2286,9 +2534,9 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         discount,
         roundedTax,
         invoiceTotal,
-        isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
-        isPaid ? roundCents(Math.max(0, invoiceTotal - paidAmount)) : invoiceTotal,
-        isPaid ? (paidAmount >= invoiceTotal ? 'paid' : 'partial') : 'unpaid',
+        cappedPaid,
+        remainingDue,
+        nextStatus,
         now(),
         existingInvoiceId,
       ],
@@ -2308,11 +2556,26 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       ? [ticketOrderId]
       : (ticketId ? [ticketId] : []);
 
+    // WEB-UIUX-1230: persist the operator's discount reason on the
+    // invoice row so non-ticket (product-only) sales don't lose the
+    // audit context. Without this, InvoiceDetailPage renders the
+    // parenthetical reason as blank for every retail checkout even
+    // though the client sent it. ticketData?.discount_reason is set on
+    // every cart (UnifiedPosPage.buildCheckoutPayload always populates
+    // it from the cart's `discountReason` field).
+    const invoiceDiscountReason =
+      typeof ticketData?.discount_reason === 'string'
+        && ticketData.discount_reason.trim()
+        ? ticketData.discount_reason.trim().slice(0, 500)
+        : null;
+    // WEB-UIUX-895: PIT snapshot for retail / product-only checkout invoice.
+    const pitRetail = await getInvoicePitSnapshot(adb, customerId);
     txQueries.push({
       sql: `
         INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason, total_tax, total,
-                              amount_paid, amount_due, status, created_by, created_at, updated_at)
-        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              amount_paid, amount_due, status, created_by, created_at, updated_at,
+                              customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+        VALUES (?, ?, ${invoiceTicketIdSql}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       params: [
         invoiceOrderId,
@@ -2320,7 +2583,7 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         ...invoiceTicketIdParams,
         roundedSubtotal,
         discount,
-        ticketData?.discount_reason ?? null,
+        invoiceDiscountReason,
         roundedTax,
         invoiceTotal,
         isPaid ? roundCents(Math.min(paidAmount, invoiceTotal)) : 0,
@@ -2329,6 +2592,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         userId,
         now(),
         now(),
+        pitRetail.customer_name_snapshot,
+        pitRetail.customer_address_snapshot,
+        pitRetail.store_name_snapshot,
+        pitRetail.tax_jurisdiction_snapshot,
       ],
     });
   }
@@ -2571,6 +2838,10 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
       ...result,
       checkin_default_category: checkinCategory?.value ?? null,
       auto_print_label: autoPrintLabel?.value === '1' || autoPrintLabel?.value === 'true',
+      // WEB-UIUX-1228: discount path transparency so cashier UI can render
+      // "membership ($30) replaced your manual ($5)" instead of silently
+      // swallowing one side.
+      discount_breakdown: discountBreakdown,
       // Membership info for upsell prompt
       membership: customerMembership ? {
         active: true,
@@ -2633,6 +2904,7 @@ router.get('/returnable-invoice/:invoiceId', asyncHandler(async (req, res) => {
 // Admin/manager only.
 // ---------------------------------------------------------------------------
 router.post('/return', idempotent, asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_return');
   const adb = req.asyncDb;
   const db = req.db; // needed for allocateCounter (sync better-sqlite3 handle)
   const userId = req.user!.id;
@@ -2644,10 +2916,23 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     throw new AppError('Only admin or manager can process returns', 403);
   }
 
-  const { invoice_id, items } = req.body as {
+  // SCAN-PROD-REFUND: extend body with `method` so the cashier can pick
+  // where the credit lands. Server validates against the invoice's actual
+  // payments before executing. Default keeps behavior backwards-compatible
+  // (creates credit note + refund row, no money movement) only when caller
+  // sends nothing — but the new clients always send `method`.
+  const REFUND_METHODS = ['original', 'cash', 'card', 'store_credit'] as const;
+  type RefundMethod = typeof REFUND_METHODS[number];
+  const { invoice_id, items, method: rawMethod } = req.body as {
     invoice_id: number;
     items: { line_item_id: number; quantity: number; reason: string }[];
+    method?: string;
   };
+  const refundMethod: RefundMethod | null = (() => {
+    if (!rawMethod) return null;
+    return REFUND_METHODS.includes(rawMethod as RefundMethod) ? (rawMethod as RefundMethod) : null;
+  })();
+  if (rawMethod && !refundMethod) throw new AppError(`Invalid refund method '${rawMethod}'`, 400);
 
   // @audit-fixed: validate invoice_id is a positive integer; previously a string
   // value flowed straight to SQLite as TEXT and matched no row → 404 silently.
@@ -2742,9 +3027,14 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     creditOrderId = generateOrderId('CRN', seqRow!.next_num);
   }
 
+  // WEB-UIUX-895: snapshot the credit note's customer/store/jurisdiction
+  // at creation time so a reprint of the credit note 6 months later
+  // mirrors the live receipt's behaviour.
+  const pitCredit = await getInvoicePitSnapshot(adb, invoice.customer_id);
   const creditResult = await adb.run(`
-    INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 0, 0, ?, 0, 0, 'credit_note', ?, ?, datetime('now'), datetime('now'))
+    INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at,
+                          customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, 0, 0, ?, 0, 0, 'credit_note', ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)
   `,
     creditOrderId,
     invoice.customer_id,
@@ -2752,6 +3042,10 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     -creditTotal,
     `Credit note for return on ${invoice.order_id}. Items: ${returnDetails.map(d => `${d.description} x${d.quantity} (${d.reason})`).join('; ')}`,
     userId,
+    pitCredit.customer_name_snapshot,
+    pitCredit.customer_address_snapshot,
+    pitCredit.store_name_snapshot,
+    pitCredit.tax_jurisdiction_snapshot,
   );
 
   const creditNoteId = Number(creditResult.lastInsertRowid);
@@ -2769,18 +3063,206 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     `, invId, detail.line_item_id, creditNoteId, detail.quantity, detail.reason, userId);
   }
 
-  // Create refund record
+  // ──────────────────────────────────────────────────────────────────────
+  // Refund-method execution. Resolves `original` against the invoice's
+  // captured payments, then routes to one of:
+  //   • cash         → cash_register cash_out + drawer pop
+  //   • blockchyp    → processRefund() against the original txn
+  //   • stripe       → refundTenantStripePayment() against the original PI
+  //   • store_credit → upsert store_credits row for this customer
+  // The credit note + invoice line items already exist at this point, so
+  // any failure here means the credit note stays but the money path didn't
+  // execute. We surface the error so the cashier can choose another method
+  // (the credit note is the receipt-of-record either way).
+  // ──────────────────────────────────────────────────────────────────────
+  let refundExecution: {
+    method: string;
+    processor?: 'blockchyp' | 'stripe' | null;
+    processor_transaction_id?: string | null;
+    cash_register_entry_id?: number | null;
+    store_credit_id?: number | null;
+    test_mode?: boolean;
+  } | null = null;
+  let refundMethodResolved: RefundMethod | null = refundMethod;
+
+  if (refundMethod) {
+    // Resolve `original`: pick the most-recent captured payment method on
+    // this invoice. If we can't tell (no captured payments), fall back to
+    // cash so the cashier can still close the loop in person.
+    if (refundMethod === 'original') {
+      const lastPayment = await adb.get<{ method: string | null; processor: string | null }>(
+        `SELECT method, processor FROM payments
+          WHERE invoice_id = ?
+            AND COALESCE(capture_state, 'captured') = 'captured'
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        invId,
+      );
+      const m = String(lastPayment?.method ?? '').toLowerCase();
+      const p = String(lastPayment?.processor ?? '').toLowerCase();
+      if (m === 'cash') refundMethodResolved = 'cash';
+      else if (m === 'blockchyp' || p === 'blockchyp' || m === 'card' || m === 'credit' || m === 'debit') refundMethodResolved = 'card';
+      else if (m === 'stripe' || p === 'stripe') refundMethodResolved = 'card';
+      else refundMethodResolved = 'cash';
+    }
+
+    if (refundMethodResolved === 'cash') {
+      // Cash refund — record cash_out movement. The drawer-pop signal is
+      // returned in the response body so the client can call the existing
+      // /pos/open-drawer endpoint (kept separate to preserve the existing
+      // hardware integration boundary).
+      const cashOut = await adb.run(
+        `INSERT INTO cash_register (type, amount, reason, user_id, created_at, updated_at)
+         VALUES ('cash_out', ?, ?, ?, datetime('now'), datetime('now'))`,
+        creditTotal,
+        `Refund · invoice ${invoice.order_id ?? invId}`,
+        userId,
+      );
+      refundExecution = {
+        method: 'cash',
+        cash_register_entry_id: Number(cashOut.lastInsertRowid),
+      };
+    } else if (refundMethodResolved === 'card') {
+      // Find the original captured card payment. BlockChyp first (terminal-
+      // attached), Stripe second (online).
+      const blockchypPayment = await adb.get<{
+        id: number;
+        processor_transaction_id: string | null;
+        transaction_id: string | null;
+        amount: number;
+      }>(
+        `SELECT id, processor_transaction_id, transaction_id, amount
+           FROM payments
+          WHERE invoice_id = ?
+            AND LOWER(method) IN ('blockchyp','card','credit','debit')
+            AND COALESCE(capture_state, 'captured') = 'captured'
+            AND COALESCE(processor_transaction_id, transaction_id) IS NOT NULL
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        invId,
+      );
+      const blockchypTxn = blockchypPayment?.processor_transaction_id ?? blockchypPayment?.transaction_id ?? null;
+
+      const stripePayment = await adb.get<{
+        id: number;
+        processor_transaction_id: string | null;
+        transaction_id: string | null;
+        reference: string | null;
+        amount: number;
+      }>(
+        `SELECT id, processor_transaction_id, transaction_id, reference, amount
+           FROM payments
+          WHERE invoice_id = ?
+            AND (LOWER(method) = 'stripe' OR LOWER(COALESCE(processor, '')) = 'stripe')
+            AND COALESCE(capture_state, 'captured') = 'captured'
+            AND COALESCE(processor_transaction_id, transaction_id, reference) IS NOT NULL
+          ORDER BY created_at DESC, id DESC LIMIT 1`,
+        invId,
+      );
+      const stripePI = stripePayment?.processor_transaction_id ?? stripePayment?.transaction_id ?? stripePayment?.reference ?? null;
+
+      if (blockchypTxn) {
+        if (!isBlockChypEnabled(req.db)) throw new AppError('BlockChyp terminal is not enabled for card refund', 400);
+        const r = await blockchypProcessRefund(req.db, creditTotal, blockchypTxn, `pos-return-${creditNoteId}`);
+        if (!r.success) throw new AppError(r.error || 'BlockChyp refund declined', 400);
+        refundExecution = {
+          method: 'card',
+          processor: 'blockchyp',
+          processor_transaction_id: r.transactionId ?? null,
+          test_mode: r.testMode,
+        };
+      } else if (stripePI) {
+        const r = await refundTenantStripePayment(req.db, stripePI, creditTotal, `pos-return-${creditNoteId}`);
+        if (!r.success) throw new AppError(r.error || 'Stripe refund failed', 400);
+        refundExecution = {
+          method: 'card',
+          processor: 'stripe',
+          processor_transaction_id: r.refundId ?? null,
+        };
+      } else {
+        throw new AppError('No captured card payment found for this invoice; pick a different refund method', 400);
+      }
+    } else if (refundMethodResolved === 'store_credit') {
+      if (!invoice.customer_id) throw new AppError('Store credit requires a customer; this invoice has none', 400);
+      // Upsert: idx_store_credits_customer_unique enforces one row per
+      // customer (mig 109). Use INSERT OR IGNORE then UPDATE for atomicity.
+      await adb.run(
+        `INSERT OR IGNORE INTO store_credits (customer_id, amount, created_at, updated_at)
+         VALUES (?, 0, datetime('now'), datetime('now'))`,
+        invoice.customer_id,
+      );
+      const updated = await adb.run(
+        `UPDATE store_credits SET amount = amount + ?, updated_at = datetime('now') WHERE customer_id = ?`,
+        creditTotal,
+        invoice.customer_id,
+      );
+      if (updated.changes === 0) throw new AppError('Could not credit customer store-credit balance', 500);
+      const row = await adb.get<{ id: number }>(`SELECT id FROM store_credits WHERE customer_id = ?`, invoice.customer_id);
+      refundExecution = {
+        method: 'store_credit',
+        store_credit_id: row?.id ?? null,
+      };
+    }
+  }
+
+  // Create refund record. Type/method/status now reflect the actual
+  // execution: a cash refund stores method='cash', a BlockChyp refund stores
+  // processor + processor_transaction_id, etc. Keeps the refunds report
+  // honest about what money moved (the prior code marked everything as a
+  // 'credit_note' regardless of method).
+  const refundType = refundMethodResolved === 'store_credit' ? 'store_credit' : (refundMethod ? 'refund' : 'credit_note');
+  const refundMethodPersist = refundExecution?.processor ?? refundMethodResolved ?? null;
   await adb.run(`
-    INSERT INTO refunds (invoice_id, customer_id, amount, type, reason, status, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 'credit_note', ?, 'completed', ?, datetime('now'), datetime('now'))
-  `, invId, invoice.customer_id, creditTotal, returnDetails.map(d => d.reason).join('; '), userId);
+    INSERT INTO refunds (invoice_id, customer_id, amount, type, reason, method, processor, processor_transaction_id, status, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, datetime('now'), datetime('now'))
+  `,
+    invId, invoice.customer_id, creditTotal,
+    refundType,
+    returnDetails.map(d => d.reason).join('; '),
+    refundMethodPersist,
+    refundExecution?.processor ?? null,
+    refundExecution?.processor_transaction_id ?? null,
+    userId,
+  );
+
+  // WEB-UIUX-1022: reverse commissions for the returned portion. Fraction is
+  // creditTotal / invoice.total so partial returns claw back proportional
+  // commission only. Both invoice + ticket commission sources are reversed
+  // (commissions can attach to either). Payroll-lock conflict surfaces as 403.
+  try {
+    const invoiceTotal = Number(invoice.total) || 0;
+    if (invoiceTotal > 0) {
+      const fraction = Math.min(1, Math.max(0, creditTotal / invoiceTotal));
+      if (fraction > 0) {
+        await reverseCommission(adb, {
+          sourceType: 'invoice',
+          sourceId: invId,
+          fraction,
+          notes: `POS return ${creditOrderId} for invoice ${invoice.order_id}`,
+        });
+        if (invoice.ticket_id) {
+          await reverseCommission(adb, {
+            sourceType: 'ticket',
+            sourceId: invoice.ticket_id,
+            fraction,
+            notes: `POS return ${creditOrderId} for invoice ${invoice.order_id}`,
+          });
+        }
+      }
+    }
+  } catch (commErr) {
+    if (commErr instanceof AppError && commErr.statusCode === 403) throw commErr;
+    logger.warn('pos_return_commission_reversal_failed', {
+      error: commErr instanceof Error ? commErr.message : String(commErr),
+      invoice_id: invId,
+      credit_note_id: creditNoteId,
+    });
+  }
 
   // Audit log
   try {
     await adb.run(
       'INSERT INTO audit_logs (event, user_id, ip_address, details) VALUES (?, ?, ?, ?)',
       'pos_return', userId, ip,
-      JSON.stringify({ invoice_id: invId, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails }),
+      JSON.stringify({ invoice_id: invId, credit_note_id: creditNoteId, credit_note_order_id: creditOrderId, total_credited: creditTotal, items: returnDetails, refund_method: refundMethodResolved, refund_execution: refundExecution }),
     );
   } catch (err) {
     logger.error('audit_log_write_failed', { error: err instanceof Error ? err.message : String(err) });
@@ -2788,24 +3270,31 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
 
   const creditNote = await adb.get<any>('SELECT * FROM invoices WHERE id = ?', creditNoteId);
 
-  res.status(201).json({ success: true, data: { credit_note: creditNote, items: returnDetails, total_credited: creditTotal } });
+  res.status(201).json({
+    success: true,
+    data: {
+      credit_note: creditNote,
+      items: returnDetails,
+      total_credited: creditTotal,
+      refund_method: refundMethodResolved,
+      // Cash refunds set `pop_drawer = true` so the client can call
+      // /pos/open-drawer immediately after success — keeps the existing
+      // hardware integration boundary intact while making the cashier
+      // workflow one-click.
+      pop_drawer: refundMethodResolved === 'cash',
+      refund_execution: refundExecution,
+    },
+  });
 }));
 
 // ==================== ENR-POS4: Cash drawer integration ====================
 // POST /pos/open-drawer — sends a command to open the cash drawer
 // For now, logs the event and returns success. Actual hardware integration is per-deployment.
-router.post('/open-drawer', asyncHandler(async (req, res) => {
+router.post('/open-drawer', requirePermission(PERMISSIONS.POS_CASH_REGISTER), asyncHandler(async (req, res) => {
+  guardPosFinancialRate(req, 'pos_drawer');
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const { reason } = req.body;
-
-  // @audit-fixed: cash drawer is a physical-security gate. Previously ANY
-  // authenticated user (e.g. a kiosk-mode customer-portal session) could call
-  // POST /pos/open-drawer and pop the till. Restrict to admin/manager/cashier.
-  const role = req.user?.role;
-  if (role !== 'admin' && role !== 'manager' && role !== 'cashier') {
-    throw new AppError('Only admin/manager/cashier can open the cash drawer', 403);
-  }
 
   // Log the drawer open event to cash_register table
   await adb.run(`

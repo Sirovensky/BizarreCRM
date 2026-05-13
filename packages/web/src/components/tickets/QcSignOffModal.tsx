@@ -15,14 +15,16 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Camera, Eraser, Check, X, Loader2, CheckCircle2, AlertTriangle, History } from 'lucide-react';
+import { Camera, Eraser, Check, X, Loader2, ClipboardCheck, AlertTriangle, History } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi, settingsApi, ticketApi } from '@/api/endpoints';
 import { formatApiError } from '@/utils/apiError';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
+  maybeConvertHeicToJpeg,
   validateImageFile,
 } from '@/utils/imageUploadPolicy';
 
@@ -78,6 +80,9 @@ export function QcSignOffModal({
   onSigned,
 }: QcSignOffModalProps) {
   const qc = useQueryClient();
+  // WEB-UIUX-911: focus-trap + restore on close so the QC sign-off keyboard
+  // path doesn't drop focus to <body> when the modal dismisses.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
 
   const { data: checklistData, isLoading: checklistLoading } = useQuery({
     queryKey: ['qc-checklist', deviceCategory ?? 'all'],
@@ -136,6 +141,26 @@ export function QcSignOffModal({
   });
   const priorStatus: QcSignOffStatus | null = priorStatusData?.data?.data ?? null;
   const priorSignOff = priorStatus?.signed ? priorStatus.sign_off : null;
+
+  // WEB-UIUX-1096: pull ticket header context (order id, customer, device)
+  // into the modal so a tech with two tabs open can't sign QC against the
+  // wrong job. Fail open if the fetch fails — the modal is still functional
+  // without the breadcrumb chip.
+  const { data: ticketHeaderData } = useQuery({
+    queryKey: ['ticket-header', ticketId],
+    queryFn: () => ticketApi.get(ticketId),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const ticketHeader = ((ticketHeaderData as any)?.data?.data ?? null) as
+    | { order_id?: string; customer_first_name?: string; customer_last_name?: string; devices?: Array<{ device_name?: string }> }
+    | null;
+  const ticketDeviceName = ticketHeader?.devices && ticketHeader.devices.length > 0
+    ? ticketHeader.devices[0]?.device_name ?? null
+    : null;
+  const ticketCustomerName = ticketHeader
+    ? [ticketHeader.customer_first_name, ticketHeader.customer_last_name].filter(Boolean).join(' ').trim() || null
+    : null;
 
   // WEB-UIUX-1094: Reset key is derived from item ids (not just count) so the map resets
   // when the admin edits the checklist mid-session and ids change, not merely when count changes.
@@ -244,8 +269,12 @@ export function QcSignOffModal({
   };
 
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const raw = e.target.files?.[0];
+    if (!raw) return;
+    // WEB-UIUX-1090: HEIC/HEIF arriving from iPhone Safari is transcoded
+    // client-side to JPEG via canvas before validation, so iOS users are not
+    // dead-ended at "convert to JPEG before uploading".
+    const file = await maybeConvertHeicToJpeg(raw);
     // WEB-UIUX-1099: Guard oversized photos before hitting the server.
     if (file.size > 10 * 1024 * 1024) {
       toast.error('Photo too large (max 10MB). Try a smaller image.');
@@ -401,20 +430,41 @@ export function QcSignOffModal({
       onClick={safeClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="qc-signoff-title"
         className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2
-            id="qc-signoff-title"
-            className="flex items-center gap-2 text-lg font-semibold text-surface-900 dark:text-surface-100"
-          >
-            <CheckCircle2 className="h-5 w-5 text-primary-500" />
-            QC Sign-Off
-          </h2>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2
+              id="qc-signoff-title"
+              className="flex items-center gap-2 text-lg font-semibold text-surface-900 dark:text-surface-100"
+            >
+              {/* WEB-UIUX-1107: pre-action icon — CheckCircle2 read as
+                  "completed" (overloaded with dashboard task-done green
+                  check). ClipboardCheck carries an explicit QC/inspection
+                  semantic before the tech has signed. */}
+              <ClipboardCheck className="h-5 w-5 text-primary-500" />
+              QC Sign-Off
+              {/* WEB-UIUX-1096: surface ticket id so a tech with two tabs
+                  open cannot sign against the wrong job. */}
+              {ticketHeader?.order_id && (
+                <span className="ml-1 rounded bg-surface-100 px-2 py-0.5 text-xs font-mono font-normal text-surface-700 dark:bg-surface-800 dark:text-surface-300">
+                  {ticketHeader.order_id}
+                </span>
+              )}
+            </h2>
+            {(ticketCustomerName || ticketDeviceName) && (
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400 truncate" title={`${ticketCustomerName ?? ''}${ticketCustomerName && ticketDeviceName ? ' · ' : ''}${ticketDeviceName ?? ''}`}>
+                {ticketCustomerName}
+                {ticketCustomerName && ticketDeviceName && <span className="mx-1 text-surface-300">·</span>}
+                {ticketDeviceName}
+              </p>
+            )}
+          </div>
           <button
             aria-label="Close"
             onClick={safeClose}
@@ -448,7 +498,16 @@ export function QcSignOffModal({
         ) : items.length === 0 ? (
           <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
             <p>
-              No QC checklist items are configured for this device category. Ask an admin to add some under Settings → Bench / QC.
+              No QC checklist items are configured for this device category.{' '}
+              <a
+                href="/settings/qc-checklist"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline hover:text-yellow-900 dark:hover:text-yellow-100"
+              >
+                Open QC checklist admin
+              </a>{' '}
+              (admin only) to add items.
             </p>
             {/* WEB-UIUX-1103: Recovery affordance — point to the migration that seeds defaults. */}
             <p className="mt-1.5 text-xs opacity-75">
@@ -535,7 +594,7 @@ export function QcSignOffModal({
                   value={rerouteStatusId}
                   onChange={(e) => setRerouteStatusId(Number(e.target.value))}
                   disabled={statusesLoading || activeStatuses.length === 0}
-                  className="mt-1 w-full rounded-lg border border-red-300 bg-white p-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-700 dark:bg-surface-900 dark:text-surface-100"
+                  className="mt-1 w-full rounded-lg border border-red-300 bg-white p-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-700 dark:bg-surface-900 dark:text-surface-100"
                 >
                   {activeStatuses.map((status) => (
                     <option key={status.id} value={status.id}>
@@ -558,17 +617,22 @@ export function QcSignOffModal({
               <>
                 <div className="mb-4">
                   <p className="mb-2 text-xs font-semibold uppercase text-surface-500">
-                    Working device photo
+                    Photo of working device
                   </p>
                   {/* WEB-UIUX-1090: Include HEIC/HEIF so iPhone Safari users are not blocked.
                       NOTE: server ALLOWED_MIMES may need a parallel update to accept
                       image/heic and image/heif — track separately. */}
                   {/* WEB-UIUX-1110: Removed image/webp from accept — webp cannot be captured
                       from iOS Safari camera; jpeg/png/heic/heif cover all real-device cases. */}
+                  {/* WEB-UIUX-1091: capture="environment" so a tap on tablet/
+                      phone opens the rear camera straight to the shutter
+                      instead of the OS file picker. Desktop browsers ignore
+                      `capture` and behave as a file input. */}
                   <input
                     ref={photoInputRef}
                     type="file"
                     accept="image/jpeg,image/png,image/heic,image/heif"
+                    capture="environment"
                     onChange={onPhotoChange}
                     className="hidden"
                   />
@@ -634,7 +698,7 @@ export function QcSignOffModal({
                 rows={2}
                 maxLength={1000}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 p-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
-                placeholder="Any observations the customer should know about..."
+                placeholder="Internal QC notes (not shown to the customer)…"
               />
               {/* WEB-UIUX-1106: Character counter so tech sees remaining chars before truncation. */}
               <div className="text-xs text-surface-400 text-right mt-1">{notes.length} / 1000</div>

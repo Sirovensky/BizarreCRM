@@ -150,7 +150,7 @@ const inventoryImageUpload = multer({
 });
 
 // GET /inventory - list items
-router.get('/', async (req, res) => {
+router.get('/', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { page = '1', keyword, item_type, category, low_stock, reorderable_only, supplier_id, min_price, max_price, hide_out_of_stock, manufacturer, sort_by, sort_order, location_id } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
@@ -218,14 +218,14 @@ router.get('/', async (req, res) => {
       pagination: { page: p, per_page: ps, total, total_pages: Math.ceil(total / ps) },
     },
   });
-});
+}));
 
 // GET /inventory/manufacturers — distinct manufacturer values
-router.get('/manufacturers', async (req, res) => {
+router.get('/manufacturers', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const rows = await adb.all<{ manufacturer: string }>(`SELECT DISTINCT manufacturer FROM inventory_items WHERE manufacturer IS NOT NULL AND manufacturer != '' AND is_active = 1 ORDER BY manufacturer`);
   res.json({ success: true, data: rows.map((r: any) => r.manufacturer) });
-});
+}));
 
 // POST /inventory/import-csv — bulk create items from CSV data
 // SEC-H8: Admin or manager role required for bulk import operations
@@ -237,7 +237,7 @@ router.get('/manufacturers', async (req, res) => {
 //     are rejected up front, not silently clamped.
 // SEC-H25: CSV import is a bulk create — gate behind settings.import_export.
 // The inline role check below is kept as defence-in-depth.
-router.post('/import-csv', requirePermission('settings.import_export'), async (req, res) => {
+router.post('/import-csv', requirePermission('settings.import_export'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
@@ -325,13 +325,13 @@ router.post('/import-csv', requirePermission('settings.import_export'), async (r
 
   audit(req.db, 'inventory_csv_imported', req.user!.id, req.ip || 'unknown', { created: validated.length, errors: 0 });
   res.json({ success: true, data: { created: validated.length, errors: [] } });
-});
+}));
 
 // POST /inventory/bulk-action — bulk update/delete items
 // SEC-H8: Admin or manager role required for bulk operations
 // SEC-H25: gate behind inventory.bulk_action permission. The inline role check
 // below is kept as defence-in-depth.
-router.post('/bulk-action', requirePermission('inventory.bulk_action'), async (req, res) => {
+router.post('/bulk-action', requirePermission('inventory.bulk_action'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
@@ -385,10 +385,10 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), async (r
     value: value !== undefined ? value : undefined,
   });
   res.json({ success: true, data: { affected } });
-});
+}));
 
 // GET /inventory/low-stock
-router.get('/low-stock', async (req, res) => {
+router.get('/low-stock', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const limit = parsePageSize(req.query.limit, 100);
   const items = await adb.all(`
@@ -398,10 +398,10 @@ router.get('/low-stock', async (req, res) => {
     LIMIT ?
   `, limit);
   res.json({ success: true, data: items });
-});
+}));
 
 // GET /inventory/summary — Stock value summary
-router.get('/summary', async (req, res) => {
+router.get('/summary', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const summary = await adb.get(`
     SELECT
@@ -414,21 +414,21 @@ router.get('/summary', async (req, res) => {
     FROM inventory_items WHERE is_active = 1
   `);
   res.json({ success: true, data: summary });
-});
+}));
 
 // GET /inventory/categories
-router.get('/categories', async (req, res) => {
+router.get('/categories', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const rows = await adb.all<{ category: string }>(`SELECT DISTINCT category FROM inventory_items WHERE category IS NOT NULL AND is_active = 1 ORDER BY category`);
   res.json({ success: true, data: rows.map((r: any) => r.category) });
-});
+}));
 
 // ==================== ENR-INV1: Auto-reorder / PO generation ====================
 
 // POST /inventory/auto-reorder — Find low-stock saved rules, group by supplier, create POs
 // SEC-H25: auto-reorder creates purchase orders — gate behind inventory.bulk_action.
 // The inline role check below is kept as defence-in-depth.
-router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (req, res) => {
+router.post('/auto-reorder', requirePermission('inventory.bulk_action'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
   const adb: AsyncDb = req.asyncDb;
@@ -565,12 +565,12 @@ router.post('/auto-reorder', requirePermission('inventory.bulk_action'), async (
       orders: createdOrders,
     },
   });
-});
+}));
 
 // ==================== ENR-INV2: Stock alert digest ====================
 
 // GET /inventory/stock-alerts-summary — Summary of low/out-of-stock items
-router.get('/stock-alerts-summary', async (req, res) => {
+router.get('/stock-alerts-summary', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
 
   const lowStockItems = await adb.all<any>(`
@@ -605,12 +605,12 @@ router.get('/stock-alerts-summary', async (req, res) => {
       })),
     },
   });
-});
+}));
 
 // ==================== ENR-INV3: Inventory variance analysis ====================
 
 // GET /inventory/variance-report — Monthly stock movement variance analysis
-router.get('/variance-report', async (req, res) => {
+router.get('/variance-report', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const months = parseInt(req.query.months as string) || 6;
 
@@ -698,7 +698,7 @@ router.get('/variance-report', async (req, res) => {
       items: flagged,
     },
   });
-});
+}));
 
 // GET /inventory/barcode/:code
 // 2026-04-26 — wrapped in asyncHandler. Without it, a thrown AppError becomes
@@ -711,6 +711,31 @@ router.get('/barcode/:code', asyncHandler(async (req, res) => {
   const item = await adb.get(`SELECT * FROM inventory_items WHERE (sku = ? OR upc = ?) AND is_active = 1`, req.params.code, req.params.code);
   if (!item) throw new AppError('Item not found', 404);
   res.json({ success: true, data: item });
+}));
+
+// WEB-UIUX-1353: exact SKU lookup. The keyword-based /inventory?keyword=X search
+// does fuzzy match — scanning a barcode that prefixes another SKU silently
+// credits an arbitrary item. This route requires an exact match on `sku`
+// (case-insensitive) and returns 404 when no row matches or 409 when more
+// than one is active (real data drift — operator must resolve before the
+// next scan goes through).
+router.get('/by-sku', asyncHandler(async (req, res) => {
+  const adb: AsyncDb = req.asyncDb;
+  const skuRaw = (req.query.sku as string | undefined)?.trim();
+  if (!skuRaw) throw new AppError('sku query param required', 400);
+  if (skuRaw.length > 128) throw new AppError('sku too long (≤128 chars)', 400);
+  const rows = await adb.all<any>(
+    'SELECT * FROM inventory_items WHERE LOWER(sku) = LOWER(?) AND is_active = 1',
+    skuRaw,
+  );
+  if (rows.length === 0) throw new AppError('Item not found', 404);
+  if (rows.length > 1) {
+    throw new AppError(
+      `Multiple active items share SKU '${skuRaw}'. Resolve the duplicate in Inventory before scanning.`,
+      409,
+    );
+  }
+  res.json({ success: true, data: rows[0] });
 }));
 
 // ---------------------------------------------------------------------------
@@ -841,7 +866,7 @@ export async function buildKitDecrementTxQueries(
 }
 
 // GET /inventory/kits — list all kits
-router.get('/kits', async (req, res) => {
+router.get('/kits', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const kits = await adb.all<Record<string, unknown>>(
     `SELECT k.*, COUNT(ki.id) AS item_count
@@ -851,12 +876,12 @@ router.get('/kits', async (req, res) => {
      ORDER BY k.name`,
   );
   res.json({ success: true, data: kits });
-});
+}));
 
 // POST /inventory/kits — create kit with items
 // SEC-H25: creating a kit is an inventory write — gate behind inventory.create.
 // The inline role check below is kept as defence-in-depth.
-router.post('/kits', requirePermission('inventory.create'), async (req, res) => {
+router.post('/kits', requirePermission('inventory.create'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
@@ -905,12 +930,12 @@ router.post('/kits', requirePermission('inventory.create'), async (req, res) => 
   );
 
   res.status(201).json({ success: true, data: { ...kit as Record<string, unknown>, items: kitItems } });
-});
+}));
 
 // GET /inventory/kits/:id — get kit with items
-router.get('/kits/:id', async (req, res) => {
+router.get('/kits/:id', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const kitId = parseInt(req.params.id, 10);
+  const kitId = parseInt(String(req.params.id), 10);
   if (!kitId) throw new AppError('Invalid kit ID', 400);
 
   const kit = await adb.get<Record<string, unknown>>(
@@ -927,7 +952,7 @@ router.get('/kits/:id', async (req, res) => {
   );
 
   res.json({ success: true, data: { ...kit, items } });
-});
+}));
 
 // DELETE /inventory/kits/:id — delete kit
 // SEC-H25: deleting a kit is an inventory delete — gate behind inventory.delete.
@@ -938,7 +963,7 @@ router.delete('/kits/:id', requirePermission('inventory.delete'), async (req: Re
     throw new AppError('Admin or manager access required', 403);
 
   const adb: AsyncDb = req.asyncDb;
-  const kitId = parseInt(req.params.id, 10);
+  const kitId = parseInt(String(req.params.id), 10);
   if (!kitId) throw new AppError('Invalid kit ID', 400);
 
   const kit = await adb.get<{ id: number }>('SELECT id FROM inventory_kits WHERE id = ?', kitId);
@@ -953,9 +978,9 @@ router.delete('/kits/:id', requirePermission('inventory.delete'), async (req: Re
 });
 
 // GET /inventory/:id (must be numeric — skip for named routes like /suppliers, /purchase-orders)
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', asyncHandler(async (req, res, next) => {
   const adb: AsyncDb = req.asyncDb;
-  if (!/^\d+$/.test(req.params.id)) return next();
+  if (!/^\d+$/.test(String(req.params.id))) return next();
 
   const [item, movements, groupPrices] = await Promise.all([
     adb.get<any>(`
@@ -992,13 +1017,13 @@ router.get('/:id', async (req, res, next) => {
   }
 
   res.json({ success: true, data: { item: safeItem, movements, group_prices: groupPrices } });
-});
+}));
 
 // ==================== ENR-INV8: Barcode generation ====================
 
 // GET /inventory/:id/barcode — Generate barcode image (PNG) for item's SKU or UPC
-router.get('/:id/barcode', async (req, res, next) => {
-  if (!/^\d+$/.test(req.params.id)) return next();
+router.get('/:id/barcode', asyncHandler(async (req, res, next) => {
+  if (!/^\d+$/.test(String(req.params.id))) return next();
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get<any>('SELECT id, sku, upc, name FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
@@ -1051,7 +1076,7 @@ router.get('/:id/barcode', async (req, res, next) => {
     });
     throw new AppError('Barcode generation failed', 500);
   }
-});
+}));
 
 // ==================== ENR-INV9: Product image upload ====================
 // POST /inventory/:id/image — upload an image for an inventory item
@@ -1105,7 +1130,7 @@ router.post('/:id/image', requirePermission('inventory.edit'), enforceUploadQuot
 
 // POST /inventory
 // SEC-H25: creating an inventory item is a write — gate behind inventory.create.
-router.post('/', requirePermission('inventory.create'), async (req, res) => {
+router.post('/', requirePermission('inventory.create'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const {
     name, description, item_type = 'product', category, manufacturer, device_type,
@@ -1198,13 +1223,13 @@ router.post('/', requirePermission('inventory.create'), async (req, res) => {
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', result.lastInsertRowid);
   audit(req.db, 'inventory_item_created', req.user!.id, req.ip || 'unknown', { item_id: Number(result.lastInsertRowid), name: safeName, sku: finalSku, item_type });
   res.status(201).json({ success: true, data: item });
-});
+}));
 
 // PUT /inventory/:id
 // SEC-H25: updating an inventory item is a write — gate behind inventory.edit.
 router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id: string }>, res, next) => {
   const adb: AsyncDb = req.asyncDb;
-  if (!/^\d+$/.test(req.params.id)) return next();
+  if (!/^\d+$/.test(String(req.params.id))) return next();
   const existing = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!existing) throw new AppError('Item not found', 404);
 
@@ -1327,7 +1352,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
 // pass the precheck and leave the row at -5.
 // SEC-H25: gate behind inventory.adjust_stock permission. The inline role check
 // below is kept as defence-in-depth.
-router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), async (req, res) => {
+router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   const role = req.user?.role;
   if (role !== 'admin' && role !== 'manager') {
@@ -1338,7 +1363,7 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
   const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
 
-  const { quantity, type = 'adjustment', notes } = req.body;
+  const { quantity, type = 'adjustment', notes, expected_qty } = req.body;
   if (quantity === undefined) throw new AppError('Quantity is required', 400);
 
   const parsedQty = parseInt(quantity, 10);
@@ -1349,18 +1374,53 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
   // and corrupt every downstream report.
   if (Math.abs(parsedQty) > 1_000_000) throw new AppError('Adjustment too large (|qty| <= 1,000,000)', 400);
 
+  // WEB-UIUX-736: optional compare-and-swap on the current stock value.
+  // Operator A types -1 against an `in_stock=10` row while operator B is
+  // already mid-typing +5 against the same row. Without CAS both writes
+  // commit and the row is 14 — neither operator agreed to that total.
+  // When `expected_qty` is supplied, fold it into the WHERE so a stale
+  // read fails fast with a 409 and operator can re-check before retrying.
+  let expectedQty: number | null = null;
+  if (expected_qty !== undefined && expected_qty !== null && expected_qty !== '') {
+    const parsed = Number(expected_qty);
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+      throw new AppError('expected_qty must be an integer', 400);
+    }
+    expectedQty = parsed;
+    if (Number(item.in_stock) !== parsed) {
+      throw new AppError(
+        `Stock has changed since you started. You expected ${parsed}, current is ${item.in_stock}. Re-check and retry.`,
+        409,
+        ERROR_CODES.ERR_RESOURCE_CONFLICT,
+      );
+    }
+  }
+
   // SEC-H22: guarded differential UPDATE. The `WHERE in_stock + ? >= 0`
   // predicate is evaluated by SQLite atomically; a concurrent writer that
   // reduces stock first will cause our UPDATE to match zero rows, signalling
   // the race so we fail cleanly instead of persisting a negative balance.
+  // WEB-UIUX-736: when expected_qty was provided, the WHERE also matches
+  // `in_stock = ?` so a concurrent writer between our SELECT-and-validate
+  // and the UPDATE still trips the guard.
   const clearDismissed = parsedQty > 0 && item.low_stock_dismissed_at;
-  const upd = await adb.run(
-    clearDismissed
-      ? "UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0"
-      : "UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0",
-    parsedQty, req.params.id, parsedQty,
-  );
+  const expectedClause = expectedQty != null ? ' AND in_stock = ?' : '';
+  const expectedParams = expectedQty != null ? [expectedQty] : [];
+  const sql = clearDismissed
+    ? `UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0${expectedClause}`
+    : `UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0${expectedClause}`;
+  const upd = await adb.run(sql, parsedQty, req.params.id, parsedQty, ...expectedParams);
   if (upd.changes === 0) {
+    if (expectedQty != null) {
+      const current = await adb.get<{ in_stock: number }>(
+        'SELECT in_stock FROM inventory_items WHERE id = ?', req.params.id,
+      );
+      throw new AppError(
+        `Stock changed during write. You expected ${expectedQty}, current is ${current?.in_stock ?? 'unknown'}. Re-check and retry.`,
+        409,
+        ERROR_CODES.ERR_RESOURCE_CONFLICT,
+      );
+    }
     throw new AppError('Insufficient stock', 400);
   }
 
@@ -1388,7 +1448,7 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
   }
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, updated, req.tenantSlug || null);
   res.json({ success: true, data: updated });
-});
+}));
 
 // DELETE /inventory/:id (soft deactivate)
 // S9: count historical references on invoices + tickets before deactivating
@@ -1396,7 +1456,7 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
 //     the delete — soft-deactivation preserves referential integrity, we just
 //     want the manager to know they're hiding something with history.
 // SEC-H25: deleting an inventory item is a write — gate behind inventory.delete.
-router.delete('/:id', requirePermission('inventory.delete'), async (req, res) => {
+router.delete('/:id', requirePermission('inventory.delete'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found or already deleted', 404);
@@ -1432,23 +1492,23 @@ router.delete('/:id', requirePermission('inventory.delete'), async (req, res) =>
       reference_counts: { invoice_line_items: invoiceCount, ticket_device_parts: ticketCount },
     },
   });
-});
+}));
 
 // ==================== Suppliers ====================
 
 // GET /suppliers/list — list all suppliers (optionally filter by is_active)
-router.get('/suppliers/list', async (req, res) => {
+router.get('/suppliers/list', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { active_only } = req.query as Record<string, string>;
   // SEC-M11: Cap unbounded lookup query
   const where = active_only === 'true' ? 'WHERE is_active = 1' : '';
   const suppliers = await adb.all(`SELECT * FROM suppliers ${where} ORDER BY name ASC LIMIT 500`);
   res.json({ success: true, data: suppliers });
-});
+}));
 
 // POST /suppliers — create a new supplier
 // SEC-H25: creating a supplier is an inventory write — gate behind inventory.create.
-router.post('/suppliers', requirePermission('inventory.create'), async (req, res) => {
+router.post('/suppliers', requirePermission('inventory.create'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { name, contact_name, email, phone, address, website, rating, notes } = req.body;
   if (!name) throw new AppError('Name is required', 400);
@@ -1462,11 +1522,11 @@ router.post('/suppliers', requirePermission('inventory.create'), async (req, res
   const supplier = await adb.get('SELECT * FROM suppliers WHERE id = ?', result.lastInsertRowid);
   audit(req.db, 'supplier_created', req.user!.id, req.ip || 'unknown', { supplier_id: Number(result.lastInsertRowid), name });
   res.status(201).json({ success: true, data: supplier });
-});
+}));
 
 // PUT /suppliers/:id — update a supplier
 // SEC-H25: updating a supplier is a write — gate behind inventory.edit.
-router.put('/suppliers/:id', requirePermission('inventory.edit'), async (req, res) => {
+router.put('/suppliers/:id', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { name, contact_name, email, phone, address, website, rating, notes } = req.body;
   if (rating != null && (rating < 1 || rating > 5 || !Number.isInteger(Number(rating)))) {
@@ -1485,18 +1545,18 @@ router.put('/suppliers/:id', requirePermission('inventory.edit'), async (req, re
   if (!supplier) throw new AppError('Supplier not found', 404);
   audit(req.db, 'supplier_updated', req.user!.id, req.ip || 'unknown', { supplier_id: Number(req.params.id) });
   res.json({ success: true, data: supplier });
-});
+}));
 
 // DELETE /suppliers/:id — soft-delete a supplier
 // SEC-H25: deleting a supplier is a write — gate behind inventory.delete.
-router.delete('/suppliers/:id', requirePermission('inventory.delete'), async (req, res) => {
+router.delete('/suppliers/:id', requirePermission('inventory.delete'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const supplier = await adb.get('SELECT id FROM suppliers WHERE id = ?', req.params.id);
   if (!supplier) throw new AppError('Supplier not found', 404);
   await adb.run("UPDATE suppliers SET is_active = 0, updated_at = datetime('now') WHERE id = ?", req.params.id);
   audit(req.db, 'supplier_deleted', req.user!.id, req.ip || 'unknown', { supplier_id: Number(req.params.id) });
   res.json({ success: true, data: { message: 'Supplier deactivated' } });
-});
+}));
 
 // ==================== Purchase Orders ====================
 
@@ -1505,7 +1565,7 @@ router.delete('/suppliers/:id', requirePermission('inventory.delete'), async (re
 // and the API contract is self-documenting.
 const PO_STATUS_ALLOWLIST = new Set(['draft', 'pending', 'ordered', 'partial', 'backordered', 'received', 'cancelled']);
 
-router.get('/purchase-orders/list', async (req, res) => {
+router.get('/purchase-orders/list', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const { page = '1', pagesize = '20', status, q } = req.query as Record<string, string>;
   const p = Math.max(1, parseInt(page, 10) || 1);
@@ -1520,6 +1580,10 @@ router.get('/purchase-orders/list', async (req, res) => {
     }
     where += ' AND po.status = ?'; params.push(status);
   }
+  // WEB-UIUX-1192: keyword search across PO number + supplier name.
+  // LIKE wildcards in the user input are escaped via escapeLike so an
+  // admin can't smuggle a "%" and match everything. Also match the
+  // synthesized PO-<id> form since the UI displays that, not the raw id.
   const search = q?.trim();
   if (search) {
     const term = `%${escapeLike(search)}%`;
@@ -1535,7 +1599,11 @@ router.get('/purchase-orders/list', async (req, res) => {
       ${where}
     `, ...params),
     adb.all(`
-      SELECT po.*, s.name as supplier_name, u.first_name || ' ' || u.last_name as created_by_name
+      SELECT po.*,
+             s.name as supplier_name,
+             s.email as supplier_email,
+             s.contact_name as supplier_contact,
+             u.first_name || ' ' || u.last_name as created_by_name
       FROM purchase_orders po
       LEFT JOIN suppliers s ON s.id = po.supplier_id
       LEFT JOIN users u ON u.id = po.created_by
@@ -1547,10 +1615,10 @@ router.get('/purchase-orders/list', async (req, res) => {
   const total = totalRow!.c;
 
   res.json({ success: true, data: { orders, pagination: { page: p, per_page: ps, total, total_pages: Math.ceil(total / ps) } } });
-});
+}));
 
 // SEC-H25: creating a PO is an inventory write — gate behind inventory.create.
-router.post('/purchase-orders', requirePermission('inventory.create'), async (req, res) => {
+router.post('/purchase-orders', requirePermission('inventory.create'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const db = req.db;
   const { supplier_id, notes, expected_date, items = [] } = req.body;
@@ -1611,9 +1679,9 @@ router.post('/purchase-orders', requirePermission('inventory.create'), async (re
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', result.lastInsertRowid);
   audit(req.db, 'purchase_order_created', req.user!.id, req.ip || 'unknown', { po_id: Number(result.lastInsertRowid), order_id: orderId, supplier_id: supplierId, total: subtotal });
   res.status(201).json({ success: true, data: po });
-});
+}));
 
-router.get('/purchase-orders/:id', async (req, res) => {
+router.get('/purchase-orders/:id', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const [po, items] = await Promise.all([
     adb.get(`
@@ -1631,13 +1699,27 @@ router.get('/purchase-orders/:id', async (req, res) => {
   if (!po) throw new AppError('Purchase order not found', 404);
 
   res.json({ success: true, data: { order: po, items } });
-});
+}));
 
 // SEC-H25: receiving stock against a PO adjusts inventory — gate behind inventory.adjust_stock.
-router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_stock'), async (req, res) => {
+router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_stock'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const { items } = req.body; // [{purchase_order_item_id, quantity_received}]
+  const { items } = req.body; // [{purchase_order_item_id, quantity_received, lot_number?, expiration_date?, bin_location?, actual_unit_cost?}]
   if (!items?.length) throw new AppError('Items required', 400);
+
+  // WEB-UIUX-1189: receive-level metadata that applies to every line in this
+  // shipment (supplier invoice # / packing slip #) lives on the request body
+  // root; per-line metadata (lot/expiry/bin/actual-cost) lives on each item.
+  // All optional; legacy clients sending only {purchase_order_item_id,
+  // quantity_received} continue to work.
+  const rawBody = req.body as Record<string, unknown>;
+  const trimCap = (val: unknown, max: number): string | null => {
+    if (typeof val !== 'string') return null;
+    const t = val.trim();
+    return t ? t.slice(0, max) : null;
+  };
+  const shipmentSupplierInvoiceNo = trimCap(rawBody.supplier_invoice_no, 64);
+  const shipmentPackingSlipNo = trimCap(rawBody.packing_slip_no, 64);
 
   // S4: Pre-read + build the whole receive plan, then run it in one atomic
   //     transaction so a partial failure can't leave stock, poi, and
@@ -1655,6 +1737,44 @@ router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_
     const received = Math.min(requested, receivable);
     if (received <= 0) continue;
 
+    // Per-line receiving meta. lot/expiry/bin are free-text; actual_unit_cost
+    // is in dollars from the client and stored as cents to match the rest of
+    // the integer-cents money pipeline.
+    const lotNumber = trimCap(item.lot_number, 64);
+    const expirationDate = trimCap(item.expiration_date, 32);
+    const binLocation = trimCap(item.bin_location, 64);
+    let actualUnitCostCents: number | null = null;
+    if (item.actual_unit_cost !== undefined && item.actual_unit_cost !== null && item.actual_unit_cost !== '') {
+      const n = Number(item.actual_unit_cost);
+      if (!Number.isFinite(n) || n < 0 || n > 1_000_000) {
+        throw new AppError('actual_unit_cost must be a non-negative number ≤ 1,000,000', 400);
+      }
+      actualUnitCostCents = Math.round(n * 100);
+    }
+    // WEB-UIUX-646: optional serial numbers captured at receive time. Each
+    // serial becomes an `inventory_serials` row with status='in_stock'.
+    // When `serials` is provided its length must match the received qty so
+    // an off-by-one entry surfaces immediately instead of leaving phantom
+    // stock untracked. Duplicate serials within the request reject.
+    let receiveSerials: string[] = [];
+    if (Array.isArray(item.serials) && item.serials.length > 0) {
+      const cleaned = item.serials
+        .map((s: unknown) => typeof s === 'string' ? s.trim() : '')
+        .filter((s: string) => s.length > 0)
+        .map((s: string) => s.slice(0, 64));
+      const unique = new Set(cleaned);
+      if (unique.size !== cleaned.length) {
+        throw new AppError(`Duplicate serial numbers in receive payload for item ${poItem.inventory_item_id}`, 400);
+      }
+      if (cleaned.length !== received) {
+        throw new AppError(
+          `Serial count (${cleaned.length}) must match received qty (${received}) for item ${poItem.inventory_item_id}`,
+          400,
+        );
+      }
+      receiveSerials = cleaned;
+    }
+
     // Guarded differential UPDATE — prevents two concurrent receive requests for
     // the same PO from both computing `receivable` from a stale pre-lock read
     // and over-receiving beyond quantity_ordered (SEC-H62 over-receive race).
@@ -1671,10 +1791,29 @@ router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_
       params: [received, poItem.inventory_item_id],
     });
     txQueries.push({
-      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
-            VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?)`,
-      params: [poItem.inventory_item_id, received, poId, req.user!.id],
+      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id,
+                                          supplier_invoice_no, packing_slip_no, lot_number, expiration_date, bin_location, actual_unit_cost_cents)
+            VALUES (?, 'purchase', ?, 'purchase_order', ?, 'Received from PO', ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        poItem.inventory_item_id, received, poId, req.user!.id,
+        shipmentSupplierInvoiceNo,
+        shipmentPackingSlipNo,
+        lotNumber,
+        expirationDate,
+        binLocation,
+        actualUnitCostCents,
+      ],
     });
+    // WEB-UIUX-646: persist serial rows inside the same transaction so a
+    // partial failure rolls everything back. Each serial becomes an
+    // inventory_serials row with status='in_stock'.
+    for (const sn of receiveSerials) {
+      txQueries.push({
+        sql: `INSERT INTO inventory_serials (inventory_item_id, serial_number, status)
+              VALUES (?, ?, 'in_stock')`,
+        params: [poItem.inventory_item_id, sn],
+      });
+    }
     itemsReceivedCount++;
   }
 
@@ -1695,7 +1834,7 @@ router.post('/purchase-orders/:id/receive', requirePermission('inventory.adjust_
   audit(req.db, 'purchase_order_received', req.user!.id, req.ip || 'unknown', { po_id: Number(poId), items_received: itemsReceivedCount });
   const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', poId);
   res.json({ success: true, data: po });
-});
+}));
 
 // ==================== ENR-INV6: PO status workflow ====================
 
@@ -1715,7 +1854,7 @@ const PO_VALID_TRANSITIONS: Record<string, string[]> = {
 
 // PUT /purchase-orders/:id — Update PO with status transitions
 // SEC-H25: updating a PO is an inventory write — gate behind inventory.edit.
-router.put('/purchase-orders/:id', requirePermission('inventory.edit'), async (req, res) => {
+router.put('/purchase-orders/:id', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const po = await adb.get<any>('SELECT * FROM purchase_orders WHERE id = ?', req.params.id);
   if (!po) throw new AppError('Purchase order not found', 404);
@@ -1785,11 +1924,11 @@ router.put('/purchase-orders/:id', requirePermission('inventory.edit'), async (r
   `, req.params.id);
   audit(req.db, 'purchase_order_updated', req.user!.id, req.ip || 'unknown', { po_id: Number(req.params.id), status: status ?? po.status });
   res.json({ success: true, data: updated });
-});
+}));
 
 // POST /dismiss-low-stock — Dismiss all current low stock alerts
 // SEC-H25: dismissing alerts modifies inventory state — gate behind inventory.edit.
-router.post('/dismiss-low-stock', requirePermission('inventory.edit'), async (req, res) => {
+router.post('/dismiss-low-stock', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const result = await adb.run(`
@@ -1799,11 +1938,11 @@ router.post('/dismiss-low-stock', requirePermission('inventory.edit'), async (re
   `, now);
   audit(req.db, 'low_stock_alerts_dismissed', req.user!.id, req.ip || 'unknown', { dismissed: result.changes });
   res.json({ success: true, data: { dismissed: result.changes } });
-});
+}));
 
 // POST /undismiss-low-stock — Clear all dismissals (re-show alerts)
 // SEC-H25: clearing dismissals modifies inventory state — gate behind inventory.edit.
-router.post('/undismiss-low-stock', requirePermission('inventory.edit'), async (req, res) => {
+router.post('/undismiss-low-stock', requirePermission('inventory.edit'), asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const result = await adb.run(`
     UPDATE inventory_items SET low_stock_dismissed_at = NULL
@@ -1811,7 +1950,7 @@ router.post('/undismiss-low-stock', requirePermission('inventory.edit'), async (
   `);
   audit(req.db, 'low_stock_alerts_undismissed', req.user!.id, req.ip || 'unknown', { undismissed: result.changes });
   res.json({ success: true, data: { undismissed: result.changes } });
-});
+}));
 
 // ==================== Stocktake / Inventory Count ====================
 
@@ -1819,7 +1958,7 @@ router.post('/undismiss-low-stock', requirePermission('inventory.edit'), async (
 // SEC-H8: Admin or manager role required for stocktake operations
 // SEC-H25: stocktake adjusts stock across many items — gate behind inventory.bulk_action.
 // The inline role check below is kept as defence-in-depth.
-router.post('/stocktake', requirePermission('inventory.bulk_action'), async (req, res) => {
+router.post('/stocktake', requirePermission('inventory.bulk_action'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
@@ -1866,10 +2005,10 @@ router.post('/stocktake', requirePermission('inventory.bulk_action'), async (req
       adjustments,
     },
   });
-});
+}));
 
 // GET /stocktake/discrepancies — Items where stock may be inaccurate (negative or suspiciously high)
-router.get('/stocktake/discrepancies', async (req, res) => {
+router.get('/stocktake/discrepancies', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const items = await adb.all(`
     SELECT id, name, sku, in_stock, reorder_level, item_type
@@ -1878,14 +2017,14 @@ router.get('/stocktake/discrepancies', async (req, res) => {
     ORDER BY ABS(in_stock) DESC LIMIT 50
   `);
   res.json({ success: true, data: items });
-});
+}));
 
 // ─── Scan-to-Receive: bulk barcode receiving ───────────────────────────────────
 
 // POST /inventory/receive-scan — look up barcodes and receive matched items
 // SEC-H25: receive-scan adjusts stock — gate behind inventory.bulk_action.
 // The inline role check below is kept as defence-in-depth.
-router.post('/receive-scan', requirePermission('inventory.bulk_action'), async (req, res) => {
+router.post('/receive-scan', requirePermission('inventory.bulk_action'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
@@ -1945,12 +2084,12 @@ router.post('/receive-scan', requirePermission('inventory.bulk_action'), async (
 
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, { bulk: true, count: received.length }, req.tenantSlug || null);
   res.json({ success: true, data: { received, unmatched } });
-});
+}));
 
 // POST /inventory/receive-scan/create-from-catalog — create inventory item from catalog match + receive stock
 // SEC-H25: creates + receives stock — gate behind inventory.bulk_action.
 // The inline role check below is kept as defence-in-depth.
-router.post('/receive-scan/create-from-catalog', requirePermission('inventory.bulk_action'), async (req, res) => {
+router.post('/receive-scan/create-from-catalog', requirePermission('inventory.bulk_action'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
@@ -2013,12 +2152,12 @@ router.post('/receive-scan/create-from-catalog', requirePermission('inventory.bu
   audit(req.db, 'inventory_created_from_catalog', req.user!.id, req.ip || 'unknown', { catalog_id, quantity: qty, name: catalogItem.name });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.status(201).json({ success: true, data: item });
-});
+}));
 
 // ==================== WEB-W3-013: Server-streaming CSV export ====================
 // GET /inventory/export.csv — full-dataset CSV honoring the same filter params as GET /inventory
 // No pagination — streams all matching rows directly to the client.
-router.get('/export.csv', async (req, res) => {
+router.get('/export.csv', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const {
     keyword, item_type, category, low_stock, reorderable_only,
@@ -2079,12 +2218,12 @@ router.get('/export.csv', async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   audit(req.db, 'inventory_csv_exported', req.user!.id, req.ip || 'unknown', { rows: items.length });
   res.send(csv);
-});
+}));
 
 // ==================== WEB-S6-009: Price history ====================
 // GET /inventory/:id/price-history — cost price change log
-router.get('/:id/price-history', async (req, res, next) => {
-  if (!/^\d+$/.test(req.params.id)) return next();
+router.get('/:id/price-history', asyncHandler(async (req, res, next) => {
+  if (!/^\d+$/.test(String(req.params.id))) return next();
   // Only admin/manager can see cost price history
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') {
     throw new AppError('Admin or manager access required', 403);
@@ -2104,12 +2243,12 @@ router.get('/:id/price-history', async (req, res, next) => {
   `, req.params.id);
 
   res.json({ success: true, data: history });
-});
+}));
 
 // ==================== WEB-S6-010: Multi-location stock breakdown ====================
 // GET /inventory/:id/locations — per-location stock (grouped from same SKU items or location column)
-router.get('/:id/locations', async (req, res, next) => {
-  if (!/^\d+$/.test(req.params.id)) return next();
+router.get('/:id/locations', asyncHandler(async (req, res, next) => {
+  if (!/^\d+$/.test(String(req.params.id))) return next();
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (!item) throw new AppError('Item not found', 404);
@@ -2140,12 +2279,12 @@ router.get('/:id/locations', async (req, res, next) => {
       locations,
     },
   });
-});
+}));
 
 // POST /inventory/receive-scan/quick-add — create new item from manual input + receive stock
 // SEC-H25: quick-add creates + receives stock — gate behind inventory.bulk_action.
 // The inline role check below is kept as defence-in-depth.
-router.post('/receive-scan/quick-add', requirePermission('inventory.bulk_action'), async (req, res) => {
+router.post('/receive-scan/quick-add', requirePermission('inventory.bulk_action'), asyncHandler(async (req, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
@@ -2180,6 +2319,130 @@ router.post('/receive-scan/quick-add', requirePermission('inventory.bulk_action'
   audit(req.db, 'inventory_quick_added', req.user!.id, req.ip || 'unknown', { name, barcode, quantity: qty });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.status(201).json({ success: true, data: item });
-});
+}));
+
+// WEB-UIUX-645: PATCH /inventory/serials/:id — status-flip endpoint with
+// the side-effect chain. Transitions plus their effects:
+//   in_stock → sold       : leave in_stock untouched (sale handler is
+//                           expected to have already decremented). Just
+//                           record the flip in stock_movements as audit.
+//   in_stock → defective  : decrement in_stock and write a 'defective'
+//                           stock_movement (defective unit no longer sells).
+//   sold     → returned   : increment in_stock + write 'return' movement.
+//                           Refuse without a real invoice_id passed in (so
+//                           returns can't be ginned up against no sale).
+//   sold     → defective  : neither in_stock change nor refund — just flip
+//                           the flag (RMA pipeline owns the rest).
+//   returned → in_stock   : decrement back (the returned row already
+//                           incremented; in_stock=true means it's been
+//                           restocked, so reversing a restock decrements).
+//   defective → in_stock  : increment (false-defective resolution).
+// Any other transition rejects with 400. Wrapped in adb.transaction() so a
+// partial failure rolls back stock + movement + status flip together.
+router.patch('/serials/:id', requirePermission('inventory.adjust_stock'), asyncHandler(async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager required to flip serial status', 403);
+  }
+  const adb: AsyncDb = req.asyncDb;
+  const serialId = parseInt(String(req.params.id), 10);
+  if (!Number.isFinite(serialId) || serialId <= 0) {
+    throw new AppError('Invalid serial id', 400);
+  }
+  const { status: nextStatus, invoice_id: invoiceIdRaw, notes } = req.body as {
+    status?: string; invoice_id?: number | string; notes?: string;
+  };
+  const allowedStatuses = ['in_stock', 'sold', 'returned', 'defective'];
+  if (typeof nextStatus !== 'string' || !allowedStatuses.includes(nextStatus)) {
+    throw new AppError(`status must be one of ${allowedStatuses.join(', ')}`, 400);
+  }
+  const existing = await adb.get<{ id: number; inventory_item_id: number; status: string; serial_number: string }>(
+    'SELECT id, inventory_item_id, status, serial_number FROM inventory_serials WHERE id = ?',
+    serialId,
+  );
+  if (!existing) throw new AppError('Serial not found', 404);
+  if (existing.status === nextStatus) {
+    throw new AppError(`Serial is already ${nextStatus}`, 409);
+  }
+
+  // Legal-transition table — anything not listed is rejected.
+  type Transition = { from: string; to: string; stockDelta: number; moveType: string };
+  const TRANSITIONS: Transition[] = [
+    { from: 'in_stock',  to: 'sold',      stockDelta: 0,  moveType: 'sale' },
+    { from: 'in_stock',  to: 'defective', stockDelta: -1, moveType: 'defective' },
+    { from: 'sold',      to: 'returned',  stockDelta: +1, moveType: 'return' },
+    { from: 'sold',      to: 'defective', stockDelta: 0,  moveType: 'defective' },
+    { from: 'returned',  to: 'in_stock',  stockDelta: -1, moveType: 'adjustment' },
+    { from: 'returned',  to: 'defective', stockDelta: -1, moveType: 'defective' },
+    { from: 'defective', to: 'in_stock',  stockDelta: +1, moveType: 'adjustment' },
+  ];
+  const transition = TRANSITIONS.find((t) => t.from === existing.status && t.to === nextStatus);
+  if (!transition) {
+    throw new AppError(`Illegal serial transition: ${existing.status} → ${nextStatus}`, 400);
+  }
+
+  // Refuse sold→returned without an invoice_id so a return can't be ginned
+  // up against no sale. invoice_id need not be the original sale — the
+  // operator may match a different invoice when the original is missing
+  // (warranty case) — but SOMETHING must link the return event to an
+  // invoice for audit.
+  let invoiceId: number | null = null;
+  if (existing.status === 'sold' && nextStatus === 'returned') {
+    if (!invoiceIdRaw) {
+      throw new AppError('invoice_id is required when returning a sold serial', 400);
+    }
+    const parsedInvoice = parseInt(String(invoiceIdRaw), 10);
+    if (!Number.isFinite(parsedInvoice) || parsedInvoice <= 0) {
+      throw new AppError('invoice_id must be a positive integer', 400);
+    }
+    const inv = await adb.get<{ id: number }>('SELECT id FROM invoices WHERE id = ?', parsedInvoice);
+    if (!inv) throw new AppError('invoice_id not found', 404);
+    invoiceId = parsedInvoice;
+  }
+  const trimmedNotes = typeof notes === 'string' ? notes.trim().slice(0, 500) : null;
+
+  const txQueries: TxQuery[] = [];
+  txQueries.push({
+    sql: `UPDATE inventory_serials SET status = ?, updated_at = datetime('now') WHERE id = ? AND status = ?`,
+    params: [nextStatus, serialId, existing.status],
+    expectChanges: true,
+    expectChangesError: `Serial status changed concurrently (expected ${existing.status})`,
+  });
+  if (transition.stockDelta !== 0) {
+    txQueries.push({
+      sql: `UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0`,
+      params: [transition.stockDelta, existing.inventory_item_id, transition.stockDelta],
+      expectChanges: true,
+      expectChangesError: 'Stock movement would drive in_stock negative',
+    });
+  }
+  txQueries.push({
+    sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      existing.inventory_item_id,
+      transition.moveType,
+      transition.stockDelta || 0,
+      invoiceId ? 'invoice' : 'serial',
+      invoiceId ?? serialId,
+      trimmedNotes || `Serial ${existing.serial_number}: ${existing.status} → ${nextStatus}`,
+      req.user!.id,
+    ],
+  });
+
+  await adb.transaction(txQueries);
+
+  audit(req.db, 'inventory_serial_status_flipped', req.user!.id, req.ip || 'unknown', {
+    serial_id: serialId,
+    inventory_item_id: existing.inventory_item_id,
+    from: existing.status,
+    to: nextStatus,
+    stock_delta: transition.stockDelta,
+    invoice_id: invoiceId,
+  });
+
+  const updated = await adb.get('SELECT * FROM inventory_serials WHERE id = ?', serialId);
+  res.json({ success: true, data: updated });
+}));
 
 export default router;

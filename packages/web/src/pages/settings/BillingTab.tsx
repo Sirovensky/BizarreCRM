@@ -34,6 +34,15 @@ export function BillingTab() {
     } else if (params.get('cancelled') === '1') {
       toast('Upgrade cancelled. You can try again any time.');
       navigate('/settings/billing', { replace: true });
+    } else if (params.get('declined') === '1') {
+      // WEB-UIUX-832: surface "card declined" state distinct from cancelled.
+      // Stripe redirects back here with ?declined=1 when the payment method
+      // failed at confirmation (card_declined / insufficient_funds /
+      // expired_card). Without this branch the cashier sees no signal and
+      // assumes the upgrade just didn't happen.
+      toast.error('Card declined during upgrade. Update your payment method and try again.');
+      fetchPlan();
+      navigate('/settings/billing', { replace: true });
     }
   }, [location.search, navigate, fetchPlan]);
 

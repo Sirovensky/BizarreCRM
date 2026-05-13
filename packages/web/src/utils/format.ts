@@ -121,15 +121,19 @@ export function formatCents(cents: number | null | undefined, currencyOverride?:
 // arg mirroring `formatCurrency` so portal pages \u2014 which run before AppShell ever
 // calls `initCurrencyFromSettings` \u2014 can format dates against a visitor-supplied
 // locale (`usePortalI18n`) instead of falling back to the module default.
-export function formatDate(iso: string | null | undefined, localeOverride?: string): string {
+export function formatDate(iso: string | null | undefined, localeOverride?: string, tz?: string | null): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleDateString(localeOverride ?? _locale, {
+  // WEB-UIUX-779: accept an optional IANA tz so reports + receipts can render
+  // dates in the shop's `store_timezone` instead of the browser-local zone.
+  const opts: Intl.DateTimeFormatOptions = {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
+  };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleDateString(localeOverride ?? _locale, opts);
 }
 
 export function formatDateTime(iso: string | null | undefined, localeOverride?: string, tz?: string | null): string {
@@ -151,16 +155,18 @@ export function formatDateTime(iso: string | null | undefined, localeOverride?: 
 // across detail pages (Leads, Customer chat, Portal, etc.). Each had its own
 // hardcoded `toLocaleString('en-US', { month: 'short', ... })`. Centralised
 // here so locale flows from `initCurrencyFromSettings` instead of being pinned.
-export function formatShortDateTime(iso: string | Date | null | undefined): string {
+export function formatShortDateTime(iso: string | Date | null | undefined, tz?: string | null): string {
   if (iso == null) return '\u2014';
   const d = iso instanceof Date ? iso : new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleString(_locale, {
+  const opts: Intl.DateTimeFormatOptions = {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  });
+  };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleString(_locale, opts);
 }
 
 /**
@@ -172,11 +178,38 @@ export function formatShortDateTime(iso: string | Date | null | undefined): stri
  * High-traffic call-sites updated: Header notifications, Dashboard,
  * TicketListPage, InvoiceListPage, CustomerListPage.
  */
-export function formatTime(iso: string | Date | null | undefined): string {
+/**
+ * WEB-UIUX-781: detect a non-existent local time picked from `<input
+ * type="datetime-local">`. JS `new Date(when)` silently rolls invalid
+ * DST spring-forward instants (e.g. 02:30 on a transition Sunday)
+ * forward to 03:30 without raising. Compare what the picker said to
+ * what the Date actually represents.
+ *
+ * Returns `'nonexistent'` when the requested wall-clock components
+ * disagree with the materialised Date components; `null` otherwise.
+ */
+export function dstSpringForwardAnomaly(localInput: string, parsed: Date): 'nonexistent' | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(localInput);
+  if (!m) return null;
+  if (
+    parsed.getFullYear() !== Number(m[1]) ||
+    parsed.getMonth() !== Number(m[2]) - 1 ||
+    parsed.getDate() !== Number(m[3]) ||
+    parsed.getHours() !== Number(m[4]) ||
+    parsed.getMinutes() !== Number(m[5])
+  ) {
+    return 'nonexistent';
+  }
+  return null;
+}
+
+export function formatTime(iso: string | Date | null | undefined, tz?: string | null): string {
   if (iso == null) return '\u2014';
   const d = iso instanceof Date ? iso : new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleTimeString(_locale, { hour: 'numeric', minute: '2-digit' });
+  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  if (tz) opts.timeZone = tz;
+  return d.toLocaleTimeString(_locale, opts);
 }
 
 /** Locale-aware integer formatter \u2014 replaces ad-hoc `n.toLocaleString()`. */
@@ -211,20 +244,39 @@ export function generateIdempotencyKey(prefix = 'req'): string {
   );
 }
 
-// ─── Gift-card amount heuristic ─────────────────────────────────────────────
+// ─── Gift-card amount formatter ─────────────────────────────────────────────
 
 /**
- * Server is mid-migration from float-dollars to integer-cents.
- * Treat large integers (>= 1000 in magnitude) as cents so a silent server
- * schema flip doesn't render every balance 100× wrong.
+ * WEB-UIUX-1454 (2026-05-12): the previous `cents-if-integer-and->=1000`
+ * heuristic 100×-divided $1000–$10,000 corporate gift cards (server stores
+ * `gift_cards.current_balance` as REAL dollars, capped by
+ * `GIFT_CARD_MAX_AMOUNT = 10_000`; an integer 1500 IS $1,500, not 1500 cents).
  *
- * Consolidates duplicates from GiftCardsListPage and GiftCardDetailPage
- * (WEB-UIUX-550). Call `formatCurrency(dollarsFromMaybeCents(v))` or use
- * the convenience wrappers on those pages.
+ * Heuristic dropped — the server schema is unambiguous today (REAL dollars,
+ * float OR integer both interpreted as dollars). When SEC-H34-money-refactor
+ * eventually flips the column to INTEGER cents, this helper is the single
+ * place to update.
+ *
+ * Kept as a wrapper (rather than removed) so existing callsites continue to
+ * compile while the conversion semantics get documented in one place.
  */
 export function dollarsFromMaybeCents(amount: number): number {
   if (!Number.isFinite(amount)) return 0;
-  return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
+  return amount;
+}
+
+// WEB-UIUX-1014: shared currency formatter that applies the maybe-cents
+// heuristic. Replaces the two near-duplicate `formatCurrency` wrappers that
+// used to live in GiftCardsListPage.tsx and GiftCardDetailPage.tsx.
+//
+// `abs: true` strips the sign so the caller can render +/- separately.
+export function formatMaybeCents(
+  amount: number | null | undefined,
+  opts?: { abs?: boolean },
+): string {
+  if (amount == null || !Number.isFinite(Number(amount))) return formatCurrency(amount);
+  const dollars = dollarsFromMaybeCents(Number(amount));
+  return formatCurrency(opts?.abs ? Math.abs(dollars) : dollars);
 }
 
 /**
@@ -265,11 +317,14 @@ export function toLocalDateString(date: Date | string | number, timeZone?: strin
 // ─── Relative time ──────────────────────────────────────────────────────────
 
 export function timeAgo(iso: string): string {
-  // Ensure UTC interpretation for server timestamps that omit a zone, while
-  // preserving explicit offsets such as `2026-04-30T10:00:00-05:00`.
+  // Ensure UTC interpretation -- server stores without Z suffix.
+  // WEB-UIUX-789: also treat ISO strings carrying a numeric offset (e.g.
+  // `-05:00` or `+02:00`) as fully-qualified — previously we only skipped
+  // the `+` form so `-05:00` got an extra `Z` appended (malformed). Match
+  // any explicit offset suffix.
   const normalized = iso.trim();
-  const hasExplicitZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
-  const ts = hasExplicitZone ? normalized : normalized + 'Z';
+  const hasOffset = /Z$|[+-]\d{2}:?\d{2}$/i.test(normalized);
+  const ts = hasOffset ? normalized : normalized + 'Z';
   const parsed = new Date(ts).getTime();
   if (Number.isNaN(parsed)) return '—';
   const diff = Date.now() - parsed;

@@ -32,6 +32,7 @@ import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { logActivity } from '../utils/activityLog.js';
 import { getRepairWarrantyDefaults, resolveRepairWarrantyDays } from '../utils/warrantyDefaults.js';
+import { getInvoicePitSnapshot } from '../utils/invoiceSnapshot.js';
 import { normalizePhone } from '../utils/phone.js';
 import {
   GENERAL_IMAGE_UPLOAD_MAX_BYTES,
@@ -787,13 +788,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0)');
     } else if (statusGroup === 'open') {
       // Open = non-closed, non-cancelled, AND not on-hold/waiting
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%')");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%' AND LOWER(name) NOT LIKE '%qc passed%' AND LOWER(name) NOT LIKE '%ready%' AND LOWER(name) NOT LIKE '%pickup%' AND LOWER(name) NOT LIKE '%approval%')");
     } else if (statusGroup === 'closed') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 1)');
     } else if (statusGroup === 'cancelled') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_cancelled = 1)');
     } else if (statusGroup === 'on_hold') {
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%'))");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%' OR LOWER(name) LIKE '%qc passed%' OR LOWER(name) LIKE '%ready%' OR LOWER(name) LIKE '%pickup%' OR LOWER(name) LIKE '%approval%'))");
     }
   }
   // WEB-W1-002: suppress closed/cancelled tickets when caller passes show_closed=0.
@@ -861,16 +862,34 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     keywordJoin = 'LEFT JOIN ticket_devices td_kw ON td_kw.ticket_id = t.id';
     // ESCAPE '\' + escapeLike() prevents users from supplying raw %/_
     // wildcards that would widen the match (enumeration / DoS).
-    conditions.push(`(
-      t.order_id LIKE ? ESCAPE '\\' OR
-      c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
-      (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
-      td_kw.device_name LIKE ? ESCAPE '\\' OR
-      t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
-      t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\')
-    )`);
+    // WEB-UIUX-662: when the operator types a phone like "(555) 123-4567"
+    // strip non-digits and OR-match c.phone / c.mobile against the digit
+    // form. Names + device + notes stay character-literal.
     const like = `%${escapeLike(keyword)}%`;
-    params.push(like, like, like, like, like, like, like);
+    const digitsOnly = keyword.replace(/\D+/g, '');
+    const digitMatch = digitsOnly.length >= 3 ? `%${escapeLike(digitsOnly)}%` : null;
+    if (digitMatch) {
+      conditions.push(`(
+        t.order_id LIKE ? ESCAPE '\\' OR
+        c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
+        (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
+        td_kw.device_name LIKE ? ESCAPE '\\' OR
+        t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
+        t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\') OR
+        c.phone LIKE ? ESCAPE '\\' OR c.mobile LIKE ? ESCAPE '\\'
+      )`);
+      params.push(like, like, like, like, like, like, like, digitMatch, digitMatch);
+    } else {
+      conditions.push(`(
+        t.order_id LIKE ? ESCAPE '\\' OR
+        c.first_name LIKE ? ESCAPE '\\' OR c.last_name LIKE ? ESCAPE '\\' OR
+        (c.first_name || ' ' || c.last_name) LIKE ? ESCAPE '\\' OR
+        td_kw.device_name LIKE ? ESCAPE '\\' OR
+        t.id IN (SELECT ticket_id FROM ticket_notes WHERE content LIKE ? ESCAPE '\\') OR
+        t.id IN (SELECT ticket_id FROM ticket_history WHERE description LIKE ? ESCAPE '\\')
+      )`);
+      params.push(like, like, like, like, like, like, like);
+    }
   }
 
   const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -1685,6 +1704,76 @@ router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // ===================================================================
+// GET /pending-qc — WEB-UIUX-1088: tickets parked in 'Repaired - Pending QC'
+// (or any status flagged for QC) without a passing sign-off row. Surfaces
+// the tech's "finished work but not yet signed" backlog plus the manager's
+// "stuck waiting for QC > N hours" view.
+// ===================================================================
+router.get('/pending-qc', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  // Optional assigned_to filter so a tech can see only their own pending
+  // sign-offs; manager view omits the filter to see the whole backlog.
+  const assignedToRaw = req.query.assigned_to;
+  const assignedTo = assignedToRaw && /^\d+$/.test(String(assignedToRaw)) ? Number(assignedToRaw) : null;
+  // Optional age filter (hours) so "> 24h pending" can be carved out.
+  const minHoursRaw = req.query.min_hours;
+  const minHours = minHoursRaw && Number.isFinite(Number(minHoursRaw)) ? Math.max(0, Number(minHoursRaw)) : 0;
+
+  const params: unknown[] = [];
+  let assignedClause = '';
+  if (assignedTo != null) {
+    assignedClause = ' AND t.assigned_to = ?';
+    params.push(assignedTo);
+  }
+  let ageClause = '';
+  if (minHours > 0) {
+    ageClause = ` AND (julianday('now') - julianday(t.updated_at)) * 24 >= ?`;
+    params.push(minHours);
+  }
+
+  const rows = await adb.all<AnyRow>(`
+    SELECT t.id, t.order_id, t.customer_id, t.status_id, t.assigned_to,
+           t.total, t.created_at, t.updated_at,
+           CAST((julianday('now') - julianday(t.updated_at)) * 24 AS INTEGER) AS hours_pending,
+           c.first_name AS c_first_name, c.last_name AS c_last_name,
+           ts.name AS status_name, ts.color AS status_color,
+           u.first_name AS assigned_first, u.last_name AS assigned_last
+      FROM tickets t
+      JOIN ticket_statuses ts ON ts.id = t.status_id
+ LEFT JOIN customers c ON c.id = t.customer_id
+ LEFT JOIN users u ON u.id = t.assigned_to
+     WHERE t.is_deleted = 0
+       AND ts.name = 'Repaired - Pending QC'
+       AND NOT EXISTS (
+         SELECT 1 FROM qc_sign_offs qs
+          WHERE qs.ticket_id = t.id
+            AND qs.outcome = 'pass'
+       )
+       ${assignedClause}
+       ${ageClause}
+     ORDER BY t.updated_at ASC
+  `, ...params);
+
+  res.json({
+    success: true,
+    data: rows.map((t) => ({
+      id: t.id,
+      order_id: t.order_id,
+      customer_id: t.customer_id,
+      status_id: t.status_id,
+      assigned_to: t.assigned_to,
+      total: t.total,
+      created_at: t.created_at,
+      updated_at: t.updated_at,
+      hours_pending: t.hours_pending,
+      customer: { id: t.customer_id, first_name: t.c_first_name, last_name: t.c_last_name },
+      status: { id: t.status_id, name: t.status_name, color: t.status_color },
+      assigned_user: t.assigned_to ? { id: t.assigned_to, first_name: t.assigned_first, last_name: t.assigned_last } : null,
+    })),
+  });
+}));
+
+// ===================================================================
 // GET /device-history - Search tickets by IMEI or serial number
 // ===================================================================
 router.get('/device-history', asyncHandler(async (req: Request, res: Response) => {
@@ -1930,13 +2019,13 @@ router.get('/export', requirePermission('tickets.view'), asyncHandler(async (req
     if (statusGroup === 'active') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0)');
     } else if (statusGroup === 'open') {
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%')");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND LOWER(name) NOT LIKE '%hold%' AND LOWER(name) NOT LIKE '%waiting%' AND LOWER(name) NOT LIKE '%pending%' AND LOWER(name) NOT LIKE '%transit%' AND LOWER(name) NOT LIKE '%qc passed%' AND LOWER(name) NOT LIKE '%ready%' AND LOWER(name) NOT LIKE '%pickup%' AND LOWER(name) NOT LIKE '%approval%')");
     } else if (statusGroup === 'closed') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 1)');
     } else if (statusGroup === 'cancelled') {
       conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE is_cancelled = 1)');
     } else if (statusGroup === 'on_hold') {
-      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%'))");
+      conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%' OR LOWER(name) LIKE '%qc passed%' OR LOWER(name) LIKE '%ready%' OR LOWER(name) LIKE '%pickup%' OR LOWER(name) LIKE '%approval%'))");
     }
   }
   if (assignedTo) {
@@ -2451,6 +2540,77 @@ router.patch('/:id/status', requirePermission('tickets.change_status'), asyncHan
     }).catch(err => logger.error('notification_import_failed', { err: err instanceof Error ? err.message : String(err) }));
   }
 
+  // WEB-UIUX-650: when a ticket transitions to a closed status, auto-stop any
+  // running bench timers on it. Labor billed against a closed job is the
+  // bug — the technician's wall-clock keeps ticking after the ticket is
+  // marked done. Stop ALL active rows (multi-tech case) using the shared
+  // bench math so totals match an explicit POST /bench/timer/:id/stop.
+  if (newStatus?.is_closed) {
+    try {
+      const {
+        computeElapsedSeconds: btmComputeElapsed,
+        computeLaborCostCents: btmComputeCost,
+        isCurrentlyPaused: btmPaused,
+        parseJson: btmParseJson,
+      } = await import('../services/benchTimerMath.js');
+      const activeTimers = await adb.all<AnyRow>(
+        `SELECT id, user_id, ticket_id, ticket_device_id, started_at, ended_at,
+                pause_log_json, total_seconds, labor_rate_cents, labor_cost_cents, notes
+         FROM bench_timers
+         WHERE ticket_id = ? AND ended_at IS NULL`,
+        ticketId,
+      );
+      for (const row of activeTimers) {
+        let pauseLogJson = row.pause_log_json as string | null;
+        if (btmPaused(row as any)) {
+          const pauses = btmParseJson<Array<{ pause_at: string; resume_at?: string }>>(
+            pauseLogJson,
+            [],
+          );
+          const last = pauses[pauses.length - 1];
+          if (last) last.resume_at = new Date().toISOString();
+          pauseLogJson = JSON.stringify(pauses);
+          (row as AnyRow).pause_log_json = pauseLogJson;
+        }
+        const elapsed = btmComputeElapsed(row as any);
+        const rate = (row.labor_rate_cents as number | null) ?? 0;
+        const cost = btmComputeCost(elapsed, rate);
+
+        await adb.run(
+          `UPDATE bench_timers
+             SET ended_at = datetime('now'),
+                 total_seconds = ?,
+                 labor_cost_cents = ?,
+                 pause_log_json = ?
+           WHERE id = ?`,
+          elapsed,
+          cost,
+          pauseLogJson,
+          row.id,
+        );
+
+        audit(db, 'bench_timer_auto_stopped_on_close', userId, req.ip ?? 'unknown', {
+          timer_id: row.id,
+          timer_user_id: row.user_id,
+          ticket_id: ticketId,
+          total_seconds: elapsed,
+          labor_cost_cents: cost,
+        });
+      }
+      if (activeTimers.length > 0) {
+        logger.info('bench_timers_auto_stopped_on_ticket_close', {
+          ticket_id: ticketId,
+          count: activeTimers.length,
+        });
+      }
+    } catch (err) {
+      logger.warn('bench_timer_auto_stop_failed', {
+        err: err instanceof Error ? err.message : String(err),
+        ticket_id: ticketId,
+      });
+    }
+  }
+
   // SW-D14: Schedule feedback SMS after ticket close (HTTP-only side-effect)
   if (newStatus?.is_closed) {
     const [feedbackAutoSms, feedbackTemplate, feedbackDelay] = await Promise.all([
@@ -2942,16 +3102,23 @@ router.post('/:id/convert-to-invoice', requirePermission('tickets.edit'), asyncH
     invoiceOrderId = generateOrderId('INV', seqRow!.next_num);
   }
 
+  // WEB-UIUX-895: ticket-to-invoice generation captures the live
+  // customer/store/jurisdiction so a future reprint mirrors what was on
+  // the ticket at generation time.
+  const pitTicket = await getInvoicePitSnapshot(adb, ticket.customer_id);
   const invResult = await adb.run(`
     INSERT INTO invoices (order_id, ticket_id, customer_id, status, subtotal, discount, discount_reason,
-                          total_tax, total, amount_paid, amount_due, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, 'unpaid', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+                          total_tax, total, amount_paid, amount_due, notes, created_by, created_at, updated_at,
+                          customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+    VALUES (?, ?, ?, 'unpaid', ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
     invoiceOrderId, ticketId, ticket.customer_id,
     ticket.subtotal, ticket.discount, ticket.discount_reason,
     ticket.total_tax, ticket.total, ticket.total,
     `Generated from ticket ${ticket.order_id}`,
     userId, now(), now(),
+    pitTicket.customer_name_snapshot, pitTicket.customer_address_snapshot,
+    pitTicket.store_name_snapshot, pitTicket.tax_jurisdiction_snapshot,
   );
 
   const invoiceId = Number(invResult.lastInsertRowid);
@@ -4562,21 +4729,14 @@ router.get('/:id/appointments', asyncHandler(async (req: Request, res: Response)
 }));
 
 // ===================================================================
-// POST /merge - Merge two tickets (admin-only)
+// POST /merge - Merge two tickets
 // ===================================================================
 // SEC-H25: ticket merge is a destructive bulk operation — gate behind
-// tickets.bulk_update permission. The inline role check below is kept as
-// defence-in-depth for deployments whose custom-role matrix doesn't restrict
-// this permission (admin always passes requirePermission due to SEC-H18 bypass).
+// tickets.bulk_update permission.
 router.post('/merge', requirePermission('tickets.bulk_update'), asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const db = req.db; // needed for audit helper
   const userId = req.user!.id;
-
-  // Admin bypass — matches the hard admin bypass in requirePermission().
-  if (req.user!.role !== 'admin') {
-    throw new AppError('Only admins can merge tickets', 403);
-  }
 
   const { keep_id, merge_id } = req.body;
   if (!keep_id || !merge_id) throw new AppError('keep_id and merge_id are required', 400);

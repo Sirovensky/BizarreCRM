@@ -5,33 +5,57 @@ import {
   Search, Plus, Wrench, ChevronLeft, ChevronRight, Trash2, Eye,
   ChevronDown, X, MoreHorizontal, Check, Settings2, MessageSquare, Stethoscope, Package,
   ArrowUp, ArrowDown, ArrowUpDown, Printer, Pin, List, CalendarDays, Send, Kanban,
-  Download, Bookmark, BookmarkX, AlertTriangle,
+  Download, Bookmark, BookmarkX, AlertTriangle, Phone, Copy, Smartphone,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { ticketApi, settingsApi, smsApi } from '@/api/endpoints';
+import { ticketApi, settingsApi, smsApi, posHandoffApi } from '@/api/endpoints';
 import { CustomerPreviewPopover } from '@/components/shared/CustomerPreviewPopover';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { useSettings } from '@/hooks/useSettings';
+import { useHasPermission } from '@/hooks/useHasPermission';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
-import { formatCurrency, formatDate, formatTicketId, timeAgo } from '@/utils/format';
+import { formatCurrency, formatDate, formatTicketId, timeAgo, toLocalDateString } from '@/utils/format';
 import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 import { normalizeListSearchKeyword } from '@/utils/listSearch';
 
 // ─── Optional column definitions ──────────────────────────────────
-type OptionalColumn = 'internal_note' | 'diagnostic_note' | 'ticket_items' | 'assigned_to';
+// Every non-essential column is toggleable. Essentials kept always-on:
+// the row gutter (checkbox + ID + priority dot), Status (so the user can
+// always see + change a ticket's state), and the Actions column.
+type OptionalColumn =
+  | 'internal_note'
+  | 'diagnostic_note'
+  | 'ticket_items'
+  | 'assigned_to'
+  | 'device'
+  | 'customer'
+  | 'issue'
+  | 'created'
+  | 'due'
+  | 'total';
 
-const OPTIONAL_COLUMNS: { key: OptionalColumn; label: string; icon: any }[] = [
-  { key: 'internal_note', label: 'Internal Note', icon: MessageSquare },
-  { key: 'diagnostic_note', label: 'Diagnostic Note', icon: Stethoscope },
-  { key: 'ticket_items', label: 'Ticket Items', icon: Package },
-  { key: 'assigned_to', label: 'Assigned To', icon: Settings2 },
+const OPTIONAL_COLUMNS: { key: OptionalColumn; label: string; icon: any; defaultOn?: boolean }[] = [
+  { key: 'device',          label: 'Device',          icon: Wrench,          defaultOn: true },
+  { key: 'customer',        label: 'Customer',        icon: MessageSquare,   defaultOn: true },
+  { key: 'issue',           label: 'Issue',           icon: AlertTriangle,   defaultOn: true },
+  { key: 'created',         label: 'Created',         icon: CalendarDays,    defaultOn: true },
+  { key: 'due',             label: 'Due',             icon: CalendarDays,    defaultOn: true },
+  { key: 'total',           label: 'Total',           icon: Settings2,       defaultOn: true },
+  { key: 'internal_note',   label: 'Internal Note',   icon: MessageSquare,   defaultOn: false },
+  { key: 'diagnostic_note', label: 'Diagnostic Note', icon: Stethoscope,     defaultOn: false },
+  { key: 'ticket_items',    label: 'Ticket Items',    icon: Package,         defaultOn: false },
+  { key: 'assigned_to',     label: 'Assigned To',     icon: Settings2,       defaultOn: false },
 ];
+
+const DEFAULT_VISIBLE_COLUMNS: OptionalColumn[] = OPTIONAL_COLUMNS
+  .filter((c) => c.defaultOn)
+  .map((c) => c.key);
 
 // ─── Date filter tabs ───────────────────────────────────────────────
 const DATE_TABS = [
@@ -114,7 +138,108 @@ const UrgencyDot = memo(function UrgencyDot({ urgency, showLabel = false }: { ur
   );
 });
 
+// ─── PhoneActionPopover ─────────────────────────────────────────────
+// Replaces the bare `tel:` link on customer phone numbers in the ticket
+// list. The bare anchor opened the OS dial pad on desktop (which the
+// user doesn't want — that's a phone-app handoff), and gave no path to
+// SMS or copy. Popover offers: Call (tel:), SMS (jumps to the in-app
+// conversation), Copy (clipboard). Native dial-pad handoff is gated
+// behind an explicit action so it never fires accidentally.
+function PhoneActionPopover({ phone, label, className }: {
+  phone: string;
+  label?: string;
+  className?: string;
+}) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+  const display = label ?? phone;
+  return (
+    <div className="relative inline-block" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn('text-left transition-colors hover:text-primary-500', className)}
+        title="Phone actions"
+      >
+        {display}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+          <div className="border-b border-surface-200 px-3 py-2 font-mono text-[11px] text-surface-500 dark:border-surface-700">{phone}</div>
+          <a
+            href={`tel:${phone}`}
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700"
+          >
+            <Phone className="h-3.5 w-3.5 text-primary-500" /> Call (open dialer)
+          </a>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              navigate(`/sms?phone=${encodeURIComponent(phone)}`);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700"
+          >
+            <Send className="h-3.5 w-3.5 text-primary-500" /> Send SMS
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(phone).then(
+                () => toast.success('Phone copied'),
+                () => toast.error('Could not copy'),
+              );
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700"
+          >
+            <Copy className="h-3.5 w-3.5 text-surface-500" /> Copy number
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setOpen(false);
+              try {
+                await posHandoffApi.pushHandoff('call', phone);
+                toast.success('Sent to your paired phone');
+              } catch (err) {
+                const e = err as { response?: { data?: { message?: string; code?: string } } };
+                if (e?.response?.data?.code === 'ERR_NO_ACTIVE_PAIRED_DEVICE') {
+                  toast.error('No paired mobile checked in recently. Pair under Settings → Account.');
+                } else {
+                  toast.error(e?.response?.data?.message ?? 'Could not push to paired phone');
+                }
+              }
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700"
+            title="If a paired mobile has checked in within 5 min, it will receive this number as a call action."
+          >
+            <Smartphone className="h-3.5 w-3.5 text-primary-500" /> Push to paired phone
+          </button>
+          <p className="border-t border-surface-200 px-3 py-2 text-[10.5px] text-surface-500 dark:border-surface-700">
+            SMS goes to the in-app conversation. If no SMS provider is configured the page will say so.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── StatusDropdown (inline, with outside-click close) ──────────────
+// TICKETS-STATUS-NOOP-1: client-side permission gate. If the user lacks
+// `tickets.change_status`, the dropdown renders as a static badge so the
+// click that used to silently 403 (and read as "nothing happens") never
+// fires the request in the first place.
 function StatusDropdown({
   ticket,
   statuses,
@@ -126,6 +251,7 @@ function StatusDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const canChange = useHasPermission('tickets.change_status');
 
   useEffect(() => {
     if (!open) return;
@@ -137,6 +263,19 @@ function StatusDropdown({
   }, [open]);
 
   const current = ticket.status;
+
+  if (!canChange) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full px-3 py-2 min-h-[44px] md:min-h-0 md:px-2.5 md:py-0.5 text-xs font-medium"
+        style={{ backgroundColor: `${safeColor(current?.color)}18`, color: safeColor(current?.color) }}
+        title="You do not have permission to change ticket status"
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: safeColor(current?.color) }} />
+        <span className="min-w-[80px] max-w-[180px] leading-tight">{current?.name ?? 'Unknown'}</span>
+      </span>
+    );
+  }
 
   return (
     <div className="relative" ref={ref}>
@@ -418,7 +557,11 @@ const TicketRow = memo(function TicketRow({
     <tr
       onClick={() => onNavigate(`/tickets/${ticket.id}`)}
       className={cn(
-        'cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50',
+        // Visible row separator + zebra striping. The list felt like one
+        // dense block before — every row blended into the next so the eye
+        // had nothing to track. Zebra-stripe odd rows + a 1px bottom border
+        // gives reliable horizontal grouping at any zoom.
+        'cursor-pointer border-b border-surface-200 transition-colors odd:bg-surface-50/40 hover:bg-surface-100 dark:border-surface-700 dark:odd:bg-surface-800/30 dark:hover:bg-surface-700/50',
         isSelected && 'bg-primary-50/50 dark:bg-primary-950/20',
         isExpanded && 'bg-surface-50/60 dark:bg-surface-800/30',
         (() => {
@@ -483,49 +626,52 @@ const TicketRow = memo(function TicketRow({
           </span>
         </td>
       )}
-      <td className="px-4 py-3 text-surface-600 dark:text-surface-400 max-w-[180px]">
-        <span className="truncate block" title={deviceName}>
-          {deviceName}
-          {deviceCount > 1 && (
-            <span className="ml-1 text-xs text-surface-400">+{deviceCount - 1}</span>
-          )}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        {customer ? (
-          <div>
-            <CustomerPreviewPopover customerId={customer.id}>
-              <Link
-                to={`/customers/${customer.id}`}
-                onClick={(e) => e.stopPropagation()}
-                className="text-surface-800 dark:text-surface-200 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
-              >
-                {customer.first_name} {customer.last_name}
-              </Link>
-            </CustomerPreviewPopover>
-            {(customer.phone || customer.mobile) && (
-              <a
-                href={`tel:${customer.mobile || customer.phone}`}
-                onClick={(e) => e.stopPropagation()}
-                className="block text-xs text-surface-400 hover:text-primary-500 transition-colors"
-              >
-                {customer.mobile || customer.phone}
-              </a>
+      {visibleColumns.has('device') && (
+        <td className="px-4 py-3 text-surface-600 dark:text-surface-400 max-w-[180px]">
+          <span className="truncate block" title={deviceName}>
+            {deviceName}
+            {deviceCount > 1 && (
+              <span className="ml-1 text-xs text-surface-400">+{deviceCount - 1}</span>
             )}
-          </div>
-        ) : (
-          <span className="text-surface-400">--</span>
-        )}
-      </td>
-      <td className="px-4 py-3 text-surface-500 dark:text-surface-400 max-w-[200px]">
-        {issue ? (
-          <span className="truncate block text-xs" title={issue}>
-            {issue.length > 60 ? issue.slice(0, 60) + '...' : issue}
           </span>
-        ) : (
-          <span className="text-surface-300 dark:text-surface-600">--</span>
-        )}
-      </td>
+        </td>
+      )}
+      {visibleColumns.has('customer') && (
+        <td className="px-4 py-3">
+          {customer ? (
+            <div>
+              <CustomerPreviewPopover customerId={customer.id}>
+                <Link
+                  to={`/customers/${customer.id}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-surface-800 dark:text-surface-200 hover:text-primary-600 dark:hover:text-primary-400 hover:underline"
+                >
+                  {customer.first_name} {customer.last_name}
+                </Link>
+              </CustomerPreviewPopover>
+              {(customer.phone || customer.mobile) && (
+                <PhoneActionPopover
+                  phone={(customer.mobile || customer.phone)!}
+                  className="block text-xs text-surface-400"
+                />
+              )}
+            </div>
+          ) : (
+            <span className="text-surface-400">--</span>
+          )}
+        </td>
+      )}
+      {visibleColumns.has('issue') && (
+        <td className="px-4 py-3 text-surface-500 dark:text-surface-400 max-w-[200px]">
+          {issue ? (
+            <span className="truncate block text-xs" title={issue}>
+              {issue.length > 60 ? issue.slice(0, 60) + '...' : issue}
+            </span>
+          ) : (
+            <span className="text-surface-300 dark:text-surface-600">--</span>
+          )}
+        </td>
+      )}
       {visibleColumns.has('ticket_items') && (
         <td className="px-4 py-3 text-surface-600 dark:text-surface-400 text-xs max-w-[180px]">
           {devices.length > 0 ? (
@@ -545,9 +691,11 @@ const TicketRow = memo(function TicketRow({
           ) : '--'}
         </td>
       )}
-      <td className="px-4 py-3 text-surface-500 dark:text-surface-400 whitespace-nowrap">
-        <span title={`Created: ${formatDate(ticket.created_at)}\nUpdated: ${formatDate(ticket.updated_at)}`}>{timeAgo(ticket.created_at)}</span>
-      </td>
+      {visibleColumns.has('created') && (
+        <td className="px-4 py-3 text-surface-500 dark:text-surface-400 whitespace-nowrap">
+          <span title={`Created: ${formatDate(ticket.created_at)}\nUpdated: ${formatDate(ticket.updated_at)}`}>{timeAgo(ticket.created_at)}</span>
+        </td>
+      )}
       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
         <StatusDropdown
           ticket={ticket}
@@ -555,6 +703,7 @@ const TicketRow = memo(function TicketRow({
           onChangeStatus={onChangeStatus}
         />
       </td>
+      {visibleColumns.has('due') && (
       <td className="px-4 py-3 whitespace-nowrap text-xs">
         {(() => {
           const dueOn = (ticket as any).due_on;
@@ -584,14 +733,17 @@ const TicketRow = memo(function TicketRow({
           return <span className={colorCls} title={formatDate(dueOn)}>{label}</span>;
         })()}
       </td>
+      )}
       {visibleColumns.has('assigned_to') && (
         <td className="px-4 py-3 text-surface-600 dark:text-surface-400 whitespace-nowrap">
           {assigned ? `${assigned.first_name} ${assigned.last_name}` : '--'}
         </td>
       )}
-      <td className="px-4 py-3 text-right font-medium text-surface-800 dark:text-surface-200 whitespace-nowrap">
-        {formatCurrency(ticket.total)}
-      </td>
+      {visibleColumns.has('total') && (
+        <td className="px-4 py-3 text-right font-medium text-surface-800 dark:text-surface-200 whitespace-nowrap">
+          {formatCurrency(ticket.total)}
+        </td>
+      )}
       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-1">
           <button
@@ -733,9 +885,10 @@ const TicketRow = memo(function TicketRow({
             </div>
             <div className="shrink-0 text-right space-y-1 min-w-[140px]">
               {customer?.phone && (
-                <a href={`tel:${customer.phone}`} className="text-xs text-primary-600 hover:underline dark:text-primary-400 block font-medium">
-                  {customer.phone}
-                </a>
+                <PhoneActionPopover
+                  phone={customer.phone}
+                  className="block text-xs font-medium text-primary-600 dark:text-primary-400"
+                />
               )}
               {customer?.email && <p className="text-xs text-surface-400 truncate max-w-[180px]">{customer.email}</p>}
               {assigned && (
@@ -818,7 +971,7 @@ export function TicketListPage() {
     } catch {
       // Invalid saved columns — use defaults
     }
-    return new Set<OptionalColumn>();
+    return new Set<OptionalColumn>(DEFAULT_VISIBLE_COLUMNS);
   });
   // CROSS1: when assignment feature is off, strip assigned_to from the set used for rendering
   // (user's saved preference remains intact; feature only suppresses display).
@@ -1042,9 +1195,24 @@ export function TicketListPage() {
       });
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err: unknown, _vars, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['tickets', ticketParams], ctx.prev);
-      toast.error('Failed to change status');
+      // TICKETS-STATUS-NOOP-1: surface the actual server reason instead of a
+      // generic toast that read as "nothing happened" when the real cause was
+      // a 403 / illegal-transition rejection.
+      const e = err as {
+        response?: { status?: number; data?: { message?: string; code?: string } };
+        message?: string;
+      };
+      const status = e?.response?.status;
+      const serverMsg = e?.response?.data?.message;
+      if (status === 403) {
+        toast.error(serverMsg ?? 'You do not have permission to change ticket status');
+      } else if (status === 409 || (e?.response?.data?.code ?? '').startsWith('ERR_TICKET_STATUS_')) {
+        toast.error(serverMsg ?? 'Illegal status transition for this ticket');
+      } else {
+        toast.error(serverMsg ?? e?.message ?? 'Failed to change status');
+      }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
@@ -1131,8 +1299,12 @@ export function TicketListPage() {
   });
 
   // ─── Calendar data ────────────────────────────────────────────────
-  const calStartDate = new Date(calendarMonth.year, calendarMonth.month, 1).toISOString().slice(0, 10);
-  const calEndDate = new Date(calendarMonth.year, calendarMonth.month + 1, 0).toISOString().slice(0, 10);
+  // WEB-UIUX-788: `new Date(y, m, d)` produces a *local* midnight; previously
+  // `.toISOString().slice(0,10)` reinterpreted that instant in UTC, which
+  // for users west of UTC silently rolled the month boundary back a day
+  // (Jan 1 PST → Dec 31 UTC → query missed the first day of the month).
+  const calStartDate = toLocalDateString(new Date(calendarMonth.year, calendarMonth.month, 1));
+  const calEndDate = toLocalDateString(new Date(calendarMonth.year, calendarMonth.month + 1, 0));
 
   const { data: calendarData } = useQuery({
     queryKey: ['tickets-calendar', calStartDate, calEndDate],
@@ -1307,20 +1479,32 @@ export function TicketListPage() {
               <CalendarDays className="h-4 w-4" />
             </button>
           </div>
+          {/* WEB-UIUX-1127: relabelled "New Ticket" → "New Sale / Repair" so
+              the button matches the destination (Unified POS with Repairs/
+              Products/Misc tabs + cash drawer chrome), not a hypothetical
+              ticket-only form. URL stays /tickets/new to keep existing
+              bookmarks/Communications deep-links intact. */}
           <Link
             to="/tickets/new"
             className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
-            New Ticket
+            New Sale / Repair
           </Link>
         </div>
       </div>
 
       {/* Overview bar — grouped status counts + progress bar (like RepairDesk) */}
       {(() => {
-        // Identify "on hold" statuses by name pattern
-        const holdKeywords = ['hold', 'waiting', 'pending', 'transit'];
+        // Identify "on hold" statuses by name pattern. On-hold = work that's
+        // blocked on a non-shop actor: customer hasn't picked up, parts are
+        // in transit, manager hasn't approved, etc. Adding `qc passed`,
+        // `ready`, and `pickup` so the most common ready-for-pickup status
+        // names ("Repaired - QC Passed", "Ready for pickup") move out of
+        // the Open bucket where they were inflating the active-work count.
+        // Mirror this list in tickets.routes.ts (server LIKE patterns) and
+        // reports.routes.ts (status_groups summary) — same ruleset.
+        const holdKeywords = ['hold', 'waiting', 'pending', 'transit', 'qc passed', 'ready', 'pickup', 'approval'];
         const isOnHold = (name: string) => holdKeywords.some(k => name.toLowerCase().includes(k));
 
         // Group statuses: open (blue), on hold (orange), closed (green), cancelled (red)
@@ -1659,10 +1843,20 @@ export function TicketListPage() {
         </div>
 
         {/* Bulk action bar */}
-        {selected.size > 0 && (
+        {selected.size > 0 && (() => {
+          // WEB-UIUX-664: clarify cross-page selection so a "50 selected" bar
+          // never shows up against 25 visibly-checked rows on the current page.
+          const onCurrentPage = tickets.filter((t) => selected.has(t.id)).length;
+          const crossPageCount = selected.size - onCurrentPage;
+          return (
           <div className="flex items-center gap-3 border-b border-surface-200 bg-primary-50 px-4 py-2.5 dark:border-surface-700 dark:bg-primary-950/30">
             <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
               {selected.size} selected
+              {crossPageCount > 0 && (
+                <span className="ml-1 text-xs font-normal text-primary-600/80 dark:text-primary-300/70">
+                  ({onCurrentPage} on this page · {crossPageCount} from other pages)
+                </span>
+              )}
             </span>
             <div className="relative" ref={bulkStatusRef}>
               <button
@@ -1741,7 +1935,8 @@ export function TicketListPage() {
               Clear
             </button>
           </div>
-        )}
+          );
+        })()}
 
         {ticketsIsError && (
           <div
@@ -1862,19 +2057,31 @@ export function TicketListPage() {
                 {visibleColumns.has('diagnostic_note') && (
                   <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Diagnostic Note</th>
                 )}
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Device</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Customer</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Issue</th>
+                {visibleColumns.has('device') && (
+                  <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Device</th>
+                )}
+                {visibleColumns.has('customer') && (
+                  <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Customer</th>
+                )}
+                {visibleColumns.has('issue') && (
+                  <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Issue</th>
+                )}
                 {visibleColumns.has('ticket_items') && (
                   <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Ticket Items</th>
                 )}
-                <SortHeader label="Created" column="created_at" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                {visibleColumns.has('created') && (
+                  <SortHeader label="Created" column="created_at" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                )}
                 <SortHeader label="Status" column="status_id" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Due</th>
+                {visibleColumns.has('due') && (
+                  <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Due</th>
+                )}
                 {effectiveVisibleColumns.has('assigned_to') && (
                   <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Assigned To</th>
                 )}
-                <SortHeader label="Total" column="total" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="text-right" />
+                {visibleColumns.has('total') && (
+                  <SortHeader label="Total" column="total" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="text-right" />
+                )}
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400 text-right">Actions</th>
               </tr>
             </thead>
@@ -1896,13 +2103,18 @@ export function TicketListPage() {
                           ? 'No tickets match your filters'
                           : 'Create your first ticket to get started'}
                       </p>
-                      <Link
-                        to="/tickets/new"
-                        className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
-                      >
-                        <Plus className="h-4 w-4" />
-                        New Ticket
-                      </Link>
+                      {/* WEB-UIUX-852: surface the primary CTA on the empty state
+                          since the page-level "+ New Ticket" button is far away
+                          for new shops. */}
+                      {!(keyword || statusFilter || dateFilter) && (
+                        <Link
+                          to="/tickets/new"
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+                        >
+                          {/* WEB-UIUX-1127: relabelled to match destination (POS Repairs flow). */}
+                          <Plus className="h-4 w-4" /> New Sale / Repair
+                        </Link>
+                      )}
                     </div>
                   </td>
                 </tr>

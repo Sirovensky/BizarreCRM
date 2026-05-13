@@ -17,6 +17,7 @@ import {
   ArrowUp,
   ArrowDown,
   Compass,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface SearchResult {
@@ -34,6 +35,7 @@ interface GroupedResults {
   inventory: SearchResult[];
   invoices: SearchResult[];
   pages: SearchResult[];
+  settings: SearchResult[];
 }
 
 // WEB-FL-007 (Fixer-B12 2026-04-25): static page-jump targets so Cmd+K
@@ -69,7 +71,7 @@ const PAGE_JUMPS: PageJumpEntry[] = [
   { display: 'Cash Register', path: '/cash-register', aliases: ['drawer', 'till'] },
   { display: 'Catalog', path: '/catalog', aliases: ['products'] },
   { display: 'Loaners', path: '/loaners', aliases: ['loaner devices'] },
-  { display: 'Subscriptions', path: '/subscriptions', aliases: ['memberships', 'recurring'] },
+  { display: 'Memberships', path: '/memberships', aliases: ['subscriptions', 'recurring'] },
   { display: 'Gift Cards', path: '/gift-cards' },
   { display: 'Referrals', path: '/marketing/referrals' },
   { display: 'My Queue', path: '/team/my-queue', aliases: ['team', 'queue'] },
@@ -139,8 +141,22 @@ function getRecentSearches(): string[] {
   }
 }
 
+// WEB-UIUX-675: skip persisting plausibly-sensitive tokens.
+// We filter the obvious cases — long digit runs (SSN/card-shape), explicit
+// SSN format, and >=12-digit numerics — to avoid leaving PII / PCI in
+// session storage. Anything containing whitespace is left alone (multi-word
+// queries are vanishingly unlikely to be a card #).
+function isSensitiveQuery(q: string): boolean {
+  const trimmed = q.replace(/[\s-]/g, '');
+  if (/^\d{9,}$/.test(trimmed)) return true;         // bare numerics 9+ digits
+  if (/^\d{3}-\d{2}-\d{4}$/.test(q)) return true;    // SSN form
+  if (/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/.test(q)) return true; // 16-digit grouped (card)
+  return false;
+}
+
 function saveRecentSearch(query: string) {
   if (query.length < MIN_QUERY_LENGTH) return;
+  if (isSensitiveQuery(query)) return;
   try {
     const stored = sessionStorage.getItem(RECENT_SEARCHES_KEY);
     let existing: RecentSearchEntry[] = [];
@@ -202,6 +218,12 @@ const typeConfig: Record<string, { icon: React.ReactNode; label: string; path: (
     path: () => '/',
     color: 'text-rose-500 bg-rose-50 dark:bg-rose-500/10',
   },
+  setting: {
+    icon: <SlidersHorizontal className="h-4 w-4" />,
+    label: 'Settings',
+    path: () => '/settings',
+    color: 'text-sky-500 bg-sky-50 dark:bg-sky-500/10',
+  },
 };
 
 export function CommandPalette() {
@@ -235,6 +257,7 @@ export function CommandPalette() {
     results
       ? [
           ...results.pages,
+          ...results.settings,
           ...results.tickets,
           ...results.customers,
           ...results.inventory,
@@ -295,22 +318,41 @@ export function CommandPalette() {
     const ac = new AbortController();
     abortCtrlRef.current = ac;
 
-    setLoading(true);
-    setSearchError(false);
     // WEB-FL-007 (Fixer-B12): page-jump matches are local + synchronous,
     // so they appear even if the backend search fails or is unavailable.
     const pages = matchPageJumps(term);
+    const localResults: GroupedResults = {
+      tickets: [],
+      customers: [],
+      inventory: [],
+      invoices: [],
+      pages,
+      settings: [],
+    };
+
+    // Paint local navigation matches immediately. Backend results merge in below.
+    setResults(localResults);
+    setSelectedIndex(0);
+    setLoading(true);
+    setSearchError(false);
     try {
       const res = await searchApi.global(term.trim(), { signal: ac.signal });
       const data = res.data.data as Omit<GroupedResults, 'pages'>;
-      setResults({ ...data, pages });
+      setResults({
+        tickets: data.tickets ?? [],
+        customers: data.customers ?? [],
+        inventory: data.inventory ?? [],
+        invoices: data.invoices ?? [],
+        settings: data.settings ?? [],
+        pages,
+      });
       setSelectedIndex(0);
     } catch (err) {
       if (ac.signal.aborted) return; // cancelled — a newer search is in flight
       // Surface the failure as an explicit error state so the palette shows
       // "Search unavailable" instead of a misleading "No results found".
       console.error('[CommandPalette] search failed', err);
-      setResults({ tickets: [], customers: [], inventory: [], invoices: [], pages });
+      setResults(localResults);
       setSearchError(true);
     } finally {
       if (!ac.signal.aborted) setLoading(false);
@@ -334,7 +376,7 @@ export function CommandPalette() {
     (result: SearchResult) => {
       // WEB-FL-007: page-jump rows carry their target as `pagePath`
       // because their numeric id is a placeholder (0).
-      if (result.type === 'page' && result.pagePath) {
+      if ((result.type === 'page' || result.type === 'setting') && result.pagePath) {
         saveRecentSearch(query.trim());
         navigate(result.pagePath);
         close();
@@ -450,6 +492,7 @@ export function CommandPalette() {
   if (results) {
     for (const [type, items] of [
       ['page', results.pages],
+      ['setting', results.settings],
       ['ticket', results.tickets],
       ['customer', results.customers],
       ['inventory', results.inventory],
@@ -489,7 +532,10 @@ export function CommandPalette() {
         >
           <h2 id="command-palette-title" className="sr-only">Command palette</h2>
           {/* Search Input */}
-          <div className="flex items-center gap-3 border-b border-surface-100 px-4 dark:border-surface-800">
+          <div
+            data-command-palette-search="true"
+            className="flex items-center gap-3 border-b border-surface-100 px-4 transition-colors focus-within:bg-surface-50/60 dark:border-surface-800 dark:focus-within:bg-surface-800/40"
+          >
             {loading ? (
               <Loader2 className="h-5 w-5 shrink-0 animate-spin text-brand-500" />
             ) : (
@@ -497,6 +543,7 @@ export function CommandPalette() {
             )}
             <input
               ref={inputRef}
+              data-command-palette-input="true"
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -504,7 +551,7 @@ export function CommandPalette() {
               aria-autocomplete="list"
               aria-controls="command-palette-results"
               aria-activedescendant={activeOptionId}
-              placeholder="Search pages, tickets, customers, inventory, invoices..."
+              placeholder="Search pages, settings, tickets, customers, inventory..."
               className="h-14 flex-1 bg-transparent text-base text-surface-800 outline-none placeholder:text-surface-400 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             {query && (

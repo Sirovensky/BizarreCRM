@@ -49,6 +49,14 @@ export interface DunningStep {
   template_id?: string;
 }
 
+export interface DunningFailureDetail {
+  invoice_id: number;
+  order_id: string | null;
+  reason: string;
+  sequence_id: number;
+  step_index: number;
+}
+
 export interface DunningSummary {
   sequences_evaluated: number;
   /**
@@ -85,6 +93,12 @@ export interface DunningSummary {
    * some steps did not fire (e.g. "channel not wired"). Empty on a perfect run.
    */
   warnings: string[];
+  /**
+   * WEB-UIUX-830: per-invoice failure list so the UI can show "5 of 200
+   * failed" rather than just aggregate counts, and offer a Retry-Failed
+   * affordance. Populated alongside steps_failed/failures.
+   */
+  failure_details: DunningFailureDetail[];
 }
 
 /**
@@ -222,6 +236,7 @@ export async function runDunningOnce(
     invoices_touched: 0,
     failures: 0,
     warnings: [],
+    failure_details: [],
   };
 
   // Honor the store_config kill-switch so an operator can pause dunning
@@ -269,7 +284,10 @@ export async function runDunningOnce(
 
       const eligible = db
         .prepare(
-          `SELECT i.id, i.order_id, i.customer_id, i.amount_due, i.due_date, i.status
+          // Schema column is `due_on` (migration 013); the historical
+          // `due_date` reference 500'd. Alias to `due_date` for the row
+          // shape so the rest of the scheduler keeps the same field name.
+          `SELECT i.id, i.order_id, i.customer_id, i.amount_due, i.due_on AS due_date, i.status
              FROM invoices i
              LEFT JOIN dunning_runs r
                ON r.invoice_id = i.id
@@ -277,11 +295,11 @@ export async function runDunningOnce(
               AND r.step_index = ?
             WHERE i.amount_due > 0
               AND i.status IN ('unpaid','overdue','partial')
-              AND i.due_date IS NOT NULL
+              AND i.due_on IS NOT NULL
               -- SCAN-1174: compare the raw column so SQLite can range-scan
-              -- the i.due_date index. due_date is stored as YYYY-MM-DD
+              -- the i.due_on index. due_on is stored as YYYY-MM-DD
               -- HH:MM:SS so lex compare equals chrono compare.
-              AND i.due_date <= ?
+              AND i.due_on <= ?
               AND r.id IS NULL
             LIMIT 500`,
         )
@@ -373,6 +391,16 @@ export async function runDunningOnce(
               if (dispatchResult.warning) {
                 summary.warnings.push(dispatchResult.warning);
               }
+              // WEB-UIUX-830: capture per-invoice failure detail so the
+              // /run-now response can drive a "Retry failed" UI without a
+              // second DB scan.
+              summary.failure_details.push({
+                invoice_id: invoice.id,
+                order_id: invoice.order_id ?? null,
+                reason: dispatchResult.warning ?? 'Dispatch failed',
+                sequence_id: seq.id,
+                step_index: stepIndex,
+              });
               break;
             case 'skipped':
               summary.steps_skipped += 1;
@@ -431,6 +459,7 @@ export async function runDunningIfDue(
       warnings: [
         'Dunning run skipped: last run was less than the minimum gap ago.',
       ],
+      failure_details: [],
     };
   }
   return runDunningOnce(db);
@@ -638,15 +667,22 @@ async function dispatchStep(
   const action = (step.action || '').toLowerCase();
 
   // Non-sending actions — operator handles manually.
-  if (action === 'call_queue' || action === 'escalate') {
+  if (action === 'call_queue' || action === 'escalate' || action === 'request_card_update') {
     logger.info('dunning step is non-dispatch action — recorded only', {
       invoice_id: invoice.id,
       order_id: invoice.order_id,
       action,
     });
+    // WEB-UIUX-838: 'request_card_update' surfaces the payment-method-on-
+    // file workflow without dispatching itself. The admin sees the queued
+    // step in dunning_runs and follows up via Settings → Customers →
+    // Payment Method (or sends a Payment Link from the customer's invoice).
+    const warning = action === 'request_card_update'
+      ? `Step action 'request_card_update' is non-dispatch — admin should send a Payment Method update link to ${invoice.customer_id ?? 'this customer'}.`
+      : `Step action '${action}' is non-dispatch; admin must follow up manually.`;
     return {
       outcome: 'pending_dispatch',
-      warning: `Step action '${action}' is non-dispatch; admin must follow up manually.`,
+      warning,
     };
   }
 
@@ -678,12 +714,15 @@ async function dispatchStep(
     }
 
     // TCPA / SCAN-582: Dunning is transactional (debt collection).
-    // Require either global sms_opt_in OR explicit sms_consent_transactional.
-    // A NULL value (column absent on legacy rows) is treated as opted-in so
-    // existing customers are not silently suppressed after a deploy; new rows
-    // must be explicit (migration sets defaults to 1).
+    // BUGHUNT-2026-05-10-52: comment + invariant say EITHER flag set is
+    // sufficient — code used AND, which silently suppressed customers
+    // who had only one of the two consent columns ticked (e.g. opted
+    // in to marketing but legacy transactional flag null/zero). Switch
+    // to OR. Suppress only when BOTH flags explicitly = 0. NULL stays
+    // opted-in so existing legacy rows aren't silently dropped after
+    // deploy; new rows are explicit (migration default = 1).
     const smsAllowed =
-      customer.sms_opt_in !== 0 && customer.sms_consent_transactional !== 0;
+      customer.sms_opt_in !== 0 || customer.sms_consent_transactional !== 0;
     if (!smsAllowed) {
       logger.info('dunning SMS skipped — customer opted out of transactional SMS', {
         invoice_id: invoice.id,

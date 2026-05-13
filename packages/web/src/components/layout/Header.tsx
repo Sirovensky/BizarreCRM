@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -27,6 +28,8 @@ import {
   Info,
   HelpCircle,
   ScrollText,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
 import { Button } from '@/components/shared/Button';
@@ -88,8 +91,12 @@ function isRequestCanceled(err: unknown): boolean {
 
 export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setCommandPaletteOpen, keyboardShortcutsEnabled } = useUiStore();
-  const { user, logout } = useAuthStore();
+  const { user, logout, actingAs, switchBack } = useAuthStore();
+  // POS owns its own primary search bar (mockup Frame 03 search prominence).
+  // Hide the shell command-palette button on /pos to avoid double search.
+  const isPosRoute = location.pathname === '/pos' || location.pathname.startsWith('/pos/') || location.pathname === '/tickets/new';
 
   const isMac = useMemo(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent), []);
   const shortcutLabel = isMac ? '\u2318K' : 'Ctrl+K';
@@ -449,34 +456,60 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     : '?';
 
   return (
-    <header data-app-chrome="true" className="relative z-40 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80" style={{ overflow: 'visible' }}>
+    <header data-app-chrome="true" className={cn(
+      "relative z-40 flex shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80",
+      isPosRoute ? "h-14" : "h-16",
+    )} style={{ overflow: 'visible' }}>
+      {/* WEB-UIUX-742: Switch-User banner. Renders when an active switch flow
+          left a prior user on the snapshot — operator hits "Switch back" to
+          log out + redirect to /login so the original credentials can be
+          re-entered. PIN is intentionally NOT persisted. */}
+      {actingAs && user && (
+        <div className="absolute inset-x-0 top-full z-50 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
+            <strong className="capitalize">Acting as {user.first_name || user.username}</strong>
+            <span className="opacity-80">— switched from {actingAs.name} ({actingAs.role}).</span>
+            <button
+              type="button"
+              onClick={() => { void switchBack(); }}
+              className="ml-auto rounded-md border border-amber-400 px-2 py-0.5 text-[11px] font-semibold hover:bg-amber-100 dark:border-amber-500/40 dark:hover:bg-amber-500/15"
+            >
+              Switch back
+            </button>
+          </div>
+        </div>
+      )}
       {/* Left: Hamburger (mobile) + Breadcrumb area (placeholder) */}
-      <div className="flex flex-1 items-center gap-2">
+      <div className={cn("flex items-center gap-2", isPosRoute ? "flex-none" : "flex-1")}>
         {hamburgerButton}
       </div>
 
-      {/* Center: Search */}
-      <Button
-        onClick={() => setCommandPaletteOpen(true)}
-        variant="secondary"
-        size="sm"
-        fullWidth
-        className="max-w-md !justify-start gap-2 border-surface-200 bg-surface-50 text-surface-400 hover:border-surface-300 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500 dark:hover:border-surface-600 dark:hover:bg-surface-750"
-        aria-keyshortcuts="Meta+K Control+K F6"
-      >
-        <Search className="h-4 w-4 shrink-0" />
-        <span className="flex-1 text-left">Search or press {shortcutLabel}...</span>
-        <kbd className="hidden rounded border border-surface-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-surface-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-400 sm:inline-block">
-          {shortcutLabel}
-        </kbd>
-      </Button>
+      {/* Center: Search — hidden on /pos because POS owns its own primary search bar.
+          On /pos, render a portal slot so POS can hoist its title+search+actions up here. */}
+      {!isPosRoute && (
+        <Button
+          onClick={() => setCommandPaletteOpen(true)}
+          variant="secondary"
+          size="sm"
+          fullWidth
+          className="max-w-md !justify-start gap-2 border-surface-200 bg-surface-50 text-surface-400 hover:border-surface-300 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-500 dark:hover:border-surface-600 dark:hover:bg-surface-750"
+          aria-keyshortcuts="Meta+K Control+K F6"
+        >
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="flex-1 text-left">Search or press {shortcutLabel}...</span>
+          <kbd className="hidden rounded border border-surface-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-surface-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-400 sm:inline-block">
+            {shortcutLabel}
+          </kbd>
+        </Button>
+      )}
+      {isPosRoute && <div id="pos-header-slot" className="flex flex-1 items-center gap-3 min-w-0" />}
 
       {/* Right: Actions */}
       {/* Theme toggle was previously here but has been moved to Settings > Store.
           The wizard (StepWelcome) collects it on first-run; subsequent changes
           happen from Settings. Keeping the header focused on immediate actions
           (search, notifications, messages, user menu) reduces noise. */}
-      <div className="flex flex-1 items-center justify-end gap-1">
+      <div className={cn("flex items-center justify-end gap-1", isPosRoute ? "ml-auto" : "flex-1")}>
         {/* Keyboard shortcut reference (audit section 42, idea 14) */}
         <Button
           onClick={() => setShortcutsOpen(true)}
@@ -816,3 +849,205 @@ const NotificationItem = memo(function NotificationItem({
     </button>
   );
 });
+
+// WEB-UIUX-474: mirror PinModal's 5-attempt lockout + data-lpignore here.
+// We cannot reuse <PinModal> directly because PinModal calls authApi.verifyPin
+// internally and returns no pin value; SwitchUserModal must pass the raw PIN
+// to switchUser() externally. Duplicating only the lockout state (not the
+// full component) is the minimal, safe fix.
+const SWITCH_MAX_ATTEMPTS = 5;
+const SWITCH_LOCKOUT_SECONDS = 60;
+
+// WEB-UIUX-900: persist failCount + lockedUntil across page refreshes so a
+// refresh + retry doesn't reset the brute-force counter. sessionStorage
+// (tab-isolated) avoids leaking attempt state across kiosks; localStorage
+// would let the next user inherit the lockout, which is too sticky.
+const SWITCH_FAIL_KEY = 'bizarre-crm:switch-user-fails';
+function readSwitchLockState(): { failCount: number; lockedUntil: number | null } {
+  if (typeof sessionStorage === 'undefined') return { failCount: 0, lockedUntil: null };
+  try {
+    const raw = sessionStorage.getItem(SWITCH_FAIL_KEY);
+    if (!raw) return { failCount: 0, lockedUntil: null };
+    const parsed = JSON.parse(raw) as { f?: number; u?: number };
+    const lockedUntil = typeof parsed.u === 'number' && parsed.u > Date.now() ? parsed.u : null;
+    // Lockout expired — drop the stored counter so a fresh attempt window starts.
+    const failCount = lockedUntil === null ? 0 : (parsed.f ?? 0);
+    if (lockedUntil === null) sessionStorage.removeItem(SWITCH_FAIL_KEY);
+    return { failCount, lockedUntil };
+  } catch {
+    return { failCount: 0, lockedUntil: null };
+  }
+}
+function writeSwitchLockState(state: { failCount: number; lockedUntil: number | null }): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    if (state.failCount === 0 && state.lockedUntil === null) {
+      sessionStorage.removeItem(SWITCH_FAIL_KEY);
+      return;
+    }
+    sessionStorage.setItem(SWITCH_FAIL_KEY, JSON.stringify({ f: state.failCount, u: state.lockedUntil }));
+  } catch { /* best-effort */ }
+}
+
+function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => Promise<void>; onCancel: () => void }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  // WEB-UIUX-911: focus-trap + restore on close so keyboard operators land
+  // back on the avatar/menu trigger when the switch-user PIN dialog dismisses.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
+  // WEB-UIUX-900: seed from sessionStorage so the lockout survives reload.
+  const initialLockState = readSwitchLockState();
+  const [failCount, setFailCount] = useState(initialLockState.failCount);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(initialLockState.lockedUntil);
+  const [lockCountdown, setLockCountdown] = useState(0);
+  // WEB-UIUX-900: mirror state into sessionStorage every change.
+  useEffect(() => {
+    writeSwitchLockState({ failCount, lockedUntil });
+  }, [failCount, lockedUntil]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  const isLocked = lockedUntil !== null && Date.now() < lockedUntil;
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Esc closes the dialog. The page-wide Esc handler elsewhere in this file
+  // targets dropdown menus only; without this listener the modal would only
+  // close via the X / Cancel buttons.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  // Countdown timer while locked out — matches PinModal pattern.
+  useEffect(() => {
+    if (!lockedUntil) return;
+    // BUGHUNT-2026-05-10-32: stopped flag short-circuits any pending tick
+    // that fires between Date.now() check and the setState calls (e.g.
+    // tick was already queued at cleanup time). Guards the
+    // "setState-after-unmount" warning.
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setLockedUntil(null);
+        setLockCountdown(0);
+        setError('');
+        setFailCount(0);
+        inputRef.current?.focus();
+      } else {
+        setLockCountdown(remaining);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [lockedUntil]);
+
+  // WEB-UIUX-445: move focus to Cancel when lockout activates so the user
+  // has a reachable, actionable target (PIN input becomes disabled).
+  useEffect(() => {
+    if (isLocked) cancelButtonRef.current?.focus();
+  }, [isLocked]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pin.trim() || loading || isLocked) return;
+    setLoading(true);
+    setError('');
+    try {
+      await onSuccess(pin);
+    } catch (err) {
+      // Underlying error already mapped to a UI banner; log so the actual cause
+      // (network vs auth vs server) is visible in console / Sentry.
+      console.warn('[SwitchUserModal] PIN switch failed', err);
+      const newCount = failCount + 1;
+      setFailCount(newCount);
+      if (newCount >= SWITCH_MAX_ATTEMPTS) {
+        const lockTs = Date.now() + SWITCH_LOCKOUT_SECONDS * 1000;
+        setLockedUntil(lockTs);
+        setError(`Too many attempts. Please wait ${SWITCH_LOCKOUT_SECONDS}s.`);
+      } else {
+        setError(`Invalid PIN (${SWITCH_MAX_ATTEMPTS - newCount} attempts remaining)`);
+      }
+      setPin('');
+      inputRef.current?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onCancel}
+      role="presentation"
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="switch-user-title"
+        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="h-4 w-4 text-surface-500" />
+            <h2 id="switch-user-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
+          </div>
+          <Button aria-label="Close" onClick={onCancel} variant="ghost" size="sm" iconOnly className="min-h-[44px] min-w-[44px] text-surface-400 md:min-h-0 md:min-w-0">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <p className="text-sm text-surface-500 dark:text-surface-400">Enter the PIN of the user to switch to.</p>
+          {/* SCAN-1163: data-lpignore + autoComplete="off" + data-form-type="other"
+              prevent password managers from offering to save the switch PIN. */}
+          <input
+            ref={inputRef}
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
+            value={pin}
+            disabled={isLocked}
+            autoComplete="off"
+            data-lpignore="true"
+            data-form-type="other"
+            onChange={(e) => { if (!isLocked) { setPin(e.target.value.replace(/\D/g, '')); setError(''); } }}
+            placeholder={isLocked ? `Wait ${lockCountdown}s` : 'PIN'}
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-primary-600 focus-visible:outline-none focus:ring-1 focus:ring-primary-600 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+          />
+          {isLocked && (
+            <p role="alert" aria-live="polite" className="text-center text-sm text-amber-600 dark:text-amber-400">
+              Locked. Press Cancel to close.
+            </p>
+          )}
+          {error && !isLocked && <p className="text-center text-sm text-red-500">{error}</p>}
+          <div className="flex gap-3">
+            <Button ref={cancelButtonRef} type="button" onClick={onCancel} variant="secondary" size="sm" fullWidth>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!pin.trim() || loading || isLocked}
+              variant="primary"
+              size="sm"
+              fullWidth
+              leadingIcon={loading ? <Loader2 className="h-4 w-4 animate-spin" /> : undefined}
+            >
+              Switch
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

@@ -17,6 +17,10 @@ import { Menu, AlertTriangle, X } from 'lucide-react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
 import { useFormKeyboardShortcuts } from '@/hooks/useFormKeyboardShortcuts';
+import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
+import { useSidebarPathMemory } from '@/hooks/useSidebarPathMemory';
+import { useAuthStore } from '@/stores/authStore';
+import toast from 'react-hot-toast';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
 import { OfflineBanner } from '@/components/shared/OfflineBanner';
@@ -49,6 +53,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   useFormKeyboardShortcuts();
+  // WEB-UIUX-667: persist last-visited URL per top-level list page so sidebar
+  // NavLinks restore the operator's filter context on re-click.
+  useSidebarPathMemory();
 
   // Fetch tenant plan + usage on mount, refetch on focus
   // SCAN-1146: rapid alt-tab or mobile focus-loss storms previously fired
@@ -94,10 +101,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     refetchOnWindowFocus: true,
   });
   const preferredDocumentLanguage = preferencesData?.data?.data?.language;
+  const preferredTheme = preferencesData?.data?.data?.theme as 'light' | 'dark' | 'system' | undefined;
 
   // WEB-UIUX-478: gate WebSocket activation on settings-config-env success so
   // the WS handshake never races against an auth-token overwrite from config.
   useWebSocket({ enabled: configLoaded });
+
+  // WEB-UIUX-747: idle-session warning + forced logout. 25 min idle pops a
+  // sticky toast asking the user to confirm; another 5 min without activity
+  // calls authStore.logout. Activity = mouse/key/touch/scroll/visibility.
+  // Skipped when not authenticated.
+  const inactivityAuthed = useAuthStore((s) => s.isAuthenticated);
+  const inactivityLogout = useAuthStore((s) => s.logout);
+  useInactivityTimeout({
+    enabled: inactivityAuthed,
+    warnMs: 25 * 60 * 1000,
+    idleMs: 30 * 60 * 1000,
+    onWarn: () => {
+      toast(
+        'You have been idle for 25 minutes. The session ends in 5 minutes — move your mouse or press a key to stay signed in.',
+        { duration: 5 * 60 * 1000, id: 'inactivity-warn', icon: '⏳' },
+      );
+    },
+    onLogout: () => {
+      toast.dismiss('inactivity-warn');
+      toast('Signed out after 30 minutes of inactivity.', { duration: 6000 });
+      inactivityLogout().catch(() => { /* logout already best-effort */ });
+    },
+  });
 
   // Initialise shared currency formatter from store settings
   useEffect(() => {
@@ -112,6 +143,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       getBrowserDocumentLanguage(),
     );
   }, [preferredDocumentLanguage]);
+
+  // Hydrate theme from server-side user preference so a dark-mode choice made
+  // on one device shows up on every other login session, even when local
+  // cookies/localStorage are cleared (incognito, fresh browser, kiosk reset).
+  // The mirror to client-side cookie + localStorage still happens in
+  // uiStore.setTheme so subsequent reloads on the same device are instant.
+  const setTheme = useUiStore((s) => s.setTheme);
+  const currentTheme = useUiStore((s) => s.theme);
+  useEffect(() => {
+    if (preferredTheme && (preferredTheme === 'light' || preferredTheme === 'dark' || preferredTheme === 'system') && preferredTheme !== currentTheme) {
+      setTheme(preferredTheme);
+    }
+    // currentTheme intentionally omitted — only sync on server-pref change, not store change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferredTheme]);
 
   // Close mobile sidebar on route change
   useEffect(() => {
@@ -225,7 +271,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div
         className={cn(
-          'flex flex-1 flex-col min-w-0 transition-all duration-200',
+          // Match the sidebar's transition exactly (width on aside, margin
+          // on this column) so they slide as one motion instead of the
+          // sidebar shrinking first and the main column catching up.
+          'flex flex-1 flex-col min-w-0 transition-[margin-left] duration-[250ms] ease-out',
           // On desktop, offset by sidebar width; on mobile, no offset
           sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'
         )}

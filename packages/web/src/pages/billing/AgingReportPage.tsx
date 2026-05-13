@@ -136,6 +136,10 @@ export function AgingReportPage() {
 
   return (
     <div className="p-6 space-y-6 text-surface-900 dark:text-surface-100">
+      {/* WEB-UIUX-932: surface "as of when" so the operator can prove the
+          buckets match the close-of-day snapshot. asOfText uses the
+          React Query dataUpdatedAt so refresh-time is accurate, not
+          screenshot-time. */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-surface-900 dark:text-surface-100">Aging Report</h1>
@@ -230,7 +234,7 @@ export function AgingReportPage() {
                   onChange={toggleSelectAll}
                   disabled={allIds.length === 0}
                   aria-label="Select all visible invoices"
-                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800 disabled:opacity-40"
+                  className="rounded border-surface-300 text-primary-600 focus:ring-primary-500 dark:border-surface-600 dark:bg-surface-800 disabled:opacity-50"
                 />
               </th>
               <th className="px-3 py-2 text-left">Invoice</th>

@@ -32,11 +32,13 @@ import {
   Wallet,
   Copy,
   Eraser,
+  RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 // WEB-FAE-003: write recent_views under a per-user key so signing in as a
 // different user on the same browser can't read another user's recent
 // customer labels (PII). Reader is `Sidebar.RecentViews`.
@@ -102,9 +104,10 @@ export function CustomerDetailPage() {
   // POST) are admin/manager-only on the server (crm.routes.ts:258, 327).
   // Hide the actions from other roles so non-privileged staff aren't shown
   // buttons that would just 403.
-  const userRole = useAuthStore((s) => s.user?.role);
+  // WEB-FAE-001 follow-up: route role gates through shared useHasRole hook.
   const userId = useAuthStore((s) => s.user?.id);
-  const canUseEnrichmentActions = userRole === 'admin' || userRole === 'manager';
+  const canUseEnrichmentActions = useHasRole(['admin', 'manager']);
+  const isAdmin = useHasRole('admin');
 
   const [activeTab, setActiveTab] = useState<TabId>('info');
 
@@ -146,7 +149,14 @@ export function CustomerDetailPage() {
       const entry = { type: 'customer', id: customer.id, label, path: `/customers/${customer.id}` };
       const filtered = existing.filter((e) => !(e.type === 'customer' && e.id === customer.id));
       filtered.unshift(entry);
-      localStorage.setItem(key, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
+      const next = JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX));
+      // BUGHUNT-2026-05-10-30: react-query returns a fresh `customer`
+      // object identity on every refetch even when fields are identical;
+      // the deps trigger this effect each time. Compare the serialized
+      // payload before writing so we don't thrash localStorage + the
+      // dispatch event on every poll.
+      if (next === raw) return;
+      localStorage.setItem(key, next);
       // WEB-UIUX-470: notify Sidebar.RecentViews to refresh from cache without
       // re-parsing on every route nav; the event carries the key so multi-user
       // scenarios skip irrelevant refreshes.
@@ -231,6 +241,7 @@ export function CustomerDetailPage() {
       // the file off to the Wallet system intent. HTML wallet-pass response
       // (the dev/preview path) keeps the popup behaviour.
       const isPkpass = contentType.includes('application/vnd.apple.pkpass');
+      let popupWindow: Window | null = null;
       if (isPkpass) {
         const a = document.createElement('a');
         a.href = url;
@@ -240,14 +251,27 @@ export function CustomerDetailPage() {
         a.click();
         a.remove();
       } else {
-        const win = window.open(url, '_blank', 'noopener,noreferrer');
-        if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
+        popupWindow = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!popupWindow) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
       }
-      // WEB-FJ-017: bumped from 60s → 5min so staff have time to print or
-      // screenshot the loyalty pass before the blob URL is revoked. After
-      // revoke the popup's reload/back keys produce a broken page silently
-      // (no toast — popup window doesn't share the parent's <Toaster />).
-      setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
+      // WEB-FJ-017 / BUGHUNT-2026-05-10-34: bumped from 60s → 5min so staff
+      // have time to print or screenshot. After the 5min mark, only revoke
+      // when the popup is verifiably closed — otherwise check again every
+      // minute up to a 30-min hard ceiling. Keeps the blob alive while the
+      // user has the document open and prevents the silent "popup broke"
+      // class of report on long screenshot/print sessions.
+      const startedAt = Date.now();
+      const HARD_CAP_MS = 30 * 60_000;
+      const checkAndRevoke = () => {
+        const elapsed = Date.now() - startedAt;
+        const popupClosed = !popupWindow || popupWindow.closed === true;
+        if (popupClosed || elapsed >= HARD_CAP_MS) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        setTimeout(checkAndRevoke, 60_000);
+      };
+      setTimeout(checkAndRevoke, 5 * 60_000);
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'response' in err
@@ -377,6 +401,29 @@ export function CustomerDetailPage() {
               {/* Audit §49 — health score + LTV tier badges */}
               <HealthScoreBadge customerId={customerId} />
               <LtvTierBadge customerId={customerId} showValue={false} />
+              {/* WEB-UIUX-876: surface VIP / At-Risk / Disputed tag flags in the
+                  header so an operator sees "this customer is in dispute"
+                  before opening Info → Edit. Tag names are matched
+                  case-insensitively; unknown tags fall through to a neutral chip. */}
+              {parseTags((customer as { tags?: unknown }).tags).map((rawTag) => {
+                const tag = String(rawTag).trim();
+                if (!tag) return null;
+                const low = tag.toLowerCase();
+                const tone =
+                  low === 'vip' ? 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-700'
+                  : low === 'at-risk' || low === 'at risk' || low === 'churn-risk' ? 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/30 dark:text-orange-200 dark:border-orange-700'
+                  : low === 'disputed' || low === 'dispute' || low === 'chargeback' ? 'bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-200 dark:border-red-700'
+                  : 'bg-surface-100 text-surface-700 border-surface-300 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-600';
+                return (
+                  <span
+                    key={`hdr-tag-${tag}`}
+                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${tone}`}
+                    title={`Tag: ${tag}`}
+                  >
+                    {tag}
+                  </span>
+                );
+              })}
               {/* FA-M26: referral + wallet-pass enrichment actions. Admin
                   /manager only — server returns 403 otherwise so we hide
                   the buttons from staff who can't use them. */}
@@ -454,7 +501,7 @@ export function CustomerDetailPage() {
             <Trash2 className="h-4 w-4" />
             Delete
           </button>
-          {userRole === 'admin' && (
+          {isAdmin && (
             <button
               onClick={() => setShowEraseConfirm(true)}
               disabled={erasePiiMutation.isPending}
@@ -594,7 +641,7 @@ export function CustomerDetailPage() {
               <button
                 type="submit"
                 disabled={exporting || exportTotpCode.length !== 6}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {exporting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
                 Download
@@ -921,6 +968,18 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
   const analytics = data?.data?.data;
   if (isLoading || !analytics) return null;
 
+  // WEB-UIUX-883: surface refund history alongside LTV so an operator sees
+  // "this customer returned 30% of their spend" without clicking through each
+  // invoice. Only show when there's at least one refund — clean UI for the
+  // common case.
+  const refundCount = Number((analytics as { refund_count?: number }).refund_count ?? 0);
+  const totalRefunded = Number((analytics as { total_refunded?: number }).total_refunded ?? 0);
+  const refundRatio = Number((analytics as { refund_ratio?: number }).refund_ratio ?? 0);
+  const refundRatioPct = (refundRatio * 100).toFixed(1);
+  const refundTone = refundRatio >= 0.2
+    ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20'
+    : 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20';
+
   const cards = [
     {
       label: 'Lifetime Value',
@@ -950,6 +1009,12 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
       icon: Calendar,
       color: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20',
     },
+    ...(refundCount > 0 ? [{
+      label: `Refunds (${refundCount})`,
+      value: `${formatCurrency(totalRefunded)} · ${refundRatioPct}%`,
+      icon: RotateCcw,
+      color: refundTone,
+    }] : []),
   ];
 
   return (
@@ -980,6 +1045,9 @@ function CustomerAnalyticsBar({ customerId }: { customerId: number }) {
 
 function MembershipCard({ customerId }: { customerId: number }) {
   const queryClient = useQueryClient();
+  // WEB-UIUX-1490: server requireAdmin gates cancel/pause/resume — hide
+  // the buttons from non-admin staff so they don't click to a 403 toast.
+  const isAdmin = useHasRole('admin');
 
   // Check if membership system is enabled
   const { data: configData } = useQuery({
@@ -1048,6 +1116,11 @@ function MembershipCard({ customerId }: { customerId: number }) {
     onSuccess: (data) => {
       setMembershipPaymentToken(data.token);
       setMembershipCardLabel([data.cardType, data.maskedPan].filter(Boolean).join(' ') || 'Card saved');
+      // BUGHUNT-2026-05-10-27: card-on-file save mutates server-side
+      // payment-token state that membership queries read; invalidate so
+      // the tier UI doesn't lag the success toast.
+      queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
+      queryClient.invalidateQueries({ queryKey: ['membership'] });
       toast.success('Card saved for membership billing');
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || err?.message || 'Failed to save card'),
@@ -1078,18 +1151,16 @@ function MembershipCard({ customerId }: { customerId: number }) {
   };
 
   const cancelMut = useMutation({
-    mutationFn: (immediate: boolean) => membershipApi.cancel(memberData!.id, { immediate }),
+    // WEB-UIUX-827: parametrize `immediate` so the operator can pick
+    // end-of-period cancel (default — customer keeps paid days) vs
+    // immediate (instant termination). Server already accepts the flag.
+    mutationFn: (vars: { immediate: boolean }) =>
+      membershipApi.cancel(memberData!.id, { immediate: vars.immediate }),
     // WEB-UIUX-1070: also invalidate SubscriptionsListPage cache
-    onSuccess: (res, immediate) => {
+    onSuccess: (_res, vars) => {
       queryClient.invalidateQueries({ queryKey: ['membership', 'customer', customerId] });
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
-      const serverImmediate = ((res.data as { data?: { immediate?: boolean } })?.data?.immediate ?? immediate) === true;
-      toast.success(
-        serverImmediate
-          ? 'Membership cancelled immediately'
-          : `Membership will cancel ${memberData?.current_period_end ? formatDate(memberData.current_period_end) : 'at period end'}`,
-      );
-      setShowCancelDialog(false);
+      toast.success(vars.immediate ? 'Membership cancelled immediately' : 'Membership will cancel at period end');
     },
     onError: (err: unknown) => toast.error(formatApiError(err)),
   });
@@ -1131,26 +1202,62 @@ function MembershipCard({ customerId }: { customerId: number }) {
       : 'the current period end';
 
     return (
-      <>
-        <div className="card overflow-hidden mb-6">
-          <div
-            className="px-5 py-3 flex items-center justify-between"
-            style={{ backgroundColor: memberData.color + '18' }}
-          >
-            <div className="flex items-center gap-2">
-              <Crown className="h-5 w-5" style={{ color: memberData.color }} />
-              <h3 className="font-semibold text-surface-900 dark:text-surface-100">Membership</h3>
+      <div className="card overflow-hidden mb-6">
+        <div
+          className="px-5 py-3 flex items-center justify-between"
+          style={{ backgroundColor: memberData.color + '18' }}
+        >
+          <div className="flex items-center gap-2">
+            <Crown className="h-5 w-5" style={{ color: memberData.color }} />
+            <h3 className="font-semibold text-surface-900 dark:text-surface-100">Membership</h3>
+          </div>
+          {/* WEB-UIUX-1503: humanize enum so "past_due" reads "Past due"
+              instead of raw underscored value. Matches the labels rendered
+              in SubscriptionsListPage (statusLabel helper). */}
+          <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize', statusColors[memberData.status] || statusColors.active)}>
+            {(memberData.status || '').replace(/_/g, ' ')}
+          </span>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span
+                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold text-white"
+                style={{ backgroundColor: memberData.color }}
+              >
+                {memberData.tier_name}
+              </span>
+              {/* @audit-cents WEB-FF-019 (Fixer-C11 2026-04-25): server still
+                  returns memberData.monthly_price as dollars-as-float. The
+                  shared formatter keeps tenant currency/locale correct today,
+                  but a future integer-cents migration must switch this to the
+                  cents field in the same PR. */}
+              <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+                {formatCurrency(memberData.monthly_price)}/mo
+              </span>
             </div>
             <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', statusColors[memberData.status] || statusColors.active)}>
               {memberData.status}
             </span>
           </div>
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold text-white"
-                  style={{ backgroundColor: memberData.color }}
+          <div className="flex items-center gap-1.5">
+            {/* WEB-UIUX-1490: hide cancel/pause/resume from non-admins. */}
+            {memberData.status === 'active' && isAdmin && (
+              <>
+                <button
+                  onClick={() => {
+                    // window.prompt returns null when the user clicks Cancel
+                    // on the native dialog. Previous `?? ''` fallback fired
+                    // the pause mutation anyway with an empty reason — a click
+                    // on the wrong button silently paused the membership.
+                    // Now abort on null; treat empty-but-OK'd string as a
+                    // valid "no reason" pause.
+                    const reason = window.prompt('Reason for pausing membership (optional):');
+                    if (reason === null) return;
+                    pauseMut.mutate(reason);
+                  }}
+                  disabled={pauseMut.isPending}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
                 >
                   {memberData.tier_name}
                 </span>
@@ -1204,15 +1311,53 @@ function MembershipCard({ customerId }: { customerId: number }) {
               )}
               {memberData.status === 'paused' && (
                 <button
-                  onClick={() => resumeMut.mutate()}
-                  disabled={resumeMut.isPending}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+                  onClick={async () => {
+                    // WEB-UIUX-827: two-stage confirm so the operator picks the
+                    // cancel semantics deliberately. Default = end-of-period
+                    // (customer keeps paid days). Native window.prompt with the
+                    // two explicit choices avoids a multi-step modal redesign
+                    // while still capturing intent.
+                    const choice = window.prompt(
+                      'Cancel membership?\nType "end" to cancel at the end of the current period (customer keeps paid days).\nType "now" to cancel immediately (customer forfeits remaining days).\nLeave blank to abort.',
+                      'end',
+                    );
+                    if (!choice) return;
+                    const trimmed = choice.trim().toLowerCase();
+                    if (trimmed !== 'end' && trimmed !== 'now') {
+                      toast.error('Type "end" or "now" to confirm.');
+                      return;
+                    }
+                    const immediate = trimmed === 'now';
+                    const ok = await confirm(
+                      immediate
+                        ? 'Cancel this membership immediately? Customer forfeits remaining paid days.'
+                        : 'Schedule cancellation at the end of the current paid period?',
+                      { title: 'Cancel membership?', confirmLabel: immediate ? 'Cancel now' : 'Cancel at period end', danger: immediate },
+                    );
+                    if (!ok) return;
+                    cancelMut.mutate({ immediate });
+                  }}
+                  disabled={cancelMut.isPending}
+                  // WEB-UIUX-1495: spell out "Cancel membership" — bare
+                  // "Cancel" reads as a dialog dismiss next to Pause.
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title="Cancel membership (terminal — see confirm)"
                 >
-                  <Play className="h-3.5 w-3.5" />
-                  Resume
+                  <X className="h-3.5 w-3.5" />
+                  Cancel membership
                 </button>
-              )}
-            </div>
+              </>
+            )}
+            {memberData.status === 'paused' && isAdmin && (
+              <button
+                onClick={() => resumeMut.mutate()}
+                disabled={resumeMut.isPending}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Resume
+              </button>
+            )}
           </div>
         </div>
 
@@ -1349,7 +1494,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             Enroll in Membership
           </button>
           {tiers.length === 0 && (
-            <p className="text-xs text-surface-400 mt-2">No membership tiers configured. Go to Settings to add tiers.</p>
+            <p className="text-xs text-surface-400 mt-2">No membership tiers configured. Use Memberships &gt; Tiers to add tiers.</p>
           )}
         </div>
       ) : (
@@ -1446,6 +1591,9 @@ function customerToForm(c: Customer) {
     email_opt_in: c.email_opt_in,
     sms_opt_in: c.sms_opt_in,
     tax_number: c.tax_number || '',
+    // WEB-UIUX-765: tax-exempt + reason from server model.
+    tax_exempt: ((c as unknown as { tax_exempt?: number | boolean }).tax_exempt as number | boolean | undefined) ? true : false,
+    tax_exempt_reason: (c as unknown as { tax_exempt_reason?: string | null }).tax_exempt_reason ?? '',
   };
 }
 
@@ -1488,10 +1636,15 @@ function InfoTab({
       customerApi.update(customerId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
-      // WEB-UIUX-893: these list rows denormalize customer name/email/phone.
-      CUSTOMER_IDENTITY_DEPENDENT_LIST_QUERY_KEYS.forEach((queryKey) => {
-        queryClient.invalidateQueries({ queryKey });
-      });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      // WEB-UIUX-893: dependent list caches denormalize customer
+      // name/email/phone — drop them so a rename doesn't leave a stale
+      // label in tickets/invoices/estimates/leads/sms list rows.
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      queryClient.invalidateQueries({ queryKey: ['sms-conversations'] });
       toast.success('Customer updated');
     },
     onError: () => toast.error('Failed to update customer'),
@@ -1537,6 +1690,11 @@ function InfoTab({
       referred_by: form.referred_by.trim() || undefined,
       comments: form.comments.trim() || undefined,
       tax_number: form.tax_number.trim() || undefined,
+      // WEB-UIUX-765: per-customer tax-exempt flag.
+      tax_exempt: form.tax_exempt ? 1 : 0,
+      tax_exempt_reason: form.tax_exempt && form.tax_exempt_reason.trim()
+        ? form.tax_exempt_reason.trim()
+        : undefined,
       tags: form.tags
         .split(',')
         .map((t) => t.trim())
@@ -1602,6 +1760,30 @@ function InfoTab({
                 onChange={(e) => updateField('tax_number', e.target.value)}
                 className="input"
               />
+            </FieldBlock>
+            {/* WEB-UIUX-765: per-customer tax-exempt toggle + free-form reason
+                (resale cert id / state exemption number). POS / invoice
+                auto-apply still rides a follow-up; this commit covers the
+                CRUD half so resellers + non-profits aren't blocked. */}
+            <FieldBlock label="Tax-exempt">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.tax_exempt}
+                  onChange={(e) => updateField('tax_exempt', e.target.checked)}
+                />
+                Tax-exempt customer (resale / non-profit / govt)
+              </label>
+              {form.tax_exempt && (
+                <input
+                  type="text"
+                  value={form.tax_exempt_reason}
+                  onChange={(e) => updateField('tax_exempt_reason', e.target.value)}
+                  maxLength={500}
+                  placeholder="Reason or certificate id (optional)"
+                  className="input mt-2"
+                />
+              )}
             </FieldBlock>
           </div>
         </div>
@@ -1875,6 +2057,23 @@ interface CustomerCommunicationRow {
   content?: string | null;
   message?: string | null;
   created_at?: string;
+  // WEB-UIUX-882: call_logs branch of the UNION exposes duration + recording
+  // + transcript status; sms/email branches return NULL for these. Render
+  // duration pill, ▶ recording link, and transcript indicator inline so the
+  // customer Communications tab stops dropping call affordances vs. the
+  // standalone Communications page.
+  duration_secs?: number | null;
+  recording_url?: string | null;
+  transcription_status?: string | null;
+}
+
+/** "1m 23s" / "0:45" style — short, no trailing zeros for sub-minute calls. */
+function formatCallDuration(secs: number | null | undefined): string | null {
+  if (secs == null || !Number.isFinite(Number(secs)) || Number(secs) <= 0) return null;
+  const total = Math.round(Number(secs));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
 }
 
 interface CustomerPhone {
@@ -2123,6 +2322,56 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
               </p>
             )}
             <p>{msg.content ?? msg.message ?? ''}</p>
+            {/* WEB-UIUX-882: call affordances — duration pill, ▶ recording, transcript status. */}
+            {msg.comm_type === 'call' && (() => {
+              const duration = formatCallDuration(msg.duration_secs);
+              const recording = msg.recording_url ? String(msg.recording_url) : null;
+              const transcript = msg.transcription_status ? String(msg.transcription_status) : null;
+              if (!duration && !recording && !transcript) return null;
+              return (
+                <div className={cn(
+                  'mt-1 flex flex-wrap items-center gap-2 text-[10px]',
+                  msg.direction === 'outbound' ? 'text-primary-100' : 'text-surface-500 dark:text-surface-400',
+                )}>
+                  {duration && (
+                    <span className={cn(
+                      'rounded-full px-1.5 py-0.5 font-medium',
+                      msg.direction === 'outbound' ? 'bg-primary-700/40' : 'bg-surface-200 dark:bg-surface-700',
+                    )}>
+                      {duration}
+                    </span>
+                  )}
+                  {recording && (
+                    <a
+                      href={recording}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className={cn(
+                        'inline-flex items-center gap-0.5 font-medium underline-offset-2 hover:underline',
+                        msg.direction === 'outbound' ? 'text-primary-100' : 'text-primary-600 dark:text-primary-400',
+                      )}
+                    >
+                      ▶ Recording
+                    </a>
+                  )}
+                  {transcript && transcript !== 'none' && (
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-0.5',
+                        transcript === 'completed'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                          : transcript === 'failed'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                      )}
+                    >
+                      Transcript: {transcript}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             <p className={cn('text-[10px] mt-1', msg.direction === 'outbound' ? 'text-primary-200' : 'text-surface-400')}>
               {msg.created_at ? formatShortDateTime(msg.created_at) : ''}
             </p>

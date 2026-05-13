@@ -15,8 +15,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { extractApiError } from '@/utils/apiError';
+import { dstSpringForwardAnomaly } from '@/utils/format';
 
 interface Shift {
   id: number;
@@ -58,8 +59,8 @@ function startOfWeek(d: Date): Date {
 
 export function ShiftSchedulePage() {
   const queryClient = useQueryClient();
-  const userRole = useAuthStore((s) => s.user?.role);
-  const canManageSchedule = userRole === 'admin' || userRole === 'manager';
+  // WEB-FAE-001 follow-up: route role gate through shared useHasRole hook.
+  const canManageSchedule = useHasRole(['admin', 'manager']);
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [showNew, setShowNew] = useState(false);
   const [showAllTimeOff, setShowAllTimeOff] = useState(false);
@@ -112,10 +113,20 @@ export function ShiftSchedulePage() {
       // datetime-local values are local-time strings with no TZ offset; convert
       // to UTC ISO before sending so the server stores canonical UTC regardless
       // of the user's timezone or DST offset.
+      const startD = new Date(newStart);
+      const endD = new Date(newEnd);
+      // WEB-UIUX-781: reject DST spring-forward non-existent local times so
+      // a shift that supposedly starts 02:30 doesn't silently land at 03:30.
+      if (dstSpringForwardAnomaly(newStart, startD) === 'nonexistent') {
+        throw new Error('Shift start time does not exist on the selected date (daylight-saving spring forward). Pick a different time.');
+      }
+      if (dstSpringForwardAnomaly(newEnd, endD) === 'nonexistent') {
+        throw new Error('Shift end time does not exist on the selected date (daylight-saving spring forward). Pick a different time.');
+      }
       const res = await api.post('/team/shifts', {
         user_id: Number(newUserId),
-        start_at: new Date(newStart).toISOString(),
-        end_at: new Date(newEnd).toISOString(),
+        start_at: startD.toISOString(),
+        end_at: endD.toISOString(),
         role: newRole || null,
       });
       return res.data.data;

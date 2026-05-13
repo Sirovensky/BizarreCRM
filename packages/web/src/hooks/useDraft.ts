@@ -2,6 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 
+// WEB-UIUX-846: throttle the quota-toast so we only nag the cashier once per
+// session even though useDraft persists on every keystroke debounce. Sticky
+// reminder until the user closes it.
+let _quotaToastShown = false;
+
 // Hard cap to stop a pathologically long draft from blowing the localStorage
 // quota (typically 5–10 MB total, shared across the whole app). 100 KB is
 // ~50 pages of text — well above any realistic hand-typed form value.
@@ -40,6 +45,12 @@ function buildScopedKey(rawKey: string): string {
  * useDraft instance behaves consistently — even the ones that already
  * unmounted before the user clicked Logout.
  */
+// WEB-UIUX-908: also sweep persisted POS cart state (`pos-store-u*` /
+// `pos-store-u*-r*` from unified-pos/store.ts), which previously survived
+// logout and left a fired employee's pending cart in localStorage with
+// customer name + items.
+const POS_STORE_KEY_RE = /^pos-store-u\d+/;
+
 function wipeAllDrafts(): void {
   if (typeof localStorage === 'undefined') return;
   try {
@@ -48,7 +59,8 @@ function wipeAllDrafts(): void {
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i += 1) {
       const k = localStorage.key(i);
-      if (k && DRAFT_NAMESPACE_LEGACY_RE.test(k)) toRemove.push(k);
+      if (!k) continue;
+      if (DRAFT_NAMESPACE_LEGACY_RE.test(k) || POS_STORE_KEY_RE.test(k)) toRemove.push(k);
     }
     toRemove.forEach((k) => {
       try { localStorage.removeItem(k); } catch { /* best-effort */ }
@@ -210,6 +222,37 @@ export function useDraft(
     }
   }, [key]);
 
+  // WEB-UIUX-739: cross-tab sync via the `storage` event. Without this, two
+  // tabs editing the same form clobber each other on the next debounce tick
+  // — last writer wins and the other tab silently loses the in-progress
+  // edit. We listen for storage events keyed to the active scopedKey and
+  // pull the freshest value in. We don't override an actively-edited local
+  // state from a stale storage event by checking the timestamp window: if
+  // the local valueRef differs and was updated recently, we keep local and
+  // let our own debounce win.
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (!e.key || e.key !== scopedKeyRef.current) return;
+      // Another tab cleared this key — adopt the empty state if we're idle.
+      if (e.newValue == null) {
+        if (!valueRef.current) return;
+        // Local has content; don't blindly wipe. Surface as "hasDraft" still
+        // until the user saves over it.
+        return;
+      }
+      // Another tab wrote a value — adopt only when our local state matches
+      // the previous remote value or is empty (i.e. we have nothing to lose).
+      if (!valueRef.current || valueRef.current === e.oldValue) {
+        if (mountedRef.current) {
+          setValue(e.newValue);
+          setHasDraft(true);
+        }
+      }
+    }
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // Debounced save to localStorage
   useEffect(() => {
     // Capture key at schedule time so a key change between schedule and fire
@@ -294,7 +337,20 @@ export function useDraft(
         if (mountedRef.current) {
           setHasDraft(false);
           setWriteFailed(true);
-          if (!writeFailureToastShownRef.current) {
+          // WEB-UIUX-846: surface to the operator so a kiosk with saturated
+          // localStorage doesn't silently lose draft data on submit. Quota
+          // errors get a specific, actionable message; other write failures
+          // fall back to the generic notice.
+          const isQuota =
+            (err instanceof Error && /quota/i.test(err.name)) ||
+            (typeof err === 'object' && err !== null && /quota/i.test((err as { name?: string }).name ?? ''));
+          if (isQuota && !_quotaToastShown) {
+            _quotaToastShown = true;
+            toast.error(
+              'Browser storage is full — drafts cannot be saved. Clear browser data or sign out and back in.',
+              { duration: 8000, id: 'usedraft-quota' },
+            );
+          } else if (!writeFailureToastShownRef.current) {
             toast.error(DRAFT_WRITE_FAILURE_MESSAGE);
             writeFailureToastShownRef.current = true;
           }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { X, AlertTriangle, Users, Send } from 'lucide-react';
+import { X, AlertTriangle, Users, Send, Minus, Megaphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { smsApi } from '@/api/endpoints';
@@ -8,6 +8,10 @@ import { SmsTemplateListResponse } from '@/api/types';
 import { cn } from '@/utils/cn';
 // WEB-UIUX-1521: Focus trap for modal accessibility
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+// BUGHUNT-2026-05-10-39: quiet-hours TCPA window must follow the shop's
+// configured timezone, not the operator's browser tz, since the staff
+// member triggering the blast may not be physically in the shop's zone.
+import { useSettings } from '@/hooks/useSettings';
 
 /**
  * Bulk SMS modal — audit §51.3.
@@ -49,19 +53,89 @@ interface PreviewRecipientSample {
 
 interface PreviewResponse {
   preview_count: number;
+  // BUGHUNT-2026-05-10-40: TCPA evidence — count of phone-having customers
+  // matching this segment who were EXCLUDED because sms_opt_in/consent was
+  // off. Field MUST be present; Send is refused when it's missing so a
+  // future server regression that drops the filter never reaches confirm.
+  excluded_optout_count?: number;
   recipient_sample?: PreviewRecipientSample[];
   confirmation_token: string;
   confirmed: false;
+  // WEB-UIUX-1113: server ships up to 5 masked sample phones so the operator
+  // can sanity-check WHO before confirming a marketing blast.
+  sample_phones?: Array<{ masked: string }>;
+  sample_size?: number;
+  // WEB-UIUX-1517: hourly bulk-send quota counter so admin knows how many
+  // sends remain in the current window before hitting the 429.
+  quota?: {
+    used: number;
+    max: number;
+    window_ms: number;
+    reset_at: string | null;
+  };
+  // WEB-UIUX-1510: provider state echoed at preview time. `real=false`
+  // means simulated/unconfigured — UI gates Send + renders an inline
+  // "configure provider" banner instead of letting admin build a full
+  // campaign that then fails at confirm step.
+  provider?: {
+    real: boolean;
+    name: string | null;
+  };
 }
 
 // WEB-UIUX-1111: Updated to match server response shape from inbox.routes.ts:693-703
+// WEB-UIUX-1117: server now returns a job id + initial counts (sent=0, failed=0)
+// and the dispatch happens async on the server. Client polls /jobs/:id for
+// progress and can hit /jobs/:id/abort.
 interface ConfirmResponse {
   attempted: number;
   sent: number;
   failed: number;
   segment: string;
-  template: string;
+  template: string | { id: number; name: string };
   confirmed: true;
+  job_id: number | null;
+  status?: 'running' | 'completed' | 'aborted' | 'failed';
+}
+
+interface JobProgress {
+  id: number;
+  total: number;
+  sent: number;
+  failed: number;
+  status: 'pending' | 'running' | 'completed' | 'aborted' | 'failed';
+  abort_requested: number;
+  last_error: string | null;
+}
+
+interface SmsBillingPreview {
+  characterCount: number;
+  encoding: 'GSM-7' | 'Unicode';
+  segmentsPerMessage: number;
+}
+
+const numberFormatter = new Intl.NumberFormat();
+
+function formatNumber(value: number): string {
+  return numberFormatter.format(value);
+}
+
+function estimateSmsBilling(body: string): SmsBillingPreview {
+  const characterCount = body.length;
+  const usesUnicodeEncoding = /[^\x0A\x0D\x20-\x7E]/.test(body);
+  const singleSegmentLimit = usesUnicodeEncoding ? 70 : 160;
+  const concatenatedSegmentLimit = usesUnicodeEncoding ? 67 : 153;
+
+  return {
+    characterCount,
+    encoding: usesUnicodeEncoding ? 'Unicode' : 'GSM-7',
+    segmentsPerMessage:
+      characterCount === 0
+        ? 0
+        : characterCount <= singleSegmentLimit
+          ? 1
+          : Math.ceil(characterCount / concatenatedSegmentLimit),
+  };
 }
 
 interface SmsBillingPreview {
@@ -97,15 +171,44 @@ function estimateSmsBilling(body: string): SmsBillingPreview {
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   // WEB-UIUX-1521: Always-active focus trap — modal only renders when open
   const dialogRef = useFocusTrap(true);
+  // BUGHUNT-2026-05-10-39: shop tz for TCPA quiet-hours window.
+  const { getSetting } = useSettings();
+  const shopTimezone = getSetting('store_timezone', '') || undefined;
   // WEB-UIUX-1121: Default to recent_purchases — most common bulk send use-case
   const [segment, setSegment] = useState<Segment>('recent_purchases');
   const [templateId, setTemplateId] = useState<number | null>(null);
+  // WEB-UIUX-1519: client-side filter so admins with >20 templates can search
+  // by name or body excerpt instead of scrolling the native <select>. Filter
+  // is case-insensitive and matches name + content; the underlying <select>
+  // still renders so keyboard semantics (up/down/Enter) carry over.
+  const [templateFilter, setTemplateFilter] = useState('');
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   // WEB-UIUX-1122: TCPA quiet-hours warning state
   const [quietHoursWarning, setQuietHoursWarning] = useState<string | null>(null);
   // WEB-UIUX-1124: Countdown timer for confirmation expiry
   const [previewedAt, setPreviewedAt] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<number>(300); // 5 minutes in seconds
+  // WEB-UIUX-1513: typed-confirm gate when preview_count >= 100.
+  const [typedConfirm, setTypedConfirm] = useState('');
+  // WEB-UIUX-1117: track the running job for poll + abort.
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [jobProgress, setJobProgress] = useState<JobProgress | null>(null);
+  const [aborting, setAborting] = useState(false);
+  // WEB-UIUX-869: minimized-to-chip state so the cashier can answer inbound
+  // SMS during the 5-min token window. The modal pops back open via the
+  // chip's Reopen button or by clicking the chip body. Auto-reset to
+  // !minimized when the preview is cleared (e.g. after Send) so the
+  // chip doesn't linger.
+  const [minimized, setMinimized] = useState(false);
+  useEffect(() => {
+    if (!preview) setMinimized(false);
+  }, [preview]);
+  useEffect(() => {
+    if (!open) setMinimized(false);
+  }, [open]);
+  // Reset typed confirm whenever the preview resets so a stale count
+  // can't unlock Send after segment/template change.
+  useEffect(() => { setTypedConfirm(''); }, [preview?.preview_count]);
 
   const { data: tplData } = useQuery({
     queryKey: ['sms-templates'],
@@ -119,6 +222,48 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   const billableSegments = preview
     ? billingPreview.segmentsPerMessage * preview.preview_count
     : null;
+
+  // WEB-UIUX-1512: pre-fetch per-segment counts so segment buttons can
+  // label their reach before the admin commits to one. Server endpoint
+  // is admin-only + cheap (3 COUNT(DISTINCT) queries); 60s staleTime
+  // keeps the chip honest without spamming refresh.
+  const { data: segmentCountsData } = useQuery({
+    queryKey: ['bulk-sms-segment-counts'],
+    queryFn: async () => {
+      const res = await api.get<{
+        success: boolean;
+        data: { open_tickets: number; all_customers: number; recent_purchases: number };
+      }>('/inbox/bulk-send-segment-counts');
+      return res.data.data;
+    },
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const segmentCounts = segmentCountsData ?? null;
+
+  // WEB-UIUX-1508: send-test-to-me — fires a single SMS to the admin's
+  // mobile_number (or override) so wording / links / variables can be
+  // verified before the blast. Quota-free server route; we still gate the
+  // button on a picked template so the admin can't fire an empty test.
+  const sendTestMut = useMutation({
+    mutationFn: async () => {
+      if (!templateId) throw new Error('Pick a template');
+      const res = await api.post<{
+        success: boolean;
+        data: { sent: boolean; to_phone_masked: string; template_name: string };
+      }>('/inbox/bulk-send-test', { template_id: templateId });
+      return res.data.data;
+    },
+    onSuccess: (d) => {
+      toast.success(`Test sent to ${d.to_phone_masked}`);
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message
+        ?? e?.response?.data?.error
+        ?? 'Test send failed';
+      toast.error(msg);
+    },
+  });
 
   const previewMut = useMutation({
     mutationFn: async () => {
@@ -151,48 +296,154 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       return res.data.data;
     },
     onSuccess: (r) => {
-      // WEB-UIUX-1111: Use actual server fields; keep modal open when failures occurred
-      toast.success(
-        `Sent ${r.sent} of ${r.attempted}${r.failed > 0 ? ` (${r.failed} failed — see retry queue)` : ''}`,
-      );
-      setPreview(null);
-      setPreviewedAt(null);
-      setTemplateId(null);
-      if (r.failed === 0) {
-        onClose();
-      }
-      // If failed > 0 modal stays open so admin sees the count before dismissing
-    },
-    onError: (e: any) => {
-      const status = e?.response?.status;
-      const message = e?.response?.data?.error || 'Bulk send failed';
-
-      if (status === 409) {
+      // WEB-UIUX-1117: kick off poll on the returned job. Server dispatched
+      // the send loop async; the modal switches into "progress" view and
+      // polls /jobs/:id every 2s. Empty audiences come back with job_id=null.
+      if (r.job_id) {
+        setJobId(r.job_id);
+        setJobProgress({
+          id: r.job_id,
+          total: r.attempted,
+          sent: r.sent,
+          failed: r.failed,
+          status: 'running',
+          abort_requested: 0,
+          last_error: null,
+        });
+        toast.success(`Bulk send started — dispatching to ${r.attempted} recipient${r.attempted === 1 ? '' : 's'}.`);
         setPreview(null);
         setPreviewedAt(null);
-        toast.error(message);
-        previewMut.mutate(undefined, {
-          onSuccess: (freshPreview) => {
-            toast.success(`Audience refreshed: ${formatNumber(freshPreview.preview_count)} recipients`);
-          },
-        });
+      } else {
+        toast.success(`No recipients matched segment ${r.segment}.`);
+        setPreview(null);
+        setPreviewedAt(null);
+        setTemplateId(null);
+        onClose();
+      }
+    },
+    onError: (e: any) => {
+      // WEB-UIUX-1120: surface server rate-limit hint with a precise wait
+      // window instead of the opaque "Bulk send failed" toast. Server reply
+      // shape is `Rate limit exceeded — try again in {N}s` from guardInboxRate.
+      const raw = String(e?.response?.data?.error ?? e?.response?.data?.message ?? '');
+      const status = e?.response?.status;
+      const m = /try again in (\d+)s/i.exec(raw);
+      if (status === 429 && m) {
+        const seconds = parseInt(m[1], 10);
+        const mins = Math.floor(seconds / 60);
+        const human = mins >= 1 ? `${mins} min` : `${seconds}s`;
+        toast.error(`Bulk send rate-limited — next bulk available in ${human}.`, { duration: 8000 });
         return;
       }
-
-      toast.error(message);
+      // WEB-UIUX-1511: segment-drift 409 ("Segment changed since preview").
+      // Clear the stale preview + auto-issue a fresh preview so the admin
+      // sees the new count and can re-confirm. Avoid the infinite-loop
+      // where Send → 409 → toast → Send → 409 trapped the previous flow.
+      if (status === 409 && /segment changed/i.test(raw)) {
+        toast.error('Audience changed since preview — refreshing recipient count.', { duration: 6000 });
+        setPreview(null);
+        setPreviewedAt(null);
+        if (templateId) previewMut.mutate();
+        return;
+      }
+      toast.error(raw || 'Bulk send failed');
     },
   });
 
-  // WEB-UIUX-1122: Check TCPA quiet hours (8am–9pm) on open and whenever modal is shown
+  // WEB-UIUX-1117: poll the active job every 2s; stop when terminal.
+  useEffect(() => {
+    if (!jobId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    async function tick() {
+      if (stopped) return;
+      try {
+        const res = await api.get<{ success: boolean; data: JobProgress }>(`/inbox/bulk-send/jobs/${jobId}`);
+        if (stopped) return;
+        const job = res.data?.data;
+        if (job) {
+          setJobProgress(job);
+          if (job.status === 'completed' || job.status === 'aborted' || job.status === 'failed') {
+            stopped = true;
+            const verb = job.status === 'completed' ? 'completed' : job.status === 'aborted' ? 'aborted' : 'failed';
+            toast.success(`Bulk send ${verb}: ${job.sent} sent, ${job.failed} failed${job.status === 'aborted' ? ` of ${job.total}` : ''}.`);
+            return;
+          }
+        }
+      } catch (err) {
+        // Transient error — keep polling.
+        // eslint-disable-next-line no-console
+        console.warn('[BulkSmsModal] poll failed', err);
+      }
+      if (!stopped) timer = setTimeout(tick, 2000);
+    }
+    void tick();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [jobId]);
+
+  async function handleAbort() {
+    if (!jobId || aborting) return;
+    setAborting(true);
+    try {
+      await api.post<{ success: boolean }>(`/inbox/bulk-send/jobs/${jobId}/abort`);
+      toast('Abort requested — finishing in-flight send.');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'Could not abort job.';
+      toast.error(msg);
+    } finally {
+      setAborting(false);
+    }
+  }
+
+  function clearJob() {
+    setJobId(null);
+    setJobProgress(null);
+    setTemplateId(null);
+    onClose();
+  }
+
+  // WEB-UIUX-1122 + BUGHUNT-2026-05-10-39: Check TCPA quiet hours (8am–9pm)
+  // in the SHOP's timezone (store_timezone from settings), not the operator's
+  // browser tz. A remote admin firing a blast from a different zone otherwise
+  // saw a misleading "all clear" banner. Falls back to browser tz when the
+  // setting is missing so existing behaviour is preserved.
   useEffect(() => {
     if (!open) return;
     const checkQuietHours = () => {
       const now = new Date();
-      const h = now.getHours();
+      let h: number;
+      let mm: string;
+      if (shopTimezone) {
+        try {
+          const fmt = new Intl.DateTimeFormat('en-US', {
+            timeZone: shopTimezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          });
+          const parts = fmt.formatToParts(now);
+          const hStr = parts.find(p => p.type === 'hour')?.value ?? '00';
+          mm = parts.find(p => p.type === 'minute')?.value ?? '00';
+          h = parseInt(hStr, 10);
+          // Intl reports `hour: '2-digit'` with `hour12: false` as 0–23 except
+          // on some Node/Safari builds where 00:xx becomes 24:xx. Normalize.
+          if (h === 24) h = 0;
+        } catch {
+          h = now.getHours();
+          mm = String(now.getMinutes()).padStart(2, '0');
+        }
+      } else {
+        h = now.getHours();
+        mm = String(now.getMinutes()).padStart(2, '0');
+      }
       if (h < 8 || h >= 21) {
         const hh = String(h).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        setQuietHoursWarning(`${hh}:${mm}`);
+        const tzLabel = shopTimezone ? ` ${shopTimezone}` : '';
+        setQuietHoursWarning(`${hh}:${mm}${tzLabel}`);
       } else {
         setQuietHoursWarning(null);
       }
@@ -200,7 +451,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
     checkQuietHours();
     const interval = setInterval(checkQuietHours, 60_000);
     return () => clearInterval(interval);
-  }, [open]);
+  }, [open, shopTimezone]);
 
   // WEB-UIUX-1124: Live countdown for confirmation token (5 min = 300 s)
   useEffect(() => {
@@ -228,6 +479,55 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
 
   if (!open) return null;
 
+  // WEB-UIUX-869: minimized chip. When a preview is active and the user
+  // minimizes, render a non-blocking fixed chip in the lower right with
+  // recipient count + countdown + Reopen button. The CommunicationPage
+  // behind it is fully interactive so the operator can answer inbound
+  // SMS during the 5-min token window without losing the token.
+  if (minimized && preview) {
+    const mins = Math.floor(countdown / 60);
+    const secs = countdown % 60;
+    return (
+      <div
+        role="region"
+        aria-label="Bulk SMS in progress (minimized)"
+        className="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 shadow-lg dark:border-amber-700 dark:bg-amber-900/40"
+      >
+        <Users className="h-4 w-4 text-amber-700 dark:text-amber-300" aria-hidden="true" />
+        <div className="flex flex-col text-xs">
+          <span className="font-medium text-amber-900 dark:text-amber-100">
+            Bulk SMS · {preview.preview_count} recipients
+          </span>
+          <span className="text-amber-700 dark:text-amber-300 tabular-nums">
+            {countdown > 0
+              ? `Token expires in ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+              : 'Confirmation expired — reopen to re-preview'}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setMinimized(false)}
+          className="rounded-md bg-amber-600 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-700"
+        >
+          Reopen
+        </button>
+        <button
+          type="button"
+          aria-label="Cancel bulk SMS"
+          onClick={() => {
+            setMinimized(false);
+            setPreview(null);
+            setPreviewedAt(null);
+            onClose();
+          }}
+          className="rounded p-1 text-amber-700 hover:bg-amber-100 dark:text-amber-300 dark:hover:bg-amber-900"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       role="dialog"
@@ -244,19 +544,84 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
           <h3 id="bulk-sms-title" className="flex items-center gap-2 text-lg font-semibold text-surface-900 dark:text-surface-100">
-            <Users className="h-5 w-5 text-primary-500" />
+            {/* WEB-UIUX-1522: Megaphone reinforces broadcast semantic; trigger button in CommunicationPage uses Users (audience). */}
+            <Megaphone className="h-5 w-5 text-primary-500" />
             Bulk SMS
           </h3>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700"
-          >
-            <X className="h-5 w-5 text-surface-500" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* WEB-UIUX-869: Minimize collapses to a chip so the cashier
+                can answer inbound SMS without burning the 5-min preview
+                token. Visible only once a preview exists. */}
+            {preview && (
+              <button
+                onClick={() => setMinimized(true)}
+                aria-label="Minimize"
+                title="Minimize — keep the preview token alive while answering inbound SMS"
+                className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700"
+              >
+                <Minus className="h-5 w-5 text-surface-500" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700"
+            >
+              <X className="h-5 w-5 text-surface-500" />
+            </button>
+          </div>
         </div>
 
         <div className="space-y-3 p-4">
+          {/* WEB-UIUX-1117: in-flight job view — replaces the form once the
+              server returns a job_id. Polls every 2s, surfaces a progress
+              bar + Abort. */}
+          {jobProgress ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">
+                  Sending bulk SMS — {jobProgress.sent} sent
+                  {jobProgress.failed > 0 ? `, ${jobProgress.failed} failed` : ''} of {jobProgress.total}
+                </p>
+                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-200 dark:bg-surface-700">
+                  <div
+                    className={`h-full transition-all ${jobProgress.status === 'aborted' ? 'bg-amber-500' : jobProgress.status === 'failed' ? 'bg-red-500' : 'bg-primary-500'}`}
+                    style={{ width: `${jobProgress.total > 0 ? Math.min(100, ((jobProgress.sent + jobProgress.failed) / jobProgress.total) * 100) : 0}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-surface-500">
+                  Status: <b>{jobProgress.status}</b>
+                  {jobProgress.abort_requested && jobProgress.status === 'running' ? ' (abort requested — finishing in-flight send)' : ''}
+                </p>
+              </div>
+              {jobProgress.last_error && (
+                <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                  {jobProgress.last_error}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                {jobProgress.status === 'running' && !jobProgress.abort_requested && (
+                  <button
+                    type="button"
+                    onClick={handleAbort}
+                    disabled={aborting}
+                    className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                  >
+                    {aborting ? 'Requesting abort…' : 'Abort send'}
+                  </button>
+                )}
+                {(jobProgress.status === 'completed' || jobProgress.status === 'aborted' || jobProgress.status === 'failed') && (
+                  <button
+                    type="button"
+                    onClick={clearJob}
+                    className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : <>
           {/* WEB-UIUX-1115: Consent-scope banner so admins know counts are opt-in filtered */}
           <p className="text-xs text-surface-500">Recipient counts include only customers who opted in to marketing SMS.</p>
           <div>
@@ -285,8 +650,20 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                       : 'border-surface-200 hover:border-surface-300 dark:border-surface-600',
                   )}
                 >
-                  <div className="font-medium text-surface-900 dark:text-surface-100">
-                    {s.label}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium text-surface-900 dark:text-surface-100">
+                      {s.label}
+                    </div>
+                    {/* WEB-UIUX-1512: per-segment count chip so admin sees
+                        audience size before committing to a segment. Hidden
+                        while the counts query is in flight (renders the
+                        previous selection's label cleanly during initial
+                        modal open). */}
+                    {segmentCounts && (
+                      <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-surface-600 dark:bg-surface-700 dark:text-surface-300">
+                        {segmentCounts[s.value].toLocaleString()}
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-surface-500">{s.hint}</div>
                 </button>
@@ -298,6 +675,16 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <label className="mb-1 block text-xs font-medium text-surface-700 dark:text-surface-300">
               Template
             </label>
+            {templates.length > 8 && (
+              <input
+                type="search"
+                value={templateFilter}
+                onChange={(e) => setTemplateFilter(e.target.value)}
+                placeholder="Filter templates by name or content…"
+                className="mb-1.5 w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                aria-label="Filter templates"
+              />
+            )}
             <select
               value={templateId ?? ''}
               onChange={(e) => {
@@ -308,23 +695,40 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               className="w-full rounded-lg border border-surface-300 bg-white px-2 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             >
               <option value="">Pick a template…</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+              {(() => {
+                const q = templateFilter.trim().toLowerCase();
+                const filtered = q
+                  ? templates.filter(
+                      (t) =>
+                        t.name.toLowerCase().includes(q) ||
+                        (t.content || '').toLowerCase().includes(q),
+                    )
+                  : templates;
+                if (filtered.length === 0 && q) {
+                  return <option value="" disabled>No templates match "{templateFilter}"</option>;
+                }
+                return filtered.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ));
+              })()}
             </select>
+            {/* WEB-UIUX-1112: render the resolved template body + segment math
+                so the admin sees the exact text + cost before blasting. */}
             {selectedTemplate && (
-              <div className="mt-1 rounded-lg bg-surface-50 px-2 py-1.5 text-[11px] text-surface-600 dark:bg-surface-700/50 dark:text-surface-300">
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  <span>{formatNumber(billingPreview.characterCount)} chars</span>
-                  <span>{billingPreview.encoding}</span>
-                  <span>
-                    {formatNumber(billingPreview.segmentsPerMessage)} SMS segment{billingPreview.segmentsPerMessage === 1 ? '' : 's'}/message
+              <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-900/40">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-[11px] uppercase tracking-wide text-surface-500">
+                  <span>Body preview</span>
+                  <span className="flex flex-wrap gap-x-2">
+                    <span>{formatNumber(billingPreview.characterCount)} chars</span>
+                    <span>{billingPreview.encoding}</span>
+                    <span>{formatNumber(billingPreview.segmentsPerMessage)} segment{billingPreview.segmentsPerMessage === 1 ? '' : 's'}/recipient</span>
                   </span>
                 </div>
+                <pre className="whitespace-pre-wrap break-words font-sans text-sm text-surface-800 dark:text-surface-200">{selectedTemplate.content || <span className="italic text-surface-400">No body set on this template.</span>}</pre>
                 {billableSegments !== null && (
-                  <div className="mt-1 font-medium text-surface-800 dark:text-surface-100">
+                  <div className="mt-1 text-[11px] font-medium text-surface-800 dark:text-surface-100">
                     {formatNumber(billableSegments)} estimated billable SMS segment{billableSegments === 1 ? '' : 's'}; provider pricing unavailable.
                   </div>
                 )}
@@ -337,7 +741,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <div className="flex items-start gap-2 rounded-lg border border-amber-400 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-600 dark:bg-amber-900/20 dark:text-amber-200">
               <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
               <span>
-                Local time {quietHoursWarning} — TCPA quiet hours typically 21:00–08:00. Many US states restrict sending outside that window.
+                Shop time {quietHoursWarning} — TCPA quiet hours typically 21:00–08:00. Many US states restrict sending outside that window.
               </span>
             </div>
           )}
@@ -346,12 +750,9 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <>
               <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                {/*
-                  * WEB-UIUX-1124: Live countdown replaces static "5 minutes" copy.
-                  * WEB-UIUX-1523: Static "Confirmation expires in 5 minutes" was inaccurate;
-                  *   the live MM:SS timer below is already truthful — no copy change needed.
-                  *   (Re-preview prompt on expiry also satisfies the "wait longer" guidance.)
-                  */}
+                {/* WEB-UIUX-1124/1523: live MM:SS countdown for the confirmation
+                    window. Re-preview prompt on expiry replaces the old static
+                    "5 minutes" copy. */}
                 <span>
                   This will send to <strong>{formatNumber(preview.preview_count)}</strong> recipients.
                   {countdown > 0 ? (
@@ -383,6 +784,62 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               )}
             </>
           )}
+          {/* BUGHUNT-2026-05-10-40: explicit TCPA-filter evidence. When the
+              server didn't return the field, the Send button below is
+              disabled too — we refuse to assume a missing field means zero. */}
+          {preview && (
+            preview.excluded_optout_count === undefined ? (
+              <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-2 text-xs text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>
+                  Server did not confirm opt-out filtering ran. Send is disabled — re-preview or update the server before continuing.
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs text-surface-700 dark:border-surface-700 dark:bg-surface-800/50 dark:text-surface-300">
+                <span>
+                  TCPA filter: {preview.excluded_optout_count} customer{preview.excluded_optout_count === 1 ? '' : 's'} in this segment excluded for missing opt-in or marketing consent.
+                </span>
+              </div>
+            )
+          )}
+          {/* WEB-UIUX-1113: masked sample recipients so operator sanity-checks WHO. */}
+          {preview && preview.sample_phones && preview.sample_phones.length > 0 && (
+            <div className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-800/50">
+              <p className="font-medium text-surface-700 dark:text-surface-300 mb-1">
+                Sample recipients (first {preview.sample_phones.length} of {preview.preview_count})
+              </p>
+              <ul className="space-y-0.5 font-mono text-surface-600 dark:text-surface-400">
+                {preview.sample_phones.map((p, i) => (
+                  <li key={i}>· {p.masked}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {/* WEB-UIUX-1517: surface remaining hourly quota so the admin sees
+              why a 4th send returns 429 instead of being surprised by it. */}
+          {preview && preview.quota && (
+            <BulkSendQuotaLine quota={preview.quota} />
+          )}
+          {/* WEB-UIUX-1510: surface provider configuration BEFORE Send. When
+              real=false, simulated/no-op provider is configured, so the blast
+              would either go nowhere or queue in retry. Banner makes the
+              cause visible while still letting admin sanity-check audience
+              size; Send is gated below. */}
+          {preview && preview.provider && !preview.provider.real && (
+            <div
+              role="alert"
+              className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+            >
+              <p className="font-medium">SMS provider not configured</p>
+              <p className="mt-0.5">
+                Current provider ({preview.provider.name ?? 'simulated'}) does
+                not actually deliver SMS. Configure a real provider in
+                Settings → SMS before sending; Send is disabled until then.
+              </p>
+            </div>
+          )}
+          </>}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
@@ -391,6 +848,19 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
             Cancel
+          </button>
+          {/* WEB-UIUX-1508: send-test-to-me — quota-free single SMS to the
+              admin's mobile so wording / links / vars can be verified before
+              the blast. Disabled until a template is picked; provider gate
+              still applies server-side (preview banner surfaces the same
+              condition for the real send). */}
+          <button
+            onClick={() => sendTestMut.mutate()}
+            disabled={!templateId || sendTestMut.isPending}
+            title="Send a single test message to your own mobile number"
+            className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-700"
+          >
+            {sendTestMut.isPending ? 'Sending test…' : 'Send test to me'}
           </button>
           {!preview ? (
             <button
@@ -409,19 +879,123 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               >
                 {previewMut.isPending ? 'Refreshing…' : 'Re-Preview'}
               </button>
-              <button
-                onClick={() => sendMut.mutate()}
-                disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0}
-                title={countdown === 0 ? 'Confirmation expired — please re-preview' : undefined}
-                className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-              >
-                <Send className="h-3.5 w-3.5" />
-                {sendMut.isPending ? 'Sending…' : `Send to ${formatNumber(preview.preview_count)}`}
-              </button>
+              {/* WEB-UIUX-1513: typed-confirm above threshold so single-
+                  click doesn't blast 12k recipients. Type the recipient
+                  count to enable the Send button. */}
+              {preview.preview_count >= 100 ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder={`Type ${preview.preview_count}`}
+                    value={typedConfirm}
+                    onChange={(e) => setTypedConfirm(e.target.value.replace(/[^0-9]/g, ''))}
+                    aria-label={`Type ${preview.preview_count} to confirm`}
+                    className="w-32 rounded border border-surface-300 bg-white px-2 py-1 text-xs dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                  />
+                  <button
+                    onClick={() => sendMut.mutate()}
+                    disabled={
+                      sendMut.isPending
+                      || preview.preview_count === 0
+                      || countdown === 0
+                      || typedConfirm !== String(preview.preview_count)
+                      || preview.provider?.real === false
+                      // BUGHUNT-2026-05-10-40: refuse send when the server
+                      // didn't echo the TCPA-filter count — missing field
+                      // implies a server regression that may have skipped
+                      // the opt-in filter entirely.
+                      || preview.excluded_optout_count === undefined
+                    }
+                    title={
+                      preview.excluded_optout_count === undefined
+                        ? 'Server did not confirm opt-out filtering — re-preview or update server'
+                        : preview.provider?.real === false
+                          ? 'Configure a real SMS provider in Settings → SMS before sending'
+                          : countdown === 0
+                            ? 'Confirmation expired — please re-preview'
+                            : typedConfirm !== String(preview.preview_count)
+                              ? `Type ${preview.preview_count} to confirm`
+                              : undefined
+                    }
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => sendMut.mutate()}
+                  disabled={sendMut.isPending || preview.preview_count === 0 || countdown === 0 || preview.provider?.real === false || preview.excluded_optout_count === undefined}
+                  title={
+                    preview.excluded_optout_count === undefined
+                      ? 'Server did not confirm opt-out filtering — re-preview or update server'
+                      : preview.provider?.real === false
+                        ? 'Configure a real SMS provider in Settings → SMS before sending'
+                        : countdown === 0 ? 'Confirmation expired — please re-preview' : undefined
+                  }
+                  // WEB-UIUX-1116: drop red (destructive) — sending an opted-in
+                  // marketing reminder is additive, not destructive. Primary
+                  // tone matches Stripe/Klaviyo confident-send buttons; the
+                  // explicit "Send to N" label already carries blast-radius.
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * WEB-UIUX-1517: live hourly quota line. Server reports the absolute
+ * reset_at; the component ticks once per second so the countdown stays
+ * truthful without the parent re-rendering on every tick.
+ */
+function BulkSendQuotaLine({ quota }: { quota: NonNullable<PreviewResponse['quota']> }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!quota.reset_at) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [quota.reset_at]);
+
+  const remaining = Math.max(0, quota.max - quota.used);
+  const resetMs = quota.reset_at ? new Date(quota.reset_at).getTime() : null;
+  const secondsToReset = resetMs ? Math.max(0, Math.floor((resetMs - now) / 1000)) : null;
+  const mm = secondsToReset != null ? String(Math.floor(secondsToReset / 60)).padStart(2, '0') : null;
+  const ss = secondsToReset != null ? String(secondsToReset % 60).padStart(2, '0') : null;
+  const exhausted = remaining === 0;
+
+  return (
+    <div
+      className={
+        exhausted
+          ? 'rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-500/30 dark:bg-amber-500/10'
+          : 'rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs dark:border-surface-700 dark:bg-surface-800/50'
+      }
+    >
+      <p
+        className={
+          exhausted
+            ? 'font-medium text-amber-800 dark:text-amber-300'
+            : 'font-medium text-surface-700 dark:text-surface-300'
+        }
+      >
+        Bulk sends this hour: {quota.used} of {quota.max} used
+        {secondsToReset != null && secondsToReset > 0 && (
+          <> · resets in {mm}:{ss}</>
+        )}
+        {exhausted && (
+          <> — wait for the window to reset before sending.</>
+        )}
+      </p>
     </div>
   );
 }

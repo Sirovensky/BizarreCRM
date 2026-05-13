@@ -118,6 +118,12 @@ export const authApi = {
       '/auth/recover-with-backup-code',
       data,
     ),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<{ success: boolean; data?: { message: string }; message?: string }>(
+      '/auth/change-password',
+      { current_password: currentPassword, new_password: newPassword },
+      { skipGlobal500Toast: true } as object,
+    ),
 };
 
 // ==================== Customers ====================
@@ -128,7 +134,7 @@ export const authApi = {
 // reader confusion.
 
 export const customerApi = {
-  list: (params?: { page?: number; pagesize?: number; keyword?: string; group_id?: number; include_stats?: string; from_date?: string; to_date?: string; has_open_tickets?: string }) =>
+  list: (params?: { page?: number; pagesize?: number; keyword?: string; group_id?: number; include_stats?: string; from_date?: string; to_date?: string; has_open_tickets?: string; sort_by?: 'created_at' | 'updated_at' | 'first_name' | 'last_name' | 'organization' | 'code' | 'email' | 'city' | 'phone' | 'mobile' | 'total_spent' | 'ticket_count'; sort_order?: 'ASC' | 'DESC' }) =>
     api.get('/customers', { params }),
   importCsv: (items: ImportCustomerItem[], skipDuplicates = true) =>
     api.post('/customers/import-csv', { items, skip_duplicates: skipDuplicates }),
@@ -148,6 +154,21 @@ export const customerApi = {
   repeat: (params?: { min_tickets?: number; months?: number }) =>
     api.get('/customers/repeat', { params }),
   // Sub-resources
+  // WEB-UIUX-886: structured per-customer notes (separate from the
+  // single-line `comments` sticky note on the customer record). Each row
+  // carries timestamp + author so the CustomerDetailPage Notes card can
+  // render a real timeline. Server routes at customers.routes.ts:2845+.
+  notes: (id: number) =>
+    api.get<{ success: boolean; data: Array<{ id: number; author_user_id: number | null; author_name: string | null; body: string; created_at: string }> }>(
+      `/customers/${id}/notes`,
+    ),
+  addNote: (id: number, body: string) =>
+    api.post<{ success: boolean; data: { id: number } }>(
+      `/customers/${id}/notes`,
+      { body },
+    ),
+  deleteNote: (id: number, noteId: number) =>
+    api.delete(`/customers/${id}/notes/${noteId}`),
   getTickets: (id: number, params?: { page?: number }) =>
     api.get(`/customers/${id}/tickets`, { params }),
   getInvoices: (id: number, params?: { page?: number }) =>
@@ -283,7 +304,7 @@ import type { InvoiceDetail } from '@/types/invoice';
 
 export const invoiceApi = {
   // WEB-W2-022: server (invoices.routes.ts:236) accepts sort_by/sort_dir for the list view
-  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) =>
+  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number; sort_by?: string; sort_dir?: 'asc' | 'desc'; include_credit_notes?: 'true' }) =>
     api.get('/invoices', { params }),
   // WEB-W2-022: stats accepts the same filter params as list, so the KPI strip
   // matches the visible invoice subset.
@@ -314,8 +335,18 @@ export const invoiceApi = {
   void: (id: number) => api.post(`/invoices/${id}/void`),
   // WEB-W2-018: migration 150 added credit_note_code + credit_note_note columns;
   // pages may pass these through alongside the legacy composed `reason` string.
-  createCreditNote: (id: number, data: { amount: number; reason: string; code?: string; note?: string }) =>
-    api.post(`/invoices/${id}/credit-note`, data),
+  // WEB-UIUX-1294: pass X-Idempotency-Key so a double-click on slow network
+  // doesn't produce two CRN rows + duplicate audit entries against the same
+  // invoice (server's prior-credits aggregate guards math but not the orphan).
+  // WEB-UIUX-733: `reason` is now derivable from `code` + `note` on the server
+  // (invoices.routes.ts resolvedReason fallback). Keep `reason` for legacy /
+  // integration callers, but new web callers should pass `code` + `note` only.
+  createCreditNote: (id: number, data: { amount: number; reason?: string; code?: string; note?: string }, idempotencyKey?: string) =>
+    api.post(`/invoices/${id}/credit-note`, data, {
+      headers: {
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('cn'),
+      },
+    }),
   bulkAction: (action: string, invoiceIds: number[]) =>
     api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
 };
@@ -481,6 +512,11 @@ export const settingsApi = {
   // Generic config (key-value store)
   getConfig: (params?: { location_id?: number }) => api.get<{ success: boolean; data: SettingsConfig }>('/settings/config', { params }),
   updateConfig: (data: Record<string, string>) => api.put<{ success: boolean; data: SettingsConfig }>('/settings/config', data),
+  // WEB-UIUX-944: bilateral webhook connectivity smoke-test. Server fires
+  // a synthetic `ticket_created` event with `test:true` against the
+  // configured webhook_url so the admin can verify reachability +
+  // signing-secret match.
+  testWebhook: () => api.post('/settings/webhook-test'),
   getSetupStatus: () => api.get<{
     success: boolean;
     data: {
@@ -1079,6 +1115,16 @@ export const leadApi = {
   createAppointment: (data: CreateAppointmentInput) => api.post('/leads/appointments', data),
   updateAppointment: (id: number, data: UpdateAppointmentInput) => api.put(`/leads/appointments/${id}`, data),
   deleteAppointment: (id: number) => api.delete(`/leads/appointments/${id}`),
+  // WEB-UIUX-1324: cross-viewport overlap check. The page-level
+  // `existingAppointments` array only covers the current month/week/day, so
+  // a booking on the last day of a viewport against an appt in the next
+  // viewport returns a false-clear. This calls the dedicated server route
+  // that scans the assignee's full calendar with no viewport limit.
+  getAppointmentOverlaps: (params: { assigned_to: number; start_time: string; end_time?: string; exclude_id?: number }) =>
+    api.get<{ success: boolean; data: { overlaps: Array<{ id: number; title: string | null; start_time: string; end_time: string | null; status: string; customer_first_name: string | null; customer_last_name: string | null }>; count: number } }>(
+      '/leads/appointments/overlaps',
+      { params },
+    ),
   // WEB-W2-035: bulk action on leads. Server: POST /leads/bulk-action (leads.routes.ts:411)
   // accepts { lead_ids, action, value? } and rejects batches > 500.
   bulkAction: (lead_ids: number[], action: string, value?: string) =>
@@ -1171,6 +1217,12 @@ export const estimateApi = {
       success: boolean;
       data: { signed: boolean; estimate_id: number; signed_at: string };
     }>(`/${encodeURIComponent(token)}`, data),
+  // WEB-UIUX-658: renew (flip back to draft + extend valid_until) and clone
+  // (new draft, same line items + customer) for stale or expired estimates.
+  renew: (id: number, days?: number) =>
+    api.post<{ success: boolean; data: { id: number; valid_until: string; status: 'draft' } }>(`/estimates/${id}/renew`, days ? { days } : {}),
+  clone: (id: number, days?: number) =>
+    api.post<{ success: boolean; data: { id: number; order_id: string; source_id: number; valid_until: string; line_count: number } }>(`/estimates/${id}/clone`, days ? { days } : {}),
 };
 
 // ==================== Employees ====================
@@ -1178,7 +1230,16 @@ export const employeeApi = {
   list: () => api.get('/employees'),
   get: (id: number) => api.get(`/employees/${id}`),
   clockIn: (id: number, pin: string, location_id?: number) => api.post(`/employees/${id}/clock-in`, { pin, ...(location_id !== undefined ? { location_id } : {}) }),
-  clockOut: (id: number, pin: string, location_id?: number) => api.post(`/employees/${id}/clock-out`, { pin, ...(location_id !== undefined ? { location_id } : {}) }),
+  // WEB-UIUX-1261: clock-out accepts an optional notes string so a tech /
+  // manager can append shift context ("covered for sick teammate", "client
+  // meeting ran late"). Server caps at 1000 chars and treats empty strings
+  // as null so a blank text area doesn't overwrite a prior note.
+  clockOut: (id: number, pin: string, location_id?: number, notes?: string) =>
+    api.post(`/employees/${id}/clock-out`, {
+      pin,
+      ...(location_id !== undefined ? { location_id } : {}),
+      ...(notes !== undefined ? { notes } : {}),
+    }),
   hours: (id: number, params?: { from_date?: string; to_date?: string }) =>
     api.get(`/employees/${id}/hours`, { params }),
   commissions: (id: number, params?: { from_date?: string; to_date?: string }) =>
@@ -1247,6 +1308,7 @@ export const onboardingApi = {
   removeSampleData: () => api.delete('/onboarding/sample-data'),
   setShopType: (shop_type: OnboardingShopType) =>
     api.post('/onboarding/set-shop-type', { shop_type }),
+  skipShopType: () => api.post('/onboarding/skip-shop-type', {}),
 };
 
 // ==================== Roles / Permissions ====================
@@ -1466,7 +1528,30 @@ export const dataExportApi = {
 
 // ==================== BlockChyp Payment Terminal ====================
 export const blockchypApi = {
-  status: () => api.get<{ success: boolean; data: { enabled: boolean; terminalName: string; tcEnabled: boolean; promptForTip: boolean; autoCloseTicket: boolean } }>('/blockchyp/status'),
+  // WEB-UIUX-937: server now returns a `heartbeat` block alongside the
+  // configured-state flags so the UI can render an "offline" pill / disable
+  // Charge when the last `testConnection()` ping failed or is older than the
+  // freshness window (default 5 min). `heartbeat` is `null` when no ping has
+  // ever been issued for this terminal in the current process.
+  status: () => api.get<{
+    success: boolean;
+    data: {
+      enabled: boolean;
+      terminalName: string;
+      tcEnabled: boolean;
+      promptForTip: boolean;
+      autoCloseTicket: boolean;
+      heartbeat: {
+        lastSeenAt: string | null;
+        lastCheckedAt: string | null;
+        lastError: string | null;
+        firmwareVersion: string | null;
+        online: boolean;
+        stale: boolean;
+        freshnessWindowMs: number;
+      } | null;
+    };
+  }>('/blockchyp/status'),
   testConnection: (terminalName?: string, terminalIp?: string) =>
     api.post<{ success: boolean; data: { success: boolean; terminalName: string; firmwareVersion?: string; error?: string; message?: string; verificationStatus?: 'verified' | 'gateway_only' | 'failed'; lan?: { attempted: boolean; success: boolean; host?: string; port?: number; error?: string } } }>('/blockchyp/test-connection', { terminalName, terminalIp }),
   captureCheckinSignature: () =>
@@ -1530,6 +1615,9 @@ export const blockchypApi = {
     }>(
       '/blockchyp/process-payment',
       { invoiceId, tip, amount, idempotency_key: idemKey },
+      // WEB-UIUX-936: terminal user-input (tap/chip/PIN) can take 60-90s.
+      // Default 30s axios timeout aborts client-side while server is still
+      // waiting on terminal — combined with retry, can double-charge.
       { timeout: PAYMENT_TERMINAL_REQUEST_TIMEOUT_MS },
     );
   },
@@ -1571,6 +1659,16 @@ export const loanerApi = {
     return_charge_payment_reference?: string;
   }) =>
     api.post<{ success: boolean; data: { returned: boolean; return_charge: LoanerReturnCharge | null } }>(`/loaners/${id}/return`, body),
+  // WEB-UIUX-642: terminal "device walked off" transition. Optional charge
+  // fields create an unrecovered-device invoice on the active loan's customer.
+  markLost: (id: number, body?: {
+    notes?: string;
+    charge_amount?: number;
+    charge_paid?: boolean;
+    charge_payment_method?: string;
+    charge_payment_reference?: string;
+  }) =>
+    api.post<{ success: boolean; data: { id: number; status: 'lost'; charge: null | { invoice_id: number; amount: number; status: 'paid' | 'unpaid' } } }>(`/loaners/${id}/mark-lost`, body ?? {}),
 };
 
 export interface LoanerReturnCharge {
@@ -1592,7 +1690,7 @@ export interface LoanerDevice {
   serial: string | null;
   imei: string | null;
   condition: string;
-  status: 'available' | 'loaned';
+  status: 'available' | 'loaned' | 'lost';
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -1615,6 +1713,32 @@ export interface LoanerHistoryEntry {
 }
 
 // ==================== Gift Cards ====================
+// WEB-UIUX-1001: pending issuance row shape (gift_card_pending_issuances).
+// Manager-initiated issuances over the configured threshold land here for
+// admin approval; the row is back-linked to the minted card on approve.
+export interface PendingGiftCardIssuance {
+  id: number;
+  amount: number;
+  customer_id: number | null;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  requester_id: number | null;
+  approver_id: number | null;
+  status: 'pending' | 'approved' | 'declined' | 'cancelled';
+  decline_reason: string | null;
+  gift_card_id: number | null;
+  decided_at: string | null;
+  created_at: string;
+  // Server JOINs hydrate these per-row names; nulls when the foreign row is
+  // missing (legacy data) or the join target is intentionally unset.
+  requester_first?: string | null;
+  requester_last?: string | null;
+  approver_first?: string | null;
+  approver_last?: string | null;
+  customer_first?: string | null;
+  customer_last?: string | null;
+}
+
 export const giftCardApi = {
   list: (params?: { keyword?: string; status?: string; page?: number; per_page?: number }) =>
     api.get('/gift-cards', { params }),
@@ -1632,6 +1756,28 @@ export const giftCardApi = {
     api.post(`/gift-cards/${id}/redeem`, data),
   reload: (id: number, data: { amount: number }) =>
     api.post(`/gift-cards/${id}/reload`, data),
+  // WEB-UIUX-1546: disable / enable wrappers — manager+ on server.
+  disable: (id: number, data?: { reason?: string }) =>
+    api.post(`/gift-cards/${id}/disable`, data ?? {}),
+  enable: (id: number) =>
+    api.post(`/gift-cards/${id}/enable`),
+  // WEB-UIUX-1000: resend the plaintext code to recipient_email (or an
+  // override address); rate-limited 5/hr per card on the server.
+  resendCode: (id: number, override?: { email?: string }) =>
+    api.post<{ success: boolean; data: { gift_card_id: number; delivered_to: string }; message?: string }>(
+      `/gift-cards/${id}/resend-code`,
+      override ?? {},
+      { skipGlobal500Toast: true } as object,
+    ),
+  // WEB-UIUX-1001: dual-control pending-issuance queue.
+  pendingIssuances: (status?: 'pending' | 'approved' | 'declined' | 'cancelled' | 'all') =>
+    api.get<{ success: boolean; data: PendingGiftCardIssuance[] }>('/gift-cards/pending-issuances', {
+      params: status ? { status } : undefined,
+    }),
+  approvePendingIssuance: (id: number) =>
+    api.post<{ success: boolean; data: { pending_issuance_id: number; gift_card_id: number; code: string; amount: number } }>(`/gift-cards/pending-issuances/${id}/approve`),
+  declinePendingIssuance: (id: number, reason?: string) =>
+    api.post<{ success: boolean; data: { pending_issuance_id: number } }>(`/gift-cards/pending-issuances/${id}/decline`, reason ? { reason } : {}),
 };
 
 // ==================== Membership ====================
@@ -1694,7 +1840,9 @@ export const membershipApi = {
   // stop reaching for raw axios.
   paymentLink: (data: { tier_id: number; customer_id: number }) =>
     api.post<MembershipPaymentLinkResponse>('/membership/payment-link', data),
-  cancel: (id: number, data?: { immediate?: boolean }) =>
+  // WEB-UIUX-1067: capture cancellation reason + free-text note alongside the
+  // immediate/end-of-period choice so churn analytics has signal.
+  cancel: (id: number, data?: { immediate?: boolean; reason?: string; note?: string }) =>
     api.post(`/membership/${id}/cancel`, data || {}),
   pause: (id: number, data?: { reason?: string }) =>
     api.post(`/membership/${id}/pause`, data || {}),
@@ -1709,9 +1857,11 @@ export const membershipApi = {
   getPayments: (id: number) =>
     api.get(`/membership/${id}/payments`),
 
-  // Admin: all active subscriptions
-  getSubscriptions: () =>
-    api.get('/membership/subscriptions'),
+  // Admin: all active subscriptions; pass {includeCancelled:true} for churn history
+  getSubscriptions: (options?: { includeCancelled?: boolean }) =>
+    api.get('/membership/subscriptions', {
+      params: options?.includeCancelled ? { include_cancelled: '1' } : undefined,
+    }),
   // WEB-W3-020: admin-triggered immediate charge for a subscription
   runBilling: (id: number, options?: { force?: boolean }) =>
     api.post(`/membership/${id}/run-billing`, { force: options?.force === true }, {
@@ -1755,6 +1905,19 @@ export const benchApi = {
       api.put(`/bench/qc-checklist/${id}`, data),
     deleteChecklistItem: (id: number) => api.delete(`/bench/qc-checklist/${id}`),
     status: (ticketId: number) => api.get(`/bench/qc/status/${ticketId}`),
+    history: (ticketId: number) =>
+      api.get<{ success: boolean; data: { sign_offs: Array<{
+        id: number;
+        ticket_id: number;
+        tech_user_id: number;
+        signed_at: string;
+        outcome: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        working_photo_path?: string | null;
+        tech_signature_path?: string | null;
+        checklist_results: Array<{ item_id: number; passed: boolean }>;
+      }>; total: number } }>(`/bench/qc/history/${ticketId}`),
     signOff: (formData: FormData) =>
       api.post('/bench/qc/sign-off', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -2090,6 +2253,9 @@ export const refundApi = {
     pagesize?: number;
     status?: string;
     customer_id?: number;
+    // WEB-UIUX-1286: scope refunds to a single invoice for the credit-note
+    // duplicate-warning lookup.
+    invoice_id?: number;
     from_date?: string;
     to_date?: string;
   }) => api.get('/refunds', { params }),
@@ -2108,7 +2274,17 @@ export const refundApi = {
     }),
 
   approve: (id: number) =>
-    api.patch<{ success: boolean; data: { id: number } }>(`/refunds/${id}/approve`),
+    api.patch<{
+      success: boolean;
+      data: {
+        id: number;
+        // WEB-UIUX-1402: server signals when commission reversal was skipped
+        // because the payroll period is locked. UI must surface this so the
+        // operator knows the paid commission was NOT clawed back.
+        commission_reversal_skipped?: boolean;
+        commission_reversal_error?: string;
+      };
+    }>(`/refunds/${id}/approve`),
 
   decline: (id: number) =>
     api.patch<{ success: boolean; data: { id: number } }>(`/refunds/${id}/decline`),
@@ -2127,5 +2303,100 @@ export const refundApi = {
   getCreditsLiability: () =>
     api.get<{ success: boolean; data: { credits: unknown[]; total: number } }>(
       '/refunds/credits/liability',
+    ),
+};
+
+// ==================== Credit Notes ====================
+// WEB-UIUX-704: thin wrappers over creditNotes.routes.ts (list/detail/apply/
+// void). The `credit_notes` table is separate from the negative-invoice rows
+// that POST /invoices/:id/credit-note creates — those still live under the
+// invoiceApi.createCreditNote path. This API surfaces the dedicated credit-
+// note ledger so the new CreditNotesListPage can list/apply/void them.
+export const creditNotesApi = {
+  list: (params?: { page?: number; pagesize?: number; status?: string; customer_id?: number }) =>
+    api.get('/credit-notes', { params }),
+  get: (id: number) => api.get(`/credit-notes/${id}`),
+  apply: (id: number, body: { invoice_id: number; amount?: number }) =>
+    api.post(`/credit-notes/${id}/apply`, body),
+  void: (id: number, body?: { reason?: string }) =>
+    api.post(`/credit-notes/${id}/void`, body ?? {}),
+};
+
+// WEB-UNWIRED-007: financing provider wrapper. Returns redirect_url when the
+// tenant has Affirm/Klarna creds wired; 503 + code='not_configured' otherwise.
+export interface FinancingCheckoutResponse {
+  redirect_url: string;
+  provider: 'affirm' | 'klarna';
+  provider_session_id: string;
+}
+export interface FinancingCheckoutInput {
+  invoice_id: number;
+  amount_cents: number;
+  customer_email?: string | null;
+  customer_first_name?: string | null;
+  customer_last_name?: string | null;
+  customer_phone?: string | null;
+}
+
+export const financingApi = {
+  createCheckoutSession: (data: FinancingCheckoutInput) =>
+    api.post<{ success: boolean; data: FinancingCheckoutResponse; code?: string; message?: string }>(
+      '/financing/checkout-session',
+      data,
+      { skipGlobal500Toast: true } as object,
+    ),
+};
+
+// POS-PHONE-TAP-1: pair-and-poll handoff so a paired mobile device can take
+// over Call / SMS-draft actions the desktop user tapped.
+export interface PairedDevice {
+  id: number;
+  device_label: string | null;
+  platform: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+}
+
+// WEB-UIUX-1252: wire the existing /api/v1/locations server surface so the
+// EmployeeListPage PIN modal can let the cashier pick the punch-in location
+// in multi-location stores (server-side clock-in/clock-out already accept
+// location_id at employees.routes.ts:313).
+export interface LocationRow {
+  id: number;
+  name: string;
+  address_line: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  timezone: string | null;
+  is_default: 0 | 1;
+  is_active: 0 | 1;
+}
+
+export const locationApi = {
+  list: (activeOnly = true) =>
+    api.get<{ success: boolean; data: LocationRow[] }>(
+      '/locations',
+      activeOnly ? { params: { active: 1 } } : undefined,
+    ),
+  defaultForMe: () =>
+    api.get<{ success: boolean; data: LocationRow | null }>('/locations/me/default-location'),
+};
+
+export const posHandoffApi = {
+  startPairing: () =>
+    api.post<{ success: boolean; data: { code: string; expires_in_seconds: number } }>('/pos/pair/start'),
+  listDevices: () =>
+    api.get<{ success: boolean; data: PairedDevice[] }>('/pos/devices'),
+  removeDevice: (id: number) =>
+    api.delete<{ success: boolean }>(`/pos/devices/${id}`),
+  pushHandoff: (action: 'call' | 'sms_draft', phone: string, payload?: Record<string, unknown>) =>
+    api.post<{ success: boolean; data?: { handoff_ids: number[]; device_count: number; expires_in_seconds: number }; code?: string; message?: string }>(
+      '/pos/handoff',
+      { action, phone, payload },
+      { skipGlobal500Toast: true } as object,
     ),
 };
