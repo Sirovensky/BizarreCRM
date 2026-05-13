@@ -57,30 +57,26 @@
     --sidebar-collapsed-width: 64px;
     --header-height: 56px;
 
-    /* Runtime primary accent ramp — light mode = caramel.
-     * Per design-system.html: cream (#FDEED0) is the dark-mode primary, caramel
-     * (#A66D1F) is the light-mode primary. Cream on white fails AA at 1.1:1;
-     * caramel passes 5.2:1. The ramp here is centered on caramel-500 with
-     * lighter / darker stops mixed toward white / black. Dark mode swaps the
-     * whole ramp back to the cream family — see the `.dark` block below.
-     * AppShell will still override these from store_config.theme_primary_color
-     * for tenants that customize their accent. */
-    --primary-50:  252 244 230;
-    --primary-100: 247 232 204;
-    --primary-200: 232 207 165;
-    --primary-300: 217 180 122;
-    --primary-400: 195 147  78;
-    --primary-500: 166 109  31;   /* #A66D1F caramel — canonical light primary */
-    --primary-600: 142  93  26;
-    --primary-700: 116  76  21;
-    --primary-800:  90  59  16;
-    --primary-900:  64  41  11;
-    --primary-950:  38  24   6;
+    /* Runtime primary accent ramp — cream-family in both modes.
+     * Brand identity is cream (#FDEED0). Caramel-only light-mode failed the
+     * brand look ("everything turned bright orange"); restore cream-honey
+     * across both modes. Tenants that need a high-contrast accent on white
+     * can still override via store_config.theme_primary_color → AppShell. */
+    --primary-50:  255 254 251;
+    --primary-100: 254 252 244;
+    --primary-200: 253 248 232;
+    --primary-300: 253 244 214;
+    --primary-400: 253 240 200;
+    --primary-500: 253 238 208;   /* #FDEED0 cream — canonical brand primary */
+    --primary-600: 245 220 167;
+    --primary-700: 233 196 119;
+    --primary-800: 214 165  75;
+    --primary-900:  43  20   0;
+    --primary-950:  26  11   0;
 
     /* WEB-UIUX-418: semantic text-on-primary token.
-     * Caramel needs a light text color on top to pass AA. Dark mode (cream
-     * primary) overrides this to near-black — see the `.dark` block. */
-    --text-on-primary: 255 254 251;
+     * Cream primary needs near-black text for legibility on top. */
+    --text-on-primary: 26 11 0;
 
     /* Surface ramp — Option F (Web POS Recolor 2026-05-01).
      * Warm-graphite ramp between stone and neutral. Cream restrained to
@@ -101,12 +97,12 @@
     --surface-900:  15  14  12;
     --surface-950:   8   7   6;
 
-    /* Chart palette — anchored on caramel primary, with warm-spectrum accents
+    /* Chart palette — anchored on cream primary, with warm-spectrum accents
      * (sage/teal/terracotta/clay) so multi-series charts stay coherent with
      * the brand instead of falling back to Recharts' clashing primaries.
      * Recharts can't read Tailwind utilities at runtime, so palette tokens
      * live as CSS vars consumed by chartColors.ts. Light variants here. */
-    --chart-color-1: #a66d1f;   /* caramel-500 — primary series */
+    --chart-color-1: #fdeed0;   /* cream-500 — primary series */
     --chart-color-2: #4f7d6a;   /* sage */
     --chart-color-3: #d4a05a;   /* tan */
     --chart-color-4: #b85c3c;   /* terracotta */
