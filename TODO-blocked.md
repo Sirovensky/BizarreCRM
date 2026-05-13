@@ -1874,7 +1874,7 @@ Re-walk of the "Process Refund" user flow, focusing on **server-side capability 
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:99-101`
 
-- [!] WEB-UIUX-979. **[NIT] Approve mutation loading state coexists with Reject loading state via shared `anyMutationPending` — clicking Approve disables Reject too, fine — but no per-button skeleton cue beyond `<Loader2>` icon swap. Reject button visually identical mid-Approve.** L11. **[AUTOLOOP-T49 BLOCKED 2026-05-11: nit-level polish; per-button skeleton cue requires deciding a button-level skeleton design pattern (subtle stripe vs reduced opacity vs disabled-with-progress) and applying it consistently across the action button row.]**
+- [x] WEB-UIUX-979. **[NIT] Sibling-pending state surfaced via text + cursor cue.** 2026-05-12 — PortalEstimatesView Approve/Decline buttons now: (a) swap the sibling button's label to "Waiting…" while one is mid-flight, (b) flip the sibling's cursor to `cursor-wait`, (c) carry `aria-busy` on the active button. Combined with the existing opacity-50 disabled state, the two buttons are no longer visually identical. Pattern works for the in-flight signal without committing to a broader skeleton-stripe design system change.
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:160`
 
   `packages/web/src/pages/estimates/EstimateDetailPage.tsx:209`

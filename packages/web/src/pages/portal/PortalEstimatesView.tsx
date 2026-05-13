@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import * as api from './portalApi';
 import { formatDate } from '../../utils/format';
+import { cn } from '@/utils/cn';
 
 interface PortalEstimatesViewProps {
   onBack: () => void;
@@ -243,19 +244,39 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                   // WEB-UIUX-1476: amber tone signals financial commitment; label includes total for clarity.
                   // WEB-UIUX-812: Decline sibling shipped 2026-05-12 for the customer-facing reject path.
                   <div className="space-y-2">
+                    {/* WEB-UIUX-979: when one button is mid-flight, the sibling
+                        shows a "Waiting…" label + cursor-wait so the disabled
+                        state is signalled by text + cursor, not opacity alone.
+                        Avoids the previous "two-buttons-look-identical" trap. */}
                     <button
                       onClick={() => handleApprove(est.id)}
                       disabled={approvingId === est.id || rejectingId === est.id}
-                      className="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                      aria-busy={approvingId === est.id}
+                      className={cn(
+                        'w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors',
+                        rejectingId === est.id && 'cursor-wait',
+                      )}
                     >
-                      {approvingId === est.id ? 'Approving...' : `Approve & authorize $${est.total.toFixed(2)}`}
+                      {approvingId === est.id
+                        ? 'Approving…'
+                        : rejectingId === est.id
+                          ? 'Waiting…'
+                          : `Approve & authorize $${est.total.toFixed(2)}`}
                     </button>
                     <button
                       onClick={() => handleReject(est.id)}
                       disabled={approvingId === est.id || rejectingId === est.id}
-                      className="w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+                      aria-busy={rejectingId === est.id}
+                      className={cn(
+                        'w-full rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors',
+                        approvingId === est.id && 'cursor-wait',
+                      )}
                     >
-                      {rejectingId === est.id ? 'Declining...' : 'Decline this estimate'}
+                      {rejectingId === est.id
+                        ? 'Declining…'
+                        : approvingId === est.id
+                          ? 'Waiting…'
+                          : 'Decline this estimate'}
                     </button>
                   </div>
                 )}
