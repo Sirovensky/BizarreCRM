@@ -3568,7 +3568,7 @@ function CustomerGate({
                 // Cream as edge + tint, not a full wash — mockups/design-system.html
                 // principle "cream never as a wash, always restrained". Text flips
                 // per mode so cream-on-white doesn't fail AA in light mode.
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-primary-500 bg-primary-500/10 px-6 py-3 text-sm font-semibold text-surface-900 hover:bg-primary-500/15 dark:text-primary-500 dark:hover:bg-primary-500/20"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-primary-500 bg-primary-500/10 px-6 py-3 text-sm font-semibold text-surface-900 hover:bg-primary-500/15 dark:text-primary-500 dark:hover:bg-primary-500/20"
               >
                 + New customer
               </button>
