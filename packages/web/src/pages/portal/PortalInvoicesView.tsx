@@ -141,7 +141,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                         <table className="w-full text-sm">
                           <tbody>
                             {detailData.line_items.map((item, i) => (
-                              <tr key={i} className={i > 0 ? 'border-t border-surface-50 dark:border-surface-700' : ''}>
+                              <tr key={`${item.description}:${item.total}:${i}`} className={i > 0 ? 'border-t border-surface-50 dark:border-surface-700' : ''}>
                                 <td className="px-4 py-2 text-surface-700 dark:text-surface-300">{item.description}</td>
                                 <td className="px-4 py-2 text-right text-surface-500 dark:text-surface-400">x{item.quantity}</td>
                                 <td className="px-4 py-2 text-right text-surface-700 dark:text-surface-300">{formatCurrency(item.total, currency, locale)}</td>
@@ -173,7 +173,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                         <div className="p-4 border-t border-surface-100 dark:border-surface-800">
                           <h4 className="text-xs font-semibold text-surface-500 dark:text-surface-400 mb-2">PAYMENTS</h4>
                           {detailData.payments.map((p, i) => (
-                            <div key={i} className="flex justify-between text-sm text-surface-600 dark:text-surface-300">
+                            <div key={`${p.date}:${p.method}:${p.amount}:${i}`} className="flex justify-between text-sm text-surface-600 dark:text-surface-300">
                               <span>{p.method} — {formatDate(p.date, locale)}</span>
                               <span>{formatCurrency(p.amount, currency, locale)}</span>
                             </div>

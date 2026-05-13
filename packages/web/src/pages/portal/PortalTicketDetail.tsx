@@ -173,7 +173,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
               </thead>
               <tbody>
                 {ticket.devices.map((d, i) => (
-                  <tr key={i} className={i > 0 ? 'border-t border-surface-50 dark:border-surface-700' : ''}>
+                  <tr key={d.id} className={i > 0 ? 'border-t border-surface-50 dark:border-surface-700' : ''}>
                     <td className="px-4 py-3">
                       <div className="font-medium text-surface-900 dark:text-surface-100">{d.service || d.name || d.type || 'Repair'}</div>
                       {d.name && d.service && (
