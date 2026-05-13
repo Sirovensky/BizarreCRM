@@ -136,8 +136,16 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
     return () => clearInterval(id);
   }, [lockedUntil]);
 
+  // WEB-UIUX-911: capture previously-focused element on mount, restore on
+  // unmount. Closes the focus-drops-to-body gap when the manager-PIN modal
+  // dismisses — keyboard operators land back on the button that opened it
+  // instead of `<body>`.
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     inputRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus?.();
+    };
   }, []);
 
   // WEB-UIUX-445: when lockout activates, the PIN input becomes disabled and

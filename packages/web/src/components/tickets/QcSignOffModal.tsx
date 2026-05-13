@@ -15,6 +15,7 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Camera, Eraser, Check, X, Loader2, ClipboardCheck, AlertTriangle, History } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -79,6 +80,9 @@ export function QcSignOffModal({
   onSigned,
 }: QcSignOffModalProps) {
   const qc = useQueryClient();
+  // WEB-UIUX-911: focus-trap + restore on close so the QC sign-off keyboard
+  // path doesn't drop focus to <body> when the modal dismisses.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
 
   const { data: checklistData, isLoading: checklistLoading } = useQuery({
     queryKey: ['qc-checklist', deviceCategory ?? 'all'],
@@ -426,6 +430,7 @@ export function QcSignOffModal({
       onClick={safeClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="qc-signoff-title"
