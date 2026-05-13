@@ -1478,7 +1478,7 @@ Setup wizard, onboarding, print, TV, photo-capture, reports sub-components, tick
 
 #### ED10: Search/Filter Weirdness
 
-- [!] WEB-UIUX-667. **[MINOR] Filter persistence inconsistent — survives back-button but resets on side-nav menu click.** L5. **[AUTOLOOP-T30 BLOCKED: app-wide — every list page uses URL search params; sidebar NavLinks use bare paths stripping query state. Cross-cutting fix needed.]**
+- [x] WEB-UIUX-667. **[MINOR] Sidebar NavLinks now restore filter state.** 2026-05-12 — new `useSidebarPathMemory` hook (mounted in AppShell) writes `pathname + search` to `sessionStorage` for tracked top-level list paths (/tickets, /customers, /invoices, /inventory, /leads, /memberships, /subscriptions, /refunds, /credit-notes, /reports, /gift-cards, /communications, /voice, /timesheets, /employees, /appointments). Sidebar's `<NavLink to={…}>` calls run through `resolveSidebarPath()` which swaps a bare prefix for the last-seen URL with query state. Only persists the list-view URL itself (not detail rows) so clicking "Tickets" never jumps to /tickets/123. sessionStorage scope = wipes on tab close so shared-kiosk users don't bleed filters.
 
   `packages/web/src/pages/tickets/TicketListPage.tsx:201-320`
 

@@ -5,6 +5,7 @@ import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { ticketApi } from '@/api/endpoints';
 import { useSettings } from '@/hooks/useSettings';
+import { resolveSidebarPath } from '@/hooks/useSidebarPathMemory';
 import { cn } from '@/utils/cn';
 import {
   LayoutDashboard,
@@ -520,7 +521,12 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
                 {groups[key].map((item) => (
                   <li key={`${item.type}-${item.id}`}>
                     <NavLink
-                      to={item.path}
+                      // WEB-UIUX-667: resolveSidebarPath swaps a bare list path
+                      // for the last-seen URL (with filter/sort/page query
+                      // state) so re-clicking a sidebar link doesn't strip the
+                      // operator's filter context. Falls through to item.path
+                      // when no memory exists.
+                      to={resolveSidebarPath(item.path)}
                       className={({ isActive }) =>
                         cn(
                           'group relative flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
@@ -688,7 +694,9 @@ function SidebarItem({ item, collapsed }: { item: NavItem; collapsed: boolean })
   return (
     <li>
       <NavLink
-        to={item.path}
+        // WEB-UIUX-667: resolveSidebarPath restores last-seen query state
+        // (filters/sort/page) when re-clicking a sidebar list link.
+        to={resolveSidebarPath(item.path)}
         end={item.path === '/'}
         aria-keyshortcuts={keyShortcut}
         className={({ isActive }) =>

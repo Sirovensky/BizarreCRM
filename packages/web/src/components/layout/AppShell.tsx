@@ -18,6 +18,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
 import { useFormKeyboardShortcuts } from '@/hooks/useFormKeyboardShortcuts';
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
+import { useSidebarPathMemory } from '@/hooks/useSidebarPathMemory';
 import { useAuthStore } from '@/stores/authStore';
 import toast from 'react-hot-toast';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
@@ -47,6 +48,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   useFormKeyboardShortcuts();
+  // WEB-UIUX-667: persist last-visited URL per top-level list page so sidebar
+  // NavLinks restore the operator's filter context on re-click.
+  useSidebarPathMemory();
 
   // Fetch tenant plan + usage on mount, refetch on focus
   // SCAN-1146: rapid alt-tab or mobile focus-loss storms previously fired
