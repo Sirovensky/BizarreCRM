@@ -45,6 +45,11 @@ function parseNumberEnv(raw: string | undefined, fallback: number, min: number, 
   return Math.min(max, Math.max(min, parsed));
 }
 
+function parseBooleanEnv(raw: string | undefined): boolean {
+  const value = (raw || '').trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+}
+
 const portalCaptchaProvider = parseCaptchaProvider(process.env.PORTAL_CAPTCHA_PROVIDER);
 const portalCaptchaSiteKey = (process.env.PORTAL_CAPTCHA_SITE_KEY || '').trim();
 const portalCaptchaSecret = (process.env.PORTAL_CAPTCHA_SECRET || '').trim();
@@ -291,6 +296,9 @@ export const config = {
     }
     return enabled;
   })(),
+  // Hosted/dev override: when PRO_OPTIONS_AVAILABLE=1, every tenant receives
+  // Pro feature flags and Pro limits without mutating their stored billing row.
+  proOptionsAvailable: parseBooleanEnv(process.env.PRO_OPTIONS_AVAILABLE),
   dbPath: path.resolve(__dirname, '../data/bizarre-crm.db'),
   uploadsPath: path.resolve(__dirname, '../uploads'),
   /** Dedicated directory for cron-generated data-export JSON files. */

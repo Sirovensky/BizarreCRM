@@ -183,6 +183,22 @@ const BIRTHDAY_DAYS_UNTIL_SQL = `
   ) AS INTEGER)
 `;
 
+const CUSTOMER_LAST_ACTIVITY_SQL = `COALESCE((
+  SELECT MAX(ts) FROM (
+    SELECT c.last_interaction_at AS ts
+    UNION ALL
+      SELECT MAX(t.created_at) AS ts
+        FROM tickets t
+       WHERE t.customer_id = c.id
+         AND t.is_deleted = 0
+    UNION ALL
+      SELECT MAX(i.created_at) AS ts
+        FROM invoices i
+       WHERE i.customer_id = c.id
+         AND COALESCE(i.status,'') != 'void'
+  )
+), c.created_at)`;
+
 function marketingChannelWhere(channel: CampaignChannel): string {
   const smsContactable = `
     (COALESCE(c.sms_opt_in,0) = 1
@@ -248,7 +264,7 @@ function buildEligibleRecipientQuery(
     whereParams.push(campaign.id);
   } else if (campaign.type === 'winback') {
     const inactiveDays = winbackInactiveDays(campaign);
-    where.push("CAST((julianday('now') - julianday(COALESCE(c.last_interaction_at, c.created_at))) AS INTEGER) >= ?");
+    where.push(`CAST((julianday('now') - julianday(${CUSTOMER_LAST_ACTIVITY_SQL})) AS INTEGER) >= ?`);
     whereParams.push(inactiveDays);
     where.push(duplicateSuppressionWhere('30 days'));
     whereParams.push(campaign.id);
@@ -358,6 +374,16 @@ async function fetchEligibleRecipients(
 ): Promise<RecipientRow[]> {
   const query = buildEligibleRecipientQuery(campaign, { limit: limit ?? 5_000 });
   return adb.all<RecipientRow>(query.sql, ...query.params);
+}
+
+async function refreshCampaignSegment(adb: AsyncDb, campaign: CampaignRow): Promise<number | null> {
+  if (!campaign.segment_id) return null;
+  const segment = await adb.get<any>(
+    `SELECT * FROM customer_segments WHERE id = ?`,
+    campaign.segment_id,
+  );
+  if (!segment) return null;
+  return refreshSegmentMembership(adb, segment);
 }
 
 // -----------------------------------------------------------------------------
@@ -761,6 +787,7 @@ router.post(
     );
     if (!campaign) throw new AppError('Campaign not found', 404);
 
+    const segmentTotal = await refreshCampaignSegment(adb, campaign);
     const recipients = await fetchEligibleRecipients(adb, campaign, 10);
     const sampleRendered = recipients.slice(0, 3).map((r) => ({
       customer_id: r.id,
@@ -780,6 +807,7 @@ router.post(
       data: {
         campaign_id: id,
         total_recipients: total,
+        segment_total: segmentTotal,
         preview: sampleRendered,
       },
     });
@@ -823,6 +851,7 @@ router.post(
       }
     }
 
+    await refreshCampaignSegment(adb, campaign);
     const recipients = await fetchEligibleRecipients(adb, campaign);
     const result = await dispatchCampaign(
       db,

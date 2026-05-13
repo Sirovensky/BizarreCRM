@@ -743,7 +743,7 @@ async function buildZReport(
     }
   }
 
-  return {
+  const report: ZReport = {
     shift_id: shift.id,
     opened_at: shift.opened_at,
     closed_at: closedAt,

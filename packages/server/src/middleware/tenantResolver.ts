@@ -578,7 +578,7 @@ export async function tenantResolver(req: Request, res: Response, next: NextFunc
 
   // Normalize stored plan to a valid TenantPlan (unknown/corrupted values fall back to 'free')
   const storedPlan: TenantPlan = (planData.plan === 'pro' ? 'pro' : 'free');
-  const effectivePlan: TenantPlan = trialActive ? 'pro' : storedPlan;
+  const effectivePlan: TenantPlan = config.proOptionsAvailable ? 'pro' : (trialActive ? 'pro' : storedPlan);
   const planDef = getPlanDefinition(effectivePlan);
 
   req.tenantPlan = effectivePlan;

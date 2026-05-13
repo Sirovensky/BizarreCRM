@@ -158,10 +158,18 @@ function validateOptionalRefString(value: unknown, fieldName: string, maxLen = 1
   return trimmed;
 }
 
+function parsePositiveLimit(value: unknown, fallback = 32, max = 100): number {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = typeof rawValue === 'string' ? Number.parseInt(rawValue, 10) : Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(Math.trunc(parsed), max);
+}
+
 // GET /pos/products - products/services available for POS
 router.get('/products', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const { keyword, category, item_type } = req.query as Record<string, string>;
+  const limit = parsePositiveLimit(req.query.limit);
 
   let where = 'WHERE is_active = 1 AND (item_type = \'product\' OR item_type = \'service\')';
   const params: any[] = [];
@@ -190,15 +198,32 @@ router.get('/products', asyncHandler(async (req, res) => {
   if (!showAccessories) hiddenCategories.push('accessory', 'accessories');
   if (!showMisc) hiddenCategories.push('misc', 'miscellaneous');
 
+  const categoryWhereParts = [
+    'is_active = 1',
+    "(item_type = 'product' OR item_type = 'service')",
+    'category IS NOT NULL',
+  ];
+  const categoryParams: any[] = [];
+
   if (hiddenCategories.length > 0) {
-    where += ' AND (LOWER(category) NOT IN (' + hiddenCategories.map(() => '?').join(',') + ') OR category IS NULL)';
+    const hiddenCategoryPlaceholders = hiddenCategories.map(() => '?').join(',');
+    where += ` AND (LOWER(category) NOT IN (${hiddenCategoryPlaceholders}) OR category IS NULL)`;
     params.push(...hiddenCategories);
+    categoryWhereParts.push(`LOWER(category) NOT IN (${hiddenCategoryPlaceholders})`);
+    categoryParams.push(...hiddenCategories);
   }
 
-  if (item_type) { where += ' AND item_type = ?'; params.push(item_type); }
+  if (item_type) {
+    where += ' AND item_type = ?';
+    params.push(item_type);
+    categoryWhereParts.push('item_type = ?');
+    categoryParams.push(item_type);
+  }
   if (category) { where += ' AND category = ?'; params.push(category); }
   if (!showOutOfStock) {
-    where += " AND (item_type = 'service' OR COALESCE(in_stock, 0) > 0)";
+    const stockClause = "(item_type = 'service' OR COALESCE(in_stock, 0) > 0)";
+    where += ` AND ${stockClause}`;
+    categoryWhereParts.push(stockClause);
   }
   if (keyword) {
     where += " AND (name LIKE ? ESCAPE '\\' OR sku LIKE ? ESCAPE '\\' OR upc LIKE ? ESCAPE '\\')";
@@ -215,12 +240,13 @@ router.get('/products', asyncHandler(async (req, res) => {
              tax_class_id, tax_inclusive
       FROM inventory_items ${where}
       ORDER BY category, name
-    `, ...params),
+      LIMIT ?
+    `, ...params, limit),
     adb.all<any>(`
       SELECT DISTINCT category FROM inventory_items
-      WHERE is_active = 1 AND category IS NOT NULL
+      WHERE ${categoryWhereParts.join(' AND ')}
       ORDER BY category
-    `),
+    `, ...categoryParams),
   ]);
 
   // If cost_price hidden, ensure it's not in the response

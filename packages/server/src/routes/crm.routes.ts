@@ -507,6 +507,14 @@ router.get(
     // Segment list is admin-only (marketing targeting metadata).
     requireAdminCrm(req);
     const adb = req.asyncDb;
+    if (req.query.refresh_auto === 'true') {
+      const autoSegments = await adb.all<SegmentRow>(
+        `SELECT * FROM customer_segments WHERE is_auto = 1 ORDER BY id ASC`,
+      );
+      for (const segment of autoSegments) {
+        await refreshSegmentMembership(adb, segment);
+      }
+    }
     const rows = await adb.all<SegmentRow>(
       `SELECT * FROM customer_segments ORDER BY is_auto DESC, id ASC`,
     );
@@ -743,7 +751,21 @@ const SEGMENT_FIELD_EXPRESSIONS: Record<string, string> = {
     "(SELECT COUNT(*) FROM tickets t WHERE t.customer_id = c.id AND t.is_deleted = 0 " +
     "AND t.created_at >= datetime('now','-12 months'))",
   last_interaction_days:
-    "CAST((julianday('now') - julianday(COALESCE(c.last_interaction_at, c.created_at))) AS INTEGER)",
+    `CAST((julianday('now') - julianday(COALESCE((
+      SELECT MAX(ts) FROM (
+        SELECT c.last_interaction_at AS ts
+        UNION ALL
+          SELECT MAX(t.created_at) AS ts
+            FROM tickets t
+           WHERE t.customer_id = c.id
+             AND t.is_deleted = 0
+        UNION ALL
+          SELECT MAX(i.created_at) AS ts
+            FROM invoices i
+           WHERE i.customer_id = c.id
+             AND COALESCE(i.status,'') != 'void'
+      )
+    ), c.created_at))) AS INTEGER)`,
   birthday_window_days:
     // Days until next anniversary of the MM-DD birthday (simple, works for
     // the current year only — good enough for a 7-day window cron).
@@ -863,7 +885,7 @@ export async function refreshSegmentMembership(
   const { whereSql, params } = buildSegmentWhere(rule);
 
   const matched = await adb.all<{ id: number }>(
-    `SELECT c.id FROM customers c WHERE ${whereSql}`,
+    `SELECT c.id FROM customers c WHERE c.is_deleted = 0 AND ${whereSql}`,
     ...params,
   );
 

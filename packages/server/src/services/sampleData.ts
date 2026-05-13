@@ -173,7 +173,7 @@ export async function loadSampleData(adb: AsyncDb): Promise<SampleDataResult> {
       const result = await adb.run(
         `INSERT INTO customers
           (first_name, last_name, email, phone, mobile, source, tags, email_opt_in, sms_opt_in, comments)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)`,
         c.first_name,
         `${c.last_name} ${SAMPLE_TAG}`,
         c.email,

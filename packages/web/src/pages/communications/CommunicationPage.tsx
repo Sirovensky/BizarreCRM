@@ -1300,8 +1300,6 @@ export function CommunicationPage() {
   const [showBulkSms, setShowBulkSms] = useState(false);
   const [showScheduledModal, setShowScheduledModal] = useState(false);
   const [composeFocused, setComposeFocused] = useState(false);
-  const userRole = useAuthStore((s) => s.user?.role);
-  const canUseBulkSms = userRole === 'admin';
 
   // Revoke previous object URL when attachedMedia changes or component unmounts
   const prevPreviewRef = useRef<string | null>(null);

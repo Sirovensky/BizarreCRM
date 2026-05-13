@@ -465,7 +465,6 @@ export function EstimateListPage() {
   // WEB-W2-033: bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [isBulkConverting, setIsBulkConverting] = useState(false);
   const toggleSelectAll = (checked: boolean) => {
     setSelectedIds(checked ? new Set(estimates.map((e: any) => e.id)) : new Set());
   };
@@ -732,83 +731,6 @@ export function EstimateListPage() {
     }
   }, [anyMutationPending, estimates, queryClient, selectedIds]);
 
-  const handleBulkConvert = useCallback(async () => {
-    if (anyMutationPending || selectedIds.size === 0) return;
-
-    const selectedEstimates = estimates.filter((e) => selectedIds.has(e.id));
-    const convertibleEstimates = selectedEstimates.filter((e) => isBulkConvertibleStatus(e.status));
-    const skippedEstimates = selectedEstimates.filter((e) => !isBulkConvertibleStatus(e.status));
-    const ids = convertibleEstimates.map((e) => e.id);
-    const total = ids.length;
-    const skippedCount = skippedEstimates.length;
-    const labelById = new Map(
-      estimates.map((estimate) => [estimate.id, formatEstimateLabel(estimate.id, estimate)]),
-    );
-
-    if (total === 0) {
-      toast.error('Only approved or signed estimates can be bulk converted.');
-      return;
-    }
-
-    const confirmMessage = skippedCount > 0
-      ? `${skippedCount} selected estimate${skippedCount !== 1 ? 's' : ''} skipped because only approved or signed estimates can be converted. Convert ${total} estimate${total !== 1 ? 's' : ''}?`
-      : `Convert ${total} approved/signed estimate${total !== 1 ? 's' : ''} to ticket${total !== 1 ? 's' : ''}?`;
-
-    try {
-      if (!await confirm(confirmMessage, { confirmLabel: 'Convert' })) {
-        return;
-      }
-    } catch (err) {
-      toast.error(formatApiError(err));
-      return;
-    }
-
-    const loadingToastId = toast.loading(`Converting ${total} estimate${total !== 1 ? 's' : ''}...`);
-    setIsBulkConverting(true);
-
-    try {
-      const res = await estimateApi.bulkConvert(ids);
-      const data = res?.data?.data || {};
-      const results: BulkConvertResult[] = Array.isArray(data.results) ? data.results : [];
-      const successCount = Number(data.success_count ?? results.filter((r) => !r.error).length);
-      const failures = results.filter((r) => r.error);
-
-      await queryClient.invalidateQueries({ queryKey: ['estimates'] });
-      setSelectedIds(new Set([
-        ...skippedEstimates.map((e) => e.id),
-        ...failures.map((failure) => failure.estimate_id),
-      ]));
-      toast.dismiss(loadingToastId);
-
-      if (skippedCount > 0) {
-        toast.error(
-          `${skippedCount} selected estimate${skippedCount !== 1 ? 's' : ''} skipped — not approved or signed.`,
-          { duration: 6000 },
-        );
-      }
-
-      if (failures.length === 0) {
-        toast.success(`Converted ${successCount} estimate${successCount !== 1 ? 's' : ''}`);
-      } else if (successCount > 0) {
-        toast.success(`Converted ${successCount} of ${total} estimate${total !== 1 ? 's' : ''}`);
-        toast.error(
-          `Failed to convert ${failures.length} estimate${failures.length !== 1 ? 's' : ''}; failed rows remain selected. ${formatBulkConvertFailures(failures, labelById)}`,
-          { duration: 10000 },
-        );
-      } else {
-        toast.error(
-          `No estimates were converted; failed rows remain selected. ${formatBulkConvertFailures(failures, labelById)}`,
-          { duration: 10000 },
-        );
-      }
-    } catch (err) {
-      toast.dismiss(loadingToastId);
-      toast.error(formatApiError(err));
-    } finally {
-      setIsBulkConverting(false);
-    }
-  }, [anyMutationPending, estimates, queryClient, selectedIds]);
-
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -892,17 +814,6 @@ export function EstimateListPage() {
                       <span className="font-medium text-primary-700 dark:text-primary-300">
                         {selectedIds.size} selected
                       </span>
-                      <button
-                        type="button"
-                        onClick={handleBulkConvert}
-                        disabled={anyMutationPending}
-                        className="flex items-center gap-1 text-green-600 hover:text-green-700 font-medium disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
-                      >
-                        {isBulkConverting
-                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          : <ArrowRightLeft className="h-3.5 w-3.5" />}
-                        {isBulkConverting ? 'Converting...' : 'Convert selected'}
-                      </button>
                       <button
                         type="button"
                         onClick={handleBulkDelete}

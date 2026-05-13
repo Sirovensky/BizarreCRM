@@ -1704,30 +1704,36 @@ router.get('/stalled', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // ===================================================================
-// GET /pending-qc — WEB-UIUX-1088: tickets parked in 'Repaired - Pending QC'
-// (or any status flagged for QC) without a passing sign-off row. Surfaces
-// the tech's "finished work but not yet signed" backlog plus the manager's
-// "stuck waiting for QC > N hours" view.
+// GET /pending-qc - Tickets parked in Repaired - Pending QC without a
+// passing QC sign-off row.
 // ===================================================================
 router.get('/pending-qc', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  // Optional assigned_to filter so a tech can see only their own pending
-  // sign-offs; manager view omits the filter to see the whole backlog.
-  const assignedToRaw = req.query.assigned_to;
-  const assignedTo = assignedToRaw && /^\d+$/.test(String(assignedToRaw)) ? Number(assignedToRaw) : null;
-  // Optional age filter (hours) so "> 24h pending" can be carved out.
-  const minHoursRaw = req.query.min_hours;
-  const minHours = minHoursRaw && Number.isFinite(Number(minHoursRaw)) ? Math.max(0, Number(minHoursRaw)) : 0;
+  const assignedTo = parseAssignedToFilter(req.query.assigned_to, req.user?.id);
+  const minHoursRaw = Array.isArray(req.query.min_hours) ? req.query.min_hours[0] : req.query.min_hours;
+  const parsedMinHours = minHoursRaw !== undefined && minHoursRaw !== '' ? Number(minHoursRaw) : 0;
+  const minHours = Number.isFinite(parsedMinHours) ? Math.max(0, Math.min(8760, parsedMinHours)) : 0;
 
   const params: unknown[] = [];
   let assignedClause = '';
-  if (assignedTo != null) {
+  if (assignedTo) {
     assignedClause = ' AND t.assigned_to = ?';
     params.push(assignedTo);
+  } else {
+    const role = req.user?.role;
+    const isAdminOrManager = role === 'admin' || role === 'manager';
+    if (!isAdminOrManager) {
+      const allViewCfg = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_all_employees_view_all'");
+      if (allViewCfg?.value === '0' && req.user?.id) {
+        assignedClause = ' AND t.assigned_to = ?';
+        params.push(req.user.id);
+      }
+    }
   }
+
   let ageClause = '';
   if (minHours > 0) {
-    ageClause = ` AND (julianday('now') - julianday(t.updated_at)) * 24 >= ?`;
+    ageClause = " AND (julianday('now') - julianday(t.updated_at)) * 24 >= ?";
     params.push(minHours);
   }
 
@@ -1773,7 +1779,6 @@ router.get('/pending-qc', asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-// ===================================================================
 // GET /device-history - Search tickets by IMEI or serial number
 // ===================================================================
 router.get('/device-history', asyncHandler(async (req: Request, res: Response) => {

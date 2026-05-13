@@ -12,6 +12,7 @@ export function requireFeature(feature: keyof PlanFeatures) {
     const rid = res.locals.requestId as string | undefined;
     // Single-tenant mode bypasses all tier checks
     if (!config.multiTenant) { next(); return; }
+    if (config.proOptionsAvailable) { next(); return; }
 
     // Defensive check: in multi-tenant mode, tenantPlan MUST be set by tenantResolver.
     // If it's missing, the middleware chain is broken — fail closed (reject) rather than

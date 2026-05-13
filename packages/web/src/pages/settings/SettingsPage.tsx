@@ -73,7 +73,7 @@ const AccountTab = lazy(() => import('./AccountTab').then(m => ({ default: m.Acc
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'bench-qc' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'account' | 'danger-zone';
+type Tab = 'setup-progress' | 'store' | 'appearance' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'bench-qc' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'account' | 'danger-zone';
 
 interface TicketStatus {
   id: number;
@@ -159,6 +159,7 @@ const TABS: TabConfig[] = [
   // users immediately see what's still missing before diving into 21 tabs.
   { key: 'setup-progress', label: 'Setup Progress', icon: Rocket },
   { key: 'store', label: 'Store Info', icon: Store },
+  { key: 'appearance', label: 'Appearance', icon: Sun },
   { key: 'billing', label: 'Billing & Plan', icon: Sparkles },
   { key: 'statuses', label: 'Ticket Statuses', icon: ListChecks },
   { key: 'tax', label: 'Tax Classes', icon: Receipt },
@@ -435,12 +436,6 @@ function StoreInfoTab() {
       <ReferralSourcesSection />
     </div>
 
-    {/* Light/Dark/System theme preference (moved out of header) + Resume wizard CTA */}
-    <AppearanceSection />
-
-    {/* ENR-S5: Theme (primary color) Customization */}
-    <ThemeCustomizationSection />
-
     {/* ENR-S9: Webhook Configuration */}
     <WebhookConfigSection />
 
@@ -485,7 +480,7 @@ function AppearanceSection() {
     <div
       id="setting-ui_theme"
       data-setting-key="ui_theme"
-      className="card mt-6 scroll-mt-24"
+      className="card scroll-mt-24"
     >
       <div className="p-4 border-b border-surface-100 dark:border-surface-800">
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Appearance</h3>
@@ -2025,6 +2020,7 @@ function UsersTab() {
 const TAB_KEYWORDS: Record<Tab, string[]> = {
   'setup-progress': ['setup', 'progress', 'checklist', 'wizard', 'onboarding', 'getting started', 'first'],
   'store': ['store', 'name', 'address', 'phone', 'email', 'timezone', 'currency', 'receipt', 'header', 'footer'],
+  'appearance': ['appearance', 'theme', 'dark', 'light', 'system', 'color', 'accent', 'keyboard', 'shortcuts'],
   'billing': ['billing', 'plan', 'subscription', 'upgrade', 'pro', 'free', 'stripe', 'invoice', 'payment', 'usage', 'trial'],
   'statuses': ['status', 'ticket', 'workflow', 'open', 'closed', 'cancelled', 'hold', 'color', 'notify'],
   'tax': ['tax', 'rate', 'class', 'colorado', 'exempt', 'sales tax'],
@@ -2329,6 +2325,12 @@ function SettingsPageInner() {
         )}
         {activeTab === 'billing' && <BillingTab />}
         {activeTab === 'store' && <StoreInfoTab />}
+        {activeTab === 'appearance' && (
+          <div className="space-y-4">
+            <AppearanceSection />
+            <ThemeCustomizationSection />
+          </div>
+        )}
         {activeTab === 'statuses' && <StatusesTab />}
         {activeTab === 'tax' && <TaxClassesTab />}
         {activeTab === 'payment' && <PaymentMethodsTab />}

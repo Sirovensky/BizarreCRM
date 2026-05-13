@@ -51,45 +51,54 @@ export function SetupProgressTab({ onNavigateTab }: SetupProgressTabProps) {
   });
 
   // Store config for store name, tax rate presence, payment methods, etc
-  const { data: storeRes, isLoading: storeLoading } = useQuery({
+  const { data: store = {}, isLoading: storeLoading } = useQuery({
     queryKey: ['settings', 'store'],
-    queryFn: () => settingsApi.getStore(),
+    queryFn: async () => {
+      const res = await settingsApi.getStore();
+      return (res.data?.data ?? {}) as Record<string, string>;
+    },
     staleTime: 15_000,
   });
 
   // Tax classes — checkmark if at least one is configured
-  const { data: taxRes } = useQuery({
+  const { data: taxClasses = [] } = useQuery({
     queryKey: ['settings', 'tax-classes'],
-    queryFn: () => settingsApi.getTaxClasses(),
+    queryFn: async () => {
+      const res = await settingsApi.getTaxClasses();
+      return (res.data?.data ?? []) as Array<{ id: number; rate: number }>;
+    },
     staleTime: 30_000,
   });
 
   // Payment methods — checkmark if at least one exists
-  const { data: paymentRes } = useQuery({
+  const { data: paymentMethods = [] } = useQuery({
     queryKey: ['settings', 'payment-methods'],
-    queryFn: () => settingsApi.getPaymentMethods(),
+    queryFn: async () => {
+      const res = await settingsApi.getPaymentMethods();
+      return (res.data?.data ?? []) as Array<{ id: number }>;
+    },
     staleTime: 30_000,
   });
 
-  // Users — checkmark if more than just the admin exists (or any user)
-  const { data: usersRes } = useQuery({
+  // Users — checkmark if at least one active user exists. The admin counts.
+  const { data: users = [] } = useQuery({
     queryKey: ['settings', 'users'],
-    queryFn: () => settingsApi.getUsers(),
+    queryFn: async () => {
+      const res = await settingsApi.getUsers();
+      return (res.data?.data ?? []) as Array<{ id: number; role: string; is_active?: number }>;
+    },
     staleTime: 30_000,
   });
 
   const onboarding = (onboardingRes?.data?.data ?? null) as OnboardingState | null;
-  const store = (storeRes?.data?.data ?? {}) as Record<string, string>;
-  const taxClasses = (taxRes?.data?.data ?? []) as Array<{ id: number; rate: number }>;
-  const paymentMethods = (paymentRes?.data?.data ?? []) as Array<{ id: number }>;
-  const users = (usersRes?.data?.data ?? []) as Array<{ id: number; role: string }>;
 
   const items: ChecklistItem[] = useMemo(() => {
     const storeNameOk = !!store.store_name?.trim();
     const phoneOk = !!store.phone?.trim();
     const taxConfigured = taxClasses.length > 0;
     const paymentsConfigured = paymentMethods.length > 0;
-    const usersConfigured = users.length > 1; // more than just the default admin
+    const activeUsers = users.filter((user) => user.is_active !== 0);
+    const usersConfigured = activeUsers.length > 0;
     const firstTicketOk = !!onboarding?.first_ticket_at;
     const firstInvoiceOk = !!onboarding?.first_invoice_at;
     const shopTypeOk = !!onboarding?.shop_type;
@@ -143,8 +152,8 @@ export function SetupProgressTab({ onNavigateTab }: SetupProgressTabProps) {
         id: 'users',
         title: 'Team members',
         description: usersConfigured
-          ? `${users.length} users including admin`
-          : 'Add your technicians and front-desk staff as users.',
+          ? `${activeUsers.length} active user${activeUsers.length === 1 ? '' : 's'} including admin`
+          : 'Create an active admin user.',
         icon: Users,
         completed: usersConfigured,
         tab: 'users',
@@ -194,24 +203,24 @@ export function SetupProgressTab({ onNavigateTab }: SetupProgressTabProps) {
   const isLoading = obLoading || storeLoading;
 
   return (
-    <div className="space-y-4">
+    <div>
       {/* Hero card */}
       <div className="card overflow-hidden">
-        <div className="border-b border-surface-100 p-5 dark:border-surface-800">
+        <div className="border-b border-surface-100 p-4 dark:border-surface-800">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <Rocket className="h-5 w-5 text-primary-500" />
-                <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+                <Rocket className="h-4 w-4 text-primary-500" />
+                <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
                   Setup Progress
                 </h3>
               </div>
-              <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+              <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
                 Finish these to unlock the full CRM. Critical items affect invoices, receipts, and customer messaging.
               </p>
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold text-primary-600 dark:text-primary-400">
+              <div className="text-xl font-bold leading-6 text-primary-600 dark:text-primary-400">
                 {completedCount}/{totalCount}
               </div>
               <div className="text-xs text-surface-400">complete</div>
@@ -219,7 +228,7 @@ export function SetupProgressTab({ onNavigateTab }: SetupProgressTabProps) {
           </div>
 
           {/* Progress bar */}
-          <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-surface-100 dark:bg-surface-800">
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-100 dark:bg-surface-800">
             <div
               className={cn(
                 'h-full transition-all duration-500',
@@ -230,7 +239,7 @@ export function SetupProgressTab({ onNavigateTab }: SetupProgressTabProps) {
           </div>
 
           {criticalRemaining > 0 && (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+            <div className="mt-2 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
               <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
               {criticalRemaining} critical {criticalRemaining === 1 ? 'item is' : 'items are'} still missing.
               Invoices and notifications may not work correctly until you finish them.
@@ -239,7 +248,7 @@ export function SetupProgressTab({ onNavigateTab }: SetupProgressTabProps) {
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-10">
+          <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-surface-400" />
           </div>
         ) : (
@@ -267,19 +276,19 @@ function SetupItem({
 }) {
   const Icon = item.icon;
   return (
-    <li className="flex items-center gap-3 px-5 py-4">
+    <li className="flex items-center gap-3 px-4 py-2.5">
       <div
         className={cn(
-          'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full',
+          'flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full',
           item.completed
             ? 'bg-green-100 text-green-600 dark:bg-green-500/20 dark:text-green-300'
             : 'bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400'
         )}
       >
         {item.completed ? (
-          <CheckCircle2 className="h-5 w-5" />
+          <CheckCircle2 className="h-4 w-4" />
         ) : (
-          <Circle className="h-5 w-5" />
+          <Circle className="h-4 w-4" />
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -287,7 +296,7 @@ function SetupItem({
           <Icon className="h-3.5 w-3.5 text-surface-400" />
           <p
             className={cn(
-              'text-sm font-medium',
+              'text-xs font-medium',
               item.completed
                 ? 'text-surface-500 line-through dark:text-surface-500'
                 : 'text-surface-900 dark:text-surface-100'
@@ -301,7 +310,7 @@ function SetupItem({
             </span>
           )}
         </div>
-        <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
+        <p className="text-xs leading-4 text-surface-500 dark:text-surface-400">
           {item.description}
         </p>
       </div>
@@ -309,7 +318,7 @@ function SetupItem({
         type="button"
         onClick={onGo}
         className={cn(
-          'inline-flex flex-shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+          'inline-flex h-7 flex-shrink-0 items-center gap-1 rounded-md px-2.5 text-xs font-medium transition-colors',
           item.completed
             ? 'text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-800'
             : 'bg-primary-600 text-primary-950 hover:bg-primary-700'

@@ -120,7 +120,7 @@ export function UpgradeModal() {
         aria-modal="true"
         aria-labelledby="upgrade-modal-title"
         data-state="open"
-        className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
+        className="relative max-h-[calc(100vh-2rem)] w-full max-w-[min(42rem,calc(100vw-2rem))] overflow-y-auto overflow-x-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
         onClick={(e) => e.stopPropagation()}
       >
         <Button
@@ -174,13 +174,12 @@ export function UpgradeModal() {
             </li>
           </ul>
 
-          <div className="mt-6 flex gap-3">
+          <div className="mt-6 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <Button
               onClick={handleUpgrade}
               disabled={loading || plan === 'pro'}
               size="lg"
-              fullWidth
-              className="bg-gradient-to-r from-primary-500 to-primary-700 font-semibold shadow-lg hover:shadow-xl"
+              className="w-full bg-gradient-to-r from-primary-500 to-primary-700 font-semibold shadow-lg hover:shadow-xl"
             >
               {loading ? 'Starting checkout…' : plan === 'pro' ? 'Already on Pro' : 'Upgrade to Pro'}
             </Button>
@@ -188,7 +187,7 @@ export function UpgradeModal() {
               onClick={closeUpgradeModal}
               variant="secondary"
               size="lg"
-              className="font-semibold"
+              className="w-full whitespace-nowrap font-semibold sm:w-auto"
             >
               Maybe later
             </Button>

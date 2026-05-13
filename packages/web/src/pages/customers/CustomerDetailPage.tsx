@@ -47,7 +47,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
-import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
+import { formatCurrency, formatShortDateTime } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -73,7 +73,6 @@ function parseTags(tags: unknown): string[] {
 }
 
 type TabId = 'info' | 'tickets' | 'invoices' | 'communications' | 'assets';
-type CancelMode = 'period_end' | 'immediate';
 
 const tabs: { id: TabId; label: string; icon: typeof User }[] = [
   { id: 'info', label: 'Info', icon: User },
@@ -82,15 +81,6 @@ const tabs: { id: TabId; label: string; icon: typeof User }[] = [
   { id: 'communications', label: 'Communications', icon: MessageSquare },
   { id: 'assets', label: 'Assets', icon: Monitor },
 ];
-
-const CUSTOMER_IDENTITY_DEPENDENT_LIST_QUERY_KEYS = [
-  ['customers'],
-  ['tickets'],
-  ['invoices'],
-  ['estimates'],
-  ['sms-conversations'],
-  ['leads'],
-] as const;
 
 export function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -1092,8 +1082,6 @@ function MembershipCard({ customerId }: { customerId: number }) {
   const [selectedTier, setSelectedTier] = useState<number | null>(null);
   const [membershipPaymentToken, setMembershipPaymentToken] = useState<string | null>(null);
   const [membershipCardLabel, setMembershipCardLabel] = useState<string | null>(null);
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [cancelMode, setCancelMode] = useState<CancelMode>('period_end');
   const selectedTierData = tiers.find((tier) => tier.id === selectedTier) || null;
   const selectedTierRequiresCard = Number(selectedTierData?.monthly_price ?? 0) > 0;
 
@@ -1197,9 +1185,6 @@ function MembershipCard({ customerId }: { customerId: number }) {
       paused: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400',
       past_due: 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400',
     };
-    const periodEndLabel = memberData.current_period_end
-      ? formatDate(memberData.current_period_end)
-      : 'the current period end';
 
     return (
       <div className="card overflow-hidden mb-6">
@@ -1236,9 +1221,17 @@ function MembershipCard({ customerId }: { customerId: number }) {
                 {formatCurrency(memberData.monthly_price)}/mo
               </span>
             </div>
-            <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', statusColors[memberData.status] || statusColors.active)}>
-              {memberData.status}
-            </span>
+            <p className="text-xs text-surface-500">
+              {memberData.discount_pct}% off {memberData.discount_applies_to}
+            </p>
+            {memberData.current_period_end && (
+              <p className="text-xs text-surface-400 mt-0.5">
+                Renews {new Date(memberData.current_period_end).toLocaleDateString()}
+              </p>
+            )}
+            {memberData.cancel_at_period_end === 1 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Cancels at period end</p>
+            )}
           </div>
           <div className="flex items-center gap-1.5">
             {/* WEB-UIUX-1490: hide cancel/pause/resume from non-admins. */}
@@ -1259,57 +1252,9 @@ function MembershipCard({ customerId }: { customerId: number }) {
                   disabled={pauseMut.isPending}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
                 >
-                  {memberData.tier_name}
-                </span>
-                {/* @audit-cents WEB-FF-019 (Fixer-C11 2026-04-25): server still
-                    returns memberData.monthly_price as dollars-as-float. The
-                    shared formatter keeps tenant currency/locale correct today,
-                    but a future integer-cents migration must switch this to the
-                    cents field in the same PR. */}
-                <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
-                  {formatCurrency(memberData.monthly_price)}/mo
-                </span>
-              </div>
-              <p className="text-xs text-surface-500">
-                {memberData.discount_pct}% off {memberData.discount_applies_to}
-              </p>
-              {memberData.current_period_end && (
-                <p className="text-xs text-surface-400 mt-0.5">
-                  {memberData.cancel_at_period_end === 1 ? 'Ends' : 'Renews'} {formatDate(memberData.current_period_end)}
-                </p>
-              )}
-              {memberData.cancel_at_period_end === 1 && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">Cancels at period end</p>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5">
-              {memberData.status === 'active' && (
-                <>
-                  <button
-                    onClick={() => {
-                      const reason = window.prompt('Reason for pausing membership (optional):') ?? '';
-                      pauseMut.mutate(reason.trim());
-                    }}
-                    disabled={pauseMut.isPending}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
-                  >
-                    <Pause className="h-3.5 w-3.5" />
-                    Pause
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCancelMode('period_end');
-                      setShowCancelDialog(true);
-                    }}
-                    disabled={cancelMut.isPending}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Cancel
-                  </button>
-                </>
-              )}
-              {memberData.status === 'paused' && (
+                  <Pause className="h-3.5 w-3.5" />
+                  Pause
+                </button>
                 <button
                   onClick={async () => {
                     // WEB-UIUX-827: two-stage confirm so the operator picks the
@@ -1360,116 +1305,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             )}
           </div>
         </div>
-
-        {showCancelDialog && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-            role="presentation"
-            onClick={() => { if (!cancelMut.isPending) setShowCancelDialog(false); }}
-          >
-            <form
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="customer-membership-cancel-title"
-              className="w-full max-w-lg rounded-xl border border-surface-200 bg-white p-5 shadow-xl dark:border-surface-700 dark:bg-surface-900"
-              onClick={(event) => event.stopPropagation()}
-              onSubmit={(event) => {
-                event.preventDefault();
-                cancelMut.mutate(cancelMode === 'immediate');
-              }}
-            >
-              <div className="flex items-start gap-3">
-                <div className="rounded-lg bg-red-50 p-2 text-red-600 dark:bg-red-900/30 dark:text-red-300">
-                  <AlertCircle className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 id="customer-membership-cancel-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">
-                    Cancel membership
-                  </h2>
-                  <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
-                    {memberData.tier_name} at {formatCurrency(memberData.monthly_price)}/mo.
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <label
-                  className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
-                    cancelMode === 'period_end'
-                      ? 'border-primary-400 bg-primary-50 dark:border-primary-500/70 dark:bg-primary-900/20'
-                      : 'border-surface-200 dark:border-surface-700'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="customer-membership-cancel-mode"
-                    value="period_end"
-                    checked={cancelMode === 'period_end'}
-                    onChange={() => setCancelMode('period_end')}
-                    className="mt-1 h-4 w-4 border-surface-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-surface-900 dark:text-surface-100">
-                      Cancel at period end
-                    </span>
-                    <span className="mt-0.5 block text-xs text-surface-500 dark:text-surface-400">
-                      Keep benefits until {periodEndLabel}. No refund is issued automatically.
-                    </span>
-                  </span>
-                </label>
-
-                <label
-                  className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${
-                    cancelMode === 'immediate'
-                      ? 'border-red-400 bg-red-50 dark:border-red-500/70 dark:bg-red-900/20'
-                      : 'border-surface-200 dark:border-surface-700'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="customer-membership-cancel-mode"
-                    value="immediate"
-                    checked={cancelMode === 'immediate'}
-                    onChange={() => setCancelMode('immediate')}
-                    className="mt-1 h-4 w-4 border-surface-300 text-red-600 focus:ring-red-500"
-                  />
-                  <span>
-                    <span className="block text-sm font-medium text-surface-900 dark:text-surface-100">
-                      Cancel immediately
-                    </span>
-                    <span className="mt-0.5 block text-xs text-surface-500 dark:text-surface-400">
-                      Stop discounts and membership benefits today. Use Refunds separately if money is owed back.
-                    </span>
-                  </span>
-                </label>
-              </div>
-
-              <div className="mt-5 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCancelDialog(false)}
-                  disabled={cancelMut.isPending}
-                  className="rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-surface-700 dark:text-surface-200 dark:hover:bg-surface-800"
-                >
-                  Keep membership
-                </button>
-                <button
-                  type="submit"
-                  disabled={cancelMut.isPending}
-                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                    cancelMode === 'immediate'
-                      ? 'bg-red-600 text-white hover:bg-red-700'
-                      : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
-                  }`}
-                >
-                  {cancelMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {cancelMode === 'immediate' ? 'Cancel immediately' : 'Schedule cancel'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-      </>
+      </div>
     );
   }
 

@@ -569,14 +569,6 @@ export function PurchaseOrdersPage() {
 
   // WEB-W3-003: receive modal state
   const [receiveModal, setReceiveModal] = useState<{ po: Record<string, unknown>; items: any[] } | null>(null);
-  const poSearch = searchInput.trim();
-  const poListParams = {
-    page,
-    pagesize: 25,
-    status: statusFilter || undefined,
-    q: poSearch || undefined,
-  };
-  const hasListFilters = Boolean(poSearch || statusFilter);
 
   // WEB-UIUX-1192: status filter + keyword search, debounced.
   const [poSearch, setPoSearch] = useState('');

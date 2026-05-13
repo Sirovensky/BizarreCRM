@@ -101,8 +101,6 @@ function AdminOnly({ children }: { children: React.ReactNode }) {
 export function SubscriptionsListPage() {
   const queryClient = useQueryClient();
   const [cancellingId, setCancellingId] = useState<number | null>(null);
-  const [cancelDialogSub, setCancelDialogSub] = useState<Subscription | null>(null);
-  const [cancelMode, setCancelMode] = useState<CancelMode>('period_end');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [page, setPage] = useState(1);
@@ -154,7 +152,6 @@ export function SubscriptionsListPage() {
         toast.success(vars.immediate ? 'Subscription cancelled immediately' : 'Subscription will cancel at period end');
       }
       setCancellingId(null);
-      setCancelDialogSub(null);
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err));

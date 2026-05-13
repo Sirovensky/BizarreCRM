@@ -39,6 +39,7 @@ const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage').th
 const SetupPage = lazy(() => import('./pages/setup/SetupPage').then(m => ({ default: m.SetupPage })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const TicketListPage = lazy(() => import('./pages/tickets/TicketListPage').then(m => ({ default: m.TicketListPage })));
+const TicketPendingQcPage = lazy(() => import('./pages/tickets/TicketPendingQcPage').then(m => ({ default: m.TicketPendingQcPage })));
 const TicketDetailPage = lazy(() => import('./pages/tickets/TicketDetailPage').then(m => ({ default: m.TicketDetailPage })));
 const CustomerListPage = lazy(() => import('./pages/customers/CustomerListPage').then(m => ({ default: m.CustomerListPage })));
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })));
@@ -94,7 +95,6 @@ const DunningPage = lazy(() => import('./pages/billing/DunningPage').then(m => (
 const AgingReportPage = lazy(() => import('./pages/billing/AgingReportPage').then(m => ({ default: m.AgingReportPage })));
 const CustomerPayPage = lazy(() => import('./pages/billing/CustomerPayPage').then(m => ({ default: m.CustomerPayPage })));
 // Team management pages (criticalaudit.md §53).
-const MyQueuePage = lazy(() => import('./pages/team/MyQueuePage').then(m => ({ default: m.MyQueuePage })));
 const ShiftSchedulePage = lazy(() => import('./pages/team/ShiftSchedulePage').then(m => ({ default: m.ShiftSchedulePage })));
 const TeamLeaderboardPage = lazy(() => import('./pages/team/TeamLeaderboardPage').then(m => ({ default: m.TeamLeaderboardPage })));
 const RolesMatrixPage = lazy(() => import('./pages/team/RolesMatrixPage').then(m => ({ default: m.RolesMatrixPage })));
@@ -538,7 +538,9 @@ export default function App() {
                         <Route path="/dashboard" element={<Navigate to="/" replace />} />
                         <Route path="/tickets" element={<TicketListPage />} />
                         <Route path="/tickets/new" element={<UnifiedPosPage />} />
+                        <Route path="/tickets/pending-qc" element={<TicketPendingQcPage />} />
                         <Route path="/tickets/:id" element={<TicketDetailPage />} />
+                        <Route path="/qc/pending" element={<Navigate to="/tickets/pending-qc" replace />} />
                         <Route path="/customers" element={<CustomerListPage />} />
                         <Route path="/customers/new" element={<CustomerCreatePage />} />
                         <Route path="/customers/:id" element={<CustomerDetailPage />} />
@@ -590,7 +592,7 @@ export default function App() {
                         <Route path="/billing/dunning" element={<RequireRole roles={['admin', 'manager']}><DunningPage /></RequireRole>} />
                         <Route path="/billing/aging" element={<RequireRole roles={['admin', 'manager']}><AgingReportPage /></RequireRole>} />
                         {/* Team management (§53). */}
-                        <Route path="/team/my-queue" element={<MyQueuePage />} />
+                        <Route path="/team/my-queue" element={<Navigate to="/tickets?assigned_to=me" replace />} />
                         <Route path="/team/shifts" element={<ShiftSchedulePage />} />
                         <Route path="/team/leaderboard" element={<TeamLeaderboardPage />} />
                         <Route path="/team/roles" element={<RequireRole roles={['admin']}><RolesMatrixPage /></RequireRole>} />

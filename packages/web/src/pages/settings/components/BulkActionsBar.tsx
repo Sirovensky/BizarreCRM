@@ -10,12 +10,11 @@
  */
 
 import { useState } from 'react';
-import { Loader2, Zap, BellRing, BellOff, ShieldCheck, Crown } from 'lucide-react';
+import { Loader2, Zap, BellRing, BellOff, ShieldCheck } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { SETTINGS_METADATA } from '../settingsMetadata';
 
 export interface BulkAction {
   id: string;
@@ -68,22 +67,6 @@ const BUILTIN_ACTIONS: BulkAction[] = [
       repair_require_imei: '1',
       repair_require_customer: '1',
     }),
-  },
-  {
-    id: 'disable-coming-soon',
-    label: 'Hide "coming soon" toggles',
-    description: 'Resets all non-working UI toggles to their default so they stop cluttering the interface.',
-    icon: Crown,
-    tone: 'neutral',
-    build: () => {
-      const out: Record<string, string> = {};
-      for (const s of SETTINGS_METADATA) {
-        if (s.status !== 'coming_soon') continue;
-        if (s.type === 'boolean') out[s.key] = s.default ? '1' : '0';
-        else out[s.key] = String(s.default ?? '');
-      }
-      return out;
-    },
   },
 ];
 

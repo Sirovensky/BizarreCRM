@@ -2,19 +2,20 @@ import { Router, Request, Response } from 'express';
 import { config } from '../config.js';
 import { getUsage } from '../services/usageTracker.js';
 import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
 // GET /api/v1/account/usage — Returns plan, trial, usage, and feature flags
-router.get('/usage', (req: Request, res: Response) => {
+router.get('/usage', asyncHandler(async (req: Request, res: Response) => {
   // Single-tenant: return Pro with no limits
-  if (!config.multiTenant || !req.tenantId) {
+  if (config.proOptionsAvailable || !config.multiTenant || !req.tenantId) {
     const proDef = getPlanDefinition('pro');
     res.json({
       success: true,
       data: {
         plan: 'pro',
-        plan_name: 'Pro (Self-Hosted)',
+        plan_name: config.proOptionsAvailable ? 'Pro (Override)' : 'Pro (Self-Hosted)',
         trial_active: false,
         trial_ends_at: null,
         usage: null,
@@ -27,6 +28,10 @@ router.get('/usage', (req: Request, res: Response) => {
   const plan = (req.tenantPlan || 'free') as TenantPlan;
   const planDef = getPlanDefinition(plan);
   const usage = getUsage(req.tenantId);
+  const activeUsersRow = await req.asyncDb.get<{ count: number }>(
+    'SELECT COUNT(*) AS count FROM users WHERE is_active = 1',
+  );
+  const activeUsers = activeUsersRow?.count ?? 0;
 
   res.json({
     success: true,
@@ -40,7 +45,7 @@ router.get('/usage', (req: Request, res: Response) => {
         tickets_created: usage?.tickets_created ?? 0,
         tickets_limit: planDef.limits.maxTicketsMonth,
         sms_sent: usage?.sms_sent ?? 0,
-        active_users: usage?.active_users ?? 0,
+        active_users: activeUsers,
         users_limit: planDef.limits.maxUsers,
         storage_bytes: usage?.storage_bytes ?? 0,
         storage_limit_mb: planDef.limits.storageLimitMb,
@@ -48,6 +53,6 @@ router.get('/usage', (req: Request, res: Response) => {
       features: planDef.features,
     },
   });
-});
+}));
 
 export default router;

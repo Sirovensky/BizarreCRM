@@ -126,7 +126,7 @@ export function CampaignsPage() {
   const { data: segmentsRes } = useQuery<{ data?: Segment[] }>({
     queryKey: ['crm', 'segments'],
     queryFn: async () => {
-      const res = await crmApi.listSegments();
+      const res = await crmApi.listSegments({ refreshAuto: true });
       return res.data as { data?: Segment[] };
     },
     staleTime: 30_000,
@@ -187,14 +187,15 @@ export function CampaignsPage() {
     },
     // WEB-FC-017: narrow preview response shape.
     onSuccess: ({ campaign, data }) => {
-      const d = (data as { data?: { total_recipients?: number; preview?: Array<{ rendered_body: string }> } } | undefined)?.data ?? {};
+      const d = (data as { data?: { total_recipients?: number; segment_total?: number | null; preview?: Array<{ rendered_body: string }> } } | undefined)?.data ?? {};
       const seg = campaign.segment_id != null ? segments.find((s) => s.id === campaign.segment_id) : null;
       setPreviewData({
         campaign,
         total: d.total_recipients ?? 0,
-        segment_total: seg?.member_count ?? null,
+        segment_total: d.segment_total ?? seg?.member_count ?? null,
         sample: d.preview ?? [],
       });
+      queryClient.invalidateQueries({ queryKey: ['crm', 'segments'] });
     },
     onError: () => toast.error('Failed to preview'),
   });
@@ -288,6 +289,7 @@ export function CampaignsPage() {
                           const total = (res.data as { data?: { total_recipients?: number } } | undefined)?.data?.total_recipients ?? 0;
                           // Only update if user hasn't already cancelled.
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total, error: null } : curr));
+                          queryClient.invalidateQueries({ queryKey: ['crm', 'segments'] });
                         } catch (err: unknown) {
                           const e = err as { name?: string };
                           if (ac.signal.aborted || e?.name === 'CanceledError' || e?.name === 'AbortError') return;

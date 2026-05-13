@@ -138,36 +138,6 @@ function estimateSmsBilling(body: string): SmsBillingPreview {
   };
 }
 
-interface SmsBillingPreview {
-  characterCount: number;
-  encoding: 'GSM-7' | 'Unicode';
-  segmentsPerMessage: number;
-}
-
-const numberFormatter = new Intl.NumberFormat();
-
-function formatNumber(value: number): string {
-  return numberFormatter.format(value);
-}
-
-function estimateSmsBilling(body: string): SmsBillingPreview {
-  const characterCount = body.length;
-  const usesUnicodeEncoding = /[^\x0A\x0D\x20-\x7E]/.test(body);
-  const singleSegmentLimit = usesUnicodeEncoding ? 70 : 160;
-  const concatenatedSegmentLimit = usesUnicodeEncoding ? 67 : 153;
-
-  return {
-    characterCount,
-    encoding: usesUnicodeEncoding ? 'Unicode' : 'GSM-7',
-    segmentsPerMessage:
-      characterCount === 0
-        ? 0
-        : characterCount <= singleSegmentLimit
-          ? 1
-          : Math.ceil(characterCount / concatenatedSegmentLimit),
-  };
-}
-
 export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
   // WEB-UIUX-1521: Always-active focus trap — modal only renders when open
   const dialogRef = useFocusTrap(true);

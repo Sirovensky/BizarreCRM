@@ -200,6 +200,8 @@ export const customerApi = {
 // ==================== Tickets ====================
 export const ticketApi = {
   myQueue: () => api.get('/tickets/my-queue'),
+  pendingQc: (params?: { assigned_to?: number | 'me'; min_hours?: number }) =>
+    api.get('/tickets/pending-qc', { params }),
   list: (params?: {
     page?: number; pagesize?: number; keyword?: string;
     status_id?: number | string; status_group?: string; assigned_to?: number | 'me';
@@ -1958,7 +1960,8 @@ export const crmApi = {
     api.patch(`/crm/reviews/${id}`, data),
 
   // Segments
-  listSegments: () => api.get('/crm/segments'),
+  listSegments: (opts?: { refreshAuto?: boolean }) =>
+    api.get('/crm/segments', { params: opts?.refreshAuto ? { refresh_auto: 'true' } : undefined }),
   createSegment: (data: { name: string; description?: string; rule: Record<string, unknown>; is_auto?: boolean }) =>
     api.post('/crm/segments', data),
   getSegment: (id: number) => api.get(`/crm/segments/${id}`),

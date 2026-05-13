@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, AlertTriangle, X, ChevronLeft, ChevronRight, Download, Check, Copy, Printer, Mail, WalletCards } from 'lucide-react';
@@ -63,8 +63,6 @@ interface IssueFormState {
 
 const PAGE_SIZE = 50;
 const SEARCH_DEBOUNCE_MS = 300;
-const GIFT_CARD_MAX_AMOUNT = 10_000;
-const RECIPIENT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,34 +112,6 @@ function isExpiringSoon(expiresAt: string | null): boolean {
   return exp > now && exp - now <= msIn30Days;
 }
 
-function retryAfterSecondsFromError(err: unknown): number {
-  const response = (err as any)?.response;
-  const dataSeconds = Number(response?.data?.retry_after_seconds ?? response?.data?.retryAfterSeconds);
-  if (Number.isFinite(dataSeconds) && dataSeconds > 0) return Math.ceil(dataSeconds);
-
-  const headers = response?.headers ?? {};
-  const rawHeader = headers['retry-after'] ?? headers['Retry-After'];
-  const headerSeconds = Number.parseInt(String(rawHeader ?? ''), 10);
-  if (Number.isFinite(headerSeconds) && headerSeconds > 0) return headerSeconds;
-
-  return 60;
-}
-
-function formatLookupRetryMessage(seconds: number): string {
-  if (seconds < 60) return `Too many lookup attempts. Try again in ${seconds}s.`;
-  const minutes = Math.ceil(seconds / 60);
-  return `Too many lookup attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
-}
-
-function lookupErrorMessage(err: unknown): string {
-  const status = (err as any)?.response?.status;
-  const serverMessage = (err as any)?.response?.data?.message;
-  if (status === 404) return 'Gift card not found. Check the code and try again.';
-  if (status === 400 && typeof serverMessage === 'string') return serverMessage;
-  if (typeof serverMessage === 'string') return serverMessage;
-  return err instanceof Error ? err.message : 'Gift card lookup failed';
-}
-
 // ─── Issue Modal ─────────────────────────────────────────────────────────────
 
 interface IssueModalProps {
@@ -180,12 +150,8 @@ function IssueModal({ onClose }: IssueModalProps) {
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const todayDateInputValue = localDateInputValue();
   const expiresInPast = isPastDateInputValue(form.expires_at);
-  const amountValue = parseFloat(form.amount);
-  const amountInvalid = !(amountValue > 0 && Number.isFinite(amountValue));
-  const amountExceedsMax = Number.isFinite(amountValue) && amountValue > GIFT_CARD_MAX_AMOUNT;
-  const recipientEmailInvalid = Boolean(form.recipient_email) && !RECIPIENT_EMAIL_RE.test(form.recipient_email);
   // WEB-UIUX-1562: focus trap — modal always mounted when open
-  const dialogRef = useFocusTrap(true, { initialFocusSelector: '#gift-card-amount' });
+  const dialogRef = useFocusTrap(true);
   useBodyScrollLock(true);
 
   function update(field: keyof IssueFormState, value: string): void {
@@ -205,14 +171,8 @@ function IssueModal({ onClose }: IssueModalProps) {
       if (!Number.isFinite(amount) || amount <= 0) {
         throw new Error('Enter a valid amount');
       }
-      if (amount > GIFT_CARD_MAX_AMOUNT) {
-        throw new Error(`Gift card amount cannot exceed ${formatCurrencyShared(GIFT_CARD_MAX_AMOUNT)}`);
-      }
       if (isPastDateInputValue(form.expires_at)) {
         throw new Error('Expiry date cannot be in the past');
-      }
-      if (recipientEmailInvalid) {
-        throw new Error('Enter a valid recipient email address');
       }
       return giftCardApi.issue({
         amount,
@@ -449,7 +409,7 @@ function IssueModal({ onClose }: IssueModalProps) {
               // WEB-UIUX-1566: $0.01 gift cards make no business sense; bumped to $1 minimum
               // and whole-dollar step to match real-world denominations.
               min="1"
-              max={GIFT_CARD_MAX_AMOUNT}
+              max="10000"
               step="1"
               value={form.amount}
               onChange={(e) => update('amount', e.target.value)}
@@ -615,7 +575,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           {/* WEB-UIUX-1002: gate on parseFloat > 0 && isFinite, not just !form.amount, to reject "abc" */}
           <button
             onClick={() => issueMutation.mutate()}
-            disabled={issueMutation.isPending || amountInvalid || amountExceedsMax || expiresInPast || recipientEmailInvalid}
+            disabled={issueMutation.isPending || !(parseFloat(form.amount) > 0 && Number.isFinite(parseFloat(form.amount))) || expiresInPast}
             className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
           >
             {issueMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -865,10 +825,6 @@ export function GiftCardsListPage() {
   const navigate = useNavigate();
   const [keyword, setKeyword] = useState('');
   const [debouncedKeyword, setDebouncedKeyword] = useState('');
-  const [lookupCode, setLookupCode] = useState('');
-  const [lookupFeedback, setLookupFeedback] = useState<string | null>(null);
-  const [lookupRetryUntil, setLookupRetryUntil] = useState<number | null>(null);
-  const [lookupNow, setLookupNow] = useState(() => Date.now());
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showIssueModal, setShowIssueModal] = useState(false);
@@ -877,13 +833,6 @@ export function GiftCardsListPage() {
   // ends of the lifecycle.
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const searchKeyword = debouncedKeyword.trim();
-  const lookupRetrySeconds = lookupRetryUntil
-    ? Math.max(0, Math.ceil((lookupRetryUntil - lookupNow) / 1000))
-    : 0;
-  const lookupRateLimited = lookupRetrySeconds > 0;
-  const lookupFeedbackMessage = lookupRateLimited
-    ? formatLookupRetryMessage(lookupRetrySeconds)
-    : lookupFeedback;
   // WEB-UIUX-998: CSV export gated behind admin/manager role (PII-sensitive)
   const canExport = useHasRole(['admin', 'manager']);
 
@@ -894,20 +843,6 @@ export function GiftCardsListPage() {
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timeoutId);
   }, [keyword]);
-
-  useEffect(() => {
-    if (!lookupRetryUntil) return undefined;
-    setLookupNow(Date.now());
-    const intervalId = window.setInterval(() => setLookupNow(Date.now()), 1000);
-    return () => window.clearInterval(intervalId);
-  }, [lookupRetryUntil]);
-
-  useEffect(() => {
-    if (lookupRetryUntil && lookupRetrySeconds <= 0) {
-      setLookupRetryUntil(null);
-      setLookupFeedback(null);
-    }
-  }, [lookupRetryUntil, lookupRetrySeconds]);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['gift-cards', { keyword: searchKeyword, status: statusFilter, page, per_page: PAGE_SIZE }],
@@ -921,32 +856,6 @@ export function GiftCardsListPage() {
       return (res.data as { data: GiftCardListData }).data;
     },
     staleTime: 30_000,
-  });
-
-  const lookupMutation = useMutation({
-    mutationFn: (code: string) => giftCardApi.lookup(code),
-    onSuccess: (res) => {
-      const card = (res.data as { data: GiftCard }).data;
-      setLookupFeedback(null);
-      setLookupRetryUntil(null);
-      navigate(`/gift-cards/${card.id}`);
-    },
-    onError: (err: unknown) => {
-      if ((err as any)?.response?.status === 429) {
-        const retryAfterSeconds = retryAfterSecondsFromError(err);
-        const retryUntil = Date.now() + retryAfterSeconds * 1000;
-        const msg = formatLookupRetryMessage(retryAfterSeconds);
-        setLookupNow(Date.now());
-        setLookupRetryUntil(retryUntil);
-        setLookupFeedback(msg);
-        toast.error(msg);
-        return;
-      }
-      const msg = lookupErrorMessage(err);
-      setLookupRetryUntil(null);
-      setLookupFeedback(msg);
-      toast.error(msg);
-    },
   });
 
   const cards = data?.cards ?? [];
@@ -970,21 +879,6 @@ export function GiftCardsListPage() {
     setPage(1);
   }
 
-  function handleLookupSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const normalizedCode = normalizeGiftCardCode(lookupCode);
-    if (lookupRateLimited) {
-      toast.error(formatLookupRetryMessage(lookupRetrySeconds));
-      return;
-    }
-    if (!normalizedCode) {
-      toast.error('Enter a gift card code');
-      return;
-    }
-    setLookupFeedback(null);
-    lookupMutation.mutate(normalizedCode);
-  }
-
   // WEB-UIUX-998: Export current page of gift cards as CSV (outstanding-liability report).
   // PII-sensitive — only rendered when canExport is true (admin/manager).
   function handleExportCsv(): void {
@@ -994,7 +888,7 @@ export function GiftCardsListPage() {
       toCsvRow([
         maskCode(card.code),
         card.recipient_name ?? card.recipient_email ?? '',
-        card.current_balance.toFixed(2),
+        dollarsFromMaybeCents(card.current_balance).toFixed(2),
         card.expires_at ?? '',
         card.status,
         card.created_at,
@@ -1064,43 +958,6 @@ export function GiftCardsListPage() {
             </>
           )}
         </div>
-      </div>
-
-      <div className="mb-5">
-        <form onSubmit={handleLookupSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
-            <input
-              type="text"
-              value={lookupCode}
-              onChange={(e) => {
-                setLookupCode(e.target.value);
-                if (!lookupRateLimited) setLookupFeedback(null);
-              }}
-              placeholder="Look up full gift card code"
-              aria-label="Look up full gift card code"
-              aria-describedby={lookupFeedbackMessage ? 'gift-card-lookup-feedback' : undefined}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={lookupMutation.isPending || lookupRateLimited || !lookupCode.trim()}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-          >
-            {lookupMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Look up code
-          </button>
-        </form>
-        {lookupFeedbackMessage && (
-          <p
-            id="gift-card-lookup-feedback"
-            role={lookupRateLimited ? 'status' : 'alert'}
-            className={`mt-2 text-xs ${lookupRateLimited ? 'text-amber-700 dark:text-amber-300' : 'text-red-600 dark:text-red-400'}`}
-          >
-            {lookupFeedbackMessage}
-          </p>
-        )}
       </div>
 
       {/* Filters */}
@@ -1174,7 +1031,7 @@ export function GiftCardsListPage() {
               {cards.map((card) => (
                 <tr key={card.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/40">
                   <td className="px-4 py-3 font-mono text-surface-900 dark:text-surface-100">
-                    {maskCodeForKeyword(card.code, searchKeyword)}
+                    {maskCode(card.code)}
                   </td>
                   <td className="px-4 py-3 text-surface-700 dark:text-surface-300">
                     {card.recipient_name ?? <span className="text-surface-400">—</span>}

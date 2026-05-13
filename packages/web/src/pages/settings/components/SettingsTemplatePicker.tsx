@@ -8,9 +8,8 @@
  *   - New shops can run the setup wizard once. Existing shops that decide to
  *     change their focus later (e.g. a phone shop that adds TV repair) need
  *     a way to install a fresh template bundle from inside Settings.
- *   - Idempotency: the server uses `INSERT OR IGNORE` on name, so re-applying
- *     a template on an already-configured shop is safe. We still show a
- *     confirm prompt to avoid surprise.
+ *   - Switching templates can replace starter assumptions for the shop, so the
+ *     picker asks for explicit confirmation before applying anything.
  *
  * The picker is intentionally tiny — it delegates all heavy lifting to the
  * server and only renders 4 cards.
@@ -31,6 +30,7 @@ import {
   onboardingApi,
   type OnboardingShopType,
 } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 
 interface TemplateOption {
@@ -79,7 +79,7 @@ export function SettingsTemplatePicker({
   onInstalled,
 }: SettingsTemplatePickerProps) {
   const queryClient = useQueryClient();
-  const [confirmingId, setConfirmingId] = useState<OnboardingShopType | null>(null);
+  const [runningId, setRunningId] = useState<OnboardingShopType | null>(null);
 
   // Fetch current onboarding state so we can show which template (if any) is
   // already installed. Cached — no network request unless stale.
@@ -98,21 +98,40 @@ export function SettingsTemplatePicker({
       queryClient.invalidateQueries({ queryKey: ['onboarding', 'state'] });
       queryClient.invalidateQueries({ queryKey: ['sms-templates'] });
       toast.success(`Installed "${labelFor(shopType)}" starter template`);
-      setConfirmingId(null);
       onInstalled?.(shopType);
     },
     onError: () => {
       toast.error('Failed to install template');
-      setConfirmingId(null);
+    },
+    onSettled: () => {
+      setRunningId(null);
     },
   });
 
-  function handlePick(option: TemplateOption) {
-    if (confirmingId === option.id) {
+  async function handlePick(option: TemplateOption) {
+    if (mutation.isPending) return;
+
+    const currentLabel = currentShopType ? labelFor(currentShopType) : null;
+    const isSwitching = !!currentShopType && currentShopType !== option.id;
+    const isReinstalling = currentShopType === option.id;
+    const title = isSwitching
+      ? 'Switch starter template?'
+      : isReinstalling
+        ? 'Reinstall starter template?'
+        : 'Install starter template?';
+    const message = isSwitching
+      ? `Switch from "${currentLabel}" to "${option.label}"? Your custom POS setup may be lost if you have one. Existing SMS templates with the same name are kept intact.`
+      : `Install the "${option.label}" starter template? Your custom POS setup may be lost if you have one. Existing SMS templates with the same name are kept intact.`;
+    const confirmLabel = isSwitching
+      ? 'Switch template'
+      : isReinstalling
+        ? 'Reinstall template'
+        : 'Install template';
+
+    if (await confirm(message, { title, confirmLabel, danger: true })) {
+      setRunningId(option.id);
       mutation.mutate(option.id);
-      return;
     }
-    setConfirmingId(option.id);
   }
 
   return (
@@ -127,8 +146,8 @@ export function SettingsTemplatePicker({
           Starter Templates
         </h4>
         <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
-          Install a curated bundle of SMS templates tuned for your shop type. Safe to
-          re-run — existing templates with the same name are kept intact.
+          Install a curated bundle of SMS templates tuned for your shop type. Switching
+          templates requires confirmation because custom POS setup may be replaced.
         </p>
       </header>
 
@@ -138,25 +157,12 @@ export function SettingsTemplatePicker({
             key={opt.id}
             option={opt}
             isCurrent={currentShopType === opt.id}
-            isConfirming={confirmingId === opt.id}
-            isRunning={mutation.isPending && confirmingId === opt.id}
+            isRunning={mutation.isPending && runningId === opt.id}
+            isDisabled={mutation.isPending}
             onClick={() => handlePick(opt)}
           />
         ))}
       </div>
-
-      {confirmingId && !mutation.isPending && (
-        <p className="mt-3 text-center text-xs text-surface-500">
-          Click again to install. Existing data is not touched.
-          <button
-            type="button"
-            onClick={() => setConfirmingId(null)}
-            className="btn btn-ghost btn-xs ml-2 text-primary-600"
-          >
-            cancel
-          </button>
-        </p>
-      )}
     </div>
   );
 }
@@ -164,16 +170,16 @@ export function SettingsTemplatePicker({
 interface TemplateCardProps {
   option: TemplateOption;
   isCurrent: boolean;
-  isConfirming: boolean;
   isRunning: boolean;
+  isDisabled: boolean;
   onClick: () => void;
 }
 
 function TemplateCard({
   option,
   isCurrent,
-  isConfirming,
   isRunning,
+  isDisabled,
   onClick,
 }: TemplateCardProps) {
   const Icon = option.icon;
@@ -181,13 +187,14 @@ function TemplateCard({
     <button
       type="button"
       onClick={onClick}
-      disabled={isRunning}
+      disabled={isDisabled}
       className={cn(
         'flex items-start gap-2 rounded-lg border p-3 text-left transition-colors',
         'bg-surface-50 hover:border-primary-300 hover:bg-primary-50/50 dark:bg-surface-800 dark:hover:border-primary-500/50 dark:hover:bg-primary-500/10',
-        isConfirming
+        isCurrent
           ? 'border-primary-500 ring-2 ring-primary-500/20'
           : 'border-surface-200 dark:border-surface-700',
+        isDisabled && !isRunning && 'opacity-60',
         isRunning && 'opacity-50'
       )}
     >
@@ -209,11 +216,6 @@ function TemplateCard({
         <p className="mt-0.5 text-[11px] text-surface-500 dark:text-surface-400">
           {option.description}
         </p>
-        {isConfirming && !isRunning && (
-          <p className="mt-1 text-[11px] font-semibold text-primary-600">
-            Click again to install
-          </p>
-        )}
       </div>
     </button>
   );

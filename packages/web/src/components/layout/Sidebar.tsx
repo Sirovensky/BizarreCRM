@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { NavLink } from 'react-router-dom';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
-import { ticketApi } from '@/api/endpoints';
-import { useSettings } from '@/hooks/useSettings';
 import { resolveSidebarPath } from '@/hooks/useSidebarPathMemory';
 import { cn } from '@/utils/cn';
 import {
@@ -49,7 +46,6 @@ import {
   LifeBuoy,
   Truck,
   ScrollText,
-  ClipboardCheck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -143,9 +139,6 @@ const navSections: NavSection[] = [
   {
     title: 'Team',
     items: [
-      { label: 'My Queue', path: '/team/my-queue', icon: ClipboardList },
-      // WEB-UIUX-1088: tech's "finished but not yet signed" QC backlog.
-      { label: 'Pending QC', path: '/qc/pending', icon: ClipboardCheck },
       { label: 'Shifts', path: '/team/shifts', icon: Calendar },
       { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
       { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },
@@ -267,9 +260,6 @@ export function Sidebar() {
 
       {/* Recent Views */}
       <RecentViews collapsed={sidebarCollapsed} />
-
-      {/* My Queue Widget */}
-      <MyQueueWidget collapsed={sidebarCollapsed} />
 
       {/* Bottom Section */}
       <div className="shrink-0 border-t border-surface-200 p-2 dark:border-surface-800">
@@ -416,7 +406,7 @@ function parseRecentViews(userId: number | null | undefined, limit: number): Rec
       // 6-char slice cannot be primed with control chars or oversized
       // blobs designed to spoof 'Settings'/'Reports' in the truncated UI.
       // eslint-disable-next-line no-control-regex
-      const label = rawLabel.replace(/[ -]/g, '').slice(0, 64);
+      const label = rawLabel.replace(/[\x00-\x1F\x7F]/g, '').slice(0, 64);
       safe.push({
         type,
         id: typeof it.id === 'number' && Number.isFinite(it.id) ? it.id : 0,
@@ -554,70 +544,6 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function MyQueueWidget({ collapsed }: { collapsed: boolean }) {
-  const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
-  const { getSetting } = useSettings();
-
-  // CROSS1: hide when ticket assignment feature is off (default)
-  const assignmentEnabled = getSetting('ticket_all_employees_view_all', '1') === '0';
-
-  const { data } = useQuery({
-    queryKey: ['my-queue', user?.id],
-    queryFn: () => ticketApi.myQueue(),
-    enabled: !!user && assignmentEnabled,
-    refetchInterval: 30_000,
-    // Avoid a redundant refetch on every sidebar remount — the 30 s interval
-    // is already covering freshness; anything <25 s old is still useful.
-    staleTime: 25_000,
-  });
-
-  const queue = data?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
-
-  if (!assignmentEnabled) return null;
-  if (queue.total === 0) return null;
-
-  return (
-    <div className="shrink-0 border-t border-surface-200 dark:border-surface-800 px-2 py-2">
-      <button
-        onClick={() => navigate('/tickets?assigned_to=me')}
-        className={cn(
-          'group relative flex w-full items-center rounded-lg px-3 py-2 text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/60',
-          collapsed && 'justify-center px-0'
-        )}
-        title="My Queue"
-      >
-        <ListTodo className="h-5 w-5 shrink-0 text-brand-500" />
-        {!collapsed && (
-          <div className="ml-3 flex-1 text-left">
-            <p className="text-xs font-semibold text-surface-700 dark:text-surface-200">My Queue</p>
-            <p className="text-[10px] text-surface-500 dark:text-surface-400">
-              {queue.open > 0 && <span>{queue.open} open</span>}
-              {queue.open > 0 && queue.in_progress > 0 && <span>, </span>}
-              {queue.in_progress > 0 && <span>{queue.in_progress} in progress</span>}
-              {(queue.open > 0 || queue.in_progress > 0) && queue.waiting_parts > 0 && <span>, </span>}
-              {queue.waiting_parts > 0 && <span>{queue.waiting_parts} waiting parts</span>}
-            </p>
-          </div>
-        )}
-        {!collapsed && (
-          <span className="ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-100 px-1.5 text-[11px] font-bold text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
-            {queue.total}
-          </span>
-        )}
-        {collapsed && (
-          <>
-            <span className="absolute right-1 top-1 h-4 min-w-[16px] rounded-full bg-brand-500 px-1 text-[9px] font-bold leading-4 text-white text-center">
-              {queue.total}
-            </span>
-            <SidebarTooltipWrapper label={`My Queue (${queue.total})`} />
-          </>
-        )}
-      </button>
     </div>
   );
 }

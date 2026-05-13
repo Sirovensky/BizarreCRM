@@ -6,6 +6,7 @@ import {
   ChevronDown, X, MoreHorizontal, Check, Settings2, MessageSquare, Stethoscope, Package,
   ArrowUp, ArrowDown, ArrowUpDown, Printer, Pin, List, CalendarDays, Send, Kanban,
   Download, Bookmark, BookmarkX, AlertTriangle, Phone, Copy, Smartphone,
+  UserCheck, CheckCircle2, ClipboardCheck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ticketApi, settingsApi, smsApi, posHandoffApi } from '@/api/endpoints';
@@ -953,6 +954,7 @@ export function TicketListPage() {
   const rawStatusFilter = statusParamFromUrl ?? getSetting('ticket_default_filter', '');
   const statusGroupFilter = searchParams.get('status_group') || '';
   const assignedTo = searchParams.get('assigned_to') || '';
+  const isMyQueueView = assignedTo === 'me';
   const dateFilter = searchParams.get('date_filter') || '';
   const sortBy = (searchParams.get('sort_by') || getSetting('ticket_default_sort', 'urgency')) as SortColumn;
   const sortOrder = searchParams.get('sort_order') || getSetting('ticket_default_sort_order', 'DESC');
@@ -1375,6 +1377,16 @@ export function TicketListPage() {
     });
   }
 
+  function setTicketScope(scope: 'all' | 'mine') {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (scope === 'mine') next.set('assigned_to', 'me');
+      else next.delete('assigned_to');
+      next.set('page', '1');
+      return next;
+    });
+  }
+
   const handleSort = useCallback((column: SortColumn) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -1439,7 +1451,44 @@ export function TicketListPage() {
           <h1 className="text-xl md:text-2xl font-bold text-surface-900 dark:text-surface-100">Tickets</h1>
           <p className="text-sm text-surface-500 dark:text-surface-400">Manage repair tickets and work orders</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border border-surface-200 dark:border-surface-700">
+            <button
+              type="button"
+              onClick={() => setTicketScope('all')}
+              className={cn(
+                'rounded-l-lg px-3 py-2 text-sm font-medium transition-colors',
+                !isMyQueueView
+                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300'
+                  : 'text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-800',
+              )}
+              title="Show all tickets"
+            >
+              All Tickets
+            </button>
+            <button
+              type="button"
+              onClick={() => setTicketScope('mine')}
+              className={cn(
+                'inline-flex items-center gap-1 border-l border-surface-200 px-3 py-2 text-sm font-medium transition-colors dark:border-surface-700',
+                isMyQueueView
+                  ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300'
+                  : 'text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-800',
+              )}
+              title="Show tickets assigned to me"
+            >
+              <UserCheck className="h-4 w-4" />
+              My Queue
+            </button>
+            <Link
+              to="/tickets/pending-qc"
+              className="inline-flex items-center gap-1 rounded-r-lg border-l border-surface-200 px-3 py-2 text-sm font-medium text-surface-500 transition-colors hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800"
+              title="Show tickets waiting for QC sign-off"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              Pending QC
+            </Link>
+          </div>
           {/* View mode toggle */}
           <div className="inline-flex rounded-lg border border-surface-200 dark:border-surface-700">
             <button
@@ -1977,15 +2026,26 @@ export function TicketListPage() {
             </div>
           ) : tickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20">
-              <Wrench className="mb-4 h-12 w-12 text-surface-300 dark:text-surface-600" />
-              <h2 className="text-base font-medium text-surface-600 dark:text-surface-400">No Tickets</h2>
-              <Link
-                to="/tickets/new"
-                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
-              >
-                <Plus className="h-4 w-4" />
-                New Ticket
-              </Link>
+              {isMyQueueView ? (
+                <CheckCircle2 className="mb-4 h-12 w-12 text-success-500 dark:text-success-400" />
+              ) : (
+                <Wrench className="mb-4 h-12 w-12 text-surface-300 dark:text-surface-600" />
+              )}
+              <h2 className="text-base font-medium text-surface-600 dark:text-surface-400">
+                {isMyQueueView ? 'All caught up' : 'No Tickets'}
+              </h2>
+              <p className="mt-1 px-4 text-center text-sm text-surface-400 dark:text-surface-500">
+                {isMyQueueView ? 'You have no tickets assigned to you right now.' : 'Create your first ticket to get started'}
+              </p>
+              {!isMyQueueView && (
+                <Link
+                  to="/tickets/new"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  New Ticket
+                </Link>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-surface-100 dark:divide-surface-700/50">
@@ -2096,17 +2156,25 @@ export function TicketListPage() {
                 <tr>
                   <td colSpan={10 + effectiveVisibleColumns.size}>
                     <div className="flex flex-col items-center justify-center py-20">
-                      <Wrench className="mb-4 h-16 w-16 text-surface-300 dark:text-surface-600" />
-                      <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No Tickets</h2>
+                      {isMyQueueView ? (
+                        <CheckCircle2 className="mb-4 h-16 w-16 text-success-500 dark:text-success-400" />
+                      ) : (
+                        <Wrench className="mb-4 h-16 w-16 text-surface-300 dark:text-surface-600" />
+                      )}
+                      <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">
+                        {isMyQueueView ? 'All caught up' : 'No Tickets'}
+                      </h2>
                       <p className="text-sm text-surface-400 dark:text-surface-500">
-                        {keyword || statusFilter || dateFilter
+                        {isMyQueueView
+                          ? 'You have no tickets assigned to you right now.'
+                          : keyword || statusFilter || dateFilter
                           ? 'No tickets match your filters'
                           : 'Create your first ticket to get started'}
                       </p>
                       {/* WEB-UIUX-852: surface the primary CTA on the empty state
                           since the page-level "+ New Ticket" button is far away
                           for new shops. */}
-                      {!(keyword || statusFilter || dateFilter) && (
+                      {!isMyQueueView && !(keyword || statusFilter || dateFilter) && (
                         <Link
                           to="/tickets/new"
                           className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
