@@ -599,6 +599,19 @@ function RedeemModal({ onClose }: RedeemModalProps) {
   const [lookupCard, setLookupCard] = useState<any | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  // WEB-UIUX-1013: 429 rate-limit retry-after countdown. While >0 the lookup
+  // button is disabled with a visible "Retry in Ns" hint so the cashier
+  // doesn't bang on a locked endpoint and accidentally fingerprint as abuse.
+  const [lookupRetryIn, setLookupRetryIn] = useState(0);
+
+  // Tick the retry-after counter down every second; clears when it hits 0.
+  useEffect(() => {
+    if (lookupRetryIn <= 0) return;
+    const id = setInterval(() => {
+      setLookupRetryIn((n) => Math.max(0, n - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lookupRetryIn]);
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ new_balance: number } | null>(null);
 
@@ -630,8 +643,9 @@ function RedeemModal({ onClose }: RedeemModalProps) {
       const status = err?.response?.status;
       const serverMsg = err?.response?.data?.message;
       if (status === 429) {
-        const retry = Number(err?.response?.data?.retry_after_seconds ?? 60);
-        setLookupError(serverMsg || `Too many lookup attempts — wait ${retry}s and retry.`);
+        const retry = Math.max(1, Number(err?.response?.data?.retry_after_seconds ?? 60));
+        setLookupRetryIn(retry);
+        setLookupError(serverMsg || 'Too many lookup attempts.');
       } else if (status === 404) {
         setLookupError(serverMsg || 'Gift card not found.');
       } else if (status === 400) {
@@ -706,14 +720,21 @@ function RedeemModal({ onClose }: RedeemModalProps) {
             <button
               type="button"
               onClick={handleLookup}
-              disabled={lookupLoading || !code.trim()}
+              disabled={lookupLoading || !code.trim() || lookupRetryIn > 0}
               className="rounded-lg bg-surface-100 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-200 disabled:opacity-50 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
             >
-              {lookupLoading ? 'Looking…' : 'Look up'}
+              {lookupRetryIn > 0
+                ? `Retry in ${lookupRetryIn}s`
+                : lookupLoading
+                  ? 'Looking…'
+                  : 'Look up'}
             </button>
           </div>
           {lookupError && (
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">{lookupError}</p>
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {lookupError}
+              {lookupRetryIn > 0 && <> Retry in <strong>{lookupRetryIn}s</strong>.</>}
+            </p>
           )}
         </div>
         {lookupCard && (
