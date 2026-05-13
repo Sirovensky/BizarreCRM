@@ -438,6 +438,10 @@ export function InventoryListPage() {
   // WEB-UIUX-599: focus traps + Esc-close for the two inline modals.
   const bulkPriceRef = useFocusTrap(showBulkPriceModal) as React.RefObject<HTMLDivElement>;
   const importRef = useFocusTrap(showImportModal) as React.RefObject<HTMLDivElement>;
+  // WEB-UIUX-911: add focus-trap + restore to the remaining inline modals
+  // (dismiss-low-stock, order-all) so keyboard operators don't drop to <body>
+  // on close.
+  const dismissLowStockRef = useFocusTrap(!!dismissConfirm) as React.RefObject<HTMLDivElement>;
   useEscClose(() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }, showBulkPriceModal);
   useEscClose(() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }, showImportModal);
 
@@ -1185,6 +1189,7 @@ export function InventoryListPage() {
           }}
         >
           <div
+            ref={dismissLowStockRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="dismiss-low-stock-title"
