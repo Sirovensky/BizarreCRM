@@ -921,8 +921,8 @@ router.post(
     // is gone — the modal polls GET /jobs/:id for progress and can fire
     // POST /jobs/:id/abort. Keeps the inline-send semantics (no separate
     // worker process to deploy); the loop checks abort_requested between
-    // sends so the cap stays bounded.
-    const tenantSlug = (req as any).tenantSlug || null;
+    // sends so the cap stays bounded. tenantSlug is already in scope from
+    // the top of this handler.
     const insertResult = await adb.run(
       `INSERT INTO bulk_sms_jobs (segment, template_id, template_name, total, status, created_by, started_at)
         VALUES (?, ?, ?, ?, 'running', ?, datetime('now'))`,
