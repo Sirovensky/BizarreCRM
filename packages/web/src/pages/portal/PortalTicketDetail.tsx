@@ -243,7 +243,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
           <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-200 mb-4">Timeline</h3>
           <div className="space-y-0">
             {fullTimeline.map((entry, i) => (
-              <div key={i} className="flex gap-3">
+              <div key={`${entry.type}:${entry.created_at}:${i}`} className="flex gap-3">
                 <div className="flex flex-col items-center">
                   <TimelineDot type={entry.type} />
                   {i < fullTimeline.length - 1 && <div className="w-px flex-1 bg-surface-200 dark:bg-surface-700" />}

@@ -652,8 +652,15 @@ export function StocktakePage() {
                     />
                   </form>
 
+                  {/* WEB-UIUX-643: surface the two scan modes so cashiers
+                      who scan the same item twice don't unknowingly land at
+                      +2. Blank Qty = +1 increment (running tally); typed Qty
+                      = exact count for that SKU (overrides any prior +1s).
+                      The prior copy only mentioned re-scan correction, which
+                      hid the "type an exact qty" affordance. */}
                   <p className="mt-3 text-xs text-surface-500 dark:text-surface-400">
-                    To correct a count, re-scan the item and enter the right quantity — the previous row is overwritten automatically.
+                    <strong className="font-semibold text-surface-700 dark:text-surface-300">Two scan modes:</strong>{' '}
+                    leave <span className="font-mono">Qty</span> blank to add <span className="font-mono">+1</span> per scan (running tally), or type a number to record that SKU's <em>exact</em> on-hand count. The exact count overwrites any prior <span className="font-mono">+1</span> rows for the same item.
                   </p>
 
                   {/* WEB-UIUX-1372: blocking overlay while commit is in-flight */}
