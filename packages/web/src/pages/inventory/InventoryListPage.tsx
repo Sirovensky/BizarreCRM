@@ -1401,6 +1401,8 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
   const [sessionNotes, setSessionNotes] = useState('');
   const [summary, setSummary] = useState<{ received: number; created: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // WEB-UIUX-911: focus-trap restores focus to the trigger on close.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
 
   // Auto-focus input on mount and after each scan
   useEffect(() => { inputRef.current?.focus(); }, [scannedItems.length]);
@@ -1613,6 +1615,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="receive-items-title"
@@ -1798,6 +1801,8 @@ interface VarianceItem {
 }
 
 function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
+  // WEB-UIUX-911: focus-trap + restore so keyboard ops land back on trigger.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
   const [months, setMonths] = useState(6);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{
@@ -1828,6 +1833,7 @@ function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="variance-analysis-title"
