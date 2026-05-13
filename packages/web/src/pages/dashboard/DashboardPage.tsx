@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { reportApi, missingPartsApi, catalogApi, settingsApi, ticketApi, preferencesApi, smsApi, leadApi, onboardingApi, repairPricingApi, type OnboardingState } from '@/api/endpoints';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { GettingStartedWidget } from '@/components/onboarding/GettingStartedWidget';
 import { ImportLaterReminder } from '@/components/onboarding/ImportLaterReminder';
 import { SampleDataCard } from '@/components/onboarding/SampleDataCard';
@@ -1310,6 +1311,9 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<WidgetConfig[]>(() => [...widgets]);
+  // WEB-UIUX-911: focus-trap + restore so the customize-widgets modal returns
+  // focus to the trigger button instead of <body> when the operator closes it.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
 
   const toggle = (id: string) => {
     setDraft(prev => prev.map(w => w.id === id ? { ...w, visible: !w.visible } : w));
@@ -1339,6 +1343,7 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="dashboard-customize-title"

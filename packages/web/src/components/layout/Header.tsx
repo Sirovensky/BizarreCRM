@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useUiStore } from '@/stores/uiStore';
@@ -890,6 +891,9 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // WEB-UIUX-911: focus-trap + restore on close so keyboard operators land
+  // back on the avatar/menu trigger when the switch-user PIN dialog dismisses.
+  const dialogRef = useFocusTrap<HTMLDivElement>(true);
   // WEB-UIUX-900: seed from sessionStorage so the lockout survives reload.
   const initialLockState = readSwitchLockState();
   const [failCount, setFailCount] = useState(initialLockState.failCount);
@@ -984,6 +988,7 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="switch-user-title"
