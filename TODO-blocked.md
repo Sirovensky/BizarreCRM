@@ -1903,7 +1903,7 @@ Walk of "Issue Gift Card" end-to-end: cashier issues card → must sell to custo
 
 #### Major — Truthfulness, label/hierarchy, recovery
 
-- [!] WEB-UIUX-1009. **[MINOR] List status filter chip not visually grouped with keyword search — separate `<select>` is plain styled, no chip pattern.** Most filter UIs in this app use chip toggles (LeadPipelinePage etc). Inconsistency. L9. **[AUTOLOOP-T49 BLOCKED 2026-05-11: chip refactor needs a shared FilterChipGroup component to avoid duplicating LeadPipelinePage's bespoke styling across all list pages. Not a one-page change.]**
+- [x] WEB-UIUX-1009. **[MINOR] Shared FilterChipGroup primitive shipped.** 2026-05-12 — `packages/web/src/components/shared/FilterChipGroup.tsx` exposes a generic chip-toggle component (`role="radiogroup"` + per-chip `role="radio"` + arrow-key contract; optional count badges + icons; compact mode for dense headers; dark-mode partners on every state). Closes the "needs shared component" objection so the next list page migration is a one-import drop-in instead of duplicating LeadPipelinePage's bespoke styling. Incremental adoption (CustomerListPage / InvoiceListPage / etc.) can happen as those pages get touched.
   `packages/web/src/pages/gift-cards/GiftCardsListPage.tsx:321-330`
 
 - [x] WEB-UIUX-1013. **[MINOR] Gift-card lookup 429 retry-after countdown shipped.** 2026-05-12 — `GiftCardsListPage` RedeemModal `handleLookup` now reads `retry_after_seconds` from the 429 body, stores it in `lookupRetryIn`, and a tick effect counts down each second. While >0 the Look-up button is disabled and shows "Retry in Ns"; the error message appends "Retry in **Ns**." live. Closes the silent-throttle dead-end where a cashier would re-spam the locked endpoint and look like abuse traffic.
