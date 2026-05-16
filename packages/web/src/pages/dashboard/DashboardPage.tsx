@@ -586,7 +586,7 @@ function DashboardMetricChart({
               className={cn(
                 'btn btn-xs capitalize',
                 mode === m
-                  ? 'bg-primary-600 text-primary-950'
+                  ? 'bg-primary-600 text-on-primary'
                   : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
               )}
             >
@@ -2296,7 +2296,7 @@ function AdminOrManagerDashboard() {
             onClick={() => navigate('/pos')}
             className="btn btn-lg w-full !justify-start !gap-3 !rounded-xl border border-primary-200 bg-primary-50 text-left hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-on-primary">
               <ShoppingCart className="h-4 w-4" />
             </div>
             <div>
@@ -2310,7 +2310,7 @@ function AdminOrManagerDashboard() {
             onClick={() => navigate('/customers/new')}
             className="btn btn-lg w-full !justify-start !gap-3 !rounded-xl border border-primary-200 bg-primary-50 text-left hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-on-primary">
               <Plus className="h-4 w-4" />
             </div>
             <div>
@@ -2356,7 +2356,7 @@ function AdminOrManagerDashboard() {
                 className={cn(
                   'btn btn-xs',
                   datePreset === dp.key
-                    ? 'bg-primary-600 text-primary-950'
+                    ? 'bg-primary-600 text-on-primary'
                     : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'
                 )}
               >

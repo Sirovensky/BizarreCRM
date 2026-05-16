@@ -159,7 +159,7 @@ export function StepBusinessHours({
           <button
             type="button"
             onClick={handleContinue}
-            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400"
           >
             Continue
             <ArrowRight className="h-4 w-4" />
@@ -218,7 +218,7 @@ export function SubStepFooter({
         type="button"
         onClick={onComplete}
         disabled={completeDisabled}
-        className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Check className="h-4 w-4" />
         {completeLabel}

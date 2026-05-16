@@ -260,7 +260,7 @@ function EstimateSignDialog({
                 type="button"
                 onClick={() => submitMut.mutate()}
                 disabled={!canSubmit}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSignature className="h-4 w-4" />}
                 Save signature
@@ -695,7 +695,7 @@ export function EstimateDetailPage() {
               className={cn(
                 ESTIMATE_ACTION_BUTTON_CLASS,
                 estimate.status === 'draft'
-                  ? 'bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none'
+                  ? 'bg-primary-600 text-on-primary hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none'
                   : 'border border-primary-300 text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
               )}
             >
@@ -963,7 +963,7 @@ export function EstimateDetailPage() {
                   <button
                     onClick={() => lineItemsMut.mutate(draftItems.filter(li => li.description.trim() !== ''))}
                     disabled={lineItemsMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
                     {lineItemsMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                     Save
@@ -1105,7 +1105,7 @@ export function EstimateDetailPage() {
                 />
                 <div className="flex gap-2">
                   <button onClick={() => updateMut.mutate({ notes })} disabled={updateMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                     <Save className="h-3 w-3" /> Save
                   </button>
                   <button onClick={() => setEditing(false)} className="text-xs text-surface-500 hover:text-surface-700">Cancel</button>
@@ -1170,7 +1170,7 @@ export function EstimateDetailPage() {
                             setEditingValidUntil(false);
                           }}
                           disabled={updateMut.isPending}
-                          className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                          className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-xs font-medium text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                         >
                           <Save className="h-3 w-3" /> Save
                         </button>

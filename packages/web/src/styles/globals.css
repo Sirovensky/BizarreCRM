@@ -53,30 +53,36 @@
 
 @layer base {
   :root {
-    --sidebar-width: 256px;
+    --sidebar-width: 224px;
     --sidebar-collapsed-width: 64px;
     --header-height: 56px;
 
-    /* Runtime primary accent ramp — cream-family in both modes.
-     * Brand identity is cream (#FDEED0). Caramel-only light-mode failed the
-     * brand look ("everything turned bright orange"); restore cream-honey
-     * across both modes. Tenants that need a high-contrast accent on white
-     * can still override via store_config.theme_primary_color → AppShell. */
-    --primary-50:  255 254 251;
-    --primary-100: 254 252 244;
-    --primary-200: 253 248 232;
-    --primary-300: 253 244 214;
-    --primary-400: 253 240 200;
-    --primary-500: 253 238 208;   /* #FDEED0 cream — canonical brand primary */
-    --primary-600: 245 220 167;
-    --primary-700: 233 196 119;
-    --primary-800: 214 165  75;
-    --primary-900:  43  20   0;
-    --primary-950:  26  11   0;
+    /* Runtime primary accent ramp — light mode = caramel family.
+     * Cream (#FDEED0) is the brand identity and lives in dark mode (.dark
+     * below). On a white/warm-graphite surface cream measures 1.1:1 contrast,
+     * which fails WCAG AA for any text or icon rendered on top of a
+     * bg-primary surface. Light mode therefore swaps the entire ramp to
+     * caramel (#A66D1F at 500), matching mockups/design-system.html:
+     *   "Caramel passes 5.2:1 on surface-50 — AA. Same hue family as cream,
+     *    darker stop, so brand identity carries across both modes."
+     * Tenants that need a different accent can still override via
+     * store_config.theme_primary_color → AppShell. */
+    --primary-50:  253 246 236;   /* very light caramel tint */
+    --primary-100: 248 232 201;
+    --primary-200: 240 212 155;
+    --primary-300: 229 188 110;
+    --primary-400: 210 153  64;
+    --primary-500: 166 109  31;   /* #A66D1F caramel — light-mode primary */
+    --primary-600: 140  88  23;
+    --primary-700: 114  70  18;
+    --primary-800:  86  52  13;
+    --primary-900:  58  35   8;
+    --primary-950:  31  18   4;
 
     /* WEB-UIUX-418: semantic text-on-primary token.
-     * Cream primary needs near-black text for legibility on top. */
-    --text-on-primary: 26 11 0;
+     * Caramel primary needs near-white text for legibility on top
+     * (per design-system.html --primary-onCaramel: #FFFEFB). */
+    --text-on-primary: 255 254 251;
 
     /* Surface ramp — Option F (Web POS Recolor 2026-05-01).
      * Warm-graphite ramp between stone and neutral. Cream restrained to
@@ -343,7 +349,7 @@
     /* Collapse the flex shell that offsets content for the sidebar so
      * the document fills the printable width. */
     body:not(.print-route) .md\:ml-16,
-    body:not(.print-route) .md\:ml-64 {
+    body:not(.print-route) .md\:ml-56 {
       margin-left: 0 !important;
     }
     /* Avoid clipping long detail tables across pages. */

@@ -742,7 +742,7 @@ export function LoginPage() {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-on-primary transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                 {isSingleTenantSetup ? 'Create shop & continue' : 'Create Account & Continue'}
@@ -902,7 +902,7 @@ export function LoginPage() {
               )}
               {error && <LoginError message={error} kind={errorKind} />}
               <button type="submit" disabled={loading} aria-busy={loading}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Sign In'}
                 <span className="sr-only" aria-live="polite">{loading ? 'Submitting' : ''}</span>
               </button>
@@ -930,7 +930,7 @@ export function LoginPage() {
               <p className="text-xs text-surface-400">Minimum 8 characters</p>
               {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
               <button type="submit" disabled={loading || newPassword.length < 8} aria-busy={loading}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Set Password & Continue'}
               </button>
             </form>
@@ -975,7 +975,7 @@ export function LoginPage() {
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
                 {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
                 <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
-                  className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                  className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify & Complete Setup'}
                 </button>
               </form>
@@ -995,15 +995,12 @@ export function LoginPage() {
                 <input id="2fa-verify-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
                   aria-label="6-digit authenticator code"
                   value={totpCode} onChange={(e) => {
-                    // WEB-S4-040: auto-submit when all 6 digits are entered so
-                    // the user doesn't have to tap/click Verify manually.
+                    // Auto-submit on 6-digit entry was removed: it raced the
+                    // "Trust this device" checkbox below and submitted before
+                    // the user could tick it. User now presses Enter or the
+                    // Verify button explicitly.
                     const v = e.target.value.replace(/\D/g, '');
                     setTotpCode(v);
-                    if (v.length === 6) {
-                      requestAnimationFrame(() => {
-                        (e.target.closest('form') as HTMLFormElement | null)?.requestSubmit();
-                      });
-                    }
                   }}
                   placeholder="000000" autoFocus
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
@@ -1042,7 +1039,7 @@ export function LoginPage() {
                   </div>
                 </div>
                 <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
-                  className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+                  className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify'}
                 </button>
                 <button type="button" onClick={() => { setStep('password'); setError(''); }}
@@ -1086,7 +1083,7 @@ export function LoginPage() {
                           setRecoverySuccess(false);
                           setError('');
                         }}
-                        className="w-full rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-primary-950 hover:bg-primary-700"
+                        className="w-full rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-on-primary hover:bg-primary-700"
                       >
                         Back to sign in
                       </button>

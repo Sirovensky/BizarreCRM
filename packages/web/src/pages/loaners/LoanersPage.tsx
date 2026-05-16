@@ -379,7 +379,7 @@ function AddLoanerDialog({ onClose }: { onClose: () => void }) {
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-on-primary rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMutation.isPending ? 'Adding...' : 'Add Device'}
             </button>
@@ -510,7 +510,7 @@ export function LoanersPage() {
         <button
           type="button"
           onClick={() => setShowAddDialog(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700 shrink-0"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-700 shrink-0"
         >
           <Plus className="h-4 w-4" /> Add Loaner
         </button>

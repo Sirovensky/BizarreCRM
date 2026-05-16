@@ -267,7 +267,7 @@ export function TeamChatPage() {
         </h1>
         {canCreateGeneralChannel ? (
           <button
-            className="px-3 py-1.5 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="px-3 py-1.5 bg-primary-600 text-on-primary rounded text-sm hover:bg-primary-700 inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             onClick={() => setShowNew(true)}
           >
             <Plus className="w-4 h-4 mr-1" /> Channel
@@ -362,7 +362,7 @@ export function TeamChatPage() {
                 }}
               />
               <button
-                className="px-4 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="px-4 py-2 bg-primary-600 text-on-primary rounded text-sm hover:bg-primary-700 inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 disabled={!draft.trim() || sendMut.isPending}
                 onClick={() => sendMut.mutate()}
                 aria-label="Send message"
@@ -415,7 +415,7 @@ export function TeamChatPage() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="flex-1 px-3 py-2 bg-primary-600 text-on-primary rounded text-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 disabled={!newChannelName || createChannelMut.isPending}
                 onClick={() => createChannelMut.mutate()}
               >

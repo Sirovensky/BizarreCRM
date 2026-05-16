@@ -326,7 +326,7 @@ function IssueModal({ onClose }: IssueModalProps) {
             <button
               onClick={() => { setCodeSavedConfirmed(false); onClose(); }}
               disabled={!codeSavedConfirmed}
-              className="px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 rounded-lg bg-primary-600 text-on-primary hover:bg-primary-700 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               I&apos;ve saved the code
             </button>
@@ -392,7 +392,7 @@ function IssueModal({ onClose }: IssueModalProps) {
                   onClick={() => update('amount', String(preset))}
                   className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
                     form.amount === String(preset)
-                      ? 'bg-primary-600 text-primary-950 border-primary-600'
+                      ? 'bg-primary-600 text-on-primary border-primary-600'
                       : 'border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800'
                   }`}
                 >
@@ -576,7 +576,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           <button
             onClick={() => issueMutation.mutate()}
             disabled={issueMutation.isPending || !(parseFloat(form.amount) > 0 && Number.isFinite(parseFloat(form.amount))) || expiresInPast}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
           >
             {issueMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Issue gift card
@@ -791,7 +791,7 @@ function RedeemModal({ onClose }: RedeemModalProps) {
               type="button"
               onClick={handleRedeem}
               disabled={redeemMut.isPending || !!success}
-              className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {redeemMut.isPending ? 'Redeeming…' : `Redeem ${amount ? formatCurrency(Number(amount) || 0) : ''}`}
             </button>
@@ -950,7 +950,7 @@ export function GiftCardsListPage() {
               </button>
               <button
                 onClick={() => setShowIssueModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-on-primary hover:bg-primary-700 text-sm font-medium"
               >
                 <Plus className="h-4 w-4" />
                 Issue gift card
@@ -1005,7 +1005,7 @@ export function GiftCardsListPage() {
           {!hasActiveFilters && (
             <button
               onClick={() => setShowIssueModal(true)}
-              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
+              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-on-primary hover:bg-primary-700 text-sm font-medium"
             >
               <Plus className="h-4 w-4" />
               Issue gift card

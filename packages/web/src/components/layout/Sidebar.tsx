@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+import { recentViewsKey } from './recentViewsKey';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import { resolveSidebarPath } from '@/hooks/useSidebarPathMemory';
@@ -182,6 +183,13 @@ function SidebarTooltip({ label, show }: { label: string; show: boolean }) {
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUiStore();
+  // Match the Header's per-route height so the sidebar's logo-bar bottom
+  // border lines up with the topbar's bottom border. Header is h-14 on POS
+  // (tighter chrome to leave room for the in-body tab strip) and h-16
+  // elsewhere — see Header.tsx:461. Without this sync, /pos shows an 8px
+  // step where the two borders should meet.
+  const location = useLocation();
+  const isPosRoute = location.pathname.startsWith('/pos');
   // @audit-fixed: filter nav sections + items by role so technicians don't see
   // admin-only links (Employees, Reports, Settings). Server still enforces auth
   // — this just removes the broken-click experience.
@@ -215,14 +223,15 @@ export function Sidebar() {
         // continuous motion in step with the main column's margin slide
         // (AppShell.tsx).
         'fixed inset-y-0 left-0 z-30 flex flex-col overflow-hidden border-r border-surface-200 bg-white transition-[width] duration-[250ms] ease-out dark:border-surface-800 dark:bg-surface-900',
-        sidebarCollapsed ? 'w-16' : 'w-64'
+        sidebarCollapsed ? 'w-16' : 'w-56'
       )}
     >
       {/* App Name */}
       <div
         className={cn(
-          'flex h-16 shrink-0 items-center border-b border-surface-200 dark:border-surface-800',
-          sidebarCollapsed ? 'justify-center px-2' : 'px-5'
+          'flex shrink-0 items-center justify-center border-b border-surface-200 dark:border-surface-800',
+          isPosRoute ? 'h-14' : 'h-16',
+          sidebarCollapsed ? 'px-2' : 'px-3'
         )}
       >
         {!sidebarCollapsed && (
@@ -329,14 +338,11 @@ export function Sidebar() {
 
 // WEB-FAE-003: namespace `recent_views` per user.id so logging out User A and
 // signing in User B on the same browser doesn't leak A's last 20 customers /
-// tickets into B's sidebar. The User type has no `tenant_id` field
-// (packages/shared/src/types/employee.ts:1), so per-user is the strongest
-// scope we can express client-side; cross-tenant leak follows for free since
-// a single user.id can't span tenants. The `auth-cleared` listener below
-// also wipes any persisted `recent_views:*` keys + the legacy unscoped key.
-export function recentViewsKey(userId: number | null | undefined): string {
-  return userId ? `recent_views:u${userId}` : 'recent_views';
-}
+// tickets into B's sidebar. recentViewsKey now lives in its own file
+// (./recentViewsKey.ts) so Sidebar.tsx exports only components and React
+// Fast Refresh can patch in place instead of forcing a full reload on
+// every edit. The `auth-cleared` listener below still wipes any persisted
+// `recent_views:*` keys + the legacy unscoped key on logout.
 
 if (typeof window !== 'undefined') {
   window.addEventListener('bizarre-crm:auth-cleared', () => {

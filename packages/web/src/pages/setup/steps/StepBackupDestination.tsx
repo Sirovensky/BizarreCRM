@@ -199,7 +199,7 @@ export function StepBackupDestination({
                 <div
                   className={
                     isSelected
-                      ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-primary-950'
+                      ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-on-primary'
                       : 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
                   }
                 >
@@ -425,7 +425,7 @@ export function StepBackupDestination({
             <button
               type="button"
               onClick={onNext}
-              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

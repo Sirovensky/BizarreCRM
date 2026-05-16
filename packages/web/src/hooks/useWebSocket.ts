@@ -35,21 +35,23 @@ if (typeof window !== 'undefined') {
 // ---------------------------------------------------------------------------
 function getWsUrl(): string {
   const loc = window.location;
-  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
 
-  // Derive the default API port from the current page URL.
-  // In production the page is served by the API server itself, so loc.port
-  // (or the implicit port for the protocol) is the correct API port.
-  const defaultPort = loc.port || (loc.protocol === 'https:' ? '443' : '80');
-  const apiPort = import.meta.env.VITE_API_PORT || defaultPort;
-
-  // If running through a Vite dev proxy (port differs from API), connect
-  // directly to the API server.
-  if (loc.port && loc.port !== apiPort) {
-    return `${protocol}//${loc.hostname}:${apiPort}`;
+  // Dev: SPA is served by Vite on its own port (default 5173). The
+  // WebSocketServer is attached to the API HTTPS server on a different
+  // port (default 443). Previously this function fell back to loc.port
+  // when VITE_API_PORT was unset, which collapsed the URL to vite's
+  // port — the app's WS then hit vite, vite tried to upgrade it as an
+  // HMR connection, subprotocol mismatch closed the socket, the app
+  // reconnect loop ate all 6 of Firefox's per-host TCP slots and the
+  // page hung waiting for connections. In dev we always route the WS
+  // directly to the API server (wss://, since the API is HTTPS).
+  if (import.meta.env.DEV) {
+    const apiPort = (import.meta.env.VITE_API_PORT as string | undefined) || '443';
+    return `wss://${loc.hostname}:${apiPort}`;
   }
 
-  // Same-origin (production): WS on the same host
+  // Production: the page is served by the API server itself, same-origin WS.
+  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${loc.host}`;
 }
 

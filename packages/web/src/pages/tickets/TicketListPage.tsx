@@ -479,7 +479,7 @@ function SavedFiltersDropdown({
                   placeholder="Filter name..."
                   className="flex-1 rounded border border-surface-200 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
                 />
-                <button type="submit" className="rounded bg-primary-600 px-2 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700">
+                <button type="submit" className="rounded bg-primary-600 px-2 py-1 text-xs font-medium text-on-primary hover:bg-primary-700">
                   Save
                 </button>
               </form>
@@ -904,7 +904,7 @@ const TicketRow = memo(function TicketRow({
             <div className="shrink-0 flex flex-col gap-2 items-end">
               <button
                 onClick={() => onNavigate(`/tickets/${ticket.id}`)}
-                className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 transition-colors"
+                className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary-700 transition-colors"
               >
                 Open Full
               </button>
@@ -1535,7 +1535,7 @@ export function TicketListPage() {
               bookmarks/Communications deep-links intact. */}
           <Link
             to="/tickets/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
             New Sale / Repair
@@ -2040,7 +2040,7 @@ export function TicketListPage() {
               {!isMyQueueView && (
                 <Link
                   to="/tickets/new"
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-700"
                 >
                   <Plus className="h-4 w-4" />
                   New Ticket
@@ -2177,7 +2177,7 @@ export function TicketListPage() {
                       {!isMyQueueView && !(keyword || statusFilter || dateFilter) && (
                         <Link
                           to="/tickets/new"
-                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700"
                         >
                           {/* WEB-UIUX-1127: relabelled to match destination (POS Repairs flow). */}
                           <Plus className="h-4 w-4" /> New Sale / Repair
@@ -2276,7 +2276,7 @@ export function TicketListPage() {
                     className={cn(
                       'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors min-h-[44px] min-w-[44px] md:h-8 md:w-8 md:min-h-0 md:min-w-0',
                       pageNum === page
-                        ? 'bg-primary-600 text-primary-950'
+                        ? 'bg-primary-600 text-on-primary'
                         : 'text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700',
                     )}
                   >

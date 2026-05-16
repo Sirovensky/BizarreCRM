@@ -1201,11 +1201,10 @@ router.get('/needs-attention', asyncHandler(async (req, res) => {
     `),
     // WEB-UIUX-1049: surface pending-refund count so admin landing page
     // points at the approval queue instead of relying on operators to
-    // remember to navigate to /refunds. is_deleted scrubs the row only;
-    // the refund-status enum already excludes 'declined'/'completed' here.
+    // remember to navigate to /refunds.
     adb.get<any>(`
       SELECT COUNT(*) AS n FROM refunds
-      WHERE status = 'pending' AND is_deleted = 0
+      WHERE status = 'pending'
     `),
   ]);
 

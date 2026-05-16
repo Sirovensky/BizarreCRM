@@ -185,7 +185,7 @@ export function PaymentLinksPage() {
             a dead-end page for customers. */}
         {canManagePaymentLinks && paymentLinksEnabled ? (
           <button type="button"
-            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700"
             onClick={() => { setShowForm((s) => !s); setIdErrors({}); }}
           >
             {showForm ? 'Close form' : 'New payment request'}
@@ -318,7 +318,7 @@ export function PaymentLinksPage() {
             />
           </div>
           <button type="button"
-            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             disabled={createMutation.isPending}
             onClick={handleCreate}
           >

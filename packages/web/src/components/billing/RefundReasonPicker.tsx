@@ -148,7 +148,7 @@ export function RefundReasonPicker({
               // word boundaries instead of mid-word on narrow viewports.
               className={`min-h-[44px] min-w-0 rounded-md border px-3 py-2 text-left text-sm transition ${
                 localReason === r.code
-                  ? 'border-primary-500 bg-primary-50 text-primary-900 dark:bg-primary-900/30 dark:text-primary-200'
+                  ? 'border-primary-500 bg-primary-50 text-on-primary dark:bg-primary-900/30 dark:text-primary-200'
                   : 'border-surface-300 dark:border-surface-700 text-surface-900 dark:text-surface-100 hover:border-surface-400 dark:hover:border-surface-600'
               }`}
             >

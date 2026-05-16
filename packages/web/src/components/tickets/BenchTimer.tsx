@@ -422,7 +422,7 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
             <button
               onClick={() => startMut.mutate()}
               disabled={startMut.isPending}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               <Play className="h-4 w-4" />
               Start work
@@ -453,7 +453,7 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
               <button
                 onClick={() => resumeMut.mutate()}
                 disabled={resumeMut.isPending}
-                className="flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="flex items-center justify-center gap-1 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 <Play className="h-4 w-4" /> Resume
               </button>

@@ -718,7 +718,7 @@ export function QcSignOffModal({
                 className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none ${
                   hasFailures
                     ? 'bg-red-600 text-white hover:bg-red-700'
-                    : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                    : 'bg-primary-600 text-on-primary hover:bg-primary-700'
                 }`}
               >
                 {submitMut.isPending ? (

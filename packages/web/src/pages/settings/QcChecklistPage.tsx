@@ -83,7 +83,7 @@ export function QcChecklistPage() {
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" /> Add item
         </button>
@@ -258,7 +258,7 @@ function ChecklistItemModal({ onClose, onSubmit, pending, initial }: ChecklistIt
               });
             }}
             disabled={pending}
-            className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+            className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-700 disabled:opacity-50"
           >
             {pending ? 'Saving…' : initial ? 'Save changes' : 'Add item'}
           </button>

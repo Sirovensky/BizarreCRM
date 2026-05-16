@@ -327,7 +327,7 @@ export function StepSmsProvider({
                 >
                   {label}
                   {recommended && (
-                    <span className="ml-1 inline-flex rounded-full bg-primary-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary-950">
+                    <span className="ml-1 inline-flex rounded-full bg-primary-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-on-primary">
                       Default
                     </span>
                   )}
@@ -339,7 +339,7 @@ export function StepSmsProvider({
 
         {/* Per-provider credential fields */}
         {choice === 'bizarresms' && (
-          <div className="rounded-xl border border-primary-300 bg-primary-50 p-4 text-sm text-primary-900 dark:border-primary-500/30 dark:bg-primary-900/20 dark:text-primary-200">
+          <div className="rounded-xl border border-primary-300 bg-primary-50 p-4 text-sm text-on-primary dark:border-primary-500/30 dark:bg-primary-900/20 dark:text-primary-200">
             <p className="font-semibold">No credentials needed.</p>
             <p className="mt-1 text-xs leading-relaxed">
               BizarreSMS routes through your hosted plan's SMS allotment.
@@ -481,7 +481,7 @@ export function StepSmsProvider({
               type="button"
               onClick={onNext}
               disabled={!canContinue}
-              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

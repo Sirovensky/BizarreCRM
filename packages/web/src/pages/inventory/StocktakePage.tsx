@@ -364,7 +364,7 @@ export function StocktakePage() {
         </div>
         <button
           onClick={() => setShowNew(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" /> New Stocktake
         </button>
@@ -401,7 +401,7 @@ export function StocktakePage() {
             <button
               onClick={() => createMut.mutate({ name: newName, location: newLocation, notes: newNotes || undefined })}
               disabled={!newName.trim() || createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Start counting
             </button>
@@ -470,7 +470,7 @@ export function StocktakePage() {
                   <button
                     type="button"
                     onClick={() => setShowNew(true)}
-                    className="mt-3 inline-flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-primary-950 hover:bg-primary-700"
+                    className="mt-3 inline-flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-semibold text-on-primary hover:bg-primary-700"
                   >
                     Open your first stocktake
                   </button>
@@ -638,7 +638,7 @@ export function StocktakePage() {
                       />
                       <button
                         type="submit"
-                        className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950"
+                        className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary"
                       >
                         Count
                       </button>

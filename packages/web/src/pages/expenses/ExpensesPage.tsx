@@ -222,7 +222,7 @@ export function ExpensesPage() {
         </div>
         <button
           onClick={() => { setEditingId(null); setForm({ category: 'Other', amount: '', description: '', date: localToday() }); setReceiptFile(null); if (receiptInputRef.current) receiptInputRef.current.value = ''; setShowAdd(true); }}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> Add Expense
         </button>
@@ -360,7 +360,7 @@ export function ExpensesPage() {
           <div className="flex gap-2 mt-4 justify-end">
             <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); setReceiptFile(null); if (receiptInputRef.current) receiptInputRef.current.value = ''; }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
             <button type="button" onClick={handleSubmit} disabled={createMut.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-on-primary rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
               {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
               {editingId ? 'Update' : 'Add Expense'}
             </button>

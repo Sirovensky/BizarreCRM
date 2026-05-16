@@ -85,7 +85,7 @@ export function WizardBreadcrumb(props: WizardBreadcrumbProps): JSX.Element {
         <li className="inline-flex">
           <span
             aria-current="step"
-            className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3.5 py-1 text-[14px] font-bold text-primary-950"
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary-500 px-3.5 py-1 text-[14px] font-bold text-on-primary"
           >
             {resolvedCurrent}
           </span>

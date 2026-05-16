@@ -10,11 +10,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Compass,
   CreditCard,
   Edit3,
   FileText,
   Gift,
   History,
+  Loader2,
   Lock,
   Mail,
   MessageSquare,
@@ -31,10 +33,13 @@ import {
   Search,
   ShoppingCart,
   Smartphone,
+  SlidersHorizontal,
   Star,
   Tag,
+  Ticket as TicketIcon,
   Trash2,
   UserPlus,
+  Users,
   Wrench,
   X,
 } from 'lucide-react';
@@ -45,8 +50,10 @@ import {
   blockchypApi,
   customerApi,
   inventoryApi,
+  invoiceApi,
   leadApi,
   posApi,
+  searchApi,
   settingsApi,
   ticketApi,
 } from '@/api/endpoints';
@@ -56,6 +63,7 @@ import { cn } from '@/utils/cn';
 import { formatCurrency, formatDateTime, formatTime, generateIdempotencyKey, toLocalDateString } from '@/utils/format';
 import { stripPhone, formatPhoneAsYouType } from '@/utils/phoneFormat';
 import { PinModal } from '@/components/shared/PinModal';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useSettings } from '@/hooks/useSettings';
 import { useAuthStore } from '@/stores/authStore';
 import { computePosTotals } from './totals';
@@ -410,7 +418,7 @@ const CATALOG_FILTERS = ['All', 'Phones', 'Accessories', 'Repairs', 'Trade-in', 
 const buttonBase =
   'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50';
 const primaryButton =
-  `${buttonBase} bg-primary-500 text-on-primary shadow-sm hover:bg-primary-400 dark:bg-primary-500 dark:text-primary-950`;
+  `${buttonBase} bg-primary-500 text-on-primary shadow-sm hover:bg-primary-400 dark:bg-primary-500 dark:text-on-primary`;
 const secondaryButton =
   `${buttonBase} border border-surface-200 bg-white text-surface-800 hover:bg-surface-100 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:bg-surface-700`;
 const ghostButton =
@@ -526,14 +534,16 @@ function appointmentStatusLabel(appointment: PosAppointment, nowMs = Date.now())
 
 function isReadyPickupStatus(statusName: string | null | undefined): boolean {
   const status = (statusName ?? '').toLowerCase();
+  // STRICT: only true "hand it to the customer" states count. Anything QC-
+  // adjacent (qc pending, qc passed, repaired-qc) stays in the In-Progress
+  // bucket because the cashier shouldn't be offered to hand a device the
+  // tech hasn't fully signed off on. Was over-broad — included "qc passed"
+  // + "repaired - qc" which surfaced mid-QC repairs under Ready-for-pickup.
   return [
     'ready for pickup',
     'ready to pick',
     'ready for collection',
     'waiting for payment',
-    'qc passed',
-    'repaired - qc',
-    'repaired - waiting',
   ].some((keyword) => status.includes(keyword));
 }
 
@@ -729,6 +739,15 @@ function Modal({
   // makes Tab order start over and breaks keyboard flow.
   const triggerRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Mirror onClose into a ref so the mount-only effect below always sees
+  // the latest handler. Previously the effect listed `onClose` in its deps,
+  // which meant every parent re-render (e.g. each keystroke in a controlled
+  // input child) re-ran the effect and `dialogRef.focus()` stole focus from
+  // the active input on every character typed. Bug reproduced in the
+  // "Add part to repair" modal: typing in the name field bounced focus to
+  // the dialog wrapper on every keystroke.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
     triggerRef.current = (document.activeElement as HTMLElement) ?? null;
     // Land focus on the dialog itself; the dialog's tabIndex makes it the
@@ -737,7 +756,7 @@ function Modal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
     };
     document.addEventListener('keydown', onKey);
@@ -749,7 +768,7 @@ function Modal({
         try { el.focus({ preventScroll: true }); } catch { /* noop */ }
       }
     };
-  }, [onClose]);
+  }, []);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
       <div
@@ -919,6 +938,17 @@ export function UnifiedPosPage() {
   const currentUserRole = useAuthStore((s) => s.user?.role) ?? '';
   const cashierCanApplyDiscount = currentUserRole === 'admin' || currentUserRole === 'manager';
   const [lineEditing, setLineEditing] = useState<CartItem | null>(null);
+  // Inline confirm dialog state — replaces window.confirm() prompts so
+  // close-tab / discard-intake / drop-held-cart reads as part of the app
+  // instead of the OS chrome. Single slot serves all three call sites.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    danger?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [discountDraft, setDiscountDraft] = useState('');
   const [discountReasonDraft, setDiscountReasonDraft] = useState('cashier adjustment');
@@ -1024,11 +1054,17 @@ export function UnifiedPosPage() {
   // Debounce the search term so each keystroke doesn't fire a fresh request
   // (and flip `isFetching` → spinner → header reflow). 180 ms feels snappy
   // without flooding the API on long names.
+  // Topbar search input swaps target state between modes: gate uses
+  // `globalSearch` (customer-first), sale uses `productSearch` (catalog
+  // filter). Debounce against whichever is active so the unified-search
+  // query fires consistently from either mode and finds tickets / settings
+  // / page jumps regardless of where the cashier is.
+  const activeTopbarSearch = mode === 'gate' ? globalSearch : productSearch;
   const [debouncedSearch, setDebouncedSearch] = useState('');
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(globalSearch.trim()), 180);
+    const t = setTimeout(() => setDebouncedSearch(activeTopbarSearch.trim()), 180);
     return () => clearTimeout(t);
-  }, [globalSearch]);
+  }, [activeTopbarSearch]);
 
   const customerSearch = useQuery({
     queryKey: ['pos-customer-search', debouncedSearch],
@@ -1058,6 +1094,41 @@ export function UnifiedPosPage() {
       group_auto_apply: item.group_auto_apply,
     }));
   }, [customerSearch.data]);
+
+  // Unified global search — same backend that powers Cmd+K. Layered on top
+  // of the customer-only search so the POS dropdown can offer ticket /
+  // invoice / inventory / settings hits as a secondary section beside the
+  // existing customer matches. POS-actionable hits (customer, inventory)
+  // are surfaced in the top "Add to sale" group with inline add behaviour;
+  // navigation hits (ticket, invoice, settings) go in the bottom group and
+  // route the cashier to the relevant detail page.
+  const unifiedSearchQuery = useQuery({
+    queryKey: ['pos-unified-search', debouncedSearch],
+    queryFn: ({ signal }) => searchApi.global(debouncedSearch, { signal }),
+    // Fire in gate AND sale modes. Gate dropdown surfaces customer + inventory
+    // + nav hits; sale-mode strip surfaces nav hits (tickets, settings, pages)
+    // so the cashier can type "dark mode" mid-checkout to jump to the theme
+    // setting without losing their cart.
+    enabled: debouncedSearch.length >= 2 && (mode === 'gate' || mode === 'sale'),
+    staleTime: 15_000,
+  });
+
+  const unifiedResults = useMemo(() => {
+    const payload = unifiedSearchQuery.data?.data?.data as
+      | {
+          tickets?: Array<{ id: number; display: string; subtitle?: string }>;
+          inventory?: Array<{ id: number; display: string; subtitle?: string }>;
+          invoices?: Array<{ id: number; display: string; subtitle?: string }>;
+          settings?: Array<{ id: number; display: string; subtitle?: string; pagePath?: string }>;
+        }
+      | undefined;
+    return {
+      inventory: (payload?.inventory ?? []).slice(0, 5),
+      tickets: (payload?.tickets ?? []).slice(0, 5),
+      invoices: (payload?.invoices ?? []).slice(0, 4),
+      settings: (payload?.settings ?? []).slice(0, 4),
+    };
+  }, [unifiedSearchQuery.data]);
 
   const todayRange = useMemo(() => {
     const today = new Date();
@@ -1415,6 +1486,55 @@ export function UnifiedPosPage() {
     }, { stockCap });
     setMode('sale');
   }, [addProduct]);
+
+  // Inventory click from the unified search dropdown — global /search only
+  // returns id + display + subtitle, so we fetch the full inventory row
+  // before delegating to addProductToCart (which needs price + stock).
+  const [addingInventoryId, setAddingInventoryId] = useState<number | null>(null);
+  const addInventoryFromSearch = useCallback(async (id: number) => {
+    if (addingInventoryId !== null) return;
+    setAddingInventoryId(id);
+    try {
+      const res = await inventoryApi.get(id);
+      const item = (res.data as { data?: ProductSearchItem })?.data;
+      if (!item || typeof item.id !== 'number') {
+        toast.error('Could not load item');
+        return;
+      }
+      addProductToCart(item);
+      setGlobalSearch('');
+    } catch (err) {
+      console.error('[POS unified search] inventory add failed', err);
+      toast.error('Could not add item to sale');
+    } finally {
+      setAddingInventoryId(null);
+    }
+  }, [addProductToCart, addingInventoryId, setGlobalSearch]);
+
+  // Generic navigate handler for non-actionable hits (tickets, invoices,
+  // settings). Clears the search input so returning to POS reopens on a
+  // fresh gate, not the previous dropdown state.
+  const navigateUnifiedResult = useCallback(
+    (hit: { id: number; type: 'ticket' | 'invoice' | 'setting' | 'inventory'; pagePath?: string }) => {
+      setGlobalSearch('');
+      switch (hit.type) {
+        case 'ticket':
+          navigate(`/tickets/${hit.id}`);
+          break;
+        case 'invoice':
+          navigate(`/invoices/${hit.id}`);
+          break;
+        case 'inventory':
+          navigate(`/inventory/${hit.id}`);
+          break;
+        case 'setting':
+          if (hit.pagePath) navigate(hit.pagePath);
+          else navigate('/settings');
+          break;
+      }
+    },
+    [navigate, setGlobalSearch],
+  );
 
   useEffect(() => {
     const handleScanner = (event: KeyboardEvent) => {
@@ -2480,7 +2600,7 @@ export function UnifiedPosPage() {
                             : 'Browse the catalog or scan to start adding items';
 
   return (
-    <div className="-m-6 mx-auto flex h-[calc(100vh-4rem-var(--dev-banner-h,0px))] min-h-[720px] w-full max-w-[1440px] flex-col overflow-hidden bg-surface-50 dark:bg-surface-950 text-surface-900 dark:text-surface-50">
+    <div className="-m-6 flex h-[calc(100vh-4rem-var(--dev-banner-h,0px))] min-h-[720px] w-full flex-col overflow-hidden bg-surface-100 dark:bg-surface-900 text-surface-900 dark:text-surface-50">
       <PosTabStripShell headerSlot={headerSlot}>
         {/* Chrome-style tab order: each held cart keeps its slot for as long
             as it lives. Driven by client-side `tabOrder` (set up above) so
@@ -2551,7 +2671,7 @@ export function UnifiedPosPage() {
               className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 pr-1"
               title={`Resume ${row.label || `cart #${row.id}`}`}
             >
-              <span className="grid h-3 w-3 shrink-0 place-items-center rounded-[3px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
+              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] bg-primary-500 dark:bg-primary-500 text-[9px] font-black leading-none text-on-primary">B</span>
               <span className="truncate">#{row.id} · {row.label || (row.owner_first_name ? `${row.owner_first_name}${row.owner_last_name ? ' ' + row.owner_last_name[0] + '.' : ''}` : 'held')} (held)</span>
             </button>
             {/* Close X — discards held cart server-side. Stop propagation so
@@ -2562,9 +2682,13 @@ export function UnifiedPosPage() {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (window.confirm(`Close held cart #${row.id}? This drops the cart contents.`)) {
-                  discardHeldMutation.mutate(row.id);
-                }
+                setPendingConfirm({
+                  title: `Close held cart #${row.id}?`,
+                  message: 'The parked cart contents will be dropped. This cannot be undone.',
+                  confirmLabel: 'Close cart',
+                  danger: true,
+                  onConfirm: () => discardHeldMutation.mutate(row.id),
+                });
               }}
               className="mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-surface-500 opacity-0 transition group-hover:opacity-100 focus:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-700"
               title="Close tab"
@@ -2595,7 +2719,7 @@ export function UnifiedPosPage() {
             className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 pr-1 text-xs font-semibold"
             title={`POS · ${title}`}
           >
-            <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[8px] font-black text-on-primary">B</span>
+            <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] bg-primary-500 dark:bg-primary-500 text-[9px] font-black leading-none text-on-primary">B</span>
             <span className="truncate">POS · {title}</span>
           </button>
           <button
@@ -2603,8 +2727,17 @@ export function UnifiedPosPage() {
             onClick={(e) => {
               e.stopPropagation();
               const hasWork = cartItems.length > 0 || customer || walkInActive;
-              if (hasWork && !window.confirm('Close this tab? In-flight cart + customer will be dropped.')) return;
-              startNewSale();
+              if (!hasWork) {
+                startNewSale();
+                return;
+              }
+              setPendingConfirm({
+                title: 'Close this tab?',
+                message: 'In-flight cart + customer will be dropped. Use Hold (⌘H) instead if you want to park the sale.',
+                confirmLabel: 'Close tab',
+                danger: true,
+                onConfirm: startNewSale,
+              });
             }}
             className="mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-surface-500 opacity-0 transition group-hover:opacity-100 focus:opacity-100 hover:bg-surface-200 dark:hover:bg-surface-700"
             title="Close tab"
@@ -2635,22 +2768,33 @@ export function UnifiedPosPage() {
                 || !!repairDraft.imei
                 || !!repairDraft.serial
             );
+            const spawnTab = (): void => {
+              if (cartItems.length > 0 || customer) {
+                holdMutation.mutate(undefined);
+              } else {
+                // Empty current tab → fire a "blank tab" hold so the now-
+                // active slot becomes a held placeholder, then snap home for
+                // the new slot. The hold mutation accepts an empty cart_json
+                // (server only requires it to be valid JSON) so this is just
+                // a stub row in held_carts; the cashier can discard it later
+                // if they don't need it.
+                spawnBlankTab();
+              }
+            };
             if (repairDirty) {
-              const ok = window.confirm('Discard this in-progress repair intake to start a new sale? The cart side will still be parked, but the intake step picks will be lost.');
-              if (!ok) return;
-              setRepairDraft(DEFAULT_REPAIR_DRAFT);
+              setPendingConfirm({
+                title: 'Discard in-progress repair intake?',
+                message: 'Cart side stays parked, but the device + problem picks you just entered will be lost.',
+                confirmLabel: 'Discard intake',
+                danger: true,
+                onConfirm: () => {
+                  setRepairDraft(DEFAULT_REPAIR_DRAFT);
+                  spawnTab();
+                },
+              });
+              return;
             }
-            if (cartItems.length > 0 || customer) {
-              holdMutation.mutate(undefined);
-            } else {
-              // Empty current tab → fire a "blank tab" hold so the now-
-              // active slot becomes a held placeholder, then snap home for
-              // the new slot. The hold mutation accepts an empty cart_json
-              // (server only requires it to be valid JSON) so this is just
-              // a stub row in held_carts; the cashier can discard it later
-              // if they don't need it.
-              spawnBlankTab();
-            }
+            spawnTab();
           }}
           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-t-lg text-surface-500 hover:bg-surface-100/60 dark:hover:bg-surface-800/60 dark:text-surface-400 transition-colors"
           title="New sale (⌘N)"
@@ -2664,7 +2808,7 @@ export function UnifiedPosPage() {
           height on the right so the cart panel reads as a continuous side
           column from the very top of the POS area instead of starting below
           the topbar's bottom edge. */}
-      <div className="flex-1 grid h-full grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="flex-1 grid h-full grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-h-0 flex-col overflow-hidden">
       <header className={cn(
         // Match AppShell `<Header>` padding (`px-4 sm:px-6`) so the in-body
@@ -2732,7 +2876,11 @@ export function UnifiedPosPage() {
             type="button"
             onClick={() => {
               setRepairDraft(DEFAULT_REPAIR_DRAFT);
-              setMode(cartItems.length > 0 || customer ? 'sale' : 'gate');
+              // walkInActive counts as "sale active" — without it, cancelling
+              // intake from a walk-in sale routed back to the gate AND the
+              // gate→sale auto-effect (line ~1395) flipped right back, leaving
+              // the catalog query in a half-armed state with a blank grid.
+              setMode(cartItems.length > 0 || customer || walkInActive ? 'sale' : 'gate');
             }}
             className="hidden sm:inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 text-xs font-semibold text-surface-700 dark:text-surface-200 hover:border-rose-500 hover:text-rose-600 dark:hover:border-rose-500/60"
             title="Cancel repair intake"
@@ -2741,9 +2889,9 @@ export function UnifiedPosPage() {
             Cancel intake
           </button>
         )}
-        <div className="min-w-[180px]">
-          <div className="text-[15px] font-bold text-surface-900 dark:text-surface-100">{title}</div>
-          {subtitle && <div className="mt-0.5 text-[11.5px] text-surface-900 dark:text-surface-500">{subtitle}</div>}
+        <div className="min-w-0 max-w-[260px] shrink">
+          <div className="truncate text-[15px] font-bold text-surface-900 dark:text-surface-100" title={title}>{title}</div>
+          {subtitle && <div className="mt-0.5 truncate text-[11.5px] text-surface-900 dark:text-surface-500" title={subtitle}>{subtitle}</div>}
         </div>
         <div className={cn(
           'relative min-w-[260px] flex-1',
@@ -2879,6 +3027,14 @@ export function UnifiedPosPage() {
                   inputRef={searchInputRef}
                   results={customerResults}
                   loading={customerSearch.isFetching}
+                  unifiedInventory={unifiedResults.inventory}
+                  unifiedTickets={unifiedResults.tickets}
+                  unifiedInvoices={unifiedResults.invoices}
+                  unifiedSettings={unifiedResults.settings}
+                  unifiedLoading={unifiedSearchQuery.isFetching}
+                  addingInventoryId={addingInventoryId}
+                  onAddInventoryItem={addInventoryFromSearch}
+                  onNavigateHit={navigateUnifiedResult}
                   appointments={todaysAppointments}
                   appointmentsLoading={appointmentsQuery.isLoading}
                   onSelectAppointment={selectAppointment}
@@ -2932,6 +3088,11 @@ export function UnifiedPosPage() {
                   }}
                   onStartRepair={() => setMode('repair-category')}
                   onTender={() => setMode('tender-method')}
+                  unifiedTickets={unifiedResults.tickets}
+                  unifiedInvoices={unifiedResults.invoices}
+                  unifiedSettings={unifiedResults.settings}
+                  unifiedLoading={unifiedSearchQuery.isFetching}
+                  onNavigateHit={navigateUnifiedResult}
                 />
               )}
 
@@ -3092,6 +3253,7 @@ export function UnifiedPosPage() {
           totals={totals}
           taxRate={taxState.rate}
           paidLegs={paidLegs}
+          sourceTicketId={sourceTicketId}
           onSwapCustomer={() => {
             // If we're on a walk-in, the user expects to ATTACH a real
             // customer (not nuke the cart and bounce home). Open the inline
@@ -3184,6 +3346,19 @@ export function UnifiedPosPage() {
           </div>
         </Modal>
       )}
+      <ConfirmDialog
+        open={pendingConfirm !== null}
+        title={pendingConfirm?.title ?? ''}
+        message={pendingConfirm?.message ?? ''}
+        confirmLabel={pendingConfirm?.confirmLabel ?? 'Confirm'}
+        cancelLabel={pendingConfirm?.cancelLabel ?? 'Cancel'}
+        danger={pendingConfirm?.danger ?? false}
+        onConfirm={() => {
+          pendingConfirm?.onConfirm();
+          setPendingConfirm(null);
+        }}
+        onCancel={() => setPendingConfirm(null)}
+      />
       {pendingDiscount && (
         <PinModal
           title={`Manager PIN — discount ${formatCurrency(pendingDiscount.amount)} (>25% of subtotal)`}
@@ -3222,11 +3397,26 @@ export function UnifiedPosPage() {
   );
 }
 
+interface UnifiedHit {
+  id: number;
+  display: string;
+  subtitle?: string;
+  pagePath?: string;
+}
+
 function CustomerGate({
   query,
   setQuery,
   results,
   loading,
+  unifiedInventory,
+  unifiedTickets,
+  unifiedInvoices,
+  unifiedSettings,
+  unifiedLoading,
+  addingInventoryId,
+  onAddInventoryItem,
+  onNavigateHit,
   appointments,
   appointmentsLoading,
   onSelectAppointment,
@@ -3255,6 +3445,14 @@ function CustomerGate({
   inputRef: React.RefObject<HTMLInputElement | null>;
   results: CustomerResult[];
   loading: boolean;
+  unifiedInventory: UnifiedHit[];
+  unifiedTickets: UnifiedHit[];
+  unifiedInvoices: UnifiedHit[];
+  unifiedSettings: UnifiedHit[];
+  unifiedLoading: boolean;
+  addingInventoryId: number | null;
+  onAddInventoryItem: (id: number) => void;
+  onNavigateHit: (hit: { id: number; type: 'ticket' | 'invoice' | 'setting' | 'inventory'; pagePath?: string }) => void;
   appointments: PosAppointment[];
   appointmentsLoading: boolean;
   onSelectAppointment: (appointment: PosAppointment) => void;
@@ -3339,58 +3537,192 @@ function CustomerGate({
             className="absolute inset-x-0 top-0 bottom-0 z-10 cursor-default bg-black/40 backdrop-blur-sm dark:bg-black/60"
           />
           <section className="relative z-20 mx-auto mt-3 w-full max-w-3xl px-6">
+            {(() => {
+              // Group hits into two visual buckets:
+              //   1) "Add to sale" — customer + inventory matches. Click adds
+              //      the entry to the active cart inline (no nav, no reflow).
+              //   2) "Across the shop" — ticket / invoice / settings hits.
+              //      Click navigates the cashier to the detail page. Cart is
+              //      preserved (held via the store).
+              // No literal "POS RELATED ITEMS" label per UX request — subtle
+              // mono captions + a horizontal rule mark the boundary instead.
+              const posTotal = results.length + unifiedInventory.length;
+              const generalTotal =
+                unifiedTickets.length + unifiedInvoices.length + unifiedSettings.length;
+              const totalHits = posTotal + generalTotal;
+              const anyLoading = loading || unifiedLoading;
+              return (
             <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 shadow-2xl">
               <div className="flex items-center justify-between gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-surface-500">
-                <span>Customer matches</span>
+                <span>Search</span>
                 {/* Fixed-width status slot so the heading row never reflows
                     between "searching" and the result count. Spinner stays
                     in the same position; count slides in once it lands. */}
                 <span className="inline-flex h-4 min-w-[3ch] items-center justify-end tabular-nums text-surface-400">
-                  {loading
+                  {anyLoading
                     ? <span aria-label="Searching" className="inline-block h-3 w-3 motion-safe:animate-spin rounded-full border-2 border-surface-300 border-t-primary-500" />
-                    : results.length > 0 ? results.length : ''}
+                    : totalHits > 0 ? totalHits : ''}
                 </span>
               </div>
               {/* Reserve a min-height so the dropdown body doesn't pop on
-                  the first keystroke when results haven't landed yet. */}
-              <div className="min-h-[280px]">
-                {loading && results.length === 0 && (
+                  the first keystroke when results haven't landed yet.
+                  Capped at 65vh with internal scroll so a flood of hits
+                  never pushes the footer past the viewport. */}
+              <div className="min-h-[280px] max-h-[65vh] overflow-y-auto">
+                {anyLoading && totalHits === 0 && (
                   <div className="space-y-2 p-3">
                     {[0, 1, 2].map((i) => (
                       <div key={i} aria-hidden="true" className="h-14 motion-safe:animate-pulse rounded-lg bg-surface-100 dark:bg-surface-900" />
                     ))}
                   </div>
                 )}
-                {!loading && results.length === 0 && (
+                {!anyLoading && totalHits === 0 && (
                   <div className="p-5 text-sm text-surface-700 dark:text-surface-400">
-                    No matching customers. Create a profile or continue as a walk-in.
+                    No matches. Create a customer, scan an item, or continue as a walk-in.
                   </div>
                 )}
-                {results.map((customer) => (
-                <button
-                  key={customer.id}
-                  type="button"
-                  onClick={() => onSelectCustomer(customer)}
-                  className="flex w-full items-center gap-3 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 p-4 text-left last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
-                >
-                  <div className="grid h-10 w-10 place-items-center rounded-full bg-cyan-500 font-bold text-cyan-950 dark:bg-cyan-400 dark:text-cyan-950">
-                    {initials(getCustomerName(customer))}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-surface-900 dark:text-surface-50">{getCustomerName(customer)}</div>
-                    <div className="truncate font-mono text-xs text-surface-500">{customer.phone || customer.mobile || customer.email || 'No contact saved'}</div>
-                  </div>
-                  {customer.group_name && (
-                    <Pill tone="vip">
-                      {customer.group_name}
-                      {typeof customer.group_discount_pct === 'number' && customer.group_discount_pct > 0 && (
-                        <span className="ml-1 opacity-80">· {customer.group_discount_pct}%</span>
-                      )}
-                    </Pill>
-                  )}
-                  <ChevronRight className="h-4 w-4 text-surface-400" />
-                </button>
-                ))}
+
+                {posTotal > 0 && (
+                  <>
+                    <div className="px-4 pt-3 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">
+                      Add to sale
+                    </div>
+                    {results.map((customer) => (
+                      <button
+                        key={`cust-${customer.id}`}
+                        type="button"
+                        onClick={() => onSelectCustomer(customer)}
+                        className="flex w-full items-center gap-3 border-b border-surface-100 dark:border-surface-700 bg-white dark:bg-surface-800 p-3 text-left last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
+                      >
+                        <div className="grid h-9 w-9 place-items-center rounded-full bg-cyan-500 font-bold text-cyan-950 dark:bg-cyan-400 dark:text-cyan-950">
+                          {initials(getCustomerName(customer))}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-surface-900 dark:text-surface-50">{getCustomerName(customer)}</div>
+                          <div className="truncate font-mono text-xs text-surface-500">{customer.phone || customer.mobile || customer.email || 'Customer'}</div>
+                        </div>
+                        {customer.group_name && (
+                          <Pill tone="vip">
+                            {customer.group_name}
+                            {typeof customer.group_discount_pct === 'number' && customer.group_discount_pct > 0 && (
+                              <span className="ml-1 opacity-80">· {customer.group_discount_pct}%</span>
+                            )}
+                          </Pill>
+                        )}
+                        <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-surface-400">
+                          <Users className="h-3 w-3" /> Customer
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-surface-400" />
+                      </button>
+                    ))}
+                    {unifiedInventory.map((item) => {
+                      const busy = addingInventoryId === item.id;
+                      return (
+                        <button
+                          key={`inv-${item.id}`}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onAddInventoryItem(item.id)}
+                          className="flex w-full items-center gap-3 border-b border-surface-100 dark:border-surface-700 bg-white dark:bg-surface-800 p-3 text-left last:border-b-0 hover:bg-surface-100 disabled:opacity-60 disabled:cursor-not-allowed dark:hover:bg-surface-700"
+                        >
+                          <div className="grid h-9 w-9 place-items-center rounded-full bg-amber-500/15 text-amber-500">
+                            <Package className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-semibold text-surface-900 dark:text-surface-50">{item.display}</div>
+                            {item.subtitle && (
+                              <div className="truncate font-mono text-xs text-surface-500">{item.subtitle}</div>
+                            )}
+                          </div>
+                          <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-surface-400">
+                            <Package className="h-3 w-3" /> Item
+                          </span>
+                          {busy
+                            ? <Loader2 className="h-4 w-4 motion-safe:animate-spin text-surface-400" />
+                            : <Plus className="h-4 w-4 text-surface-400" />}
+                        </button>
+                      );
+                    })}
+                  </>
+                )}
+
+                {posTotal > 0 && generalTotal > 0 && (
+                  <div className="border-t border-surface-200 dark:border-surface-700" aria-hidden="true" />
+                )}
+
+                {generalTotal > 0 && (
+                  <>
+                    <div className="px-4 pt-3 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">
+                      Across the shop
+                    </div>
+                    {unifiedTickets.map((hit) => (
+                      <button
+                        key={`tkt-${hit.id}`}
+                        type="button"
+                        onClick={() => onNavigateHit({ id: hit.id, type: 'ticket' })}
+                        className="flex w-full items-center gap-3 border-b border-surface-100 dark:border-surface-700 bg-white dark:bg-surface-800 p-3 text-left last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
+                      >
+                        <div className="grid h-9 w-9 place-items-center rounded-full bg-blue-500/15 text-blue-500">
+                          <TicketIcon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-surface-900 dark:text-surface-50">{hit.display}</div>
+                          {hit.subtitle && (
+                            <div className="truncate font-mono text-xs text-surface-500">{hit.subtitle}</div>
+                          )}
+                        </div>
+                        <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-surface-400">
+                          <TicketIcon className="h-3 w-3" /> Ticket
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-surface-400" />
+                      </button>
+                    ))}
+                    {unifiedInvoices.map((hit) => (
+                      <button
+                        key={`inv-link-${hit.id}`}
+                        type="button"
+                        onClick={() => onNavigateHit({ id: hit.id, type: 'invoice' })}
+                        className="flex w-full items-center gap-3 border-b border-surface-100 dark:border-surface-700 bg-white dark:bg-surface-800 p-3 text-left last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
+                      >
+                        <div className="grid h-9 w-9 place-items-center rounded-full bg-purple-500/15 text-purple-500">
+                          <FileText className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-surface-900 dark:text-surface-50">{hit.display}</div>
+                          {hit.subtitle && (
+                            <div className="truncate font-mono text-xs text-surface-500">{hit.subtitle}</div>
+                          )}
+                        </div>
+                        <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-surface-400">
+                          <FileText className="h-3 w-3" /> Invoice
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-surface-400" />
+                      </button>
+                    ))}
+                    {unifiedSettings.map((hit) => (
+                      <button
+                        key={`set-${hit.id}-${hit.pagePath ?? ''}`}
+                        type="button"
+                        onClick={() => onNavigateHit({ id: hit.id, type: 'setting', pagePath: hit.pagePath })}
+                        className="flex w-full items-center gap-3 border-b border-surface-100 dark:border-surface-700 bg-white dark:bg-surface-800 p-3 text-left last:border-b-0 hover:bg-surface-100 dark:hover:bg-surface-700"
+                      >
+                        <div className="grid h-9 w-9 place-items-center rounded-full bg-sky-500/15 text-sky-500">
+                          <SlidersHorizontal className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-semibold text-surface-900 dark:text-surface-50">{hit.display}</div>
+                          {hit.subtitle && (
+                            <div className="truncate font-mono text-xs text-surface-500">{hit.subtitle}</div>
+                          )}
+                        </div>
+                        <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-surface-400">
+                          <Compass className="h-3 w-3" /> Setting
+                        </span>
+                        <ChevronRight className="h-4 w-4 text-surface-400" />
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
               <div className="flex gap-2 border-t border-surface-200 dark:border-surface-700 p-3">
                 <button type="button" onClick={onNewCustomer} className="flex-1 rounded-lg bg-primary-500 dark:bg-primary-500 px-4 py-2 text-sm font-bold text-on-primary">
@@ -3401,6 +3733,8 @@ function CustomerGate({
                 </button>
               </div>
             </div>
+              );
+            })()}
           </section>
         </>
       )}
@@ -3412,29 +3746,29 @@ function CustomerGate({
           schedule item; remaining bookings live under "View calendar"
           rather than crowding the gate. */}
       {!createCustomerOpen && (
-        <section className="px-6 pt-5 pb-5">
-          {/* Gate hero — three regions in one band:
-                LEFT (2fr)  — actionable appointment timeline. Today's first
+        <section className="px-6 pt-3 pb-3">
+          {/* Gate hero — two regions in one band:
+                LEFT (1fr)  — actionable appointment timeline. Today's first
                               three remaining appointments laid out as a
                               vertical schedule strip; tappable rows route to
-                              each. Past-due rows get a rose accent so the
-                              cashier sees what's overdue at a glance.
-                CENTER (1fr) — quick stats column (remaining-today, total-today,
-                              ready-pickup count). KPI tiles, dark fills.
+                              each. Past-due rows get a rose accent.
                 RIGHT (auto) — primary "+ New customer" + ghost Walk-in.
-              Replaces the previous "ALL CLEAR" mega-headline that consumed
-              the whole hero with no signal when the day was busy. */}
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_280px]">
+              KPI tiles ("Ready for pickup", "In progress") were dropped per
+              UX feedback: the same counts already live in the Open-tickets
+              subheaders below ("Ready for pickup · N", "In progress · N"),
+              and the cramped 3-column grid squeezed the timeline into a
+              near-unreadable column on common laptop widths. */}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
             {/* Appointment timeline */}
-            <div className="rounded-2xl border-2 border-[#fdeed0] bg-surface-950 p-5 text-surface-50">
+            <div className="rounded-2xl border-2 border-primary-300 bg-white p-5 text-surface-900 shadow-sm dark:border-[#fdeed0] dark:bg-surface-950 dark:text-surface-50 dark:shadow-none">
               <div className="mb-3 flex items-center justify-between">
-                <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#fdeed0]/80">
+                <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-surface-500 dark:text-[#fdeed0]/80">
                   {appointmentsLoading ? 'Loading…' : `Today · ${remainingAppointments.length} remaining`}
                 </div>
                 <button
                   type="button"
                   onClick={onViewCalendar}
-                  className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#fdeed0]/70 hover:text-[#fdeed0]"
+                  className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-primary-700 hover:text-primary-800 dark:text-[#fdeed0]/70 dark:hover:text-[#fdeed0]"
                 >
                   Calendar →
                 </button>
@@ -3442,13 +3776,13 @@ function CustomerGate({
 
               {appointmentsLoading ? (
                 <div className="space-y-2">
-                  <div className="h-12 motion-safe:animate-pulse rounded-lg bg-surface-900" />
-                  <div className="h-12 motion-safe:animate-pulse rounded-lg bg-surface-900" />
+                  <div className="h-12 motion-safe:animate-pulse rounded-lg bg-surface-100 dark:bg-surface-900" />
+                  <div className="h-12 motion-safe:animate-pulse rounded-lg bg-surface-100 dark:bg-surface-900" />
                 </div>
               ) : remainingAppointments.length === 0 ? (
                 <div className="flex h-[152px] flex-col items-center justify-center gap-1 text-center">
-                  <div className="font-display text-2xl text-[#fdeed0]">All clear</div>
-                  <div className="text-sm text-surface-400">No upcoming bookings · walk-ins + pickups ready.</div>
+                  <div className="font-display text-2xl text-surface-900 dark:text-[#fdeed0]">All clear</div>
+                  <div className="text-sm text-surface-500 dark:text-surface-400">No upcoming bookings · walk-ins + pickups ready.</div>
                 </div>
               ) : (
                 <div className="space-y-1.5">
@@ -3470,20 +3804,22 @@ function CustomerGate({
                         onClick={() => onSelectAppointment(appointment)}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectAppointment(appointment); } }}
                         className={cn(
-                          'group flex w-full cursor-pointer items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-left transition hover:bg-surface-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#fdeed0]/40',
-                          isPast ? 'border-l-rose-500 bg-rose-500/5' : 'border-l-[#fdeed0] bg-surface-900/50',
+                          'group flex w-full cursor-pointer items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-left transition hover:bg-surface-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 dark:hover:bg-surface-900 dark:focus-visible:ring-[#fdeed0]/40',
+                          isPast
+                            ? 'border-l-rose-500 bg-rose-50 dark:bg-rose-500/5'
+                            : 'border-l-primary-300 bg-primary-50/60 dark:border-l-[#fdeed0] dark:bg-surface-900/50',
                         )}
                       >
-                        <div className={cn('w-16 shrink-0 font-mono text-sm', isPast ? 'text-rose-400' : 'text-[#fdeed0]')}>
+                        <div className={cn('w-16 shrink-0 font-mono text-sm', isPast ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-[#fdeed0]')}>
                           {formatTime(appointment.start_time)}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-semibold">{appointmentCustomerName(appointment)}</div>
                           {note && (
-                            <div className="truncate text-[11.5px] text-surface-400">{note}</div>
+                            <div className="truncate text-[11.5px] text-surface-500 dark:text-surface-400">{note}</div>
                           )}
                         </div>
-                        <span className={cn('shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase', isPast ? 'bg-rose-500/15 text-rose-300' : 'bg-[#fdeed0]/15 text-[#fdeed0]')}>
+                        <span className={cn('shrink-0 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase', isPast ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' : 'bg-primary-100 text-primary-700 dark:bg-[#fdeed0]/15 dark:text-[#fdeed0]')}>
                           {appointmentStatusLabel(appointment, nowMs)}
                         </span>
                         {/* Cancel X — hover-revealed so the row stays calm
@@ -3507,7 +3843,7 @@ function CustomerGate({
                     <button
                       type="button"
                       onClick={onViewCalendar}
-                      className="flex w-full items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs text-surface-400 hover:bg-surface-900 hover:text-surface-200"
+                      className="flex w-full items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs text-surface-500 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
                     >
                       + {remainingAppointments.length - 3} more · view all
                     </button>
@@ -3516,45 +3852,24 @@ function CustomerGate({
               )}
             </div>
 
-            {/* KPI strip — "Remaining today" was here too but the timeline
-                header already broadcasts that count, so it'd be the same
-                number twice. Pickup + open-tickets carry their own signal. */}
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-              <button
-                type="button"
-                onClick={onViewReadyPickup}
-                aria-label={`Ready for pickup · ${readyTotal} tickets · view active tickets`}
-                className="rounded-xl bg-surface-100 dark:bg-surface-900 p-3 text-left ring-1 ring-inset ring-surface-200 hover:ring-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:ring-surface-800 dark:hover:ring-primary-500/40"
-              >
-                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">Ready for pickup</div>
-                <div className="mt-1 font-display text-3xl text-surface-900 dark:text-surface-50">{readyTotal}</div>
-                <div className="text-[11px] text-surface-500">awaiting customer</div>
-              </button>
-              <button
-                type="button"
-                onClick={onViewReadyPickup}
-                aria-label={`In progress · ${otherTotal} tickets · view active tickets`}
-                className="rounded-xl bg-surface-100 dark:bg-surface-900 p-3 text-left ring-1 ring-inset ring-surface-200 hover:ring-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:ring-surface-800 dark:hover:ring-primary-500/40"
-              >
-                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">In progress</div>
-                <div className="mt-1 font-display text-3xl text-surface-900 dark:text-surface-50">{otherTotal}</div>
-                <div className="text-[11px] text-surface-500">on the bench</div>
-              </button>
-            </div>
-
-            {/* Primary actions */}
+            {/* Primary actions — second column of the 2-col hero grid.
+                Sits flush to the right of the appointment timeline so the
+                CTA reads as a paired action, not a stranded button under
+                the timeline. KPI tiles were dropped per UX direction: their
+                counts already live in the Open-tickets band's subheaders
+                ("Ready for pickup · N" + the "55 on the bench" footer). */}
             <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={onNewCustomer}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary-500 dark:bg-primary-500 px-6 py-5 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary-500 dark:bg-primary-500 px-6 py-3 text-[15px] font-bold text-on-primary shadow-lg shadow-black/20 hover:bg-primary-400 dark:hover:bg-primary-600"
               >
                 + New customer
               </button>
               <button
                 type="button"
                 onClick={onWalkIn}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-3 text-sm font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-surface-300 dark:border-surface-700 bg-white dark:bg-surface-800 px-6 py-2 text-sm font-semibold text-surface-700 dark:text-surface-200 hover:border-primary-500 dark:hover:border-primary-500/40"
               >
                 Walk-in · no profile
               </button>
@@ -3581,7 +3896,7 @@ function CustomerGate({
                since it's where the day's work actually lives.
           Both share the same row layout so the eye scans cleanly across
           the boundary. */}
-      <section className="px-6 pb-6 space-y-3">
+      <section className="px-6 pb-4 space-y-2">
         {/* Bare header — counts live in the section subheaders ("Ready for
             pickup · N", "In progress · N") + the KPI strip above, so the
             old "Current open tickets · 34 · 10 ready for pickup" was the
@@ -3599,8 +3914,12 @@ function CustomerGate({
         {/* Single combined list. Ready-for-pickup rows pinned at the top
             under their own subheader, then In-progress rows under theirs.
             One bordered container so the boundary feels like one list with
-            grouped sections rather than two separate cards. */}
-        <div className="overflow-hidden rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
+            grouped sections rather than two separate cards.
+            Capped at 55vh with internal scroll so the list adapts to short
+            screens — content always fits, scroll appears only when rows
+            exceed the budget. Rounded corners + overflow-y-auto clip
+            cleanly on scroll. */}
+        <div className="max-h-[55vh] overflow-y-auto rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800">
           {readyPickupLoading && (
             <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">Loading…</div>
           )}
@@ -3608,20 +3927,24 @@ function CustomerGate({
             <div className="px-4 py-5 text-sm text-surface-900 dark:text-surface-500">No open tickets right now.</div>
           )}
           {(() => {
-            // Cap each section so the gate doesn't become a 30-row scroll.
-            // Cashier wants a quick glance at the freshest items, then a
-            // single jump to the full active-tickets view if they need more.
-            const READY_PREVIEW_LIMIT = 3;
-            const OTHER_PREVIEW_LIMIT = 5;
+            // Gate scope per UX iteration: show Ready-for-pickup ONLY. The
+            // In-Progress band was removed — that's bench state, not gate
+            // state. Cashier sees what they hand to walk-ins; bench work
+            // lives on the Tickets page (linked via the footer CTA below).
+            //
+            // Ready rows drop the status pill entirely — the section header
+            // already says "Ready for pickup", so per-row repeats just ate
+            // height to no informational gain. Customer name leads; price
+            // and "Open →" anchor the right; progressLabel (e.g. "QC 8:00 PM"
+            // or "Ready 5:49 AM") sits between as a sub-tag.
+            const READY_PREVIEW_LIMIT = 5;
             const readyPreview = readyTickets.slice(0, READY_PREVIEW_LIMIT);
-            const otherPreview = otherTickets.slice(0, OTHER_PREVIEW_LIMIT);
             const readyHidden = Math.max(0, readyTotal - readyPreview.length);
-            const otherHidden = Math.max(0, otherTotal - otherPreview.length);
             return (
               <>
                 {readyPreview.length > 0 && (
                   <>
-                    <div className="bg-surface-50 dark:bg-surface-900 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-400 border-b border-surface-200 dark:border-surface-700">
+                    <div className="bg-surface-50 dark:bg-surface-900 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-500 dark:text-emerald-400 border-b border-surface-200 dark:border-surface-700">
                       Ready for pickup · {readyTotal}
                     </div>
                     {readyPreview.map((ticket) => (
@@ -3629,15 +3952,19 @@ function CustomerGate({
                         key={ticket.id}
                         type="button"
                         onClick={() => onOpenReadyPickup(ticket)}
-                        className="grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 border-b border-surface-200 dark:border-surface-700 px-4 py-2.5 text-left text-sm hover:bg-surface-100 dark:hover:bg-surface-700"
+                        className="grid w-full grid-cols-[minmax(4.5rem,6rem)_minmax(0,1fr)_max-content_max-content_max-content] items-center gap-x-3 border-l-2 border-l-emerald-500/70 border-b border-surface-200 px-4 py-2 text-left text-sm hover:bg-surface-100 dark:border-surface-700 dark:hover:bg-surface-700 xl:grid-cols-[minmax(4.5rem,6rem)_minmax(0,1.4fr)_minmax(0,1fr)_max-content_max-content_max-content]"
                       >
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-emerald-400">✓ ready</span>
-                        <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
-                        <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-rose-500">{ticket.customerGroup}</span> : null}</span>
-                        <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
-                        <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
-                        <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
-                        <span className="text-right text-xs font-semibold text-cyan-500 dark:text-cyan-400">Open →</span>
+                        <span className="truncate font-mono text-xs text-surface-500">#{ticket.order_id}</span>
+                        <span className="min-w-0 truncate">
+                          <span className="font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}</span>
+                          {ticket.customerGroup && (
+                            <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-rose-500">{ticket.customerGroup}</span>
+                          )}
+                        </span>
+                        <span className="hidden min-w-0 truncate text-xs text-surface-600 dark:text-surface-300 xl:block">{ticket.itemSummary}</span>
+                        <span className="whitespace-nowrap font-mono text-[11px] text-surface-500">{ticket.progressLabel}</span>
+                        <span className="whitespace-nowrap text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
+                        <span className="whitespace-nowrap text-right text-xs font-semibold text-cyan-600 dark:text-cyan-400">Open →</span>
                       </button>
                     ))}
                     {readyHidden > 0 && (
@@ -3651,45 +3978,18 @@ function CustomerGate({
                     )}
                   </>
                 )}
-                {otherPreview.length > 0 && (
-                  <>
-                    <div className="bg-surface-50 dark:bg-surface-900 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500 border-b border-surface-200 dark:border-surface-700">
-                      In progress · {otherTotal}
-                    </div>
-                    {otherPreview.map((ticket, idx) => {
-                      const isLast = idx === otherPreview.length - 1 && otherHidden === 0;
-                      return (
-                        <button
-                          key={ticket.id}
-                          type="button"
-                          onClick={() => onOpenReadyPickup(ticket)}
-                          className={cn(
-                            'grid w-full grid-cols-[120px_70px_180px_minmax(0,1fr)_110px_90px_70px] items-center gap-3 px-4 py-2.5 text-left text-sm hover:bg-surface-100 dark:hover:bg-surface-700',
-                            !isLast && 'border-b border-surface-200 dark:border-surface-700',
-                          )}
-                        >
-                          <span className="truncate rounded-full bg-surface-100 dark:bg-surface-700 px-2 py-1 text-center font-mono text-[10px] font-bold uppercase text-surface-600 dark:text-surface-300" title={ticket.statusName}>
-                            {ticket.statusName}
-                          </span>
-                          <span className="font-mono text-xs text-surface-400">#{ticket.order_id}</span>
-                          <span className="truncate font-semibold text-surface-900 dark:text-surface-100">{ticket.customerName}{ticket.customerGroup ? <span className="ml-2 rounded-full bg-burgundy-light/15 px-2 py-0.5 text-[9.5px] font-bold text-rose-500">{ticket.customerGroup}</span> : null}</span>
-                          <span className="truncate text-xs text-surface-600 dark:text-surface-300">{ticket.itemSummary}</span>
-                          <span className="font-mono text-xs text-surface-900 dark:text-surface-500">{ticket.progressLabel}</span>
-                          <span className="text-right font-mono text-xs text-primary-700 dark:text-primary-500">{formatCurrency(ticket.total)}</span>
-                          <span className="text-right text-xs font-semibold text-cyan-500 dark:text-cyan-400">Open →</span>
-                        </button>
-                      );
-                    })}
-                    {otherHidden > 0 && (
-                      <button
-                        type="button"
-                        onClick={onViewReadyPickup}
-                        className="flex w-full items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-primary-700 hover:bg-surface-100 dark:text-primary-500 dark:hover:bg-surface-700"
-                      >
-                        + {otherHidden} more in progress · view all
-                      </button>
-                    )}
-                  </>
+                {/* In-Progress moved off-gate. One small CTA to jump to the
+                    full active-tickets view for the bench. Number reassures
+                    the cashier that work is being tracked, just not here. */}
+                {otherTotal > 0 && (
+                  <button
+                    type="button"
+                    onClick={onViewReadyPickup}
+                    className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-xs text-surface-600 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-700"
+                  >
+                    <span className="font-mono uppercase tracking-[0.14em] text-surface-500">{otherTotal} on the bench</span>
+                    <span className="font-semibold text-primary-700 dark:text-primary-500">View in-progress →</span>
+                  </button>
                 )}
               </>
             );
@@ -4098,6 +4398,11 @@ function SaleWorkspace({
   onCustomItem,
   onStartRepair,
   onTender,
+  unifiedTickets,
+  unifiedInvoices,
+  unifiedSettings,
+  unifiedLoading,
+  onNavigateHit,
 }: {
   customer: CustomerResult | null;
   products: ProductSearchItem[];
@@ -4113,6 +4418,15 @@ function SaleWorkspace({
   onCustomItem: (prefillName?: string) => void;
   onStartRepair: () => void;
   onTender: () => void;
+  /** Non-catalog matches from the unified search index. Lets the cashier
+   * jump to a setting / ticket / invoice mid-checkout (e.g. typing
+   * "dark mode" lands on the theme setting). Catalog matches stay in the
+   * tile grid below. */
+  unifiedTickets: UnifiedHit[];
+  unifiedInvoices: UnifiedHit[];
+  unifiedSettings: UnifiedHit[];
+  unifiedLoading: boolean;
+  onNavigateHit: (hit: { id: number; type: 'ticket' | 'invoice' | 'setting' | 'inventory'; pagePath?: string }) => void;
 }) {
   const cartProductIds = new Set(cartItems.filter((item): item is ProductCartItem => item.type === 'product').map((item) => item.inventoryItemId));
   const filterOptions = ['All', ...categories.filter(Boolean).slice(0, 8)];
@@ -4162,6 +4476,58 @@ function SaleWorkspace({
               owns the primary tender CTA. */}
         </div>
       </div>
+
+      {/* Cross-shop search results — non-catalog hits from the unified
+          search index. Renders only when the cashier is actively typing
+          (productSearch >= 2 chars) AND there are non-product matches
+          worth jumping to. Lets them type "dark mode" mid-checkout to
+          land on the theme setting without losing the cart. Catalog
+          tiles below own the inline-add flow. */}
+      {productSearch.trim().length >= 2 && (unifiedTickets.length + unifiedInvoices.length + unifiedSettings.length > 0 || unifiedLoading) && (
+        <div className="border-b border-surface-200 bg-surface-50 px-5 py-3 dark:border-surface-800 dark:bg-surface-900/40">
+          <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-surface-500">
+            <span>Across the shop</span>
+            {unifiedLoading && (
+              <span aria-label="Searching" className="inline-block h-3 w-3 motion-safe:animate-spin rounded-full border-2 border-surface-300 border-t-primary-500" />
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {unifiedTickets.slice(0, 4).map((hit) => (
+              <button
+                key={`tkt-${hit.id}`}
+                type="button"
+                onClick={() => onNavigateHit({ id: hit.id, type: 'ticket' })}
+                className="inline-flex items-center gap-1.5 rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              >
+                <TicketIcon className="h-3 w-3 text-blue-500" />
+                <span className="truncate max-w-[18ch]">{hit.display}</span>
+              </button>
+            ))}
+            {unifiedInvoices.slice(0, 3).map((hit) => (
+              <button
+                key={`inv-${hit.id}`}
+                type="button"
+                onClick={() => onNavigateHit({ id: hit.id, type: 'invoice' })}
+                className="inline-flex items-center gap-1.5 rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              >
+                <FileText className="h-3 w-3 text-purple-500" />
+                <span className="truncate max-w-[18ch]">{hit.display}</span>
+              </button>
+            ))}
+            {unifiedSettings.slice(0, 4).map((hit) => (
+              <button
+                key={`set-${hit.id}-${hit.pagePath ?? ''}`}
+                type="button"
+                onClick={() => onNavigateHit({ id: hit.id, type: 'setting', pagePath: hit.pagePath })}
+                className="inline-flex items-center gap-1.5 rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 hover:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              >
+                <SlidersHorizontal className="h-3 w-3 text-sky-500" />
+                <span className="truncate max-w-[22ch]">{hit.display}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
         {/* Smart-tile (Frame 09): customer-aware loyalty/upsell hint. Only
@@ -4331,6 +4697,7 @@ function CartColumn({
   totals,
   taxRate,
   paidLegs,
+  sourceTicketId,
   onSwapCustomer,
   onEditLine,
   onRemoveLine,
@@ -4348,6 +4715,10 @@ function CartColumn({
   totals: ReturnType<typeof computePosTotals>;
   taxRate: number;
   paidLegs: PaymentLeg[];
+  /** When set, the cart was loaded from an existing ticket (e.g. recall
+   * from "Ready for pickup"). Suppresses the Create-ticket affordance so
+   * the cashier can't accidentally mint a shadow copy. */
+  sourceTicketId: number | null;
   onSwapCustomer: () => void;
   onEditLine: (item: CartItem) => void;
   onRemoveLine: (id: string) => void;
@@ -4356,7 +4727,8 @@ function CartColumn({
   onDiscount: () => void;
   onTender: () => void;
   /** Save the cart as a ticket WITHOUT processing payment. Shown only when
-   * the cart has at least one repair line. */
+   * the cart has at least one repair line AND no existing ticket is
+   * attached (otherwise we'd create a duplicate of the source ticket). */
   onSaveTicket: () => void;
   saveTicketBusy: boolean;
 }) {
@@ -4599,7 +4971,7 @@ function CartColumn({
                 <Tag className="h-3.5 w-3.5" /> Discount
                 <span className="ml-1 rounded border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900 px-1.5 font-mono text-[9px] text-surface-400">⌘D</span>
               </button>
-              {hasRepair && (
+              {hasRepair && sourceTicketId == null && (
                 <button
                   type="button"
                   onClick={onSaveTicket}
@@ -4608,7 +4980,7 @@ function CartColumn({
                   title="Create the repair ticket now and collect payment later at pickup"
                 >
                   <Wrench className="h-4 w-4" />
-                  {saveTicketBusy ? 'Saving…' : 'Save ticket · pay later'}
+                  {saveTicketBusy ? 'Saving…' : 'Create ticket'}
                 </button>
               )}
               <button
@@ -4621,9 +4993,9 @@ function CartColumn({
                 Charge {formatCurrency(Math.max(0, totals.total - paid))}
                 <span className="ml-2 rounded border border-black/15 bg-black/5 px-1.5 font-mono text-[10px]">⌘↵</span>
               </button>
-              {hasRepair && (
+              {hasRepair && sourceTicketId == null && (
                 <p className="text-center text-[10.5px] text-surface-500 dark:text-surface-400">
-                  Save ticket: creates ticket, no payment. Charge: creates ticket and takes payment now.
+                  Create ticket: no payment yet. Charge: creates the ticket and takes payment now.
                 </p>
               )}
             </div>
@@ -5246,6 +5618,169 @@ function priceCentsFrom(price: RepairPricingMatrixPrice): number {
   return Math.round(price.labor_price * 100);
 }
 
+// Issue-search synonym index — fallback when the server omits per-service
+// aliases (e.g. tenant on a pre-migration-197 DB). The authoritative
+// source is the repair_service_aliases table; matrixQuery.data.services[i]
+// .aliases ships from there. This const stays as the offline default so
+// the cashier isn't stuck on the bare formal name if the server response
+// is stale or the migration hasn't run yet on a self-host upgrade.
+//
+// Keys are lowercased service names (matched against the catalog's
+// `s.name.toLowerCase()`). Values are aliases the customer might say.
+// Match is bidirectional: query substring of alias OR alias substring of
+// query, so "lcd" hits "lcd" and "my lcd is broken" hits it too.
+const ISSUE_ALIASES_FALLBACK: Record<string, string[]> = {
+  'screen replacement': [
+    // Tech terms
+    'lcd', 'oled', 'amoled', 'led', 'display', 'glass', 'digitizer', 'panel',
+    // Damage states
+    'cracked screen', 'crack', 'cracked display', 'broken screen', 'broken display',
+    'shattered', 'shatter', 'screen broke', 'spider', 'spiderweb', 'cobweb',
+    'screen damage', 'screen damaged', 'smashed', 'destroyed screen',
+    // Visual problems
+    'dead pixels', 'dead pixel', 'stuck pixel', 'bleeding pixels', 'pixel issue',
+    'no display', 'black screen', 'blank screen', 'dark screen', 'dim screen',
+    'screen won\'t turn on', 'screen wont turn on', 'screen not turning on',
+    'lines on screen', 'vertical lines', 'horizontal lines', 'green line',
+    'pink line', 'colored lines', 'flickering', 'flicker', 'flashing screen',
+    'discoloration', 'discolored', 'burn-in', 'burn in', 'ghosting', 'image retention',
+    'dark spots', 'bright spot', 'pressure spot', 'blob', 'ink spot',
+    'screen bleed', 'bleeding', 'tinted', 'yellow tint', 'pink tint',
+    // Touch problems
+    'ghost touch', 'phantom touch', 'unresponsive screen', 'unresponsive touch',
+    'touch not working', 'touch broken', 'touch dead', 'no touch', 'dead touch',
+    'screen freeze', 'frozen screen', 'screen lag',
+  ],
+  'battery replacement': [
+    'battery', 'batteries', 'cell', 'power cell',
+    'dies fast', 'dies quickly', 'drains', 'draining', 'fast drain', 'quick drain',
+    'won\'t hold charge', 'wont hold charge', 'doesn\'t hold charge',
+    'short battery', 'weak battery', 'old battery', 'tired battery', 'bad battery',
+    'shutdown', 'shuts off', 'powers off', 'random shutdown', 'turns off',
+    'swollen battery', 'puffy battery', 'bulging', 'expanding', 'expanded battery',
+    'battery health', 'battery percentage', 'battery percent stuck', 'percentage jumps',
+    'overheating', 'gets hot', 'too hot', 'hot battery', 'thermal',
+    'won\'t turn on', 'wont turn on', 'no power', 'dead phone', 'phone dead',
+    'needs new battery', 'replace battery', 'battery low', 'battery dying',
+  ],
+  'charging port repair': [
+    'charging', 'won\'t charge', 'wont charge', 'no charge', 'not charging',
+    'doesn\'t charge', 'charge slow', 'slow charging', 'slow charge',
+    'charges intermittently', 'intermittent charging', 'cuts in and out',
+    'port', 'usb', 'usb-c', 'usb c', 'type c', 'type-c', 'lightning', 'lightning port',
+    'micro usb', 'mini usb',
+    'loose charger', 'loose cable', 'wiggle', 'charger falls out', 'cable falls out',
+    'wiggling', 'jiggle',
+    'tip broken in port', 'broken in port', 'tip stuck', 'stuck in port',
+    'lint in port', 'dirty port', 'corrosion in port', 'corroded port',
+    'bent pins', 'broken pins', 'pin damage', 'damaged pins',
+    'port damage', 'port broken', 'jack',
+  ],
+  'back glass replacement': [
+    'back', 'rear', 'rear glass', 'back glass', 'back broken', 'back cracked',
+    'back shattered', 'back panel', 'rear panel', 'rear shattered',
+    'cracked back', 'broken back', 'back damage',
+  ],
+  'camera repair': [
+    'camera', 'cam', 'lens', 'lens crack', 'lens broken', 'cracked lens',
+    'lens fogged', 'foggy camera', 'lens dirty',
+    'blurry photos', 'blurry camera', 'out of focus', 'won\'t focus', 'wont focus',
+    'autofocus', 'no autofocus', 'focus broken', 'soft focus',
+    'rear camera', 'back camera', 'main camera', 'front camera', 'selfie camera',
+    'wide camera', 'ultrawide', 'telephoto', 'macro', 'portrait',
+    'camera black', 'black camera', 'camera won\'t open', 'camera wont open',
+    'camera frozen', 'camera crash', 'shaky', 'shaky camera', 'ois',
+    'optical image stabilization', 'image stabilization',
+    'flash not working', 'flash broken', 'flashlight not working', 'flashlight broken',
+  ],
+  'speaker repair': [
+    'speaker', 'speakers', 'no sound', 'no audio', 'silent', 'low volume',
+    'volume low', 'distorted sound', 'distorted audio', 'crackling', 'static',
+    'buzzing', 'rattle', 'rattling',
+    'earpiece', 'ear speaker', 'top speaker',
+    'loud speaker', 'loudspeaker', 'bottom speaker',
+    'can\'t hear', 'cant hear', 'muffled', 'muffled sound',
+    'ringer not working', 'no ringer', 'won\'t ring', 'wont ring',
+    'mono sound', 'one speaker', 'left speaker broken', 'right speaker broken',
+    'headphone jack', 'aux jack', '3.5mm', 'audio jack',
+  ],
+  'microphone repair': [
+    'mic', 'mics', 'microphone', 'microphones',
+    'no voice', 'voice broken', 'muted', 'can\'t hear me', 'cant hear me',
+    'people can\'t hear me', 'people cant hear me', 'they can\'t hear me',
+    'muffled voice', 'voice muffled', 'voice cuts out', 'voice cutting out',
+    'voice memo broken', 'voice recording broken', 'dictation broken',
+    'siri not working', 'siri broken', 'voice assistant',
+    'no audio in calls', 'no mic on calls', 'silent on calls',
+  ],
+  'water damage repair': [
+    'water', 'liquid', 'liquid damage', 'wet', 'drowned', 'soaked',
+    'moisture', 'humidity', 'corrosion', 'corroded', 'oxidation', 'oxidized',
+    'dropped in water', 'dropped in toilet', 'dropped in pool', 'dropped in sink',
+    'dropped in lake', 'dropped in ocean', 'fell in water', 'spilled',
+    'coffee spill', 'spill', 'spilled coffee', 'spilled soda', 'spilled drink',
+    'rain damage', 'rained on', 'got rained on', 'caught in rain', 'wet phone',
+    'washing machine', 'washed phone', 'pool',
+  ],
+  'face id repair': [
+    'face id', 'faceid', 'face unlock', 'face recognition', 'face scan',
+    'face id not working', 'face id broken', 'face id won\'t work',
+    'true depth', 'truedepth', 'face scanner', 'depth sensor', 'dot projector',
+    'touch id', 'touchid', 'fingerprint', 'fingerprint sensor',
+    'fingerprint not working', 'fingerprint broken', 'biometric', 'biometrics',
+  ],
+  'button repair': [
+    'button', 'buttons', 'power button', 'sleep button', 'wake button',
+    'volume button', 'volume up', 'volume down', 'volume rocker',
+    'home button', 'side button', 'action button',
+    'stuck button', 'broken button', 'button won\'t click', 'button wont press',
+    'mute switch', 'silent switch', 'ringer switch',
+    'taptic engine', 'haptic', 'vibration', 'vibrator', 'vibration motor',
+    'no vibration', 'phone doesn\'t vibrate', 'phone wont vibrate',
+  ],
+  'diagnostic': [
+    'diagnose', 'diagnosis', 'diagnostic', 'check', 'check up', 'checkup',
+    'troubleshoot', 'troubleshooting', 'not sure', 'something wrong',
+    'inspect', 'inspection', 'look at', 'look at it', 'figure out',
+    'doesn\'t work', 'wont work', 'not working', 'broken', 'something off',
+    'boot loop', 'bootloop', 'restart loop', 'stuck on logo', 'stuck on apple logo',
+    'apple logo', 'frozen', 'won\'t boot', 'wont boot', 'no boot',
+    'software', 'software issue', 'firmware', 'os', 'crashes', 'crashing',
+    'restarts randomly', 'random restart',
+  ],
+  'other repair': [
+    'wifi', 'wi-fi', 'bluetooth', 'antenna', 'signal', 'no signal',
+    'no service', 'sim', 'sim reader', 'sim card', 'sim slot',
+    'gps', 'nfc', 'apple pay', 'google pay',
+    'data recovery', 'data transfer', 'backup', 'restore',
+    'jailbreak', 'unlock', 'frp', 'icloud lock', 'activation lock',
+    'virus', 'malware', 'factory reset', 'reset',
+    'frame bent', 'bent frame', 'bent phone', 'housing damage',
+  ],
+};
+
+function matchesIssueQuery(
+  serviceName: string,
+  q: string,
+  serverAliases?: string[],
+): boolean {
+  if (!q) return true;
+  const name = serviceName.toLowerCase();
+  // Direct name match (original behaviour).
+  if (name.includes(q)) return true;
+  // Prefer server-supplied aliases (repair_service_aliases table, migration
+  // 197) so a shop's edits via the settings UI take effect immediately.
+  // Fall back to the bundled defaults only when the server didn't ship any
+  // (pre-migration tenant DB, network glitch, etc.) — never silently lose
+  // synonym coverage on a stale response.
+  const aliases =
+    serverAliases && serverAliases.length > 0
+      ? serverAliases.map((a) => a.toLowerCase())
+      : ISSUE_ALIASES_FALLBACK[name] ?? [];
+  if (aliases.length === 0) return false;
+  return aliases.some((alias) => alias.includes(q) || q.includes(alias));
+}
+
 function RepairIssueStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
   draft: RepairDraft;
   setDraft: React.Dispatch<React.SetStateAction<RepairDraft>>;
@@ -5302,7 +5837,7 @@ function RepairIssueStep({ draft, setDraft, onBack, onContinue, onGoToStep }: {
   // available, else null (rendered as "Set price"). Group by service category.
   const filteredQ = problemQuery.trim().toLowerCase();
   const rows = services
-    .filter((s) => (filteredQ ? s.name.toLowerCase().includes(filteredQ) : true))
+    .filter((s) => (filteredQ ? matchesIssueQuery(s.name, filteredQ, s.aliases) : true))
     .map((s) => {
       const priceRow = matchedDevice?.prices.find((p) => p.repair_service_id === s.id);
       const priceCents = priceRow ? priceCentsFrom(priceRow) : 0;
@@ -7125,88 +7660,137 @@ ${panel.outerHTML}
     }
   };
 
-  const handleShare = (kind: 'SMS' | 'Email') => {
-    toast(`${kind} delivery is coming soon`);
+  // Dispatch via /invoices/:id/send-receipt. Needs sale.invoiceId — guarded
+  // below so the button can't fire without one. Loading state per channel so
+  // a slow SMS provider doesn't lock both buttons.
+  const [sendingChannel, setSendingChannel] = useState<'sms' | 'email' | null>(null);
+  const handleShare = async (kind: 'SMS' | 'Email') => {
+    if (!sale.invoiceId) {
+      toast.error('Receipt not finalized yet — refresh and try again.');
+      return;
+    }
+    const channel: 'sms' | 'email' = kind === 'SMS' ? 'sms' : 'email';
+    setSendingChannel(channel);
+    try {
+      const res = await invoiceApi.sendReceipt(sale.invoiceId, { channel });
+      const data = res.data?.data;
+      if (data?.delivered) {
+        const tail = channel === 'sms'
+          ? data.to_last4 ? ` · …${data.to_last4}` : ''
+          : data.to_domain ? ` · @${data.to_domain}` : '';
+        toast.success(`${kind} sent${tail}`);
+      } else {
+        toast(`${kind} not delivered — check ${channel === 'sms' ? 'SMS provider' : 'SMTP'} config.`);
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } }; message?: string })
+        ?.response?.data?.message
+        ?? (err as { message?: string })?.message
+        ?? `${kind} send failed`;
+      toast.error(msg);
+    } finally {
+      setSendingChannel(null);
+    }
   };
 
   return (
-    <div className="h-full overflow-auto p-4">
+    <div className="relative flex h-full flex-col">
+      {/* Top action strip — primary "Next sale" + secondary buttons live
+          here so the cashier never has to scroll past the receipt + loyalty
+          panel to start the next ring-up. The body below scrolls; this bar
+          stays pinned. */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-surface-200 bg-white px-4 py-3 dark:border-surface-700 dark:bg-surface-900 no-print">
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 className="h-4 w-4" /> Sale complete · {sale.orderId}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {sale.invoiceId && (
+            <button type="button" onClick={() => window.location.assign(`/invoices/${sale.invoiceId}`)} className={secondaryButton}>
+              Open invoice
+            </button>
+          )}
+          {onProcessRefund && (
+            <button type="button" onClick={onProcessRefund} className={secondaryButton}>
+              Process refund
+            </button>
+          )}
+          <button type="button" onClick={onNext} className={primaryButton}>Next sale</button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto p-4">
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="flex flex-col gap-4">
-          <Section className="p-6 text-center">
-            <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600 dark:text-emerald-400" />
-            <div className="mt-4 font-display text-5xl">Payment complete</div>
-            <div className="mt-2 font-display text-7xl text-primary-800 dark:text-primary-500">{formatCurrency(sale.total)}</div>
+          {/* Payment summary — tightened. Was font-display 5xl + 7xl with
+              p-6 which dominated the screen on a 1440-tall laptop and pushed
+              actions below the fold. 4xl + 6xl + p-5 keeps the "you got
+              paid" emphasis without burying the verbs. */}
+          <Section className="p-5 text-center">
+            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600 dark:text-emerald-400" />
+            <div className="mt-3 font-display text-4xl">Payment complete</div>
+            <div className="mt-2 font-display text-6xl text-primary-800 dark:text-primary-500">{formatCurrency(sale.total)}</div>
             <div className="mt-1 text-sm text-surface-900 dark:text-surface-500">{sale.orderId} · {sale.customerName}</div>
-            {sale.change > 0 && <Pill tone="success" className="mt-4">Change due {formatCurrency(sale.change)}</Pill>}
+            {sale.change > 0 && <Pill tone="success" className="mt-3">Change due {formatCurrency(sale.change)}</Pill>}
           </Section>
-          <div className="grid gap-3 sm:grid-cols-2 no-print">
+
+          {/* One compact action row — SMS · Email · Print receipt · Print
+              service doc. Was 4 large square tiles in a 2×2 grid that
+              wrapped labels and ate vertical space. Single inline row uses
+              text + icon, predictable heights, lines up with the receipt
+              preview's top edge. */}
+          <div className="no-print grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
               type="button"
               onClick={() => handleShare('SMS')}
-              className="rounded-lg border border-surface-200 bg-white p-4 text-center font-semibold hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900"
+              disabled={sendingChannel !== null}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-semibold hover:border-primary-500 disabled:opacity-60 disabled:cursor-not-allowed dark:border-surface-800 dark:bg-surface-900"
+              title="Text the receipt to the customer's phone"
             >
-              <MessageSquare className="mx-auto h-5 w-5 text-primary-700 dark:text-primary-500" aria-hidden="true" />
-              <span className="mt-2 block">SMS</span>
+              {sendingChannel === 'sms'
+                ? <Loader2 className="h-4 w-4 motion-safe:animate-spin text-primary-700 dark:text-primary-500" aria-hidden="true" />
+                : <MessageSquare className="h-4 w-4 text-primary-700 dark:text-primary-500" aria-hidden="true" />}
+              <span className="truncate">{sendingChannel === 'sms' ? 'Sending…' : 'SMS'}</span>
             </button>
             <button
               type="button"
               onClick={() => handleShare('Email')}
-              className="rounded-lg border border-surface-200 bg-white p-4 text-center font-semibold hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900"
+              disabled={sendingChannel !== null}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-semibold hover:border-primary-500 disabled:opacity-60 disabled:cursor-not-allowed dark:border-surface-800 dark:bg-surface-900"
+              title="Email the receipt to the customer"
             >
-              <Mail className="mx-auto h-5 w-5 text-primary-700 dark:text-primary-500" aria-hidden="true" />
-              <span className="mt-2 block">Email</span>
+              {sendingChannel === 'email'
+                ? <Loader2 className="h-4 w-4 motion-safe:animate-spin text-primary-700 dark:text-primary-500" aria-hidden="true" />
+                : <Mail className="h-4 w-4 text-primary-700 dark:text-primary-500" aria-hidden="true" />}
+              <span className="truncate">{sendingChannel === 'email' ? 'Sending…' : 'Email'}</span>
             </button>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 no-print">
             <button
               type="button"
               onClick={() => triggerPrint('thermal')}
-              className="rounded-lg border border-surface-200 bg-white p-4 text-left hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-semibold hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900"
+              title="80 mm thermal roll · customer copy"
             >
-              <div className="flex items-center gap-2">
-                <Printer className="h-5 w-5 text-primary-700 dark:text-primary-500" aria-hidden="true" />
-                <span className="font-semibold">Print receipt</span>
-              </div>
-              <p className="mt-1 text-[11px] text-surface-500">Thermal · 80 mm roll · customer copy</p>
+              <Printer className="h-4 w-4 text-primary-700 dark:text-primary-500" aria-hidden="true" />
+              <span className="truncate">Print receipt</span>
             </button>
             <button
               type="button"
               onClick={() => triggerPrint('letter')}
-              className="rounded-lg border border-surface-200 bg-white p-4 text-left hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900"
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm font-semibold hover:border-primary-500 dark:border-surface-800 dark:bg-surface-900"
+              title="Letter 8.5 × 11 in · workshop / file copy"
             >
-              <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary-700 dark:text-primary-500" aria-hidden="true" />
-                <span className="font-semibold">Print service doc</span>
-              </div>
-              <p className="mt-1 text-[11px] text-surface-500">Letter · 8.5 × 11 in · workshop / file copy</p>
+              <FileText className="h-4 w-4 text-primary-700 dark:text-primary-500" aria-hidden="true" />
+              <span className="truncate">Service doc</span>
             </button>
           </div>
-          <p className="text-[11px] text-surface-500 no-print">
-            Save-as-PDF is available from the system print dialog on every device.
-          </p>
-          <Section className="p-5">
-            <div className="flex items-center gap-3">
-              <Star className="h-8 w-8 text-cyan-700 dark:text-cyan-400" />
-              <div className="flex-1">
-                <div className="font-semibold">Loyalty updated</div>
-                <div className="text-sm text-surface-900 dark:text-surface-500">Points and warranty history are attached when a customer is selected.</div>
-              </div>
-            </div>
-          </Section>
-          <div className="flex flex-wrap gap-2 no-print">
-            <button type="button" onClick={onNext} className={primaryButton}>Next sale</button>
-            {sale.invoiceId && <button type="button" onClick={() => window.location.assign(`/invoices/${sale.invoiceId}`)} className={secondaryButton}>Open invoice</button>}
-            {/* WEB-UIUX-433: inline refund affordance — saves the 5-click Invoices→find→open→Credit Note dance. */}
-            {onProcessRefund && (
-              <button
-                type="button"
-                onClick={onProcessRefund}
-                className={secondaryButton}
-              >
-                Process refund
-              </button>
-            )}
+
+          {/* Inline loyalty + save-as-PDF hint — slim caption row instead
+              of a full Section card. The card was visual ballast since the
+              copy never changes per sale. */}
+          <div className="no-print flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-surface-500">
+            <span className="inline-flex items-center gap-1">
+              <Star className="h-3 w-3 text-cyan-700 dark:text-cyan-400" aria-hidden="true" />
+              Loyalty points + warranty attached when a customer is on file.
+            </span>
+            <span>Save-as-PDF lives in the system print dialog.</span>
           </div>
         </div>
         <Section className="p-5 font-mono text-sm" data-receipt-panel>
@@ -7260,6 +7844,7 @@ ${panel.outerHTML}
             </div>
           </div>
         </Section>
+      </div>
       </div>
     </div>
   );

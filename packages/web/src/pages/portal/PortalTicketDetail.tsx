@@ -70,7 +70,7 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
         <p role="alert" className="text-surface-600 dark:text-surface-300 text-sm">{error}</p>
         <button
           onClick={fetchTicket}
-          className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors"
+          className="rounded-lg bg-primary-600 px-5 py-2.5 text-sm font-medium text-on-primary hover:bg-primary-700 transition-colors"
         >
           Try Again
         </button>

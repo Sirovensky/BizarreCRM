@@ -229,7 +229,7 @@ export function CustomerPayPage() {
                 <button
                   onClick={handlePay}
                   disabled={paying}
-                  className="flex w-full items-center justify-center gap-2 rounded-md bg-primary-600 px-4 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:focus-visible:ring-offset-surface-900"
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-primary-600 px-4 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none dark:focus-visible:ring-offset-surface-900"
                 >
                   {paying ? (
                     <><Loader2 className="h-4 w-4 animate-spin" />Preparing checkout…</>

@@ -82,7 +82,7 @@ export function StepImportHandoff({ pending, onUpdate, onNext, onBack, onSkip }:
       </div>
 
       {selected === 'will_import' && (
-        <div className="mt-6 rounded-xl border border-primary-300 bg-primary-50 p-4 text-sm text-primary-900 dark:border-primary-500/30 dark:bg-primary-900/20 dark:text-primary-200">
+        <div className="mt-6 rounded-xl border border-primary-300 bg-primary-50 p-4 text-sm text-on-primary dark:border-primary-500/30 dark:bg-primary-900/20 dark:text-primary-200">
           We'll open the import tool automatically after you finish the wizard. Keep going — your choice is saved.
         </div>
       )}
@@ -114,7 +114,7 @@ export function StepImportHandoff({ pending, onUpdate, onNext, onBack, onSkip }:
             type="button"
             onClick={onNext}
             disabled={!selected}
-            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
           >
             Continue
             <ArrowRight className="h-4 w-4" />

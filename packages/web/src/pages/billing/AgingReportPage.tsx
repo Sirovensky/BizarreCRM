@@ -180,7 +180,7 @@ export function AgingReportPage() {
               onClick={() => setSelectedBucket(isSelected ? null : key)}
               className={`rounded-lg border p-4 text-left transition ${
                 isSelected
-                  ? 'border-primary-500 bg-primary-50 text-primary-950 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-100'
+                  ? 'border-primary-500 bg-primary-50 text-on-primary dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-100'
                   : 'border-surface-200 bg-white text-surface-900 hover:border-surface-300 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 dark:hover:border-surface-600'
               }`}
             >

@@ -225,7 +225,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack, onSkip }: Ste
               type="button"
               onClick={onNext}
               disabled={!canAdvance}
-              className="btn btn-lg flex h-12 items-center gap-2 rounded-full bg-primary-500 px-6 font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn btn-lg flex h-12 items-center gap-2 rounded-full bg-primary-500 px-6 font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

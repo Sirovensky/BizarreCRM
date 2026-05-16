@@ -42,7 +42,7 @@ import { useHasRole } from '@/hooks/useHasRole';
 // WEB-FAE-003: write recent_views under a per-user key so signing in as a
 // different user on the same browser can't read another user's recent
 // customer labels (PII). Reader is `Sidebar.RecentViews`.
-import { recentViewsKey } from '@/components/layout/Sidebar';
+import { recentViewsKey } from '@/components/layout/recentViewsKey';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
@@ -357,7 +357,7 @@ export function CustomerDetailPage() {
         </p>
         <Link
           to="/customers"
-          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors"
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-on-primary rounded-lg font-medium text-sm transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Customers
@@ -631,7 +631,7 @@ export function CustomerDetailPage() {
               <button
                 type="submit"
                 disabled={exporting || exportTotpCode.length !== 6}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {exporting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
                 Download
@@ -1324,7 +1324,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
           <button
             onClick={() => setEnrollOpen(true)}
             disabled={tiers.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-on-primary bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Plus className="h-4 w-4" />
             Enroll in Membership
@@ -1387,7 +1387,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             <button
               onClick={activateSelectedTier}
               disabled={!selectedTier || (selectedTierRequiresCard && !membershipPaymentToken) || subscribeMut.isPending || enrollCardMut.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-on-primary bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {subscribeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
               Activate Membership
@@ -1842,7 +1842,7 @@ function InfoTab({
         <button
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-on-primary bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {updateMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -2148,7 +2148,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
           <div className={cn(
             'max-w-[75%] rounded-lg px-3 py-2 text-sm',
             msg.direction === 'outbound'
-              ? 'bg-primary-600 text-primary-950 rounded-br-none'
+              ? 'bg-primary-600 text-on-primary rounded-br-none'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-bl-none'
           )}>
             {msg.comm_type && msg.comm_type !== 'sms' && (
@@ -2357,7 +2357,7 @@ function AssetsTab({ customerId }: { customerId: number }) {
             resetForm();
             setShowForm(true);
           }}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm"
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-on-primary bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm"
         >
           <Plus className="h-4 w-4" />
           Add Asset
@@ -2466,7 +2466,7 @@ function AssetsTab({ customerId }: { customerId: number }) {
             <button
               onClick={handleSubmitAsset}
               disabled={addMutation.isPending || updateAssetMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-on-primary bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {(addMutation.isPending || updateAssetMutation.isPending) && (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

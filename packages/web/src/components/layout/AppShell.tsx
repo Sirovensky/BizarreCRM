@@ -246,7 +246,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-primary-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-950 focus:shadow-lg focus-visible:outline-none focus:ring-2 focus:ring-primary-950 focus:ring-offset-2"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-primary-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-primary focus:shadow-lg focus-visible:outline-none focus:ring-2 focus:ring-primary-950 focus:ring-offset-2"
       >
         Skip to main content
       </a>
@@ -276,7 +276,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           // sidebar shrinking first and the main column catching up.
           'flex flex-1 flex-col min-w-0 transition-[margin-left] duration-[250ms] ease-out',
           // On desktop, offset by sidebar width; on mobile, no offset
-          sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'
+          sidebarCollapsed ? 'md:ml-16' : 'md:ml-56'
         )}
         style={{ '--dev-banner-h': (isDev && !devBannerDismissed) ? '28px' : '0px' } as React.CSSProperties}
       >

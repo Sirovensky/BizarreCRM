@@ -1806,4 +1806,119 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   });
 });
 
+// POST /invoices/:id/send-receipt — dispatch the post-sale receipt via SMS
+// or email. Called from the POS receipt screen ("SMS" / "Email" buttons).
+// Body: { channel: 'sms' | 'email', recipient?: string }
+//   - channel selects the transport.
+//   - recipient overrides the on-file address; omit to use the invoice
+//     customer's mobile (sms) or email.
+// SEC: requires `invoices.view` since the receipt mirrors data the operator
+// can already see; we audit the dispatch and log only redacted recipient
+// info (phone last-4, email domain) so the audit trail isn't a PII honey
+// pot. Touches no invoice rows — re-sending a receipt is non-mutating.
+router.post('/:id/send-receipt', requirePermission('invoices.view'), async (req, res) => {
+  const db = req.db;
+  const adb = req.asyncDb;
+  const invoiceId = validateId(req.params.id, 'invoice_id');
+
+  const channel = req.body?.channel;
+  if (channel !== 'sms' && channel !== 'email') {
+    throw new AppError("channel must be 'sms' or 'email'", 400);
+  }
+  const recipientOverride =
+    typeof req.body?.recipient === 'string' ? req.body.recipient.trim() : '';
+
+  const invoice = await adb.get<{
+    id: number;
+    order_id: string | null;
+    total: number;
+    customer_id: number | null;
+  }>('SELECT id, order_id, total, customer_id FROM invoices WHERE id = ?', invoiceId);
+  if (!invoice) throw new AppError('Invoice not found', 404);
+
+  const customer = invoice.customer_id
+    ? await adb.get<{
+        phone: string | null;
+        mobile: string | null;
+        email: string | null;
+        first_name: string | null;
+      }>(
+        'SELECT phone, mobile, email, first_name FROM customers WHERE id = ?',
+        invoice.customer_id,
+      )
+    : null;
+
+  const totalStr = Number(invoice.total ?? 0).toFixed(2);
+  const orderId = invoice.order_id || `#${invoice.id}`;
+  const firstName = customer?.first_name || 'there';
+  const tenantSlug = (req as any).tenantSlug ?? null;
+
+  if (channel === 'sms') {
+    const to = recipientOverride || customer?.mobile || customer?.phone || '';
+    if (!to) {
+      throw new AppError('No phone number on file. Pass `recipient` in the body.', 400);
+    }
+    const msg = `Hi ${firstName}, here's your receipt for ${orderId}: $${totalStr}. Thank you for your business!`;
+    let delivered = false;
+    try {
+      const result = await sendSmsTenant(db, tenantSlug, to, msg);
+      delivered = !!result;
+    } catch (err) {
+      throw new AppError(
+        err instanceof Error ? err.message : 'SMS send failed',
+        502,
+      );
+    }
+    audit(db, 'receipt_sent', req.user?.id ?? null, req.ip ?? 'unknown', {
+      invoice_id: invoiceId,
+      channel: 'sms',
+      to_last4: to.replace(/\D/g, '').slice(-4),
+      delivered,
+    });
+    res.json({
+      success: true,
+      data: { delivered, channel: 'sms', to_last4: to.replace(/\D/g, '').slice(-4) },
+    });
+    return;
+  }
+
+  // channel === 'email'
+  const to = recipientOverride || customer?.email || '';
+  if (!to) {
+    throw new AppError('No email on file. Pass `recipient` in the body.', 400);
+  }
+  if (!isEmailConfigured(db)) {
+    throw new AppError('Email transport not configured', 503);
+  }
+  const escape = (s: string): string =>
+    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const subject = `Receipt ${orderId}`;
+  const html =
+    `<p>Hi ${escape(firstName)},</p>` +
+    `<p>Here's your receipt for <strong>${escape(orderId)}</strong>:</p>` +
+    `<p style="font-size:20px;font-weight:bold">$${escape(totalStr)}</p>` +
+    `<p>Thank you for your business.</p>`;
+  const text = `Hi ${firstName},\n\nHere's your receipt for ${orderId}: $${totalStr}.\n\nThank you for your business.`;
+  let delivered = false;
+  try {
+    delivered = await sendEmail(db, { to, subject, html, text });
+  } catch (err) {
+    throw new AppError(
+      err instanceof Error ? err.message : 'Email send failed',
+      502,
+    );
+  }
+  const toDomain = to.includes('@') ? (to.split('@')[1] ?? 'unknown') : 'unknown';
+  audit(db, 'receipt_sent', req.user?.id ?? null, req.ip ?? 'unknown', {
+    invoice_id: invoiceId,
+    channel: 'email',
+    to_domain: toDomain,
+    delivered,
+  });
+  res.json({
+    success: true,
+    data: { delivered, channel: 'email', to_domain: toDomain },
+  });
+});
+
 export default router;

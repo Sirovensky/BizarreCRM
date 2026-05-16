@@ -298,7 +298,7 @@ export function PhotoCapturePage() {
             // doesn't show stale failure banners.
             setError('');
           }}
-          className="mt-6 px-6 py-3 bg-primary-600 text-primary-950 rounded-2xl font-semibold text-sm"
+          className="mt-6 px-6 py-3 bg-primary-600 text-on-primary rounded-2xl font-semibold text-sm"
         >
           Add More Photos
         </button>
@@ -381,7 +381,7 @@ export function PhotoCapturePage() {
       {/* Bottom actions */}
       <div className="mt-auto p-4 space-y-3 border-t border-surface-700/50 safe-area-bottom">
         {/* Camera button */}
-        <label className="flex items-center justify-center gap-3 w-full py-5 bg-primary-600 active:bg-primary-700 text-primary-950 rounded-2xl font-semibold text-lg cursor-pointer transition-colors select-none shadow-lg">
+        <label className="flex items-center justify-center gap-3 w-full py-5 bg-primary-600 active:bg-primary-700 text-on-primary rounded-2xl font-semibold text-lg cursor-pointer transition-colors select-none shadow-lg">
           <Camera className="h-6 w-6" />
           {photos.length > 0 ? 'Take Another Photo' : 'Take Photo'}
           <input

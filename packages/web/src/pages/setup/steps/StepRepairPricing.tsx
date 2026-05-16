@@ -76,7 +76,7 @@ const TIERS: TierDef[] = [
     title: 'Tier A — Flagship',
     subtitle: '0-2 yr models',
     examples: 'iPhone 14/15/16 series, S22-S24, Pixel 8/9',
-    headerClass: 'bg-primary-500 text-primary-950',
+    headerClass: 'bg-primary-500 text-on-primary',
   },
   {
     letter: 'b',
@@ -544,7 +544,7 @@ export function StepRepairPricing({
                   type="button"
                   onClick={handleSaveMatrix}
                   disabled={matrixSaving || Object.keys(matrixDrafts).length === 0}
-                  className="btn btn-md inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="btn btn-md inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {matrixSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
                   Save matrix edits
@@ -792,7 +792,7 @@ export function StepRepairPricing({
             type="button"
             onClick={handleRunAutoMargin}
             disabled={autoSaving}
-            className="btn btn-md inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn btn-md inline-flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {autoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
             Save and run now
@@ -844,7 +844,7 @@ export function StepRepairPricing({
             type="button"
             onClick={handleContinue}
             disabled={saving}
-            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? 'Seeding pricing' : 'Continue'}
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}

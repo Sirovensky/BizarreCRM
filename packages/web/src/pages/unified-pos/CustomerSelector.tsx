@@ -357,7 +357,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
                 <button
                   type="button"
                   onClick={onNewCustomer}
-                  className="btn btn-sm w-full bg-primary-600 !font-semibold text-primary-950 hover:bg-primary-700"
+                  className="btn btn-sm w-full bg-primary-600 !font-semibold text-on-primary hover:bg-primary-700"
                 >
                   <UserPlus className="h-3.5 w-3.5" />
                   Create &ldquo;{query.trim()}&rdquo;
@@ -383,7 +383,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
           <button
             type="button"
             onClick={onNewCustomer}
-            className="btn btn-md w-full bg-primary-600 !font-semibold text-primary-950 hover:bg-primary-700 active:bg-primary-800"
+            className="btn btn-md w-full bg-primary-600 !font-semibold text-on-primary hover:bg-primary-700 active:bg-primary-800"
           >
             <UserPlus className="h-4 w-4" />
             New Customer

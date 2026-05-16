@@ -116,7 +116,7 @@ export function ResetPasswordPage() {
               <p className="text-sm text-surface-600 dark:text-surface-400">
                 Your password has been successfully updated. Continue when you are ready to sign in again.
               </p>
-              <Link to="/login" className="inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700">
+              <Link to="/login" className="inline-flex items-center justify-center rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-700">
                 Continue to Login
               </Link>
             </div>
@@ -190,7 +190,7 @@ export function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading || password.length < 8 || !passwordsMatch}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Reset password and sign out other devices'}
               </button>

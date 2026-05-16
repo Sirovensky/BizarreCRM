@@ -110,7 +110,7 @@ export function StepWelcome({ pending, onUpdate, onNext, onSkip }: StepProps) {
             type="button"
             onClick={onNext}
             disabled={!canAdvance}
-            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Next — Store info
             <ArrowRight className="h-4 w-4" />

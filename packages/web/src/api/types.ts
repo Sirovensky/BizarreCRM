@@ -661,6 +661,11 @@ export interface RepairPricingMatrixService {
   description?: string | null;
   is_active?: number;
   sort_order?: number;
+  /** Synonym list used by the POS Issue-step search filter so customer
+   * phrasings ("lcd", "ghost touch") still match the formal service name.
+   * Backed by the repair_service_aliases table (migration 197). Optional
+   * to stay back-compat with pre-migration tenant DBs. */
+  aliases?: string[];
 }
 
 export interface RepairPricingMatrixQuery {

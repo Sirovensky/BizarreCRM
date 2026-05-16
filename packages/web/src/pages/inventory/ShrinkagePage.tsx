@@ -369,7 +369,7 @@ export function ShrinkagePage() {
                             if (!Number.isFinite(q) || q < 1) { toast.error('Quantity must be a positive integer'); return; }
                             updateMutation.mutate({ id: r.id, quantity: q, reason: editForm.reason, notes: editForm.notes });
                           }}
-                          className="px-2 py-1 text-xs font-medium rounded bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                          className="px-2 py-1 text-xs font-medium rounded bg-primary-600 text-on-primary hover:bg-primary-700 disabled:opacity-50"
                         >
                           Save
                         </button>

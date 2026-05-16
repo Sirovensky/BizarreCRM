@@ -40,6 +40,33 @@ import {
 
 const router = Router();
 
+/**
+ * Hydrate a list of repair_services rows with their alias arrays
+ * (migration 197: repair_service_aliases). Batched single-query lookup so
+ * the matrix endpoint doesn't N+1 across 50 services. Returns the same
+ * row shape with an added `aliases: string[]` field on each service.
+ */
+async function attachServiceAliases<T extends { id: number }>(
+  adb: AsyncDb,
+  services: T[],
+): Promise<Array<T & { aliases: string[] }>> {
+  if (services.length === 0) return [];
+  const ids = services.map((s) => s.id);
+  const rows = await adb.all<{ repair_service_id: number; alias: string }>(
+    `SELECT repair_service_id, alias FROM repair_service_aliases
+       WHERE repair_service_id IN (${ids.map(() => '?').join(',')})
+       ORDER BY alias ASC`,
+    ...ids,
+  );
+  const byService = new Map<number, string[]>();
+  for (const row of rows) {
+    const list = byService.get(row.repair_service_id) ?? [];
+    list.push(row.alias);
+    byService.set(row.repair_service_id, list);
+  }
+  return services.map((s) => ({ ...s, aliases: byService.get(s.id) ?? [] }));
+}
+
 // Admin-only middleware for mutating global pricing adjustments
 function adminOnly(req: Request, _res: Response, next: NextFunction) {
   if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
@@ -535,7 +562,7 @@ router.get('/matrix', asyncHandler(async (req, res) => {
     deviceWhere.push('COALESCE(hot.ticket_count_30d, 0) > 0');
   }
 
-  const [services, devices] = await Promise.all([
+  const [servicesRaw, devices] = await Promise.all([
     adb.all<any>(serviceSql, ...serviceParams),
     adb.all<any>(`
       SELECT dm.id, dm.name, dm.slug, dm.category, dm.release_year, dm.is_popular,
@@ -555,6 +582,12 @@ router.get('/matrix', asyncHandler(async (req, res) => {
       LIMIT ?
     `, ...deviceParams, limit),
   ]);
+
+  // Enrich each service with its aliases (migration 197) so the POS
+  // Issue-step filter can match customer phrasings ("lcd", "ghost touch")
+  // against the formal service name. Skipped when no services match —
+  // empty services list short-circuits the response below.
+  const services = await attachServiceAliases(adb, servicesRaw);
 
   if (devices.length === 0 || services.length === 0) {
     res.json({ success: true, data: { thresholds, services, devices: [] } });

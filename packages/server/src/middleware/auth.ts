@@ -76,17 +76,30 @@ export function authCsrfMatches(req: Request): boolean {
   }
 }
 
+// All bearer-type cookies are scoped to /api so they're only attached to
+// API requests. Without this, the cookie is shipped on every static asset
+// + Vite dev module + HMR WSS upgrade — ~1KB of useless header on each.
+// In dev that triggered Firefox NS_BINDING_ABORTED on long bursts (TLS
+// overhead + bloated headers + self-signed cert == subresource aborts +
+// white screen). In prod it's pure waste. CSRF_TOKEN stays at `/` because
+// the SPA's JS must read it from document.cookie to set X-CSRF-Token; a
+// page at /pos cannot read a cookie scoped to /api/.
+const AUTH_COOKIE_PATH = '/api';
+
 export function issueAccessTokenCookie(req: Request, res: Response, accessToken: string): void {
   res.cookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
     httpOnly: true,
     secure: req.secure || config.nodeEnv === 'production',
     sameSite: 'strict',
     maxAge: ACCESS_TOKEN_MAX_AGE_MS,
-    path: '/',
+    path: AUTH_COOKIE_PATH,
   });
 }
 
 export function clearAccessTokenCookie(res: Response): void {
+  res.clearCookie(ACCESS_TOKEN_COOKIE_NAME, { path: AUTH_COOKIE_PATH });
+  // Also clear the legacy path=/ cookie left over from before the scoping
+  // change so logging out actually wipes the bearer.
   res.clearCookie(ACCESS_TOKEN_COOKIE_NAME, { path: '/' });
 }
 

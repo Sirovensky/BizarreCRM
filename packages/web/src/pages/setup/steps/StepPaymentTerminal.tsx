@@ -231,7 +231,7 @@ export function StepPaymentTerminal({
         {/* ── Card 1 — BlockChyp credentials ─────────────────────── */}
         <section className={cardBase} aria-labelledby="bc-creds-title">
           <header className="mb-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-primary-950">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-on-primary">
               <CreditCard className="h-5 w-5" />
             </div>
             <div>
@@ -288,7 +288,7 @@ export function StepPaymentTerminal({
           aria-disabled={!credsComplete}
         >
           <header className="mb-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-primary-950">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-on-primary">
               <Wifi className="h-5 w-5" />
             </div>
             <div>
@@ -421,7 +421,7 @@ export function StepPaymentTerminal({
               type="button"
               onClick={onNext}
               disabled={!canContinue}
-              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue
               <ArrowRight className="h-4 w-4" />

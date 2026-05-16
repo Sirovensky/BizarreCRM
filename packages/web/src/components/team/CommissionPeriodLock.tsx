@@ -501,7 +501,7 @@ export function CommissionPeriodLock() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-3 py-2 bg-primary-600 text-on-primary rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 // WEB-UIUX-1153: also block submit when end < start so the cashier
                 // gets immediate visual feedback instead of a server 400 after click.
                 disabled={!newName || !newStart || !newEnd || createMut.isPending || (Boolean(newStart) && Boolean(newEnd) && newEnd < newStart)}

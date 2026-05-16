@@ -222,7 +222,7 @@ export function SerialNumbersPage() {
           <button
             onClick={() => addMut.mutate()}
             disabled={!bulkInput.trim() || addMut.isPending}
-            className="mt-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="mt-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {addMut.isPending && <Loader2 className="inline h-4 w-4 animate-spin mr-1" />}
             Add {bulkInput.split(/[\n,]+/).filter((s) => s.trim()).length} serials

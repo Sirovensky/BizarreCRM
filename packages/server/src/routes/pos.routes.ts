@@ -1562,6 +1562,17 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
   if (!mode || !['create_ticket', 'checkout'].includes(mode)) {
     throw new AppError('mode must be "create_ticket" or "checkout"', 400);
   }
+  // SEC: mode='create_ticket' + existing_ticket_id is a no-op-or-worse — it
+  // means "create a fresh ticket but I already have one." Block it explicitly
+  // so a UI bug or non-browser client can't accidentally mint a shadow copy
+  // of the existing ticket. Use mode='checkout' to take payment on the
+  // existing one, or PUT /tickets/:id to edit it.
+  if (mode === 'create_ticket' && existing_ticket_id) {
+    throw new AppError(
+      'Cannot use mode=create_ticket with existing_ticket_id. Use mode=checkout to charge the existing ticket, or PUT /tickets/:id to edit it.',
+      400,
+    );
+  }
 
   // SW-D13: Require referral source if setting enabled
   // Pre-transaction async reads

@@ -363,7 +363,7 @@ export function DunningPage() {
             createMutation.mutate();
           }}
           disabled={!name.trim() || steps.length === 0 || createMutation.isPending}
-          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {createMutation.isPending ? 'Creating…' : 'Create'}
         </button>

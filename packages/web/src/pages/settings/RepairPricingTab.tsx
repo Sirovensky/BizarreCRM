@@ -882,7 +882,7 @@ function PricesSubTab() {
                                 if (!Number.isFinite(lp) || lp < 0) { toast.error('Labor price must be a non-negative number'); return; }
                                 updateMutation.mutate({ id: price.id, labor_price: lp, default_grade: editForm.default_grade });
                               }}
-                              className="px-2 py-1 text-xs font-medium rounded bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                              className="px-2 py-1 text-xs font-medium rounded bg-primary-600 text-on-primary hover:bg-primary-700 disabled:opacity-50"
                             >
                               Save
                             </button>
@@ -1142,7 +1142,7 @@ export function RepairPricingTab() {
             className={cn(
               'btn btn-md',
               subTab === tab.key
-                ? 'bg-primary-600 text-primary-950'
+                ? 'bg-primary-600 text-on-primary'
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100'
             )}
           >

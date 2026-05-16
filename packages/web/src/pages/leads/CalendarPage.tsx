@@ -399,7 +399,7 @@ function AppointmentDetailModal({
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-700"
         >
           <Edit3 className="h-4 w-4" />
           Edit / Reschedule
@@ -568,7 +568,7 @@ function AppointmentDetailModal({
         <button
           type="submit"
           disabled={updateMut.isPending}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary shadow-sm hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
         >
           {updateMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
           {overlapWarning ? 'Save Anyway' : 'Save Changes'}
@@ -1068,7 +1068,7 @@ function CreateAppointmentModal({
             <button
               type="submit"
               disabled={createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {overlapWarning ? 'Create Anyway' : 'Create'}
@@ -1162,7 +1162,7 @@ function MonthView({
                 <div className={cn(
                   'mb-1 text-right text-xs font-medium',
                   isToday
-                    ? 'inline-flex h-6 w-6 float-right items-center justify-center rounded-full bg-primary-600 text-primary-950'
+                    ? 'inline-flex h-6 w-6 float-right items-center justify-center rounded-full bg-primary-600 text-on-primary'
                     : 'text-surface-600 dark:text-surface-400',
                 )}>
                   {day}
@@ -1556,7 +1556,7 @@ export function CalendarPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" />
           New Appointment
@@ -1627,7 +1627,7 @@ export function CalendarPage() {
                 className={cn(
                   'px-4 py-1.5 text-sm font-medium capitalize transition-colors',
                   mode === viewMode
-                    ? 'bg-primary-600 text-primary-950'
+                    ? 'bg-primary-600 text-on-primary'
                     : 'text-surface-600 hover:bg-surface-50 dark:text-surface-400 dark:hover:bg-surface-700',
                   mode === 'month' && 'rounded-l-lg',
                   mode === 'day' && 'rounded-r-lg',

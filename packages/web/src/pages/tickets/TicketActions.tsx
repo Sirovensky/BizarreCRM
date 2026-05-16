@@ -320,7 +320,7 @@ export function TicketActions({
                 <button
                   onClick={() => navigate(`/pos?ticket=${ticketId}`)}
                   data-tutorial-target="checkout:load-ticket-in-pos"
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-5 py-2 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 active:bg-primary-800"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-5 py-2 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-700 active:bg-primary-800"
                   title={hasInvoice ? 'Settle the remaining balance' : 'Open this ticket in the POS to checkout'}
                 >
                   <ShoppingCart className="h-4 w-4" />

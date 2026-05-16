@@ -206,7 +206,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
               type="button"
               onClick={onNext}
               disabled={!savedAck}
-              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
             >
               I've saved these — continue
               <ShieldCheck className="h-4 w-4" />
@@ -321,7 +321,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
               type="button"
               onClick={handleVerify}
               disabled={enrolling || verifying || code.length !== 6 || !!enrollError}
-              className="btn btn-lg mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
+              className="btn btn-lg mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50"
             >
               {verifying ? (
                 <>

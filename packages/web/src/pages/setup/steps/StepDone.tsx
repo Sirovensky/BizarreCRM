@@ -114,7 +114,7 @@ export function StepDone({ onNext }: StepProps): JSX.Element {
         <button
           type="button"
           onClick={handleGoToDashboard}
-          className="btn btn-xl inline-flex items-center gap-2 rounded-xl bg-primary-500 px-8 py-3.5 text-base font-semibold text-primary-950 shadow-sm transition hover:bg-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-surface-900"
+          className="btn btn-xl inline-flex items-center gap-2 rounded-xl bg-primary-500 px-8 py-3.5 text-base font-semibold text-on-primary shadow-sm transition hover:bg-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-surface-900"
         >
           Go to dashboard
           <ArrowRight className="h-4 w-4" aria-hidden="true" />

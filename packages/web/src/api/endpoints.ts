@@ -335,6 +335,19 @@ export const invoiceApi = {
       },
     }),
   void: (id: number) => api.post(`/invoices/${id}/void`),
+  // Send the post-sale receipt via SMS or email. Server uses the customer
+  // on file by default; pass `recipient` to override (e.g. cashier types
+  // a one-off phone/email at the POS).
+  sendReceipt: (id: number, body: { channel: 'sms' | 'email'; recipient?: string }) =>
+    api.post<{
+      success: boolean;
+      data: {
+        delivered: boolean;
+        channel: 'sms' | 'email';
+        to_last4?: string;
+        to_domain?: string;
+      };
+    }>(`/invoices/${id}/send-receipt`, body, { skipGlobal500Toast: true } as object),
   // WEB-W2-018: migration 150 added credit_note_code + credit_note_note columns;
   // pages may pass these through alongside the legacy composed `reason` string.
   // WEB-UIUX-1294: pass X-Idempotency-Key so a double-click on slow network

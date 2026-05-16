@@ -311,7 +311,7 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
                 receiveMut.mutate();
               }}
               disabled={totalToReceive === 0 || receiveMut.isPending || receiving.length === 0}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-on-primary rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
               {receiveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
               Confirm Receive
@@ -442,7 +442,7 @@ function PoDetailRow({ po, onReceive }: PoDetailRowProps) {
                   {canReceive && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onReceive(po, lineItems); }}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-primary-950 rounded-lg text-xs font-semibold hover:bg-primary-700 transition-colors"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-on-primary rounded-lg text-xs font-semibold hover:bg-primary-700 transition-colors"
                     >
                       <PackageCheck className="h-3.5 w-3.5" /> Receive Items
                     </button>
@@ -667,7 +667,7 @@ export function PurchaseOrdersPage() {
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> New Purchase Order
         </button>
@@ -829,7 +829,7 @@ export function PurchaseOrdersPage() {
                 }}
                 disabled={!canSubmit || createMut.isPending}
                 aria-describedby={createDisabledReason ? 'po-create-help' : undefined}
-                className="px-4 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                className="px-4 py-1.5 text-sm bg-primary-600 text-on-primary rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin inline" /> : 'Create PO'}
               </button>

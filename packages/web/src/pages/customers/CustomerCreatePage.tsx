@@ -620,7 +620,7 @@ export function CustomerCreatePage() {
           <button
             type="submit"
             disabled={createMutation.isPending}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-on-primary bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {createMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

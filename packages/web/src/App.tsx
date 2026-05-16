@@ -11,7 +11,6 @@ import {
 } from './components/ImpersonationBanner';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary, PageErrorBoundary } from './components/shared/PageErrorBoundary';
-import { CookieConsentBanner } from './components/shared/CookieConsentBanner';
 import { SpotlightCoach } from './components/onboarding/SpotlightCoach';
 import { SettingsProvider } from './hooks/useSettings';
 // WEB-FE-021 (Fixer-C12 2026-04-25): boot/route-fallback screens hoisted out
@@ -482,7 +481,6 @@ export default function App() {
             <Route path="*" element={<LandingPage />} />
           </Routes>
         </Suspense>
-        <CookieConsentBanner />
       </RouteScopedPageBoundary>
     );
   }
@@ -641,7 +639,6 @@ export default function App() {
         />
       </Routes>
     </Suspense>
-    <CookieConsentBanner />
     </ErrorBoundary>
   );
 }

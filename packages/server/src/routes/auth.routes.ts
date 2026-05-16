@@ -463,14 +463,19 @@ async function recordPasswordHistory(adb: AsyncDb, userId: number, passwordHash:
 }
 
 /**
- * SEC (P2FA5): Build a device-trust fingerprint bound to the UA + client IP hash.
- * This is stored inside the signed trust cookie and re-checked on subsequent
- * logins; a cookie lifted from another device will fail the fingerprint check.
+ * SEC (P2FA5): Build a device-trust fingerprint bound to the UA hash.
+ *
+ * Previously bound to UA + req.ip, but client IP shifts in normal use —
+ * IPv4/IPv6 dual-stack flips (::1 vs 127.0.0.1), LAN ↔ WiFi ↔ cellular ↔
+ * Tailscale, and proxy-hop differences (vite dev xfwd vs direct :443) all
+ * change req.ip. Every shift invalidated the cookie and forced the user
+ * back through 2FA, defeating the feature. UA alone + httpOnly +
+ * SameSite=Strict + HMAC signature still requires filesystem-level cookie
+ * theft to abuse; the IP component was a low-value defence given the cost.
  */
 function buildDeviceFingerprint(req: Request): string {
   const ua = (req.headers['user-agent'] || '').slice(0, 200);
-  const ip = req.ip || req.socket?.remoteAddress || '';
-  return crypto.createHash('sha256').update(`${ua}|${ip}`).digest('hex');
+  return crypto.createHash('sha256').update(ua).digest('hex');
 }
 
 /**
@@ -528,7 +533,10 @@ async function issueTokens(adb: AsyncDb, user: any, req: Request, res: Response,
     secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: refreshDays * 24 * 60 * 60 * 1000,
-    path: '/',
+    // Scoped to /api so the cookie isn't sent on static / Vite-dev module
+    // requests — kept header size sane (~1KB JWT) and stopped Firefox from
+    // aborting subresource fetches under the dev self-signed cert.
+    path: '/api',
   });
 
   // SEC-H89: CSRF double-submit cookie for POST /auth/refresh.
@@ -980,10 +988,14 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
           return;
         }
         // Valid signature but mismatched binding — clear the cookie so a
-        // future login can't reuse it.
+        // future login can't reuse it. Clear both the new scoped path and
+        // the legacy / path so users carrying over a pre-scoping cookie
+        // get cleaned up too.
+        res.clearCookie('deviceTrust', { path: '/api' });
         res.clearCookie('deviceTrust', { path: '/' });
       } catch {
         // Invalid/expired trust cookie — fall through to normal 2FA flow
+        res.clearCookie('deviceTrust', { path: '/api' });
         res.clearCookie('deviceTrust', { path: '/' });
       }
     }
@@ -1234,7 +1246,8 @@ router.post('/login/2fa-verify', asyncHandler(async (req: Request, res: Response
       secure: req.secure || config.nodeEnv === 'production',
       sameSite: 'strict',
       maxAge: 90 * 24 * 60 * 60 * 1000,
-      path: '/',
+      // Scope to /api — read only by the login handler.
+      path: '/api',
     });
   }
 
@@ -1550,7 +1563,8 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
       secure: isSecureConnection,
       sameSite: 'strict',
       maxAge: originalWindowSec * 1000,
-      path: '/',
+      // Scope to /api — see note in issueTokens().
+      path: '/api',
     });
     // SEC-H89: Rotate csrf_token in sync with refreshToken so the pair stays valid.
     const newCsrfToken = crypto.randomBytes(24).toString('base64url');
@@ -1631,14 +1645,19 @@ router.post('/logout', asyncHandler(async (req: Request, res: Response) => {
     await adb.run('DELETE FROM sessions WHERE id = ?', sessionId);
   }
   clearAccessTokenCookie(res);
+  // Clear both the new scoped path (/api) and legacy / so any cookies
+  // issued before the path-scoping change still get wiped on logout.
+  res.clearCookie('refreshToken', { path: '/api' });
   res.clearCookie('refreshToken', { path: '/' });
   // SEC-H89: Clear csrf_token alongside refreshToken on logout.
+  // csrf_token intentionally stays at path=/ (JS must read it from the SPA).
   res.clearCookie('csrf_token', { path: '/' });
   // SCAN-1176: also clear the deviceTrust cookie on explicit logout. A
   // shared-kiosk user clicking "Logout" otherwise left the 90-day trust
   // cookie intact on the machine, so the next login on that browser
   // skipped 2FA. Matches the behaviour already in place for the 2fa/
   // disable and failed-trust branches.
+  res.clearCookie('deviceTrust', { path: '/api' });
   res.clearCookie('deviceTrust', { path: '/' });
   res.json({ success: true, data: { message: 'Logged out' } });
 }));
@@ -1777,7 +1796,8 @@ router.post('/switch-user', authMiddleware, asyncHandler(async (req: Request, re
     secure: isSecureConnection,
     sameSite: 'strict',
     maxAge: 8 * 60 * 60 * 1000, // 8 hours
-    path: '/',
+    // Scope to /api — see note in issueTokens().
+    path: '/api',
   });
 
   // SEC-H89: Set the matching csrf_token cookie so POST /auth/refresh passes
@@ -2189,6 +2209,7 @@ router.post('/account/2fa/disable', authMiddleware, asyncHandler(async (req: Req
     'DELETE FROM sessions WHERE user_id = ? AND id != ?',
     userId, req.user!.sessionId
   );
+  res.clearCookie('deviceTrust', { path: '/api' });
   res.clearCookie('deviceTrust', { path: '/' });
 
   audit(db, '2fa_disabled', userId, ip, { self_service: true });

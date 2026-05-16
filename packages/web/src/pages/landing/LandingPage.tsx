@@ -281,7 +281,7 @@ export default function LandingPage() {
             BIZARRECRM
           </span>
           <div className="hidden items-center gap-6 md:flex">
-            {[{ label: 'Features', id: 'features' }, { label: 'Pricing', id: 'pricing' }, { label: 'Why Switch', id: 'switch' }].map(n => (
+            {[{ label: 'Features', id: 'features' }, { label: 'Pricing', id: 'pricing' }, { label: 'Self-host', id: 'selfhost' }, { label: 'Why Switch', id: 'switch' }].map(n => (
               <button
                 type="button"
                 key={n.id}
@@ -308,7 +308,7 @@ export default function LandingPage() {
         </div>
         {mobileMenu && (
           <div id="landing-mobile-menu" className="border-t border-surface-200 bg-[#FBF3DB] px-6 pb-4 pt-2 shadow-lg dark:border-surface-800 dark:bg-surface-950 md:hidden">
-            {[{ label: 'Features', id: 'features' }, { label: 'Pricing', id: 'pricing' }, { label: 'Why Switch', id: 'switch' }].map(n => (
+            {[{ label: 'Features', id: 'features' }, { label: 'Pricing', id: 'pricing' }, { label: 'Self-host', id: 'selfhost' }, { label: 'Why Switch', id: 'switch' }].map(n => (
               <button
                 type="button"
                 key={n.id}
@@ -465,6 +465,87 @@ export default function LandingPage() {
 
       <WavyDivider />
 
+      {/* Self-host / Open Source — wedge differentiator vs RepairDesk &
+          RepairShopr. Same codebase that powers the hosted SaaS, runs free
+          on a shop's own box (LAN POS, optional Tailscale Funnel for the
+          customer-portal webhooks). No paywall, no telemetry, owner keeps
+          the SQLite file. Hosted plan above is for shops that just want
+          us to babysit the box. */}
+      <section id="selfhost" className="bg-[#FBF3DB] px-6 pb-20 pt-16 dark:bg-surface-950">
+        <div className="mx-auto max-w-[1120px]">
+          <div className="mb-3 flex justify-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-mono uppercase tracking-[0.18em] text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-300">
+              Open Source · MIT
+            </span>
+          </div>
+          <h2 className={`${displayText} mb-4 text-center text-[clamp(36px,5vw,56px)] leading-[1.1] text-fuchsia-800 dark:text-fuchsia-300`}>
+            Run It On Your Own Box — Free
+          </h2>
+          <p className="mx-auto mb-12 max-w-[720px] text-center text-[17px] leading-[1.7] text-surface-600 dark:text-surface-300">
+            Same code that powers the hosted plans above. No paywall, no user cap,
+            no ticket cap. Install on a counter PC, point your phones at it over LAN,
+            done. You own the SQLite file — back up where you like, leave whenever
+            you want.
+          </p>
+          <div className="mb-10 grid grid-cols-1 gap-5 md:grid-cols-3">
+            {[
+              {
+                title: 'One-shot install',
+                desc: 'setup.bat on Windows or Docker on Linux. Pulls deps, runs migrations, seeds defaults. Logged in within 5 minutes.',
+              },
+              {
+                title: 'LAN + remote, no cloud middleman',
+                desc: 'POS + Android app talk to the box on your shop WiFi. Add Tailscale and you have remote access without exposing a public port.',
+              },
+              {
+                title: 'Auto-update from GitHub',
+                desc: 'Stays current with the same release stream the hosted plan ships. Pin to a version if you want to lock for a busy week.',
+              },
+              {
+                title: 'Your data, your file',
+                desc: 'One SQLite database. Back it up, drop it on a USB, hand it to an accountant. No CSV export ceremony.',
+              },
+              {
+                title: 'Bring your own SMS / email / payments',
+                desc: 'Plug in shop-owned Twilio, SMTP, BlockChyp credentials. We never see them. Card processing stays SAQ A.',
+              },
+              {
+                title: 'Same surface as hosted',
+                desc: 'Every feature ships to self-host first. Hosted just adds managed backups, a status page, and a human on call.',
+              },
+            ].map((card) => (
+              <div key={card.title} className="rounded-xl border border-surface-200 bg-white/95 p-6 shadow-sm dark:border-surface-700 dark:bg-surface-900 dark:shadow-black/20">
+                <h3 className={`${headingText} mb-2 text-lg text-surface-900 dark:text-surface-50`}>{card.title}</h3>
+                <p className="m-0 text-[15px] leading-[1.65] text-surface-600 dark:text-surface-300">{card.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <a
+              className={`${primaryButton} px-8 py-3 text-[15px]`}
+              href="https://github.com/Sirovensky/BizarreCRM"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              View on GitHub
+            </a>
+            <a
+              className={`${outlineButton} px-6 py-3 text-sm`}
+              href="https://github.com/Sirovensky/BizarreCRM#readme"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Install guide
+            </a>
+          </div>
+          <p className="mt-6 text-center text-[12.5px] text-surface-600 dark:text-surface-400">
+            Hosted plans above are the same code, plus managed updates, off-site backups, and support. Pick whichever fits.
+          </p>
+        </div>
+      </section>
+
+      <WavyDivider />
+
       <section className="bg-[#FBF3DB] px-6 pb-20 pt-16 dark:bg-surface-950">
         <div ref={proof.ref} className="mx-auto max-w-[1120px]">
           <h2 className={reveal(`${displayText} mb-4 text-center text-[clamp(36px,5vw,56px)] leading-[1.1] text-fuchsia-800 dark:text-fuchsia-300`, proof.visible)}>
@@ -513,6 +594,7 @@ export default function LandingPage() {
           <div className="flex flex-wrap gap-6">
             <button type="button" onClick={() => scrollTo('features')} className={`${footerAction} bg-transparent p-0`}>Features</button>
             <button type="button" onClick={() => scrollTo('pricing')} className={`${footerAction} bg-transparent p-0`}>Pricing</button>
+            <button type="button" onClick={() => scrollTo('selfhost')} className={`${footerAction} bg-transparent p-0`}>Self-host</button>
             <a href="mailto:hello@bizarreelectronics.com" className={footerAction}>Contact</a>
             <Link to="/privacy" className={footerAction}>Privacy</Link>
             <button type="button" onClick={() => setShowLogin(true)} className={`${footerAction} bg-transparent p-0`}>Login</button>

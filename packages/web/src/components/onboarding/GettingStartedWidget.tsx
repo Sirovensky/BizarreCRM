@@ -318,7 +318,7 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
                   done
                     ? 'bg-green-500 text-white'
                     : isNext
-                    ? 'bg-primary-500 text-primary-950'
+                    ? 'bg-primary-500 text-on-primary'
                     : 'bg-surface-100 text-surface-400 dark:bg-surface-700 dark:text-surface-500',
                 )}
               >
@@ -344,7 +344,7 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
                   className={cn(
                     'flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
                     isNext
-                      ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                      ? 'bg-primary-600 text-on-primary hover:bg-primary-700'
                       : 'text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10',
                   )}
                 >

@@ -796,7 +796,7 @@ export function EmployeeListPage() {
             the user-management settings tab. Make the destination explicit. */}
         <a
           href="/settings/users"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-700"
           title="Open Settings → Users to create or invite a new employee"
           aria-label="Add a new employee — opens Settings > Users"
         >

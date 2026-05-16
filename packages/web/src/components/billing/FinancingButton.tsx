@@ -108,7 +108,7 @@ export function FinancingButton({
         type="button"
         onClick={handleClick}
         disabled={requesting}
-        className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-700 disabled:opacity-50"
       >
         {requesting ? 'Starting…' : `Pay over time with ${providerLabel}`}
         {!invoiceId && <ComingSoonBadge status="coming_soon" compact />}

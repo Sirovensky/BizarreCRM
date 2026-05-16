@@ -21,9 +21,40 @@ function loadHttpsConfig(devHttp: boolean): { key: Buffer; cert: Buffer } | unde
   };
 }
 
+function readRootEnvValue(key: string): string | undefined {
+  const rootEnvPath = path.resolve(__dirname, '../../.env');
+  if (!fs.existsSync(rootEnvPath)) return undefined;
+  const match = fs.readFileSync(rootEnvPath, 'utf8').match(new RegExp(`^${key}=(.*)$`, 'm'));
+  return match?.[1]?.trim();
+}
+
+function resolveApiTarget(env: Record<string, string>): string {
+  const explicitTarget = env.VITE_API_TARGET || process.env.VITE_API_TARGET;
+  if (explicitTarget) return explicitTarget.replace(/\/+$/, '');
+
+  const port =
+    env.VITE_API_PORT ||
+    process.env.VITE_API_PORT ||
+    env.PORT ||
+    process.env.PORT ||
+    readRootEnvValue('PORT') ||
+    '443';
+
+  return `https://localhost:${port}`;
+}
+
+// devSocketResetGuard plugin was removed: attaching a `clientError`
+// listener disables Node's default 400/408 response, so any HMR cycle that
+// triggered the listener (Firefox keep-alive timeouts, TLS handshake
+// rejects, malformed requests) destroyed in-flight sockets along with the
+// bad one. Result was indefinite-loading after every code change. Vite's
+// own default error handling is fine in dev; benign ECONNRESET noise in
+// the terminal isn't worth corrupting the keep-alive pool over.
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '');
   const devHttp = env.VITE_DEV_HTTP === '1' || process.env.VITE_DEV_HTTP === '1';
+  const apiTarget = resolveApiTarget(env);
   const tenantHost = process.env.VITE_DEV_TENANT !== undefined
     ? `${process.env.VITE_DEV_TENANT}.bizarrecrm.com`
     : 'bizarreelectronics.bizarrecrm.com';
@@ -46,6 +77,15 @@ export default defineConfig(({ mode }) => {
   },
   server: {
     port: 5173, // Dev-only HMR server (production uses port 443 directly)
+    // Force IPv4-only bind. With `--host` (or `host: true`) vite binds to
+    // the IPv6 wildcard `::` which on Windows dual-stacks IPv4 — but the
+    // dual-stack IPv6 path has a Node/Windows keep-alive bug where sockets
+    // close after a single round-trip, producing a TIME_WAIT pile-up and
+    // eternal-loading symptoms when the browser resolves `localhost` to
+    // `::1` (which Firefox does first via Happy Eyeballs). Binding to
+    // 0.0.0.0 means IPv6 attempts get ECONNREFUSED, browser falls back to
+    // 127.0.0.1, and IPv4 sockets stay stable.
+    host: '0.0.0.0',
     https: loadHttpsConfig(devHttp),
     // WEB-FW-008 (Fixer-B24 2026-04-25): set `xfwd: true` on every proxy block
     // so http-proxy injects `X-Forwarded-For` / `X-Forwarded-Proto` /
@@ -59,7 +99,7 @@ export default defineConfig(({ mode }) => {
     // which keeps local auth cookies usable on the HTTP browser origin.
     proxy: {
       '/api': {
-        target: 'https://localhost:8443',
+        target: apiTarget,
         changeOrigin: false, // Preserve original Host header for multi-tenant subdomain routing
         secure: false,
         xfwd: true,
@@ -68,21 +108,21 @@ export default defineConfig(({ mode }) => {
         headers: tenantProxyHeaders,
       },
       '/uploads': {
-        target: 'https://localhost:8443',
+        target: apiTarget,
         changeOrigin: false,
         secure: false,
         xfwd: true,
         headers: tenantProxyHeaders,
       },
       '/super-admin': {
-        target: 'https://localhost:8443',
+        target: apiTarget,
         changeOrigin: false,
         secure: false,
         xfwd: true,
         headers: devHttpHeader,
       },
       '/portal/api': {
-        target: 'https://localhost:8443',
+        target: apiTarget,
         changeOrigin: false,
         secure: false,
         xfwd: true,

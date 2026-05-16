@@ -107,7 +107,7 @@ export function SegmentsPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-on-primary rounded-lg font-medium"
         >
           <Plus className="h-4 w-4" /> New segment
         </button>
@@ -410,14 +410,14 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
                 <button
                   type="button"
                   onClick={() => setCombinator('and')}
-                  className={`px-2 py-0.5 rounded ${combinator === 'and' ? 'bg-primary-600 text-primary-950' : 'border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300'}`}
+                  className={`px-2 py-0.5 rounded ${combinator === 'and' ? 'bg-primary-600 text-on-primary' : 'border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300'}`}
                 >
                   ALL (AND)
                 </button>
                 <button
                   type="button"
                   onClick={() => setCombinator('or')}
-                  className={`px-2 py-0.5 rounded ${combinator === 'or' ? 'bg-primary-600 text-primary-950' : 'border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300'}`}
+                  className={`px-2 py-0.5 rounded ${combinator === 'or' ? 'bg-primary-600 text-on-primary' : 'border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300'}`}
                 >
                   ANY (OR)
                 </button>
@@ -512,7 +512,7 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
           <button
             onClick={() => create.mutate()}
             disabled={create.isPending || !name.trim() || !allConditionsFilled}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-on-primary font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {create.isPending ? 'Creating…' : 'Create'}
           </button>
@@ -573,7 +573,7 @@ function MembersModal({ segment, onClose }: { segment: Segment; onClose: () => v
           )}
         </div>
         <footer className="p-4 border-t border-surface-200 dark:border-surface-700 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950">Close</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-on-primary">Close</button>
         </footer>
       </div>
     </div>

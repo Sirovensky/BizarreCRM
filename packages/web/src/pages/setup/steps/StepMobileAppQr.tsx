@@ -252,7 +252,7 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
                   onClick={() => setUseLan(false)}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     !useLan
-                      ? 'bg-primary-500 text-primary-950'
+                      ? 'bg-primary-500 text-on-primary'
                       : 'text-surface-600 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-700'
                   }`}
                 >
@@ -263,7 +263,7 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
                   onClick={() => setUseLan(true)}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     useLan
-                      ? 'bg-primary-500 text-primary-950'
+                      ? 'bg-primary-500 text-on-primary'
                       : 'text-surface-600 hover:bg-surface-100 dark:text-surface-300 dark:hover:bg-surface-700'
                   }`}
                 >
@@ -309,7 +309,7 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
             <button
               type="button"
               onClick={onNext}
-              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400"
             >
               Continue
             </button>

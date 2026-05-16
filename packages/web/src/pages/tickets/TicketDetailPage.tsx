@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/authStore';
 // WEB-FAE-003: per-user namespacing for `recent_views` so a kiosk handoff
 // doesn't bleed the previous user's recent ticket numbers into the next
 // user's sidebar. Reader is `Sidebar.RecentViews`.
-import { recentViewsKey } from '@/components/layout/Sidebar';
+import { recentViewsKey } from '@/components/layout/recentViewsKey';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useEscClose } from '@/hooks/useEscClose';
@@ -233,7 +233,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
           <button
             onClick={handleMerge}
             disabled={!selectedId || isPending}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {isPending ? 'Merging...' : 'Merge'}
           </button>

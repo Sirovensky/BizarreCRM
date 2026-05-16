@@ -378,7 +378,7 @@ export function ReceiptSettings() {
               className={cn(
                 'btn btn-xs rounded-none',
                 activeTab === 'content'
-                  ? 'bg-primary-600 text-primary-950'
+                  ? 'bg-primary-600 text-on-primary'
                   : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
               )}
             >
@@ -389,7 +389,7 @@ export function ReceiptSettings() {
               className={cn(
                 'btn btn-xs rounded-none',
                 activeTab === 'configuration'
-                  ? 'bg-primary-600 text-primary-950'
+                  ? 'bg-primary-600 text-on-primary'
                   : 'bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700'
               )}
             >

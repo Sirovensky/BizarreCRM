@@ -370,7 +370,7 @@ export function StepNotificationTemplates({
                           key={v}
                           type="button"
                           onClick={() => insertVariable(tpl.key, tpl.bodyKey, bodyValue, v)}
-                          className="btn btn-xs inline-flex bg-primary-100 dark:bg-primary-500/10 text-primary-900 dark:text-primary-300 px-2 py-1 rounded text-xs font-mono cursor-pointer hover:bg-primary-200"
+                          className="btn btn-xs inline-flex bg-primary-100 dark:bg-primary-500/10 text-on-primary dark:text-primary-300 px-2 py-1 rounded text-xs font-mono cursor-pointer hover:bg-primary-200"
                         >
                           {`{${v}}`}
                         </button>
@@ -419,7 +419,7 @@ export function StepNotificationTemplates({
           <button
             type="button"
             onClick={onNext}
-            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
+            className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400"
           >
             Continue
             <ArrowRight className="h-4 w-4" />

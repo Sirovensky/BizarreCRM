@@ -425,7 +425,7 @@ export function SignupPage() {
           {success.provisioned && (
             <a
               href={fallbackUrl}
-              className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-surface-900 px-5 text-sm font-semibold text-primary-100 transition-colors hover:bg-surface-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-primary-500 dark:text-primary-950 dark:hover:bg-primary-400 dark:focus-visible:ring-primary-400 dark:focus-visible:ring-offset-surface-900"
+              className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-surface-900 px-5 text-sm font-semibold text-primary-100 transition-colors hover:bg-surface-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-primary-500 dark:text-on-primary dark:hover:bg-primary-400 dark:focus-visible:ring-primary-400 dark:focus-visible:ring-offset-surface-900"
             >
               Open your shop
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
@@ -469,7 +469,7 @@ export function SignupPage() {
 
             <div className="mt-8 grid max-w-lg gap-4">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-200 text-primary-950 dark:bg-primary-500/20 dark:text-primary-300">
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-200 text-on-primary dark:bg-primary-500/20 dark:text-primary-300">
                   <Store className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div>
@@ -661,7 +661,7 @@ export function SignupPage() {
                 fullWidth
                 disabled={submitDisabled}
                 leadingIcon={submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : undefined}
-                className="mt-2 h-12 bg-surface-900 text-primary-100 hover:bg-surface-800 active:bg-surface-700 dark:bg-primary-500 dark:text-primary-950 dark:hover:bg-primary-400 dark:active:bg-primary-600"
+                className="mt-2 h-12 bg-surface-900 text-primary-100 hover:bg-surface-800 active:bg-surface-700 dark:bg-primary-500 dark:text-on-primary dark:hover:bg-primary-400 dark:active:bg-primary-600"
               >
                 {submitting ? 'Creating Your Shop...' : 'Create My Shop'}
               </Button>

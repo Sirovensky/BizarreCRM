@@ -223,7 +223,7 @@ export function StepReceiptPrinter({
                   <div
                     className={
                       isSelected
-                        ? 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-primary-950'
+                        ? 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-on-primary'
                         : 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
                     }
                   >
@@ -279,7 +279,7 @@ export function StepReceiptPrinter({
                     <div
                       className={
                         isSelected
-                          ? 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-primary-950'
+                          ? 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-500 text-on-primary'
                           : 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-100 text-surface-500 dark:bg-surface-700 dark:text-surface-400'
                       }
                     >
@@ -374,7 +374,7 @@ export function StepReceiptPrinter({
             type="button"
             onClick={onNext}
               disabled={!canContinue}
-              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn btn-lg flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Continue
             </button>
