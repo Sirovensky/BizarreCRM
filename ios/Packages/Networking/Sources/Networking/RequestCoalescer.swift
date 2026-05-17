@@ -68,18 +68,21 @@ public actor RequestCoalescer {
     }
 
     /// Build the dedup key for an outgoing request. Include the absolute URL,
-    /// the method, and a digest of the Authorization header so different
-    /// users / tenants never share a response.
+    /// the method, and the Authorization header so different users / tenants
+    /// never share a response.
     public nonisolated static func key(for request: URLRequest) -> String {
         let method = request.httpMethod ?? "GET"
         let url = request.url?.absoluteString ?? ""
-        let authDigest: String
-        if let auth = request.value(forHTTPHeaderField: "Authorization") {
-            authDigest = String(auth.hashValue)
-        } else {
-            authDigest = "anon"
-        }
-        return "\(method) \(url) \(authDigest)"
+        // BUGHUNT-2026-05-17: previously used `String(auth.hashValue)` which
+        // (a) seed-randomises across processes and (b) admits Int hash
+        // collisions where two distinct auth headers map to the same key,
+        // potentially serving user A's response to user B's request. Use the
+        // raw auth header directly — it's already in memory as part of the
+        // URLRequest, so this adds no new exposure and gives a collision-free
+        // dedup key. The coalescer is in-memory and per-process, so leaking
+        // the header into a String value is irrelevant.
+        let authPart = request.value(forHTTPHeaderField: "Authorization") ?? "anon"
+        return "\(method) \(url) \(authPart)"
     }
 }
 
