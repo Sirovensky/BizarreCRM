@@ -63,6 +63,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -240,6 +241,14 @@ class SmsThreadViewModel @Inject constructor(
                     isSending = false,
                     actionMessage = if (serverMonitor.isEffectivelyOnline.value) "Message sent" else "Message queued for sending",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. SMS sends cost
+                // real money via the SMS gateway and may have already been
+                // submitted to the carrier before the local coroutine was
+                // cancelled. A cancellation-as-failure toast tempts the user
+                // to re-send, billing them twice and (worse) double-texting
+                // the recipient.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSending = false,
