@@ -4079,15 +4079,28 @@ router.delete('/devices/:deviceId', requirePermission('tickets.edit'), asyncHand
 
   // Restore inventory for parts — runs after the device row is gone so no
   // second concurrent request can replay this credit path.
+  // BUGHUNT-2026-05-17: bundle every per-part stock UPDATE with its matching
+  // stock_movements INSERT into a single adb.transaction so a crash inside
+  // the loop can't leave inflated stock with no ledger entry (or vice versa).
+  // The double-credit race is already prevented by the guarded DELETE above;
+  // this fix is about the ledger consistency invariant ("every stock change
+  // has a matching stock_movements row").
+  const restoreNow = now();
+  const restoreTx: TxQuery[] = [];
   for (const part of parts) {
     if (!part.inventory_item_id) continue;
-    await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
-      part.quantity, now(), part.inventory_item_id);
-
-    await adb.run(`
-      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-      VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Device removed from ticket', ?, ?, ?)
-    `, part.inventory_item_id, part.quantity, deviceId, userId, now(), now());
+    restoreTx.push({
+      sql: 'UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+      params: [part.quantity, restoreNow, part.inventory_item_id],
+    });
+    restoreTx.push({
+      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+            VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Device removed from ticket', ?, ?, ?)`,
+      params: [part.inventory_item_id, part.quantity, deviceId, userId, restoreNow, restoreNow],
+    });
+  }
+  if (restoreTx.length > 0) {
+    await adb.transaction(restoreTx);
   }
 
   await recalcTicketTotalsAsync(adb, existing.ticket_id);
@@ -4390,13 +4403,22 @@ router.delete('/devices/parts/:partId', requirePermission('tickets.edit'), async
   }
 
   if (part.inventory_item_id) {
-    await adb.run('UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
-      part.quantity, now(), part.inventory_item_id);
-
-    await adb.run(`
-      INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-      VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Part removed from ticket', ?, ?, ?)
-    `, part.inventory_item_id, part.quantity, part.ticket_device_id, userId, now(), now());
+    // BUGHUNT-2026-05-17: bundle the stock UPDATE + matching stock_movements
+    // INSERT into one tx so a crash between them can't inflate stock with
+    // no ledger entry (or vice versa). Same fix shape as the device-delete
+    // restoration loop above.
+    const restoreNow = now();
+    await adb.transaction([
+      {
+        sql: 'UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = ? WHERE id = ?',
+        params: [part.quantity, restoreNow, part.inventory_item_id],
+      },
+      {
+        sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+              VALUES (?, 'ticket_return', ?, 'ticket_device', ?, 'Part removed from ticket', ?, ?, ?)`,
+        params: [part.inventory_item_id, part.quantity, part.ticket_device_id, userId, restoreNow, restoreNow],
+      },
+    ]);
   }
   await recalcTicketTotalsAsync(adb, part.ticket_id);
   await insertHistoryAsync(adb, part.ticket_id, userId, 'part_removed', `Part removed: ${part.item_name || 'Unknown'} x${part.quantity}`);
