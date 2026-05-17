@@ -273,7 +273,10 @@ final class SpotlightCoordinatorTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        // Clean up notification observers via dealloc
+        // BUGHUNT-2026-05-17: explicit tearDown() so NotificationCenter
+        // observers are removed. The previous comment claimed "via dealloc"
+        // but the addObserver tokens were discarded — observers leaked.
+        coordinator?.tearDown()
         coordinator = nil
     }
 

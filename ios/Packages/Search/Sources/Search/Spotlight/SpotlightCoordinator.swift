@@ -54,11 +54,29 @@ public final class SpotlightCoordinator {
     /// How long to wait after the last notification before flushing. 2 seconds.
     private let debounceDuration: UInt64 = 2_000_000_000
 
+    // BUGHUNT-2026-05-17: NotificationCenter observer tokens captured for
+    // removal via `tearDown()`. Previously addObserver(forName:) returned
+    // an NSObjectProtocol that was discarded for all 3 subscriptions, so
+    // every test instance and every (potential) coordinator re-creation
+    // left dead observer slots in NotificationCenter.default for the
+    // process lifetime. Same fix family as FTSReindexCoordinator.
+    @ObservationIgnored private var observerTokens: [NSObjectProtocol] = []
+
     // MARK: Init
 
     public init(indexer: SpotlightIndexer = SpotlightIndexer()) {
         self.indexer = indexer
         subscribeToNotifications()
+    }
+
+    /// Remove all NotificationCenter observers. Idempotent. Call from tests'
+    /// `tearDownWithError()` and from app shutdown / logout paths.
+    public func tearDown() {
+        let center = NotificationCenter.default
+        for token in observerTokens { center.removeObserver(token) }
+        observerTokens.removeAll()
+        debounceTask?.cancel()
+        debounceTask = nil
     }
 
     // MARK: Public API
@@ -93,41 +111,47 @@ public final class SpotlightCoordinator {
     private func subscribeToNotifications() {
         let nc = NotificationCenter.default
 
-        nc.addObserver(
-            forName: .ticketChanged,
-            object: nil,
-            queue: nil
-        ) { [weak self] notification in
-            guard let self else { return }
-            let ticket = notification.userInfo?["ticket"] as? Ticket
-            Task { @MainActor in
-                if let ticket { self.enqueueTicket(ticket) }
+        observerTokens.append(
+            nc.addObserver(
+                forName: .ticketChanged,
+                object: nil,
+                queue: nil
+            ) { [weak self] notification in
+                guard let self else { return }
+                let ticket = notification.userInfo?["ticket"] as? Ticket
+                Task { @MainActor in
+                    if let ticket { self.enqueueTicket(ticket) }
+                }
             }
-        }
+        )
 
-        nc.addObserver(
-            forName: .customerChanged,
-            object: nil,
-            queue: nil
-        ) { [weak self] notification in
-            guard let self else { return }
-            let customer = notification.userInfo?["customer"] as? Customer
-            Task { @MainActor in
-                if let customer { self.enqueueCustomer(customer) }
+        observerTokens.append(
+            nc.addObserver(
+                forName: .customerChanged,
+                object: nil,
+                queue: nil
+            ) { [weak self] notification in
+                guard let self else { return }
+                let customer = notification.userInfo?["customer"] as? Customer
+                Task { @MainActor in
+                    if let customer { self.enqueueCustomer(customer) }
+                }
             }
-        }
+        )
 
-        nc.addObserver(
-            forName: .inventoryChanged,
-            object: nil,
-            queue: nil
-        ) { [weak self] notification in
-            guard let self else { return }
-            let item = notification.userInfo?["inventoryItem"] as? InventoryItem
-            Task { @MainActor in
-                if let item { self.enqueueInventoryItem(item) }
+        observerTokens.append(
+            nc.addObserver(
+                forName: .inventoryChanged,
+                object: nil,
+                queue: nil
+            ) { [weak self] notification in
+                guard let self else { return }
+                let item = notification.userInfo?["inventoryItem"] as? InventoryItem
+                Task { @MainActor in
+                    if let item { self.enqueueInventoryItem(item) }
+                }
             }
-        }
+        )
     }
 
     // MARK: - Queue management
