@@ -322,33 +322,25 @@ router.patch('/:id', asyncHandler(async (req, res) => {
       ],
     });
 
-    // Mint store credit only when customer_id is set. store_credits has no
-    // UNIQUE(customer_id) constraint (see migrations/026_refunds_credits.sql),
-    // so ON CONFLICT is not available — read the existing row out of band and
-    // emit either an UPDATE or an INSERT. The transaction is still atomic with
-    // the trade_ins UPDATE above; the race window where another concurrent
-    // request inserts a store_credits row for the same customer between our
-    // SELECT and INSERT is narrow and the worst case is two rows (which the
-    // balance-read helper in refunds.routes.ts already tolerates via SUM).
+    // Mint store credit only when customer_id is set.
+    // BUGHUNT-2026-05-17: migration 109 added UNIQUE(customer_id) on
+    // store_credits, so the old SELECT-then-(UPDATE or INSERT) pattern is
+    // now a race that CRASHES the whole accept transaction with a UNIQUE
+    // violation if a concurrent path inserts the customer's first row
+    // between our SELECT and INSERT. Use ON CONFLICT DO UPDATE — same
+    // pattern as pos.routes.ts / invoices.routes.ts — so the race
+    // resolves cleanly without rolling back the trade-in acceptance.
     if (existing.customer_id != null) {
-      const existingCredit = await adb.get<{ id: number }>(
-        'SELECT id FROM store_credits WHERE customer_id = ?',
-        existing.customer_id,
-      );
-      if (existingCredit) {
-        tx.push({
-          sql: 'UPDATE store_credits SET amount = amount + ?, updated_at = ? WHERE id = ?',
-          params: [effectiveAcceptedPrice, now(), existingCredit.id],
-        });
-      } else {
-        tx.push({
-          sql: `
-            INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
-            VALUES (?, ?, ?, ?)
-          `,
-          params: [existing.customer_id, effectiveAcceptedPrice, now(), now()],
-        });
-      }
+      tx.push({
+        sql: `
+          INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(customer_id) DO UPDATE SET
+            amount = amount + excluded.amount,
+            updated_at = excluded.updated_at
+        `,
+        params: [existing.customer_id, effectiveAcceptedPrice, now(), now()],
+      });
       tx.push({
         sql: `
           INSERT INTO store_credit_transactions
