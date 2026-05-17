@@ -46,6 +46,7 @@ import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -150,6 +151,17 @@ class SyncManager @Inject constructor(
             }
             Log.d(TAG, "Sync completed")
             breadcrumbs.log(com.bizarreelectronics.crm.util.Breadcrumbs.CAT_SYNC, "completed")
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: don't classify cancellation as "Sync failed".
+            // WorkManager regularly cancels the SyncWorker (Doze, replacement
+            // enqueue, OS reclaim) and the previous broad Exception catch
+            // logged "Sync failed [CancellationException]" plus a misleading
+            // breadcrumb entry every time. Just propagate the cancel cleanly.
+            breadcrumbs.log(
+                com.bizarreelectronics.crm.util.Breadcrumbs.CAT_SYNC,
+                "cancelled",
+            )
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed [${e.javaClass.simpleName}]: ${e.message}")
             breadcrumbs.log(
@@ -169,6 +181,15 @@ class SyncManager @Inject constructor(
     private suspend inline fun runIsolated(stepName: String, crossinline block: suspend () -> Unit) {
         try {
             block()
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: cancellation must NOT be isolated to a
+            // single sync step. When WorkManager cancels the sync worker
+            // mid-loop, the previous catch (e: Exception) classified the
+            // current step as failed but continued the loop, producing one
+            // fake "step 'X' failed [CancellationException]" log entry per
+            // remaining step. Re-throw so the cancel aborts the whole sync
+            // loop cleanly.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Sync step '$stepName' failed [${e.javaClass.simpleName}]: ${e.message}")
         }
