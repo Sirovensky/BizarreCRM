@@ -24,7 +24,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
-import type { AsyncDb } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
 const router = Router({ mergeParams: true });
 
@@ -217,37 +217,62 @@ router.post(
 
     // Verify the ticket exists.
     const ticket = await adb.get<{ id: number }>(
-      'SELECT id FROM tickets WHERE id = ?',
+      'SELECT id FROM tickets WHERE id = ? AND is_deleted = 0',
       ticketId,
     );
     if (!ticket) throw new AppError('Ticket not found', 404);
 
-    const result = await adb.run(
-      `INSERT INTO ticket_signatures
-         (ticket_id, signature_kind, signer_name, signer_role,
-          signature_data_url, waiver_text, waiver_version,
-          captured_by_user_id, ip_address, user_agent)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ticketId,
-      signatureKind,
-      signerName,
-      signerRole,
-      signatureDataUrl,
-      waiverText,
-      waiverVersion,
-      userId,
-      ipAddress,
-      userAgent,
-    );
-
-    const newId = Number(result.lastInsertRowid);
+    // BUGHUNT-2026-05-17: bundle the signature INSERT with the ticket
+    // signature stamp into one tx so a crash between them can't leave a
+    // captured signature record with no matching tickets.signature
+    // column updated (the UI keys off tickets.signature, so the lost
+    // stamp made the captured signature invisible in the operator
+    // workflow). INSERT...SELECT WHERE EXISTS prevents attaching a
+    // signature to a ticket soft-deleted between the SELECT precheck
+    // and the tx.
+    const sigTx: TxQuery[] = [
+      {
+        sql: `INSERT INTO ticket_signatures
+                (ticket_id, signature_kind, signer_name, signer_role,
+                 signature_data_url, waiver_text, waiver_version,
+                 captured_by_user_id, ip_address, user_agent)
+              SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+               WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND is_deleted = 0)`,
+        params: [
+          ticketId,
+          signatureKind,
+          signerName,
+          signerRole,
+          signatureDataUrl,
+          waiverText,
+          waiverVersion,
+          userId,
+          ipAddress,
+          userAgent,
+          ticketId,
+        ],
+        expectChanges: true,
+        expectChangesError: 'TICKET_DELETED_DURING_SIGNATURE',
+      },
+    ];
     if (signatureKind === 'payment' || signatureKind === 'check_in') {
-      await adb.run(
-        `UPDATE tickets SET signature = ?, updated_at = datetime('now') WHERE id = ?`,
-        signatureDataUrl,
-        ticketId,
-      );
+      sigTx.push({
+        sql: `UPDATE tickets SET signature = ?, updated_at = datetime('now') WHERE id = ? AND is_deleted = 0`,
+        params: [signatureDataUrl, ticketId],
+      });
     }
+    let sigTxResults: Awaited<ReturnType<typeof adb.transaction>>;
+    try {
+      sigTxResults = await adb.transaction(sigTx);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('TICKET_DELETED_DURING_SIGNATURE')) {
+        throw new AppError('Ticket was just deleted; refresh and retry', 409);
+      }
+      throw err;
+    }
+
+    const newId = Number(sigTxResults[0]!.lastInsertRowid);
 
     audit(db, 'ticket_signature_captured', userId, ipAddress ?? 'unknown', {
       signature_id: newId,
