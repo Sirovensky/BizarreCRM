@@ -97,12 +97,22 @@ public final class BadgeManager {
     /// Should be invoked from the app's cold-start path (e.g. `AppState.init`
     /// or `SessionBootstrapper.coldStart()`) before any network calls complete.
     public func clearBadgeOnColdLaunch() async {
-        // Guard: skip if badge is already 0 to avoid a redundant system call.
-        guard currentBadgeCount != 0 else {
-            AppLog.ui.debug("BadgeManager.clearBadgeOnColdLaunch: badge already 0, skip")
-            return
+        // BUGHUNT-2026-05-17: previously this returned early when
+        // `currentBadgeCount == 0` — but the in-memory cache is ALWAYS 0 at
+        // cold launch (struct just initialised). The OS-level badge from a
+        // previous session could be 5+, but we'd skip the clear and the
+        // user would stare at a stale red dot until the first server sync
+        // finished. That defeated the entire purpose of the function.
+        //
+        // Unconditionally drive the OS badge to 0 — skip the `updateBadge`
+        // short-circuit by calling the provider directly, then sync the
+        // in-memory cache to match.
+        AppLog.ui.info("BadgeManager.clearBadgeOnColdLaunch: clearing OS badge regardless of in-memory cache")
+        do {
+            try await provider.setBadgeCount(0)
+            currentBadgeCount = 0
+        } catch {
+            AppLog.ui.error("BadgeManager.clearBadgeOnColdLaunch: setBadgeCount failed: \(error.localizedDescription, privacy: .public)")
         }
-        AppLog.ui.info("BadgeManager.clearBadgeOnColdLaunch: clearing stale badge (\(self.currentBadgeCount, privacy: .public))")
-        await clearBadge()
     }
 }
