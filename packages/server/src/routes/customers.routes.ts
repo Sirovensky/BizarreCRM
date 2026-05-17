@@ -2009,7 +2009,37 @@ router.delete(
       throw new AppError(`Cannot delete customer with ${unpaidInvoices} unpaid invoice${unpaidInvoices > 1 ? 's' : ''}. Settle or void them first.`, 400);
     }
 
-    await adb.run(`UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?`, id);
+    // BUGHUNT-2026-05-17: the open-ticket / unpaid-invoice checks above are
+    // TOCTOU — a new ticket or invoice can land between the COUNTs and the
+    // UPDATE. Re-validate as subqueries on the UPDATE WHERE clause so a
+    // concurrent write of either type causes changes === 0 and we surface
+    // 409 instead of silently soft-deleting a customer that now has live
+    // financial state attached.
+    const delRes = await adb.run(
+      `UPDATE customers SET is_deleted = 1, updated_at = datetime('now')
+        WHERE id = ?
+          AND is_deleted = 0
+          AND NOT EXISTS (
+            SELECT 1 FROM tickets t
+            JOIN ticket_statuses ts ON ts.id = t.status_id
+            WHERE t.customer_id = customers.id
+              AND t.is_deleted = 0
+              AND ts.is_closed = 0
+              AND ts.is_cancelled = 0
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM invoices
+            WHERE customer_id = customers.id
+              AND status IN ('unpaid', 'partial')
+          )`,
+      id,
+    );
+    if (delRes.changes === 0) {
+      throw new AppError(
+        'Customer has open tickets or unpaid invoices added in another window; refresh and retry',
+        409,
+      );
+    }
     audit(req.db, 'customer_deleted', req.user!.id, req.ip || 'unknown', { customer_id: id });
 
     res.json({ success: true, data: { message: 'Customer deleted' } });
