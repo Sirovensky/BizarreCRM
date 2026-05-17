@@ -45,9 +45,15 @@ public actor GiftCardWalletService {
         request.httpMethod = "GET"
         request.setValue("application/vnd.apple.pkpass", forHTTPHeaderField: "Accept")
 
+        // BUGHUNT-2026-05-17: route through APIClient.authedDataRequest so
+        // the bearer token + Origin header are attached and 401 triggers a
+        // refresh-and-retry. Previously `URLSession.shared.data(for:)`
+        // skipped the auth pipeline entirely, so this endpoint returned 401
+        // (gift-card pkpass downloads are auth-gated server-side). Same fix
+        // family as CallRecordingPlayer / CustomerFilesTabView from earlier.
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await api.authedDataRequest(request)
         } catch {
             throw GiftCardWalletError.network(error)
         }
