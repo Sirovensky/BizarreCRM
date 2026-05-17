@@ -2244,15 +2244,38 @@ router.post('/receive-scan/create-from-catalog', requirePermission('inventory.bu
     : Math.round(catalogItem.price * (1 + markupRaw / 100) * 100) / 100;
   const qty = Math.max(1, parseInt(quantity, 10) || 1);
 
-  const result = await adb.run(`
-    INSERT INTO inventory_items (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock, image_url, description, created_at)
-    VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))
-  `,
-    catalogItem.name, catalogItem.sku || null,
-    catalogItem.price, finalRetail, qty,
-    catalogItem.image_url || null,
-    `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
-  );
+  // BUGHUNT-2026-05-17: inventory_items.sku has only a plain index, no
+  // UNIQUE constraint (migration 001), so the SELECT-then-INSERT pattern
+  // above silently created duplicate inventory rows when two staff
+  // imported the same catalog item simultaneously — POS then saw two
+  // SKUs and decremented stock against only one, drifting in_stock vs.
+  // physical inventory. Fold the dedupe into the INSERT via WHERE NOT
+  // EXISTS so SQLite's writer lock serialises the race; loser sees
+  // changes=0 and surfaces the same 409 the pre-check returns.
+  const result = catalogItem.sku
+    ? await adb.run(`
+        INSERT INTO inventory_items (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock, image_url, description, created_at)
+        SELECT ?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now')
+         WHERE NOT EXISTS (SELECT 1 FROM inventory_items WHERE sku = ?)
+      `,
+        catalogItem.name, catalogItem.sku,
+        catalogItem.price, finalRetail, qty,
+        catalogItem.image_url || null,
+        `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
+        catalogItem.sku,
+      )
+    : await adb.run(`
+        INSERT INTO inventory_items (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock, image_url, description, created_at)
+        VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))
+      `,
+        catalogItem.name, null,
+        catalogItem.price, finalRetail, qty,
+        catalogItem.image_url || null,
+        `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
+      );
+  if (result.changes === 0) {
+    throw new AppError('Item already in inventory (matching SKU)', 409);
+  }
   const itemId = Number(result.lastInsertRowid);
 
   // Copy device compatibility

@@ -1218,10 +1218,24 @@ router.post('/services', adminOrManager, asyncHandler(async (req, res) => {
   const existing = await adb.get('SELECT id FROM repair_services WHERE slug = ?', slug);
   if (existing) throw new AppError('A service with this slug already exists', 400);
 
-  const result = await adb.run(`
-    INSERT INTO repair_services (name, slug, category, description, is_active, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `, name, slug, category || null, description || null, is_active, sort_order);
+  // BUGHUNT-2026-05-17: the SELECT above is TOCTOU vs UNIQUE(slug) on
+  // repair_services (migration 010) — two concurrent admin POSTs with
+  // the same slug both pass the pre-check and the second INSERT surfaces
+  // as a generic 500. Translate the constraint violation to the same
+  // friendly error the pre-check returns on the no-race path.
+  let result;
+  try {
+    result = await adb.run(`
+      INSERT INTO repair_services (name, slug, category, description, is_active, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, name, slug, category || null, description || null, is_active, sort_order);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*repair_services/i.test(msg)) {
+      throw new AppError('A service with this slug already exists', 400);
+    }
+    throw err;
+  }
 
   const service = await adb.get('SELECT * FROM repair_services WHERE id = ?', result.lastInsertRowid);
   audit(req.db, 'repair_service_created', req.user!.id, req.ip || 'unknown', { service_id: Number(result.lastInsertRowid), name, slug });
@@ -1240,14 +1254,26 @@ router.put('/services/:id', adminOrManager, asyncHandler(async (req, res) => {
     if (dup) throw new AppError('A service with this slug already exists', 400);
   }
 
-  await adb.run(`
-    UPDATE repair_services SET
-      name = COALESCE(?, name), slug = COALESCE(?, slug), category = COALESCE(?, category),
-      description = COALESCE(?, description), is_active = COALESCE(?, is_active),
-      sort_order = COALESCE(?, sort_order), updated_at = datetime('now')
-    WHERE id = ?
-  `, name ?? null, slug ?? null, category ?? null, description ?? null,
-    is_active ?? null, sort_order ?? null, req.params.id);
+  // BUGHUNT-2026-05-17: PUT slug pre-check above is TOCTOU vs UNIQUE(slug)
+  // on repair_services (migration 010) — two concurrent renames targeting
+  // the same slug both pass the SELECT and the second UPDATE surfaces as
+  // a generic 500. Translate the violation to the friendly error.
+  try {
+    await adb.run(`
+      UPDATE repair_services SET
+        name = COALESCE(?, name), slug = COALESCE(?, slug), category = COALESCE(?, category),
+        description = COALESCE(?, description), is_active = COALESCE(?, is_active),
+        sort_order = COALESCE(?, sort_order), updated_at = datetime('now')
+      WHERE id = ?
+    `, name ?? null, slug ?? null, category ?? null, description ?? null,
+      is_active ?? null, sort_order ?? null, req.params.id);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*repair_services/i.test(msg)) {
+      throw new AppError('A service with this slug already exists', 400);
+    }
+    throw err;
+  }
 
   const service = await adb.get('SELECT * FROM repair_services WHERE id = ?', req.params.id);
   audit(req.db, 'repair_service_updated', req.user!.id, req.ip || 'unknown', { service_id: Number(req.params.id) });
