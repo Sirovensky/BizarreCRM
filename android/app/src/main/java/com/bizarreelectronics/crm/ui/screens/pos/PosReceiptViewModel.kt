@@ -14,6 +14,7 @@ import com.bizarreelectronics.crm.data.remote.api.SendReceiptEmailRequest
 import com.bizarreelectronics.crm.data.remote.api.SendReceiptSmsRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -146,16 +147,14 @@ class PosReceiptViewModel @Inject constructor(
     fun downloadPdf(uri: Uri) {
         val state = _uiState.value
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { renderReceiptPdf(state, uri) }
+            try {
+                withContext(Dispatchers.IO) { renderReceiptPdf(state, uri) }
+                _uiState.update { it.copy(snackbarMessage = "Saved") }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(snackbarMessage = "Failed: ${e.message}") }
             }
-            result
-                .onSuccess {
-                    _uiState.update { it.copy(snackbarMessage = "Saved") }
-                }
-                .onFailure { e ->
-                    _uiState.update { it.copy(snackbarMessage = "Failed: ${e.message}") }
-                }
         }
     }
 
@@ -170,24 +169,22 @@ class PosReceiptViewModel @Inject constructor(
     fun prepareLocalEmailIntent() {
         val state = _uiState.value
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
+            try {
+                val file = withContext(Dispatchers.IO) {
                     val dir = File(appContext.cacheDir, "receipts").apply { mkdirs() }
-                    val file = File(dir, "${state.orderId.ifBlank { "receipt" }}.pdf")
-                    renderReceiptPdfToFile(state, file)
-                    file
+                    val f = File(dir, "${state.orderId.ifBlank { "receipt" }}.pdf")
+                    renderReceiptPdfToFile(state, f)
+                    f
                 }
+                // Pass the plain file; screen wraps with FileProvider.getUriForFile.
+                _uiState.update {
+                    it.copy(pendingEmailPdfUri = Uri.fromFile(file))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(snackbarMessage = "Email prep failed: ${e.message}") }
             }
-            result
-                .onSuccess { file ->
-                    // Pass the plain file; screen wraps with FileProvider.getUriForFile.
-                    _uiState.update {
-                        it.copy(pendingEmailPdfUri = Uri.fromFile(file))
-                    }
-                }
-                .onFailure { e ->
-                    _uiState.update { it.copy(snackbarMessage = "Email prep failed: ${e.message}") }
-                }
         }
     }
 
@@ -201,13 +198,14 @@ class PosReceiptViewModel @Inject constructor(
         _uiState.update { it.copy(smsSentState = SendState.SENDING, smsError = null) }
 
         viewModelScope.launch {
-            runCatching {
+            try {
                 receiptApi.sendReceiptSms(SendReceiptSmsRequest(invoiceId = invoiceId, phone = phone))
-            }.onSuccess {
                 _uiState.update {
                     it.copy(smsSentState = SendState.SENT, snackbarMessage = "SMS sent to $phone")
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
                 val is404 = e is HttpException && e.code() == 404
                 val message = if (is404) {
                     // POS-SMS-001: endpoint not yet deployed on this server version
@@ -229,13 +227,14 @@ class PosReceiptViewModel @Inject constructor(
         _uiState.update { it.copy(emailSentState = SendState.SENDING, emailError = null) }
 
         viewModelScope.launch {
-            runCatching {
+            try {
                 receiptApi.sendReceiptEmail(SendReceiptEmailRequest(invoiceId = invoiceId, recipientEmail = email))
-            }.onSuccess {
                 _uiState.update {
                     it.copy(emailSentState = SendState.SENT, snackbarMessage = "Email sent to $email")
                 }
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
                 val message = e.message ?: "Email failed"
                 _uiState.update {
                     it.copy(emailSentState = SendState.ERROR, emailError = message, snackbarMessage = "Email failed: $message")

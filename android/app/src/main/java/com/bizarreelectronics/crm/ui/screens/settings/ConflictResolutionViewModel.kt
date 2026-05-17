@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.api.SyncApi
 import com.bizarreelectronics.crm.data.sync.ConflictRecord
 import com.bizarreelectronics.crm.data.sync.ConflictResolver
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -145,6 +146,8 @@ class ConflictResolutionViewModel @Inject constructor(
                 _uiState.value = ConflictResolutionUiState.Error("Server error (${e.code()})")
             } catch (e: IOException) {
                 _uiState.value = ConflictResolutionUiState.Error("Network error — changes not saved")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = ConflictResolutionUiState.Error("Unexpected error: ${e.message}")
             }
