@@ -267,15 +267,21 @@ export function startSlaBreachCron(
   getDbsFn: () => Iterable<TenantDbEntry>,
 ): NodeJS.Timeout {
   function tick(): void {
-    try {
-      for (const { slug, db } of getDbsFn()) {
+    // BUGHUNT-2026-05-17: per-tenant try/catch — a single throw inside
+    // runForTenant or runFirstResponseBreaches (poisoned ticket row,
+    // legacy schema gap, prepared-statement failure) used to abort the
+    // whole sweep, leaving every tenant after the broken one without
+    // SLA-breach detection for the rest of the cron window.
+    for (const { slug, db } of getDbsFn()) {
+      try {
         runForTenant(slug, db);
         runFirstResponseBreaches(slug, db);
+      } catch (err) {
+        logger.error('sla-breach-cron tenant iteration failed', {
+          tenantSlug: slug,
+          err: err instanceof Error ? err.message : String(err),
+        });
       }
-    } catch (err) {
-      logger.error('sla-breach-cron top-level error', {
-        err: err instanceof Error ? err.message : String(err),
-      });
     }
   }
 

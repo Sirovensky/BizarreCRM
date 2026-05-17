@@ -370,14 +370,20 @@ export function startRecurringInvoicesCron(
   getDbsFn: () => Iterable<TenantDbEntry>,
 ): NodeJS.Timeout {
   function tick(): void {
-    try {
-      for (const { slug, db } of getDbsFn()) {
+    // BUGHUNT-2026-05-17: wrap EACH tenant in its own try/catch so a
+    // single poisoned tenant DB (corrupt row, missing column on legacy
+    // schema, prepared-statement failure) doesn't bubble out and abort
+    // the whole sweep, silently denying recurring invoices to every
+    // tenant that comes later in the iterator.
+    for (const { slug, db } of getDbsFn()) {
+      try {
         runForTenant(slug, db);
+      } catch (err) {
+        logger.error('recurring-invoices cron tenant iteration failed', {
+          tenantSlug: slug,
+          err: err instanceof Error ? err.message : String(err),
+        });
       }
-    } catch (err) {
-      logger.error('recurring-invoices cron top-level error', {
-        err: err instanceof Error ? err.message : String(err),
-      });
     }
   }
 

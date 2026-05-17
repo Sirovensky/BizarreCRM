@@ -179,14 +179,21 @@ export function startReceiptOcrCron(
     }
     running = true;
     try {
+      // BUGHUNT-2026-05-17: per-tenant try/catch so a single tenant
+      // throwing (corrupt receipt, Tesseract OOM kill on a giant
+      // attachment, locked tenant DB) doesn't abort the whole sweep
+      // and starve every later tenant of OCR for the rest of the tick.
       for (const { slug, db } of getDbsFn()) {
-        // Process tenants sequentially to cap peak Tesseract memory usage.
-        await runForTenant(slug, db, uploadsPath);
+        try {
+          // Process tenants sequentially to cap peak Tesseract memory usage.
+          await runForTenant(slug, db, uploadsPath);
+        } catch (err) {
+          logger.error('receipt-ocr-cron: tenant iteration failed', {
+            tenantSlug: slug,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
-    } catch (err) {
-      logger.error('receipt-ocr-cron: top-level tick error', {
-        error: err instanceof Error ? err.message : String(err),
-      });
     } finally {
       running = false;
     }

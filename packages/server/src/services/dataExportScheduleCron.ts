@@ -286,14 +286,21 @@ export function startDataExportScheduleCron(
     }
     running = true;
     try {
+      // BUGHUNT-2026-05-17: per-tenant try/catch so one poisoned tenant
+      // (corrupt export config row, S3 credential mismatch surfacing as
+      // throw, schema gap) doesn't abort the whole sweep mid-iteration
+      // and silently deny every later tenant their scheduled exports.
       for (const { slug, db } of getDbsFn()) {
-        // Sequential across tenants — avoids thundering-herd on shared DB pool.
-        await runForTenant(slug, db);
+        try {
+          // Sequential across tenants — avoids thundering-herd on shared DB pool.
+          await runForTenant(slug, db);
+        } catch (err) {
+          logger.error('data-export-schedule-cron tenant iteration failed', {
+            tenantSlug: slug,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
-    } catch (err) {
-      logger.error('data-export-schedule-cron top-level error', {
-        err: err instanceof Error ? err.message : String(err),
-      });
     } finally {
       running = false;
     }
