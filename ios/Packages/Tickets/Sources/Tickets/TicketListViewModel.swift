@@ -218,6 +218,10 @@ public final class TicketListViewModel {
     public func convertToInvoice(ticket: TicketSummary) async {
         do {
             _ = try await repo.convertToInvoice(id: ticket.id)
+        } catch is CancellationError {
+            return
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            return
         } catch {
             AppLog.ui.error("Convert to invoice failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
@@ -237,6 +241,12 @@ public final class TicketListViewModel {
             if let cached = cachedRepo {
                 lastSyncedAt = await cached.lastSyncedAt
             }
+        } catch is CancellationError {
+            // Filter changed / view torn down — silently bail without
+            // painting "cancelled" over the still-visible list.
+            return
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            return
         } catch {
             AppLog.ui.error("Ticket list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

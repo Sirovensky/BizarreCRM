@@ -154,6 +154,26 @@ extension AppError {
         return .unknown(underlying: error)
     }
 
+    /// Returns `true` when `error` represents user- or system-initiated
+    /// cancellation (a Swift `CancellationError`, a `URLError.cancelled`,
+    /// or our own `AppError.cancelled`). Use this in catch blocks to
+    /// distinguish "task was torn down" from "operation actually failed".
+    ///
+    /// Typical pattern:
+    /// ```swift
+    /// do { try await repo.fetch() }
+    /// catch let e where AppError.isCancellation(e) { return }
+    /// catch { errorMessage = e.localizedDescription }
+    /// ```
+    public static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlErr = error as? URLError, urlErr.code == .cancelled { return true }
+        if let appErr = error as? AppError, case .cancelled = appErr { return true }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain, ns.code == URLError.cancelled.rawValue { return true }
+        return false
+    }
+
     /// Map an HTTP status code to the appropriate `AppError`.
     /// - Parameters:
     ///   - statusCode: The HTTP response status code.
