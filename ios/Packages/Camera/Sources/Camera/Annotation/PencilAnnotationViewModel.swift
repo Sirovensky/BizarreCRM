@@ -81,6 +81,13 @@ public final class PencilAnnotationViewModel {
     public func exportFlattened() async -> UIImage? {
         let drawing = currentDrawing
         let background = backgroundImage
+        // BUGHUNT-2026-05-17: capture UIScreen.main.scale on the main actor
+        // BEFORE jumping to Task.detached. UIScreen.main must only be read
+        // from the main thread; reading it from the detached worker is
+        // undefined behavior (Swift 6 main-actor isolation makes this a
+        // hard error in strict-concurrency builds, and it can crash
+        // legitimately at runtime on iOS 17+).
+        let screenScale = UIScreen.main.scale
         return await Task.detached(priority: .userInitiated) {
             let size: CGSize
             if let bg = background {
@@ -103,7 +110,7 @@ public final class PencilAnnotationViewModel {
                 let scale = size.width / max(size.width, 1)
                 ctx.cgContext.scaleBy(x: scale, y: scale)
                 let inkImage = drawing.image(from: CGRect(origin: .zero, size: size),
-                                             scale: UIScreen.main.scale)
+                                             scale: screenScale)
                 inkImage.draw(in: CGRect(origin: .zero, size: size))
             }
         }.value
