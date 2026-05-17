@@ -651,6 +651,16 @@ router.post('/upload-media', enforceUploadQuota, mmsUpload.single('file'), fileU
 } }), async (req, res, next) => {
   try {
     if (!req.file) throw new AppError('No file uploaded', 400);
+    // BUGHUNT-2026-05-17: rate-limit per user. Image compression is
+    // CPU-heavy (Sharp) and a buggy or malicious client could submit
+    // thousands of small images per minute to saturate the worker
+    // pool; storage quota only catches bytes, not request rate.
+    // 60/min is generous for legitimate MMS composition.
+    const userId = req.user?.id;
+    if (userId && !checkWindowRate(req.db, 'mms_upload', String(userId), 60, 60_000)) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+      throw new AppError('Too many MMS uploads. Try again shortly.', 429);
+    }
 
     // Auto-compress if needed
     const compressed = await compressIfNeeded(req.file.path, req.file.mimetype);
