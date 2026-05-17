@@ -230,9 +230,22 @@ router.put('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
     });
   }
   if (queries.length > 0) await adb.transaction(queries);
-  audit(db, 'custom_field_values_saved', req.user!.id, req.ip || 'unknown', { entity_type: req.params.entityType, entity_id: Number(req.params.entityId), field_count: fields.length });
+  // BUGHUNT-2026-05-17: only audit when an actual write happened, and log
+  // the real saved count (queries.length, after the definition_id filter)
+  // not the raw input count. Previously a caller could pollute the audit
+  // log by posting any number of fields with empty definition_ids — the
+  // transaction was a no-op but a "saved" audit row still landed with
+  // field_count = whatever the attacker chose, which complicated forensic
+  // review and let unprivileged callers inject misleading log entries.
+  if (queries.length > 0) {
+    audit(db, 'custom_field_values_saved', req.user!.id, req.ip || 'unknown', {
+      entity_type: req.params.entityType,
+      entity_id: Number(req.params.entityId),
+      field_count: queries.length,
+    });
+  }
 
-  res.json({ success: true, data: { saved: fields.length } });
+  res.json({ success: true, data: { saved: queries.length } });
 }));
 
 export default router;
