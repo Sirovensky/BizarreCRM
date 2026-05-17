@@ -621,41 +621,64 @@ publicRouter.post(
     const nowSql = sqlTimestamp(new Date());
 
     // Atomic transaction: mark token consumed + insert signature + set estimate.status='signed'
-    await adb.transaction([
-      {
-        sql: `UPDATE estimate_sign_tokens
-                 SET consumed_at = ?
-               WHERE id = ? AND consumed_at IS NULL`,
-        params: [nowSql, tokenRow.id],
-      },
-      {
-        sql: `INSERT INTO estimate_signatures
-                (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
-                 subtotal_at_signing, tax_at_signing, total_at_signing)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        params: [
-          estimateId,
-          signerName,
-          signerEmail,
-          ip.slice(0, 64),
-          signatureDataUrl,
-          nowSql,
-          userAgent,
-          estimate.subtotal,
-          estimate.total_tax,
-          estimate.total,
-        ],
-      },
-      {
-        // BUGHUNT-2026-05-10-13: also stamp signed_at so reports + UI can
-        // distinguish today's signature from a 3-month-old one. Migration
-        // 176 adds the column.
-        sql: `UPDATE estimates
-                 SET status = 'signed', signed_at = ?, updated_at = ?
-               WHERE id = ? AND status NOT IN ('signed')`,
-        params: [nowSql, nowSql, estimateId],
-      },
-    ]);
+    // BUGHUNT-2026-05-17: expectChanges:true on the token UPDATE is what
+    // makes this single-use. Without it, two near-simultaneous signs both
+    // pass the up-front `if (tokenRow.consumed_at)` check, both enter the
+    // tx, the second token UPDATE hits 0 rows (already consumed), and —
+    // crucially without the guard — the signature INSERT + estimate
+    // UPDATE in that second tx STILL RUN, leaving two signature rows for
+    // one estimate (and audit-trail noise about who signed when).
+    try {
+      await adb.transaction([
+        {
+          sql: `UPDATE estimate_sign_tokens
+                   SET consumed_at = ?
+                 WHERE id = ? AND consumed_at IS NULL`,
+          params: [nowSql, tokenRow.id],
+          expectChanges: true,
+          expectChangesError: 'ESTIMATE_SIGN_TOKEN_RACE',
+        },
+        {
+          sql: `INSERT INTO estimate_signatures
+                  (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+                   subtotal_at_signing, tax_at_signing, total_at_signing)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          params: [
+            estimateId,
+            signerName,
+            signerEmail,
+            ip.slice(0, 64),
+            signatureDataUrl,
+            nowSql,
+            userAgent,
+            estimate.subtotal,
+            estimate.total_tax,
+            estimate.total,
+          ],
+        },
+        {
+          // BUGHUNT-2026-05-10-13: also stamp signed_at so reports + UI can
+          // distinguish today's signature from a 3-month-old one. Migration
+          // 176 adds the column.
+          sql: `UPDATE estimates
+                   SET status = 'signed', signed_at = ?, updated_at = ?
+                 WHERE id = ? AND status NOT IN ('signed')`,
+          params: [nowSql, nowSql, estimateId],
+        },
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ESTIMATE_SIGN_TOKEN_RACE')) {
+        audit(req.db, 'estimate_sign_submit_consumed', null, ip, { estimate_id: estimateId, race: true });
+        res.status(410).json({
+          success: false,
+          message: 'This signature link was just used by another browser/tab.',
+          code: 'TOKEN_CONSUMED',
+        });
+        return;
+      }
+      throw err;
+    }
 
     audit(req.db, 'estimate_signed', null, ip, {
       estimate_id: estimateId,
