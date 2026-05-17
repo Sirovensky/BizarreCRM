@@ -967,6 +967,11 @@ export async function refreshSegmentMembership(
 router.get(
   '/reviews',
   asyncHandler(async (req, res) => {
+    // BUGHUNT-2026-05-17: gate review listing behind manager-or-admin
+    // to match the PATCH gate below. Customer reviews include private
+    // metadata (responded_at, internal moderation notes, customer ids)
+    // that technicians shouldn't be able to enumerate.
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 25);
@@ -1027,6 +1032,12 @@ router.get(
 router.patch(
   '/reviews/:id',
   asyncHandler(async (req, res) => {
+    // BUGHUNT-2026-05-17: gate review writes behind manager-or-admin.
+    // Previously this endpoint had NO role check — any authenticated
+    // user (including a technician) could rewrite shop responses or
+    // toggle public_posted on customer reviews, controlling what the
+    // public sees on the storefront.
+    requireManagerOrAdmin(req);
     const adb = req.asyncDb;
     const db = req.db;
     const id = Number(req.params.id);

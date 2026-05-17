@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
+import { hasPermission } from '../middleware/auth.js';
 import type { AsyncDb } from '../db/async-db.js';
 
 const router = Router();
@@ -169,6 +170,24 @@ router.put('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
   const entityType = String(req.params.entityType || '');
   if (!VALID_ENTITY_TYPES.has(entityType)) {
     throw new AppError('Invalid entity_type', 400);
+  }
+  // BUGHUNT-2026-05-17: gate the upsert by the entity's edit permission.
+  // Previously this endpoint had NO role check at all — any authenticated
+  // user could write custom field values on any customer / ticket /
+  // invoice / inventory item. The frontend hides the UI from
+  // non-privileged roles, but the API was wide open. Require the
+  // matching `<entity>.edit` permission so role enforcement matches the
+  // entity's main edit gate (a tech with tickets.edit can still set
+  // ticket custom fields; one without can't).
+  const PERM_FOR_ENTITY: Record<string, string> = {
+    ticket: 'tickets.edit',
+    customer: 'customers.edit',
+    inventory: 'inventory.edit',
+    invoice: 'invoices.edit',
+  };
+  const required = PERM_FOR_ENTITY[entityType];
+  if (!required || !hasPermission(req.user, required)) {
+    throw new AppError('Insufficient permissions to edit custom fields for this entity', 403);
   }
   // @audit-fixed: §37 — bound fields array length and per-cell value size to
   // prevent unbounded TEXT writes.
