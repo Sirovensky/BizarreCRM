@@ -394,13 +394,23 @@ router.post(
     );
     if (!existing) throw new AppError('Auto-responder not found', 404);
 
-    const newActive = existing.is_active ? 0 : 1;
-
+    // BUGHUNT-2026-05-17: atomic flip via CASE so two concurrent /toggle
+    // calls don't both read the same is_active value and both write the
+    // opposite — cancelling out instead of applying. Then read back the
+    // post-flip value for the audit + response so the client gets the
+    // truth even on contention.
     await adb.run(
-      `UPDATE sms_auto_responders SET is_active = ?, updated_at = datetime('now') WHERE id = ?`,
-      newActive,
+      `UPDATE sms_auto_responders
+         SET is_active = CASE WHEN COALESCE(is_active, 0) = 1 THEN 0 ELSE 1 END,
+             updated_at = datetime('now')
+       WHERE id = ?`,
       id,
     );
+    const fresh = await adb.get<{ is_active: number }>(
+      'SELECT is_active FROM sms_auto_responders WHERE id = ?',
+      id,
+    );
+    const newActive = fresh?.is_active ?? 0;
 
     audit(db, newActive ? 'sms_auto_responder_enabled' : 'sms_auto_responder_disabled', userId, req.ip || 'unknown', {
       responder_id: id,
