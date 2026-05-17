@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.dto.StocktakeCreateRequest
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeListItem
 import com.bizarreelectronics.crm.data.repository.StocktakeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -78,6 +79,10 @@ class StocktakeListViewModel @Inject constructor(
                         error = "Failed to load sessions (HTTP ${e.code()})",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw so back-nav doesn't paint
+                // "Network error — check your connection".
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "GET /stocktake failed: ${e.message}")
                 _state.value = _state.value.copy(
@@ -134,6 +139,8 @@ class StocktakeListViewModel @Inject constructor(
                 }
                 Log.w(TAG, "POST /stocktake HTTP ${e.code()}: ${e.message()}")
                 _state.value = _state.value.copy(isCreating = false, error = msg)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "POST /stocktake failed: ${e.message}")
                 _state.value = _state.value.copy(
@@ -152,6 +159,8 @@ class StocktakeListViewModel @Inject constructor(
                 stocktakeRepository.cancelSession(id)
                 // Reload to reflect server status change
                 loadSessions()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "POST /stocktake/$id/cancel failed: ${e.message}")
                 _state.value = _state.value.copy(error = "Failed to cancel session")

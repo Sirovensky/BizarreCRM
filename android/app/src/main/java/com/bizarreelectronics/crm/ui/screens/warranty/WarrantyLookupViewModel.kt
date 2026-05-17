@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.WarrantyApi
 import com.bizarreelectronics.crm.data.remote.api.WarrantyLookupRowDto
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -83,6 +84,12 @@ class WarrantyLookupViewModel @Inject constructor(
                     results = rows,
                     error = if (rows.isEmpty()) "No warranty records found." else null,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so back-nav or
+                // a rapid new-search doesn't paint "Lookup failed:
+                // StandaloneCoroutine was cancelled" over the warranty
+                // lookup screen.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

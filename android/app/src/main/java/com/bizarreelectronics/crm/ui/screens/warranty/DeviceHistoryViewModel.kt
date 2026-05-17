@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.DeviceHistoryRowDto
 import com.bizarreelectronics.crm.data.remote.api.WarrantyApi
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -84,6 +85,10 @@ class DeviceHistoryViewModel @Inject constructor(
                     rows = rows,
                     error = if (rows.isEmpty()) "No repair history found for this device." else null,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw so back-nav / rapid re-search
+                // doesn't paint "History lookup failed: cancelled".
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

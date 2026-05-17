@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore
 import retrofit2.HttpException
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,6 +52,10 @@ class CustomerHealthScoreViewModel @Inject constructor(
                     isLoading = false,
                     error = if (e.code() == 404) null else "Failed to load health score (${e.code()})",
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so leaving the
+                // health-score screen mid-load doesn't paint a fake error.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -69,6 +74,8 @@ class CustomerHealthScoreViewModel @Inject constructor(
                     isRecalculating = false,
                     healthScore = response.data ?: _state.value.healthScore,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isRecalculating = false,

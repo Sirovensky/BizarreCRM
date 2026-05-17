@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,6 +72,10 @@ class DeviceHistoryViewModel @Inject constructor(
                     entries = entries,
                     error = if (entries.isEmpty()) "No repair history found for this device." else null,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
+                // doesn't paint a fake "Search failed" banner.
+                throw e
             } catch (e: Exception) {
                 val is404 = runCatching { (e as? retrofit2.HttpException)?.code() == 404 }.getOrDefault(false)
                 _state.value = _state.value.copy(

@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.ExpenseApi
 import com.bizarreelectronics.crm.data.remote.dto.ExpenseDetail
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -51,6 +52,11 @@ class ExpenseDetailViewModel @Inject constructor(
                     expense = response.data,
                     isLoading = false,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
+                // mid-load doesn't paint a fake "Failed to load expense"
+                // error.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -83,6 +89,8 @@ class ExpenseDetailViewModel @Inject constructor(
                         approvalError = "Failed to approve: ${e.message}",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isApprovalLoading = false,
@@ -114,6 +122,8 @@ class ExpenseDetailViewModel @Inject constructor(
                         approvalError = "Failed to reject: ${e.message}",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isApprovalLoading = false,

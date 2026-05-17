@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.api.WarrantyClaimRequest
 import com.bizarreelectronics.crm.data.remote.api.WarrantyClaimResponse
 import com.bizarreelectronics.crm.data.remote.api.WarrantyRecordDto
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,6 +87,10 @@ class WarrantyClaimViewModel @Inject constructor(
                     searchResults = results,
                     searchError = if (results.isEmpty()) "No warranty records found." else null,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw so back-nav doesn't paint a
+                // fake "Search failed" banner.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSearching = false,
@@ -150,6 +155,8 @@ class WarrantyClaimViewModel @Inject constructor(
                         claimError = resp.message ?: "Claim failed — no data returned.",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
