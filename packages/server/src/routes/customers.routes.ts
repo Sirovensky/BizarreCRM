@@ -20,6 +20,7 @@ import {
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
+import { lastInsertRowidFrom } from '../db/async-db.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { config } from '../config.js';
@@ -754,17 +755,29 @@ router.post(
           }
         }
 
-        const result = await adb.run(`
-          INSERT INTO customers (first_name, last_name, email, phone, mobile, organization, city, state, postcode, address1, source)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-          firstName, row.last_name || '', email, phone, mobile,
-          row.organization || null, row.city || null, row.state || null, row.postcode || null,
-          row.address1 || null, 'csv_import',
-        );
-        const customerId = result.lastInsertRowid as number;
-        const code = generateOrderId('C', customerId);
-        await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
+        // BUGHUNT-2026-05-17: atomic INSERT + code UPDATE. UPDATE doesn't
+        // change last_insert_rowid(), so `printf('C-%04d', last_insert_rowid())`
+        // in the second statement still resolves to the customer row just
+        // inserted by the first statement, mirroring generateOrderId('C', id)
+        // in SQL. Previously this was two sequential adb.run() calls — a
+        // crash between them left a customer row with code IS NULL that
+        // never appeared in the operator's customer lookups (code-based
+        // search returned no results).
+        const customerTxResults = await adb.transaction([
+          {
+            sql: `INSERT INTO customers (first_name, last_name, email, phone, mobile, organization, city, state, postcode, address1, source)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            params: [firstName, row.last_name || '', email, phone, mobile,
+              row.organization || null, row.city || null, row.state || null, row.postcode || null,
+              row.address1 || null, 'csv_import'],
+          },
+          {
+            sql: "UPDATE customers SET code = printf('C-%04d', last_insert_rowid()) WHERE id = last_insert_rowid()",
+            params: [],
+          },
+        ]);
+        const customerId = Number(customerTxResults[0].lastInsertRowid);
+        void customerId; // retained for clarity / debug breakpoints
         results.created++;
 
         // Track newly created entries so subsequent rows in the same batch
@@ -1433,84 +1446,100 @@ router.post(
     const lat = typeof inputAny.lat === 'number' && isFinite(inputAny.lat) ? inputAny.lat : null;
     const lng = typeof inputAny.lng === 'number' && isFinite(inputAny.lng) ? inputAny.lng : null;
 
-    const result = await adb.run(
-      `INSERT INTO customers
-        (first_name, last_name, title, organization, type,
-         email, phone, mobile,
-         address1, address2, city, state, postcode, country,
-         contact_person, contact_relation,
-         referred_by, customer_group_id,
-         tax_number, tax_class_id, tax_exempt, tax_exempt_reason,
-         email_opt_in, sms_opt_in,
-         comments, source, tags,
-         lat, lng)
-       VALUES
-        (?, ?, ?, ?, ?,
-         ?, ?, ?,
-         ?, ?, ?, ?, ?, ?,
-         ?, ?,
-         ?, ?,
-         ?, ?, ?, ?,
-         ?, ?,
-         ?, ?, ?,
-         ?, ?)`,
-      input.first_name,
-      input.last_name ?? '',
-      input.title ?? null,
-      input.organization ?? null,
-      input.type ?? 'individual',
-      input.email ?? null,
-      phone,
-      mobile,
-      input.address1 ?? null,
-      input.address2 ?? null,
-      input.city ?? null,
-      input.state ?? null,
-      input.postcode ?? null,
-      input.country ?? null,
-      input.contact_person ?? null,
-      input.contact_relation ?? null,
-      input.referred_by ?? null,
-      input.customer_group_id ?? null,
-      input.tax_number ?? null,
-      input.tax_class_id ?? null,
-      // WEB-UIUX-765: tax_exempt + reason (0/1 + free-form).
-      (input as { tax_exempt?: unknown }).tax_exempt ? 1 : 0,
-      (input as { tax_exempt_reason?: unknown }).tax_exempt_reason
-        ? String((input as { tax_exempt_reason?: unknown }).tax_exempt_reason).slice(0, 500)
-        : null,
-      input.email_opt_in ? 1 : 0,
-      input.sms_opt_in ? 1 : 0,
-      input.comments ?? null,
-      input.source ?? null,
-      JSON.stringify(input.tags ?? []),
-      lat,
-      lng,
-    );
-
-    const customerId = result.lastInsertRowid as number;
-
-    // Generate code
-    const code = generateOrderId('C', customerId);
-    await adb.run('UPDATE customers SET code = ? WHERE id = ?', code, customerId);
-
-    // Phones
+    // BUGHUNT-2026-05-17: customer creation was previously 4-N sequential
+    // adb.run() calls:
+    //   1. INSERT customers
+    //   2. UPDATE customers SET code = printf('C-%04d', id)
+    //   3. INSERT customer_phones (per phone)
+    //   4. INSERT customer_emails (per email)
+    // A crash anywhere mid-stream left a partial profile — most dangerously,
+    // a customer with code IS NULL (invisible to code-based search) and no
+    // contact methods. Bundle every write into one atomic transaction.
+    // UPDATE doesn't change last_insert_rowid(), so the code-derivation
+    // UPDATE still sees the just-inserted customer id; the phones/emails
+    // INSERTs reference it via lastInsertRowidFrom(0).
+    const customerCreateTx: TxQuery[] = [
+      {
+        sql: `INSERT INTO customers
+                (first_name, last_name, title, organization, type,
+                 email, phone, mobile,
+                 address1, address2, city, state, postcode, country,
+                 contact_person, contact_relation,
+                 referred_by, customer_group_id,
+                 tax_number, tax_class_id, tax_exempt, tax_exempt_reason,
+                 email_opt_in, sms_opt_in,
+                 comments, source, tags,
+                 lat, lng)
+              VALUES
+                (?, ?, ?, ?, ?,
+                 ?, ?, ?,
+                 ?, ?, ?, ?, ?, ?,
+                 ?, ?,
+                 ?, ?,
+                 ?, ?, ?, ?,
+                 ?, ?,
+                 ?, ?, ?,
+                 ?, ?)`,
+        params: [
+          input.first_name,
+          input.last_name ?? '',
+          input.title ?? null,
+          input.organization ?? null,
+          input.type ?? 'individual',
+          input.email ?? null,
+          phone,
+          mobile,
+          input.address1 ?? null,
+          input.address2 ?? null,
+          input.city ?? null,
+          input.state ?? null,
+          input.postcode ?? null,
+          input.country ?? null,
+          input.contact_person ?? null,
+          input.contact_relation ?? null,
+          input.referred_by ?? null,
+          input.customer_group_id ?? null,
+          input.tax_number ?? null,
+          input.tax_class_id ?? null,
+          (input as { tax_exempt?: unknown }).tax_exempt ? 1 : 0,
+          (input as { tax_exempt_reason?: unknown }).tax_exempt_reason
+            ? String((input as { tax_exempt_reason?: unknown }).tax_exempt_reason).slice(0, 500)
+            : null,
+          input.email_opt_in ? 1 : 0,
+          input.sms_opt_in ? 1 : 0,
+          input.comments ?? null,
+          input.source ?? null,
+          JSON.stringify(input.tags ?? []),
+          lat,
+          lng,
+        ],
+      },
+      {
+        // UPDATE doesn't change last_insert_rowid() (only INSERTs do), so
+        // printf('C-%04d', last_insert_rowid()) here matches what
+        // generateOrderId('C', id) would compute in JS.
+        sql: "UPDATE customers SET code = printf('C-%04d', last_insert_rowid()) WHERE id = last_insert_rowid()",
+        params: [],
+      },
+    ];
     if (input.phones?.length) {
       for (const p of input.phones) {
-        await adb.run(
-          'INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, ?)',
-          customerId, normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0);
+        customerCreateTx.push({
+          sql: 'INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, ?)',
+          params: [lastInsertRowidFrom(0), normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0],
+        });
       }
     }
-
-    // Emails
     if (input.emails?.length) {
       for (const e of input.emails) {
-        await adb.run(
-          'INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, ?)',
-          customerId, e.email, e.label ?? '', e.is_primary ? 1 : 0);
+        customerCreateTx.push({
+          sql: 'INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, ?)',
+          params: [lastInsertRowidFrom(0), e.email, e.label ?? '', e.is_primary ? 1 : 0],
+        });
       }
     }
+    const customerCreateResults = await adb.transaction(customerCreateTx);
+    const customerId = Number(customerCreateResults[0].lastInsertRowid);
 
     // FTS – the trigger handles this automatically on INSERT, but if we updated code
     // after insert, we should re-sync. The UPDATE trigger on customers should fire,

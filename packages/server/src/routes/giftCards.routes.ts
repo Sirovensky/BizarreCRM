@@ -9,7 +9,8 @@ import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
 import { validatePositiveAmount, validatePaginationOffset, validateId, validateTextLength, validateIsoDate } from '../utils/validate.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 import { sendEmail, isEmailConfigured } from '../services/email.js';
@@ -438,17 +439,25 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
   // rollover so existing redemption scripts keep working) and the new
   // `code_hash`. A follow-up migration will drop `code` once all callers
   // are hash-first.
-  const result = await adb.run(`
-    INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
-  `, code, codeHash, amount, amount, validatedCustomerId, validatedRecipientName, validatedRecipientEmail,
-    validatedExpiresAt, validatedNotes, req.user!.id, now(), now());
-
-  // Record purchase transaction
-  await adb.run(
-    'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    result.lastInsertRowid, 'purchase', amount, 'Initial load', req.user!.id, now(),
-  );
+  // BUGHUNT-2026-05-17: bundle gift_cards INSERT + gift_card_transactions
+  // purchase row into one atomic tx. Previously a crash between them left a
+  // card with a balance but no purchase audit trail — the next reconciliation
+  // would flag the card as "issued without payment record" and the customer
+  // would not be able to use it without manual override.
+  const giftTxQueries: TxQuery[] = [
+    {
+      sql: `INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [code, codeHash, amount, amount, validatedCustomerId, validatedRecipientName, validatedRecipientEmail,
+        validatedExpiresAt, validatedNotes, req.user!.id, now(), now()],
+    },
+    {
+      sql: 'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      params: [lastInsertRowidFrom(0), 'purchase', amount, 'Initial load', req.user!.id, now()],
+    },
+  ];
+  const giftTxResults = await adb.transaction(giftTxQueries);
+  const result = { lastInsertRowid: giftTxResults[0].lastInsertRowid };
 
   // SEC-H38: mask the code in audit_log.details. A 4-char prefix is enough
   // for a human operator to correlate a card with a physical receipt while
@@ -653,16 +662,22 @@ router.post('/bulk', requirePermission('gift_cards.issue'), asyncHandler(async (
 
       const code = generateCode();
       const codeHash = hashCode(code);
-      const result = await adb.run(`
-        INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
-      `, code, codeHash, amount, amount, validatedCustomerId, validatedRecipientName, validatedRecipientEmail,
-        validatedExpiresAt, validatedNotes, req.user!.id, now(), now());
-
-      await adb.run(
-        'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-        result.lastInsertRowid, 'purchase', amount, 'Initial load (bulk)', req.user!.id, now(),
-      );
+      // BUGHUNT-2026-05-17: same atomic pairing as the single-issue path —
+      // bundle card creation + initial purchase transaction so neither lands
+      // without the other (bulk issuance walked the same trap with N cards).
+      const bulkTxResults = await adb.transaction([
+        {
+          sql: `INSERT INTO gift_cards (code, code_hash, initial_balance, current_balance, status, customer_id, recipient_name, recipient_email, expires_at, notes, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)`,
+          params: [code, codeHash, amount, amount, validatedCustomerId, validatedRecipientName, validatedRecipientEmail,
+            validatedExpiresAt, validatedNotes, req.user!.id, now(), now()],
+        },
+        {
+          sql: 'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          params: [lastInsertRowidFrom(0), 'purchase', amount, 'Initial load (bulk)', req.user!.id, now()],
+        },
+      ]);
+      const result = { lastInsertRowid: bulkTxResults[0].lastInsertRowid };
 
       audit(req.db, 'gift_card_issued', req.user!.id, req.ip || 'unknown', {
         gift_card_id: Number(result.lastInsertRowid),
