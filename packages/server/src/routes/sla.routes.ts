@@ -166,25 +166,30 @@ router.post('/policies', asyncHandler(async (req: Request, res: Response) => {
   }
   const bizHours = business_hours_only !== undefined ? (business_hours_only ? 1 : 0) : 1;
 
-  // Check for conflicting active policy on this level
-  const conflict = await adb.get<AnyRow>(
-    'SELECT id FROM sla_policies WHERE priority_level = ? AND is_active = 1',
+  // BUGHUNT-2026-05-17: atomic insert-if-no-conflict. The prior
+  // SELECT-then-INSERT pattern let two concurrent POSTs with the same
+  // priority_level both pass the conflict precheck and both INSERT —
+  // leaving two active SLA policies on the same level, and SLA
+  // ticket-classification then non-deterministically picks one row
+  // depending on JOIN order. INSERT...WHERE NOT EXISTS makes the
+  // second writer hit changes === 0 and 409 cleanly.
+  const result = await adb.run(
+    `INSERT INTO sla_policies
+       (name, priority_level, first_response_hours, resolution_hours, business_hours_only,
+        is_active, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, 1, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sla_policies WHERE priority_level = ? AND is_active = 1
+        )`,
+    safeName, level, frHours, resHours, bizHours, now(), now(),
     level,
   );
-  if (conflict) {
+  if (result.changes === 0) {
     throw new AppError(
       `An active SLA policy for priority_level '${level}' already exists. Deactivate it first.`,
       409,
     );
   }
-
-  const result = await adb.run(
-    `INSERT INTO sla_policies
-       (name, priority_level, first_response_hours, resolution_hours, business_hours_only,
-        is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
-    safeName, level, frHours, resHours, bizHours, now(), now(),
-  );
 
   audit(db, 'sla_policy.created', req.user!.id, req.ip || 'unknown', {
     policy_id: Number(result.lastInsertRowid),
@@ -236,6 +241,26 @@ router.patch('/policies/:id', asyncHandler(async (req: Request, res: Response) =
 
   const bizHours = business_hours_only !== undefined ? (business_hours_only ? 1 : 0) : null;
   const activeFlag = is_active !== undefined ? (is_active ? 1 : 0) : null;
+
+  // BUGHUNT-2026-05-17: if the caller is *flipping the policy to
+  // is_active = 1* and the row is currently inactive, refuse if another
+  // active policy already exists on the same priority_level. The POST
+  // path has the same guard; without it here, a manager could
+  // re-activate a stale policy and end up with two active SLA rows on
+  // one level (ticket SLA classification then picks non-deterministically).
+  if (activeFlag === 1 && Number(existing.is_active) === 0) {
+    const otherActive = await adb.get<{ id: number }>(
+      'SELECT id FROM sla_policies WHERE priority_level = ? AND is_active = 1 AND id != ?',
+      existing.priority_level,
+      id,
+    );
+    if (otherActive) {
+      throw new AppError(
+        `An active SLA policy for priority_level '${existing.priority_level}' already exists (id ${otherActive.id}). Deactivate it first.`,
+        409,
+      );
+    }
+  }
 
   await adb.run(
     `UPDATE sla_policies
