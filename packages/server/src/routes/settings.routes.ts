@@ -2301,16 +2301,40 @@ router.post('/reconcile-cogs', adminOnly, async (req, res) => {
 router.get('/condition-templates', async (req, res) => {
   const adb = req.asyncDb;
   const { category } = req.query;
+  // BUGHUNT-2026-05-17: LIMIT 500 + replace N+1 fan-out with a single
+  // IN query. Previously each template fired its own condition_checks
+  // SELECT — 50 templates = 50 round-trips even under Promise.all,
+  // and a tenant with thousands of templates would saturate the
+  // worker pool. Grouping in JS post-fetch costs O(N) memory but
+  // collapses to one DB round-trip.
   let templates: any[];
   if (category) {
-    templates = await adb.all<any>('SELECT * FROM condition_templates WHERE category = ? ORDER BY is_default DESC, name ASC', category);
+    templates = await adb.all<any>(
+      'SELECT * FROM condition_templates WHERE category = ? ORDER BY is_default DESC, name ASC LIMIT 500',
+      category,
+    );
   } else {
-    templates = await adb.all<any>('SELECT * FROM condition_templates ORDER BY category, is_default DESC, name ASC');
+    templates = await adb.all<any>(
+      'SELECT * FROM condition_templates ORDER BY category, is_default DESC, name ASC LIMIT 500',
+    );
   }
-  // Attach checks to each template
-  await Promise.all(templates.map(async (t: any) => {
-    t.checks = await adb.all<any>('SELECT * FROM condition_checks WHERE template_id = ? ORDER BY sort_order ASC', t.id);
-  }));
+  if (templates.length > 0) {
+    const ids = templates.map((t: any) => t.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const allChecks = await adb.all<any>(
+      `SELECT * FROM condition_checks WHERE template_id IN (${placeholders}) ORDER BY template_id, sort_order ASC`,
+      ...ids,
+    );
+    const byTemplate = new Map<number, any[]>();
+    for (const c of allChecks) {
+      const arr = byTemplate.get(c.template_id) ?? [];
+      arr.push(c);
+      byTemplate.set(c.template_id, arr);
+    }
+    for (const t of templates) {
+      t.checks = byTemplate.get(t.id) ?? [];
+    }
+  }
   res.json({ success: true, data: templates });
 });
 
