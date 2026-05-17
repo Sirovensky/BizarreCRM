@@ -985,8 +985,15 @@ router.delete('/kits/:id', requirePermission('inventory.delete'), async (req: Re
   const kit = await adb.get<{ id: number }>('SELECT id FROM inventory_kits WHERE id = ?', kitId);
   if (!kit) throw new AppError('Kit not found', 404);
 
-  await adb.run('DELETE FROM inventory_kit_items WHERE kit_id = ?', kitId);
-  await adb.run('DELETE FROM inventory_kits WHERE id = ?', kitId);
+  // BUGHUNT-2026-05-17: bundle the kit-items DELETE + kit DELETE into a
+  // single tx. Previously two separate adb.run calls — if the second
+  // failed (constraint, disk full), kit_items were wiped but the kit row
+  // remained, leaving a ghost empty kit in the catalog that the operator
+  // would see as zero-item and need to manually clean up.
+  await adb.transaction([
+    { sql: 'DELETE FROM inventory_kit_items WHERE kit_id = ?', params: [kitId] },
+    { sql: 'DELETE FROM inventory_kits WHERE id = ?', params: [kitId] },
+  ]);
 
   audit(req.db, 'inventory_kit_deleted', req.user!.id, req.ip || 'unknown', { kit_id: kitId });
 

@@ -1484,8 +1484,15 @@ router.delete('/prices/:id', adminOrManager, asyncHandler(async (req, res) => {
   const existing = await adb.get('SELECT id FROM repair_prices WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Price not found', 404);
   // CASCADE the grades to keep repair_price_grades consistent.
-  await adb.run('DELETE FROM repair_price_grades WHERE repair_price_id = ?', req.params.id);
-  await adb.run('DELETE FROM repair_prices WHERE id = ?', req.params.id);
+  // BUGHUNT-2026-05-17: bundle the grades DELETE + price DELETE into a
+  // single tx. Two separate adb.run calls let a crash between them leave
+  // orphaned grade rows pointing at a now-deleted repair_price_id —
+  // which broke the /lookup grade JOIN (returns NULL for the parent
+  // price) and confused the catalog admin tools.
+  await adb.transaction([
+    { sql: 'DELETE FROM repair_price_grades WHERE repair_price_id = ?', params: [req.params.id] },
+    { sql: 'DELETE FROM repair_prices WHERE id = ?', params: [req.params.id] },
+  ]);
   audit(req.db, 'repair_price_deleted', req.user!.id, req.ip || 'unknown', { price_id: Number(req.params.id) });
   res.json({ success: true, data: { message: 'Price deleted' } });
 }));
