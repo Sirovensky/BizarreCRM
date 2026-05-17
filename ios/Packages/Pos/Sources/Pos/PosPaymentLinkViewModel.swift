@@ -122,8 +122,16 @@ public final class PosPaymentLinkViewModel {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: interval)
                 if Task.isCancelled { break }
-                await self?.pollOnce(id: id)
-                if await self?.isTerminal() == true { break }
+                // BUGHUNT-2026-05-17: break when self is nil. Previously
+                // the optional chain `self?.pollOnce(...)` no-op'd and
+                // `self?.isTerminal()` returned nil (not == true), so the
+                // loop kept Task-sleeping in 10s ticks forever after the
+                // view model deinit-ed. The Task itself outlived the VM
+                // until the app process ended — a slow battery drain when
+                // staff opened and dismissed the sheet repeatedly.
+                guard let strongSelf = self else { break }
+                await strongSelf.pollOnce(id: id)
+                if await strongSelf.isTerminal() { break }
             }
         }
     }
