@@ -1096,6 +1096,28 @@ router.post(
       throw new AppError(`Cannot retry item in ${row.status} state`, 400);
     }
 
+    // BUGHUNT-2026-05-17: claim the retry slot atomically BEFORE the
+    // network call. The old shape did SELECT → send SMS → UPDATE, with no
+    // CAS pinning, so two simultaneous clicks (operator double-click, two
+    // staff in the inbox UI, etc.) both passed the SELECT and both fired
+    // the provider's SMS send. Now the CAS on (status, retry_count) means
+    // exactly one click wins and the loser gets a clean 409 without
+    // contacting the provider. Subsequent UPDATEs flip status only — the
+    // increment lives on this claim row so retry_count can't be lost-
+    // updated either.
+    const claim = await adb.run(
+      `UPDATE sms_retry_queue
+          SET retry_count = retry_count + 1
+        WHERE id = ?
+          AND status = ?
+          AND retry_count = ?`,
+      id, row.status, row.retry_count,
+    );
+    if (claim.changes === 0) {
+      throw new AppError('Retry was claimed by another worker. Refresh and try again.', 409);
+    }
+    const newCount = row.retry_count + 1;
+
     // Verify provider is real before claiming we will retry. Previously this
     // handler just flipped status to 'pending' and returned success — but no
     // worker drains the queue, so the retry never actually happened. Now we
@@ -1103,13 +1125,11 @@ router.post(
     const provider = getSmsProvider();
     const providerStatus = isProviderRealOrSimulated(provider);
     if (!providerStatus.real) {
-      const newCount = row.retry_count + 1;
       await adb.run(
         `UPDATE sms_retry_queue
-            SET retry_count = ?, status = 'failed',
+            SET status = 'failed',
                 last_error = 'SMS provider not configured'
           WHERE id = ?`,
-        newCount,
         id,
       );
       throw new AppError(
@@ -1118,16 +1138,14 @@ router.post(
       );
     }
 
-    const newCount = row.retry_count + 1;
     const tenantSlug = (req as any).tenantSlug || null;
     try {
       const result = await sendSmsTenant(db, tenantSlug, row.to_phone, row.body);
       if (result?.success) {
         await adb.run(
           `UPDATE sms_retry_queue
-              SET retry_count = ?, status = 'succeeded', last_error = NULL
+              SET status = 'succeeded', last_error = NULL
             WHERE id = ?`,
-          newCount,
           id,
         );
         audit(db, 'inbox_retry_succeeded', req.user!.id, req.ip || 'unknown', {
@@ -1143,10 +1161,9 @@ router.post(
       const errMsg = result?.error ?? 'unknown SMS provider error';
       await adb.run(
         `UPDATE sms_retry_queue
-            SET retry_count = ?, next_retry_at = ?, status = 'failed',
+            SET next_retry_at = ?, status = 'failed',
                 last_error = ?
           WHERE id = ?`,
-        newCount,
         nextRetryAt(newCount),
         errMsg,
         id,
@@ -1177,10 +1194,9 @@ router.post(
       const safeMsg = sanitizeRetryError(err);
       await adb.run(
         `UPDATE sms_retry_queue
-            SET retry_count = ?, next_retry_at = ?, status = 'failed',
+            SET next_retry_at = ?, status = 'failed',
                 last_error = ?
           WHERE id = ?`,
-        newCount,
         nextRetryAt(newCount),
         safeMsg,
         id,
