@@ -219,8 +219,14 @@ router.post('/:id/loan', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STOCK), 
   if (!ticket_device_id) throw new AppError('ticket_device_id required', 400);
 
   // V6: Verify FK existence before INSERT
+  // BUGHUNT-2026-05-17: tighten the customers existence check to
+  // is_deleted = 0 so a soft-deleted customer can't have a loaner attached
+  // (the staff loaner-history view filters out deleted customers and the
+  // device would appear "loaned to nobody"). The sync tx below already
+  // serializes the loan + history; the precheck just needs to honor the
+  // soft-delete invariant the rest of the codebase uses.
   const [customer, device, ticketDevice] = await Promise.all([
-    adb.get('SELECT id FROM customers WHERE id = ?', customer_id),
+    adb.get('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id),
     adb.get('SELECT * FROM loaner_devices WHERE id = ? AND is_deleted = 0', id),
     adb.get('SELECT id FROM ticket_devices WHERE id = ?', ticket_device_id),
   ]);
