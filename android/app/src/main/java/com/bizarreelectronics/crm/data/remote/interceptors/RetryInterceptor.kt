@@ -43,6 +43,10 @@ class RetryInterceptor @Inject constructor() : Interceptor {
                 // Close the previous unsuccessful response before sleeping to
                 // release the connection back to the pool.
                 lastResponse?.close()
+                // BUGHUNT-2026-05-17: drop the closed reference so the
+                // "exhausted attempts" tail does not return a closed response
+                // when later attempts throw instead of producing a new one.
+                lastResponse = null
 
                 val delayMs = computeDelay(attempt - 1, lastResponse)
                 Thread.sleep(delayMs)
@@ -66,7 +70,10 @@ class RetryInterceptor @Inject constructor() : Interceptor {
             }
         }
 
-        // All attempts exhausted.
+        // All attempts exhausted. Prefer returning the final retryable response
+        // (e.g. last 503 the server sent us) so the caller can inspect headers.
+        // If the final attempt threw instead, surface the exception — never a
+        // closed response from a previous attempt.
         lastResponse?.let { return it }
         throw lastException ?: IOException("RetryInterceptor: all $MAX_ATTEMPTS attempts failed")
     }
