@@ -283,16 +283,6 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
 
   const amountCents = note.amount_cents as number;
   const creditDollars = amountCents / 100; // invoices.amount_due is in dollars
-  // BUGHUNT-2026-05-16: round both operand and result so a credit that
-  // exactly covers the balance doesn't leave a `0.0000000001` residue that
-  // (a) renders weirdly in the UI and (b) prevents the auto-status flip.
-  // Mirrors refunds.routes.ts roundCents pattern.
-  const newAmountDue = Math.round(Math.max(0, inv.amount_due - creditDollars) * 100) / 100;
-  // BUGHUNT-2026-05-16: a credit note that exactly covers the balance must
-  // also flip the invoice to 'paid'. Previously this path only updated
-  // amount_due, so the invoice stayed unpaid/partial and continued to
-  // surface in the dunning queue at $0 due.
-  const newInvoiceStatus = newAmountDue === 0 ? 'paid' : inv.status;
 
   // Transaction now only wraps the atomic apply — both UPDATEs must land or
   // neither. Conditional `WHERE status = 'open'` on the credit-note update
@@ -303,17 +293,29 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
   // (line 265) and the tx body silently clobbers 'void' back to 'paid'
   // (or 'partial') — same race class as the payment-record void clobber.
   // 0 changes on either UPDATE rolls the whole tx back to the same 409.
+  //
+  // BUGHUNT-2026-05-17: differential SQL on amount_due so a concurrent
+  // payment landing between our pre-tx SELECT and this UPDATE can't
+  // be lost-updated. Old shape wrote the JS-computed newAmountDue as
+  // absolute; a payment that bumped amount_paid + decremented
+  // amount_due in the meantime had its decrement overwritten by our
+  // stale value. Decrement amount_due off the row's live value
+  // and re-derive status inline (flip to 'paid' only when the
+  // credit exactly zeros the live balance).
   let applied = true;
   const STATE_CHANGED = '__credit_note_state_changed__';
   try {
     req.db.transaction(() => {
       const invoiceUpdate = req.db.prepare(`
         UPDATE invoices
-           SET amount_due = ?,
-               status = ?,
+           SET amount_due = MAX(0, ROUND((COALESCE(amount_due, 0) - ?) * 100) / 100),
+               status     = CASE
+                 WHEN ROUND(MAX(0, COALESCE(amount_due, 0) - ?) * 100) = 0 THEN 'paid'
+                 ELSE status
+               END,
                updated_at = datetime('now')
          WHERE id = ? AND status NOT IN ('void', 'refunded')
-      `).run(newAmountDue, newInvoiceStatus, invoiceIdNum);
+      `).run(creditDollars, creditDollars, invoiceIdNum);
       if (invoiceUpdate.changes === 0) {
         applied = false;
         throw new Error(STATE_CHANGED);
