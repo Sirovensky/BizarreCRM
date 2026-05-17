@@ -892,34 +892,53 @@ router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
   // Bundle the stock UPDATE + ledger INSERT in a tx so they're atomic with
   // each other (matches the rest of the codebase's "every stock change has
   // a matching stock_movements row" invariant).
+  //
+  // BUGHUNT-2026-05-17 (followup): bundle the status flip + stock credit +
+  // ledger INSERT into ONE adb.transaction. Previously the status flip
+  // committed first; a crash before the inventory tx left the row at
+  // status='received' with no stock credit and no stock_movements row —
+  // the operator sees "received" in the UI but stock is short and the
+  // ledger can't be reconciled.
   const receivedClaim = status === 'received';
-  const updateSql = receivedClaim
-    ? `UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ? AND status != 'received'`
-    : `UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`;
-  const upd = await adb.run(updateSql, ...params, id);
-
-  // If received, bump inventory stock and record stock movement — only on
-  // the transition (changes > 0), not on idempotent re-PATCH.
-  if (receivedClaim && upd.changes > 0) {
-    const item = await adb.get<any>('SELECT * FROM parts_order_queue WHERE id = ?', id);
-    if (item?.inventory_item_id) {
-      const movNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
-      await adb.transaction([
+  if (receivedClaim) {
+    const itemBefore = await adb.get<any>('SELECT * FROM parts_order_queue WHERE id = ?', id);
+    const movNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const receivedTx: TxQuery[] = [
+      {
+        sql: `UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ? AND status != 'received'`,
+        params: [...params, id],
+        expectChanges: true,
+        expectChangesError: 'ORDER_QUEUE_ALREADY_RECEIVED',
+      },
+    ];
+    if (itemBefore?.inventory_item_id) {
+      receivedTx.push(
         {
           sql: 'UPDATE inventory_items SET in_stock = in_stock + ? WHERE id = ?',
-          params: [item.quantity_needed, item.inventory_item_id],
+          params: [itemBefore.quantity_needed, itemBefore.inventory_item_id],
         },
         {
           sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
                 VALUES (?, 'received', ?, 'order_queue', ?, ?, ?, ?, ?)`,
           params: [
-            item.inventory_item_id, item.quantity_needed, id,
-            `Parts order received: ${item.name || ''}`.trim(),
+            itemBefore.inventory_item_id, itemBefore.quantity_needed, id,
+            `Parts order received: ${itemBefore.name || ''}`.trim(),
             req.user!.id, movNow, movNow,
           ],
         },
-      ]);
+      );
     }
+    try {
+      await adb.transaction(receivedTx);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Already-received is an idempotent retry — surface the existing row
+      // rather than a 409 so the operator's "Receive" click doesn't show a
+      // scary error on a successful first attempt.
+      if (!msg.includes('ORDER_QUEUE_ALREADY_RECEIVED')) throw err;
+    }
+  } else {
+    await adb.run(`UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`, ...params, id);
   }
 
   const updated = await adb.get('SELECT * FROM parts_order_queue WHERE id = ?', id);
