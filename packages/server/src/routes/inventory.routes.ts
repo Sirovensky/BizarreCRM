@@ -1355,6 +1355,11 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
       ],
     });
   }
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE is_active = 1 +
+  // expectChanges so a concurrent /DELETE (soft-deactivate) racing this
+  // PUT doesn't silently revive an inactive item by overwriting every
+  // field. Loser sees 409; cost_price_history INSERT (if queued) rolls
+  // back with the UPDATE.
   putTxQueries.push({
     sql: `UPDATE inventory_items SET
       name = COALESCE(?, name),
@@ -1381,7 +1386,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
       cost_locked = COALESCE(?, cost_locked),
       location_id = COALESCE(?, location_id),
       updated_at = datetime('now')
-    WHERE id = ?`,
+    WHERE id = ? AND is_active = 1`,
     params: [
       name ?? null, description ?? null, item_type ?? null, category ?? null,
       manufacturer ?? null, device_type ?? null, sku ?? null, upc ?? null,
@@ -1392,8 +1397,18 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
       location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked,
       resolvedLocationId, req.params.id,
     ],
+    expectChanges: true,
+    expectChangesError: 'INVENTORY_ITEM_INACTIVE_PUT',
   });
-  await adb.transaction(putTxQueries);
+  try {
+    await adb.transaction(putTxQueries);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('INVENTORY_ITEM_INACTIVE_PUT')) {
+      throw new AppError('Item was just deactivated; refresh and retry', 409);
+    }
+    throw err;
+  }
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (location !== undefined || shelf !== undefined || bin !== undefined) {

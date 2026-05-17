@@ -691,7 +691,14 @@ router.put(
         stockMovementId = Number(movement.lastInsertRowid);
       }
 
-      db.prepare(
+      // BUGHUNT-2026-05-17: CAS on status — the JS-side state-machine
+      // validation a few lines up (assertSerialTransition) used a stale
+      // `previousStatus` snapshot from before the sync tx. Without
+      // `AND status = ?`, two concurrent status changes both pass JS
+      // validation and the second writer silently overwrites whatever
+      // the first wrote, breaking the audit invariant that every
+      // status change is a legal A->B transition from the current state.
+      const serialUpdate = db.prepare(
         `UPDATE inventory_serial_numbers
          SET status = ?,
              notes = COALESCE(?, notes),
@@ -701,8 +708,14 @@ router.put(
                WHEN ? = 'sold' AND sold_at IS NULL THEN datetime('now')
                ELSE sold_at
              END
-         WHERE id = ?`,
-      ).run(status, notes, invoiceId, ticketId, status, serialId);
+         WHERE id = ? AND status = ?`,
+      ).run(status, notes, invoiceId, ticketId, status, serialId, previousStatus);
+      if (serialUpdate.changes === 0) {
+        throw new AppError(
+          `Serial ${serial.serial_number} status changed concurrently (expected ${previousStatus})`,
+          409,
+        );
+      }
 
       return db.prepare('SELECT * FROM inventory_serial_numbers WHERE id = ?').get(serialId);
     });
