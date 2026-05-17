@@ -861,7 +861,15 @@ router.delete(
       throw new AppError('You do not have permission to delete this appointment', 403);
     }
 
-    await adb.run("UPDATE appointments SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
+    // BUGHUNT-2026-05-17: AND is_deleted = 0 + use result.changes so
+    // two concurrent deletes don't both write an audit-row equivalent.
+    const apptDelRes = await adb.run(
+      "UPDATE appointments SET is_deleted = 1, updated_at = datetime('now') WHERE id = ? AND is_deleted = 0",
+      id,
+    );
+    if (apptDelRes.changes === 0) {
+      throw new AppError('Appointment was just deleted; refresh and retry', 409);
+    }
     res.json({ success: true, data: { message: 'Appointment deleted' } });
   }),
 );
