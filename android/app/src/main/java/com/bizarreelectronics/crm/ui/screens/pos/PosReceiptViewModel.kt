@@ -245,6 +245,15 @@ class PosReceiptViewModel @Inject constructor(
 
     fun clearSnackbar() = _uiState.update { it.copy(snackbarMessage = null) }
 
+    /**
+     * Surface a non-fatal, transient error message in the snackbar. Used by
+     * the screen for failures that can't be caught inside the VM (e.g.,
+     * [android.content.ActivityNotFoundException] from `startActivity` when
+     * no email app is installed on the device).
+     */
+    fun surfaceTransientError(message: String) =
+        _uiState.update { it.copy(snackbarMessage = message) }
+
     fun startNewSale() = coordinator.resetSession()
 
     // ─── Internal helpers ─────────────────────────────────────────────────────

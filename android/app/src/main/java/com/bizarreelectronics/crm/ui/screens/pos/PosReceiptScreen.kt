@@ -56,8 +56,15 @@ fun PosReceiptScreen(
         try {
             CustomTabsIntent.Builder().build().launchUrl(context, uri)
         } catch (_: Exception) {
-            // Chrome Custom Tabs unavailable — fall back to system browser
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            // Chrome Custom Tabs unavailable — fall back to system browser.
+            // Catch ActivityNotFoundException: stripped-down enterprise tablets
+            // sometimes ship without ANY browser. We swallow because the user
+            // already triggered a no-op action; logging is enough.
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            } catch (_: android.content.ActivityNotFoundException) {
+                viewModel.surfaceTransientError("No browser app is available to open this link.")
+            }
         }
     }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -89,7 +96,13 @@ fun PosReceiptScreen(
             putExtra(Intent.EXTRA_SUBJECT, "Your receipt — Invoice #${state.invoiceId ?: state.orderId}")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "Email receipt via…"))
+        try {
+            context.startActivity(Intent.createChooser(intent, "Email receipt via…"))
+        } catch (_: android.content.ActivityNotFoundException) {
+            // No app on the device handles the email/share chooser. Surface
+            // a snackbar so the user knows tapping "Email" was a no-op.
+            viewModel.surfaceTransientError("No app available to send email.")
+        }
         viewModel.clearPendingEmailUri()
     }
 
