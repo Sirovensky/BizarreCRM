@@ -1897,27 +1897,39 @@ router.put(
     }
 
     // Replace phones
+    // BUGHUNT-2026-05-17: bundle DELETE-then-INSERTs into a single tx so a
+    // crash inside the INSERT loop can't leave the customer with fewer
+    // phones than intended (or zero if the first INSERT fails). Same fix
+    // shape as leads PUT devices replacement.
     if (input.phones !== undefined) {
-      await adb.run('DELETE FROM customer_phones WHERE customer_id = ?', id);
+      const phoneTx: import('../db/async-db.js').TxQuery[] = [
+        { sql: 'DELETE FROM customer_phones WHERE customer_id = ?', params: [id] },
+      ];
       if (input.phones?.length) {
         for (const p of input.phones) {
-          await adb.run(
-            'INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, ?)',
-            id, normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0);
+          phoneTx.push({
+            sql: 'INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, ?)',
+            params: [id, normalizePhone(p.phone), p.label ?? '', p.is_primary ? 1 : 0],
+          });
         }
       }
+      await adb.transaction(phoneTx);
     }
 
     // Replace emails
     if (input.emails !== undefined) {
-      await adb.run('DELETE FROM customer_emails WHERE customer_id = ?', id);
+      const emailTx: import('../db/async-db.js').TxQuery[] = [
+        { sql: 'DELETE FROM customer_emails WHERE customer_id = ?', params: [id] },
+      ];
       if (input.emails?.length) {
         for (const e of input.emails) {
-          await adb.run(
-            'INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, ?)',
-            id, e.email, e.label ?? '', e.is_primary ? 1 : 0);
+          emailTx.push({
+            sql: 'INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, ?)',
+            params: [id, e.email, e.label ?? '', e.is_primary ? 1 : 0],
+          });
         }
       }
+      await adb.transaction(emailTx);
     }
 
     // FTS is updated via the UPDATE trigger on the customers table
