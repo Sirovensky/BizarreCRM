@@ -138,16 +138,37 @@ router.post('/', asyncHandler(async (req, res) => {
   // @audit-fixed: §37 — verify customer FK exists when supplied; FKs are ON
   // (db/connection.ts:15) so a missing customer_id otherwise raises a generic
   // 500 instead of a 404.
+  // BUGHUNT-2026-05-17: include is_deleted = 0 so a customer that's been
+  // soft-deleted between this check and the INSERT below can't have a
+  // pending trade-in silently attached to them (the customer disappears
+  // from staff views but the trade-in still references their id, leaking
+  // PII via the trade-in row that GDPR-erase didn't see).
   if (customer_id != null) {
-    const cust = await adb.get('SELECT id FROM customers WHERE id = ?', customer_id);
+    const cust = await adb.get('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id);
     if (!cust) throw new AppError('Customer not found', 404);
   }
 
-  const result = await adb.run(`
-    INSERT INTO trade_ins (customer_id, device_name, device_type, imei, serial, color, condition, status, offered_price, notes, pre_conditions, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-  `, customer_id || null, device_name, device_type || null, imei || null, serial || null, color || null, condition,
-    offered_price || 0, notes || null, pre_conditions ? JSON.stringify(pre_conditions) : null, req.user!.id, now(), now());
+  // BUGHUNT-2026-05-17: atomic insert-if-customer-still-active when a
+  // customer_id is supplied. INSERT...SELECT...WHERE matches the FK +
+  // soft-delete invariant in one statement so a /DELETE customers landing
+  // between the precheck and the INSERT surfaces a clean 409 instead of
+  // an orphan trade-in row.
+  const result = customer_id != null
+    ? await adb.run(`
+        INSERT INTO trade_ins (customer_id, device_name, device_type, imei, serial, color, condition, status, offered_price, notes, pre_conditions, created_by, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?
+           WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)
+      `, customer_id, device_name, device_type || null, imei || null, serial || null, color || null, condition,
+        offered_price || 0, notes || null, pre_conditions ? JSON.stringify(pre_conditions) : null, req.user!.id, now(), now(),
+        customer_id)
+    : await adb.run(`
+        INSERT INTO trade_ins (customer_id, device_name, device_type, imei, serial, color, condition, status, offered_price, notes, pre_conditions, created_by, created_at, updated_at)
+        VALUES (NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+      `, device_name, device_type || null, imei || null, serial || null, color || null, condition,
+        offered_price || 0, notes || null, pre_conditions ? JSON.stringify(pre_conditions) : null, req.user!.id, now(), now());
+  if (customer_id != null && result.changes === 0) {
+    throw new AppError('Customer was just deleted; refresh and retry', 409);
+  }
 
   audit(req.db, 'trade_in_created', req.user!.id, req.ip || 'unknown', { trade_in_id: Number(result.lastInsertRowid), device_name, customer_id: customer_id || null, offered_price: offered_price || 0 });
   res.status(201).json({ success: true, data: { id: result.lastInsertRowid } });
