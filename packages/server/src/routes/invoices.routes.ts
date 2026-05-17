@@ -1028,30 +1028,61 @@ async function recordInvoicePayment({
   // SEC-H113: enforce state-machine transition before writing payment rows.
   assertInvoiceTransition(invoice.status, predictedStatus);
 
-  const paymentResult = await adb.run(`
-    INSERT INTO payments (
-      invoice_id, amount, method, method_detail, transaction_id, notes, payment_type,
-      processor, reference, processor_transaction_id, processor_response, capture_state, user_id
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'captured', ?)
-  `, invoice.id, amount, method, paymentMethodDetail || null,
-    paymentTransactionId || null, notes || null, paymentType,
-    paymentProcessor, paymentReference, processorTransactionId, processorResponse, userId);
-  const paymentId = paymentResult.lastInsertRowid as number;
-
-  const totalPaid = await getInvoicePositivePaymentTotal(adb, invoice.id);
-  const rawAmountDue = roundCents(invoiceTotal - totalPaid);
-
-  // M9: Detect overpayment — if the customer paid more than the invoice total,
-  // record the excess as a store credit. The displayed amount_due is clamped
-  // to 0 so the ledger does not go negative.
-  const overpayment = rawAmountDue < 0 ? roundCents(-rawAmountDue) : 0;
-  const displayAmountDue = Math.max(0, rawAmountDue);
-  const status = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
-
-  await adb.run(`
-    UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-  `, totalPaid, displayAmountDue, status, invoice.id);
+  // BUGHUNT-2026-05-17: bundle the payment INSERT + invoice UPDATE into one
+  // transaction with a guarded UPDATE so a void/refund landing between
+  // our pre-tx SELECT and the write can't be silently clobbered back to
+  // 'paid'. Without this: customer pays → admin voids → payment INSERT
+  // proceeds → UPDATE invoices SET status='paid' overwrites 'void' →
+  // the invoice is "paid" with a freshly-voided ledger underneath.
+  // The guard uses the just-INSERTed payment via lastInsertRowidFrom so
+  // the totalPaid recompute inside the tx sees the new row.
+  const overpaymentPredicted = predictedRawAmountDue < 0 ? roundCents(-predictedRawAmountDue) : 0;
+  const displayAmountDuePredicted = Math.max(0, predictedRawAmountDue);
+  let paymentId: number;
+  let totalPaid: number;
+  let rawAmountDue: number;
+  let overpayment: number;
+  let displayAmountDue: number;
+  let status: string;
+  try {
+    const txResults = await adb.transaction([
+      {
+        sql: `INSERT INTO payments (
+                invoice_id, amount, method, method_detail, transaction_id, notes, payment_type,
+                processor, reference, processor_transaction_id, processor_response, capture_state, user_id
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'captured', ?)`,
+        params: [
+          invoice.id, amount, method, paymentMethodDetail || null,
+          paymentTransactionId || null, notes || null, paymentType,
+          paymentProcessor, paymentReference, processorTransactionId, processorResponse, userId,
+        ],
+      },
+      {
+        sql: `UPDATE invoices
+                SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now')
+              WHERE id = ? AND status NOT IN ('void', 'refunded')`,
+        params: [predictedTotalPaid, displayAmountDuePredicted, predictedStatus, invoice.id],
+        expectChanges: true,
+        expectChangesError: 'INVOICE_NOT_PAYABLE',
+      },
+    ]);
+    paymentId = Number(txResults[0]!.lastInsertRowid);
+    totalPaid = predictedTotalPaid;
+    rawAmountDue = predictedRawAmountDue;
+    overpayment = overpaymentPredicted;
+    displayAmountDue = displayAmountDuePredicted;
+    status = predictedStatus;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('INVOICE_NOT_PAYABLE')) {
+      throw new AppError(
+        'Invoice was voided or refunded between request and write — refresh and retry.',
+        409,
+      );
+    }
+    throw err;
+  }
 
   // Post-payment side effects: loyalty points, commission, activity log, webhook.
   await postPaymentSideEffects({
