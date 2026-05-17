@@ -866,18 +866,43 @@ router.patch('/order-queue/:id', asyncHandler(async (req, res) => {
   if (status) { sets.push('status = ?'); params.push(status); }
   if (notes !== undefined) { sets.push('notes = ?'); params.push(notes); }
 
-  await adb.run(`UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`, ...params, id);
+  // BUGHUNT-2026-05-17: when transitioning to 'received', the prior code did
+  //   UPDATE parts_order_queue SET status='received' WHERE id=?
+  //   then SELECT, then UPDATE inventory + INSERT stock_movement.
+  // Two parallel PATCH calls flipping the same row to 'received' both passed
+  // through, both bumped stock, both INSERTed movements — silent double-
+  // credit to inventory. Guard the status flip with `AND status != 'received'`
+  // so only the first writer's transition triggers the stock side effects.
+  // Bundle the stock UPDATE + ledger INSERT in a tx so they're atomic with
+  // each other (matches the rest of the codebase's "every stock change has
+  // a matching stock_movements row" invariant).
+  const receivedClaim = status === 'received';
+  const updateSql = receivedClaim
+    ? `UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ? AND status != 'received'`
+    : `UPDATE parts_order_queue SET ${sets.join(', ')} WHERE id = ?`;
+  const upd = await adb.run(updateSql, ...params, id);
 
-  // If received, bump inventory stock and record stock movement
-  if (status === 'received') {
+  // If received, bump inventory stock and record stock movement — only on
+  // the transition (changes > 0), not on idempotent re-PATCH.
+  if (receivedClaim && upd.changes > 0) {
     const item = await adb.get<any>('SELECT * FROM parts_order_queue WHERE id = ?', id);
     if (item?.inventory_item_id) {
-      await adb.run(`UPDATE inventory_items SET in_stock = in_stock + ? WHERE id = ?`,
-        item.quantity_needed, item.inventory_item_id);
-      await adb.run(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-        VALUES (?, 'received', ?, 'order_queue', ?, ?, ?, datetime('now'), datetime('now'))
-      `, item.inventory_item_id, item.quantity_needed, id, `Parts order received: ${item.name || ''}`.trim(), req.user!.id);
+      const movNow = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      await adb.transaction([
+        {
+          sql: 'UPDATE inventory_items SET in_stock = in_stock + ? WHERE id = ?',
+          params: [item.quantity_needed, item.inventory_item_id],
+        },
+        {
+          sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+                VALUES (?, 'received', ?, 'order_queue', ?, ?, ?, ?, ?)`,
+          params: [
+            item.inventory_item_id, item.quantity_needed, id,
+            `Parts order received: ${item.name || ''}`.trim(),
+            req.user!.id, movNow, movNow,
+          ],
+        },
+      ]);
     }
   }
 
