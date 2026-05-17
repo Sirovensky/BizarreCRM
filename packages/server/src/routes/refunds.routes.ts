@@ -658,19 +658,27 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
   // SEC-H67: single atomic UPSERT — the UNIQUE index on customer_id (migration
   // 109) + ON CONFLICT DO UPDATE guarantee one row per customer even under
   // concurrent writers. No preceding SELECT needed.
+  // BUGHUNT-2026-05-17: bundle the credit UPSERT and the transaction-log INSERT
+  // into a single tx. Two separate adb.run() calls left a window where the
+  // balance was incremented but no audit row was written if the second call
+  // crashed (process died, DB constraint, etc.) — the customer's credit
+  // movement would be untraceable.
   if (refund.type === 'store_credit') {
-    await adb.run(
-      `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
-       VALUES (?, ?, datetime('now'), datetime('now'))
-       ON CONFLICT(customer_id) DO UPDATE SET
-         amount     = amount + excluded.amount,
-         updated_at = datetime('now')`,
-      refund.customer_id, refund.amount,
-    );
-    await adb.run(`
-      INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
-      VALUES (?, ?, 'refund_credit', 'refund', ?, ?, ?, ?)
-    `, refund.customer_id, refund.amount, id, refund.reason || 'Refund to store credit', req.user!.id, now());
+    await adb.transaction([
+      {
+        sql: `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+              VALUES (?, ?, datetime('now'), datetime('now'))
+              ON CONFLICT(customer_id) DO UPDATE SET
+                amount     = amount + excluded.amount,
+                updated_at = datetime('now')`,
+        params: [refund.customer_id, refund.amount],
+      },
+      {
+        sql: `INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+              VALUES (?, ?, 'refund_credit', 'refund', ?, ?, ?, ?)`,
+        params: [refund.customer_id, refund.amount, id, refund.reason || 'Refund to store credit', req.user!.id, now()],
+      },
+    ]);
   }
 
   audit(db, 'refund_approved', req.user!.id, req.ip || 'unknown', {
@@ -797,18 +805,32 @@ router.post('/credits/:customerId/use', requirePermission('invoices.record_payme
   );
   if (!credit) throw new AppError('Insufficient store credit', 400);
 
-  const dec = await adb.run(
-    'UPDATE store_credits SET amount = amount - ?, updated_at = ? WHERE id = ? AND amount >= ?',
-    amount, now(), credit.id, amount,
-  );
-  if (dec.changes === 0) {
-    throw new AppError('Insufficient store credit', 409);
+  // BUGHUNT-2026-05-17: bundle the decrement + transaction-log INSERT into one
+  // tx. Previously two separate adb.run() calls — if the INSERT failed (DB
+  // error, process crash), the customer's balance was already decremented but
+  // there was no record of where the money went. expectChanges on the guarded
+  // UPDATE rolls back the whole tx on a concurrent insufficient-credit race.
+  try {
+    await adb.transaction([
+      {
+        sql: 'UPDATE store_credits SET amount = amount - ?, updated_at = ? WHERE id = ? AND amount >= ?',
+        params: [amount, now(), credit.id, amount],
+        expectChanges: true,
+        expectChangesError: 'INSUFFICIENT_STORE_CREDIT',
+      },
+      {
+        sql: `INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+              VALUES (?, ?, 'usage', 'invoice', ?, 'Store credit applied', ?, ?)`,
+        params: [customerId, -amount, invoiceId, req.user!.id, now()],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('INSUFFICIENT_STORE_CREDIT')) {
+      throw new AppError('Insufficient store credit', 409);
+    }
+    throw err;
   }
-
-  await adb.run(`
-    INSERT INTO store_credit_transactions (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
-    VALUES (?, ?, 'usage', 'invoice', ?, 'Store credit applied', ?, ?)
-  `, customerId, -amount, invoiceId, req.user!.id, now());
 
   // SC9: Re-read the committed balance instead of returning a computed stale value.
   const latest = await adb.get<StoreCreditRow>(
