@@ -59,7 +59,11 @@ public final class ReferralRuleEditorViewModel {
 
     private func parseCents(_ string: String) -> Int? {
         guard let value = Double(string.trimmingCharacters(in: .whitespaces)), value >= 0 else { return nil }
-        return Int(value * 100)
+        // BUGHUNT-2026-05-17: `.rounded()` on user-typed dollar amount. Without
+        // it, IEEE-754 truncation lands a typed $9.99 at 998 cents — the
+        // referral credit issued was one cent short of what the admin
+        // configured.
+        return Int((value * 100).rounded())
     }
 }
 

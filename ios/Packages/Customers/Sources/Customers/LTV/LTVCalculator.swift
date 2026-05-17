@@ -32,7 +32,12 @@ public enum LTVCalculator {
 
     /// Convenience: accepts `Double` dollars (e.g. from `CustomerAnalytics.lifetimeValue`).
     public static func tier(forDollars lifetimeDollars: Double, thresholds: LTVThresholds = .default) -> LTVTier {
-        let cents = Int(lifetimeDollars * 100)
+        // BUGHUNT-2026-05-17: `.rounded()` on the cent boundary. `Int(9.99 * 100)`
+        // truncates to 998 in IEEE-754 because 9.99 isn't exactly representable
+        // and the product lands fractionally below 999.0. A customer whose
+        // lifetime value lands exactly on a tier threshold ($1000.00 silver,
+        // etc.) was incorrectly downgraded to the lower tier.
+        let cents = Int((lifetimeDollars * 100).rounded())
         return tier(for: cents, thresholds: thresholds)
     }
 

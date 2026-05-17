@@ -77,7 +77,12 @@ public final class SMSSpendCapViewModel {
         guard let dollars = Double(text.replacingOccurrences(of: "$", with: "").trimmingCharacters(in: .whitespaces)) else {
             return nil
         }
-        return Int(dollars * 100)
+        // BUGHUNT-2026-05-17: `.rounded()` so a typed $9.99 becomes 999 cents.
+        // Without it, the IEEE-754 product lands fractionally below 999.0 and
+        // truncates to 998 — the SMS spend cap stored was one cent under the
+        // user's typed value, causing campaigns to bounce slightly earlier
+        // than the operator configured.
+        return Int((dollars * 100).rounded())
     }
 }
 

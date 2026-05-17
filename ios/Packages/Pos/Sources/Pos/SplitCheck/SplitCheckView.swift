@@ -284,7 +284,11 @@ private struct PartyColumn: View {
                     .keyboardType(.decimalPad)
                     .onChange(of: customInput) { _, val in
                         if let dollars = Double(val) {
-                            vm.setCustomAmount(partyId: party.id, cents: Int(dollars * 100))
+                            // BUGHUNT-2026-05-17: `.rounded()` so a typed $9.99
+                            // becomes 999 cents (not 998 via IEEE-754 truncation).
+                            // Otherwise SPLIT party amounts were a cent short
+                            // and the bill's reconciliation didn't add up.
+                            vm.setCustomAmount(partyId: party.id, cents: Int((dollars * 100).rounded()))
                         }
                     }
             }
