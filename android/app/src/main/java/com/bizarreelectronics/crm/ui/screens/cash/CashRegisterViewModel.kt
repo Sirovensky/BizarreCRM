@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.api.OpenShiftRequest
 import com.bizarreelectronics.crm.data.remote.api.PayInOutRequest
 import com.bizarreelectronics.crm.data.remote.api.ZReport
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,6 +82,10 @@ class CashRegisterViewModel @Inject constructor(
                         e.message() ?: "Server error (${e.code()})"
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
+                // doesn't paint a fake "Server error" over the cash screen.
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "CashRegisterViewModel.loadCurrentShift")
                 _uiState.value = CashRegisterUiState.Error(e.message ?: "Unknown error")
@@ -115,6 +120,8 @@ class CashRegisterViewModel @Inject constructor(
                 _actionState.value = ShiftActionState.Error(
                     e.message() ?: "Server error (${e.code()})"
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "CashRegisterViewModel.openShift")
                 _actionState.value = ShiftActionState.Error(e.message ?: "Unknown error")
@@ -155,6 +162,13 @@ class CashRegisterViewModel @Inject constructor(
                 _actionState.value = ShiftActionState.Error(
                     e.message() ?: "Server error (${e.code()})"
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: close-shift cancellation must NOT paint
+                // a "Server error" — the user might re-tap and double-close
+                // the shift (server idempotency varies by version). Re-throw
+                // so the action state stays "Loading" and the user has to
+                // explicitly back out instead of seeing a misleading error.
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "CashRegisterViewModel.closeShift")
                 _actionState.value = ShiftActionState.Error(e.message ?: "Unknown error")
@@ -175,6 +189,8 @@ class CashRegisterViewModel @Inject constructor(
                 if (report != null) {
                     _uiState.value = CashRegisterUiState.ZReportReady(report)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "CashRegisterViewModel.fetchXReport")
                 _actionState.value = ShiftActionState.Error(e.message ?: "Unknown error")
@@ -212,6 +228,11 @@ class CashRegisterViewModel @Inject constructor(
                 if (shift != null) {
                     _uiState.value = CashRegisterUiState.ShiftOpen(shift)
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: pay-in/out cancellation must NOT paint
+                // a "Server error" — same risk as closeShift, user might re-
+                // tap and double-record the petty-cash movement.
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "CashRegisterViewModel.performPayInOut")
                 _actionState.value = ShiftActionState.Error(e.message ?: "Unknown error")
