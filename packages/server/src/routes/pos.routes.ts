@@ -3219,19 +3219,22 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
       }
     } else if (refundMethodResolved === 'store_credit') {
       if (!invoice.customer_id) throw new AppError('Store credit requires a customer; this invoice has none', 400);
-      // Upsert: idx_store_credits_customer_unique enforces one row per
-      // customer (mig 109). Use INSERT OR IGNORE then UPDATE for atomicity.
+      // BUGHUNT-2026-05-17: collapse the two-statement INSERT OR IGNORE +
+      // UPDATE into a single ON CONFLICT DO UPDATE. idx_store_credits_
+      // customer_unique (mig 109) guarantees the conflict target. Removes
+      // the race window where the UPDATE could see changes=0 if a
+      // concurrent path deleted the row between the INSERT and the UPDATE,
+      // and avoids the impossible-error-path "Could not credit balance"
+      // that fired in legitimate but odd ordering.
       await adb.run(
-        `INSERT OR IGNORE INTO store_credits (customer_id, amount, created_at, updated_at)
-         VALUES (?, 0, datetime('now'), datetime('now'))`,
+        `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+         VALUES (?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(customer_id) DO UPDATE SET
+           amount = amount + excluded.amount,
+           updated_at = datetime('now')`,
         invoice.customer_id,
-      );
-      const updated = await adb.run(
-        `UPDATE store_credits SET amount = amount + ?, updated_at = datetime('now') WHERE customer_id = ?`,
         creditTotal,
-        invoice.customer_id,
       );
-      if (updated.changes === 0) throw new AppError('Could not credit customer store-credit balance', 500);
       const row = await adb.get<{ id: number }>(`SELECT id FROM store_credits WHERE customer_id = ?`, invoice.customer_id);
       refundExecution = {
         method: 'store_credit',
