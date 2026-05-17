@@ -4149,29 +4149,44 @@ router.post('/devices/:deviceId/parts', requirePermission('tickets.edit'), async
     throw new AppError('Serial number required for serialized items', 400);
   }
 
-  const result = await adb.run(`
-    INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, deviceId, inventory_item_id, safeQty, safePrice, warranty ? 1 : 0, serial ?? null, now(), now());
-
-  // @audit-fixed: guarded atomic decrement (S1 / S2 pattern). Without the guard
-  // a concurrent sale could race the precheck and oversell to negative stock.
-  const dec = await adb.run(
-    'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ? AND in_stock >= ?',
-    safeQty, now(), inventory_item_id, safeQty,
-  );
-  if (dec.changes === 0) {
-    // Revert the part insert so the device isn't left with a phantom row.
-    await adb.run('DELETE FROM ticket_device_parts WHERE id = ?', result.lastInsertRowid);
-    throw new AppError(`Insufficient stock for ${item.name} (concurrent update)`, 409);
-  }
-
-  // Stock movement
+  // BUGHUNT-2026-05-17: bundle the part INSERT + guarded stock decrement
+  // + stock_movements INSERT into a single adb.transaction. Previously
+  // these were three separate adb.run calls with a manual JS-side DELETE
+  // for the rollback path — a crash between the part INSERT and the
+  // decrement (or after a failed decrement but before the manual DELETE)
+  // left a ticket_device_parts row with no stock impact and no audit
+  // movement, which the operator can't easily reconcile. expectChanges
+  // on the CAS decrement rolls back the whole tx if stock is gone.
   const ticketRow = await adb.get<AnyRow>('SELECT order_id FROM tickets WHERE id = ?', device.ticket_id);
-  await adb.run(`
-    INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-    VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
-  `, inventory_item_id, -safeQty, deviceId, `Part added to ticket ${ticketRow!.order_id}`, userId, now(), now());
+  const partNow = now();
+  let result: { lastInsertRowid: number | bigint; changes: number };
+  try {
+    const txResults = await adb.transaction([
+      {
+        sql: `INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [deviceId, inventory_item_id, safeQty, safePrice, warranty ? 1 : 0, serial ?? null, partNow, partNow],
+      },
+      {
+        sql: 'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ? AND in_stock >= ?',
+        params: [safeQty, partNow, inventory_item_id, safeQty],
+        expectChanges: true,
+        expectChangesError: 'INSUFFICIENT_STOCK_RACE',
+      },
+      {
+        sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+              VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)`,
+        params: [inventory_item_id, -safeQty, deviceId, `Part added to ticket ${ticketRow!.order_id}`, userId, partNow, partNow],
+      },
+    ]);
+    result = { lastInsertRowid: txResults[0]!.lastInsertRowid, changes: txResults[0]!.changes };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('INSUFFICIENT_STOCK_RACE')) {
+      throw new AppError(`Insufficient stock for ${item.name} (concurrent update)`, 409);
+    }
+    throw err;
+  }
 
   await recalcTicketTotalsAsync(adb, device.ticket_id);
   await insertHistoryAsync(adb, device.ticket_id, userId, 'part_added', `Part added: ${item.name} x${safeQty}`);
