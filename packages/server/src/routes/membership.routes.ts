@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { audit } from '../utils/audit.js';
+import type { TxQuery } from '../db/async-db.js';
 import { enrollCard, createPaymentLink, chargeToken, isBlockChypEnabled, verifyCustomerToken } from '../services/blockchyp.js';
 import { config } from '../config.js';
 import { isFeatureAllowed } from '@bizarre-crm/shared';
@@ -519,29 +520,37 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
         prorationAmount = Math.round((remaining / period) * lastCharge * 100) / 100;
         if (prorationAmount > 0) {
           const customerId = Number((subBeforeCancel as AnyRow).customer_id);
-          await adb.run(
-            `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT(customer_id) DO UPDATE
-               SET amount = amount + excluded.amount,
-                   updated_at = excluded.updated_at`,
-            customerId,
-            prorationAmount,
-            now(),
-            now(),
-          );
-          const txResult = await adb.run(
-            `INSERT INTO store_credit_transactions
-               (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
-             VALUES (?, ?, 'credit', 'subscription_cancellation', ?, ?, ?, ?)`,
-            customerId,
-            prorationAmount,
-            id,
-            `Prorated refund for unused days on subscription #${id}`,
-            req.user!.id,
-            now(),
-          );
-          prorationCreditId = Number(txResult.lastInsertRowid);
+          // BUGHUNT-2026-05-17: bundle the store_credits UPSERT + the
+          // store_credit_transactions ledger row so the credit balance and
+          // the audit trail land together. (Cancellation UPDATEs follow as
+          // a second batch below; doing both as one would force us to merge
+          // the optional-proration branch with the always-on UPDATEs and
+          // make the query list awkward to read — accept the small window
+          // between the credit and the status flip in exchange for clarity.)
+          const credTxResults = await adb.transaction([
+            {
+              sql: `INSERT INTO store_credits (customer_id, amount, created_at, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(customer_id) DO UPDATE
+                      SET amount = amount + excluded.amount,
+                          updated_at = excluded.updated_at`,
+              params: [customerId, prorationAmount, now(), now()],
+            },
+            {
+              sql: `INSERT INTO store_credit_transactions
+                      (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+                    VALUES (?, ?, 'credit', 'subscription_cancellation', ?, ?, ?, ?)`,
+              params: [
+                customerId,
+                prorationAmount,
+                id,
+                `Prorated refund for unused days on subscription #${id}`,
+                req.user!.id,
+                now(),
+              ],
+            },
+          ]);
+          prorationCreditId = Number(credTxResults[1].lastInsertRowid);
           audit(req.db, 'subscription_proration_credited', req.user!.id, req.ip || 'unknown', {
             subscription_id: id,
             customer_id: customerId,
@@ -555,22 +564,32 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
       }
     }
 
-    await adb.run(
-      `UPDATE customer_subscriptions
-          SET status = 'cancelled',
-              auto_renew = 0,
-              next_billing_attempt_at = NULL,
-              cancellation_reason = ?,
-              cancellation_note = ?,
-              updated_at = ?
-        WHERE id = ?`,
-      cleanReason,
-      cleanNote,
-      now(),
-      id,
-    );
-    const sub = await adb.get<AnyRow>('SELECT customer_id FROM customer_subscriptions WHERE id = ?', id);
-    if (sub) await adb.run('UPDATE customers SET active_subscription_id = NULL WHERE id = ?', sub.customer_id);
+    // BUGHUNT-2026-05-17: bundle the subscription cancel + the
+    // customers.active_subscription_id clear so the customer never appears as
+    // having an active subscription whose row is in 'cancelled' state (the
+    // resubscribe code path keys off active_subscription_id and would refuse
+    // a rejoin if this UPDATE crashed before the customers UPDATE).
+    const customerIdFromSub = (subBeforeCancel as AnyRow | undefined)?.customer_id as number | undefined;
+    const cancelTxQueries: TxQuery[] = [
+      {
+        sql: `UPDATE customer_subscriptions
+                 SET status = 'cancelled',
+                     auto_renew = 0,
+                     next_billing_attempt_at = NULL,
+                     cancellation_reason = ?,
+                     cancellation_note = ?,
+                     updated_at = ?
+               WHERE id = ?`,
+        params: [cleanReason, cleanNote, now(), id],
+      },
+    ];
+    if (customerIdFromSub) {
+      cancelTxQueries.push({
+        sql: 'UPDATE customers SET active_subscription_id = NULL WHERE id = ?',
+        params: [customerIdFromSub],
+      });
+    }
+    await adb.transaction(cancelTxQueries);
   } else {
     await adb.run(
       `UPDATE customer_subscriptions
