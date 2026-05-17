@@ -94,6 +94,23 @@ object DateFormatter {
         }
     }
 
+    /**
+     * BUGHUNT-2026-05-17: server-side analog. Same class as the
+     * `customerHealthScore.ts` / `parseSqliteTs` fix on the server. SQLite
+     * stores timestamps in UTC as "YYYY-MM-DD HH:MM:SS" (no zone marker).
+     * Earlier this object parsed those into a [LocalDateTime] and then
+     * compared against [LocalDateTime.now()] — which IS device-local — so
+     * for any user not on UTC, every relative-time label was off by their
+     * UTC offset. A "just now" event shown to a PST user displayed as
+     * "8h ago"; an event truly 5 minutes old shown to a CEST user displayed
+     * as "in 1h 55m" (future). Anchor the parse at UTC and return an
+     * [Instant] so comparisons happen on absolute timestamps.
+     */
+    private fun parseServerInstant(iso: String): Instant {
+        val localDt = parseDateTime(iso)
+        return localDt.atZone(ZoneId.of("UTC")).toInstant()
+    }
+
     // ---------------------------------------------------------------------
     // CROSS46 — canonical Long (epoch-ms) API. Prefer these for new code.
     // ---------------------------------------------------------------------
@@ -165,7 +182,14 @@ object DateFormatter {
     fun formatDate(iso: String?): String {
         if (iso.isNullOrBlank()) return ""
         return try {
-            parseDateTime(iso).format(displayDate)
+            // BUGHUNT-2026-05-17: convert UTC server timestamp to local zone
+            // before rendering. Previously the raw parsed LocalDateTime was
+            // formatted directly, so a UTC "2026-05-17 23:00:00" displayed as
+            // "May 17" to a PST user when their local view was actually
+            // already on "May 17" at 3pm — usually correct by accident, but
+            // wrong near UTC midnight for negative-offset users (where the
+            // displayed date was a day ahead).
+            parseServerInstant(iso).atZone(effectiveZoneId).format(displayDate)
         } catch (_: Exception) {
             try {
                 LocalDate.parse(iso.take(10)).format(displayDate)
@@ -178,7 +202,11 @@ object DateFormatter {
     fun formatDateTime(iso: String?): String {
         if (iso.isNullOrBlank()) return ""
         return try {
-            parseDateTime(iso).format(displayDateTime)
+            // BUGHUNT-2026-05-17: same fix as formatDate — anchor at UTC,
+            // render at the user's effective zone. Without this a server
+            // "2026-05-17 15:00:00" UTC showed as "May 17, 3:00 PM" on PST
+            // devices instead of "May 17, 8:00 AM".
+            parseServerInstant(iso).atZone(effectiveZoneId).format(displayDateTime)
         } catch (_: Exception) {
             iso
         }
@@ -192,7 +220,8 @@ object DateFormatter {
     fun formatAbsolute(iso: String?): String {
         if (iso.isNullOrBlank()) return ""
         return try {
-            parseDateTime(iso).format(absoluteFormat)
+            // BUGHUNT-2026-05-17: anchor at UTC then render in the user's zone.
+            parseServerInstant(iso).atZone(effectiveZoneId).format(absoluteFormat)
         } catch (_: Exception) {
             try {
                 LocalDate.parse(iso.take(10)).format(absoluteFormat)
@@ -205,18 +234,24 @@ object DateFormatter {
     fun formatRelative(iso: String?): String {
         if (iso.isNullOrBlank()) return ""
         return try {
-            val dt = parseDateTime(iso)
-            val now = LocalDateTime.now()
-            val minutes = ChronoUnit.MINUTES.between(dt, now)
-            val hours = ChronoUnit.HOURS.between(dt, now)
-            val days = ChronoUnit.DAYS.between(dt, now)
+            // BUGHUNT-2026-05-17: compare absolute instants. The previous
+            // version did `ChronoUnit.between(LocalDateTime, LocalDateTime.now())`
+            // — `now()` returns local-zone time but the parsed LocalDateTime
+            // was a raw UTC string, so the delta was off by the user's UTC
+            // offset (8h in PST, 1h in CET). A truly "just now" event
+            // displayed as "8h ago" on a PST device.
+            val eventInstant = parseServerInstant(iso)
+            val nowInstant = Instant.now()
+            val minutes = ChronoUnit.MINUTES.between(eventInstant, nowInstant)
+            val hours = ChronoUnit.HOURS.between(eventInstant, nowInstant)
+            val days = ChronoUnit.DAYS.between(eventInstant, nowInstant)
 
             when {
                 minutes < 1 -> "just now"
                 minutes < 60 -> "${minutes}m ago"
                 hours < 24 -> "${hours}h ago"
                 days < 7 -> "${days}d ago"
-                else -> dt.format(displayDate)
+                else -> eventInstant.atZone(effectiveZoneId).format(displayDate)
             }
         } catch (_: Exception) {
             iso

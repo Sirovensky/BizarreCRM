@@ -302,6 +302,15 @@ private struct MovementRow: View {
                     "yyyy-MM-dd HH:mm:ss"]
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
+        // BUGHUNT-2026-05-17: server analog of customerHealthScore.ts /
+        // Android DateFormatter — SQLite stores "YYYY-MM-DD HH:MM:SS" as UTC
+        // with no zone marker. Without anchoring the formatter at UTC, the
+        // third fallback pattern interprets the timestamp in the device's
+        // local zone — every parsed movement time was off by the device's
+        // UTC offset. The ISO-with-Z patterns above carry their own zone
+        // info so they're unaffected; only the SQLite-format fallback needs
+        // explicit UTC.
+        f.timeZone = TimeZone(identifier: "UTC")
         for fmt in fmts {
             f.dateFormat = fmt
             if let d = f.date(from: s) { return d }
