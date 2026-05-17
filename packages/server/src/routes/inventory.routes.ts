@@ -1542,7 +1542,17 @@ router.delete('/:id', requirePermission('inventory.delete'), asyncHandler(async 
   const invoiceCount = invoiceRefs?.c ?? 0;
   const ticketCount = ticketRefs?.c ?? 0;
 
-  await adb.run("UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ?", req.params.id);
+  // BUGHUNT-2026-05-17: CAS guard — without `AND is_active = 1` two
+  // concurrent deletes both pass the SELECT precheck and both UPDATE,
+  // producing two audit_log rows for the same logical deletion. A
+  // concurrent reactivate would also be silently clobbered.
+  const delResult = await adb.run(
+    "UPDATE inventory_items SET is_active = 0, updated_at = datetime('now') WHERE id = ? AND is_active = 1",
+    req.params.id,
+  );
+  if (delResult.changes === 0) {
+    throw new AppError('Item not found or already deleted', 404);
+  }
   audit(req.db, 'inventory_item_deleted', req.user!.id, req.ip || 'unknown', {
     item_id: Number(req.params.id),
     invoice_refs: invoiceCount,

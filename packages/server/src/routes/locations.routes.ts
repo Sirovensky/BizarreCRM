@@ -505,10 +505,26 @@ router.post('/:id/set-default', asyncHandler(async (req: Request, res: Response)
 
   // Wrap both statements in a transaction so the clear-others + set-new are
   // atomic even under concurrent requests (trigger alone is not sufficient).
-  await adb.transaction([
-    { sql: 'UPDATE locations SET is_default = 0 WHERE id != ?', params: [id] },
-    { sql: 'UPDATE locations SET is_default = 1, updated_at = ? WHERE id = ?', params: [now(), id] },
-  ]);
+  // BUGHUNT-2026-05-17: guard the SET against a concurrent deactivate that
+  // could promote a now-inactive location to default. If the row went
+  // inactive between SELECT and the tx, changes=0 → 409 and we roll back.
+  try {
+    await adb.transaction([
+      { sql: 'UPDATE locations SET is_default = 0 WHERE id != ?', params: [id] },
+      {
+        sql: 'UPDATE locations SET is_default = 1, updated_at = ? WHERE id = ? AND is_active = 1',
+        params: [now(), id],
+        expectChanges: true,
+        expectChangesError: 'LOCATION_SET_DEFAULT_RACE',
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('LOCATION_SET_DEFAULT_RACE')) {
+      throw new AppError('Location was just deactivated; cannot set as default', 409);
+    }
+    throw err;
+  }
 
   const updated = await adb.get<LocationRow>('SELECT * FROM locations WHERE id = ?', id);
 
