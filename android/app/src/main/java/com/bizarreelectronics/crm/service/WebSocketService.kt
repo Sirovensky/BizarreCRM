@@ -56,6 +56,18 @@ class WebSocketService @Inject constructor(
     private var heartbeatJob: Job? = null
     private var fallbackPollingJob: Job? = null
 
+    /**
+     * BUGHUNT-2026-05-17: monotonic counter that uniquely tags each connect()
+     * attempt. Each listener captures the value at construction; callback
+     * handlers compare to the live counter and bail if they're stale (i.e.
+     * the field has been replaced by a newer connect attempt). Without
+     * this, a cancelled-but-late onFailure callback from socket N could
+     * flip isConnected back to false after socket N+1 had successfully
+     * opened, leaving the app in a "disconnected" state with a live socket
+     * silently fielding messages.
+     */
+    @Volatile private var connectGeneration: Long = 0L
+
     // AUDIT-AND-024: hold SupervisorJob separately so close() can cancel it,
     // releasing all coroutines launched on this scope (reconnectJob, event emits).
     private val job = SupervisorJob()
@@ -90,6 +102,16 @@ class WebSocketService @Inject constructor(
         val token = authPreferences.accessToken ?: return
         val serverUrl = authPreferences.serverUrl ?: return
 
+        // BUGHUNT-2026-05-17: tear down any prior socket reference before
+        // creating a new one. The reconnect loop used to call connect() and
+        // immediately try the next attempt because `newWebSocket` is
+        // asynchronous (onOpen is delivered later). The leftover socket
+        // would race to open, and both listeners would emit duplicate
+        // events into _events on success. Cancel the previous reference
+        // first.
+        webSocket?.cancel()
+        webSocket = null
+
         // Safely build the WebSocket URL — parse the HTTP URL, convert scheme,
         // and append /ws. This prevents injection attacks via malformed server URLs
         // (e.g. "https://wss://evil.com/wss" would previously become wss://wss://evil.com).
@@ -107,6 +129,11 @@ class WebSocketService @Inject constructor(
             return
         }
 
+        // BUGHUNT-2026-05-17: tag this attempt so late-firing callbacks from a
+        // cancelled prior socket are ignored. See `connectGeneration` doc.
+        connectGeneration += 1
+        val myGeneration = connectGeneration
+
         val request = Request.Builder()
             .url(wsUrl)
             .addHeader("Authorization", "Bearer $token")
@@ -114,6 +141,9 @@ class WebSocketService @Inject constructor(
 
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (myGeneration != connectGeneration) {
+                    webSocket.cancel(); return
+                }
                 Log.d(TAG, "Connected")
                 isConnected = true
                 lastFrameReceivedMs = System.currentTimeMillis()
@@ -127,6 +157,7 @@ class WebSocketService @Inject constructor(
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (myGeneration != connectGeneration) return
                 lastFrameReceivedMs = System.currentTimeMillis()
                 try {
                     val json = gson.fromJson(text, Map::class.java)
@@ -142,6 +173,9 @@ class WebSocketService @Inject constructor(
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                if (myGeneration != connectGeneration) {
+                    webSocket.close(1000, null); return
+                }
                 Log.d(TAG, "Closing: $code $reason")
                 isConnected = false
                 stopHeartbeat()
@@ -149,6 +183,7 @@ class WebSocketService @Inject constructor(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (myGeneration != connectGeneration) return
                 Log.w(TAG, "Connection failed: ${t.message}")
                 isConnected = false
                 stopHeartbeat()
@@ -156,6 +191,7 @@ class WebSocketService @Inject constructor(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (myGeneration != connectGeneration) return
                 Log.d(TAG, "Closed: $code")
                 isConnected = false
                 stopHeartbeat()
