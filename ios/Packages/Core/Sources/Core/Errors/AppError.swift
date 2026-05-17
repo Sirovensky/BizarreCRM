@@ -123,7 +123,18 @@ extension AppError {
     /// Existing `AppError` values pass through unchanged.
     public static func from(_ error: Error) -> AppError {
         if let appErr = error as? AppError { return appErr }
-        if let urlErr = error as? URLError { return .network(underlying: urlErr) }
+        // BUGHUNT-2026-05-17: recognise CancellationError explicitly. Before
+        // this, every viewmodel that mapped `catch error → AppError.from(error)
+        // → state = .failed(error.localizedDescription)` painted a misleading
+        // "An unexpected error occurred" toast when the user / system
+        // cancelled the operation themselves (view disappear, sign-out,
+        // task-tree teardown). The `.cancelled` case already exists for
+        // exactly this scenario — callers can choose to suppress the toast.
+        if error is CancellationError { return .cancelled }
+        if let urlErr = error as? URLError {
+            if urlErr.code == .cancelled { return .cancelled }
+            return .network(underlying: urlErr)
+        }
         if let decErr = error as? DecodingError {
             let typeName: String
             switch decErr {
