@@ -43,9 +43,15 @@ class ConflictResolver @Inject constructor(
     private val gson: Gson,
 ) {
 
-    /** In-memory list of conflicts awaiting user resolution. Observed by the ViewModel. */
+    // BUGHUNT-2026-05-17: `_pendingConflicts` is touched both by the sync
+    // pipeline (IO dispatcher) and the ConflictResolutionViewModel reading
+    // `pendingConflicts` from the main thread. `mutableListOf` is NOT
+    // thread-safe — concurrent add() vs. toList() would surface as a rare
+    // ConcurrentModificationException. Guard all reads + writes with a lock.
+    private val pendingLock = Any()
     private val _pendingConflicts = mutableListOf<ConflictRecord>()
-    val pendingConflicts: List<ConflictRecord> get() = _pendingConflicts.toList()
+    val pendingConflicts: List<ConflictRecord>
+        get() = synchronized(pendingLock) { _pendingConflicts.toList() }
 
     /**
      * Attempt to resolve a 409 conflict for [queueEntryId].
@@ -148,8 +154,10 @@ class ConflictResolver @Inject constructor(
                     autoMergedPayload = gson.toJson(merged),
                     promptFields = promptFields,
                 )
-                _pendingConflicts.removeAll { it.entityType == entityType && it.entityId == entityId }
-                _pendingConflicts.add(record)
+                synchronized(pendingLock) {
+                    _pendingConflicts.removeAll { it.entityType == entityType && it.entityId == entityId }
+                    _pendingConflicts.add(record)
+                }
                 MergeResult.NeedsUserInput(record)
             }
         } catch (e: Exception) {
@@ -160,7 +168,9 @@ class ConflictResolver @Inject constructor(
 
     /** Remove a resolved conflict from the pending list. */
     fun clearConflict(conflictId: Long) {
-        _pendingConflicts.removeAll { it.id == conflictId }
+        synchronized(pendingLock) {
+            _pendingConflicts.removeAll { it.id == conflictId }
+        }
     }
 
     // ── private helpers ───────────────────────────────────────────────────────
