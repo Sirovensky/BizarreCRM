@@ -17,8 +17,12 @@ import Networking
 ///   (already needed for Universal Links; no additional entry required).
 ///
 /// **Server contract:**
-/// `GET /customers/:id/wallet/loyalty.pkpass` — returns a signed
-/// `.pkpass` archive (application/vnd.apple.pkpass).
+/// BUGHUNT-2026-05-17: server route is `GET /api/v1/crm/customers/:id/wallet-pass?format=pkpass`
+/// (mounted in `index.ts` at `/api/v1/crm`, defined in `crm.routes.ts`).
+/// The previous doc + impl pointed at `/customers/:id/wallet/loyalty.pkpass`
+/// which doesn't exist, and used `URLSession.shared` directly without an
+/// Authorization header — the server's `authMiddleware` rejected every
+/// request. Add-to-Wallet was broken.
 public actor LoyaltyWalletService {
 
     // MARK: - Dependencies
@@ -44,14 +48,28 @@ public actor LoyaltyWalletService {
         guard let base = await api.currentBaseURL() else {
             throw LoyaltyWalletError.noBaseURL
         }
-        let url = base.appendingPathComponent("/customers/\(customerId)/wallet/loyalty.pkpass")
+        // BUGHUNT-2026-05-17: correct path + query param to match the server
+        // route in crm.routes.ts. Build via URLComponents so the query is
+        // properly escaped.
+        var components = URLComponents(
+            url: base.appendingPathComponent("/crm/customers/\(customerId)/wallet-pass"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [URLQueryItem(name: "format", value: "pkpass")]
+        guard let url = components?.url else {
+            throw LoyaltyWalletError.noBaseURL
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/vnd.apple.pkpass", forHTTPHeaderField: "Accept")
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            // BUGHUNT-2026-05-17: route through authedDataRequest so the
+            // server's authMiddleware sees a Bearer token. Previously
+            // URLSession.shared sent the request anonymously and the server
+            // returned 401.
+            (data, response) = try await api.authedDataRequest(request)
         } catch {
             throw LoyaltyWalletError.network(error)
         }
