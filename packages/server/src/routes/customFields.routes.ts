@@ -179,10 +179,21 @@ router.put('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
   // SCAN-597: verify the referenced entity actually exists before upserting.
   // The table name is sourced from the trusted ENTITY_TABLES allowlist above,
   // never from user input, so the interpolation is safe.
+  // BUGHUNT-2026-05-17: include the table's soft-delete/active filter so a
+  // custom field value can't be attached to a soft-deleted customer or
+  // inactive inventory item. Without this, the entity check at start was
+  // a useless TOCTOU window — a soft-delete landing after the check would
+  // still let the upsert write values to a tombstoned row.
   const entityTable = ENTITY_TABLES[entityType];
   if (entityTable) {
+    const softDeleteFilter =
+      entityTable === 'customers' || entityTable === 'tickets'
+        ? ' AND is_deleted = 0'
+        : entityTable === 'inventory_items'
+          ? ' AND is_active = 1'
+          : '';
     const entityRow = await adb.get(
-      `SELECT id FROM ${entityTable} WHERE id = ?`,
+      `SELECT id FROM ${entityTable} WHERE id = ?${softDeleteFilter}`,
       req.params.entityId,
     );
     if (!entityRow) throw new AppError(`${entityType} not found`, 404);
