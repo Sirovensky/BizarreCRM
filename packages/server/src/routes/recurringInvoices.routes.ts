@@ -372,7 +372,18 @@ router.post('/:id/pause', asyncHandler(async (req, res) => {
   if (existing.status === 'canceled') throw new AppError('Cannot pause a canceled template', 400);
   if (existing.status === 'paused') throw new AppError('Template is already paused', 400);
 
-  await adb.run("UPDATE invoice_templates SET status = 'paused', updated_at = datetime('now') WHERE id = ?", id);
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='active' so a racing
+  // /cancel can't be overwritten by a /pause. Without this, two admins
+  // hitting cancel + pause concurrently can both pass the SELECT precheck
+  // and the second writer silently clobbers the terminal cancel state —
+  // the template can be /resume'd and start billing again.
+  const result = await adb.run(
+    "UPDATE invoice_templates SET status = 'paused', updated_at = datetime('now') WHERE id = ? AND status = 'active'",
+    id,
+  );
+  if (result.changes === 0) {
+    throw new AppError('Template status changed concurrently; refresh and retry', 409);
+  }
 
   audit(req.db, 'invoice_template.paused', req.user!.id, req.ip ?? '', { template_id: id });
 
@@ -396,11 +407,17 @@ router.post('/:id/resume', asyncHandler(async (req, res) => {
   const now = nowIso();
   const nextRun = existing.next_run_at < now ? now : existing.next_run_at;
 
-  await adb.run(
-    "UPDATE invoice_templates SET status = 'active', next_run_at = ?, updated_at = datetime('now') WHERE id = ?",
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='paused' so a racing
+  // /cancel can't be overwritten by a /resume — otherwise a "canceled"
+  // template can be silently revived and start billing again.
+  const result = await adb.run(
+    "UPDATE invoice_templates SET status = 'active', next_run_at = ?, updated_at = datetime('now') WHERE id = ? AND status = 'paused'",
     nextRun,
     id,
   );
+  if (result.changes === 0) {
+    throw new AppError('Template status changed concurrently; refresh and retry', 409);
+  }
 
   audit(req.db, 'invoice_template.resumed', req.user!.id, req.ip ?? '', { template_id: id, next_run_at: nextRun });
 
@@ -419,7 +436,15 @@ router.post('/:id/cancel', asyncHandler(async (req, res) => {
   if (!existing) throw new AppError('Template not found', 404);
   if (existing.status === 'canceled') throw new AppError('Template is already canceled', 400);
 
-  await adb.run("UPDATE invoice_templates SET status = 'canceled', updated_at = datetime('now') WHERE id = ?", id);
+  // BUGHUNT-2026-05-17: guard against double-cancel race; idempotent if a
+  // second cancel arrives but the first wins for audit-trail purposes.
+  const result = await adb.run(
+    "UPDATE invoice_templates SET status = 'canceled', updated_at = datetime('now') WHERE id = ? AND status != 'canceled'",
+    id,
+  );
+  if (result.changes === 0) {
+    throw new AppError('Template was just canceled by another user', 409);
+  }
 
   audit(req.db, 'invoice_template.canceled', req.user!.id, req.ip ?? '', { template_id: id });
 
