@@ -2426,7 +2426,20 @@ router.put('/:id', requirePermission('tickets.edit'), asyncHandler(async (req: R
   params.push(now());
   params.push(ticketId);
 
-  await adb.run(`UPDATE tickets SET ${updates.join(', ')} WHERE id = ?`, ...params);
+  // BUGHUNT-2026-05-17: enforce the optimistic-lock check atomically. The
+  // JS-side compare above is TOCTOU — another writer could land between
+  // the check and this UPDATE, and the unguarded UPDATE would silently
+  // clobber their change. When the client supplied _updated_at, pin the
+  // UPDATE to that exact updated_at so any concurrent edit forces a 409.
+  let updSql = `UPDATE tickets SET ${updates.join(', ')} WHERE id = ?`;
+  if (clientUpdatedAt) {
+    updSql += ' AND updated_at = ?';
+    params.push(clientUpdatedAt);
+  }
+  const patchResult = await adb.run(updSql, ...params);
+  if (clientUpdatedAt && patchResult.changes === 0) {
+    throw new AppError('Ticket was modified by another user. Please refresh and try again.', 409);
+  }
 
   // Recalculate if discount changed
   if (req.body.discount !== undefined) {
