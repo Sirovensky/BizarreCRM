@@ -467,9 +467,29 @@ public actor APIClientImpl: APIClient {
             return true
         }
         refreshInFlight = task
-        let ok = (try? await task.value) ?? false
+        // BUGHUNT-2026-05-17: previously `refreshInFlight = nil` ran on the
+        // caller's path after `await task.value`. If the caller was
+        // cancelled mid-await, the cleanup still ran AND cleared
+        // refreshInFlight before the refresh actually finished — a
+        // concurrent 401 would then see refreshInFlight==nil and spawn a
+        // SECOND refresh task that races the first, double-rotating the
+        // refresh token server-side and risking the second rotation
+        // invalidating the first.
+        //
+        // The detached cleanup below survives the caller's cancellation;
+        // it always awaits the actual task's completion and only then
+        // clears the in-flight slot. Subsequent 401s during the
+        // refresh-in-progress window correctly fall into the
+        // "await inFlight.value" branch at the top of this function.
+        Task { [weak self] in
+            _ = try? await task.value
+            await self?.clearRefreshInFlight()
+        }
+        return (try? await task.value) ?? false
+    }
+
+    private func clearRefreshInFlight() {
         refreshInFlight = nil
-        return ok
     }
 
     private func applyRefreshed(token: String) {
