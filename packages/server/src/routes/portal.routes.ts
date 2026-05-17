@@ -1623,10 +1623,20 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
     });
   }
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='sent'. Without
+  // this, a portal approve racing a portal reject (mobile double-tap,
+  // or shop-side estimates.routes.ts reject) both pass the precheck
+  // and the second UPDATE silently overrides. Worse: the signature row
+  // above is already inserted, so an "approval signature" can attach
+  // to a now-rejected estimate.
+  const approveResult = await adb.run(`
     UPDATE estimates SET status = 'approved', approved_at = datetime('now'), updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND status = 'sent'
   `, estimateId);
+  if (approveResult.changes === 0) {
+    res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
+    return;
+  }
 
   // SW-D7: Auto-change linked ticket status when estimate is approved
   const statusAfterEstimate = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");
@@ -1710,10 +1720,17 @@ router.post('/estimates/:id/reject', portalAuth, requireCsrfToken, requireFullSc
     });
   }
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='sent'. Symmetric
+  // fix to portal approve above — a racing approve could otherwise be
+  // silently overridden by this blind UPDATE.
+  const rejectResult = await adb.run(`
     UPDATE estimates SET status = 'rejected', rejected_at = datetime('now'), updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND status = 'sent'
   `, estimateId);
+  if (rejectResult.changes === 0) {
+    res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
+    return;
+  }
 
   // Auto-cancel linked ticket when the shop has configured a rejection
   // target status. Mirrors the approve path's ticket_status_after_estimate
