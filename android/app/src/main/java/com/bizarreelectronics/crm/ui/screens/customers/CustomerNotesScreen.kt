@@ -26,6 +26,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -78,6 +79,10 @@ class CustomerNotesViewModel @Inject constructor(
             try {
                 val resp = customerApi.getNotes(customerId)
                 _state.value = _state.value.copy(isLoading = false, notes = resp.data ?: emptyList())
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
+                // doesn't paint a fake "Failed to load notes".
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -105,6 +110,11 @@ class CustomerNotesViewModel @Inject constructor(
                     newNoteText = "",
                     notes = listOf(created) + _state.value.notes,
                 )
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. Painting
+                // "Failed to save note" when the user backs out preserves
+                // the draft text in the field, but adds confusing UX.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSending = false,
@@ -131,6 +141,8 @@ class CustomerNotesViewModel @Inject constructor(
                 _state.value = _state.value.copy(
                     notes = _state.value.notes.filter { it.id != noteId },
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "Failed to delete note")
             }
