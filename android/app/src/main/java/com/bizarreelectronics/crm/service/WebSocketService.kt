@@ -265,7 +265,15 @@ class WebSocketService @Inject constructor(
     // ── Reconnect ─────────────────────────────────────────────────────────────
 
     private fun scheduleReconnect() {
-        reconnectJob?.cancel()
+        // BUGHUNT-2026-05-17: if a reconnect loop is already running, leave it
+        // alone. The previous version cancelled and restarted on every entry,
+        // but onFailure / onClosed both call scheduleReconnect — so every
+        // failed reconnect attempt reset `delay` to 1s and `attempt` to 1,
+        // making MAX_RECONNECT_ATTEMPTS unreachable. Exponential backoff and
+        // the fallback-to-polling path never engaged; the client just spun at
+        // ~1s intervals forever on a permanently failing socket. Letting the
+        // existing loop finish preserves the intended back-off curve.
+        if (reconnectJob?.isActive == true) return
         reconnectJob = scope.launch {
             var delay = 1_000L
             for (attempt in 1..MAX_RECONNECT_ATTEMPTS) {

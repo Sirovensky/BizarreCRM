@@ -23,6 +23,13 @@ public final class WebSocketClient {
     private var continuation: AsyncStream<WSEvent>.Continuation?
     private var reconnectAttempt: Int = 0
     private var intentionallyClosed: Bool = false
+    /// BUGHUNT-2026-05-17: tracks an in-flight reconnect Task so scheduleReconnect
+    /// can dedup. Without this, a single failed connection can fire `.error` +
+    /// `.disconnected` + `.peerClosed` in quick succession, each call would bump
+    /// `reconnectAttempt` and queue a separate Task — multiple concurrent
+    /// connect() calls on the same socket, and exponential backoff capping
+    /// after a single failure. The Task nils this out before invoking connect.
+    private var reconnectTask: Task<Void, Never>?
 
     public let events: AsyncStream<WSEvent>
 
@@ -92,12 +99,20 @@ public final class WebSocketClient {
 
     private func scheduleReconnect() {
         guard !intentionallyClosed else { return }
+        // Dedup: a single failed connection may fire multiple terminal events
+        // (`.error`, `.disconnected`, `.peerClosed`). Only one reconnect Task
+        // should be pending at a time — otherwise the attempt counter and the
+        // resulting exponential delay race ahead of actual retries, and we
+        // queue concurrent connect() calls on the same socket.
+        if reconnectTask != nil { return }
         reconnectAttempt += 1
         let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
         connectionState = .reconnecting(attempt: reconnectAttempt)
-        Task {
+        reconnectTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            if !intentionallyClosed { self.socket?.connect() }
+            guard let self else { return }
+            self.reconnectTask = nil
+            if !self.intentionallyClosed { self.socket?.connect() }
         }
     }
 

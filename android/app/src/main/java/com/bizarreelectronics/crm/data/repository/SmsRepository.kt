@@ -206,8 +206,14 @@ class SmsRepository @Inject constructor(
             try {
                 val response = smsApi.getConversations(null)
                 val conversations = response.data?.conversations ?: return@launch
-                // Cache the latest message from each conversation
-                for (conv in conversations) {
+                // BUGHUNT-2026-05-17: cap the background refresh at the same
+                // RECENT_CONVERSATION_LIMIT used by `refreshFromServer`. Without
+                // the cap, every SMS-list entry fanned out one /messages/:phone
+                // call per conversation — a user with 200 threads triggered 200
+                // sequential server calls on every screen visit. Cache the
+                // latest message from each of the top-N conversations only.
+                val recent = conversations.take(RECENT_CONVERSATION_LIMIT)
+                for (conv in recent) {
                     refreshThreadDirect(conv.convPhone)
                 }
             } catch (e: Exception) {
