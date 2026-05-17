@@ -19,6 +19,7 @@ import { idempotent } from '../middleware/idempotency.js';
 import { config } from '../config.js';
 import { allocateCounter, allocateUniqueOrderId, formatInvoiceOrderId, formatTicketOrderId } from '../utils/counters.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 // isCommissionLocked is still used for tip-only payroll lock checks below;
 // commission lock enforcement is now inside writeCommission().
@@ -3033,25 +3034,15 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
     const returnAmount = roundCurrency(itemQty * (unitPrice + unitTax));
     creditTotal += returnAmount;
 
-    // Restore stock if the line item has an inventory_item_id (physical product).
-    // Differential `in_stock + ?` (not SET to a fixed value) means concurrent
-    // return requests don't race-overwrite each other's credit (SEC-H62).
-    if (lineItem.inventory_item_id) {
-      await adb.run(
-        'UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime(\'now\') WHERE id = ?',
-        itemQty, lineItem.inventory_item_id,
-      );
-
-      await adb.run(`
-        INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-        VALUES (?, 'return', ?, 'invoice', ?, ?, ?, datetime('now'), datetime('now'))
-      `, lineItem.inventory_item_id, itemQty, invId, `Return: ${item.reason}`, userId);
-    }
-
     returnDetails.push({
       line_item_id: liId,
+      inventory_item_id: lineItem.inventory_item_id ?? null,
       description: lineItem.description,
       quantity: itemQty,
+      // unit_price as stored on the credit-note line item = price + per-unit tax,
+      // preserving the prior INSERT's `detail.amount / detail.quantity` value
+      // so reprints/receipts match the original behavior.
+      unit_price_with_tax: itemQty > 0 ? returnAmount / itemQty : (unitPrice + unitTax),
       amount: returnAmount,
       reason: item.reason,
     });
@@ -3077,36 +3068,94 @@ router.post('/return', idempotent, asyncHandler(async (req, res) => {
   // at creation time so a reprint of the credit note 6 months later
   // mirrors the live receipt's behaviour.
   const pitCredit = await getInvoicePitSnapshot(adb, invoice.customer_id);
-  const creditResult = await adb.run(`
-    INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at,
+
+  // BUGHUNT-2026-05-17: bundle credit-note INSERT + all line-item / return-
+  // claim / inventory restock writes into a single atomic transaction.
+  // Previously each write ran as a standalone adb.run() — a crash
+  // partway through left customers with restocked inventory but no
+  // credit note (or the inverse). The pos_return_line_items INSERT
+  // also now uses INSERT...SELECT WHERE (SUM check) as a CAS guard so
+  // two cashiers processing returns on the same line item concurrently
+  // can't both pass the SELECT-then-check phase and double-credit.
+  const CN_IDX = 0;
+  const returnTxQueries: TxQuery[] = [];
+  returnTxQueries.push({
+    sql: `INSERT INTO invoices (order_id, customer_id, subtotal, discount, total_tax, total, amount_paid, amount_due, status, notes, created_by, created_at, updated_at,
                           customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
-    VALUES (?, ?, ?, 0, 0, ?, 0, 0, 'credit_note', ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)
-  `,
-    creditOrderId,
-    invoice.customer_id,
-    -creditTotal,
-    -creditTotal,
-    `Credit note for return on ${invoice.order_id}. Items: ${returnDetails.map(d => `${d.description} x${d.quantity} (${d.reason})`).join('; ')}`,
-    userId,
-    pitCredit.customer_name_snapshot,
-    pitCredit.customer_address_snapshot,
-    pitCredit.store_name_snapshot,
-    pitCredit.tax_jurisdiction_snapshot,
-  );
+          VALUES (?, ?, ?, 0, 0, ?, 0, 0, 'credit_note', ?, ?, datetime('now'), datetime('now'), ?, ?, ?, ?)`,
+    params: [
+      creditOrderId,
+      invoice.customer_id,
+      -creditTotal,
+      -creditTotal,
+      `Credit note for return on ${invoice.order_id}. Items: ${returnDetails.map(d => `${d.description} x${d.quantity} (${d.reason})`).join('; ')}`,
+      userId,
+      pitCredit.customer_name_snapshot,
+      pitCredit.customer_address_snapshot,
+      pitCredit.store_name_snapshot,
+      pitCredit.tax_jurisdiction_snapshot,
+    ],
+  });
 
-  const creditNoteId = Number(creditResult.lastInsertRowid);
-
-  // Insert negative line items on the credit note
   for (const detail of returnDetails) {
-    await adb.run(`
-      INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, tax_amount, total, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))
-    `, creditNoteId, `RETURN: ${detail.description}`, -detail.quantity, detail.amount / detail.quantity, -detail.amount);
+    returnTxQueries.push({
+      sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, tax_amount, total, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 0, ?, datetime('now'), datetime('now'))`,
+      params: [
+        lastInsertRowidFrom(CN_IDX),
+        `RETURN: ${detail.description}`,
+        -detail.quantity,
+        detail.unit_price_with_tax,
+        -detail.amount,
+      ],
+    });
+    returnTxQueries.push({
+      sql: `INSERT INTO pos_return_line_items (original_invoice_id, original_line_item_id, credit_note_id, quantity, reason, created_by, created_at)
+            SELECT ?, ?, ?, ?, ?, ?, datetime('now')
+            WHERE (
+              COALESCE((SELECT SUM(quantity) FROM pos_return_line_items WHERE original_line_item_id = ?), 0)
+              + ?
+            ) <= (SELECT quantity FROM invoice_line_items WHERE id = ?)`,
+      params: [
+        invId,
+        detail.line_item_id,
+        lastInsertRowidFrom(CN_IDX),
+        detail.quantity,
+        detail.reason,
+        userId,
+        detail.line_item_id,
+        detail.quantity,
+        detail.line_item_id,
+      ],
+      expectChanges: true,
+      expectChangesError: `RETURN_RACE:${detail.line_item_id}`,
+    });
+    if (detail.inventory_item_id) {
+      returnTxQueries.push({
+        sql: `UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ?`,
+        params: [detail.quantity, detail.inventory_item_id],
+      });
+      returnTxQueries.push({
+        sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+              VALUES (?, 'return', ?, 'invoice', ?, ?, ?, datetime('now'), datetime('now'))`,
+        params: [detail.inventory_item_id, detail.quantity, invId, `Return: ${detail.reason}`, userId],
+      });
+    }
+  }
 
-    await adb.run(`
-      INSERT INTO pos_return_line_items (original_invoice_id, original_line_item_id, credit_note_id, quantity, reason, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-    `, invId, detail.line_item_id, creditNoteId, detail.quantity, detail.reason, userId);
+  let creditNoteId: number;
+  try {
+    const txResults = await adb.transaction(returnTxQueries);
+    creditNoteId = Number(txResults[CN_IDX].lastInsertRowid);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/^RETURN_RACE:/.test(message)) {
+      throw new AppError(
+        'A concurrent return was processed on one of these line items. Please refresh and try again.',
+        409,
+      );
+    }
+    throw err;
   }
 
   // ──────────────────────────────────────────────────────────────────────
