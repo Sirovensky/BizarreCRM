@@ -1335,10 +1335,20 @@ router.post('/tickets/:id/comments', portalAuth, requireCsrfToken, requireTicket
     return;
   }
 
-  await adb.run(`
+  // BUGHUNT-2026-05-17: INSERT...WHERE EXISTS so a soft-delete landing
+  // between the SELECT precheck and this INSERT doesn't attach a
+  // customer comment to a tombstoned ticket (the operator UI hides
+  // soft-deleted tickets so the comment would never surface and would
+  // sit as a dangling row).
+  const insRes = await adb.run(`
     INSERT INTO ticket_notes (ticket_id, user_id, type, content, created_at, updated_at)
-    VALUES (?, NULL, 'customer', ?, datetime('now'), datetime('now'))
-  `, ticketId, trimmed);
+    SELECT ?, NULL, 'customer', ?, datetime('now'), datetime('now')
+     WHERE EXISTS (SELECT 1 FROM tickets WHERE id = ? AND is_deleted = 0 AND customer_id = ?)
+  `, ticketId, trimmed, ticketId, req.portalCustomerId);
+  if (insRes.changes === 0) {
+    res.status(404).json({ success: false, code: ERROR_CODES.ERR_RESOURCE_NOT_FOUND, message: 'Ticket not found' });
+    return;
+  }
 
   res.status(201).json({ success: true, data: { posted: true } });
 }));
