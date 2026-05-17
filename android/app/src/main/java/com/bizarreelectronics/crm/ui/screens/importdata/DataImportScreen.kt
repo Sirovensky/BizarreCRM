@@ -89,8 +89,14 @@ fun DataImportScreen(
         val displayName = context.contentResolver.query(uri, null, null, null, null)
             ?.use { cursor ->
                 val col = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                cursor.moveToFirst()
-                if (col >= 0) cursor.getString(col) else "file.csv"
+                // BUGHUNT-2026-05-17: was `cursor.moveToFirst()` discarded and
+                // then `cursor.getString(col)` unconditionally — if the URI
+                // resolver returned 0 rows (rare but possible for some SAF
+                // providers, e.g. virtual files) moveToFirst returned false
+                // and getString threw CursorIndexOutOfBoundsException, which
+                // propagated out of `.use { }` and crashed the file-picker
+                // callback. Guard on both column-exists AND cursor-positioned.
+                if (col >= 0 && cursor.moveToFirst()) cursor.getString(col) else "file.csv"
             } ?: "file.csv"
         viewModel.onFileSelected(uri, displayName)
         viewModel.goToStep(ImportStep.SCOPE)
