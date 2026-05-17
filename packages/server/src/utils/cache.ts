@@ -120,12 +120,20 @@ export class LRUCache<T = unknown> {
       this.set(key, value, ttlMs);
       return value;
     });
-    promise.finally(() => {
-      this.inflight.delete(key);
-    });
-    // Swallow the rejection of the side-chain `.finally` so we don't trigger
-    // an unhandled-rejection; the original `promise` still rejects to waiters.
-    promise.catch(() => { /* handled by waiters */ });
+    // BUGHUNT-2026-05-17: previously this was two SEPARATE chains —
+    // `promise.finally(cleanup)` and `promise.catch(swallow)`. The catch
+    // was attached to `promise` itself, NOT to the finally chain. .finally()
+    // returns a NEW Promise that inherits rejection from `promise`; on
+    // loader rejection that new Promise had no handler and surfaced as an
+    // unhandledRejection — which the index.ts fatal handler escalates to
+    // a graceful server shutdown. Chain the catch ONTO the finally so the
+    // side-chain rejection is actually swallowed; waiters still see the
+    // rejection via `inflight.set(key, promise)` -> await promise.
+    promise
+      .finally(() => {
+        this.inflight.delete(key);
+      })
+      .catch(() => { /* handled by waiters via `promise` */ });
 
     this.inflight.set(key, promise);
     return promise;
