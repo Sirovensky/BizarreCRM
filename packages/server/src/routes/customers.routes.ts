@@ -2839,20 +2839,27 @@ router.post(
     if (!custA) throw new AppError('Customer not found', 404);
     if (!custB) throw new AppError('Related customer not found', 404);
 
-    // Check for existing link (either direction)
-    const existing = await adb.get<AnyRow>(
-      `SELECT id FROM customer_relationships
-       WHERE (customer_id_a = ? AND customer_id_b = ?)
-          OR (customer_id_a = ? AND customer_id_b = ?)`,
-      customerIdA, customerIdB, customerIdB, customerIdA,
-    );
-    if (existing) throw new AppError('Relationship already exists', 409);
-
+    // BUGHUNT-2026-05-17: atomic conditional INSERT instead of
+    // SELECT-then-INSERT. The schema (mig 061) has no UNIQUE on
+    // (customer_id_a, customer_id_b), so two concurrent link requests
+    // both passed the SELECT precheck and both INSERTed — leaving two
+    // relationship rows for the same pair. INSERT ... SELECT ... WHERE
+    // NOT EXISTS serialises through SQLite's writer lock; only one
+    // caller's row lands and the other sees changes=0 -> 409.
     const result = await adb.run(
       `INSERT INTO customer_relationships (customer_id_a, customer_id_b, relationship_type)
-       VALUES (?, ?, ?)`,
+       SELECT ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1 FROM customer_relationships
+         WHERE (customer_id_a = ? AND customer_id_b = ?)
+            OR (customer_id_a = ? AND customer_id_b = ?)
+       )`,
       customerIdA, customerIdB, relType,
+      customerIdA, customerIdB, customerIdB, customerIdA,
     );
+    if (result.changes === 0) {
+      throw new AppError('Relationship already exists', 409);
+    }
 
     const relationship = await adb.get<AnyRow>(
       'SELECT * FROM customer_relationships WHERE id = ?',
