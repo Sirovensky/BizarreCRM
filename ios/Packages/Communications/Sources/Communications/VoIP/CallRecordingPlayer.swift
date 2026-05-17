@@ -55,7 +55,15 @@ final class CallRecordingPlayerViewModel {
             } else {
                 absoluteURL = url
             }
-            let (data, _) = try await URLSession.shared.data(from: absoluteURL)
+            // BUGHUNT-2026-05-17: server's /uploads/* is auth-gated (SEC-H54)
+            // so the recording download MUST carry a Bearer token. Previously
+            // URLSession.shared sent anonymously and the server returned 401 +
+            // an HTML error page — AVAudioPlayer then failed to decode the
+            // HTML as audio and the user saw a generic "Could not load
+            // recording" error.
+            var req = URLRequest(url: absoluteURL)
+            req.httpMethod = "GET"
+            let (data, _) = try await api.authedDataRequest(req)
             let audioPlayer = try AVAudioPlayer(data: data)
             audioPlayer.prepareToPlay()
             player = audioPlayer

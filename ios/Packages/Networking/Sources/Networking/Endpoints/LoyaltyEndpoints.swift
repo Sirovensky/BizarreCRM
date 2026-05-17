@@ -187,7 +187,12 @@ public extension APIClient {
         req.httpMethod = "GET"
         req.setValue("application/vnd.apple.pkpass", forHTTPHeaderField: "Accept")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
+        // BUGHUNT-2026-05-17: route through authedDataRequest so the server's
+        // authMiddleware sees a Bearer token. Previously URLSession.shared
+        // sent the request anonymously — but the docstring explicitly says
+        // "Requires `manager` or `admin` role", so every pass fetch 401'd.
+        // Same bug class as LoyaltyWalletService.fetchPass.
+        let (data, resp) = try await authedDataRequest(req)
         guard let http = resp as? HTTPURLResponse else { throw APITransportError.invalidResponse }
 
         if http.statusCode == 404 || http.statusCode == 501 {

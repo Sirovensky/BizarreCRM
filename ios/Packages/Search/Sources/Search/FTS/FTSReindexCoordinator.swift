@@ -34,11 +34,35 @@ public final class FTSReindexCoordinator {
     private var debounceTask: Task<Void, Never>?
     private let debounceDuration: UInt64 = 1_000_000_000  // 1 s
 
+    // BUGHUNT-2026-05-17: NotificationCenter observer tokens captured so they
+    // can be removed via `tearDown()`. Previously addObserver(forName:)
+    // returned an NSObjectProtocol that was discarded, so a fresh coordinator
+    // (production singleton + every unit test) added 4 permanent observer
+    // slots. Closures were `[weak self]`-safe, but the registrations
+    // themselves accumulated and fired empty callbacks for the test-process
+    // lifetime on every domain-change notification.
+    //
+    // Swift 6 MainActor deinit can't safely access isolated stored properties,
+    // so we follow the project convention (see RolesMatrixViewModel) and
+    // expose an explicit `tearDown()`. Tests call it in tearDownWithError().
+    @ObservationIgnored
+    private var observerTokens: [NSObjectProtocol] = []
+
     // MARK: - Init
 
     public init(ftsStore: FTSIndexStore) {
         self.ftsStore = ftsStore
         subscribeToNotifications()
+    }
+
+    /// Remove all NotificationCenter observers. Idempotent.
+    /// Call from tests' `tearDownWithError()` to avoid cross-test bleed.
+    /// In production this singleton lives for the app lifetime and tearDown
+    /// is unnecessary, but harmless to call.
+    public func tearDown() {
+        let center = NotificationCenter.default
+        for token in observerTokens { center.removeObserver(token) }
+        observerTokens.removeAll()
     }
 
     // MARK: - Bulk rebuild
@@ -107,35 +131,43 @@ public final class FTSReindexCoordinator {
     private func subscribeToNotifications() {
         let nc = NotificationCenter.default
 
-        nc.addObserver(forName: .ticketChanged, object: nil, queue: nil) { [weak self] note in
-            guard let self, let ticket = note.userInfo?["ticket"] as? Ticket else { return }
-            Task { @MainActor in self.enqueueTicket(ticket) }
-        }
+        observerTokens.append(
+            nc.addObserver(forName: .ticketChanged, object: nil, queue: nil) { [weak self] note in
+                guard let self, let ticket = note.userInfo?["ticket"] as? Ticket else { return }
+                Task { @MainActor in self.enqueueTicket(ticket) }
+            }
+        )
 
-        nc.addObserver(forName: .customerChanged, object: nil, queue: nil) { [weak self] note in
-            guard let self, let customer = note.userInfo?["customer"] as? Customer else { return }
-            Task { @MainActor in self.enqueueCustomer(customer) }
-        }
+        observerTokens.append(
+            nc.addObserver(forName: .customerChanged, object: nil, queue: nil) { [weak self] note in
+                guard let self, let customer = note.userInfo?["customer"] as? Customer else { return }
+                Task { @MainActor in self.enqueueCustomer(customer) }
+            }
+        )
 
-        nc.addObserver(forName: .inventoryChanged, object: nil, queue: nil) { [weak self] note in
-            guard let self, let item = note.userInfo?["inventoryItem"] as? InventoryItem else { return }
-            Task { @MainActor in self.enqueueInventoryItem(item) }
-        }
+        observerTokens.append(
+            nc.addObserver(forName: .inventoryChanged, object: nil, queue: nil) { [weak self] note in
+                guard let self, let item = note.userInfo?["inventoryItem"] as? InventoryItem else { return }
+                Task { @MainActor in self.enqueueInventoryItem(item) }
+            }
+        )
 
-        nc.addObserver(forName: .invoiceChanged, object: nil, queue: nil) { [weak self] note in
-            guard let self,
-                  let info = note.userInfo,
-                  let id = info["invoiceId"] as? Int64,
-                  let displayId = info["displayId"] as? String,
-                  let customerName = info["customerName"] as? String,
-                  let updatedAt = info["updatedAt"] as? Date
-            else { return }
-            let pending = PendingInvoice(
-                id: id, displayId: displayId,
-                customerName: customerName, updatedAt: updatedAt
-            )
-            Task { @MainActor in self.enqueueInvoice(pending) }
-        }
+        observerTokens.append(
+            nc.addObserver(forName: .invoiceChanged, object: nil, queue: nil) { [weak self] note in
+                guard let self,
+                      let info = note.userInfo,
+                      let id = info["invoiceId"] as? Int64,
+                      let displayId = info["displayId"] as? String,
+                      let customerName = info["customerName"] as? String,
+                      let updatedAt = info["updatedAt"] as? Date
+                else { return }
+                let pending = PendingInvoice(
+                    id: id, displayId: displayId,
+                    customerName: customerName, updatedAt: updatedAt
+                )
+                Task { @MainActor in self.enqueueInvoice(pending) }
+            }
+        )
     }
 
     // MARK: - Queue management

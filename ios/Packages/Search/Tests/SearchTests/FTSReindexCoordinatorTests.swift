@@ -44,6 +44,11 @@ final class FTSReindexCoordinatorTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        // BUGHUNT-2026-05-17: explicit tearDown unhooks NotificationCenter
+        // observers. Without this every test left 4 dead observer slots in
+        // the shared NotificationCenter.default for the test process's
+        // lifetime.
+        coordinator?.tearDown()
         coordinator = nil
         store = nil
         db = nil

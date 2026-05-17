@@ -399,7 +399,15 @@ struct CustomerFileShareSheet: View {
         guard let base = await api.currentBaseURL(),
               let remoteURL = URL(string: file.url, relativeTo: base) else { return }
         do {
-            let (data, _) = try await URLSession.shared.data(from: remoteURL)
+            // BUGHUNT-2026-05-17: server's /uploads/* is auth-gated (SEC-H54),
+            // so the share-sheet download MUST carry the Bearer token.
+            // Previously URLSession.shared fetched anonymously, the server
+            // returned 401 HTML, the bytes were written as the customer's
+            // "file", and the AirDrop/Mail share-sheet shipped a corrupted
+            // payload to the recipient.
+            var req = URLRequest(url: remoteURL)
+            req.httpMethod = "GET"
+            let (data, _) = try await api.authedDataRequest(req)
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(file.name)
             try data.write(to: tmp)
             localURL = tmp
