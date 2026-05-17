@@ -1789,7 +1789,9 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   }
 
   // Atomic write: credit-note invoice + its line item + original ledger update.
-  const cnTxResults = await adb.transaction([
+  let cnTxResults: Awaited<ReturnType<typeof adb.transaction>>;
+  try {
+    cnTxResults = await adb.transaction([
     {
       sql: `INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
                                   amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id,
@@ -1835,10 +1837,44 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
       // re-opening a closed-out ledger entry. The credit-note INSERT
       // still lands so the audit reflects the operator's intent; the
       // original invoice stays in its terminal state.
-      sql: `UPDATE invoices SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status NOT IN ('void', 'refunded')`,
-      params: [newAmountCredited, newAmountDue, newStatus, invoiceId],
+      //
+      // BUGHUNT-2026-05-17: CAS on (amount_paid, amount_credited) — the
+      // absorbedByInvoice vs creditOverflow split depends on the
+      // snapshot of both fields. A concurrent payment shrinking the
+      // ledger slot would mean less of the CN absorbs against the
+      // invoice and more overflows to store credit; our pre-tx split
+      // is now wrong. Differential SQL on amount_credited alone won't
+      // fix that — we need to roll back and recompute the split. CAS
+      // surfaces the race as a clean 409 retry rather than committing
+      // a stale split silently.
+      sql: `UPDATE invoices
+              SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now')
+            WHERE id = ?
+              AND status NOT IN ('void', 'refunded')
+              AND ROUND(COALESCE(amount_paid, 0) * 100) = ?
+              AND ROUND(COALESCE(amount_credited, 0) * 100) = ?`,
+      params: [
+        newAmountCredited,
+        newAmountDue,
+        newStatus,
+        invoiceId,
+        Math.round(prevAmountPaid * 100),
+        Math.round(prevAmountCredited * 100),
+      ],
+      expectChanges: true,
+      expectChangesError: 'INVOICE_LEDGER_RACE',
     },
   ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('INVOICE_LEDGER_RACE')) {
+      throw new AppError(
+        'Invoice balance changed during credit-note creation; refresh and retry.',
+        409,
+      );
+    }
+    throw err;
+  }
   const creditNoteId = Number(cnTxResults[0].lastInsertRowid);
 
   // WEB-UIUX-1026: refunds row for reporting reconciliation. Fail-open — if
