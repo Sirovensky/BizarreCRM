@@ -962,11 +962,20 @@ router.patch(
         );
       }
 
-      db.prepare(
+      // BUGHUNT-2026-05-17: CAS on quantity — two concurrent PATCHes
+      // both compute their stock delta off the same `existing.quantity`
+      // snapshot, both run their stock UPDATEs, and the shrinkage row
+      // gets the last writer's qty but stock has been adjusted twice.
+      // Pin the WHERE to the snapshot so only one PATCH lands; loser
+      // sees changes=0 → 409 (rolls back the stock change too).
+      const shrUpdate = db.prepare(
         `UPDATE inventory_shrinkage
             SET quantity = ?, reason = ?, notes = ?
-          WHERE id = ?`,
-      ).run(nextQuantity, nextReason, nextNotes, id);
+          WHERE id = ? AND quantity = ?`,
+      ).run(nextQuantity, nextReason, nextNotes, id, existing.quantity);
+      if (shrUpdate.changes === 0) {
+        throw new AppError('Shrinkage event changed concurrently; refresh and retry', 409);
+      }
     });
     tx();
 
@@ -999,6 +1008,16 @@ router.delete(
 
     const db = req.db;
     const tx = db.transaction(() => {
+      // BUGHUNT-2026-05-17: claim the delete FIRST inside the tx so two
+      // concurrent /shrinkage DELETEs can't both pass the SELECT, both
+      // restore stock (doubling the inventory back), and only then have
+      // the DELETE rows-affected drop to 1+0. The guarded DELETE
+      // serialises via SQLite's writer lock; loser sees changes=0 and
+      // bails before any stock movement touches inventory_items.
+      const delResult = db.prepare('DELETE FROM inventory_shrinkage WHERE id = ?').run(id);
+      if (delResult.changes === 0) {
+        throw new AppError('Shrinkage event was already deleted', 409);
+      }
       // Restore the shrunk quantity.
       db.prepare(
         `UPDATE inventory_items
@@ -1017,7 +1036,6 @@ router.delete(
         'Shrinkage event deleted; quantity restored',
         req.user!.id,
       );
-      db.prepare('DELETE FROM inventory_shrinkage WHERE id = ?').run(id);
     });
     tx();
 
