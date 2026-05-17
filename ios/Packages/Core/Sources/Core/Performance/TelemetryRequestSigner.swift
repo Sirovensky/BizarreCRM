@@ -26,16 +26,19 @@ public struct TelemetryRequestSigner: Sendable {
 
     // MARK: - Init
 
-    /// Production initialiser — pulls token from Keychain.
+    /// Production initialiser — reads the current bearer token from an
+    /// in-process Keychain-backed cache populated by `SessionBootstrapper`.
+    ///
+    /// BUGHUNT-2026-05-17: previously read from
+    /// `UserDefaults.standard.string(forKey: "telemetry.access_token_shadow")`.
+    /// UserDefaults is an unencrypted plist on disk — mirroring the bearer
+    /// token there exposed it to any process that can read app storage
+    /// (jailbroken devices, sideloaded debug tools, iCloud backups, etc.).
+    /// Replaced with a process-local atomic so the token never touches disk.
+    /// The wiring contract is unchanged: SessionBootstrapper calls
+    /// `updateTokenShadow(_:)` on auth and `clearTokenShadow()` on logout.
     public init() {
-        self.tokenProvider = {
-            // Lazy import via string-key access — avoids circular dependency
-            // between Core and Persistence while keeping the token retrieval here.
-            // KeychainStore is in the Persistence package; telemetry sinks are in Core.
-            // We use UserDefaults as a bridge: SessionBootstrapper writes the token
-            // there on auth (§2 wiring — see SessionBootstrapper.swift).
-            UserDefaults.standard.string(forKey: "telemetry.access_token_shadow")
-        }
+        self.tokenProvider = { Self.cachedToken.value }
     }
 
     /// Test / preview initialiser — supply a fixed token.
@@ -66,22 +69,38 @@ public struct TelemetryRequestSigner: Sendable {
 
     // MARK: - Tenant-switch flush
 
-    /// Write the active token shadow into UserDefaults so telemetry sinks can
-    /// pick it up without importing Persistence/KeychainStore.
+    /// Process-local atomic cache. Holds the active bearer token in memory
+    /// only — never written to disk. Wiped on app launch (cold start) and on
+    /// explicit `clearTokenShadow()`.
+    private static let cachedToken = AtomicToken()
+
+    /// Stash the active token in the in-process cache so telemetry sinks
+    /// can pick it up without importing Persistence/KeychainStore.
     ///
     /// Called by `SessionBootstrapper` on successful login / token refresh.
     public static func updateTokenShadow(_ token: String?) {
-        if let token {
-            UserDefaults.standard.set(token, forKey: "telemetry.access_token_shadow")
-        } else {
-            UserDefaults.standard.removeObject(forKey: "telemetry.access_token_shadow")
-        }
+        cachedToken.value = token
     }
 
-    /// Clear the shadow on logout — ensures no stale token is used post-sign-out.
+    /// Clear the cache on logout — ensures no stale token is used post-sign-out.
     ///
     /// Called by `SessionBootstrapper` on sign-out / session revocation.
     public static func clearTokenShadow() {
-        updateTokenShadow(nil)
+        cachedToken.value = nil
+    }
+}
+
+// MARK: - AtomicToken
+
+/// NSLock-guarded box so the static cache is safe to read/write from any
+/// concurrency context — telemetry sinks live on background actors while
+/// SessionBootstrapper writes from MainActor.
+private final class AtomicToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: String?
+
+    var value: String? {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); defer { lock.unlock() }; stored = newValue }
     }
 }

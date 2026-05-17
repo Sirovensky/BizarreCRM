@@ -234,13 +234,22 @@ final class TelemetryRequestSignerTests: XCTestCase {
     }
 
     func testUpdateAndClearShadow() {
+        // BUGHUNT-2026-05-17: the token shadow is now an in-process atomic
+        // (never written to disk). The default-init reads from it; that's
+        // the observable contract.
         TelemetryRequestSigner.updateTokenShadow("shadow-tok")
-        XCTAssertEqual(
-            UserDefaults.standard.string(forKey: "telemetry.access_token_shadow"),
-            "shadow-tok"
-        )
-        TelemetryRequestSigner.clearTokenShadow()
+        let live = TelemetryRequestSigner()
+        var req = URLRequest(url: URL(string: "https://example.com")!)
+        live.sign(&req)
+        XCTAssertEqual(req.value(forHTTPHeaderField: "Authorization"), "Bearer shadow-tok")
+
+        // The token must NOT be in UserDefaults — that was the original bug.
         XCTAssertNil(UserDefaults.standard.string(forKey: "telemetry.access_token_shadow"))
+
+        TelemetryRequestSigner.clearTokenShadow()
+        var req2 = URLRequest(url: URL(string: "https://example.com")!)
+        TelemetryRequestSigner().sign(&req2)
+        XCTAssertNil(req2.value(forHTTPHeaderField: "Authorization"))
     }
 }
 
