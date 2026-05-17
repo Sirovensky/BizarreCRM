@@ -1065,6 +1065,28 @@ router.post(
   }),
 );
 
+// BUGHUNT-2026-05-17: winback + churn-warning dispatchers had only the
+// per-user rateLimitCampaignDispatch (3/min/user). Two different admins
+// clicking the same auto-campaign within seconds — or one admin's
+// double-click before the request returns — both passed and both
+// dispatched, sending duplicate SMS to every recipient. Mirror the
+// /run-now CAS pattern: atomic UPDATE on marketing_campaigns.last_run_at
+// with a 30s lock so the loser sees changes=0 and 429s before any
+// dispatch work runs.
+const AUTO_CAMPAIGN_RUN_LOCK_MS = 30_000;
+
+async function claimAutoCampaignDispatch(adb: AsyncDb, campaignId: number): Promise<boolean> {
+  const result = await adb.run(
+    `UPDATE marketing_campaigns
+        SET last_run_at = datetime('now')
+      WHERE id = ?
+        AND (last_run_at IS NULL OR datetime(last_run_at) <= datetime('now', '-' || ? || ' seconds'))`,
+    campaignId,
+    Math.ceil(AUTO_CAMPAIGN_RUN_LOCK_MS / 1000),
+  );
+  return result.changes > 0;
+}
+
 router.post(
   '/winback/dispatch',
   asyncHandler(async (req, res) => {
@@ -1082,6 +1104,13 @@ router.post(
         data: { sent: 0, message: 'No active winback campaign' },
       });
       return;
+    }
+
+    if (!(await claimAutoCampaignDispatch(adb, campaign.id))) {
+      throw new AppError(
+        `Winback campaign was dispatched within the last ${Math.ceil(AUTO_CAMPAIGN_RUN_LOCK_MS / 1000)}s. Wait before re-running to avoid duplicate SMS.`,
+        429,
+      );
     }
 
     if (campaign.segment_id) {
@@ -1122,6 +1151,13 @@ router.post(
         data: { sent: 0, message: 'No active churn_warning campaign' },
       });
       return;
+    }
+
+    if (!(await claimAutoCampaignDispatch(adb, campaign.id))) {
+      throw new AppError(
+        `Churn-warning campaign was dispatched within the last ${Math.ceil(AUTO_CAMPAIGN_RUN_LOCK_MS / 1000)}s. Wait before re-running to avoid duplicate SMS.`,
+        429,
+      );
     }
 
     const recipients = await fetchEligibleRecipients(adb, campaign, 500);
