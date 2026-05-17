@@ -1972,6 +1972,15 @@ router.post('/:id/send-receipt', requirePermission('invoices.view'), async (req,
   if (channel !== 'sms' && channel !== 'email') {
     throw new AppError("channel must be 'sms' or 'email'", 400);
   }
+  // BUGHUNT-2026-05-17: rate-limit /send-receipt. This endpoint is
+  // gated only by invoices.view (read scope) but sends SMS or email
+  // to any customer — a compromised low-privilege account could spam
+  // receipts as a DoS or as a vehicle to relay messages to victims.
+  // 30/min/user matches the rate cap on /notifications/send-receipt.
+  const userId = req.user?.id;
+  if (userId && !checkWindowRate(db, 'invoice_receipt_resend', String(userId), 30, 60_000)) {
+    throw new AppError('Too many receipt-resend requests. Try again shortly.', 429);
+  }
   const recipientOverride =
     typeof req.body?.recipient === 'string' ? req.body.recipient.trim() : '';
 
