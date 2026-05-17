@@ -6,7 +6,7 @@ import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
 import { isCommissionLocked } from './_team.payroll.js';
-import type { AsyncDb } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { validateId } from '../utils/validate.js';
 import { getTenantTz, tzModifier } from '../utils/timezone.js';
@@ -590,10 +590,20 @@ router.post(
       const composedNote = reasonRaw
         ? `${entry.notes ? entry.notes + ' · ' : ''}[Admin bulk close: ${reasonRaw}]`
         : entry.notes ?? null;
-      await adb.run(
-        'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ?',
+      // BUGHUNT-2026-05-17: AND clock_out IS NULL — without this, a user
+      // who manually clocked out between the SELECT precheck and this
+      // UPDATE has their real clock_out and total_hours silently
+      // overwritten with the admin bulk-close values. The single-row
+      // /clock-out endpoint at line 527 already gates on this; the bulk
+      // path was missing the same guard. Skip + audit-skip on changes=0.
+      const closeRes = await adb.run(
+        'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ? AND clock_out IS NULL',
         nowIso, totalHours, composedNote, entry.id,
       );
+      if (closeRes.changes === 0) {
+        results.push({ entry_id: entry.id, user_id: entry.user_id, skipped: 'already_clocked_out' });
+        continue;
+      }
       audit(req.db, 'employee_clocked_out', req.user!.id, req.ip || 'unknown', {
         employee_id: entry.user_id,
         entry_id: entry.id,
@@ -859,26 +869,44 @@ router.patch(
     const noteRaw = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
     const rateChanged = prevRate !== resolvedRate;
 
-    await adb.run(
-      "UPDATE users SET pay_rate = ?, updated_at = datetime('now') WHERE id = ?",
-      resolvedRate,
-      id,
-    );
-
+    // BUGHUNT-2026-05-17: bundle the users UPDATE + pay_rate_history INSERT
+    // into one tx so the rate change and its audit row land atomically — a
+    // crash between them previously left pay_rate updated with no history
+    // entry, breaking compliance reconstruction. Also add AND is_active = 1
+    // CAS so a concurrent deactivate isn't silently clobbered. The history
+    // INSERT is wrapped in its own try so schema-drift tenants (where
+    // migration 187 hasn't run) still get the rate change through.
+    const payTxQueries: TxQuery[] = [
+      {
+        sql: "UPDATE users SET pay_rate = ?, updated_at = datetime('now') WHERE id = ? AND is_active = 1",
+        params: [resolvedRate, id],
+        expectChanges: true,
+        expectChangesError: 'PAY_RATE_USER_INACTIVE',
+      },
+    ];
     if (rateChanged) {
-      try {
+      payTxQueries.push({
+        sql: `INSERT INTO pay_rate_history (user_id, pay_rate, effective_at, changed_by_user_id, note)
+              VALUES (?, ?, datetime('now'), ?, ?)`,
+        params: [id, resolvedRate, req.user!.id, noteRaw || null],
+      });
+    }
+    try {
+      await adb.transaction(payTxQueries);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('PAY_RATE_USER_INACTIVE')) {
+        throw new AppError('Employee was just deactivated; refresh and retry', 409);
+      }
+      // Schema drift on pay_rate_history — retry without the history INSERT
+      // so legacy tenants (pre-migration 187) still update the rate.
+      if (rateChanged && /pay_rate_history/.test(msg)) {
         await adb.run(
-          `INSERT INTO pay_rate_history (user_id, pay_rate, effective_at, changed_by_user_id, note)
-           VALUES (?, ?, datetime('now'), ?, ?)`,
-          id,
-          resolvedRate,
-          req.user!.id,
-          noteRaw || null,
+          "UPDATE users SET pay_rate = ?, updated_at = datetime('now') WHERE id = ? AND is_active = 1",
+          resolvedRate, id,
         );
-      } catch (err) {
-        // Don't block the rate change on a history-table write failure
-        // (legacy tenants where migration 187 hasn't run yet, schema drift).
-        // Audit row below still captures who/what/when as the durable trail.
+      } else {
+        throw err;
       }
     }
 
