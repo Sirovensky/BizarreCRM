@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { Buffer } from 'node:buffer';
 import { config } from '../config.js';
 import { createLogger } from './logger.js';
 
@@ -27,8 +28,10 @@ function serializeDetails(details: Record<string, unknown> | undefined): string 
   let json: string;
   try { json = JSON.stringify(details); }
   catch { return JSON.stringify({ error: 'unserializable' }); }
-  if (json.length > MAX_MASTER_AUDIT_DETAILS_BYTES) {
-    return JSON.stringify({ truncated: true, bytes: json.length });
+  // BUGHUNT-2026-05-17: byte-cap, not char-cap (see audit.ts twin fix).
+  const byteLen = Buffer.byteLength(json, 'utf8');
+  if (byteLen > MAX_MASTER_AUDIT_DETAILS_BYTES) {
+    return JSON.stringify({ truncated: true, bytes: byteLen });
   }
   return json;
 }

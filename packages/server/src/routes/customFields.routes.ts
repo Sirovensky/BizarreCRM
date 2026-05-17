@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { Buffer } from 'node:buffer';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -36,7 +37,10 @@ function serializeOptions(options: unknown): string | null {
   } catch {
     throw new AppError('options must be JSON-serialisable', 400);
   }
-  if (json.length > MAX_OPTIONS_BYTES) {
+  // BUGHUNT-2026-05-17: byte-cap, not char-cap. JSON with non-ASCII labels
+  // (e.g. emoji or non-Latin characters in dropdown option names) could pass
+  // a JS-length check while occupying up to 4x the intended bytes on disk.
+  if (Buffer.byteLength(json, 'utf8') > MAX_OPTIONS_BYTES) {
     throw new AppError(`options too large (max ${MAX_OPTIONS_BYTES} bytes)`, 400);
   }
   return json;

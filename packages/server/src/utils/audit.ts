@@ -2,6 +2,7 @@
 // so callers cannot blow up audit_logs storage with 1MB payloads or inject
 // fake log lines via CRLF in the event name.
 import type Database from 'better-sqlite3';
+import { Buffer } from 'node:buffer';
 import { createLogger } from './logger.js';
 const logger = createLogger('audit');
 const MAX_AUDIT_DETAILS_BYTES = 16 * 1024;
@@ -24,10 +25,16 @@ function serializeDetails(details: Record<string, unknown> | undefined): string 
     // @audit-fixed: Circular refs/throwing toJSON no longer kill the caller.
     return JSON.stringify({ error: 'unserializable_audit_details' });
   }
-  if (json.length > MAX_AUDIT_DETAILS_BYTES) {
+  // BUGHUNT-2026-05-17: cap on serialized BYTES, not JS char count. JSON
+  // payloads with non-ASCII fields (customer names, addresses, notes in
+  // non-Latin scripts) could otherwise pass the 16KB check while occupying
+  // up to 4x that on disk for 4-byte UTF-8 codepoints, defeating the
+  // intent of the cap.
+  const byteLen = Buffer.byteLength(json, 'utf8');
+  if (byteLen > MAX_AUDIT_DETAILS_BYTES) {
     // @audit-fixed: Cap oversized details so a malicious payload can't fill
     // the audit_logs table. Keep a marker so the truncation is visible.
-    return JSON.stringify({ truncated: true, bytes: json.length });
+    return JSON.stringify({ truncated: true, bytes: byteLen });
   }
   return json;
 }
