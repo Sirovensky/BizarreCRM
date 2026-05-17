@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -180,6 +181,35 @@ class InventoryRepository @Inject constructor(
             } catch (e: Exception) {
                 Log.w(TAG, "Online update failed, falling back to offline queue: ${e.message}")
             }
+        }
+
+        // BUGHUNT-2026-05-17: previously this only enqueued a sync entry — the
+        // local row was NOT updated, so the user's edit didn't show up in the
+        // UI (which observes the Room Flow) until the queue drained. Mirror
+        // the TicketRepository pattern: snapshot the existing row, apply the
+        // request's fields, mark dirty, and insert. The sync queue carries the
+        // canonical payload so the server still receives the full request.
+        val snapshot = runCatching { inventoryDao.getById(id).first() }.getOrNull()
+        if (snapshot != null) {
+            val now = java.time.Instant.now().toString().take(19).replace("T", " ")
+            val locallyDirty = snapshot.copy(
+                name = request.name,
+                sku = request.sku ?: snapshot.sku,
+                upcCode = request.upcCode ?: snapshot.upcCode,
+                itemType = request.itemType,
+                manufacturerId = request.manufacturerId ?: snapshot.manufacturerId,
+                costPriceCents = request.costPrice.toCentsOrZero(),
+                retailPriceCents = request.price.toCentsOrZero(),
+                inStock = request.inStock ?: snapshot.inStock,
+                reorderLevel = request.reorderLevel ?: snapshot.reorderLevel,
+                taxClassId = request.taxClassId ?: snapshot.taxClassId,
+                supplierId = request.supplierId ?: snapshot.supplierId,
+                description = request.description ?: snapshot.description,
+                isSerialize = (request.isSerialized ?: 0) == 1,
+                updatedAt = now,
+                locallyModified = true,
+            )
+            inventoryDao.insert(locallyDirty)
         }
 
         syncQueueDao.insert(
