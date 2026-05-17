@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.UndoStack
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -159,6 +160,12 @@ class InventoryEditViewModel @Inject constructor(
                         _state.value = current.copy(item = entity, isLoading = false)
                     }
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so back-navigation
+                // or rapid reload doesn't flash a fake "Failed to load
+                // inventory item" banner. Same fix family as
+                // CustomerDetailScreen / CustomerListViewModel.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
