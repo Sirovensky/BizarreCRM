@@ -4532,20 +4532,48 @@ router.post('/devices/:deviceId/loaner', requirePermission('tickets.edit'), asyn
   const loaner = await adb.get<AnyRow>("SELECT * FROM loaner_devices WHERE id = ? AND status = 'available'", loaner_device_id);
   if (!loaner) throw new AppError('Loaner device not available', 400);
 
-  // Mark loaner as loaned
-  await adb.run("UPDATE loaner_devices SET status = 'loaned', updated_at = ? WHERE id = ?", now(), loaner_device_id);
-
-  // Insert loaner history
-  await adb.run(`
-    INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out)
-    VALUES (?, ?, ?, ?, ?)
-  `, loaner_device_id, deviceId, device.customer_id, now(), loaner.condition);
-
-  // Link to ticket device
-  await adb.run('UPDATE ticket_devices SET loaner_device_id = ?, updated_at = ? WHERE id = ?', loaner_device_id, now(), deviceId);
+  // BUGHUNT-2026-05-17: previously four sequential adb.run calls with a
+  // TOCTOU between the SELECT-available check and the status='loaned'
+  // UPDATE. Two concurrent /loaner assigns for the same loaner_device_id
+  // (to two different ticket_devices) both passed the SELECT, both
+  // INSERTed loaner_history rows, and the ticket_devices UPDATE silently
+  // pointed two ticket_devices at the same loaner — the customer-facing
+  // "you have loaner X" message went to both customers, but the physical
+  // device is only in one of their hands. Bundle into one tx with a CAS
+  // guard on the loaner state flip; expectChanges rolls back the whole
+  // tx if the loaner was already claimed.
+  const now_ = now();
+  try {
+    await adb.transaction([
+      {
+        sql: "UPDATE loaner_devices SET status = 'loaned', updated_at = ? WHERE id = ? AND status = 'available'",
+        params: [now_, loaner_device_id],
+        expectChanges: true,
+        expectChangesError: 'LOANER_ALREADY_CLAIMED',
+      },
+      {
+        sql: `INSERT INTO loaner_history (loaner_device_id, ticket_device_id, customer_id, loaned_at, condition_out)
+              VALUES (?, ?, ?, ?, ?)`,
+        params: [loaner_device_id, deviceId, device.customer_id, now_, loaner.condition],
+      },
+      {
+        sql: 'UPDATE ticket_devices SET loaner_device_id = ?, updated_at = ? WHERE id = ?',
+        params: [loaner_device_id, now_, deviceId],
+      },
+      {
+        sql: 'UPDATE tickets SET updated_at = ? WHERE id = ?',
+        params: [now_, device.ticket_id],
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('LOANER_ALREADY_CLAIMED')) {
+      throw new AppError('Loaner device was just claimed by another assignment; refresh and retry', 409);
+    }
+    throw err;
+  }
 
   await insertHistoryAsync(adb, device.ticket_id, userId, 'loaner_assigned', `Loaner device assigned: ${loaner.name}`);
-  await adb.run('UPDATE tickets SET updated_at = ? WHERE id = ?', now(), device.ticket_id);
 
   res.status(201).json({ success: true, data: { loaner_device_id, device_id: deviceId, loaner_name: loaner.name } });
 }));
