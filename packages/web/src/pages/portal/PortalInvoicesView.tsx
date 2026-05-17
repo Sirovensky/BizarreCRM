@@ -18,11 +18,17 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandError, setExpandError] = useState<string | null>(null);
 
+  // BUGHUNT-2026-05-17: add cancellation guard so a fast nav off the
+  // portal invoices tab while the fetch is in flight doesn't fire
+  // setState on an unmounted component (React dev warning + leaked
+  // state writes that could collide with the next mount's fetch).
   useEffect(() => {
+    let cancelled = false;
     api.getInvoices()
-      .then(setInvoices)
-      .catch(() => setError('Failed to load invoices. Please try again later.'))
-      .finally(() => setLoading(false));
+      .then((rows) => { if (!cancelled) setInvoices(rows); })
+      .catch(() => { if (!cancelled) setError('Failed to load invoices. Please try again later.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   async function fetchDetail(id: number) {
