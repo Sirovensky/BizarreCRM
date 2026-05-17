@@ -80,7 +80,19 @@ function sqlTimestamp(date: Date): string {
   return date.toISOString().replace('T', ' ').substring(0, 19);
 }
 
+// BUGHUNT-2026-05-17: defense-in-depth allowlist. PRAGMA can't be
+// parameterised, so the table name is interpolated. All current
+// callers pass hardcoded strings; the runtime check is a guardrail
+// in case a future refactor wires user input through here.
+const ALLOWED_PRAGMA_TABLES = new Set([
+  'attachments', 'photos',
+  'ticket_attachments', 'ticket_photos',
+  'estimate_attachments', 'estimate_photos',
+]);
 async function tableColumns(adb: AsyncDb, tableName: string): Promise<Map<string, TableColumn>> {
+  if (!ALLOWED_PRAGMA_TABLES.has(tableName)) {
+    throw new AppError(`PRAGMA on disallowed table: ${tableName}`, 500);
+  }
   const rows = await adb.all<TableColumn>(`PRAGMA table_info(${tableName})`);
   return new Map(rows.map((row) => [row.name, row]));
 }
@@ -95,6 +107,12 @@ async function updateSharedParentRows(
   estimateId: number,
   ticketId: number,
 ): Promise<number> {
+  // tableName is locked to the union 'attachments' | 'photos' at compile
+  // time, but the UPDATE below interpolates it — also runtime-check via
+  // the same allowlist used by tableColumns().
+  if (!ALLOWED_PRAGMA_TABLES.has(tableName)) {
+    throw new AppError(`UPDATE on disallowed table: ${tableName}`, 500);
+  }
   const columns = await tableColumns(adb, tableName);
   if (!hasColumns(columns, ['estimate_id', 'ticket_id'])) return 0;
 
