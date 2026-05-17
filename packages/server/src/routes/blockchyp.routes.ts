@@ -510,13 +510,42 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
         ],
       },
       {
-        sql: `UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+        // BUGHUNT-2026-05-17: guard the invoice UPDATE WHERE status NOT IN
+        // ('void','refunded') so a /void landing between our pre-tx SELECT
+        // and this write doesn't get silently flipped to 'paid'. Crucially
+        // we do NOT use expectChanges here — the BlockChyp terminal has
+        // already captured the card and the payment row + idempotency row
+        // MUST persist so the merchant has a record of the charge. If the
+        // invoice was voided concurrently, the payment row records as an
+        // anomaly (audit-detectable) instead of silently overriding void.
+        sql: `UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now')
+              WHERE id = ? AND status NOT IN ('void', 'refunded')`,
         params: [newPaid, newDue, newStatus, invoice.id],
       },
     ]);
     // The first query in the batch is the payment INSERT. Its rowid is how
     // we correlate the audit log and (if configured) the auto-close.
     const paymentId = Number(txResults[0]?.lastInsertRowid ?? 0);
+    // BUGHUNT-2026-05-17: detect void-clobber race. If the invoice UPDATE
+    // matched 0 rows, the invoice was void/refunded by the time we wrote;
+    // the BlockChyp charge already captured so the payment row stays, but
+    // we log + audit the anomaly so the merchant can refund manually.
+    const invoiceUpdateChanges = Number(txResults[2]?.changes ?? 0);
+    if (invoiceUpdateChanges === 0) {
+      logger.error('blockchyp_charge_on_terminal_invoice', {
+        invoice_id: invoice.id,
+        payment_id: paymentId,
+        transaction_id: result.transactionId,
+        amount: chargeAmount,
+      });
+      audit(db, 'blockchyp_payment_on_voided_invoice', req.user!.id, req.ip || 'unknown', {
+        invoice_id: invoice.id,
+        payment_id: paymentId,
+        transaction_id: result.transactionId,
+        amount: chargeAmount,
+        action_required: 'manual_refund',
+      });
+    }
 
     // BL8: payment event audit log (links transaction id → payment row → signature).
     audit(db, 'blockchyp_payment_success', req.user!.id, req.ip || 'unknown', {
