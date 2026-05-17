@@ -1264,6 +1264,12 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
     const rawAmountDue = roundCents(invoiceTotal - totalPaid);
     const displayAmountDue = Math.max(0, rawAmountDue);
     const newStatus = rawAmountDue <= 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
+    // BUGHUNT-2026-05-17: guard the invoice UPDATE WHERE status NOT IN
+    // ('void','refunded') so a reverse on a payment whose parent invoice
+    // was just voided doesn't silently un-void the invoice by writing
+    // 'unpaid'/'partial' over the void state. The payment void marker
+    // still lands so the operator's audit trail records their intent;
+    // the invoice stays void (correct, since void already zeroed it).
     await adb.transaction([
       {
         sql: "UPDATE payments SET notes = COALESCE(notes || ' ', '') || '[VOIDED] ' || ? WHERE id = ? AND COALESCE(notes,'') NOT LIKE '%[VOIDED]%'",
@@ -1272,7 +1278,7 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
         expectChangesError: 'Payment was already voided by a concurrent request',
       },
       {
-        sql: "UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
+        sql: "UPDATE invoices SET amount_paid = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ? AND status NOT IN ('void', 'refunded')",
         params: [totalPaid, displayAmountDue, newStatus, payment.invoice_id],
       },
     ]);
