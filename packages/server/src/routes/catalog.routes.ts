@@ -480,25 +480,29 @@ router.post('/bulk-import', adminOnly, asyncHandler(async (req, res) => {
     // SC6: collision-free externalId fallback
     const externalId = sku || await hashExternalIdFallback(name);
 
-    const existing = await adb.get<{ id: number }>(
-      'SELECT id FROM supplier_catalog WHERE source = ? AND external_id = ?',
-      source, externalId,
-    );
-
-    let catalogId: number;
-    if (existing) {
-      await adb.run(`
-        UPDATE supplier_catalog SET name=?,sku=?,category=?,price=?,image_url=?,product_url=?,
-        compatible_devices=?,last_synced=datetime('now') WHERE id=?
-      `, name, sku, category, price, imageUrl, productUrl, compatJson, existing.id);
-      catalogId = existing.id;
-    } else {
-      const r = await adb.run(`
-        INSERT INTO supplier_catalog (source,external_id,name,sku,category,price,image_url,product_url,compatible_devices)
-        VALUES (?,?,?,?,?,?,?,?,?)
-      `, source, externalId, name, sku, category, price, imageUrl, productUrl, compatJson);
-      catalogId = r.lastInsertRowid as number;
-    }
+    // BUGHUNT-2026-05-17: collapse SELECT-then-(UPDATE-or-INSERT) into a
+    // single atomic upsert via INSERT...ON CONFLICT (source, external_id)
+    // DO UPDATE. The prior pattern raced — two concurrent imports for the
+    // same (source, external_id) both saw no existing row and both
+    // INSERTed; the second hit UNIQUE_CONSTRAINT and 500'd the import.
+    // RETURNING id avoids a second SELECT round-trip.
+    const upsertResult = await adb.get<{ id: number }>(`
+      INSERT INTO supplier_catalog
+        (source, external_id, name, sku, category, price, image_url,
+         product_url, compatible_devices, last_synced)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(source, external_id) DO UPDATE SET
+        name = excluded.name,
+        sku = excluded.sku,
+        category = excluded.category,
+        price = excluded.price,
+        image_url = excluded.image_url,
+        product_url = excluded.product_url,
+        compatible_devices = excluded.compatible_devices,
+        last_synced = datetime('now')
+      RETURNING id
+    `, source, externalId, name, sku, category, price, imageUrl, productUrl, compatJson);
+    const catalogId: number = upsertResult!.id;
 
     // Match device models
     if (compatDevices.length > 0) {
