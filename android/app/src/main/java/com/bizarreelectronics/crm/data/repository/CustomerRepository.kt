@@ -19,6 +19,7 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.sync.CustomerRemoteMediator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -127,6 +128,12 @@ class CustomerRepository @Inject constructor(
             val customers = response.data ?: return
             if (customers.isEmpty()) return
             customerDao.insertAll(customers.map { it.toEntity() })
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: cancellation MUST propagate even though the
+            // call-site is a fire-and-forget launch{}. The recursive retry
+            // branch below could otherwise re-issue a cancelled search and
+            // burn battery / quota.
+            throw e
         } catch (e: Exception) {
             val retryable = e is IOException || e is SocketTimeoutException
             if (retryable && attempt < MAX_SEARCH_RETRIES) {
@@ -161,6 +168,8 @@ class CustomerRepository @Inject constructor(
                 val entity = detail.toEntity()
                 customerDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online customer create failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
@@ -209,6 +218,8 @@ class CustomerRepository @Inject constructor(
                 val entity = detail.toEntity()
                 customerDao.insert(entity)
                 return entity
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online customer update failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
@@ -219,7 +230,18 @@ class CustomerRepository @Inject constructor(
         // queue drained. Snapshot the row, overlay non-null request fields,
         // mark dirty, and insert. UpdateCustomerRequest is a partial update so
         // null fields preserve the snapshot's existing value.
-        val snapshot = runCatching { customerDao.getById(id).first() }.getOrNull()
+        //
+        // BUGHUNT-2026-05-17: don't use runCatching for the snapshot read —
+        // kotlin.Result wraps CancellationException via Throwable, so a
+        // cancelled .first() would be swallowed and the syncQueueDao.insert
+        // below would still run on a cancelled coroutine.
+        val snapshot = try {
+            customerDao.getById(id).first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
         if (snapshot != null) {
             val now = java.time.Instant.now().toString().take(19).replace("T", " ")
             val locallyDirty = snapshot.copy(
@@ -280,6 +302,8 @@ class CustomerRepository @Inject constructor(
             if (page > MAX_PAGINATION_PAGES) {
                 Log.w(TAG, "Customer pagination hit safety cap of $MAX_PAGINATION_PAGES pages — aborting refresh")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "customer refreshFromServer failed [${e.javaClass.simpleName}]: ${e.message}")
         }
@@ -293,6 +317,8 @@ class CustomerRepository @Inject constructor(
                 val response = customerApi.getCustomers(mapOf("pagesize" to "500"))
                 val customers = response.data?.customers ?: return@launch
                 customerDao.insertAll(customers.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background customer refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
@@ -311,6 +337,8 @@ class CustomerRepository @Inject constructor(
                 val response = customerApi.getCustomer(id)
                 val detail = response.data ?: return@launch
                 customerDao.insert(detail.toEntity())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background customer detail refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             } finally {

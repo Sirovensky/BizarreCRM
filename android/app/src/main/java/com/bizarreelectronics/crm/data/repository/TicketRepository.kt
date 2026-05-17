@@ -20,6 +20,7 @@ import com.bizarreelectronics.crm.data.sync.TicketRemoteMediator
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.toCentsOrZero
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -132,6 +133,8 @@ class TicketRepository @Inject constructor(
                 val response = ticketApi.getTickets(mapOf("search" to query, "pagesize" to "50"))
                 val tickets = response.data?.tickets ?: return@launch
                 ticketDao.insertAll(tickets.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "API ticket search failed [${e.javaClass.simpleName}]: ${e.message}")
             }
@@ -167,6 +170,8 @@ class TicketRepository @Inject constructor(
                 val entity = detail.toEntity()
                 ticketDao.insert(entity)
                 return entity.id
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online ticket create failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
@@ -210,7 +215,16 @@ class TicketRepository @Inject constructor(
         // Snapshot current Room row BEFORE doing anything else. The snapshot feeds the
         // optimistic-concurrency token sent to the server and is used to detect local
         // edits that must be preserved if a later flush would otherwise overwrite them.
-        val snapshot: TicketEntity? = runCatching { ticketDao.getById(id).first() }.getOrNull()
+        // BUGHUNT-2026-05-17: don't use runCatching — kotlin.Result wraps
+        // CancellationException via Throwable, swallowing it and letting the
+        // syncQueueDao.insert below execute on a cancelled coroutine.
+        val snapshot: TicketEntity? = try {
+            ticketDao.getById(id).first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
         val mergedRequest = if (request.updatedAt == null && snapshot?.updatedAt?.isNotBlank() == true) {
             request.copy(updatedAt = snapshot.updatedAt)
         } else {
@@ -224,6 +238,8 @@ class TicketRepository @Inject constructor(
                 val entity = detail.toEntity()
                 ticketDao.insert(entity)
                 return entity
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Online ticket update failed [${e.javaClass.simpleName}], falling back to offline queue: ${e.message}")
             }
@@ -272,6 +288,8 @@ class TicketRepository @Inject constructor(
                 if (pagination == null || page >= pagination.totalPages) break
                 page++
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "ticket refreshFromServer failed [${e.javaClass.simpleName}]: ${e.message}")
         }
@@ -285,6 +303,8 @@ class TicketRepository @Inject constructor(
                 val response = ticketApi.getTickets(mapOf("pagesize" to "200"))
                 val tickets = response.data?.tickets ?: return@launch
                 ticketDao.insertAll(tickets.map { it.toEntity() })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background ticket refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             }
@@ -303,6 +323,8 @@ class TicketRepository @Inject constructor(
                 val response = ticketApi.getTicket(id)
                 val detail = response.data ?: return@launch
                 ticketDao.insert(detail.toEntity())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Background ticket detail refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             } finally {
