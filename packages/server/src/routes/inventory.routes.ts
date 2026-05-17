@@ -1006,7 +1006,7 @@ router.get('/kits/:id', asyncHandler(async (req, res) => {
 // DELETE /inventory/kits/:id — delete kit
 // SEC-H25: deleting a kit is an inventory delete — gate behind inventory.delete.
 // The inline role check below is kept as defence-in-depth.
-router.delete('/kits/:id', requirePermission('inventory.delete'), async (req: Request<{ id: string }>, res) => {
+router.delete('/kits/:id', requirePermission('inventory.delete'), asyncHandler(async (req: Request<{ id: string }>, res) => {
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager')
     throw new AppError('Admin or manager access required', 403);
@@ -1031,7 +1031,7 @@ router.delete('/kits/:id', requirePermission('inventory.delete'), async (req: Re
   audit(req.db, 'inventory_kit_deleted', req.user!.id, req.ip || 'unknown', { kit_id: kitId });
 
   res.json({ success: true, data: { message: 'Kit deleted' } });
-});
+}));
 
 // GET /inventory/:id (must be numeric — skip for named routes like /suppliers, /purchase-orders)
 router.get('/:id', asyncHandler(async (req, res, next) => {
@@ -1286,7 +1286,7 @@ router.post('/', requirePermission('inventory.create'), asyncHandler(async (req,
 
 // PUT /inventory/:id
 // SEC-H25: updating an inventory item is a write — gate behind inventory.edit.
-router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id: string }>, res, next) => {
+router.put('/:id', requirePermission('inventory.edit'), asyncHandler(async (req: Request<{ id: string }>, res, next) => {
   const adb: AsyncDb = req.asyncDb;
   if (!/^\d+$/.test(String(req.params.id))) return next();
   const existing = await adb.get<any>('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
@@ -1426,7 +1426,7 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
   audit(req.db, 'inventory_item_updated', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id) });
   broadcast(WS_EVENTS.INVENTORY_STOCK_CHANGED, item, req.tenantSlug || null);
   res.json({ success: true, data: item });
-});
+}));
 
 // POST /inventory/:id/adjust-stock
 // SEC-H22: manual stock adjustment — admin/manager only, and the UPDATE uses a
