@@ -356,7 +356,7 @@ public final class LoginFlow {
             // 4. 2FA verify (existing user with TOTP enabled)
             if let access = resp.accessToken, let refresh = resp.refreshToken {
                 cancelChallengeExpiry()
-                finishAuth(access: access, refresh: refresh)
+                await finishAuth(access: access, refresh: refresh)
             } else if resp.requiresPasswordSetup == true, let challenge = resp.challengeToken {
                 startChallengeExpiry()
                 step = .setPassword(challenge: challenge)
@@ -558,7 +558,7 @@ public final class LoginFlow {
             if let codes = resp.backupCodes, !codes.isEmpty {
                 backupCodes = codes
             }
-            finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
+            await finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
         } catch {
             totpCode = ""
             errorMessage = localizedNetworkError(error)
@@ -592,7 +592,7 @@ public final class LoginFlow {
                                           body: BackupReq(challengeToken: challenge, code: code),
                                           as: BackupResp.self)
             remainingBackupCodes = resp.remainingBackupCodes
-            finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
+            await finishAuth(access: resp.accessToken, refresh: resp.refreshToken)
         } catch {
             backupCodeInput = ""
             errorMessage = error.localizedDescription
@@ -667,10 +667,17 @@ public final class LoginFlow {
 
     // MARK: - Internal
 
-    private func finishAuth(access: String, refresh: String) {
+    private func finishAuth(access: String, refresh: String) async {
         cancelChallengeExpiry()
         TokenStore.shared.save(access: access, refresh: refresh)
-        Task { await api.setAuthToken(access) }
+        // BUGHUNT-2026-05-17: was `Task { await api.setAuthToken(access) }`
+        // (fire-and-forget). The next screen rendered as soon as `step`
+        // changed below could fire its first GET before the actor-isolated
+        // setAuthToken landed — the request went out with no Authorization
+        // header and the server responded 401, immediately bouncing the
+        // user back to login. Await the token plumbing inline so the new
+        // screen sees an authenticated client.
+        await api.setAuthToken(access)
         step = PINStore.shared.isEnrolled ? .biometricOffer : .pinSetup
     }
 }
