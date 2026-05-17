@@ -2655,31 +2655,55 @@ router.post('/change-password', authMiddleware, asyncHandler(async (req: Request
   // after the UPDATE — a process crash between the two statements would
   // rotate the password but leave history missing, letting the user reuse
   // the new password on the next rotation and bypass the P2FA8 reuse check.
-  await adb.transaction([
-    {
-      sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ?",
-      params: [newHash, userId],
-    },
-    {
-      sql: 'DELETE FROM sessions WHERE user_id = ?',
-      params: [userId],
-    },
-    {
-      sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
-      params: [userId, newHash],
-    },
-    {
-      sql: `DELETE FROM password_history
-             WHERE user_id = ?
-               AND id NOT IN (
-                 SELECT id FROM password_history
-                   WHERE user_id = ?
-                   ORDER BY created_at DESC
-                   LIMIT ?
-               )`,
-      params: [userId, userId, PASSWORD_HISTORY_DEPTH],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: CAS the UPDATE on the password_hash we just
+  // verified above. Two concurrent password-change requests for the
+  // same userId (e.g. attacker + legit user both holding a session
+  // token) both pass bcrypt.compare against the same current hash,
+  // then both UPDATE — without CAS the second writer wins
+  // non-deterministically, leaving the user locked out of whichever
+  // password they thought they set. The loser now hits a clean 409 and
+  // the user can retry from a fresh form.
+  try {
+    await adb.transaction([
+      {
+        sql: "UPDATE users SET password_hash = ?, password_set = 1, reset_token = NULL, reset_token_expires = NULL, updated_at = datetime('now') WHERE id = ? AND password_hash = ?",
+        params: [newHash, userId, user.password_hash],
+        expectChanges: true,
+        expectChangesError: 'PASSWORD_CHANGE_RACE',
+      },
+      {
+        sql: 'DELETE FROM sessions WHERE user_id = ?',
+        params: [userId],
+      },
+      {
+        sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+        params: [userId, newHash],
+      },
+      {
+        sql: `DELETE FROM password_history
+               WHERE user_id = ?
+                 AND id NOT IN (
+                   SELECT id FROM password_history
+                     WHERE user_id = ?
+                     ORDER BY created_at DESC
+                     LIMIT ?
+                 )`,
+        params: [userId, userId, PASSWORD_HISTORY_DEPTH],
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('PASSWORD_CHANGE_RACE')) {
+      audit(db, 'password_change_failed', userId, ip, { reason: 'concurrent_change' });
+      res.status(409).json({
+        success: false,
+        code: ERROR_CODES.ERR_CONFLICT ?? 'ERR_CONFLICT',
+        message: 'Password was changed by another session. Refresh and try again.',
+      });
+      return;
+    }
+    throw err;
+  }
 
   audit(db, 'password_changed', userId, ip, { sessions_revoked: true, self_service: true });
   logTenantAuthEvent('password_changed', req, userId, user.username, { sessions_revoked: true, self_service: true });
