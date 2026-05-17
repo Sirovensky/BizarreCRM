@@ -147,7 +147,13 @@ public actor LoyaltyWalletService {
         let passURL = base.appendingPathComponent(response.passUrl)
         var request = URLRequest(url: passURL)
         request.httpMethod = "GET"
-        let (data, _) = try await URLSession.shared.data(for: request)
+        // BUGHUNT-2026-05-17: route through APIClient so the bearer token +
+        // Origin header are attached and 401 triggers refresh-and-retry —
+        // the pkpass refresh endpoint is auth-gated server-side, so the
+        // direct URLSession.shared.data(for:) call here returned 401 and
+        // broke the "Update Pass" flow. Same fix family as
+        // GiftCardWalletService.
+        let (data, _) = try await api.authedDataRequest(request)
         let tmpURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("loyalty_refresh_\(passId)_\(UUID().uuidString).pkpass")
         try data.write(to: tmpURL)

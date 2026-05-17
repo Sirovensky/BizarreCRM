@@ -120,7 +120,10 @@ public actor GiftCardWalletService {
         let passURL = base.appendingPathComponent(response.passUrl)
         var request = URLRequest(url: passURL)
         request.httpMethod = "GET"
-        let (data, _) = try await URLSession.shared.data(for: request)
+        // BUGHUNT-2026-05-17: same fix as fetchPass — go through APIClient
+        // so the refresh-pkpass download carries the bearer token / Origin
+        // header instead of getting 401'd by the server.
+        let (data, _) = try await api.authedDataRequest(request)
         let tmpURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("giftcard_refresh_\(passId)_\(UUID().uuidString).pkpass")
         try data.write(to: tmpURL)
