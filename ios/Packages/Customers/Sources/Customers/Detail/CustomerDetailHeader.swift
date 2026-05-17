@@ -21,7 +21,11 @@ public struct CustomerDetailHeader: View {
     }
 
     private var ltvCents: Int {
-        if let a = analytics, a.lifetimeValue > 0 { return Int(a.lifetimeValue * 100) }
+        // BUGHUNT-2026-05-17: .rounded() so a server-returned lifetimeValue
+        // of exactly $1000.00 maps to 100000 cents, not 99999 from IEEE-754
+        // truncation — the customer's tier badge (gold / platinum) is
+        // computed from this cent count.
+        if let a = analytics, a.lifetimeValue > 0 { return Int((a.lifetimeValue * 100).rounded()) }
         if let c = detail.ltvCents, c > 0 { return Int(c) }
         return 0
     }

@@ -77,7 +77,7 @@ public extension APIClient {
         return MembershipPlan(
             id: String(dto.id),
             name: dto.name,
-            pricePerPeriodCents: Int(dto.monthlyPrice * 100),
+            pricePerPeriodCents: Int((dto.monthlyPrice * 100).rounded()),
             periodDays: 30,
             perks: dto.discountPct > 0 ? [.percentageDiscount(dto.discountPct)] : [],
             signupBonusPoints: 0
@@ -96,7 +96,7 @@ public extension APIClient {
         return MembershipPlan(
             id: String(dto.id),
             name: dto.name,
-            pricePerPeriodCents: Int(dto.monthlyPrice * 100),
+            pricePerPeriodCents: Int((dto.monthlyPrice * 100).rounded()),
             periodDays: 30,
             perks: dto.discountPct > 0 ? [.percentageDiscount(dto.discountPct)] : [],
             signupBonusPoints: 0

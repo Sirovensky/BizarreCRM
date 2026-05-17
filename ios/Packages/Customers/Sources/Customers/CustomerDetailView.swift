@@ -173,7 +173,10 @@ private struct Header: View {
                 if let c = detail.ltvCents, c > 0 { return Double(c) / 100.0 }
                 return nil
             }()
-            let ltvCentsInt = ltvDollars.map { Int($0 * 100) } ?? 0
+            // BUGHUNT-2026-05-17: .rounded() so $1000.00 → 100000 cents
+            // (not 99999 from IEEE-754 truncation). Otherwise a customer
+            // landing exactly on a tier threshold was downgraded.
+            let ltvCentsInt = ltvDollars.map { Int(($0 * 100).rounded()) } ?? 0
             let tier = LTVCalculator.tier(for: ltvCentsInt)
 
             BrandGlassContainer(spacing: BrandSpacing.sm) {

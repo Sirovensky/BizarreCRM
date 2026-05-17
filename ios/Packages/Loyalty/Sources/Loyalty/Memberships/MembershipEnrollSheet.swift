@@ -48,7 +48,11 @@ public final class MembershipEnrollViewModel {
                 MembershipPlan(
                     id: String(tier.id),
                     name: tier.name,
-                    pricePerPeriodCents: Int(tier.monthlyPrice * 100),
+                    // BUGHUNT-2026-05-17: .rounded() so a server-returned
+                    // $9.99 monthly fee becomes 999 cents, not 998 from
+                    // IEEE-754 truncation. Membership pricing shown to the
+                    // customer must match what the server billed.
+                    pricePerPeriodCents: Int((tier.monthlyPrice * 100).rounded()),
                     periodDays: 30,
                     perks: tier.discountPct > 0 ? [.percentageDiscount(tier.discountPct)] : [],
                     signupBonusPoints: 0

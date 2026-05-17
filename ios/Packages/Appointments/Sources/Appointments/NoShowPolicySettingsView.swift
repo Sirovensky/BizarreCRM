@@ -45,7 +45,10 @@ public final class NoShowPolicySettingsViewModel {
         errorMessage = nil
         defer { isSaving = false }
         do {
-            let depositCents = Int((Double(depositDollars) ?? 50.0) * 100)
+            // BUGHUNT-2026-05-17: `.rounded()` on user-typed deposit dollars.
+            // `Int(9.99 * 100)` truncates to 998 in IEEE-754 — the no-show
+            // deposit charged was a cent short of the operator's typed value.
+            let depositCents = Int(((Double(depositDollars) ?? 50.0) * 100).rounded())
             let policy = NoShowDepositPolicy(
                 thresholdCount: threshold,
                 depositCents: depositCents,

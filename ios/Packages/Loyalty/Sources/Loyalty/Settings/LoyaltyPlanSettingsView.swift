@@ -46,7 +46,9 @@ public final class LoyaltyPlanSettingsViewModel {
                 MembershipPlan(
                     id: String(tier.id),
                     name: tier.name,
-                    pricePerPeriodCents: Int(tier.monthlyPrice * 100),
+                    // BUGHUNT-2026-05-17: .rounded() to avoid IEEE-754 truncation
+                    // — same fix as MembershipEnrollSheet / LoyaltyEndpoints.
+                    pricePerPeriodCents: Int((tier.monthlyPrice * 100).rounded()),
                     periodDays: 30,
                     perks: tier.discountPct > 0 ? [.percentageDiscount(tier.discountPct)] : [],
                     signupBonusPoints: 0

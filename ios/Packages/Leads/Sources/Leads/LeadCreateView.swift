@@ -65,8 +65,11 @@ public final class LeadCreateViewModel {
     }
 
     private func buildRequest() -> CreateLeadRequest {
+        // BUGHUNT-2026-05-17: `.rounded()` on user-typed estimated value.
+        // `Int(9.99 * 100)` truncates to 998 in IEEE-754 — leads with a
+        // typed estimate of $9.99 were saved as 998 cents.
         let valueCents: Int? = estimatedValue.isEmpty ? nil
-            : Int((Double(estimatedValue) ?? 0) * 100)
+            : Int(((Double(estimatedValue) ?? 0) * 100).rounded())
         let followUp: String? = hasFollowUpDate
             ? ISO8601DateFormatter().string(from: followUpDate)
             : nil

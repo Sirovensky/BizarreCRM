@@ -238,7 +238,8 @@ public struct CustomerLTVExplainerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     private var ltvCents: Int {
-        if let a = analytics, a.lifetimeValue > 0 { return Int(a.lifetimeValue * 100) }
+        // BUGHUNT-2026-05-17: .rounded() — see CustomerDetailHeader.ltvCents.
+        if let a = analytics, a.lifetimeValue > 0 { return Int((a.lifetimeValue * 100).rounded()) }
         if let c = detail.ltvCents, c > 0 { return Int(c) }
         return 0
     }
