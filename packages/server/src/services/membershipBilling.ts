@@ -405,7 +405,13 @@ function recordBillingSuccess(input: {
   const newPeriodEnd = addMonthsClamped(previousPeriodEnd, 1, now);
   const newPeriodStart = previousPeriodEnd ?? stamp;
 
-  db.prepare(`
+  // BUGHUNT-2026-05-17: CAS on status IN ('active','past_due') so a
+  // cancellation that landed AFTER our pre-charge re-read but BEFORE
+  // this UPDATE can't be silently un-cancelled by the success record.
+  // The card was already charged at this point — we can't undo that
+  // here, but log an anomaly so ops can issue a refund. auto_renew = 1
+  // is also re-affirmed only if the row is still billable.
+  const successUpdate = db.prepare(`
     UPDATE customer_subscriptions
        SET status = 'active',
            current_period_start = ?,
@@ -420,8 +426,18 @@ function recordBillingSuccess(input: {
            billing_suspended_at = NULL,
            auto_renew = 1,
            updated_at = ?
-     WHERE id = ?
+     WHERE id = ? AND status IN ('active', 'past_due')
   `).run(newPeriodStart, newPeriodEnd, stamp, amount, stamp, subscription.id);
+  if (successUpdate.changes === 0) {
+    audit(db, 'membership_billing_orphan_charge', userId, ip, {
+      subscription_id: subscription.id,
+      amount,
+      transaction_id: transactionId,
+      payment_provider: paymentProvider,
+      reason: 'subscription_no_longer_billable',
+      action_required: 'manual_refund',
+    });
+  }
 
   const blockChypTransactionId = paymentProvider === 'blockchyp' ? transactionId : null;
   db.prepare(`
@@ -540,6 +556,42 @@ export async function billMembershipSubscription(
       runId,
       now,
     });
+  }
+
+  // BUGHUNT-2026-05-17: re-read status RIGHT BEFORE charging. The
+  // `subscription` snapshot was loaded by loadDueSubscriptions at
+  // run start — for a long-running cron (slow gateway, large batch)
+  // the customer may have cancelled in the meantime. Charging a
+  // cancelled subscription is a real card-charge that we cannot
+  // unwind cheaply; the CAS in recordBillingSuccess will also catch
+  // this, but at that point we've already moved the customer's
+  // money. The pre-charge re-read shrinks the race to ~milliseconds.
+  const fresh = db.prepare(
+    `SELECT status, cancel_at_period_end, auto_renew FROM customer_subscriptions WHERE id = ?`,
+  ).get(subscription.id) as { status: string; cancel_at_period_end: number; auto_renew: number } | undefined;
+  if (!fresh) {
+    return {
+      status: 'skipped', subscription_id: subscription.id, customer_id: subscription.customer_id, tier_id: subscription.tier_id, amount,
+      previous_period_end: previousPeriodEnd, message: 'Subscription disappeared between load and charge', httpStatus: 410,
+    };
+  }
+  if (fresh.status === 'cancelled' || fresh.status === 'paused') {
+    return {
+      status: 'skipped', subscription_id: subscription.id, customer_id: subscription.customer_id, tier_id: subscription.tier_id, amount,
+      previous_period_end: previousPeriodEnd, message: `Subscription ${fresh.status} between load and charge`, httpStatus: 409,
+    };
+  }
+  if (fresh.cancel_at_period_end === 1 && !force) {
+    return {
+      status: 'skipped', subscription_id: subscription.id, customer_id: subscription.customer_id, tier_id: subscription.tier_id, amount,
+      previous_period_end: previousPeriodEnd, message: 'Subscription was scheduled to cancel at period end', httpStatus: 409,
+    };
+  }
+  if (fresh.auto_renew === 0 && !force) {
+    return {
+      status: 'skipped', subscription_id: subscription.id, customer_id: subscription.customer_id, tier_id: subscription.tier_id, amount,
+      previous_period_end: previousPeriodEnd, message: 'auto_renew was disabled between load and charge', httpStatus: 409,
+    };
   }
 
   let chargeResult: MembershipChargeResult;
