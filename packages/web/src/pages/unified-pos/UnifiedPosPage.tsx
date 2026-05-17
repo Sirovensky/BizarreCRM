@@ -3135,7 +3135,7 @@ export function UnifiedPosPage() {
                   setDraft={setRepairDraft}
                   onBack={() => setMode('repair-category')}
                   onContinue={() => setMode('repair-issue')}
-                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
+                  onGoToStep={(target) => setMode(`repair-${target}` as PosMode)}
                 />
               )}
               {mode === 'repair-issue' && (
@@ -3144,7 +3144,7 @@ export function UnifiedPosPage() {
                   setDraft={setRepairDraft}
                   onBack={() => setMode(repairDraft.skippedDevice ? 'repair-category' : 'repair-device')}
                   onContinue={() => setMode('repair-quote')}
-                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
+                  onGoToStep={(target) => setMode(`repair-${target}` as PosMode)}
                 />
               )}
               {mode === 'repair-quote' && (
@@ -3157,7 +3157,7 @@ export function UnifiedPosPage() {
                   // sub-button: cashier explicitly chooses to charge.
                   onContinue={saveRepairToCart}
                   onChargeDeposit={() => setMode('repair-deposit')}
-                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
+                  onGoToStep={(target) => setMode(`repair-${target}` as PosMode)}
                 />
               )}
               {mode === 'repair-deposit' && (
@@ -3172,7 +3172,7 @@ export function UnifiedPosPage() {
                   // reflects the full quote — cashier can adjust the lines
                   // before tender if they only want to charge the deposit.
                   onSave={saveRepairWithDeposit}
-                  onGoToStep={(target) => setMode(`repair-${target}` as any)}
+                  onGoToStep={(target) => setMode(`repair-${target}` as PosMode)}
                 />
               )}
 

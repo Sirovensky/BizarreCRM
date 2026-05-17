@@ -145,8 +145,15 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
   // Accept both React synthetic mouse events and native TouchEvents so the
   // native touch listener installed below can reuse the same coordinate
   // extraction logic.
-  const getPos = useCallback((e: React.MouseEvent | TouchEvent) => {
-    const canvas = canvasRef.current!;
+  // BUGHUNT-2026-05-17: drop the non-null assertion. A queued touch event
+  // can fire after the canvas was unmounted (native listeners cleanup
+  // races with iOS Safari's microtask queue); the assertion would throw
+  // TypeError "Cannot read properties of null" and bubble into the React
+  // error boundary instead of being a no-op. Return null so callers can
+  // bail without crashing the modal.
+  const getPos = useCallback((e: React.MouseEvent | TouchEvent): { x: number; y: number } | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
@@ -173,6 +180,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
   const startDraw = useCallback((e: React.MouseEvent) => {
     if (!canvasRef.current) return;
     const pos = getPos(e);
+    if (!pos) return;
     // WEB-UIUX-462: defer the actual stroke begin until movement is confirmed.
     pendingStroke.current = pos;
   }, [getPos]);
@@ -181,6 +189,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
     const pos = getPos(e);
+    if (!pos) return;
     // WEB-UIUX-462: commit pending stroke once movement exceeds threshold.
     if (pendingStroke.current) {
       const dx = pos.x - pendingStroke.current.x;
@@ -296,6 +305,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     const handleStart = (e: TouchEvent) => {
       e.preventDefault();
       const pos = getPos(e);
+      if (!pos) return;
       pendingTouchPos = pos;
     };
     const handleMove = (e: TouchEvent) => {
@@ -303,6 +313,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       const pos = getPos(e);
+      if (!pos) return;
       if (pendingTouchPos) {
         const dx = pos.x - pendingTouchPos.x;
         const dy = pos.y - pendingTouchPos.y;

@@ -242,6 +242,13 @@ export function InventoryListPage() {
   // Stock adjust confirmation for low-stock view
   const [stockConfirm, setStockConfirm] = useState<{ id: number; name: string; delta: number } | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState(false);
+  // BUGHUNT-2026-05-17: per-item in-flight set so the +/-1 quick-adjust
+  // buttons can be disabled during the API call. Without this, a fast
+  // double-click fired two adjustStock calls before the first response
+  // landed — net effect was a -2 instead of -1 on inventory, with no
+  // way for the cashier to tell which click "won" since the toast
+  // showed success twice.
+  const [adjustingIds, setAdjustingIds] = useState<Set<number>>(new Set());
   // Order-All queue: popup-blockers cap a single click at 1 new tab, so we
   // present the remaining links as a list the user can click one-by-one
   // (each click is a fresh user gesture and bypasses the quota).
@@ -908,16 +915,20 @@ export function InventoryListPage() {
                             <button
                               onClick={() => {
                                 if (item.in_stock <= 0) return;
+                                if (adjustingIds.has(item.id)) return;
                                 if (lowStockFilter || reorderableFilter) {
                                   setStockConfirm({ id: item.id, name: item.name, delta: -1 });
                                 } else {
+                                  setAdjustingIds((prev) => new Set(prev).add(item.id));
                                   inventoryApi.adjustStock(item.id, { quantity: -1, type: 'manual_adjustment', notes: 'Quick -1 from list' }).then(() => {
                                     queryClient.invalidateQueries({ queryKey: ['inventory'] });
-                                  }).catch(() => toast.error('Failed to adjust stock'));
+                                  }).catch(() => toast.error('Failed to adjust stock')).finally(() => {
+                                    setAdjustingIds((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
+                                  });
                                 }
                               }}
                               className="rounded p-0.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                              disabled={item.in_stock <= 0}
+                              disabled={item.in_stock <= 0 || adjustingIds.has(item.id)}
                               aria-label={`Decrease stock of ${item.name} by 1`}
                               title="Decrease stock by 1"
                             >
@@ -940,15 +951,20 @@ export function InventoryListPage() {
                             </span>
                             <button
                               onClick={() => {
+                                if (adjustingIds.has(item.id)) return;
                                 if (lowStockFilter || reorderableFilter) {
                                   setStockConfirm({ id: item.id, name: item.name, delta: 1 });
                                 } else {
+                                  setAdjustingIds((prev) => new Set(prev).add(item.id));
                                   inventoryApi.adjustStock(item.id, { quantity: 1, type: 'manual_adjustment', notes: 'Quick +1 from list' }).then(() => {
                                     queryClient.invalidateQueries({ queryKey: ['inventory'] });
-                                  }).catch(() => toast.error('Failed to adjust stock'));
+                                  }).catch(() => toast.error('Failed to adjust stock')).finally(() => {
+                                    setAdjustingIds((prev) => { const next = new Set(prev); next.delete(item.id); return next; });
+                                  });
                                 }
                               }}
-                              className="rounded p-0.5 text-surface-400 hover:text-green-600 hover:bg-green-50 dark:hover:text-green-400 dark:hover:bg-green-900/20 transition-colors"
+                              className="rounded p-0.5 text-surface-400 hover:text-green-600 hover:bg-green-50 dark:hover:text-green-400 dark:hover:bg-green-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                              disabled={adjustingIds.has(item.id)}
                               aria-label={`Increase stock of ${item.name} by 1`}
                               title="Increase stock by 1"
                             >
