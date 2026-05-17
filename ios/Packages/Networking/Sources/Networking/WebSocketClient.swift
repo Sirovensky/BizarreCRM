@@ -31,6 +31,12 @@ public final class WebSocketClient {
     /// after a single failure. The Task nils this out before invoking connect.
     private var reconnectTask: Task<Void, Never>?
 
+    /// BUGHUNT-2026-05-17: monotonic stamp incremented on every connect().
+    /// Listeners capture the value and ignore callbacks once the field has
+    /// moved on. Prevents stale onEvent from a superseded socket flipping
+    /// connectionState back to .disconnected after a newer socket opened.
+    private var connectGeneration: UInt64 = 0
+
     public let events: AsyncStream<WSEvent>
 
     public init(url: URL) {
@@ -42,6 +48,21 @@ public final class WebSocketClient {
 
     public func connect(authToken: String?) {
         intentionallyClosed = false
+
+        // BUGHUNT-2026-05-17: tear down the prior socket BEFORE creating a
+        // new one. Previously `self.socket = socket` just dropped the
+        // reference; Starscream kept the old socket alive until its own
+        // disconnect lifecycle completed, and its onEvent closure kept
+        // firing into `handle(_:)` and mutating the global connectionState
+        // (e.g. an old socket's late .disconnected would mask the new
+        // socket's healthy .connected). Tag each connect with a monotonic
+        // generation so the listener can ignore late callbacks from the
+        // superseded attempt.
+        socket?.disconnect()
+        socket = nil
+        connectGeneration &+= 1
+        let myGeneration = connectGeneration
+
         var req = URLRequest(url: url)
         req.timeoutInterval = 15
         if let authToken {
@@ -53,7 +74,9 @@ public final class WebSocketClient {
         socket.respondToPingWithPong = true
         socket.onEvent = { [weak self] event in
             Task { @MainActor [weak self] in
-                self?.handle(event)
+                guard let self else { return }
+                guard myGeneration == self.connectGeneration else { return }
+                self.handle(event)
             }
         }
         self.socket = socket
