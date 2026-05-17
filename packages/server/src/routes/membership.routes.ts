@@ -299,8 +299,17 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
   let subscriptionId: number;
   let reactivated = false;
   if (reactivatable) {
+    // BUGHUNT-2026-05-17: guard the reactivate UPDATE WHERE status =
+    // 'cancelled'. Without this, two concurrent /subscribe calls on the
+    // same customer both target the same most-recent-cancelled row and
+    // both UPDATEs succeed (same row, no UNIQUE-index violation because
+    // each only flips cancelled→active once). Both threads then call
+    // chargeToken, double-charging the customer's card. The guard makes
+    // the reactivation a single-winner CAS; the loser sees changes=0
+    // and we surface 409 before any payment side-effect runs.
+    let reactivateResult: { changes: number };
     try {
-      await adb.run(
+      reactivateResult = await adb.run(
         `UPDATE customer_subscriptions
             SET tier_id = ?, blockchyp_token = ?, status = 'active',
                 current_period_start = ?, current_period_end = ?,
@@ -308,7 +317,7 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
                 last_charge_at = ?, last_charge_amount = ?, payment_provider = ?,
                 cancelled_at = NULL, paused_at = NULL, pause_reason = NULL,
                 updated_at = ?
-          WHERE id = ?`,
+          WHERE id = ? AND status = 'cancelled'`,
         tier_id,
         normalizedToken,
         start,
@@ -326,6 +335,10 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
         return;
       }
       throw err;
+    }
+    if (reactivateResult.changes === 0) {
+      res.status(409).json({ success: false, message: 'Customer subscription was reactivated by a concurrent request' });
+      return;
     }
     subscriptionId = Number(reactivatable.id);
     reactivated = true;
