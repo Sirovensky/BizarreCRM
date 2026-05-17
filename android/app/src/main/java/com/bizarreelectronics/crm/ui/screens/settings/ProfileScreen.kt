@@ -39,6 +39,7 @@ import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.ImageUploadPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -106,6 +107,11 @@ class ProfileViewModel @Inject constructor(
                 } else {
                     _state.value = _state.value.copy(isLoading = false)
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation so back-nav
+                // doesn't paint "Failed to load profile" over the screen
+                // the user already left.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
@@ -140,6 +146,12 @@ class ProfileViewModel @Inject constructor(
                         snackbarMessage = response.message ?: "Failed to change password",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. A cancelled
+                // change-password may have already been accepted server-side
+                // (server revokes ALL sessions on success) — painting a
+                // "Failed" message tempts a retry with the OLD password.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
@@ -173,6 +185,10 @@ class ProfileViewModel @Inject constructor(
                         snackbarMessage = response.message ?: "Failed to change PIN",
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw — PIN change is security-
+                // sensitive, don't tempt retry with stale state.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
@@ -246,6 +262,8 @@ class ProfileViewModel @Inject constructor(
                         snackbarMessage = response.message ?: "Failed to upload avatar",
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
