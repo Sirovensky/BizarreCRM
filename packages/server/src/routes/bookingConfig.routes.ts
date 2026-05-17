@@ -179,23 +179,25 @@ router.post('/services', asyncHandler(async (req, res) => {
 
   const adb = req.asyncDb;
 
-  const existing = await adb.get<{ id: number }>(
-    'SELECT id FROM booking_services WHERE name = ?',
-    validName,
-  );
-  if (existing) {
-    throw new AppError('A service with that name already exists', 409);
-  }
-
+  // BUGHUNT-2026-05-17: atomic insert-if-no-name-conflict. The prior
+  // SELECT-then-INSERT pattern let two concurrent POSTs with the same
+  // name both pass the dedupe check and both INSERT — the booking
+  // public page then exposed two services with identical labels and
+  // the customer couldn't tell which one to book.
   const result = await adb.run(
     `INSERT INTO booking_services
       (name, description, duration_minutes, buffer_before_minutes, buffer_after_minutes,
        deposit_required, deposit_amount_cents, visible_on_booking, sort_order,
        is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`,
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now')
+       WHERE NOT EXISTS (SELECT 1 FROM booking_services WHERE name = ?)`,
     validName, validDesc, validDuration, validBufBefore, validBufAfter,
     validDepositRequired, validDepositCents, validVisible, validSortOrder,
+    validName,
   );
+  if (result.changes === 0) {
+    throw new AppError('A service with that name already exists', 409);
+  }
 
   const newRow = await adb.get('SELECT * FROM booking_services WHERE id = ?', result.lastInsertRowid);
 
