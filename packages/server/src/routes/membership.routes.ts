@@ -669,10 +669,20 @@ router.post('/:id/change-tier', asyncHandler(async (req: Request, res: Response)
     throw new AppError('Target tier is not active', 400);
   }
 
-  await adb.run(
-    'UPDATE customer_subscriptions SET tier_id = ?, updated_at = ? WHERE id = ?',
-    newTierId, now(), id,
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE tier_id matches the
+  // snapshot AND status != 'cancelled'. Without this, two concurrent
+  // change-tier calls both pass the SELECT precheck and the second
+  // writer silently overrides the first — the audit log records an
+  // A->B transition that never persisted. Also blocks a tier change
+  // racing with a /cancel from quietly mutating a cancelled sub's
+  // tier_id without affecting status.
+  const tierUpdate = await adb.run(
+    "UPDATE customer_subscriptions SET tier_id = ?, updated_at = ? WHERE id = ? AND tier_id = ? AND status != 'cancelled'",
+    newTierId, now(), id, sub.tier_id,
   );
+  if (tierUpdate.changes === 0) {
+    throw new AppError('Subscription state changed; refresh and retry', 409);
+  }
 
   audit(req.db, 'membership_tier_changed', req.user!.id, req.ip || 'unknown', {
     subscription_id: id,
