@@ -15,6 +15,7 @@ import com.bizarreelectronics.crm.data.sync.ImportPollingWorker
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -366,6 +367,16 @@ class DataImportViewModel @Inject constructor(
                         )
                         break
                     }
+                } catch (e: CancellationException) {
+                    // BUGHUNT-2026-05-17: re-throw so the cancellation
+                    // actually terminates the loop. Previously the catch
+                    // (_: Exception) below swallowed CancellationException,
+                    // turning navigating-away-from-import into a tight
+                    // infinite loop: delay() throws CancellationException
+                    // immediately on a cancelled coroutine, catch swallows
+                    // it, loop iterates, delay() throws again, repeat
+                    // until the coroutine gets GC'd or the process dies.
+                    throw e
                 } catch (_: Exception) {
                     // Transient network error — keep polling
                 }

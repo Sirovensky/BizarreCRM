@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.data.sync
 import android.util.Log
 import com.bizarreelectronics.crm.data.local.db.dao.SyncQueueDao
 import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -72,6 +73,18 @@ class OrderedQueueProcessor @Inject constructor(
                 syncQueueDao.updateStatus(entry.id, "completed", null)
                 onEntryCompleted(entry)
                 processedCount++
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: don't treat coroutine cancellation as
+                // a dispatch failure. Previously catch (e: Exception) caught
+                // CancellationException, incremented the retry counter, and
+                // — if the entry was already near MAX_RETRIES — moved it to
+                // dead-letter. That dead-lettered perfectly valid POS sales,
+                // ticket updates, etc., whenever WorkManager cancelled the
+                // SyncWorker mid-drain (Doze, replacement work, etc.).
+                // Roll the entry's state back to "pending" so the next
+                // drain picks it up cleanly, then re-throw to honor cancel.
+                runCatching { syncQueueDao.updateStatus(entry.id, "pending", null) }
+                throw e
             } catch (e: Exception) {
                 syncQueueDao.incrementRetry(entry.id)
                 val newRetryCount = entry.retries + 1
