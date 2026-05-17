@@ -458,19 +458,20 @@ router.post('/exceptions', asyncHandler(async (req, res) => {
 
   const adb = req.asyncDb;
 
-  const dupe = await adb.get<{ id: number }>(
-    'SELECT id FROM booking_exceptions WHERE date = ?',
-    validDate,
-  );
-  if (dupe) {
-    throw new AppError('An exception for that date already exists', 409);
-  }
-
+  // BUGHUNT-2026-05-17: atomic insert-if-no-date-conflict so two concurrent
+  // POSTs for the same date can't both pass the dedupe precheck and both
+  // INSERT, leaving the availability resolver to non-deterministically
+  // pick one of the duplicate exception rows.
   const result = await adb.run(
     `INSERT INTO booking_exceptions (date, is_closed, open_time, close_time, reason)
-     VALUES (?, ?, ?, ?, ?)`,
+      SELECT ?, ?, ?, ?, ?
+       WHERE NOT EXISTS (SELECT 1 FROM booking_exceptions WHERE date = ?)`,
     validDate, validIsClosed, validOpen, validClose, validReason,
+    validDate,
   );
+  if (result.changes === 0) {
+    throw new AppError('An exception for that date already exists', 409);
+  }
 
   const newRow = await adb.get('SELECT * FROM booking_exceptions WHERE id = ?', result.lastInsertRowid);
 
