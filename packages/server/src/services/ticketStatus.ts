@@ -375,10 +375,26 @@ export async function applyTicketStatusChange(
   // -------------------------------------------------------------------------
   // Writes
   // -------------------------------------------------------------------------
-  await adb.run(
-    'UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ?',
-    newStatusId, now(), ticketId,
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status_id matches the
+  // snapshot we read above. Without this, two concurrent status changes
+  // (e.g. a technician + an auto-close cron) both pass the legal-
+  // transition guard against the same old status, then race the UPDATE.
+  // Last write wins, but both fire automations + broadcasts + history
+  // rows for their intended (now stale) transition — giving the
+  // appearance of two separate state moves when really only one
+  // logically happened. Worst case: the final state is illegal from
+  // the perspective of the losing caller's transition map.
+  // changes === 0 means another writer beat us; surface as 409.
+  const statusUpdate = await adb.run(
+    'UPDATE tickets SET status_id = ?, updated_at = ? WHERE id = ? AND status_id = ?',
+    newStatusId, now(), ticketId, existing.status_id,
   );
+  if (statusUpdate.changes === 0) {
+    throw new AppError(
+      `Ticket status changed concurrently (expected ${existing.status_id}). Refresh and retry.`,
+      409,
+    );
+  }
 
   // SW-D9: Auto-start / auto-stop repair timer based on status change
   const [timerAutoStart, timerAutoStop] = await Promise.all([
