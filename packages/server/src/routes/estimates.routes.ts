@@ -1330,6 +1330,15 @@ router.delete(
 router.post(
   '/:id/send',
   asyncHandler(async (req, res) => {
+    // BUGHUNT-2026-05-17: rate-limit estimate sends. Each call sends
+    // SMS to the customer; without a cap a compromised account or
+    // buggy script could spam thousands of estimate notifications.
+    // 30/min/user is generous for a busy front-desk; carrier-level
+    // dedup would catch identical bodies anyway.
+    const senderId = req.user?.id;
+    if (senderId && !checkWindowRate(req.db, 'estimate_send', String(senderId), 30, 60_000)) {
+      throw new AppError('Too many estimate sends. Try again shortly.', 429);
+    }
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
     const estimate = await adb.get<any>(`
