@@ -177,10 +177,16 @@ public struct SilentPushEnvelope: Sendable, Equatable {
         if let serverID = userInfo["messageId"] as? String, !serverID.isEmpty {
             messageId = serverID
         } else {
-            // Fallback: hash of kind + entityId + second-resolution timestamp
+            // BUGHUNT-2026-05-17: String.hashValue is NOT stable across
+            // process launches in Swift — Apple randomises the seed at
+            // process start to defend against hash-flooding. The previous
+            // fallback synthesised a different "messageId" for the same
+            // logical push after every app restart, breaking the dedup
+            // store (a re-delivered push on cold start was processed
+            // again as new). Use the raw string itself as the dedup key —
+            // it's already a stable composite (kind | entityId | second).
             let ts = Int(receivedAt.timeIntervalSince1970)
-            let raw = "\(kind)|\(entityId ?? "")|\(ts)"
-            messageId = String(raw.hashValue)
+            messageId = "\(kind)|\(entityId ?? "")|\(ts)"
         }
 
         self.messageId  = messageId
