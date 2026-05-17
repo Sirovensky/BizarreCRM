@@ -365,9 +365,21 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), asyncHan
       // can't blow retail_price to 1e308. Cap at +/- 1000% (10x) which is the
       // same upper bound used by V20 in receive-scan/create-from-catalog.
       if (!Number.isFinite(pct) || pct < -100 || pct > 1000) continue;
-      const newPrice = Math.round(item.retail_price * (1 + pct / 100) * 100) / 100;
-      if (newPrice < 0 || !Number.isFinite(newPrice)) continue;
-      await adb.run("UPDATE inventory_items SET retail_price = ?, updated_at = datetime('now') WHERE id = ?", newPrice, id);
+      // BUGHUNT-2026-05-17: compute the new price in SQL so the read-modify-
+      // write is atomic. Previously we read item.retail_price in JS, computed
+      // newPrice off that snapshot, then wrote it back — a parallel bulk
+      // action (or single-item PUT) on the same row clobbered our update
+      // with the snapshot from BEFORE this writer's percentage adjustment.
+      // The CAS-style WHERE clause also blocks the write when the row was
+      // deactivated between the SELECT above and this UPDATE.
+      await adb.run(
+        `UPDATE inventory_items
+            SET retail_price = ROUND(COALESCE(retail_price, 0) * (1 + ? / 100.0) * 100) / 100.0,
+                updated_at = datetime('now')
+          WHERE id = ? AND is_active = 1
+            AND COALESCE(retail_price, 0) * (1 + ? / 100.0) >= 0`,
+        pct, id, pct,
+      );
       affected++;
     } else if (action === 'update_item_type' && value) {
       if (!['product', 'part', 'service'].includes(value)) continue;
