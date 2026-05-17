@@ -44,6 +44,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -692,6 +693,15 @@ class CustomerCreateViewModel @Inject constructor(
                 val createdId = customerRepository.createCustomer(request)
                 discardDraft()
                 _state.value = _state.value.copy(isSubmitting = false, createdId = createdId)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. The request
+                // carries a UUID idempotency key (clientRequestId), so a
+                // retry after a real failure won't duplicate. But painting
+                // "Failed to create customer" on a cancelled coroutine still
+                // confuses the user — and the draft autosave is in place so
+                // back-nav-then-reopen restores the form. Suppress the cancel
+                // toast so the user can resume cleanly.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
