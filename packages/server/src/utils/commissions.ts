@@ -248,22 +248,36 @@ export async function reverseCommission(
   }
 
   const clampedFraction = Math.min(1, Math.max(0, fraction));
-  let written = 0;
+  // BUGHUNT-2026-05-17: previously this looped with N awaited adb.run inserts.
+  // If the 50th INSERT failed mid-loop (disk-full mid-batch, constraint, the
+  // pool getting closed), the first 49 reversal rows had already committed
+  // and the caller's audit row never fired — leaving the commission ledger
+  // inconsistent with the refund + no paper trail of the partial write.
+  // The comment at refunds.routes.ts:614 explicitly justifies "reversal
+  // runs outside the refund tx so refund stays committed" — but that says
+  // nothing about whether the reversal itself should be atomic. Bundle
+  // every reversal INSERT into a single transaction so either every
+  // reversal row lands or none does; the caller's audit then accurately
+  // reflects the on-disk state.
+  const queries: Array<{ sql: string; params: unknown[] }> = [];
   for (const row of rows) {
     const reversalAmount = roundCents(-row.amount * clampedFraction);
     if (reversalAmount === 0) continue;
-    await adb.run(
-      `INSERT INTO commissions
-         (user_id, ticket_id, invoice_id, amount, type, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'reversal', ?, ?)`,
-      row.user_id,
-      row.ticket_id ?? null,
-      row.invoice_id ?? null,
-      reversalAmount,
-      ts,
-      ts,
-    );
-    written++;
+    queries.push({
+      sql: `INSERT INTO commissions
+              (user_id, ticket_id, invoice_id, amount, type, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'reversal', ?, ?)`,
+      params: [
+        row.user_id,
+        row.ticket_id ?? null,
+        row.invoice_id ?? null,
+        reversalAmount,
+        ts,
+        ts,
+      ],
+    });
   }
-  return written;
+  if (queries.length === 0) return 0;
+  await adb.transaction(queries);
+  return queries.length;
 }
