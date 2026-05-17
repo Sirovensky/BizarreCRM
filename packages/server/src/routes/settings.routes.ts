@@ -1696,10 +1696,24 @@ router.post('/setup-invites', adminOnly, async (req, res) => {
   const placeholderPasswordHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 12);
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
 
-  const result = await adb.run(`
-    INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, datetime('now'), datetime('now'))
-  `, username, email, placeholderPasswordHash, firstName, lastName, role, pinHash);
+  // BUGHUNT-2026-05-17: the SELECT above is TOCTOU — two concurrent admin
+  // invites for the same email both pass the pre-check, then the second
+  // INSERT hits UNIQUE(email) (migration 001) and surfaces as a generic
+  // 500. Translate the constraint violation to the same friendly 409
+  // shape the pre-check returns on the no-race path.
+  let result;
+  try {
+    result = await adb.run(`
+      INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1, datetime('now'), datetime('now'))
+    `, username, email, placeholderPasswordHash, firstName, lastName, role, pinHash);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*users\.(email|username)/i.test(msg)) {
+      throw new AppError('A user with this email or username already exists', 409);
+    }
+    throw err;
+  }
 
   const userId = Number(result.lastInsertRowid);
   let deliveryStatus: SetupInviteDeliveryStatus = shouldSendInvite ? 'failed' : 'skipped';
@@ -1787,10 +1801,27 @@ router.post('/users', adminOnly, async (req, res) => {
   const hash = password ? bcrypt.hashSync(password, 12) : null;
   const pinHash = pin ? bcrypt.hashSync(pin, 12) : null;
   const passwordSet = password ? 1 : 0;
-  const result = await adb.run(`
-    INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
+  // BUGHUNT-2026-05-17: the SELECT above is TOCTOU and only covers
+  // username — users.email also has a UNIQUE constraint (migration 001)
+  // that is bypassed entirely. Translate either UNIQUE collision to the
+  // same friendly 409 shape so concurrent creates / duplicate emails
+  // surface as 409 instead of 500.
+  let result;
+  try {
+    result = await adb.run(`
+      INSERT INTO users (username, email, password_hash, first_name, last_name, role, pin, password_set)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, username, email || null, hash, first_name, last_name, role, pinHash, passwordSet);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*users\.username/i.test(msg)) {
+      throw new AppError(`Username "${username}" already exists`, 409);
+    }
+    if (/UNIQUE constraint.*users\.email/i.test(msg)) {
+      throw new AppError(`A user with email "${email}" already exists`, 409);
+    }
+    throw err;
+  }
   const user = await adb.get<any>('SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?', result.lastInsertRowid);
 
   // AL1: audit user creation — especially important when the new user is an
@@ -2021,15 +2052,28 @@ router.put('/users/:id', adminOnly, async (req, res) => {
     ? [req.params.id]
     : [];
 
-  const updateResult = await adb.run(`
-    UPDATE users SET
-      email = COALESCE(?, email), first_name = COALESCE(?, first_name),
-      last_name = COALESCE(?, last_name), role = COALESCE(?, role),
-      pin = COALESCE(?, pin), is_active = COALESCE(?, is_active),
-      password_hash = COALESCE(?, password_hash)${homeLocSql},
-      updated_at = datetime('now')
-    WHERE id = ?${adminGuardSql}
-  `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, ...homeLocParam, req.params.id, ...adminGuardParam);
+  // BUGHUNT-2026-05-17: email rename can collide with another user's email
+  // (UNIQUE in migration 001). Previously this surfaced as a 500. Translate
+  // the UNIQUE violation to a 409 so the admin UI can render a sensible
+  // "email already in use" message instead of a generic failure.
+  let updateResult;
+  try {
+    updateResult = await adb.run(`
+      UPDATE users SET
+        email = COALESCE(?, email), first_name = COALESCE(?, first_name),
+        last_name = COALESCE(?, last_name), role = COALESCE(?, role),
+        pin = COALESCE(?, pin), is_active = COALESCE(?, is_active),
+        password_hash = COALESCE(?, password_hash)${homeLocSql},
+        updated_at = datetime('now')
+      WHERE id = ?${adminGuardSql}
+    `, email ?? null, first_name ?? null, last_name ?? null, role ?? null, pinHash, is_active ?? null, hash, ...homeLocParam, req.params.id, ...adminGuardParam);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/UNIQUE constraint.*users\.email/i.test(msg)) {
+      throw new AppError(`A user with email "${email}" already exists`, 409);
+    }
+    throw err;
+  }
 
   if (updateResult.changes === 0 && (isDemotingAdmin || isDeactivatingAdmin)) {
     throw new AppError(
