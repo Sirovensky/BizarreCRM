@@ -2571,7 +2571,10 @@ router.put('/notification-templates/:id', adminOnly, async (req, res) => {
 
 router.get('/checklist-templates', async (req, res) => {
   const adb = req.asyncDb;
-  const templates = await adb.all<any>('SELECT * FROM checklist_templates ORDER BY device_type, name');
+  // BUGHUNT-2026-05-17: cap at 500 — checklist_templates.items is a
+  // JSON blob per row and an unbounded SELECT would load multi-MB
+  // payloads on shops that have generated lots of device templates.
+  const templates = await adb.all<any>('SELECT * FROM checklist_templates ORDER BY device_type, name LIMIT 500');
   res.json({ success: true, data: templates });
 });
 

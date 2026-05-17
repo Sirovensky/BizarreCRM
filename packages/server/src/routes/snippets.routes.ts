@@ -26,13 +26,17 @@ router.get(
     const adb = req.asyncDb;
     const category = (req.query.category as string || '').trim();
 
+    // BUGHUNT-2026-05-17: cap at 1000 — snippets are typically dozens
+    // to low-hundreds per shop, but a malicious or buggy import could
+    // create millions; the response was loaded entirely into memory
+    // and shipped to every snippet-autocomplete dropdown.
     let snippets;
     if (category) {
       snippets = await adb.all(
-        'SELECT * FROM snippets WHERE category = ? ORDER BY shortcode', category
+        'SELECT * FROM snippets WHERE category = ? ORDER BY shortcode LIMIT 1000', category
       );
     } else {
-      snippets = await adb.all('SELECT * FROM snippets ORDER BY shortcode');
+      snippets = await adb.all('SELECT * FROM snippets ORDER BY shortcode LIMIT 1000');
     }
 
     res.json({ success: true, data: snippets });

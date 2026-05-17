@@ -98,8 +98,13 @@ router.get(
   asyncHandler(async (_req, res) => {
     requireAdmin(_req);
     const adb = _req.asyncDb;
+    // BUGHUNT-2026-05-17: cap at 500 — automations + their action_config
+    // JSON blobs can grow large; an unbounded SELECT loaded the whole
+    // table into one JSON response. 500 covers any realistic shop and
+    // the admin UI is paginated client-side anyway.
     const automations = await adb.all(`
       SELECT * FROM automations ORDER BY sort_order ASC, created_at DESC
+      LIMIT 500
     `);
 
     // Parse JSON config fields

@@ -75,13 +75,20 @@ router.get(
       params.push(user.id);
     }
 
+    // BUGHUNT-2026-05-17: cap the list at 200 rows. Without LIMIT, a
+    // cashier (or admin via showAll=1) with a long history of held
+    // carts loaded the entire history every time they opened the
+    // panel — the response payload could easily exceed 10MB and stall
+    // the browser. 200 covers any realistic in-flight workload; older
+    // rows are retrieved via the per-id GET below.
     const carts = await adb.all<HeldCartRow & { owner_first_name: string | null; owner_last_name: string | null }>(
       `SELECT hc.*,
               u.first_name AS owner_first_name, u.last_name AS owner_last_name
        FROM held_carts hc
        LEFT JOIN users u ON u.id = hc.user_id
        WHERE ${conditions.join(' AND ')}
-       ORDER BY hc.created_at DESC`,
+       ORDER BY hc.created_at DESC
+       LIMIT 200`,
       ...params,
     );
 
