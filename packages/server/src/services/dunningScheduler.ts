@@ -374,12 +374,30 @@ export async function runDunningOnce(
           continue;
         }
 
-        const dispatchResult = await dispatchStep(
-          db,
-          step,
-          invoice,
-          storeConfig,
-        );
+        // BUGHUNT-2026-05-17: dispatchStep can throw if loadCustomer /
+        // loadTemplate / isEmailConfigured hit a poisoned row or sync
+        // DB error. An unhandled throw here kills the whole tick AND
+        // skips writing the dunning_runs row, so the same invoice will
+        // be picked up next tick and retried forever. Convert any
+        // unexpected throw into a 'failed' outcome so the run row is
+        // still written and the rate-limit / next-step machinery moves
+        // forward.
+        let dispatchResult: DispatchResult;
+        try {
+          dispatchResult = await dispatchStep(db, step, invoice, storeConfig);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error('dunning dispatchStep threw — recording as failed', {
+            invoice_id: invoice.id,
+            sequence_id: seq.id,
+            step_index: stepIndex,
+            error: msg,
+          });
+          dispatchResult = {
+            outcome: 'failed',
+            warning: `Dispatch threw for invoice ${invoice.order_id ?? invoice.id}: ${msg}`,
+          };
+        }
 
         try {
           db.prepare(
