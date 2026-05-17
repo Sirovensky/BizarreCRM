@@ -96,6 +96,11 @@ public final class CustomerDisplayManager {
 
     private var externalWindow: UIWindow?
     private var screenObserver: NSObjectProtocol?
+    // BUGHUNT-2026-05-17: matching disconnect-observer token. Previously
+    // the disconnect observer was added without saving its return value, so
+    // stop() only removed the connect observer — the disconnect callback
+    // stayed registered forever and re-entries of start() accumulated dups.
+    private var screenDisconnectObserver: NSObjectProtocol?
     private var hostingController: UIHostingController<CustomerDisplayRootView>?
 
     /// Callback invoked when the customer taps a tip option on the external display.
@@ -122,7 +127,7 @@ public final class CustomerDisplayManager {
         ) { [weak self] _ in
             Task { @MainActor in self?.updateExternalWindow() }
         }
-        NotificationCenter.default.addObserver(
+        screenDisconnectObserver = NotificationCenter.default.addObserver(
             forName: UIScreen.didDisconnectNotification,
             object: nil,
             queue: .main
@@ -137,6 +142,10 @@ public final class CustomerDisplayManager {
         if let obs = screenObserver {
             NotificationCenter.default.removeObserver(obs)
             screenObserver = nil
+        }
+        if let obs = screenDisconnectObserver {
+            NotificationCenter.default.removeObserver(obs)
+            screenDisconnectObserver = nil
         }
         teardownExternalWindow()
     }
