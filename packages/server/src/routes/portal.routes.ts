@@ -1626,72 +1626,96 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
     }
   }
 
-  // WEB-UIUX-947: write an estimate_signatures audit row for the portal-side
-  // one-click approve so the shop has compliance/chargeback evidence (signer
-  // name pulled from the authenticated portal customer; IP + UA from request).
-  // Pre-WEB-UIUX-947 the portal Approve set status='approved' without writing
-  // any signer attribution row, leaving zero proof the customer pressed
-  // approve. The detached `/public/api/v1/estimate-sign/:token` capture flow
-  // already writes this table; we mirror its shape (no signature_data_url
-  // since the portal click is not a drawn signature). signer_email comes
-  // from the customer record where available.
+  // WEB-UIUX-947 + BUGHUNT-2026-05-17: bundle the approval UPDATE and the
+  // signer-attribution row into a single atomic tx. The UPDATE goes first
+  // (CAS WHERE status='sent') so a losing race against a concurrent
+  // reject trips expectChanges and rolls back BOTH the UPDATE and the
+  // signature INSERT — closing the bug where an "approval signature"
+  // row could attach to a now-rejected estimate.
+  //
+  // Customer lookup + totals snapshot stay outside the tx (they're
+  // pure reads). The signature INSERT uses lastInsertRowidFrom and
+  // hard-codes the just-validated estimateId.
+  let signerName = 'Portal customer';
+  let signerEmail: string | null = null;
+  let signerIp = req.ip || 'unknown';
+  let userAgent: string | null = null;
+  let totalsRow: AnyRow | undefined;
   try {
     const customer = await adb.get<AnyRow>(
       'SELECT first_name, last_name, email FROM customers WHERE id = ?',
       req.portalCustomerId,
     );
-    const signerName = customer
+    signerName = customer
       ? [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'Portal customer'
       : 'Portal customer';
-    const signerEmail = (customer?.email as string | null) ?? null;
+    signerEmail = (customer?.email as string | null) ?? null;
     const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? null;
-    const signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
-    const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
-    // WEB-UIUX-811: snapshot the estimate totals on the signature row so a
-    // post-approval edit by the operator cannot rewrite what the customer
-    // saw. Migration 175 added the columns; older tenants without the
-    // migration just get NULLs.
-    const totalsRow = await adb.get<AnyRow>(
+    signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
+    userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+    // WEB-UIUX-811: snapshot estimate totals so a post-approval edit
+    // can't rewrite what the customer saw. Older tenants without the
+    // columns just see NULLs.
+    totalsRow = await adb.get<AnyRow>(
       'SELECT subtotal, total_tax, total FROM estimates WHERE id = ?',
       estimateId,
     );
-    await adb.run(
-      `INSERT INTO estimate_signatures
-         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
-          subtotal_at_signing, tax_at_signing, total_at_signing)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
-      estimateId,
-      signerName,
-      signerEmail,
-      signerIp,
-      userAgent,
-      totalsRow?.subtotal ?? null,
-      totalsRow?.total_tax ?? null,
-      totalsRow?.total ?? null,
-    );
-  } catch (sigErr) {
-    // Don't block approval if the signatures table is unavailable in legacy
-    // tenants — log and continue so compliance gap is visible but recovery
-    // is graceful.
-    logger.warn('portal_estimate_approve_signature_write_failed', {
-      err: sigErr instanceof Error ? sigErr.message : String(sigErr),
+  } catch (readErr) {
+    // Continue with placeholder values — the audit row is best-effort.
+    logger.warn('portal_estimate_approve_signer_prep_failed', {
+      err: readErr instanceof Error ? readErr.message : String(readErr),
       estimate_id: estimateId,
     });
   }
 
-  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='sent'. Without
-  // this, a portal approve racing a portal reject (mobile double-tap,
-  // or shop-side estimates.routes.ts reject) both pass the precheck
-  // and the second UPDATE silently overrides. Worse: the signature row
-  // above is already inserted, so an "approval signature" can attach
-  // to a now-rejected estimate.
-  const approveResult = await adb.run(`
-    UPDATE estimates SET status = 'approved', approved_at = datetime('now'), updated_at = datetime('now')
-    WHERE id = ? AND status = 'sent'
-  `, estimateId);
-  if (approveResult.changes === 0) {
-    res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
-    return;
+  try {
+    await adb.transaction([
+      {
+        sql: `UPDATE estimates SET status = 'approved', approved_at = datetime('now'), updated_at = datetime('now')
+              WHERE id = ? AND status = 'sent'`,
+        params: [estimateId],
+        expectChanges: true,
+        expectChangesError: 'PORTAL_ESTIMATE_RACE',
+      },
+      {
+        sql: `INSERT INTO estimate_signatures
+                 (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+                  subtotal_at_signing, tax_at_signing, total_at_signing)
+              VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
+        params: [
+          estimateId,
+          signerName,
+          signerEmail,
+          signerIp,
+          userAgent,
+          totalsRow?.subtotal ?? null,
+          totalsRow?.total_tax ?? null,
+          totalsRow?.total ?? null,
+        ],
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('PORTAL_ESTIMATE_RACE')) {
+      res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
+      return;
+    }
+    // Legacy tenants without estimate_signatures table: fall back to a
+    // bare UPDATE so approval still works without the audit row.
+    if (/no such table.*estimate_signatures/i.test(msg)) {
+      const fallback = await adb.run(
+        `UPDATE estimates SET status = 'approved', approved_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ? AND status = 'sent'`,
+        estimateId,
+      );
+      if (fallback.changes === 0) {
+        res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
+        return;
+      }
+      logger.warn('portal_estimate_approve_signature_table_missing', { estimate_id: estimateId });
+    } else {
+      throw err;
+    }
   }
 
   // SW-D7: Auto-change linked ticket status when estimate is approved
