@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.remote.api.CreatePaymentLinkRequest
 import com.bizarreelectronics.crm.data.remote.api.PaymentLinkApi
 import com.bizarreelectronics.crm.data.remote.api.PaymentLinkData
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -74,8 +75,8 @@ class PaymentLinkViewModel @Inject constructor(
 
         viewModelScope.launch {
             _createState.value = s.copy(isLoading = true, error = null)
-            runCatching {
-                paymentLinkApi.createLink(
+            try {
+                val resp = paymentLinkApi.createLink(
                     CreatePaymentLinkRequest(
                         amount_cents = amountCents,
                         customer_id = s.customerId,
@@ -84,12 +85,17 @@ class PaymentLinkViewModel @Inject constructor(
                         partial_allowed = s.partialAllowed,
                     )
                 )
-            }.onSuccess { resp ->
                 _createState.value = _createState.value.copy(
                     isLoading = false,
                     createdLink = resp.data,
                 )
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching catches CancellationException
+                // (kotlin.Result wraps Throwable). Switched to try/catch with
+                // explicit re-throw so back-nav doesn't paint a fake "Failed
+                // to create payment link" banner.
+                throw e
+            } catch (e: Exception) {
                 val is404 = (e as? HttpException)?.code() == 404
                 _createState.value = _createState.value.copy(
                     isLoading = false,
@@ -117,23 +123,24 @@ class PaymentLinkViewModel @Inject constructor(
                 val status = _listState.value.selectedStatus
                 if (status != "All") put("status", status.lowercase())
             }
-            runCatching { paymentLinkApi.listLinks(filters) }
-                .onSuccess { resp ->
-                    _listState.value = _listState.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        links = resp.data?.items ?: emptyList(),
-                    )
-                }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _listState.value = _listState.value.copy(
-                        isLoading = false,
-                        isRefreshing = false,
-                        notConfigured = is404,
-                        error = if (is404) null else (e.message ?: "Failed to load payment links"),
-                    )
-                }
+            try {
+                val resp = paymentLinkApi.listLinks(filters)
+                _listState.value = _listState.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    links = resp.data?.items ?: emptyList(),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _listState.value = _listState.value.copy(
+                    isLoading = false,
+                    isRefreshing = false,
+                    notConfigured = is404,
+                    error = if (is404) null else (e.message ?: "Failed to load payment links"),
+                )
+            }
         }
     }
 
@@ -149,42 +156,45 @@ class PaymentLinkViewModel @Inject constructor(
 
     fun voidLink(id: Long) {
         viewModelScope.launch {
-            runCatching { paymentLinkApi.voidLink(id) }
-                .onSuccess {
-                    _listState.value = _listState.value.copy(actionMessage = "Payment link voided")
-                    loadLinks()
-                }
-                .onFailure { e ->
-                    val is404 = (e as? HttpException)?.code() == 404
-                    _listState.value = _listState.value.copy(
-                        actionMessage = if (is404) "Void not supported on this server"
-                        else "Failed to void link",
-                    )
-                }
+            try {
+                paymentLinkApi.voidLink(id)
+                _listState.value = _listState.value.copy(actionMessage = "Payment link voided")
+                loadLinks()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val is404 = (e as? HttpException)?.code() == 404
+                _listState.value = _listState.value.copy(
+                    actionMessage = if (is404) "Void not supported on this server"
+                    else "Failed to void link",
+                )
+            }
         }
     }
 
     fun resendLink(id: Long) {
         viewModelScope.launch {
-            runCatching { paymentLinkApi.resendLink(id) }
-                .onSuccess {
-                    _listState.value = _listState.value.copy(actionMessage = "Payment request resent")
-                }
-                .onFailure {
-                    _listState.value = _listState.value.copy(actionMessage = "Failed to resend")
-                }
+            try {
+                paymentLinkApi.resendLink(id)
+                _listState.value = _listState.value.copy(actionMessage = "Payment request resent")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _listState.value = _listState.value.copy(actionMessage = "Failed to resend")
+            }
         }
     }
 
     fun remindCustomer(id: Long) {
         viewModelScope.launch {
-            runCatching { paymentLinkApi.remindCustomer(id) }
-                .onSuccess {
-                    _listState.value = _listState.value.copy(actionMessage = "Reminder sent")
-                }
-                .onFailure {
-                    _listState.value = _listState.value.copy(actionMessage = "Failed to send reminder")
-                }
+            try {
+                paymentLinkApi.remindCustomer(id)
+                _listState.value = _listState.value.copy(actionMessage = "Reminder sent")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _listState.value = _listState.value.copy(actionMessage = "Failed to send reminder")
+            }
         }
     }
 
