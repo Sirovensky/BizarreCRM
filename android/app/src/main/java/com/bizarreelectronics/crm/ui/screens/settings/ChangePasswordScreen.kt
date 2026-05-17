@@ -61,6 +61,7 @@ import com.bizarreelectronics.crm.ui.components.SensitiveScreenGuard
 import com.bizarreelectronics.crm.ui.components.Sensitivity
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -214,6 +215,14 @@ class ChangePasswordViewModel @Inject constructor(
                 authApi.changePassword(body)
                 // Clear sensitive fields immediately after server accepts.
                 _state.value = ChangePasswordUiState(success = true)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. Painting
+                // "password change failed" on a cancelled coroutine tempts
+                // the user to retry — but the server may have already
+                // accepted the change AND revoked all sessions. Keeping
+                // the state as Loading lets the explicit error path (real
+                // failure) and the success path each fire deterministically.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
