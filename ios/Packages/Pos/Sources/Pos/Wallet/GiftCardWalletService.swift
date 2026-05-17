@@ -117,7 +117,17 @@ public actor GiftCardWalletService {
         guard let base = await api.currentBaseURL() else {
             throw GiftCardWalletError.noBaseURL
         }
-        let passURL = base.appendingPathComponent(response.passUrl)
+        // BUGHUNT-2026-05-17: passUrl can be absolute (CDN-hosted refresh)
+        // or relative. appendingPathComponent on an absolute URL produces
+        // "https://api/https://cdn/..." which 404s. Resolve absolute vs
+        // relative first.
+        let passURL: URL
+        if let abs = URL(string: response.passUrl), abs.scheme != nil {
+            passURL = abs
+        } else {
+            let cleaned = response.passUrl.hasPrefix("/") ? String(response.passUrl.dropFirst()) : response.passUrl
+            passURL = base.appendingPathComponent(cleaned)
+        }
         var request = URLRequest(url: passURL)
         request.httpMethod = "GET"
         // BUGHUNT-2026-05-17: same fix as fetchPass — go through APIClient

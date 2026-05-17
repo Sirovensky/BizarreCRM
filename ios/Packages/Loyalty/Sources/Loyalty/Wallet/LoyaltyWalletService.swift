@@ -144,7 +144,19 @@ public actor LoyaltyWalletService {
         guard let base = await api.currentBaseURL() else {
             throw LoyaltyWalletError.noBaseURL
         }
-        let passURL = base.appendingPathComponent(response.passUrl)
+        // BUGHUNT-2026-05-17: handle both absolute and relative pass_url.
+        // The server may return a full URL ("https://cdn.../pass.pkpass") or
+        // a relative path ("/wallet/loyalty/passes/123/file.pkpass"). The
+        // prior `base.appendingPathComponent(passUrl)` form mangled absolute
+        // URLs into "https://api/https://cdn/...", producing 404 every time
+        // the backend returned an absolute URL.
+        let passURL: URL
+        if let abs = URL(string: response.passUrl), abs.scheme != nil {
+            passURL = abs
+        } else {
+            let cleaned = response.passUrl.hasPrefix("/") ? String(response.passUrl.dropFirst()) : response.passUrl
+            passURL = base.appendingPathComponent(cleaned)
+        }
         var request = URLRequest(url: passURL)
         request.httpMethod = "GET"
         // BUGHUNT-2026-05-17: route through APIClient so the bearer token +
