@@ -199,6 +199,14 @@ export function PhotoCapturePage() {
 
   const handleUpload = async () => {
     if (!photos.length || !ticketId || !deviceId || !token) return;
+    // BUGHUNT-2026-05-17: defensive in-flight guard. setUploading(true)
+    // doesn't disable the button until React's next render, so a fast
+    // mobile pointer+click sequence (or queued tap events) can fire
+    // onClick twice before the disabled attribute lands — duplicating
+    // the multipart upload. uploadAbortRef is set synchronously on
+    // entry and cleared in the finally block; using it as the gate
+    // closes that window cleanly.
+    if (uploadAbortRef.current) return;
     setUploading(true);
     setError('');
     // WEB-UIUX-756: AbortController + extended timeout for cellular. Without
