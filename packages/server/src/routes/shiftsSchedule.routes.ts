@@ -402,12 +402,17 @@ router.post('/swap/:requestId/decline', asyncHandler(async (req: any, res: any) 
     throw new AppError(`Swap request is already ${swap.status}`, 409);
   }
 
-  await adb.run(
+  // BUGHUNT-2026-05-17: guard the UPDATE so a racing /cancel from the
+  // requester doesn't override the target's decline (or vice versa).
+  const result = await adb.run(
     `UPDATE shift_swap_requests
      SET status = 'declined', decided_at = datetime('now')
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'pending'`,
     reqId,
   );
+  if (result.changes === 0) {
+    throw new AppError('Swap request status changed; refresh and retry', 409);
+  }
 
   audit(db, 'shift_swap_declined', callerId, req.ip || 'unknown', {
     swap_id: reqId, shift_id: swap.shift_id,
@@ -440,12 +445,18 @@ router.post('/swap/:requestId/cancel', asyncHandler(async (req: any, res: any) =
     throw new AppError(`Swap request is already ${swap.status}`, 409);
   }
 
-  await adb.run(
+  // BUGHUNT-2026-05-17: guard the UPDATE so a racing /decline doesn't
+  // get overridden by this /cancel — both audit logs would otherwise
+  // fire but only one decision sticks.
+  const result = await adb.run(
     `UPDATE shift_swap_requests
      SET status = 'canceled', decided_at = datetime('now')
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'pending'`,
     reqId,
   );
+  if (result.changes === 0) {
+    throw new AppError('Swap request status changed; refresh and retry', 409);
+  }
 
   audit(db, 'shift_swap_canceled', callerId, req.ip || 'unknown', {
     swap_id: reqId, shift_id: swap.shift_id,
