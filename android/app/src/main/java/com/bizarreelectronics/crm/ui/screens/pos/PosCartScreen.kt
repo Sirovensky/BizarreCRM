@@ -1105,7 +1105,11 @@ private fun TipDialog(
     val focusManager = LocalFocusManager.current
 
     val tipCents: Long = when {
-        selectedPct != null -> subtotalCents * (selectedPct ?: 0) / 100
+        // BUGHUNT-2026-05-17: was `subtotalCents * pct / 100` which truncates
+        // — a 10% tip on $12.99 produced 129¢ instead of 130¢ (1299*10/100
+        // = 12990/100 = 129 by integer division). Match the iOS PosTender
+        // preset fix and Cart.setTipPercent: round the floating-point result.
+        selectedPct != null -> Math.round(subtotalCents.toDouble() * (selectedPct ?: 0) / 100.0)
         else -> Math.round((customInput.toDoubleOrNull() ?: 0.0) * 100)
     }
 

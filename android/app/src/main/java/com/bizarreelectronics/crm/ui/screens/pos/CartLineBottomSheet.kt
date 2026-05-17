@@ -53,10 +53,15 @@ fun CartLineBottomSheet(
 
     // AUDIT-036: restore selectedChip from line.discountCents on first composition
     val initialChip: DiscountChip? = remember(line.id) {
+        // BUGHUNT-2026-05-17: mirror the application formula below — both use
+        // Math.round on a Double, not integer truncation. Without this the
+        // detection would miss a rounded preset by 1¢ (e.g. 5% of $12.99 is
+        // 65¢ rounded but 64¢ truncated) and fall to FLAT.
+        val pctSubtotal = line.unitPriceCents * line.qty
         when {
             line.discountCents == 0L -> null
-            line.discountCents == (line.unitPriceCents * line.qty * 5 / 100) -> DiscountChip.FIVE_PCT
-            line.discountCents == (line.unitPriceCents * line.qty * 10 / 100) -> DiscountChip.TEN_PCT
+            line.discountCents == Math.round(pctSubtotal.toDouble() * 5 / 100.0) -> DiscountChip.FIVE_PCT
+            line.discountCents == Math.round(pctSubtotal.toDouble() * 10 / 100.0) -> DiscountChip.TEN_PCT
             else -> DiscountChip.FLAT
         }
     }
@@ -89,8 +94,12 @@ fun CartLineBottomSheet(
         derivedStateOf {
             val subtotal = line.unitPriceCents * qty
             when (selectedChip) {
-                DiscountChip.FIVE_PCT -> subtotal * 5 / 100
-                DiscountChip.TEN_PCT -> subtotal * 10 / 100
+                // BUGHUNT-2026-05-17: integer division `subtotal * 5 / 100`
+                // truncated — a 5% discount on $12.99 produced 64¢ instead of
+                // 65¢. Match the CUSTOM branch below (Math.round) and the
+                // iOS CartLineEditViewModel fix in the same patch series.
+                DiscountChip.FIVE_PCT -> Math.round(subtotal.toDouble() * 5 / 100.0)
+                DiscountChip.TEN_PCT -> Math.round(subtotal.toDouble() * 10 / 100.0)
                 DiscountChip.FLAT -> {
                     val dollars = flatInput.toDoubleOrNull() ?: 0.0
                     // session 2026-04-26 — ROUND-ERROR: was .toLong() (truncation); Math.round gives HALF_UP
