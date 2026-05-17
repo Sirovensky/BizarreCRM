@@ -391,7 +391,12 @@ class PosTenderViewModel @Inject constructor(
                     mapOf<String, Long>()
                 } else {
                     // taxRate is a decimal fraction (e.g. 0.08 = 8%). Basis points = rate * 10000.
-                    val fallbackRateBps = ((session.lines.firstOrNull()?.taxRate ?: 0.0) * 10_000).toInt()
+                    // BUGHUNT-2026-05-17: `.toInt()` truncated — for a stored
+                    // 0.0825 round-tripped to 0.08249999..., (×10_000).toInt()
+                    // produced 824 bps instead of 825. Match the
+                    // PosCartViewModel fix (Math.round) so the tender-side
+                    // fallback agrees with the cart's computed tax.
+                    val fallbackRateBps = Math.round((session.lines.firstOrNull()?.taxRate ?: 0.0) * 10_000).toInt()
                     val fallbackConfig = TenantTaxConfig(
                         jurisdictions = if (fallbackRateBps > 0)
                             listOf(JurisdictionRule(

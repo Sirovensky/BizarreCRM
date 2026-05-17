@@ -135,7 +135,11 @@ public struct MembershipPlan: Codable, Sendable, Identifiable, Equatable {
     /// Monthly equivalent price in cents for display purposes.
     public var monthlyPriceCents: Int {
         guard periodDays > 0 else { return pricePerPeriodCents }
-        return Int(Double(pricePerPeriodCents) / Double(periodDays) * 30.0)
+        // BUGHUNT-2026-05-17: `Int(...)` truncated — a $120/year plan showed
+        // 9.86/mo (986) instead of 9.86 (986). Use .rounded() for the
+        // display monthly equivalent to stay consistent with the rest of
+        // the money math in CartLineEditViewModel / Cart.swift.
+        return Int((Double(pricePerPeriodCents) / Double(periodDays) * 30.0).rounded())
     }
 
     public var formattedPrice: String {

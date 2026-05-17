@@ -394,7 +394,13 @@ class PosCartViewModel @Inject constructor(
      */
     private fun computeTaxBreakdown(lines: List<CartLine>, taxFraction: Double): TaxBreakdown? {
         if (taxFraction <= 0.0 || lines.isEmpty()) return null
-        val rateBps = (taxFraction * 10_000).toInt()
+        // BUGHUNT-2026-05-17: `.toInt()` truncates — for a server-supplied
+        // tax fraction like 0.0825 that round-tripped through Double
+        // arithmetic as 0.08249999..., (×10_000).toInt() produced 824 bps
+        // (8.24%) instead of 825 bps (8.25%). The tax breakdown then drifted
+        // 1 bps under the configured rate on every transaction. Use
+        // Math.round to land on the intended bps.
+        val rateBps = Math.round(taxFraction * 10_000).toInt()
         val config = TenantTaxConfig(
             jurisdictions = listOf(
                 JurisdictionRule(
