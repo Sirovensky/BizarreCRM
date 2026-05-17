@@ -92,7 +92,7 @@ public final class TicketEditViewModel {
     private func enqueueOffline(_ req: UpdateTicketRequest) async {
         do {
             let payload = try TicketOfflineQueue.encode(req)
-            await TicketOfflineQueue.enqueue(
+            try await TicketOfflineQueue.enqueue(
                 op: "update",
                 entityServerId: ticketId,
                 payload: payload
@@ -101,8 +101,11 @@ public final class TicketEditViewModel {
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Ticket update encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: don't silently swallow the queue failure —
+            // tell the user so they can retry instead of thinking the update
+            // was preserved offline.
+            AppLog.sync.error("Ticket update offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

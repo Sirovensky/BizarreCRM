@@ -80,11 +80,18 @@ enum TicketOfflineQueue {
     /// Enqueue a pending mutation. `entityServerId` is only set on updates
     /// — creates have no server id yet, only a negative "pending" id used
     /// by the UI.
+    ///
+    /// BUGHUNT-2026-05-17: previously this swallowed the underlying GRDB
+    /// enqueue error and the caller couldn't tell whether the ticket was
+    /// actually queued. The 4 viewmodels that call this on the offline
+    /// path then set `queuedOffline = true` and showed a success snackbar
+    /// — even when the insert had silently failed. Now throws so callers
+    /// can surface a real error instead of losing the user's edit.
     static func enqueue(
         op: String,
         entityServerId: Int64? = nil,
         payload: String
-    ) async {
+    ) async throws {
         let record = SyncQueueRecord(
             op: op,
             entity: "ticket",
@@ -92,11 +99,7 @@ enum TicketOfflineQueue {
             entityServerId: entityServerId.map(String.init),
             payload: payload
         )
-        do {
-            try await SyncQueueStore.shared.enqueue(record)
-            AppLog.sync.info("Queued offline ticket \(op, privacy: .public)")
-        } catch {
-            AppLog.sync.error("Failed to enqueue ticket \(op, privacy: .public): \(error.localizedDescription, privacy: .public)")
-        }
+        try await SyncQueueStore.shared.enqueue(record)
+        AppLog.sync.info("Queued offline ticket \(op, privacy: .public)")
     }
 }

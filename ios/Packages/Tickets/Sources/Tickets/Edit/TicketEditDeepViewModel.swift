@@ -293,7 +293,7 @@ public final class TicketEditDeepViewModel {
     private func enqueueOffline(_ req: UpdateTicketRequest) async {
         do {
             let payload = try TicketOfflineQueue.encode(req)
-            await TicketOfflineQueue.enqueue(
+            try await TicketOfflineQueue.enqueue(
                 op: "update",
                 entityServerId: ticketId,
                 payload: payload
@@ -303,10 +303,14 @@ public final class TicketEditDeepViewModel {
             queuedOffline = true
             errorMessage = nil
         } catch {
+            // BUGHUNT-2026-05-17: surface the queue failure so the deep-edit
+            // sheet doesn't claim "saved offline" when the row was dropped.
+            // Also don't clearDraft() on failure — the user wants their work
+            // preserved for another retry.
             AppLog.sync.error(
-                "Ticket edit encode failed: \(error.localizedDescription, privacy: .public)"
+                "Ticket edit offline-enqueue failed: \(error.localizedDescription, privacy: .public)"
             )
-            errorMessage = error.localizedDescription
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

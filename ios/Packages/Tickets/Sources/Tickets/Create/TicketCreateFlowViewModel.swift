@@ -343,13 +343,15 @@ public final class TicketCreateFlowViewModel {
     private func enqueueOfflineFull(_ req: CreateTicketFullRequest) async {
         do {
             let payload = try TicketOfflineQueue.encode(req)
-            await TicketOfflineQueue.enqueue(op: "create_full", payload: payload)
+            try await TicketOfflineQueue.enqueue(op: "create_full", payload: payload)
             createdTicketId = PendingSyncTicketId
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Offline enqueue encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: surface the queue failure so the full-create
+            // flow doesn't claim the ticket was saved offline when it wasn't.
+            AppLog.sync.error("Offline enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

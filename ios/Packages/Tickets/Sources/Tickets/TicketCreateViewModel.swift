@@ -91,13 +91,15 @@ public final class TicketCreateViewModel {
     private func enqueueOffline(_ req: CreateTicketRequest) async {
         do {
             let payload = try TicketOfflineQueue.encode(req)
-            await TicketOfflineQueue.enqueue(op: "create", payload: payload)
+            try await TicketOfflineQueue.enqueue(op: "create", payload: payload)
             createdId = PendingSyncTicketId
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Ticket create encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: surface the queue failure instead of
+            // silently letting the user think the ticket was saved offline.
+            AppLog.sync.error("Ticket create offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 
