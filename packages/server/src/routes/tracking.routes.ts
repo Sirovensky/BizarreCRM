@@ -715,11 +715,6 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
     return;
   }
 
-  await adb.run(`
-    INSERT INTO ticket_notes (ticket_id, content, type, created_at, updated_at)
-    VALUES (?, ?, 'customer', datetime('now'), datetime('now'))
-  `, ticket.id, trimmedContent.slice(0, 5000));
-
   // SEC-H32: Record which auth path was used in the history so post-mortems
   // can tell portal-session writes apart from anonymous tracking-token
   // writes. Description stays generic — nothing customer-identifying.
@@ -727,10 +722,24 @@ router.post('/portal/:orderId/message', asyncHandler(async (req: Request, res: R
     ? 'Customer left a message via authenticated portal session'
     : 'Customer left a message via tracking portal';
 
-  await adb.run(`
-    INSERT INTO ticket_history (ticket_id, action, description, created_at)
-    VALUES (?, 'customer_message', ?, datetime('now'))
-  `, ticket.id, historyDescription);
+  // BUGHUNT-2026-05-17: bundle the ticket_notes INSERT + ticket_history
+  // INSERT into one tx. Previously two sequential adb.run() calls — a
+  // crash between them landed the customer's message in ticket_notes
+  // with no matching history row, so the staff timeline view (which
+  // joins both) missed the entry and a customer service rep wouldn't
+  // know the customer ever wrote in.
+  await adb.transaction([
+    {
+      sql: `INSERT INTO ticket_notes (ticket_id, content, type, created_at, updated_at)
+            VALUES (?, ?, 'customer', datetime('now'), datetime('now'))`,
+      params: [ticket.id, trimmedContent.slice(0, 5000)],
+    },
+    {
+      sql: `INSERT INTO ticket_history (ticket_id, action, description, created_at)
+            VALUES (?, 'customer_message', ?, datetime('now'))`,
+      params: [ticket.id, historyDescription],
+    },
+  ]);
 
   // Only burn a rate-limit slot for the anonymous fallback path; authed
   // portal users are not throttled here.
