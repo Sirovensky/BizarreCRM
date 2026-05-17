@@ -248,7 +248,10 @@ router.delete(
     const adb: AsyncDb = req.asyncDb;
     const id = parseInt(qs(req.params.id), 10);
     if (!id || isNaN(id)) throw new AppError('Invalid bin id', 400);
-    await adb.run(`UPDATE bin_locations SET is_active = 0 WHERE id = ?`, id);
+    // BUGHUNT-2026-05-17: AND is_active = 1 + gate audit on changes —
+    // previously a stale re-click fired audit with no state change.
+    const delRes = await adb.run(`UPDATE bin_locations SET is_active = 0 WHERE id = ? AND is_active = 1`, id);
+    if (delRes.changes === 0) throw new AppError('Bin location not found or already deactivated', 404);
     audit(req.db, 'bin_location_deleted', req.user!.id, req.ip || 'unknown', { id });
     res.json({ success: true, data: { id } });
   }),
@@ -499,10 +502,14 @@ router.delete(
     const adb: AsyncDb = req.asyncDb;
     const itemId = parseInt(qs(req.params.itemId), 10);
     if (!itemId || isNaN(itemId)) throw new AppError('Invalid item id', 400);
-    await adb.run(
+    // BUGHUNT-2026-05-17: gate audit on actual delete — no rule to
+    // delete means a stale UI re-click should be a clean 404, not a
+    // ghost audit row.
+    const delRes = await adb.run(
       `DELETE FROM inventory_auto_reorder_rules WHERE inventory_item_id = ?`,
       itemId,
     );
+    if (delRes.changes === 0) throw new AppError('No auto-reorder rule found for that item', 404);
     audit(req.db, 'auto_reorder_rule_deleted', req.user!.id, req.ip || 'unknown', {
       inventory_item_id: itemId,
     });
