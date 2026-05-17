@@ -75,8 +75,14 @@ data class InvoiceCreateUiState(
 private fun InvoiceCreateUiState.subtotalCents(): Long =
     lineItems.sumOf { row ->
         val qty = row.qty.toLongOrNull() ?: 0L
+        // BUGHUNT-2026-05-17: Math.round on user-typed unit price. `(9.99 * 100).toLong()`
+        // returns 998 in JVM IEEE-754 because 9.99 isn't exactly representable
+        // and the product lands fractionally below 999.0. The invoice user
+        // typed $9.99 × 1 expected $9.99, the system stored $9.98. Same
+        // money-precision pattern as PosCartViewModel.rateBps + InvoiceList
+        // filter bounds.
         val cents = (row.unitPrice.toDoubleOrNull() ?: 0.0)
-            .let { d -> (d * 100).toLong() }
+            .let { d -> Math.round(d * 100) }
         qty * cents
     }
 

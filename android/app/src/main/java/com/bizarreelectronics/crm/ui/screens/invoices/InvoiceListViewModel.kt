@@ -280,8 +280,15 @@ class InvoiceListViewModel @Inject constructor(
             result = result.filter { it.createdAt.take(10) <= filters.dateTo }
         }
 
-        val minCents = filters.amountMin.toDoubleOrNull()?.let { (it * 100).toLong() }
-        val maxCents = filters.amountMax.toDoubleOrNull()?.let { (it * 100).toLong() }
+        // BUGHUNT-2026-05-17: Math.round on user-typed dollar amounts so the
+        // filter boundary is exact. `(9.99 * 100).toLong()` returns 998 in
+        // JVM IEEE-754 (because 9.99 cannot be represented exactly and the
+        // product lands slightly below 999.0), so an invoice of exactly
+        // $9.99 (= 999 cents) failed both `total >= minCents` for a min of
+        // 9.99 and the reverse upper bound. Math.round resolves the cent
+        // boundary on the side the user actually intended.
+        val minCents = filters.amountMin.toDoubleOrNull()?.let { Math.round(it * 100) }
+        val maxCents = filters.amountMax.toDoubleOrNull()?.let { Math.round(it * 100) }
         if (minCents != null) result = result.filter { it.total >= minCents }
         if (maxCents != null) result = result.filter { it.total <= maxCents }
 

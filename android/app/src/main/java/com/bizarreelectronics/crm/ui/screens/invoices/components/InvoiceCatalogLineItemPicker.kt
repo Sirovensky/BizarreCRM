@@ -189,7 +189,7 @@ private fun CatalogResultRow(
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .semantics {
-                contentDescription = "Add $displayName, price ${price?.let { (it * 100).toLong().formatAsMoney() } ?: "no price"}"
+                contentDescription = "Add $displayName, price ${price?.let { Math.round(it * 100).formatAsMoney() } ?: "no price"}"
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -210,7 +210,10 @@ private fun CatalogResultRow(
         Spacer(Modifier.width(12.dp))
         if (price != null) {
             Text(
-                (price * 100).toLong().formatAsMoney(),
+                // BUGHUNT-2026-05-17: Math.round on catalog price. `(9.99 * 100).toLong()`
+                // returns 998 in JVM IEEE-754, so a catalog row priced $9.99 was
+                // displayed as "$9.98".
+                Math.round(price * 100).formatAsMoney(),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary,
