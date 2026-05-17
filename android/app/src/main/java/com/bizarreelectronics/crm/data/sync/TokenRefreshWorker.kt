@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.util.FcmTokenRefresher
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -47,6 +48,12 @@ class TokenRefreshWorker @AssistedInject constructor(
             fcmTokenRefresher.refreshIfStale()
             Log.d(TAG, "Token refresh completed")
             Result.success()
+        } catch (e: CancellationException) {
+            // BUGHUNT-2026-05-17: re-throw cancellation. Same family as the
+            // SyncWorker / CachePurgeWorker / etc. fixes — Result.retry() on
+            // a cancelled coroutine reschedules a worker the system wanted
+            // halted.
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Token refresh failed [${e.javaClass.simpleName}]: ${e.message}")
             if (runAttemptCount < 3) Result.retry() else Result.failure()
