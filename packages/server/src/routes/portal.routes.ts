@@ -1759,57 +1759,85 @@ router.post('/estimates/:id/reject', portalAuth, requireCsrfToken, requireFullSc
     return;
   }
 
-  // Mirror the approve-path estimate_signatures audit row so the shop has
-  // a tamper-evident record of who declined and when. Reuses the same
-  // signer attribution shape; signature_data_url is NULL because portal
-  // Reject is one-click, not a drawn signature.
+  // BUGHUNT-2026-05-17: bundle the rejection UPDATE + signer-attribution
+  // row into a single atomic tx, mirroring the approve path fix. A
+  // losing race against a concurrent approve trips the CAS and rolls
+  // back BOTH writes — closing the bug where a 'rejection signature'
+  // could attach to a now-approved estimate.
+  let signerName = 'Portal customer';
+  let signerEmail: string | null = null;
+  let signerIp = req.ip || 'unknown';
+  let userAgent: string | null = null;
+  let totalsRow: AnyRow | undefined;
   try {
     const customer = await adb.get<AnyRow>(
       'SELECT first_name, last_name, email FROM customers WHERE id = ?',
       req.portalCustomerId,
     );
-    const signerName = customer
+    signerName = customer
       ? [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'Portal customer'
       : 'Portal customer';
-    const signerEmail = (customer?.email as string | null) ?? null;
+    signerEmail = (customer?.email as string | null) ?? null;
     const xff = (req.headers['x-forwarded-for'] as string | undefined) ?? null;
-    const signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
-    const userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
-    const totalsRow = await adb.get<AnyRow>(
+    signerIp = (xff?.split(',')[0]?.trim()) || req.ip || 'unknown';
+    userAgent = (req.headers['user-agent'] as string | undefined) ?? null;
+    totalsRow = await adb.get<AnyRow>(
       'SELECT subtotal, total_tax, total FROM estimates WHERE id = ?',
       estimateId,
     );
-    await adb.run(
-      `INSERT INTO estimate_signatures
-         (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
-          subtotal_at_signing, tax_at_signing, total_at_signing)
-       VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
-      estimateId,
-      `${signerName} (rejected)`,
-      signerEmail,
-      signerIp,
-      userAgent,
-      totalsRow?.subtotal ?? null,
-      totalsRow?.total_tax ?? null,
-      totalsRow?.total ?? null,
-    );
-  } catch (sigErr) {
-    logger.warn('portal_estimate_reject_signature_write_failed', {
-      err: sigErr instanceof Error ? sigErr.message : String(sigErr),
+  } catch (readErr) {
+    logger.warn('portal_estimate_reject_signer_prep_failed', {
+      err: readErr instanceof Error ? readErr.message : String(readErr),
       estimate_id: estimateId,
     });
   }
 
-  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='sent'. Symmetric
-  // fix to portal approve above — a racing approve could otherwise be
-  // silently overridden by this blind UPDATE.
-  const rejectResult = await adb.run(`
-    UPDATE estimates SET status = 'rejected', rejected_at = datetime('now'), updated_at = datetime('now')
-    WHERE id = ? AND status = 'sent'
-  `, estimateId);
-  if (rejectResult.changes === 0) {
-    res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
-    return;
+  try {
+    await adb.transaction([
+      {
+        sql: `UPDATE estimates SET status = 'rejected', rejected_at = datetime('now'), updated_at = datetime('now')
+              WHERE id = ? AND status = 'sent'`,
+        params: [estimateId],
+        expectChanges: true,
+        expectChangesError: 'PORTAL_ESTIMATE_RACE',
+      },
+      {
+        sql: `INSERT INTO estimate_signatures
+                 (estimate_id, signer_name, signer_email, signer_ip, signature_data_url, signed_at, user_agent,
+                  subtotal_at_signing, tax_at_signing, total_at_signing)
+              VALUES (?, ?, ?, ?, NULL, datetime('now'), ?, ?, ?, ?)`,
+        params: [
+          estimateId,
+          `${signerName} (rejected)`,
+          signerEmail,
+          signerIp,
+          userAgent,
+          totalsRow?.subtotal ?? null,
+          totalsRow?.total_tax ?? null,
+          totalsRow?.total ?? null,
+        ],
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('PORTAL_ESTIMATE_RACE')) {
+      res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
+      return;
+    }
+    if (/no such table.*estimate_signatures/i.test(msg)) {
+      const fallback = await adb.run(
+        `UPDATE estimates SET status = 'rejected', rejected_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ? AND status = 'sent'`,
+        estimateId,
+      );
+      if (fallback.changes === 0) {
+        res.status(409).json({ success: false, message: 'Estimate status changed; refresh and retry' });
+        return;
+      }
+      logger.warn('portal_estimate_reject_signature_table_missing', { estimate_id: estimateId });
+    } else {
+      throw err;
+    }
   }
 
   // Auto-cancel linked ticket when the shop has configured a rejection
