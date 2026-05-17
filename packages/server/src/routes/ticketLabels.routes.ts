@@ -310,16 +310,17 @@ router.delete('/tickets/:ticketId/labels/:labelId', asyncHandler(async (req: Req
   const ticketId = validateIntId(req.params.ticketId, 'ticket ID');
   const labelId  = validateIntId(req.params.labelId,  'label ID');
 
-  const assignment = await adb.get<{ id: number }>(
-    'SELECT id FROM ticket_label_assignments WHERE ticket_id = ? AND label_id = ?',
-    ticketId, labelId
-  );
-  if (!assignment) throw new AppError('Assignment not found', 404);
-
-  await adb.run(
+  // BUGHUNT-2026-05-17: drop the SELECT precheck and treat the DELETE
+  // itself as the source of truth — without this, two concurrent
+  // /unassign for the same (ticket, label) both pass the SELECT and
+  // both write an audit row even though only one actually deleted.
+  // Use result.changes to surface a clean 404 when the assignment is
+  // already gone.
+  const delRes = await adb.run(
     'DELETE FROM ticket_label_assignments WHERE ticket_id = ? AND label_id = ?',
     ticketId, labelId
   );
+  if (delRes.changes === 0) throw new AppError('Assignment not found', 404);
 
   audit(db, 'ticket_label.unassigned', req.user!.id, req.ip || 'unknown', {
     ticket_id: ticketId, label_id: labelId,

@@ -1274,16 +1274,32 @@ router.delete(
     if (existing.status === 'converted') throw new AppError('Cannot delete a converted estimate', 400);
 
     // Atomic: null ticket references + soft-delete the estimate together.
-    await adb.transaction([
-      {
-        sql: 'UPDATE tickets SET estimate_id = NULL WHERE estimate_id = ?',
-        params: [id],
-      },
-      {
-        sql: "UPDATE estimates SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?",
-        params: [id],
-      },
-    ]);
+    // BUGHUNT-2026-05-17: guard the soft-delete WHERE status != 'converted'
+    // AND is_deleted = 0 so a concurrent /convert that landed between our
+    // SELECT precheck and this tx can't be silently followed by the
+    // soft-delete (which would orphan the freshly-converted ticket from
+    // its source estimate). expectChanges rolls back the ticket NULL-out
+    // if the estimate has since been converted or already deleted.
+    try {
+      await adb.transaction([
+        {
+          sql: 'UPDATE tickets SET estimate_id = NULL WHERE estimate_id = ?',
+          params: [id],
+        },
+        {
+          sql: "UPDATE estimates SET is_deleted = 1, updated_at = datetime('now') WHERE id = ? AND status != 'converted' AND is_deleted = 0",
+          params: [id],
+          expectChanges: true,
+          expectChangesError: 'ESTIMATE_DELETE_RACE',
+        },
+      ]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ESTIMATE_DELETE_RACE')) {
+        throw new AppError('Estimate was converted or deleted concurrently; refresh and retry', 409);
+      }
+      throw err;
+    }
 
     audit(req.db, 'estimate_deleted', req.user!.id, req.ip || 'unknown', { estimate_id: id });
     res.json({ success: true, data: { message: 'Estimate deleted' } });
