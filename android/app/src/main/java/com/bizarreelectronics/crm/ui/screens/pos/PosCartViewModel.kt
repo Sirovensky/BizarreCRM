@@ -16,6 +16,7 @@ import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -300,7 +301,16 @@ class PosCartViewModel @Inject constructor(
         viewModelScope.launch {
             val entity = parkedCartDao.getById(cartId) ?: return@launch
             var restoredLineCount = 0
-            runCatching {
+            // BUGHUNT-2026-05-17: previously this block was a runCatching {}
+            // whose result was discarded, followed by an unconditional
+            // parkedCartDao.deleteById(cartId). If the JSON parse threw
+            // (cartJson schema drift, Gson type mismatch), the cart was
+            // silently deleted but never restored — cashier lost the parked
+            // cart and had to retype every line. Switched to try/catch and
+            // gated the delete on a successful restore. CancellationException
+            // is re-thrown so a leaving-screen cancel doesn't trigger the
+            // failure-path snackbar.
+            val restoreSucceeded = try {
                 val type = object : TypeToken<ParkedCartSnapshot>() {}.type
                 val snapshot = gson.fromJson<ParkedCartSnapshot>(entity.cartJson, type)
                 restoredLineCount = snapshot.lines.size
@@ -321,11 +331,22 @@ class PosCartViewModel @Inject constructor(
                         )
                     )
                 }
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                false
             }
-            parkedCartDao.deleteById(cartId)
-            // Surface "Cart restored" snackbar via the scan-message channel
-            if (restoredLineCount > 0) {
-                _uiState.update { it.copy(scanMessage = "Cart restored — $restoredLineCount item(s)") }
+
+            if (restoreSucceeded) {
+                parkedCartDao.deleteById(cartId)
+                if (restoredLineCount > 0) {
+                    _uiState.update { it.copy(scanMessage = "Cart restored — $restoredLineCount item(s)") }
+                }
+            } else {
+                _uiState.update {
+                    it.copy(scanMessage = "Could not restore parked cart — kept for retry")
+                }
             }
         }
     }
