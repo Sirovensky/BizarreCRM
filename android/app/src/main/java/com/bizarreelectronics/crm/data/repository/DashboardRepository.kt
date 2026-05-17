@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.ChurnRiskCustomer
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -56,6 +57,8 @@ class DashboardRepository @Inject constructor(
                 appPreferences.cachedOpenTickets = stats.openTickets
                 appPreferences.cachedRevenueToday = stats.revenueToday
                 return stats
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Dashboard API failed: ${e.message}")
             }
@@ -81,6 +84,8 @@ class DashboardRepository @Inject constructor(
                 appPreferences.cachedStaleTickets = attention.staleTicketsCount
                 appPreferences.cachedOverdueInvoices = attention.overdueInvoicesCount
                 return attention
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "NeedsAttention API failed: ${e.message}")
             }
@@ -104,6 +109,8 @@ class DashboardRepository @Inject constructor(
             val tickets = response.data?.tickets ?: emptyList()
             ticketDao.insertAll(tickets.map { it.toEntity() })
             tickets
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "My Queue refresh failed: ${e.message}")
             emptyList()
@@ -130,6 +137,8 @@ class DashboardRepository @Inject constructor(
                 Log.w(TAG, "getChurnRisk failed (${e.code()}): ${e.message}")
             }
             Pair(null, emptyList())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "getChurnRisk failed: ${e.message}")
             Pair(null, emptyList())
@@ -152,6 +161,8 @@ class DashboardRepository @Inject constructor(
                 Log.w(TAG, "getCashTrapped failed (${e.code()}): ${e.message}")
             }
             null
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "getCashTrapped failed: ${e.message}")
             null

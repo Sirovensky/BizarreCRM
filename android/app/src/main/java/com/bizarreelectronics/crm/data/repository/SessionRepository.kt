@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.api.IntegrityApi
 import com.bizarreelectronics.crm.data.remote.api.IntegrityVerifyRequest
 import com.bizarreelectronics.crm.util.PlayIntegrityClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -138,6 +139,8 @@ class SessionRepository @Inject constructor(
                 Timber.w(e, "Play Integrity: server verification returned HTTP %d", e.code())
             }
             // 404 = endpoint not deployed; skip silently (non-blocking)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.w(e, "Play Integrity: non-blocking check failed")
         }

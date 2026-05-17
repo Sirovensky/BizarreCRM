@@ -10,6 +10,7 @@ import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderReceiveRequest
 import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderRow
 import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderUpdateRequest
 import com.bizarreelectronics.crm.data.remote.dto.SupplierRow
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -95,6 +96,8 @@ class PurchaseOrderRepository @Inject constructor(
             val response = api.listSuppliers()
             if (response.success) response.data ?: emptyList()
             else emptyList()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "listSuppliers failed: ${e.message}")
             emptyList()

@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.api.NotificationPreferencesPatchRe
 import com.bizarreelectronics.crm.data.remote.api.NotificationQuietHoursDto
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
@@ -33,6 +34,8 @@ class NotificationPreferencesRepository @Inject constructor(
                 Timber.w(e, "notification preferences refresh failed")
             }
             false
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.w(e, "notification preferences refresh failed")
             false
@@ -49,6 +52,8 @@ class NotificationPreferencesRepository @Inject constructor(
                     Timber.w(e, "notification preferences patch failed")
                 }
                 false
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.w(e, "notification preferences patch failed")
                 false

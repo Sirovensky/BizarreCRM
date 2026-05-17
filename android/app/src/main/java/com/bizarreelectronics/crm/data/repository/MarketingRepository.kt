@@ -11,6 +11,7 @@ import com.bizarreelectronics.crm.data.remote.api.MarketingApi
 import com.bizarreelectronics.crm.data.remote.api.ReviewRequestTriggerRequest
 import com.bizarreelectronics.crm.data.remote.api.SegmentMembersData
 import com.bizarreelectronics.crm.data.remote.api.UpdateCampaignRequest
+import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -51,6 +52,8 @@ class MarketingRepository @Inject constructor(
         return try {
             api.deleteCampaign(id)
             true
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.e(e, "MarketingRepository.deleteCampaign id=$id")
             false

@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.remote.dto.DispatchJobDetail
 import com.bizarreelectronics.crm.data.remote.dto.RouteOptimizeRequest
 import com.bizarreelectronics.crm.data.remote.dto.RouteOptimizeResult
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -156,6 +157,8 @@ class DispatchRepository @Inject constructor(
             // the ping carries location data that gets logged even on a same-status transition,
             // and if the status changed the tech should not be pinging anyway. The caller catches.
             api.updateJobStatus(jobId, body)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "pingLocation: failed for job $jobId — ${e.message}")
         }
