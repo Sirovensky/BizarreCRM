@@ -3037,11 +3037,20 @@ router.post(
 
     const authorId = req.user?.id ?? null;
 
+    // BUGHUNT-2026-05-17: atomic insert-if-customer-not-soft-deleted (same
+    // shape as customer assets POST). Without WHERE EXISTS, a /DELETE on
+    // the customer landing between the existence check and the note INSERT
+    // leaves an orphaned note on a soft-deleted customer (the note list
+    // joins via customer_id but the customer is hidden from staff views).
     const result = await adb.run(
       `INSERT INTO customer_notes (customer_id, author_user_id, body)
-       VALUES (?, ?, ?)`,
-      customerId, authorId, trimmed,
+         SELECT ?, ?, ?
+          WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)`,
+      customerId, authorId, trimmed, customerId,
     );
+    if (result.changes === 0) {
+      throw new AppError('Customer was just deleted; refresh and retry', 409);
+    }
 
     const note = await adb.get<AnyRow>(
       `SELECT n.id, n.customer_id, n.author_user_id, n.body, n.created_at,
