@@ -145,6 +145,12 @@ public struct NotificationBadgeView: View {
         }
         .animation(.spring(response: DesignTokens.Motion.snappy, dampingFraction: 0.7), value: vm.badgeLabel)
         .task { await vm.start() }
+        // BUGHUNT-2026-05-17: stop polling on disappear. .task auto-cancels
+        // start() but start() returns immediately after calling startPolling(),
+        // which detaches an unbounded pollTask. Without explicit stop, the
+        // poll loop survives view tear-down — and since the vm is typically
+        // held by DI (never deinits), the task ran indefinitely.
+        .onDisappear { vm.stop() }
     }
 }
 

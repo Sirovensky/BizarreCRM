@@ -401,6 +401,19 @@ public final class ImportWizardViewModel {
         errorMessage = nil
     }
 
+    /// BUGHUNT-2026-05-17: cancel any in-flight poll without nuking wizard
+    /// state. Call from `onDisappear` so a swipe-to-dismiss doesn't leave
+    /// the 2s pollTask running forever on a sheet the user has already
+    /// closed. Unlike `reset()`, this preserves uploaded file / job id so a
+    /// user who re-opens the wizard mid-import can still see the running
+    /// job (vm is currently @State-bound to the view, so on real dismiss
+    /// state still resets — but if that ever changes, this method is the
+    /// minimal safe cleanup).
+    public func stopPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
     /// Reset to initial state (for dismiss/cancel).
     public func reset() {
         pollTask?.cancel()

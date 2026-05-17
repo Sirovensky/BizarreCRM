@@ -26,6 +26,10 @@ public struct DataImportView: View {
             }
         }
         .tint(.bizarreOrange)
+        // BUGHUNT-2026-05-17: stop the 2s poll loop on swipe-to-dismiss.
+        // Cancel/Done buttons call vm.reset() which already stops polling,
+        // but a sheet dismiss via gesture skipped both, leaking the task.
+        .onDisappear { vm.stopPolling() }
     }
 
     // MARK: - iPhone: NavigationStack wizard
