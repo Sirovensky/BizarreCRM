@@ -192,7 +192,10 @@ router.post('/', asyncHandler(async (req, res) => {
   }
 
   // Verify customer exists
-  const cust = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ?', safeCustomerId);
+  // BUGHUNT-2026-05-17: require is_deleted=0 so a soft-deleted customer
+  // can't have a fresh credit note attached (which would leak PII into a
+  // new financial row the GDPR-erase flow didn't see).
+  const cust = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', safeCustomerId);
   if (!cust) throw new AppError('Customer not found', 404);
 
   // Verify original invoice if provided
@@ -207,18 +210,27 @@ router.post('/', asyncHandler(async (req, res) => {
   const seq = allocateCounter(req.db, 'credit_note_id');
   const cnOrderId = formatCreditNoteId(seq);
 
+  // BUGHUNT-2026-05-17: atomic insert-if-customer-still-active. A /DELETE
+  // landing between the precheck and the INSERT silently orphans the
+  // credit note onto a soft-deleted customer (and the deleted customer
+  // would see a phantom credit-note row in any audit-rebuild).
   const result = await adb.run(`
     INSERT INTO credit_notes
       (customer_id, original_invoice_id, amount_cents, reason, status,
        created_by_user_id, created_at)
-    VALUES (?, ?, ?, ?, 'open', ?, datetime('now'))
+      SELECT ?, ?, ?, ?, 'open', ?, datetime('now')
+       WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)
   `,
     safeCustomerId,
     original_invoice_id != null ? parseInt(String(original_invoice_id), 10) : null,
     safeCents,
     (typeof reason === 'string' ? reason : null),
     req.user.id,
+    safeCustomerId,
   );
+  if (result.changes === 0) {
+    throw new AppError('Customer was just deleted; refresh and retry', 409);
+  }
 
   const newId = result.lastInsertRowid as number;
 
