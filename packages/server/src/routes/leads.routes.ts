@@ -1099,6 +1099,22 @@ router.post(
     // SEC-H113: enforce state-machine transition before writing
     assertLeadTransition(lead.status, 'converted');
 
+    // BUGHUNT-2026-05-17: claim the conversion atomically up-front so two
+    // concurrent /convert calls on the same lead can't both pass the
+    // SELECT-status precheck above, both reserve tier slots, and both
+    // create separate tickets. The UPDATE WHERE status != 'converted'
+    // serialises via SQLite's writer lock — only one caller flips the
+    // status; the loser sees changes=0 and gets 409. If downstream work
+    // fails after the claim, the operator can manually transition the
+    // lead back via PUT /:id (the converted→new transition is legal).
+    const claimResult = await adb.run(
+      "UPDATE leads SET status = 'converted', updated_at = datetime('now') WHERE id = ? AND status != 'converted' AND is_deleted = 0",
+      id,
+    );
+    if (claimResult.changes === 0) {
+      throw new AppError('Lead already converted (race with another request)', 409);
+    }
+
     // Tier: atomic monthly ticket limit check (check + pre-increment in one transaction)
     // Free plans cap maxTicketsMonth; Pro plans set it to null (unlimited).
     let tierReservationCommitted = false;
@@ -1264,8 +1280,8 @@ router.post(
       });
     }
 
-    // Update lead status
-    await adb.run("UPDATE leads SET status = 'converted', updated_at = datetime('now') WHERE id = ?", id);
+    // Lead status was already flipped to 'converted' atomically at the top of
+    // this handler (BUGHUNT-2026-05-17). Nothing more to do here.
 
     const ticket = await adb.get<any>('SELECT * FROM tickets WHERE id = ?', ticketId);
     // WEB-UIUX-1350: include the lead's order_id alongside the ticket so the
