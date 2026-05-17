@@ -24,6 +24,11 @@ public struct VoicemailPlayerView: View {
     @State private var elapsed: Double = 0
     @State private var playbackRate: Float = 1.0
     @State private var periodicObserver: Any?
+    // BUGHUNT-2026-05-17: NotificationCenter observer token used to remove
+    // the AVPlayerItemDidPlayToEndTime observer in stopPlayback(). Previously
+    // the return value of addObserver(forName:object:queue:using:) was
+    // discarded, so opening + closing the player N times leaked N observers.
+    @State private var endOfFileObserver: NSObjectProtocol?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -193,8 +198,8 @@ public struct VoicemailPlayerView: View {
             }
         }
 
-        // End-of-file observer
-        NotificationCenter.default.addObserver(
+        // End-of-file observer — token captured so it can be removed in stopPlayback.
+        endOfFileObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
@@ -223,6 +228,11 @@ public struct VoicemailPlayerView: View {
         player?.pause()
         if let obs = periodicObserver {
             player?.removeTimeObserver(obs)
+            periodicObserver = nil
+        }
+        if let endObs = endOfFileObserver {
+            NotificationCenter.default.removeObserver(endObs)
+            endOfFileObserver = nil
         }
         player = nil
         isPlaying = false

@@ -120,16 +120,23 @@ public final class NotificationDigestScheduler: Sendable {
             return
         }
 
-        let fireDate = nextFireDate(from: now, policy: policy, calendar: calendar)
-        let delay = max(1, fireDate.timeIntervalSince(now))
-
         let content = UNMutableNotificationContent()
         content.title = "Morning Digest"
         content.body = "Your daily BizarreCRM summary is ready."
         content.categoryIdentifier = "bizarre.digest"
         content.interruptionLevel = .passive
 
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+        // BUGHUNT-2026-05-17: was `UNTimeIntervalNotificationTrigger(repeats: false)`
+        // with the delay-until-next-9am computed at schedule time. That fires
+        // exactly once — day-2 onward got no fallback notification because
+        // nothing re-schedules. The digest is documented as the daily fallback
+        // when the server push doesn't arrive, so a one-shot defeats the whole
+        // point. Use a calendar trigger with hour/minute components and
+        // repeats: true so the OS fires it every day at the configured time.
+        var dateComps = DateComponents()
+        dateComps.hour = policy.sendTime.hour
+        dateComps.minute = policy.sendTime.minute
+        let trigger = UNCalendarNotificationTrigger(dateMatching: dateComps, repeats: true)
         let request = UNNotificationRequest(identifier: digestRequestID, content: content, trigger: trigger)
 
         do {

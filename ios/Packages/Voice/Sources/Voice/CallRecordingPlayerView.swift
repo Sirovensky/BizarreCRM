@@ -49,6 +49,12 @@ public struct CallRecordingPlayerView: View {
     @State private var playbackRate: Float = 1.0
     @State private var periodicObserver: Any?
     @State private var loadError: String?
+    // BUGHUNT-2026-05-17: NotificationCenter observer tokens — see
+    // VoicemailPlayerView for the same fix. Two observers were added per
+    // setupPlayer call (end-of-time and failed-to-play); both tokens were
+    // discarded, leaking on every open/close cycle.
+    @State private var endOfFileObserver: NSObjectProtocol?
+    @State private var failedToPlayObserver: NSObjectProtocol?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -265,7 +271,7 @@ public struct CallRecordingPlayerView: View {
             }
         }
 
-        NotificationCenter.default.addObserver(
+        endOfFileObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
@@ -279,7 +285,7 @@ public struct CallRecordingPlayerView: View {
         }
 
         // Observe AVPlayerItem status to catch load errors.
-        NotificationCenter.default.addObserver(
+        failedToPlayObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
             object: item,
             queue: .main
@@ -306,6 +312,15 @@ public struct CallRecordingPlayerView: View {
         player?.pause()
         if let obs = periodicObserver {
             player?.removeTimeObserver(obs)
+            periodicObserver = nil
+        }
+        if let endObs = endOfFileObserver {
+            NotificationCenter.default.removeObserver(endObs)
+            endOfFileObserver = nil
+        }
+        if let failObs = failedToPlayObserver {
+            NotificationCenter.default.removeObserver(failObs)
+            failedToPlayObserver = nil
         }
         player = nil
         isPlaying = false

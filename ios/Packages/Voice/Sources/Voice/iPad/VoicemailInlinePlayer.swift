@@ -30,6 +30,9 @@ public struct VoicemailInlinePlayer: View {
     @State private var elapsed: Double = 0
     @State private var playbackRate: Float = 1.0
     @State private var periodicObserver: Any?
+    // BUGHUNT-2026-05-17: NotificationCenter token captured so tearDown can
+    // remove it; matches the VoicemailPlayerView + CallRecordingPlayerView fix.
+    @State private var endOfFileObserver: NSObjectProtocol?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -201,7 +204,7 @@ public struct VoicemailInlinePlayer: View {
         }
 
         // End-of-file reset
-        NotificationCenter.default.addObserver(
+        endOfFileObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
@@ -220,6 +223,10 @@ public struct VoicemailInlinePlayer: View {
         if let obs = periodicObserver {
             player?.removeTimeObserver(obs)
             periodicObserver = nil
+        }
+        if let endObs = endOfFileObserver {
+            NotificationCenter.default.removeObserver(endObs)
+            endOfFileObserver = nil
         }
         player = nil
         isPlaying = false
