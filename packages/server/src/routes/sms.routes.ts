@@ -1457,14 +1457,27 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
           customer.id,
         );
         if (recentEstimate) {
-          await adb.run(
+          // BUGHUNT-2026-05-17: guard the UPDATE WHERE status='sent'. The
+          // SELECT precheck is TOCTOU racy — a portal approve, portal
+          // reject, or shop-side estimates.routes.ts reject landing between
+          // the SELECT and this UPDATE would otherwise be silently
+          // overwritten to 'approved' by this SMS path. If we lost the race,
+          // skip the signature INSERT + audit, but let the rest of the
+          // inbound-SMS handler (broadcast, auto-reply) continue.
+          const smsApproveResult = await adb.run(
             `UPDATE estimates
                SET status = 'approved',
                    approved_at = datetime('now'),
                    updated_at = datetime('now')
-             WHERE id = ?`,
+             WHERE id = ? AND status = 'sent'`,
             recentEstimate.id,
           );
+          if (smsApproveResult.changes === 0) {
+            logger.info('sms_yes_estimate_skipped_status_changed', {
+              estimate_id: recentEstimate.id,
+              reason: 'concurrent portal/staff action moved status off sent',
+            });
+          } else {
           // Mirror portal flow — write an estimate_signatures audit row
           // anchored to the SMS reply so the shop has compliance evidence.
           try {
@@ -1498,6 +1511,7 @@ export async function smsInboundWebhookHandler(req: Request, res: Response): Pro
             estimate_id: recentEstimate.id,
             customer_id: customer.id,
           });
+          } // end else (smsApproveResult had changes)
         }
       } catch (yesErr) {
         logger.error('sms_yes_estimate_approve_failed', {
