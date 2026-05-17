@@ -391,7 +391,20 @@ router.post(
 
     const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
     pauses.push({ pause_at: new Date().toISOString() });
-    await adb.run('UPDATE bench_timers SET pause_log_json = ? WHERE id = ?', JSON.stringify(pauses), id);
+    // BUGHUNT-2026-05-17: CAS on pause_log_json + ended_at IS NULL. Two
+    // concurrent /pause requests both pass the precheck, both compute
+    // pauses + write back, and the second writer's JSON overwrites the
+    // first's (the row ends up with one fewer pause event than it
+    // should). A racing /stop sets ended_at but our blind UPDATE would
+    // also revive the pause log on a stopped timer.
+    const snapshot = row.pause_log_json ?? '';
+    const updRes = await adb.run(
+      'UPDATE bench_timers SET pause_log_json = ? WHERE id = ? AND ended_at IS NULL AND COALESCE(pause_log_json, \'\') = ?',
+      JSON.stringify(pauses), id, snapshot,
+    );
+    if (updRes.changes === 0) {
+      throw new AppError('Timer state changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'bench_timer_paused', req.user?.id ?? null, req.ip ?? 'unknown', {
       timer_id: id,
@@ -430,7 +443,19 @@ router.post(
     const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
     const last = pauses[pauses.length - 1];
     if (last) last.resume_at = new Date().toISOString();
-    await adb.run('UPDATE bench_timers SET pause_log_json = ? WHERE id = ?', JSON.stringify(pauses), id);
+    // BUGHUNT-2026-05-17: CAS on pause_log_json + ended_at IS NULL —
+    // symmetric to /pause above. Without this, two concurrent /resume
+    // calls both pass the precheck and produce a single resume_at on
+    // the last pause but with the wrong timestamp; a racing /stop is
+    // overwritten.
+    const snapshot = row.pause_log_json ?? '';
+    const updRes = await adb.run(
+      'UPDATE bench_timers SET pause_log_json = ? WHERE id = ? AND ended_at IS NULL AND COALESCE(pause_log_json, \'\') = ?',
+      JSON.stringify(pauses), id, snapshot,
+    );
+    if (updRes.changes === 0) {
+      throw new AppError('Timer state changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'bench_timer_resumed', req.user?.id ?? null, req.ip ?? 'unknown', {
       timer_id: id,
