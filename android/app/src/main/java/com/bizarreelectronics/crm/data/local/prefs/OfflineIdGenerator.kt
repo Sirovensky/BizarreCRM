@@ -47,7 +47,15 @@ class OfflineIdGenerator @Inject constructor(
     fun nextTempId(): Long {
         val current = prefs.getLong(KEY_TEMP_ID_COUNTER, INITIAL_TEMP_ID)
         val next = current - 1L
-        prefs.edit().putLong(KEY_TEMP_ID_COUNTER, next).apply()
+        // BUGHUNT-2026-05-17: commit() instead of apply() — apply() schedules
+        // an async disk write that may not survive an app crash mid-batch.
+        // If the app dies between the in-memory update and the disk flush,
+        // the next launch re-reads the OLD counter and reissues the SAME
+        // temp id we just returned — Room PK collision on the next insert
+        // that uses the colliding tempId. Counter monotonicity must be
+        // durable across crashes; the synchronous fsync cost is dwarfed by
+        // the cost of recovering from a duplicate-PK insert.
+        prefs.edit().putLong(KEY_TEMP_ID_COUNTER, next).commit()
         return next
     }
 
@@ -64,7 +72,14 @@ class OfflineIdGenerator @Inject constructor(
     fun nextOfflineReference(prefix: String = "OFFLINE"): String {
         val current = prefs.getLong(KEY_OFFLINE_REF_COUNTER, 0L)
         val next = current + 1L
-        prefs.edit().putLong(KEY_OFFLINE_REF_COUNTER, next).apply()
+        // BUGHUNT-2026-05-17: commit() instead of apply() — see nextTempId
+        // above for rationale. The offline reference is shown to the user on
+        // the receipt, in customer-search results, and is the lookup key for
+        // matching the offline row to the eventual server-assigned id. A
+        // counter rollback after crash would issue the same OFFLINE-… string
+        // to two different ticket creates, making it ambiguous which one
+        // each maps to once sync completes.
+        prefs.edit().putLong(KEY_OFFLINE_REF_COUNTER, next).commit()
         val date = LocalDate.now().format(DATE_FORMATTER)
         return "$prefix-$date-${next.toString().padStart(4, '0')}"
     }
