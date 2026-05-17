@@ -1,6 +1,7 @@
 import Foundation
 import Core
 import Networking
+import Persistence
 
 // MARK: - TimeclockOfflineQueue
 //
@@ -8,8 +9,11 @@ import Networking
 // offline, then drains them to the server on reconnect.
 //
 // Architecture:
-//  - Pending events stored in UserDefaults (Keychain not needed — no secrets,
-//    just operation type + userId).
+//  - Pending events stored in the Keychain. BUGHUNT-2026-05-17: previously
+//    UserDefaults — but each `PendingTimeclockEvent` carries the user's PIN,
+//    which must NEVER live in unencrypted plist storage. Migrated to
+//    `KeychainKey.timeclockOfflineQueue`; any legacy UserDefaults rows are
+//    drained on first load and the plist key is removed.
 //  - Drain is idempotent: each event carries an idempotency key so a retry
 //    after a partial flush won't duplicate entries.
 //  - On successful server write the event is removed from the queue.
@@ -45,14 +49,27 @@ public actor TimeclockOfflineQueue {
 
     public static let shared = TimeclockOfflineQueue()
 
-    private let defaultsKey = "bizarrecrm.timeclock.offline_queue"
+    /// Legacy UserDefaults key. Kept only for one-shot migration into Keychain.
+    private let legacyDefaultsKey = "bizarrecrm.timeclock.offline_queue"
     private var pending: [PendingTimeclockEvent] = []
     private var isDraining = false
 
     private init() {
-        if let data = UserDefaults.standard.data(forKey: defaultsKey),
+        // Preferred storage: Keychain (PINs are secrets).
+        if let raw = KeychainStore.shared.get(.timeclockOfflineQueue),
+           let data = Data(base64Encoded: raw),
            let events = try? JSONDecoder().decode([PendingTimeclockEvent].self, from: data) {
             pending = events
+            return
+        }
+        // One-shot migration: drain anything that was previously persisted to
+        // UserDefaults, write it back to the Keychain, then clear the plist
+        // entry so the PIN never lingers there.
+        if let data = UserDefaults.standard.data(forKey: legacyDefaultsKey),
+           let events = try? JSONDecoder().decode([PendingTimeclockEvent].self, from: data) {
+            pending = events
+            persist()
+            UserDefaults.standard.removeObject(forKey: legacyDefaultsKey)
         }
     }
 
@@ -79,7 +96,8 @@ public actor TimeclockOfflineQueue {
         defer { isDraining = false }
 
         var remaining: [PendingTimeclockEvent] = []
-        for event in pending {
+        var cancelledIndex: Int? = nil
+        for (index, event) in pending.enumerated() {
             do {
                 switch event.action {
                 case .clockIn:
@@ -90,6 +108,18 @@ public actor TimeclockOfflineQueue {
                 AppLog.sync.info(
                     "Timeclock drained: \(event.action.rawValue, privacy: .public) id=\(event.id, privacy: .public)"
                 )
+            } catch is CancellationError {
+                // BUGHUNT-2026-05-17: stop draining when the task is cancelled
+                // and re-queue this event AND every subsequent unprocessed
+                // event. The previous code re-threw nothing and kept iterating
+                // on a cancelled task, which then issued every remaining
+                // network call on a dead Task — each fail-catch was logged
+                // as a payload failure and the events stayed queued anyway,
+                // but the rest of the app saw a flood of CancellationError
+                // log noise and the chrono ordering of "first event keeps
+                // its slot" was effectively preserved by accident only.
+                cancelledIndex = index
+                break
             } catch {
                 AppLog.sync.error(
                     "Timeclock drain failed: \(error.localizedDescription, privacy: .public) — keeping in queue"
@@ -97,22 +127,25 @@ public actor TimeclockOfflineQueue {
                 remaining.append(event)
             }
         }
+        if let start = cancelledIndex {
+            remaining.append(contentsOf: pending[start..<pending.count])
+        }
         pending = remaining
         persist()
     }
 
     // MARK: - Persistence
 
-    private func loadFromDefaults() {
-        guard
-            let data = UserDefaults.standard.data(forKey: defaultsKey),
-            let events = try? JSONDecoder().decode([PendingTimeclockEvent].self, from: data)
-        else { return }
-        pending = events
-    }
-
     private func persist() {
+        // Serialise + base64-encode so the Keychain (which stores strings via
+        // KeychainStore) keeps the JSON intact. When the queue is empty,
+        // remove the Keychain entry entirely so an attacker dumping the
+        // Keychain doesn't find a stale list of historical clock events.
+        if pending.isEmpty {
+            try? KeychainStore.shared.remove(.timeclockOfflineQueue)
+            return
+        }
         guard let data = try? JSONEncoder().encode(pending) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        try? KeychainStore.shared.set(data.base64EncodedString(), for: .timeclockOfflineQueue)
     }
 }

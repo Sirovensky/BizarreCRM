@@ -10,12 +10,13 @@ let package = Package(
     dependencies: [
         .package(path: "../Core"),
         .package(path: "../DesignSystem"),
-        .package(path: "../Networking")
+        .package(path: "../Networking"),
+        .package(path: "../Persistence")
     ],
     targets: [
         .target(
             name: "Timeclock",
-            dependencies: ["Core", "DesignSystem", "Networking"]
+            dependencies: ["Core", "DesignSystem", "Networking", "Persistence"]
         ),
         .testTarget(
             name: "TimeclockTests",

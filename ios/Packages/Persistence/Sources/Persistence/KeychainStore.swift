@@ -17,6 +17,8 @@ public enum KeychainKey: String, Sendable {
     case activeTenantId  = "auth.active_tenant_id"
     /// §2 Remember-me: last-used email for login pre-fill. Never stores password.
     case rememberedEmail = "auth.remembered_email"
+    /// §14.3 Offline timeclock queue (PIN must NOT live in UserDefaults).
+    case timeclockOfflineQueue = "timeclock.offline_queue"
 }
 
 public final class KeychainStore: @unchecked Sendable {
