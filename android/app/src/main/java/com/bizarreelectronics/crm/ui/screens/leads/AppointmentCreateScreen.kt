@@ -84,7 +84,13 @@ private fun defaultStartMillis(): Long {
     return cal.timeInMillis
 }
 
-/** Compose a millis from a date base + a (hour, minute) time-of-day. */
+/**
+ * Compose a millis from a date base + a (hour, minute) time-of-day.
+ *
+ * `dateMillis` is expected to be a local-zone full-datetime millis (e.g.
+ * `state.startDateTimeMillis`). For raw DatePicker output (UTC-midnight),
+ * use [normalizeUtcMidnightToLocal] first.
+ */
 private fun composeMillis(dateMillis: Long, hour: Int, minute: Int): Long {
     val cal = Calendar.getInstance().apply {
         timeInMillis = dateMillis
@@ -94,6 +100,22 @@ private fun composeMillis(dateMillis: Long, hour: Int, minute: Int): Long {
         set(Calendar.MILLISECOND, 0)
     }
     return cal.timeInMillis
+}
+
+/**
+ * BUGHUNT-2026-05-17: Material3 DatePicker reports the selected day as UTC
+ * midnight. Convert that to a local-zone millis representing the same calendar
+ * day at 00:00 in the device's timezone, so [composeMillis] can overlay the
+ * desired hour/minute. Without this, PST users picking "May 10 at 3pm" used
+ * to get a millis on May 9 because Calendar interpreted UTC-midnight in PST.
+ */
+private fun normalizeUtcMidnightToLocal(utcMidnightMillis: Long): Long {
+    val date = java.time.Instant.ofEpochMilli(utcMidnightMillis)
+        .atZone(java.time.ZoneOffset.UTC)
+        .toLocalDate()
+    return date.atStartOfDay(java.time.ZoneId.systemDefault())
+        .toInstant()
+        .toEpochMilli()
 }
 
 private fun hourOf(millis: Long): Int =
@@ -235,8 +257,12 @@ class AppointmentCreateViewModel @Inject constructor(
 
     fun updateStartDate(dateMillis: Long) {
         val current = _state.value
+        // BUGHUNT-2026-05-17: dateMillis comes from Material3 DatePicker (UTC
+        // midnight). Normalise to a local-zone date base before composeMillis
+        // overlays the existing time-of-day — see normalizeUtcMidnightToLocal.
+        val normalizedBase = normalizeUtcMidnightToLocal(dateMillis)
         val newStart = composeMillis(
-            dateMillis,
+            normalizedBase,
             hourOf(current.startDateTimeMillis),
             minuteOf(current.startDateTimeMillis),
         )
@@ -254,8 +280,11 @@ class AppointmentCreateViewModel @Inject constructor(
 
     fun updateEndDate(dateMillis: Long) {
         val current = _state.value
+        // BUGHUNT-2026-05-17: see updateStartDate — DatePicker millis is UTC
+        // midnight; normalise to a local-zone base before composing.
+        val normalizedBase = normalizeUtcMidnightToLocal(dateMillis)
         val newEnd = composeMillis(
-            dateMillis,
+            normalizedBase,
             hourOf(current.endDateTimeMillis),
             minuteOf(current.endDateTimeMillis),
         )

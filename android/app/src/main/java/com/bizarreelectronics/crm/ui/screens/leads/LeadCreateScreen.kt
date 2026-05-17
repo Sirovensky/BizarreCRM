@@ -131,8 +131,11 @@ class LeadCreateViewModel @Inject constructor(
 
     /** Called from DatePickerDialog confirmation. */
     fun updateFollowUpDateMillis(millis: Long) {
+        // BUGHUNT-2026-05-17: Material3 DatePicker selectedDateMillis is UTC
+        // midnight. Reading via systemDefault() shifted the date for users
+        // west of UTC. Anchor at UTC to recover the user's selected day.
         val localDate = Instant.ofEpochMilli(millis)
-            .atZone(ZoneId.systemDefault())
+            .atZone(java.time.ZoneOffset.UTC)
             .toLocalDate()
         _state.value = _state.value.copy(
             followUpDateMillis = millis,

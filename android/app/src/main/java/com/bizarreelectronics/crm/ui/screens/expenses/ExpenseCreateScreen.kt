@@ -151,8 +151,14 @@ class ExpenseCreateViewModel @Inject constructor(
 
     /** Called when the Material3 DatePicker confirms a selection. */
     fun updateDateMillis(millis: Long) {
+        // BUGHUNT-2026-05-17: Material3 DatePicker reports the selected day as
+        // UTC midnight (selectedDateMillis is documented to be at UTC). Reading
+        // it back via ZoneId.systemDefault() shifted the date for users west of
+        // UTC — a PST user tapping "May 10" got "May 9" in `state.date`, and
+        // the wrong day was persisted to the server. Interpret the millis at
+        // ZoneOffset.UTC to recover the user's intended LocalDate.
         val localDate = Instant.ofEpochMilli(millis)
-            .atZone(ZoneId.systemDefault())
+            .atZone(java.time.ZoneOffset.UTC)
             .toLocalDate()
         _state.value = _state.value.copy(
             dateMillis = millis,

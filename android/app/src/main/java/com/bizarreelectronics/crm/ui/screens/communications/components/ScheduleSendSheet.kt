@@ -114,12 +114,20 @@ fun ScheduleSendSheet(
                     Button(onClick = {
                         val dateMs = selectedDateMs ?: System.currentTimeMillis()
                         val zone = ZoneId.systemDefault()
-                        val scheduledAt = ZonedDateTime.ofInstant(
-                            Instant.ofEpochMilli(dateMs), zone,
-                        ).withHour(timePickerState.hour)
-                            .withMinute(timePickerState.minute)
-                            .withSecond(0)
-                            .withNano(0)
+                        // BUGHUNT-2026-05-17: Material3 DatePicker reports the
+                        // selected day as UTC midnight. Interpreting that
+                        // millis in local zone (then overwriting hour/minute)
+                        // shifted the date one day earlier for users west of
+                        // UTC — a PST user picking "May 10 at 3pm" got
+                        // "May 9 at 3pm PST" sent to the SMS scheduler.
+                        // Recover the LocalDate at UTC, then bind it to the
+                        // chosen LocalTime in the user's actual zone.
+                        val localDate = Instant.ofEpochMilli(dateMs)
+                            .atZone(java.time.ZoneOffset.UTC)
+                            .toLocalDate()
+                        val scheduledAt = localDate
+                            .atTime(timePickerState.hour, timePickerState.minute)
+                            .atZone(zone)
                         onSchedule(scheduledAt.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
                     }) { Text("Schedule") }
                 }

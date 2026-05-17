@@ -835,10 +835,18 @@ fun CustomerCreateScreen(
                     showBirthdayPicker = false
                     val millis = datePickerState.selectedDateMillis
                     if (millis != null) {
-                        val cal = java.util.Calendar.getInstance().also { it.timeInMillis = millis }
-                        val mm = String.format("%02d", cal.get(java.util.Calendar.MONTH) + 1)
-                        val dd = String.format("%02d", cal.get(java.util.Calendar.DAY_OF_MONTH))
-                        val yyyy = cal.get(java.util.Calendar.YEAR)
+                        // BUGHUNT-2026-05-17: Material3 DatePicker selectedDateMillis
+                        // is UTC midnight. Reading via Calendar.getInstance() — which
+                        // uses the device's default timezone — shifted the date by
+                        // a day for users west of UTC: a PST user picking May 10
+                        // saw their birthday persisted as 05/09. Read the LocalDate
+                        // at UTC to preserve the day the user actually tapped.
+                        val date = java.time.Instant.ofEpochMilli(millis)
+                            .atZone(java.time.ZoneOffset.UTC)
+                            .toLocalDate()
+                        val mm = String.format("%02d", date.monthValue)
+                        val dd = String.format("%02d", date.dayOfMonth)
+                        val yyyy = date.year
                         viewModel.updateBirthday("$mm/$dd/$yyyy")
                     }
                 }) { Text("OK") }

@@ -184,7 +184,14 @@ private fun CustomDateRangeSheet(
                     val startMs = pickerState.selectedStartDateMillis
                     val endMs = pickerState.selectedEndDateMillis
                     if (startMs != null && endMs != null) {
-                        val zoneId = ZoneId.systemDefault()
+                        // BUGHUNT-2026-05-17: Material3 DateRangePicker reports
+                        // each endpoint as UTC midnight. Reading via
+                        // systemDefault() shifted both endpoints by a day for
+                        // users west of UTC — a PST user picking
+                        // "May 1 – May 7" saw the dashboard query
+                        // "Apr 30 – May 6". Anchor at UTC to recover the
+                        // user's selected calendar range.
+                        val zoneId = java.time.ZoneOffset.UTC
                         val from = java.time.Instant.ofEpochMilli(startMs)
                             .atZone(zoneId).toLocalDate()
                         val to = java.time.Instant.ofEpochMilli(endMs)
