@@ -269,18 +269,24 @@ router.post('/tickets/:ticketId/assign', asyncHandler(async (req: Request, res: 
   if (!label) throw new AppError('Label not found', 404);
   if (label.is_active === 0) throw new AppError('Cannot assign a deactivated label', 422);
 
-  // Existing assignment → 409
-  const already = await adb.get<{ id: number }>(
-    'SELECT id FROM ticket_label_assignments WHERE ticket_id = ? AND label_id = ?',
-    ticketId, labelId
-  );
-  if (already) throw new AppError('Label is already assigned to this ticket', 409);
-
+  // BUGHUNT-2026-05-17: atomic insert-if-absent. Previously
+  // SELECT-then-INSERT — two concurrent /assign with the same
+  // (ticket_id, label_id) both passed the precheck and both INSERTed,
+  // leaving duplicate assignment rows (and two audit entries) for a
+  // single logical label assignment. INSERT...WHERE NOT EXISTS is one
+  // statement so the second writer hits 0 changes and 409s cleanly.
   const ts = now();
   const result = await adb.run(
-    'INSERT INTO ticket_label_assignments (ticket_id, label_id, created_at) VALUES (?, ?, ?)',
-    ticketId, labelId, ts
+    `INSERT INTO ticket_label_assignments (ticket_id, label_id, created_at)
+       SELECT ?, ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM ticket_label_assignments WHERE ticket_id = ? AND label_id = ?
+        )`,
+    ticketId, labelId, ts, ticketId, labelId
   );
+  if (result.changes === 0) {
+    throw new AppError('Label is already assigned to this ticket', 409);
+  }
 
   audit(db, 'ticket_label.assigned', req.user!.id, req.ip || 'unknown', {
     assignment_id: Number(result.lastInsertRowid), ticket_id: ticketId, label_id: labelId,
