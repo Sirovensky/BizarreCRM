@@ -78,6 +78,7 @@ import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.WaiverApi
 import com.bizarreelectronics.crm.util.UndoStack
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -701,6 +702,14 @@ class TicketDetailViewModel @Inject constructor(
                         actionMessage = "Convert failed: server returned no invoice",
                     )
                     return@launch
+                } catch (e: CancellationException) {
+                    // BUGHUNT-2026-05-17: re-throw cancellation. The server-
+                    // side convert-to-invoice creates a new invoice row; a
+                    // cancellation-as-failure snackbar tempts the user to
+                    // retry, creating a duplicate invoice if the server in
+                    // fact accepted the first POST. The convertedInvoiceId
+                    // signal handles the success path explicitly.
+                    throw e
                 } catch (e: Exception) {
                     _state.value = _state.value.copy(
                         isActionInProgress = false,
