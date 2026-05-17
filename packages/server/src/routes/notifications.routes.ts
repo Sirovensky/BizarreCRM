@@ -211,6 +211,17 @@ router.post(
 
     const db = req.db;
     const adb = req.asyncDb;
+    const userId = req.user!.id;
+
+    // BUGHUNT-2026-05-17: match the rate limit on /send-receipt-sms below.
+    // Without this, a compromised manager account (or a buggy script)
+    // could mail-bomb customers with thousands of receipts — cost
+    // surface (SMTP fees, anti-spam reputation hit) and a customer-
+    // visible nuisance. 30/min/user matches the SMS sibling.
+    if (!checkWindowRate(db, 'receipt_email', String(userId), 30, 60_000)) {
+      throw new AppError('Rate limit exceeded. Try again shortly.', 429);
+    }
+
     const { invoice_id, recipient_email } = req.body as { invoice_id: unknown; recipient_email: unknown };
 
     const invoiceId = validateId(invoice_id, 'invoice_id');
