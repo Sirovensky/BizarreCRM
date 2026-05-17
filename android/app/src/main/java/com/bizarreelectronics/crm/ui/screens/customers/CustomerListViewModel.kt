@@ -22,6 +22,7 @@ import com.bizarreelectronics.crm.util.ScrollPosition
 import com.bizarreelectronics.crm.util.restoreScrollPosition
 import com.bizarreelectronics.crm.util.saveScrollPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -128,6 +129,13 @@ class CustomerListViewModel @Inject constructor(
                         isRefreshing = false,
                     )
                 }
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. Typeahead search
+                // cancels the previous collectJob on every keystroke; without
+                // this re-throw the catch (e: Exception) below caught the
+                // CancellationException and painted "Failed to load customers"
+                // every time the user typed faster than the 300ms debounce.
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
