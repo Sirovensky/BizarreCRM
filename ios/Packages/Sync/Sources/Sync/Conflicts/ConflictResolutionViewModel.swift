@@ -114,6 +114,12 @@ public final class ConflictResolutionViewModel {
             fieldSelections = Dictionary(
                 uniqueKeysWithValues: detail.diffedFields.map { ($0.key, ConflictSide.server) }
             )
+        } catch is CancellationError {
+            // User navigated away mid-fetch; honour the cancel — don't paint
+            // a phony error toast over a screen the user has already left.
+            return
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            return
         } catch {
             await setPhase(.error(error.localizedDescription))
         }
@@ -142,6 +148,13 @@ public final class ConflictResolutionViewModel {
             conflicts.removeAll { $0.id == conflictId }
             selectedConflict = nil
             await setPhase(.resolved(conflictId: conflictId, resolution: resolution))
+        } catch is CancellationError {
+            // User navigated away mid-submit — the server may or may not have
+            // applied the resolution; leave phase alone and let the next list
+            // refresh reconcile.
+            return
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            return
         } catch {
             await setPhase(.error(error.localizedDescription))
         }
@@ -170,6 +183,12 @@ public final class ConflictResolutionViewModel {
             currentPage = envelope.page
             totalPages = envelope.pages
             await setPhase(.idle)
+        } catch is CancellationError {
+            // Page fetch cancelled (view torn down, refresh re-triggered);
+            // leave phase alone so a stale "cancelled" error doesn't render.
+            return
+        } catch let urlErr as URLError where urlErr.code == .cancelled {
+            return
         } catch {
             await setPhase(.error(error.localizedDescription))
         }

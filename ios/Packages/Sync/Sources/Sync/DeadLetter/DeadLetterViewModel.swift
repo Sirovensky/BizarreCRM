@@ -33,6 +33,8 @@ public final class DeadLetterViewModel {
         defer { isLoading = false }
         do {
             items = try await repository.fetchAll()
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
             AppLog.sync.error("DeadLetterViewModel.load failed: \(error, privacy: .public)")
@@ -48,6 +50,8 @@ public final class DeadLetterViewModel {
             items.removeAll { $0.id == id }
             // Kick the drain loop through SyncManager.
             await SyncManager.shared.syncNow()
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
             AppLog.sync.error("DeadLetterViewModel.retry \(id, privacy: .public) failed: \(error, privacy: .public)")
@@ -61,6 +65,8 @@ public final class DeadLetterViewModel {
         do {
             try await repository.discard(id)
             items.removeAll { $0.id == id }
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
             AppLog.sync.error("DeadLetterViewModel.discard \(id, privacy: .public) failed: \(error, privacy: .public)")
