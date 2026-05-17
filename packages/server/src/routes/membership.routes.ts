@@ -582,6 +582,14 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
     // having an active subscription whose row is in 'cancelled' state (the
     // resubscribe code path keys off active_subscription_id and would refuse
     // a rejoin if this UPDATE crashed before the customers UPDATE).
+    //
+    // BUGHUNT-2026-05-17: also CAS the cancel UPDATE on status != 'cancelled'.
+    // Without this, two concurrent /cancel calls both pass through, both
+    // crediting the proration (computed above off the same subBeforeCancel
+    // snapshot) — a double refund worth real money. expectChanges rolls back
+    // the customers.active_subscription_id clear too if the claim loses.
+    // If we lost the race AFTER already crediting proration, reverse the
+    // credit so the customer doesn't end up with both halves of the refund.
     const customerIdFromSub = (subBeforeCancel as AnyRow | undefined)?.customer_id as number | undefined;
     const cancelTxQueries: TxQuery[] = [
       {
@@ -592,8 +600,10 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
                      cancellation_reason = ?,
                      cancellation_note = ?,
                      updated_at = ?
-               WHERE id = ?`,
+               WHERE id = ? AND status != 'cancelled'`,
         params: [cleanReason, cleanNote, now(), id],
+        expectChanges: true,
+        expectChangesError: 'SUBSCRIPTION_ALREADY_CANCELLED',
       },
     ];
     if (customerIdFromSub) {
@@ -602,7 +612,36 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
         params: [customerIdFromSub],
       });
     }
-    await adb.transaction(cancelTxQueries);
+    try {
+      await adb.transaction(cancelTxQueries);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('SUBSCRIPTION_ALREADY_CANCELLED')) {
+        // Reverse the proration credit we already issued — the other cancel
+        // request won the cancel race and is responsible for the credit (its
+        // own proration calculation would have produced the same number).
+        if (prorationCreditId && prorationAmount > 0 && customerIdFromSub) {
+          await adb.transaction([
+            {
+              sql: 'UPDATE store_credits SET amount = amount - ?, updated_at = ? WHERE customer_id = ?',
+              params: [prorationAmount, now(), customerIdFromSub],
+            },
+            {
+              sql: `INSERT INTO store_credit_transactions
+                      (customer_id, amount, type, reference_type, reference_id, notes, user_id, created_at)
+                    VALUES (?, ?, 'debit', 'subscription_cancellation', ?, ?, ?, ?)`,
+              params: [
+                customerIdFromSub, prorationAmount, id,
+                `Reversed duplicate proration credit (lost cancel race) for subscription #${id}`,
+                req.user!.id, now(),
+              ],
+            },
+          ]);
+        }
+        throw new AppError('Subscription was already cancelled by another request', 409);
+      }
+      throw err;
+    }
   } else {
     await adb.run(
       `UPDATE customer_subscriptions
