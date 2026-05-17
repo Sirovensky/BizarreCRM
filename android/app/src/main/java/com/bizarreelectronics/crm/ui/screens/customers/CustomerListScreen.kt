@@ -399,7 +399,9 @@ private fun CustomerStatsHeader(stats: com.bizarreelectronics.crm.data.remote.dt
         StatTile("Total", stats.total.toString())
         StatTile("VIPs", stats.vips.toString())
         StatTile("At-Risk", stats.atRisk.toString())
-        StatTile("Avg LTV", "$${stats.avgLtv.toLong()}")
+        // BUGHUNT-2026-05-17: was `.toLong()` (truncation) — $99.99 rendered
+        // as "$99". Math.round is HALF_UP, matches the rest of the chrome.
+        StatTile("Avg LTV", "$${Math.round(stats.avgLtv)}")
     }
 }
 

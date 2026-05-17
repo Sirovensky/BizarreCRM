@@ -681,8 +681,11 @@ private fun LtvTierChip(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
+            // BUGHUNT-2026-05-17: was `.toLong()` (IEEE-754 truncation toward
+            // zero) — a $99.99 LTV displayed as "$99". Math.round is HALF_UP
+            // which matches the rest of the money display chrome.
             Text(
-                "$${lifetimeValue.toLong()}",
+                "$${Math.round(lifetimeValue)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
