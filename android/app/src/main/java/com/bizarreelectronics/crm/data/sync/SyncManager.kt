@@ -279,6 +279,19 @@ class SyncManager @Inject constructor(
     suspend fun flushQueue() {
         if (!networkMonitor.isCurrentlyOnline()) return
 
+        // BUGHUNT-2026-05-17: rows orphaned at status='syncing' by a process
+        // that died between updateStatus("syncing") and the terminal
+        // updateStatus("completed"|"pending"). getPending() filters to
+        // status='pending', so without this reset the row never re-runs and
+        // its retries counter is never bumped — the mutation is silently
+        // abandoned. 60s grace protects against racing a legitimate in-flight
+        // drain on the same process.
+        val staleCutoff = System.currentTimeMillis() - 60_000L
+        val reset = syncQueueDao.resetStaleSyncing(staleCutoff)
+        if (reset > 0) {
+            Log.w(TAG, "Reset $reset orphaned syncing rows back to pending")
+        }
+
         val pending = syncQueueDao.getPending()
         for (entry in pending) {
             try {

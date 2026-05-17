@@ -213,6 +213,20 @@ interface SyncQueueDao {
     @Query("UPDATE sync_queue SET status = 'syncing' WHERE id IN (:ids)")
     suspend fun markSyncing(ids: List<Long>)
 
+    /**
+     * BUGHUNT-2026-05-17: rows orphaned at status='syncing' by a previous
+     * process that was force-killed mid-drain. [nextReady] only matches
+     * `status='pending'`, so an orphaned row is never re-tried and never
+     * advances toward dead-letter (retries count is not bumped). Resets
+     * everything older than [olderThanMillis] back to 'pending' so the
+     * next drain tick picks it up.
+     *
+     * Caller passes `System.currentTimeMillis() - 60_000` to leave a 60s
+     * grace for a legitimately-in-flight drain on the same launch.
+     */
+    @Query("UPDATE sync_queue SET status = 'pending' WHERE status = 'syncing' AND created_at < :olderThanMillis")
+    suspend fun resetStaleSyncing(olderThanMillis: Long): Int
+
     companion object {
         /** Max attempts before an entry is moved to the dead-letter queue. */
         const val MAX_RETRIES = 5
