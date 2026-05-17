@@ -344,6 +344,16 @@ router.post('/', requirePermission('gift_cards.issue'), asyncHandler(async (req,
   if (role !== 'admin' && role !== 'manager') {
     throw new AppError('Admin or manager role required to issue gift cards', 403);
   }
+  // BUGHUNT-2026-05-17: rate-limit gift card issuance. These are
+  // bearer-value tokens — a compromised manager account could mint
+  // unlimited cards in seconds before the breach is noticed. 60/min
+  // is generous for legitimate batch use (the /bulk endpoint covers
+  // larger batches with its own bounds), and the audit trail still
+  // captures everything.
+  const userId = req.user!.id;
+  if (!checkWindowRate(req.db, 'gift_card_issue', String(userId), 60, 60_000)) {
+    throw new AppError('Too many gift card issuance requests. Try again shortly.', 429);
+  }
   const adb: AsyncDb = req.asyncDb;
   const { customer_id, recipient_name, recipient_email, expires_at, notes } = req.body;
   const amount = validatePositiveAmount(req.body.amount, 'amount');
