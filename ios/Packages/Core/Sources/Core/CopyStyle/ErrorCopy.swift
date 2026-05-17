@@ -205,6 +205,20 @@ public enum ErrorCopy {
                 )
             )
 
+        case .cancelled:
+            // Cancellation is a non-error UI state — keep copy minimal so that
+            // accidental presentation isn't user-visible noise. Views should
+            // detect `state.isSilent` and skip presenting at all.
+            return Copy(
+                title: NSLocalizedString(
+                    "error.cancelled.title",
+                    value: "Cancelled",
+                    comment: "Error copy — user-initiated cancellation title"
+                ),
+                body: "",
+                retryLabel: nil
+            )
+
         case .unknown:
             return Copy(
                 title: NSLocalizedString(

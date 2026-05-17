@@ -117,6 +117,20 @@ final class ErrorCopyTests: XCTestCase {
         XCTAssertFalse(copy.body.isEmpty)
     }
 
+    // MARK: — Cancelled state is silent
+
+    /// `.cancelled` is a user-initiated tear-down, not an error. Copy must
+    /// have a title but an empty body, no retry label, and `isSilent` must
+    /// be true so views suppress presentation entirely.
+    func testCancelled_isSilentByContract() {
+        let copy = ErrorCopy.copy(for: .cancelled)
+        XCTAssertFalse(copy.title.isEmpty, "title should still be set for accessibility/log purposes")
+        XCTAssertTrue(copy.body.isEmpty, "body must be empty so accidental presentation has nothing to say")
+        XCTAssertNil(copy.retryLabel, "cancelled is not retryable from the UI")
+        XCTAssertTrue(CoreErrorState.cancelled.isSilent, "isSilent must be true for .cancelled")
+        XCTAssertFalse(CoreErrorState.network.isSilent, "isSilent must be false for non-cancellation states")
+    }
+
     // MARK: — Tone compliance
 
     func testAllCopiesPassToneGuidelines() {

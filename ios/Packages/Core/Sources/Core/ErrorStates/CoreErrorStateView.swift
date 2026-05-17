@@ -35,38 +35,44 @@ public struct CoreErrorStateView: View {
     // MARK: — Body
 
     public var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: state.symbolName)
-                .font(.system(size: 48, weight: .light))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 6) {
-                Text(state.title)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-
-                Text(state.message)
-                    .font(.subheadline)
+        // `.cancelled` is a silent state — it means the user dismissed
+        // the operation. Don't render an error panel for it.
+        if state.isSilent {
+            EmptyView()
+        } else {
+            VStack(spacing: 16) {
+                Image(systemName: state.symbolName)
+                    .font(.system(size: 48, weight: .light))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+                    .accessibilityHidden(true)
 
-            if let onRetry, state.isRetryable {
-                Button(state.retryLabel, action: onRetry)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
+                VStack(spacing: 6) {
+                    Text(state.title)
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+
+                    Text(state.message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let onRetry, state.isRetryable {
+                    Button(state.retryLabel, action: onRetry)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                }
             }
+            .padding(24)
+            .frame(maxWidth: 360)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.background.secondary)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(accessibilityLabel)
         }
-        .padding(24)
-        .frame(maxWidth: 360)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.background.secondary)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
     }
 
     // MARK: — Accessibility

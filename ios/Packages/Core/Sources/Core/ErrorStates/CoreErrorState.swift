@@ -52,6 +52,14 @@ public enum CoreErrorState: Sendable, Equatable {
     /// value in seconds when the server provided one.
     case rateLimited(retrySeconds: Int?)
 
+    // MARK: — User-initiated cancellation
+
+    /// The operation was cancelled — by the user (sheet dismissed, view
+    /// disappeared, navigated away) or by a structured-concurrency parent
+    /// task tear-down. The UI should treat this as a no-op rather than
+    /// painting a generic "Something Went Wrong" error.
+    case cancelled
+
     // MARK: — Catch-all
 
     /// Any error that does not map to a more specific case.
@@ -72,6 +80,7 @@ extension CoreErrorState {
         case .offline:             return "wifi.slash"
         case .validation:          return "exclamationmark.triangle.fill"
         case .rateLimited:         return "clock.badge.exclamationmark"
+        case .cancelled:           return "xmark.circle"
         case .unknown:             return "exclamationmark.circle"
         }
     }
@@ -87,6 +96,7 @@ extension CoreErrorState {
         case .offline:             return "You're Offline"
         case .validation:          return "Check Your Input"
         case .rateLimited:         return "Too Many Requests"
+        case .cancelled:           return "Cancelled"
         case .unknown:             return "Something Went Wrong"
         }
     }
@@ -117,6 +127,8 @@ extension CoreErrorState {
                 return "Too many requests. Try again in \(s) second\(s == 1 ? "" : "s")."
             }
             return "Too many requests. Please wait before trying again."
+        case .cancelled:
+            return ""
         case .unknown:
             return "An unexpected error occurred. If this persists, please contact support."
         }
@@ -129,9 +141,17 @@ extension CoreErrorState {
         switch self {
         case .network, .server, .offline, .rateLimited, .unknown, .unauthorized:
             return true
-        case .forbidden, .notFound, .validation:
+        case .forbidden, .notFound, .validation, .cancelled:
             return false
         }
+    }
+
+    /// `true` when the state represents a user-initiated cancellation and
+    /// the UI should suppress error chrome entirely. Views observing a
+    /// `CoreErrorState?` should treat `.cancelled` as equivalent to `nil`.
+    public var isSilent: Bool {
+        if case .cancelled = self { return true }
+        return false
     }
 
     /// Label for the primary action button, when present.

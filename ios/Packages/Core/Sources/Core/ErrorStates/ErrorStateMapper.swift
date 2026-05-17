@@ -47,7 +47,7 @@ public enum ErrorStateMapper {
         case .keychain:
             return .unknown
         case .cancelled:
-            return .unknown
+            return .cancelled
         case .unknown:
             return .unknown
         }
@@ -58,6 +58,8 @@ public enum ErrorStateMapper {
     /// Convert a `URLError` to `CoreErrorState`.
     public static func map(_ error: URLError) -> CoreErrorState {
         switch error.code {
+        case .cancelled:
+            return .cancelled
         case .notConnectedToInternet,
              .networkConnectionLost,
              .dataNotAllowed:
@@ -74,6 +76,9 @@ public enum ErrorStateMapper {
     /// Attempts `AppError` cast first, then `URLError`, then falls back to
     /// `.unknown`.
     public static func map(_ error: Error) -> CoreErrorState {
+        if error is CancellationError {
+            return .cancelled
+        }
         if let appError = error as? AppError {
             return map(appError)
         }
