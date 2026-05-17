@@ -468,7 +468,29 @@ router.put(
       }
     }
 
+    // BUGHUNT-2026-05-17: re-check the admin invariant INSIDE the
+    // better-sqlite3 sync tx so two concurrent /permissions denies
+    // against two different active admins can't both pass the
+    // outer SELECT (which sees both admins still effective) and both
+    // commit, leaving zero admins with users.manage. The sync tx
+    // serializes against other writers, so the count snapshot
+    // matches what we're about to write.
+    const RACE_SENTINEL = '__last_admin_demote_race__';
     const applyTx = db.transaction((): number => {
+      if (deniesUserManagement && user.role === 'admin' && req.user?.id !== userId) {
+        const effectiveAdmins = db.prepare(
+          `SELECT COUNT(*) AS n
+             FROM users u
+             LEFT JOIN user_permissions up
+               ON up.user_id = u.id AND up.permission_key = ?
+            WHERE u.role = 'admin' AND u.is_active = 1
+              AND u.id != ?
+              AND COALESCE(up.allowed, 1) = 1`,
+        ).get(PERMISSIONS.USERS_MANAGE, userId) as { n: number } | undefined;
+        if ((effectiveAdmins?.n ?? 0) === 0) {
+          throw new Error(RACE_SENTINEL);
+        }
+      }
       const upsert = db.prepare(
         `INSERT INTO user_permissions (user_id, permission_key, allowed, updated_by_user_id, updated_at)
          VALUES (?, ?, ?, ?, datetime('now'))
@@ -491,7 +513,18 @@ router.put(
       }
       return applied;
     });
-    const applied = applyTx();
+    let applied: number;
+    try {
+      applied = applyTx();
+    } catch (err) {
+      if (err instanceof Error && err.message === RACE_SENTINEL) {
+        throw new AppError(
+          'Cannot deny users.manage — another concurrent change has left only this admin with the permission',
+          409,
+        );
+      }
+      throw err;
+    }
 
     audit(req.db, 'user_permissions_updated', req.user!.id, req.ip || 'unknown', {
       user_id: userId, count: applied,
