@@ -91,13 +91,14 @@ public final class LeadCreateViewModel {
     private func enqueueOffline(_ req: CreateLeadRequest) async {
         do {
             let payload = try LeadOfflineQueue.encode(req)
-            await LeadOfflineQueue.enqueue(op: "create", payload: payload)
+            try await LeadOfflineQueue.enqueue(op: "create", payload: payload)
             createdId = PendingSyncLeadId
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Lead offline encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: surface queue failure.
+            AppLog.sync.error("Lead create offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

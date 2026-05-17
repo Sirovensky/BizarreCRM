@@ -159,14 +159,24 @@ public final class ReceivingDetailViewModel {
                     )
                 }
                 // Enqueue offline
-                if let payload = try? InventoryOfflineQueue.encode(req) {
-                    await InventoryOfflineQueue.enqueue(
+                do {
+                    let payload = try InventoryOfflineQueue.encode(req)
+                    try await InventoryOfflineQueue.enqueue(
                         op: "receiving.finalize",
                         entityServerId: orderId,
                         payload: payload
                     )
+                    showReconciliation = true
+                } catch {
+                    // BUGHUNT-2026-05-17: previously this used try? + a
+                    // non-throwing enqueue, so an offline encode failure or
+                    // GRDB drop silently fell through to showReconciliation
+                    // = true — the warehouse user saw the receiving as
+                    // completed but no PO finalize was queued. Surface the
+                    // error so they can retry.
+                    AppLog.sync.error("Receiving finalize offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+                    errorMessage = "Could not queue offline: \(error.localizedDescription)"
                 }
-                showReconciliation = true
             } else {
                 AppLog.ui.error("Receiving finalize failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription

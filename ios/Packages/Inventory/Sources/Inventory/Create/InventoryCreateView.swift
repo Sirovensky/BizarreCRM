@@ -190,14 +190,17 @@ public final class InventoryCreateViewModel {
     private func enqueueOffline(_ req: CreateInventoryItemRequest) async {
         do {
             let payload = try InventoryOfflineQueue.encode(req)
-            await InventoryOfflineQueue.enqueue(op: "create", payload: payload)
+            try await InventoryOfflineQueue.enqueue(op: "create", payload: payload)
             createdId = PendingSyncInventoryId
             queuedOffline = true
             errorMessage = nil
             clearDraft()
         } catch {
-            AppLog.sync.error("Inventory create encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: surface queue failure so the user doesn't
+            // think the new SKU was saved offline. Don't clearDraft() on
+            // failure — preserve the form for retry.
+            AppLog.sync.error("Inventory create offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

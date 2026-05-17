@@ -99,7 +99,7 @@ public final class InventoryEditViewModel {
     private func enqueueOffline(_ req: UpdateInventoryItemRequest) async {
         do {
             let payload = try InventoryOfflineQueue.encode(req)
-            await InventoryOfflineQueue.enqueue(
+            try await InventoryOfflineQueue.enqueue(
                 op: "update",
                 entityServerId: itemId,
                 payload: payload
@@ -108,8 +108,9 @@ public final class InventoryEditViewModel {
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Inventory update encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: surface queue failure.
+            AppLog.sync.error("Inventory update offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

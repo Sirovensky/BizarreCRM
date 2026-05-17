@@ -80,11 +80,17 @@ enum InventoryOfflineQueue {
     /// Enqueue a pending mutation. `entityServerId` is only set on updates —
     /// creates have no server id yet, only a negative "pending" id used by
     /// the UI.
+    ///
+    /// BUGHUNT-2026-05-17: rethrow on failure so callers can surface a real
+    /// error to the user. Same fix family as TicketOfflineQueue /
+    /// CustomerOfflineQueue — the silent log-and-return path made offline
+    /// inventory writes look successful even when the GRDB insert dropped
+    /// the row.
     static func enqueue(
         op: String,
         entityServerId: Int64? = nil,
         payload: String
-    ) async {
+    ) async throws {
         let record = SyncQueueRecord(
             op: op,
             entity: "inventory",
@@ -92,11 +98,7 @@ enum InventoryOfflineQueue {
             entityServerId: entityServerId.map(String.init),
             payload: payload
         )
-        do {
-            try await SyncQueueStore.shared.enqueue(record)
-            AppLog.sync.info("Queued offline inventory \(op, privacy: .public)")
-        } catch {
-            AppLog.sync.error("Failed to enqueue inventory \(op, privacy: .public): \(error.localizedDescription, privacy: .public)")
-        }
+        try await SyncQueueStore.shared.enqueue(record)
+        AppLog.sync.info("Queued offline inventory \(op, privacy: .public)")
     }
 }

@@ -77,11 +77,17 @@ enum CustomerOfflineQueue {
     /// Enqueue a pending mutation. `entityServerId` is only set on updates —
     /// creates have no server id yet, only a negative "pending" id used by
     /// the UI.
+    ///
+    /// BUGHUNT-2026-05-17: rethrow on failure so callers can surface a real
+    /// error to the user. Previously the underlying GRDB enqueue error was
+    /// only logged, and both call sites then set `queuedOffline = true`
+    /// without knowing the row was dropped. Same fix family as
+    /// TicketOfflineQueue.
     static func enqueue(
         op: String,
         entityServerId: Int64? = nil,
         payload: String
-    ) async {
+    ) async throws {
         let record = SyncQueueRecord(
             op: op,
             entity: "customer",
@@ -89,11 +95,7 @@ enum CustomerOfflineQueue {
             entityServerId: entityServerId.map(String.init),
             payload: payload
         )
-        do {
-            try await SyncQueueStore.shared.enqueue(record)
-            AppLog.sync.info("Queued offline customer \(op, privacy: .public)")
-        } catch {
-            AppLog.sync.error("Failed to enqueue customer \(op, privacy: .public): \(error.localizedDescription, privacy: .public)")
-        }
+        try await SyncQueueStore.shared.enqueue(record)
+        AppLog.sync.info("Queued offline customer \(op, privacy: .public)")
     }
 }

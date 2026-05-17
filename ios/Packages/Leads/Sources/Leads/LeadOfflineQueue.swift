@@ -53,11 +53,14 @@ public enum LeadOfflineQueue {
     public enum EncodeError: Error { case notUTF8 }
 
     /// Enqueue a pending lead mutation into the shared sync queue.
+    ///
+    /// BUGHUNT-2026-05-17: rethrow on failure. Same fix family as
+    /// TicketOfflineQueue / CustomerOfflineQueue / InventoryOfflineQueue.
     public static func enqueue(
         op: String,
         entityServerId: Int64? = nil,
         payload: String
-    ) async {
+    ) async throws {
         let record = SyncQueueRecord(
             op: op,
             entity: "lead",
@@ -65,12 +68,8 @@ public enum LeadOfflineQueue {
             entityServerId: entityServerId.map(String.init),
             payload: payload
         )
-        do {
-            try await SyncQueueStore.shared.enqueue(record)
-            AppLog.sync.info("Queued offline lead \(op, privacy: .public)")
-        } catch {
-            AppLog.sync.error("Failed to enqueue lead \(op, privacy: .public): \(error.localizedDescription, privacy: .public)")
-        }
+        try await SyncQueueStore.shared.enqueue(record)
+        AppLog.sync.info("Queued offline lead \(op, privacy: .public)")
     }
 }
 

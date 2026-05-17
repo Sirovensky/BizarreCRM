@@ -190,7 +190,7 @@ public final class CustomerEditViewModel {
     private func enqueueOffline(_ req: UpdateCustomerRequest) async {
         do {
             let payload = try CustomerOfflineQueue.encode(req)
-            await CustomerOfflineQueue.enqueue(
+            try await CustomerOfflineQueue.enqueue(
                 op: "update",
                 entityServerId: customerId,
                 payload: payload
@@ -199,8 +199,9 @@ public final class CustomerEditViewModel {
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Customer update encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: surface the queue failure.
+            AppLog.sync.error("Customer update offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

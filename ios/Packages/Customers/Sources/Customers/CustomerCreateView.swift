@@ -92,13 +92,15 @@ public final class CustomerCreateViewModel {
     private func enqueueOffline(_ req: CreateCustomerRequest) async {
         do {
             let payload = try CustomerOfflineQueue.encode(req)
-            await CustomerOfflineQueue.enqueue(op: "create", payload: payload)
+            try await CustomerOfflineQueue.enqueue(op: "create", payload: payload)
             createdId = PendingSyncCustomerId
             queuedOffline = true
             errorMessage = nil
         } catch {
-            AppLog.sync.error("Customer create encode failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            // BUGHUNT-2026-05-17: surface the queue failure so the user
+            // doesn't think the customer was saved offline when it wasn't.
+            AppLog.sync.error("Customer create offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Could not save offline: \(error.localizedDescription)"
         }
     }
 

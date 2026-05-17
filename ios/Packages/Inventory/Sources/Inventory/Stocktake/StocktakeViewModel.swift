@@ -170,16 +170,24 @@ public final class StocktakeScanViewModel {
             if InventoryOfflineQueue.isNetworkError(error) {
                 // Enqueue commit for offline drain
                 let req = FinalizeStocktakeRequest(lines: [])
-                if let payload = try? InventoryOfflineQueue.encode(req) {
-                    await InventoryOfflineQueue.enqueue(
+                do {
+                    let payload = try InventoryOfflineQueue.encode(req)
+                    try await InventoryOfflineQueue.enqueue(
                         op: "stocktake.commit",
                         entityServerId: sessionId,
                         payload: payload
                     )
+                    pendingOfflineSync = true
+                    isOffline = true
+                    showReview = true
+                } catch {
+                    // BUGHUNT-2026-05-17: previously try?+non-throwing enqueue
+                    // silently swallowed a queue failure and still flipped
+                    // pendingOfflineSync/showReview to true — a failed stocktake
+                    // looked completed offline. Surface the error.
+                    AppLog.sync.error("Stocktake commit offline-enqueue failed: \(error.localizedDescription, privacy: .public)")
+                    errorMessage = "Could not queue offline: \(error.localizedDescription)"
                 }
-                pendingOfflineSync = true
-                isOffline = true
-                showReview = true
             } else {
                 AppLog.ui.error("Stocktake commit: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
