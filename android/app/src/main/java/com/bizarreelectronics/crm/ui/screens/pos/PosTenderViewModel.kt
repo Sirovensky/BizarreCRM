@@ -21,6 +21,7 @@ import com.bizarreelectronics.crm.ui.screens.pos.CashDrawerControllerStub
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -456,7 +457,13 @@ class PosTenderViewModel @Inject constructor(
             val isOnline = networkMonitor.isCurrentlyOnline()
             if (!isOnline) {
                 // Enqueue to sync queue; navigate to receipt with a temp order id.
-                runCatching {
+                // BUGHUNT-2026-05-17: the original code wrapped the insert in
+                // `runCatching { ... }` and ignored the result — if the Room
+                // insert failed (disk full, schema constraint, etc.), the UI
+                // happily claimed "Saved offline — will sync when connected"
+                // but the sale was silently dropped. Treat insert failure as a
+                // real failure so the cashier can retry or take cash.
+                try {
                     syncQueueDao.insert(
                         SyncQueueEntity(
                             entityType = "pos_sale",
@@ -466,6 +473,16 @@ class PosTenderViewModel @Inject constructor(
                             idempotencyKey = idempotencyKey,
                         )
                     )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _uiState.update {
+                        it.copy(
+                            isProcessing = false,
+                            errorMessage = "Could not save offline sale: ${e.message ?: "unknown error"}",
+                        )
+                    }
+                    return@launch
                 }
                 val tempOrderId = "OFFLINE-${idempotencyKey.take(8).uppercase()}"
                 coordinator.completeOrder(orderId = tempOrderId, invoiceId = 0L, trackingUrl = null)
