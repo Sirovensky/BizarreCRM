@@ -348,7 +348,20 @@ router.delete(
     if (row.status !== 'pending') {
       requireAdminOrManager(req);
     }
-    await adb.run(`UPDATE time_off_requests SET status = 'cancelled' WHERE id = ?`, id);
+    // BUGHUNT-2026-05-17: guard the UPDATE WHERE status != 'cancelled'.
+    // Without this, an employee's cancel can race a manager's approve —
+    // both pass the precheck and both UPDATE; if the approve lands second
+    // it overrides the cancel and the employee believes the request is
+    // cancelled while it's actually approved. Manager has the override
+    // power so we just need to make cancel idempotent and not silently
+    // succeed when status changed underneath.
+    const result = await adb.run(
+      `UPDATE time_off_requests SET status = 'cancelled' WHERE id = ? AND status = ?`,
+      id, row.status,
+    );
+    if (result.changes === 0) {
+      throw new AppError('Request status changed; refresh and retry', 409);
+    }
     audit(req.db, 'time_off_cancelled', requireUserId(req), req.ip || 'unknown', { id });
     res.json({ success: true, data: { id } });
   }),
