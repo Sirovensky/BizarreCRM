@@ -72,12 +72,24 @@ public actor BlockChypTerminal: CardTerminal {
             activationCode: activationCode,
             terminalName: terminalName
         )
-        let _ = try await post(
-            path: "/api/terminal/pair",
-            body: requestBody,
-            credentials: apiCredentials,
-            responseType: PairResponse.self
-        )
+        // BUGHUNT-2026-05-17: store the in-flight pairing task so cancel()
+        // can actually interrupt it. Previously activePairingTask was
+        // declared but never assigned, so cancel() was a silent no-op and
+        // the cashier-facing "Cancel pairing" button did nothing while the
+        // 60s pairing request continued to block the screen.
+        let task = Task<Void, Error> { [weak self] in
+            guard let self else { return }
+            let _ = try await self.post(
+                path: "/api/terminal/pair",
+                body: requestBody,
+                credentials: apiCredentials,
+                responseType: PairResponse.self
+            )
+        }
+        activePairingTask?.cancel()
+        activePairingTask = task
+        defer { if activePairingTask === task { activePairingTask = nil } }
+        try await task.value
 
         // Persist credentials + name on success
         try saveCredentials(apiCredentials)
@@ -109,25 +121,36 @@ public actor BlockChypTerminal: CardTerminal {
             orderRef: metadata["orderRef"],
             description: metadata["description"]
         )
-        let response = try await post(
-            path: "/api/charge",
-            body: requestBody,
-            credentials: credentials,
-            responseType: ChargeResponse.self
-        )
-
-        let txn = TerminalTransaction(
-            id: response.transactionId ?? UUID().uuidString,
-            approved: response.approved ?? false,
-            approvalCode: response.authCode,
-            amountCents: amountCents,
-            tipCents: tipCents,
-            cardBrand: response.cardBrand,
-            cardLast4: response.maskedPan.map { String($0.suffix(4)) },
-            receiptHtml: nil, // BlockChyp doesn't return HTML receipt directly
-            capturedAt: Date(),
-            errorMessage: response.responseDescription
-        )
+        // BUGHUNT-2026-05-17: same wiring as pair() — populate
+        // activeChargeTask so cancel() can actually interrupt the in-flight
+        // POST /api/charge. Without this, the cashier-facing Cancel button
+        // appeared functional but did nothing; URLSession kept waiting
+        // up to 90s for the terminal to respond.
+        let task = Task<TerminalTransaction, Error> { [weak self] in
+            guard let self else { throw TerminalError.unreachable }
+            let response = try await self.post(
+                path: "/api/charge",
+                body: requestBody,
+                credentials: credentials,
+                responseType: ChargeResponse.self
+            )
+            return TerminalTransaction(
+                id: response.transactionId ?? UUID().uuidString,
+                approved: response.approved ?? false,
+                approvalCode: response.authCode,
+                amountCents: amountCents,
+                tipCents: tipCents,
+                cardBrand: response.cardBrand,
+                cardLast4: response.maskedPan.map { String($0.suffix(4)) },
+                receiptHtml: nil, // BlockChyp doesn't return HTML receipt directly
+                capturedAt: Date(),
+                errorMessage: response.responseDescription
+            )
+        }
+        activeChargeTask?.cancel()
+        activeChargeTask = task
+        defer { if activeChargeTask === task { activeChargeTask = nil } }
+        let txn = try await task.value
         AppLog.hardware.info("BlockChypTerminal: charge \(txn.approved ? "approved" : "declined") txnId=\(txn.id, privacy: .private)")
         return txn
     }
@@ -177,6 +200,8 @@ public actor BlockChypTerminal: CardTerminal {
         AppLog.hardware.info("BlockChypTerminal: cancel requested")
         activeChargeTask?.cancel()
         activeChargeTask = nil
+        activePairingTask?.cancel()
+        activePairingTask = nil
     }
 
     // MARK: - CardTerminal: ping
