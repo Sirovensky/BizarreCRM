@@ -447,24 +447,30 @@ async function isPasswordReused(adb: AsyncDb, userId: number, plaintext: string)
 /**
  * SEC (P2FA8): Record a new bcrypt password hash in history and prune to
  * the most recent PASSWORD_HISTORY_DEPTH rows.
+ *
+ * BUGHUNT-2026-05-17: previously the INSERT + prune DELETE ran sequentially.
+ * Mild bug — a crash between them left password_history one row over the
+ * cap (history table grows unbounded after many password changes that all
+ * race the prune). Bundle into a tx so the cap is always honoured.
  */
 async function recordPasswordHistory(adb: AsyncDb, userId: number, passwordHash: string): Promise<void> {
-  await adb.run(
-    'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
-    userId, passwordHash
-  );
-  // Keep only the most recent PASSWORD_HISTORY_DEPTH rows per user.
-  await adb.run(
-    `DELETE FROM password_history
-       WHERE user_id = ?
-         AND id NOT IN (
-           SELECT id FROM password_history
-             WHERE user_id = ?
-             ORDER BY created_at DESC
-             LIMIT ?
-         )`,
-    userId, userId, PASSWORD_HISTORY_DEPTH
-  );
+  await adb.transaction([
+    {
+      sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+      params: [userId, passwordHash],
+    },
+    {
+      sql: `DELETE FROM password_history
+              WHERE user_id = ?
+                AND id NOT IN (
+                  SELECT id FROM password_history
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                )`,
+      params: [userId, userId, PASSWORD_HISTORY_DEPTH],
+    },
+  ]);
 }
 
 /**
