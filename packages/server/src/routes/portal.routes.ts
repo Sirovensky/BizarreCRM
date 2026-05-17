@@ -1940,15 +1940,26 @@ router.post('/membership/cancel', portalAuth, requireCsrfToken, requireFullScope
     res.status(409).json({ success: false, message: 'Your membership is already scheduled to cancel at period end.' });
     return;
   }
-  await adb.run(
+  // BUGHUNT-2026-05-17: CAS on cancel_at_period_end + status. Without
+  // this, a stale second tab from the same customer hits the UPDATE
+  // again (already 1, no-op) but still writes the audit row — two
+  // self-service cancellation events for one logical action confuses
+  // the churn analytics dashboard. Loser sees 409.
+  const cancelRes = await adb.run(
     `UPDATE customer_subscriptions
         SET cancel_at_period_end = 1,
             auto_renew = 0,
             next_billing_attempt_at = NULL,
             updated_at = datetime('now')
-      WHERE id = ?`,
+      WHERE id = ?
+        AND COALESCE(cancel_at_period_end, 0) = 0
+        AND status IN ('active','past_due','paused')`,
     sub.id,
   );
+  if (cancelRes.changes === 0) {
+    res.status(409).json({ success: false, message: 'Your membership state changed; refresh and retry.' });
+    return;
+  }
   audit(req.db, 'membership_cancelled_self_service', customerId, ip, { subscription_id: sub.id, source: 'portal' });
   res.json({ success: true, data: { cancelled: true, immediate: false, subscription_id: sub.id } });
 }));
@@ -1968,14 +1979,24 @@ router.post('/membership/resume', portalAuth, requireCsrfToken, requireFullScope
     res.status(404).json({ success: false, message: 'No pending cancellation to undo.' });
     return;
   }
-  await adb.run(
+  // BUGHUNT-2026-05-17: CAS on cancel_at_period_end + status —
+  // symmetric to /cancel above. Without this, a stale resume request
+  // racing with another resume or the shop's cancel-now-immediately
+  // path writes duplicate audit rows.
+  const resumeRes = await adb.run(
     `UPDATE customer_subscriptions
         SET cancel_at_period_end = 0,
             auto_renew = 1,
             updated_at = datetime('now')
-      WHERE id = ?`,
+      WHERE id = ?
+        AND cancel_at_period_end = 1
+        AND status IN ('active','past_due')`,
     sub.id,
   );
+  if (resumeRes.changes === 0) {
+    res.status(409).json({ success: false, message: 'Your membership state changed; refresh and retry.' });
+    return;
+  }
   audit(req.db, 'membership_resumed_self_service', customerId, ip, { subscription_id: sub.id, source: 'portal' });
   res.json({ success: true, data: { resumed: true, subscription_id: sub.id } });
 }));
