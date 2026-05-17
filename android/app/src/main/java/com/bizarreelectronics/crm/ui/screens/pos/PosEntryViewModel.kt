@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -225,37 +226,41 @@ class PosEntryViewModel @Inject constructor(
     fun attachByCustomerId(id: Long) {
         if (id <= 0L) return
         viewModelScope.launch {
-            runCatching { customerApi.getCustomer(id) }
-                .onSuccess { resp ->
-                    val detail = resp.data ?: return@onSuccess
-                    val attached = PosAttachedCustomer(
-                        id = detail.id,
-                        name = listOfNotNull(detail.firstName, detail.lastName)
-                            .joinToString(" ").ifBlank { "Customer #${detail.id}" },
-                        phone = detail.phone ?: detail.mobile,
-                        email = detail.email,
+            try {
+                val resp = customerApi.getCustomer(id)
+                val detail = resp.data ?: return@launch
+                val attached = PosAttachedCustomer(
+                    id = detail.id,
+                    name = listOfNotNull(detail.firstName, detail.lastName)
+                        .joinToString(" ").ifBlank { "Customer #${detail.id}" },
+                    phone = detail.phone ?: detail.mobile,
+                    email = detail.email,
+                )
+                coordinator.attachCustomer(attached)
+                _uiState.update {
+                    it.copy(
+                        attachedCustomer = attached,
+                        searchQuery = "",
+                        searchResults = SearchResultGroup(),
                     )
-                    coordinator.attachCustomer(attached)
-                    _uiState.update {
-                        it.copy(
-                            attachedCustomer = attached,
-                            searchQuery = "",
-                            searchResults = SearchResultGroup(),
-                        )
-                    }
-                    loadCustomerHistory(detail.id)
-                    loadStoreCredit(detail.id)
                 }
-                .onFailure { e ->
-                    _uiState.update { it.copy(errorMessage = "Could not load new customer: ${e.message}") }
-                }
+                loadCustomerHistory(detail.id)
+                loadStoreCredit(detail.id)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: runCatching caught CancellationException
+                // and painted "Could not load new customer" on whatever screen
+                // happened to be on top. Use try/catch + explicit re-throw.
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Could not load new customer: ${e.message}") }
+            }
         }
     }
 
     fun createCustomerAndAttach(firstName: String, lastName: String?, phone: String?, email: String?) {
         viewModelScope.launch {
-            runCatching {
-                customerApi.createCustomer(
+            try {
+                val resp = customerApi.createCustomer(
                     CreateCustomerRequest(
                         firstName = firstName,
                         lastName = lastName,
@@ -263,8 +268,7 @@ class PosEntryViewModel @Inject constructor(
                         email = email,
                     )
                 )
-            }.onSuccess { resp ->
-                val detail = resp.data ?: return@onSuccess
+                val detail = resp.data ?: return@launch
                 val attached = PosAttachedCustomer(
                     id = detail.id,
                     name = listOfNotNull(detail.firstName, detail.lastName).joinToString(" ").ifBlank { "New customer" },
@@ -274,7 +278,9 @@ class PosEntryViewModel @Inject constructor(
                 coordinator.attachCustomer(attached)
                 _uiState.update { it.copy(attachedCustomer = attached, searchQuery = "", searchResults = SearchResultGroup()) }
                 loadStoreCredit(detail.id)
-            }.onFailure { e ->
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = "Could not create customer: ${e.message}") }
             }
         }
@@ -339,19 +345,20 @@ class PosEntryViewModel @Inject constructor(
      */
     fun lookupBarcode(code: String) {
         viewModelScope.launch {
-            runCatching { inventoryApi.lookupBarcode(code.trim()) }
-                .onSuccess { resp ->
-                    val item = resp.data?.item
-                    if (item == null) {
-                        _uiState.update { it.copy(errorMessage = "No item for barcode $code") }
-                    } else {
-                        // TODO: POS-HID-001 — add item to coordinator cart then navigate to cart
-                        _uiState.update { it.copy(errorMessage = "Scan: ${item.name ?: code}") }
-                    }
+            try {
+                val resp = inventoryApi.lookupBarcode(code.trim())
+                val item = resp.data?.item
+                if (item == null) {
+                    _uiState.update { it.copy(errorMessage = "No item for barcode $code") }
+                } else {
+                    // TODO: POS-HID-001 — add item to coordinator cart then navigate to cart
+                    _uiState.update { it.copy(errorMessage = "Scan: ${item.name ?: code}") }
                 }
-                .onFailure { e ->
-                    _uiState.update { it.copy(errorMessage = "Scan lookup failed: ${e.message}") }
-                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "Scan lookup failed: ${e.message}") }
+            }
         }
     }
 
