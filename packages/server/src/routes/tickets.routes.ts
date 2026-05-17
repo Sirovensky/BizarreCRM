@@ -4336,39 +4336,45 @@ router.post('/devices/:deviceId/quick-add-part', requirePermission('tickets.edit
   if (quantity > 10_000) throw new AppError('quantity must be <= 10,000', 400);
 
   const sku = `QA-${Date.now()}`;
-
-  // 1. Create inventory item
-  const itemResult = await adb.run(`
-    INSERT INTO inventory_items (name, sku, item_type, cost_price, retail_price, in_stock, created_at, updated_at)
-    VALUES (?, ?, 'part', ?, ?, ?, ?, ?)
-  `, name.trim(), sku, itemPrice, itemPrice, quantity, now(), now());
-  const inventoryItemId = Number(itemResult.lastInsertRowid);
-
-  // 2. Add part to device
-  const partResult = await adb.run(`
-    INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'available', ?, ?)
-  `, deviceId, inventoryItemId, quantity, itemPrice, now(), now());
-
-  // 3. Deduct stock — differential guard prevents double-spend if a
-  // concurrent request somehow references this newly-created item before
-  // this request completes (e.g. scanner racing a quick-add).
-  const quickAddDec = await adb.run(
-    'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ? AND in_stock >= ?',
-    quantity, now(), inventoryItemId, quantity,
-  );
-  if (quickAddDec.changes === 0) {
-    // Revert the part insert so the device isn't left with a phantom row.
-    await adb.run('DELETE FROM ticket_device_parts WHERE ticket_device_id = ? AND inventory_item_id = ?', deviceId, inventoryItemId);
-    throw new AppError(`Insufficient stock for ${name.trim()} (concurrent update)`, 409);
-  }
-
-  // 4. Stock movement
   const ticketRow = await adb.get<AnyRow>('SELECT order_id FROM tickets WHERE id = ?', device.ticket_id);
-  await adb.run(`
-    INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
-    VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)
-  `, inventoryItemId, -quantity, deviceId, `Quick-add part for ticket ${ticketRow!.order_id}`, userId, now(), now());
+
+  // BUGHUNT-2026-05-17: bundle the four writes (inventory_items INSERT,
+  // ticket_device_parts INSERT, inventory decrement-to-zero, and the
+  // stock_movements ledger entry) into one adb.transaction. The prior
+  // sequential flow with a manual JS-side DELETE rollback could leave:
+  //   - an orphan inventory_items row (crash after #1 before #2)
+  //   - an orphan ticket_device_parts row with stock not yet deducted
+  //     (crash between #2 and #3, or after a CAS-fail before the manual
+  //     DELETE compensation)
+  //   - stock deducted with no audit movement (crash between #3 and #4)
+  // lastInsertRowidFrom(0) wires the part + decrement + movement back to
+  // the just-created inventory_items row. We don't need the CAS guard now
+  // because nothing else can reference inventoryItemId until this tx
+  // commits — the item didn't exist before.
+  const quickAddNow = now();
+  let partResult: { lastInsertRowid: number | bigint; changes: number };
+  const quickTxResults = await adb.transaction([
+    {
+      sql: `INSERT INTO inventory_items (name, sku, item_type, cost_price, retail_price, in_stock, created_at, updated_at)
+            VALUES (?, ?, 'part', ?, ?, ?, ?, ?)`,
+      params: [name.trim(), sku, itemPrice, itemPrice, quantity, quickAddNow, quickAddNow],
+    },
+    {
+      sql: `INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'available', ?, ?)`,
+      params: [deviceId, lastInsertRowidFrom(0), quantity, itemPrice, quickAddNow, quickAddNow],
+    },
+    {
+      sql: 'UPDATE inventory_items SET in_stock = in_stock - ?, updated_at = ? WHERE id = ?',
+      params: [quantity, quickAddNow, lastInsertRowidFrom(0)],
+    },
+    {
+      sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id, created_at, updated_at)
+            VALUES (?, 'ticket_usage', ?, 'ticket_device', ?, ?, ?, ?, ?)`,
+      params: [lastInsertRowidFrom(0), -quantity, deviceId, `Quick-add part for ticket ${ticketRow!.order_id}`, userId, quickAddNow, quickAddNow],
+    },
+  ]);
+  partResult = quickTxResults[1]!;
 
   await recalcTicketTotalsAsync(adb, device.ticket_id);
   await insertHistoryAsync(adb, device.ticket_id, userId, 'part_added', `Quick-added part: ${name.trim()} x${quantity} @ $${itemPrice.toFixed(2)}`);
