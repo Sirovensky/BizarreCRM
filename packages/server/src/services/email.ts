@@ -78,14 +78,19 @@ function getSmtpConfig(db: any): SmtpConfig | null {
     let from: string;
     let fromSource: 'from_email' | 'smtp_from' | 'smtp_user';
 
+    // BUGHUNT-2026-05-16: previously the smtp_from / smtp_user fallbacks
+    // skipped EMAIL_FROM_RE, leaving a stored SMTP header injection if an
+    // operator wrote `legit@x.com\r\nBcc: victim@x.com` to store_config.
+    // Force-strip CRLF on every branch and re-validate against the regex.
+    const stripCrlf = (v: string): string => v.replace(/[\r\n]+/g, '');
     if (fromEmailRaw && EMAIL_FROM_RE.test(fromEmailRaw)) {
       from = fromEmailRaw;
       fromSource = 'from_email';
-    } else if (smtpFrom) {
-      from = smtpFrom;
+    } else if (smtpFrom && EMAIL_FROM_RE.test(stripCrlf(smtpFrom))) {
+      from = stripCrlf(smtpFrom);
       fromSource = 'smtp_from';
     } else {
-      from = user;
+      from = stripCrlf(user);
       fromSource = 'smtp_user';
     }
 
@@ -198,7 +203,8 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
   // all outbound email immediately without a code deployment. Log domain-only
   // (never the full address or body) so the audit trail stays clean.
   if (config.disableOutboundEmail) {
-    const domain = opts.to.includes('@') ? opts.to.split('@')[1] : 'unknown';
+    const atIdx = opts.to.lastIndexOf('@');
+    const domain = atIdx > 0 ? opts.to.slice(atIdx + 1) : 'unknown';
     emailLogger.warn('[kill-switch] outbound email suppressed', { toDomain: domain });
     return false;
   }
@@ -230,7 +236,8 @@ export async function sendEmail(db: any, opts: SendEmailOptions): Promise<boolea
       }),
     );
     // Log only the domain of the recipient, not the full address, for privacy.
-    const toDomain = opts.to.includes('@') ? opts.to.split('@')[1] : 'unknown';
+    const atIdx = opts.to.lastIndexOf('@');
+    const toDomain = atIdx > 0 ? opts.to.slice(atIdx + 1) : 'unknown';
     emailLogger.info('email sent', { toDomain, subject: opts.subject });
     return true;
   } catch (err) {

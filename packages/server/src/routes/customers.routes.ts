@@ -20,7 +20,7 @@ import {
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import type { CreateCustomerInput, UpdateCustomerInput } from '@bizarre-crm/shared';
-import type { AsyncDb } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { config } from '../config.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
@@ -398,7 +398,11 @@ router.get(
     const groupId = req.query.group_id ? parseInt(req.query.group_id as string, 10) : null;
     const sortBy = (req.query.sort_by as string) || 'created_at';
     const sortOrder = (req.query.sort_order as string || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-    const includeStats = req.query.include_stats === '1';
+    // Force-enable stats when the caller wants to sort by a stats column —
+    // otherwise the ORDER BY references an unselected column and SQLite
+    // silently sorts by NULL, returning an arbitrary order.
+    const sortRequiresStats = sortBy === 'total_spent' || sortBy === 'outstanding_balance';
+    const includeStats = req.query.include_stats === '1' || sortRequiresStats;
     const fromDate = (req.query.from_date as string || '').trim();
     const toDate = (req.query.to_date as string || '').trim();
     const hasOpenTickets = req.query.has_open_tickets as string | undefined;
@@ -819,19 +823,39 @@ router.post(
     if (!keepCustomer) throw new AppError('Keep customer not found', 404);
     if (!mergeCustomer) throw new AppError('Merge customer not found', 404);
 
-    // Move tickets
-    await adb.run('UPDATE tickets SET customer_id = ? WHERE customer_id = ?', kid, mid);
+    // BUGHUNT-2026-05-16: previously the merge performed ~15 sequential
+    // adb.run() writes across tickets / invoices / estimates / assets /
+    // loaner_history / customer_phones / customer_emails / customers with NO
+    // transaction wrapper. A crash anywhere in the middle could leave the
+    // pair in a half-merged state — most dangerously, the consent UPDATE
+    // could be skipped while contact info was already copied, silently
+    // re-enabling marketing SMS for a customer who had opted out (TCPA
+    // violation, $500-$1500 per message statutory damages). All read-only
+    // SELECTs run first; every JS dedup decision is computed up front; then
+    // a single adb.transaction() commits the merge as all-or-nothing.
 
-    // Move invoices
-    await adb.run('UPDATE invoices SET customer_id = ? WHERE customer_id = ?', kid, mid);
+    // ── Read everything we need for dedup decisions ─────────────────────────
+    const [mergeExtraPhones, keepExtraPhones, mergePhoneRows, keepExtraEmails, mergeEmailRows] = await Promise.all([
+      adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', mid),
+      adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', kid),
+      adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', mid),
+      adb.all<{ email: string }>('SELECT email FROM customer_emails WHERE customer_id = ?', kid),
+      adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', mid),
+    ]);
 
-    // Move estimates
-    await adb.run('UPDATE estimates SET customer_id = ? WHERE customer_id = ?', kid, mid);
+    // Build the canonical phone set already on keep so we don't insert dups.
+    const keepPhoneSet = new Set<string>();
+    if (keepCustomer.phone) keepPhoneSet.add(normalizePhone(keepCustomer.phone));
+    if (keepCustomer.mobile) keepPhoneSet.add(normalizePhone(keepCustomer.mobile));
+    for (const p of keepExtraPhones) keepPhoneSet.add(p.phone);
 
-    // Move SMS messages — match by merge customer's phone numbers
-    // @audit-fixed: skip empty/undefined results from normalizePhone() so the array
-    // doesn't carry stray "" / undefined entries downstream (and so the unused
-    // mergePhones list is at least sane if a future change starts using it).
+    // Build the canonical email set already on keep.
+    const keepEmailSet = new Set<string>();
+    if (keepCustomer.email) keepEmailSet.add(keepCustomer.email.toLowerCase());
+    for (const e of keepExtraEmails) keepEmailSet.add(e.email.toLowerCase());
+
+    // SMS messages are matched by phone, so just collect what phones are
+    // about to land on keep (unused downstream today; kept for future hook).
     const mergePhones: string[] = [];
     const pushPhone = (raw: unknown) => {
       const norm = raw ? normalizePhone(String(raw)) : '';
@@ -839,59 +863,10 @@ router.post(
     };
     if (mergeCustomer.phone) pushPhone(mergeCustomer.phone);
     if (mergeCustomer.mobile) pushPhone(mergeCustomer.mobile);
-    const mergeExtraPhones = await adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', mid);
     for (const p of mergeExtraPhones) pushPhone(p.phone);
-    // Update SMS conv_phone to keep customer's primary phone where applicable
-    // (SMS are matched by phone, so we just ensure they can be found via keep's phones)
+    void mergePhones;
 
-    // Move assets
-    await adb.run('UPDATE customer_assets SET customer_id = ? WHERE customer_id = ?', kid, mid);
-
-    // Move loaner history
-    await adb.run('UPDATE loaner_history SET customer_id = ? WHERE customer_id = ?', kid, mid);
-
-    // Merge phone numbers (avoid duplicates)
-    const keepPhoneSet = new Set<string>();
-    if (keepCustomer.phone) keepPhoneSet.add(normalizePhone(keepCustomer.phone));
-    if (keepCustomer.mobile) keepPhoneSet.add(normalizePhone(keepCustomer.mobile));
-    const keepExtraPhones = await adb.all<{ phone: string }>('SELECT phone FROM customer_phones WHERE customer_id = ?', kid);
-    for (const p of keepExtraPhones) keepPhoneSet.add(p.phone);
-
-    const mergePhoneRows = await adb.all<AnyRow>('SELECT * FROM customer_phones WHERE customer_id = ?', mid);
-    for (const p of mergePhoneRows) {
-      if (!keepPhoneSet.has(p.phone)) {
-        await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, p.phone, p.label || '');
-        keepPhoneSet.add(p.phone);
-      }
-    }
-    // Also add merge customer's main phone/mobile if not already present
-    const normalizedMergePhone = mergeCustomer.phone ? normalizePhone(mergeCustomer.phone) : '';
-    if (normalizedMergePhone && !keepPhoneSet.has(normalizedMergePhone)) {
-      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizedMergePhone, 'merged');
-    }
-    const normalizedMergeMobile = mergeCustomer.mobile ? normalizePhone(mergeCustomer.mobile) : '';
-    if (normalizedMergeMobile && !keepPhoneSet.has(normalizedMergeMobile)) {
-      await adb.run('INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)', kid, normalizedMergeMobile, 'merged');
-    }
-
-    // Merge email addresses (avoid duplicates)
-    const keepEmailSet = new Set<string>();
-    if (keepCustomer.email) keepEmailSet.add(keepCustomer.email.toLowerCase());
-    const keepExtraEmails = await adb.all<{ email: string }>('SELECT email FROM customer_emails WHERE customer_id = ?', kid);
-    for (const e of keepExtraEmails) keepEmailSet.add(e.email.toLowerCase());
-
-    const mergeEmailRows = await adb.all<AnyRow>('SELECT * FROM customer_emails WHERE customer_id = ?', mid);
-    for (const e of mergeEmailRows) {
-      if (!keepEmailSet.has(e.email.toLowerCase())) {
-        await adb.run('INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, 0)', kid, e.email, e.label || '');
-        keepEmailSet.add(e.email.toLowerCase());
-      }
-    }
-    if (mergeCustomer.email && !keepEmailSet.has(mergeCustomer.email.toLowerCase())) {
-      await adb.run('INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, 0)', kid, mergeCustomer.email, 'merged');
-    }
-
-    // Merge tags (combine, deduplicate)
+    // Merge tags (combine, deduplicate).
     // @audit-fixed: parseTags helper — JSON.parse without try/catch used to crash
     // the merge for any customer whose tags column held legacy non-JSON content.
     const parseTags = (raw: unknown, customer_id?: number): string[] => {
@@ -907,7 +882,6 @@ router.post(
     const keepTags = parseTags(keepCustomer.tags, kid);
     const mergeTags = parseTags(mergeCustomer.tags, mid);
     const combinedTags = [...new Set([...keepTags, ...mergeTags])];
-    await adb.run('UPDATE customers SET tags = ? WHERE id = ?', JSON.stringify(combinedTags), kid);
 
     // Reconcile opt-in / consent flags — most-restrictive wins (TCPA/GDPR).
     // If either row has opted out / revoked consent, the merged customer inherits
@@ -922,26 +896,89 @@ router.post(
     const reconciledSmsOptIn = minFlag(keepCustomer.sms_opt_in, mergeCustomer.sms_opt_in, 0);
     const reconciledSmsMarketing = minFlag(keepCustomer.sms_consent_marketing, mergeCustomer.sms_consent_marketing, 1);
     const reconciledSmsTransactional = minFlag(keepCustomer.sms_consent_transactional, mergeCustomer.sms_consent_transactional, 1);
-    await adb.run(
-      `UPDATE customers
-         SET email_opt_in = ?,
-             sms_opt_in = ?,
-             sms_consent_marketing = ?,
-             sms_consent_transactional = ?
-       WHERE id = ?`,
-      reconciledEmailOptIn,
-      reconciledSmsOptIn,
-      reconciledSmsMarketing,
-      reconciledSmsTransactional,
-      kid,
+
+    // ── Decide which phone / email rows need INSERT (and what extras land) ──
+    const phoneInsertsToApply: Array<{ phone: string; label: string }> = [];
+    const seenPhones = new Set(keepPhoneSet);
+    for (const p of mergePhoneRows) {
+      if (!seenPhones.has(p.phone)) {
+        phoneInsertsToApply.push({ phone: p.phone, label: (p.label as string) || '' });
+        seenPhones.add(p.phone);
+      }
+    }
+    const normalizedMergePhone = mergeCustomer.phone ? normalizePhone(mergeCustomer.phone) : '';
+    if (normalizedMergePhone && !seenPhones.has(normalizedMergePhone)) {
+      phoneInsertsToApply.push({ phone: normalizedMergePhone, label: 'merged' });
+      seenPhones.add(normalizedMergePhone);
+    }
+    const normalizedMergeMobile = mergeCustomer.mobile ? normalizePhone(mergeCustomer.mobile) : '';
+    if (normalizedMergeMobile && !seenPhones.has(normalizedMergeMobile)) {
+      phoneInsertsToApply.push({ phone: normalizedMergeMobile, label: 'merged' });
+      seenPhones.add(normalizedMergeMobile);
+    }
+
+    const emailInsertsToApply: Array<{ email: string; label: string }> = [];
+    const seenEmails = new Set(keepEmailSet);
+    for (const e of mergeEmailRows) {
+      const lc = String(e.email).toLowerCase();
+      if (!seenEmails.has(lc)) {
+        emailInsertsToApply.push({ email: e.email as string, label: (e.label as string) || '' });
+        seenEmails.add(lc);
+      }
+    }
+    if (mergeCustomer.email && !seenEmails.has(String(mergeCustomer.email).toLowerCase())) {
+      emailInsertsToApply.push({ email: String(mergeCustomer.email), label: 'merged' });
+      seenEmails.add(String(mergeCustomer.email).toLowerCase());
+    }
+
+    // ── Single atomic transaction commits the whole merge ──────────────────
+    const mergeQueries: TxQuery[] = [
+      // Re-parent historical activity
+      { sql: 'UPDATE tickets SET customer_id = ? WHERE customer_id = ?',         params: [kid, mid] },
+      { sql: 'UPDATE invoices SET customer_id = ? WHERE customer_id = ?',        params: [kid, mid] },
+      { sql: 'UPDATE estimates SET customer_id = ? WHERE customer_id = ?',       params: [kid, mid] },
+      { sql: 'UPDATE customer_assets SET customer_id = ? WHERE customer_id = ?', params: [kid, mid] },
+      { sql: 'UPDATE loaner_history SET customer_id = ? WHERE customer_id = ?',  params: [kid, mid] },
+    ];
+    // Copy non-duplicate phones onto keep
+    for (const row of phoneInsertsToApply) {
+      mergeQueries.push({
+        sql: 'INSERT INTO customer_phones (customer_id, phone, label, is_primary) VALUES (?, ?, ?, 0)',
+        params: [kid, row.phone, row.label],
+      });
+    }
+    // Copy non-duplicate emails onto keep
+    for (const row of emailInsertsToApply) {
+      mergeQueries.push({
+        sql: 'INSERT INTO customer_emails (customer_id, email, label, is_primary) VALUES (?, ?, ?, 0)',
+        params: [kid, row.email, row.label],
+      });
+    }
+    // Combined tags + reconciled consent live on keep
+    mergeQueries.push(
+      { sql: 'UPDATE customers SET tags = ? WHERE id = ?', params: [JSON.stringify(combinedTags), kid] },
+      {
+        sql: `UPDATE customers
+                 SET email_opt_in = ?,
+                     sms_opt_in = ?,
+                     sms_consent_marketing = ?,
+                     sms_consent_transactional = ?
+               WHERE id = ?`,
+        params: [
+          reconciledEmailOptIn,
+          reconciledSmsOptIn,
+          reconciledSmsMarketing,
+          reconciledSmsTransactional,
+          kid,
+        ],
+      },
+      // Soft-delete the merge customer; wipe their phone/email rows (data already copied)
+      { sql: "UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", params: [mid] },
+      { sql: 'DELETE FROM customer_phones WHERE customer_id = ?', params: [mid] },
+      { sql: 'DELETE FROM customer_emails WHERE customer_id = ?', params: [mid] },
     );
 
-    // Soft-delete the merged customer
-    await adb.run("UPDATE customers SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", mid);
-
-    // Delete merge customer's phone/email records (data already merged)
-    await adb.run('DELETE FROM customer_phones WHERE customer_id = ?', mid);
-    await adb.run('DELETE FROM customer_emails WHERE customer_id = ?', mid);
+    await adb.transaction(mergeQueries);
 
     audit(req.db, 'customer_merged', req.user!.id, req.ip || 'unknown', {
       keep_id: Number(keep_id),
@@ -1521,8 +1558,13 @@ router.get(
   '/repeat',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-    const minTickets = parseInt(req.query.min_tickets as string, 10) || 3;
-    const months = parseInt(req.query.months as string, 10) || 12;
+    // BUGHUNT-2026-05-16: cap both inputs and the result set. Previously
+    // `months=9999` scanned 800+ years of history and the unbounded SELECT
+    // could return the entire customer table in one JSON blob.
+    const minTicketsRaw = parseInt(req.query.min_tickets as string, 10) || 3;
+    const monthsRaw = parseInt(req.query.months as string, 10) || 12;
+    const minTickets = Math.min(Math.max(minTicketsRaw, 1), 1000);
+    const months = Math.min(Math.max(monthsRaw, 1), 120);
 
     const customers = await adb.all<AnyRow>(`
       SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.mobile,
@@ -1537,6 +1579,7 @@ router.get(
       GROUP BY c.id
       HAVING COUNT(t.id) >= ?
       ORDER BY ticket_count DESC
+      LIMIT 500
     `, `-${months} months`, minTickets);
 
     res.json({ success: true, data: customers });
@@ -1612,7 +1655,12 @@ router.get(
     if (rfmData) {
       // Recency: 0-40 points (last visit within 30/60/90/180 days)
       if (rfmData.last_visit) {
-        const daysSince = Math.floor((Date.now() - new Date(rfmData.last_visit).getTime()) / 86_400_000);
+        // BUGHUNT-2026-05-16: rfmData.last_visit is MAX(t.created_at) — SQLite
+        // 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z'). V8 parses as local time, so
+        // daysSince is off by the UTC offset and a customer can be misclassified.
+        const lv = rfmData.last_visit as string;
+        const normalizedLv = lv.includes('T') || lv.endsWith('Z') || lv.includes('+') ? lv : `${lv.replace(' ', 'T')}Z`;
+        const daysSince = Math.floor((Date.now() - new Date(normalizedLv).getTime()) / 86_400_000);
         if (daysSince <= 30) healthScore += 40;
         else if (daysSince <= 60) healthScore += 30;
         else if (daysSince <= 90) healthScore += 20;

@@ -524,6 +524,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
                 token. Visible only once a preview exists. */}
             {preview && (
               <button
+                type="button"
                 onClick={() => setMinimized(true)}
                 aria-label="Minimize"
                 title="Minimize — keep the preview token alive while answering inbound SMS"
@@ -533,6 +534,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
               </button>
             )}
             <button
+              type="button"
               onClick={onClose}
               aria-label="Close"
               className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700"

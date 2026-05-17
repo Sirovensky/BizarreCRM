@@ -2,14 +2,20 @@
  * requirePosPin — Server-side gate for POS tendering and ticket creation.
  *
  * When `pos_require_pin_sale` or `pos_require_pin_ticket` is enabled in
- * store_config the client is expected to verify the user's PIN via
- * `POST /auth/verify-pin` and pass the resulting session token as the
- * `X-Pos-Pin-Verified` header (value: `1`).  This middleware reads both
- * the store_config flag and the header, and rejects the request with 403
- * when the flag is on but the header is absent or falsy.
+ * store_config the client must first call `POST /auth/verify-pin`, which on
+ * success sets a short-lived (15 min) httpOnly cookie `pos_pin_token`
+ * containing an HMAC-signed token bound to the authenticated user_id.  This
+ * middleware validates that cookie token against the current request's
+ * user_id and rejects with 403 when missing/invalid/expired.
  *
  * The actual PIN hash comparison happens in `/auth/verify-pin` (bcrypt,
  * rate-limited); this middleware only enforces that the step was completed.
+ *
+ * BUGHUNT-2026-05-16: previously this gate trusted a client-set
+ * `X-Pos-Pin-Verified: 1` header. Any authenticated user could spoof that
+ * header and bypass the PIN entirely. The cookie token is signed server-side
+ * and bound to (user_id, expiry) so it cannot be forged or replayed across
+ * users.
  *
  * Usage:
  *   router.post('/transaction', requirePosPinSale, asyncHandler(...))
@@ -17,8 +23,10 @@
  *   // For ticket-only creation use requirePosPinTicket.
  */
 
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { ERROR_CODES, errorBody } from '../utils/errorCodes.js';
+import { config } from '../config.js';
 
 function getConfigBool(db: any, key: string): boolean {
   try {
@@ -27,6 +35,57 @@ function getConfigBool(db: any, key: string): boolean {
   } catch {
     return false;
   }
+}
+
+// BUGHUNT-2026-05-16: the previous "PIN gate" trusted a client-set
+// `X-Pos-Pin-Verified: 1` header. Any authenticated user could spoof it.
+// /auth/verify-pin now issues a short-lived HMAC-signed token bound to the
+// user_id and an expiry, and sets it as an httpOnly cookie. The middleware
+// below validates that token. The header is no longer consulted.
+export const POS_PIN_COOKIE = 'pos_pin_token';
+export const POS_PIN_TTL_SEC = 15 * 60;
+const POS_PIN_KEY_LABEL = 'bizarre-crm:pos-pin-verified:v1';
+
+function derivePosPinKey(): Buffer {
+  return crypto.createHmac('sha256', POS_PIN_KEY_LABEL).update(config.jwtSecret).digest();
+}
+
+export function issuePosPinToken(userId: number, ttlSec: number = POS_PIN_TTL_SEC): string {
+  const expiry = Math.floor(Date.now() / 1000) + ttlSec;
+  const payload = `${userId}.${expiry}`;
+  const sig = crypto.createHmac('sha256', derivePosPinKey()).update(payload).digest('hex');
+  return `${payload}.${sig}`;
+}
+
+export function verifyPosPinToken(token: string, userId: number): boolean {
+  if (typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [uidStr, expiryStr, sigHex] = parts;
+  const uid = parseInt(uidStr, 10);
+  const expiry = parseInt(expiryStr, 10);
+  if (!Number.isFinite(uid) || !Number.isFinite(expiry)) return false;
+  if (uid !== userId) return false;
+  if (Math.floor(Date.now() / 1000) >= expiry) return false;
+  const payload = `${uid}.${expiry}`;
+  const expected = crypto.createHmac('sha256', derivePosPinKey()).update(payload).digest('hex');
+  try {
+    const a = Buffer.from(sigHex, 'hex');
+    const b = Buffer.from(expected, 'hex');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function readPinCookie(req: Request): string | undefined {
+  const raw = (req as unknown as { cookies?: Record<string, string> }).cookies?.[POS_PIN_COOKIE];
+  return typeof raw === 'string' ? raw : undefined;
+}
+
+function currentUserId(req: Request): number | null {
+  const id = (req as any).user?.id;
+  return typeof id === 'number' && Number.isFinite(id) ? id : null;
 }
 
 /**
@@ -43,8 +102,9 @@ export function requirePosPinSale(req: Request, res: Response, next: NextFunctio
   const flagOn = getConfigBool(db, 'pos_require_pin_sale');
   if (!flagOn) { next(); return; }
 
-  const header = req.headers['x-pos-pin-verified'];
-  if (header === '1') { next(); return; }
+  const userId = currentUserId(req);
+  const token = readPinCookie(req);
+  if (userId !== null && token && verifyPosPinToken(token, userId)) { next(); return; }
 
   const rid = res.locals.requestId as string | undefined;
   res.status(403).json(errorBody(
@@ -68,8 +128,9 @@ export function requirePosPinTicket(req: Request, res: Response, next: NextFunct
   const flagOn = getConfigBool(db, 'pos_require_pin_ticket');
   if (!flagOn) { next(); return; }
 
-  const header = req.headers['x-pos-pin-verified'];
-  if (header === '1') { next(); return; }
+  const userId = currentUserId(req);
+  const token = readPinCookie(req);
+  if (userId !== null && token && verifyPosPinToken(token, userId)) { next(); return; }
 
   const rid = res.locals.requestId as string | undefined;
   res.status(403).json(errorBody(
@@ -103,8 +164,9 @@ export function requirePosPinByMode(req: Request, res: Response, next: NextFunct
   const flagOn = getConfigBool(db, configKey);
   if (!flagOn) { next(); return; }
 
-  const header = req.headers['x-pos-pin-verified'];
-  if (header === '1') { next(); return; }
+  const userId = currentUserId(req);
+  const token = readPinCookie(req);
+  if (userId !== null && token && verifyPosPinToken(token, userId)) { next(); return; }
 
   const rid = res.locals.requestId as string | undefined;
   const msg = mode === 'checkout'

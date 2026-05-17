@@ -6,7 +6,8 @@ import { audit } from '../utils/audit.js';
 import { broadcast } from '../ws/server.js';
 import { WS_EVENTS, LEGAL_LEAD_TRANSITIONS } from '@bizarre-crm/shared';
 import { config } from '../config.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { normalizePhone } from '../utils/phone.js';
 import { createLogger } from '../utils/logger.js';
 const logger = createLogger('leads');
@@ -80,8 +81,15 @@ function computeLeadScore(lead: any, appointments: any[] | null): number {
 
   // Responded within 24 hours of creation
   if (lead.updated_at && lead.created_at) {
-    const created = new Date(lead.created_at).getTime();
-    const updated = new Date(lead.updated_at).getTime();
+    // BUGHUNT-2026-05-16: SQLite ts is 'YYYY-MM-DD HH:MM:SS' UTC without 'Z'.
+    // V8 parses that as local time, so a UTC+N server would shift both
+    // timestamps by N hours equally — the *difference* survives, but in
+    // case the columns ever carry mixed forms (e.g. an ISO from a future
+    // backfill), normalize to be safe.
+    const normalize = (v: string): string =>
+      v.includes('T') || v.endsWith('Z') || v.includes('+') ? v : `${v.replace(' ', 'T')}Z`;
+    const created = new Date(normalize(lead.created_at)).getTime();
+    const updated = new Date(normalize(lead.updated_at)).getTime();
     if (updated - created <= 24 * 60 * 60 * 1000 && updated !== created) score += 10;
   }
 
@@ -648,26 +656,35 @@ router.post(
       }
     }
 
-    const result = await adb.run(`
-      INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, location_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-      lead_id ?? null,
-      customer_id ?? null,
-      title ?? '',
-      start_time,
-      end_time ?? null,
-      assigned_to ?? null,
-      status ?? 'scheduled',
-      notes ?? null,
-      recurrence || null,
-      resolvedLocationId,
-    );
+    // BUGHUNT-2026-05-17: previously the parent appointment INSERT + 4 child
+    // INSERTs ran sequentially. A crash mid-loop left the user with a parent
+    // appointment + some (but not all) of its recurring occurrences. Worse, a
+    // partial weekly recurrence (parent + 2 of 4 weeks) silently looked
+    // "scheduled" in the calendar but missed weeks 3-4, so customers in those
+    // slots would never be reminded and a tech would skip those visits.
+    // Pre-compute every occurrence's timing in JS, then batch parent + children
+    // into one atomic adb.transaction(). lastInsertRowidFrom(0) so each child's
+    // recurrence_parent_id resolves to the parent INSERT's rowid (each child
+    // INSERT bumps last_insert_rowid()).
+    const apptTxQueries: TxQuery[] = [
+      {
+        sql: `INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, location_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          lead_id ?? null,
+          customer_id ?? null,
+          title ?? '',
+          start_time,
+          end_time ?? null,
+          assigned_to ?? null,
+          status ?? 'scheduled',
+          notes ?? null,
+          recurrence || null,
+          resolvedLocationId,
+        ],
+      },
+    ];
 
-    const parentId = result.lastInsertRowid;
-
-    // ENR-LE12: Auto-create recurring occurrences (next 4 by default)
-    const recurringIds: number[] = [];
     if (recurrence && ['weekly', 'biweekly', 'monthly'].includes(recurrence)) {
       const OCCURRENCE_COUNT = 4;
       const baseStart = new Date(start_time);
@@ -678,29 +695,18 @@ router.post(
       // years because Feb only has 28/29 days. addMonthsClamped() clamps
       // the day to the last valid day of the target month so the 31st
       // of one month lands on the 28/29/30/31 of the next, matching how
-      // humans read "monthly on the 31st". Weekly/biweekly use setDate()
-      // which is already day-count exact across DST transitions (setDate
-      // respects the server's TZ, which is the same TZ we store to DB
-      // as naive local strings — so wall-clock semantics are preserved).
-      /**
-       * Add `months` to a date, clamping day-of-month to the target month's length
-       * (e.g., Jan 31 + 1 month = Feb 28/29).
-       *
-       * TIMEZONE: uses setMonth which respects server's local timezone. DST
-       * transitions preserve wall-clock semantics (the resulting hour of day stays
-       * the same; UTC timestamp shifts by DST offset). If DST-independent offsets
-       * are required (e.g., billing cycles that must fire at exact UTC times), use
-       * UTC-based arithmetic instead.
-       */
+      // humans read "monthly on the 31st".
       const addMonthsClamped = (source: Date, months: number): Date => {
         const d = new Date(source);
         const originalDay = d.getDate();
-        d.setDate(1); // pivot to the 1st so setMonth can't overflow
+        d.setDate(1);
         d.setMonth(d.getMonth() + months);
         const lastDayOfTarget = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
         d.setDate(Math.min(originalDay, lastDayOfTarget));
         return d;
       };
+      const fmtDate = (d: Date) => d.toISOString().replace('T', ' ').substring(0, 19);
+
       for (let i = 1; i <= OCCURRENCE_COUNT; i++) {
         let nextStart: Date;
         let nextEnd: Date | null;
@@ -720,26 +726,31 @@ router.post(
           nextEnd = baseEnd ? addMonthsClamped(baseEnd, i) : null;
         }
 
-        const fmtDate = (d: Date) => d.toISOString().replace('T', ' ').substring(0, 19);
-        const childResult = await adb.run(`
-          INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, recurrence_parent_id, location_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-          lead_id ?? null,
-          customer_id ?? null,
-          title ?? '',
-          fmtDate(nextStart),
-          nextEnd ? fmtDate(nextEnd) : null,
-          assigned_to ?? null,
-          'scheduled',
-          notes ?? null,
-          recurrence,
-          parentId,
-          resolvedLocationId,
-        );
-        recurringIds.push(childResult.lastInsertRowid);
+        apptTxQueries.push({
+          sql: `INSERT INTO appointments (lead_id, customer_id, title, start_time, end_time, assigned_to, status, notes, recurrence, recurrence_parent_id, location_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          params: [
+            lead_id ?? null,
+            customer_id ?? null,
+            title ?? '',
+            fmtDate(nextStart),
+            nextEnd ? fmtDate(nextEnd) : null,
+            assigned_to ?? null,
+            'scheduled',
+            notes ?? null,
+            recurrence,
+            lastInsertRowidFrom(0),
+            resolvedLocationId,
+          ],
+        });
       }
     }
+
+    const apptTxResults = await adb.transaction(apptTxQueries);
+    const parentId = Number(apptTxResults[0].lastInsertRowid);
+    const recurringIds: number[] = apptTxResults
+      .slice(1)
+      .map((r) => Number(r.lastInsertRowid));
 
     const appointment = await adb.get<any>('SELECT * FROM appointments WHERE id = ?', parentId);
 
@@ -1282,8 +1293,21 @@ router.delete(
     // @audit-fixed: validate id
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid lead ID', 400);
-    const existing = await adb.get<any>('SELECT id FROM leads WHERE id = ? AND is_deleted = 0', id);
+    const existing = await adb.get<{ id: number; assigned_to: number | null }>(
+      'SELECT id, assigned_to FROM leads WHERE id = ? AND is_deleted = 0',
+      id,
+    );
     if (!existing) throw new AppError('Lead not found', 404);
+
+    // Only admin/manager OR the assignee may delete. Without this any
+    // technician/cashier could enumerate IDs and soft-delete the entire
+    // lead pipeline (mirrors the DELETE /appointments/:id gate above).
+    const user = req.user!;
+    const isAdminOrManager = user.role === 'admin' || user.role === 'manager';
+    const isOwner = existing.assigned_to != null && existing.assigned_to === user.id;
+    if (!isAdminOrManager && !isOwner) {
+      throw new AppError('You do not have permission to delete this lead', 403);
+    }
 
     await adb.run("UPDATE leads SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?", id);
 

@@ -23,6 +23,7 @@ import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
 import { useAuthStore } from '@/stores/authStore';
+import { confirm } from '@/stores/confirmStore';
 
 interface EmployeeMin {
   id: number;
@@ -390,9 +391,13 @@ export function BenchTimer({ ticketId, ticketDeviceId, employees = [] }: BenchTi
               timer to recover orphan-running timers (e.g. tech logged out without stopping). */}
           {canOverrideTimer && otherActiveTimer ? (
             <button
-              onClick={() => {
-                if (!window.confirm(`Force-stop ${otherTechName}'s timer? This will end their session and bill labor up to now.`)) return;
-                forceStopOtherMut.mutate(otherActiveTimer.id);
+              type="button"
+              onClick={async () => {
+                const ok = await confirm(
+                  `Force-stop ${otherTechName}'s timer? This will end their session and bill labor up to now.`,
+                  { title: 'Force-stop timer', confirmLabel: 'Force stop', danger: true },
+                );
+                if (ok) forceStopOtherMut.mutate(otherActiveTimer.id);
               }}
               disabled={forceStopOtherMut.isPending}
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-red-700 dark:bg-surface-900 dark:text-red-300 dark:hover:bg-red-950/40"

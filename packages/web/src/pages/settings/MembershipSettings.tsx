@@ -110,10 +110,11 @@ function Toggle({ checked, onChange, label, description }: {
 
 // ─── Tier Card ──────────────────────────────────────────────────
 
-function TierCard({ tier, onEdit, onDelete }: {
+function TierCard({ tier, onEdit, onDelete, deletePending }: {
   tier: MembershipTier;
   onEdit: () => void;
   onDelete: () => void;
+  deletePending?: boolean;
 }) {
   return (
     <div className="rounded-xl border-2 overflow-hidden" style={{ borderColor: tier.color }}>
@@ -134,9 +135,10 @@ function TierCard({ tier, onEdit, onDelete }: {
             <button
               aria-label="Delete"
               onClick={onDelete}
-              className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-white/60 dark:hover:text-red-400 dark:hover:bg-surface-800/60"
+              disabled={deletePending}
+              className="btn-icon btn-xs text-surface-400 hover:text-red-600 hover:bg-white/60 dark:hover:text-red-400 dark:hover:bg-surface-800/60 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Trash2 className="h-4 w-4" />
+              {deletePending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             </button>
           </div>
         </div>
@@ -544,6 +546,7 @@ export function MembershipSettings({ showActiveSubscribers = true }: { showActiv
                 tier={tier}
                 onEdit={() => handleEdit(tier)}
                 onDelete={() => handleDelete(tier)}
+                deletePending={deleteMutation.isPending && deleteMutation.variables === tier.id}
               />
             ))}
           </div>

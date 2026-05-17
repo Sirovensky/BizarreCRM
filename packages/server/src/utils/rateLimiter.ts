@@ -165,7 +165,9 @@ export function recordLockoutFailure(
   db.prepare(`
     INSERT INTO rate_limits (category, key, count, first_attempt, locked_until)
     VALUES (?, ?, 1, ?, ?)
-    ON CONFLICT(category, key) DO UPDATE SET count = count + 1
+    ON CONFLICT(category, key) DO UPDATE SET
+      count = count + 1,
+      locked_until = excluded.locked_until
   `).run(category, key, now, now + lockoutMs);
 }
 

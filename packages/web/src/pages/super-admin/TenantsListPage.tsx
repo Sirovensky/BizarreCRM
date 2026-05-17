@@ -110,6 +110,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
               required
+              autoComplete="current-password"
               className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
             {error && <p role="alert" aria-live="polite" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
@@ -269,7 +270,7 @@ function TenantRow({ tenant }: TenantRowProps) {
       <td className="px-4 py-3 text-xs text-surface-500">{tenant.plan}</td>
       <td className="px-4 py-3 text-xs text-surface-500">{tenant.db_size_mb} MB</td>
       <td className="px-4 py-3 text-xs text-surface-500">
-        {new Date(tenant.created_at).toLocaleDateString()}
+        {tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : '—'}
       </td>
       <td className="px-4 py-3">
         <button
@@ -493,7 +494,7 @@ function TenantCard({ tenant }: TenantRowProps) {
         </div>
         <div>
           <span className="block text-surface-400 dark:text-surface-500 uppercase tracking-wide text-[10px] font-semibold mb-0.5">Created</span>
-          <span>{new Date(tenant.created_at).toLocaleDateString()}</span>
+          <span>{tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : '—'}</span>
         </div>
       </div>
 

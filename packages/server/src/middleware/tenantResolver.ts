@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { config } from '../config.js';
 import { getMasterDb } from '../db/master-connection.js';
-import { getTenantDb } from '../db/tenant-pool.js';
+import { getTenantDb, releaseTenantDb } from '../db/tenant-pool.js';
 import { createAsyncDb } from '../db/async-db.js';
 import { getPlanDefinition, type TenantPlan } from '@bizarre-crm/shared';
 import { createLogger } from '../utils/logger.js';
@@ -530,6 +530,19 @@ export async function tenantResolver(req: Request, res: Response, next: NextFunc
   try {
     // SECURITY: getTenantDb validates slug format again and verifies path is within tenantDataDir
     req.db = await getTenantDb(tenant.slug);
+    // BUGHUNT-2026-05-16: pair every getTenantDb with releaseTenantDb so the
+    // refcount drops to 0 after the response ends. Previously the refcount
+    // grew unbounded with traffic, defeating LRU eviction (evictLRU skips
+    // entries with refcount > 0) and forcing every new tenant into the
+    // "overflow handle" path, which is also never released.
+    let released = false;
+    const releaseOnce = () => {
+      if (released) return;
+      released = true;
+      releaseTenantDb(tenant.slug);
+    };
+    res.on('finish', releaseOnce);
+    res.on('close', releaseOnce);
     // Async DB for worker-thread based queries (gradual migration)
     const tenantDbPath = path.join(config.tenantDataDir || path.join(path.dirname(config.dbPath), 'tenants'), `${tenant.slug}.db`);
     req.asyncDb = createAsyncDb(tenantDbPath);

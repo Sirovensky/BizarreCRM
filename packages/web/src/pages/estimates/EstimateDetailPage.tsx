@@ -621,8 +621,8 @@ export function EstimateDetailPage() {
       {/* Header */}
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <button onClick={() => navigate('/estimates')} className="no-print shrink-0 rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
-            <ArrowLeft className="h-5 w-5" />
+          <button type="button" onClick={() => navigate('/estimates')} aria-label="Back to estimates" title="Back to estimates" className="no-print shrink-0 rounded-lg p-2 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
+            <ArrowLeft aria-hidden="true" className="h-5 w-5" />
           </button>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-3">

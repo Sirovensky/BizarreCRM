@@ -648,12 +648,14 @@ export async function processPayment(
     const request = new BlockChyp.AuthorizationRequest();
     request.terminalName = cfgSnapshot.terminalName;
     request.test = lockedTestMode;
-    request.amount = amount.toFixed(2);
+    request.amount = (Math.round(amount * 100) / 100).toFixed(2);
     request.transactionRef = transactionRef;
     request.description = `Ticket ${ticketOrderId}`;
 
     if (tip && tip > 0) {
-      request.tipAmount = tip.toFixed(2);
+      // BUGHUNT-2026-05-16: mirror the amount path's Math.round so JS float
+      // tip values (e.g. 1.005) don't round inconsistently on .toFixed(2).
+      request.tipAmount = (Math.round(tip * 100) / 100).toFixed(2);
     }
     if (cfgSnapshot.promptForTip) {
       request.promptForTip = true;
@@ -841,7 +843,7 @@ export async function processRefund(
     const request = new BlockChyp.RefundRequest();
     request.terminalName = cfgSnapshot.terminalName;
     request.test = cfgSnapshot.testMode;
-    request.amount = amount.toFixed(2);
+    request.amount = (Math.round(amount * 100) / 100).toFixed(2);
     request.transactionId = originalTransactionId;
     request.transactionRef = transactionRef;
     request.sigFormat = cfgSnapshot.sigFormat as "" | "png" | "jpg" | "gif";
@@ -987,7 +989,7 @@ export async function captureCharge(
     request.transactionId = transactionId;
     request.transactionRef = transactionRef;
     if (amount !== null) {
-      request.amount = amount.toFixed(2);
+      request.amount = (Math.round(amount * 100) / 100).toFixed(2);
     }
 
     const response = await blockchypBreaker.run(() => client.capture(request));

@@ -235,7 +235,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Access token expired — try refresh before logging out
       try {
         const refreshRes = await api.post('/auth/refresh');
-        const { user } = refreshRes.data.data;
+        const { user } = refreshRes.data.data ?? {};
+        // BUGHUNT-2026-05-16: guard against a malformed refresh response.
+        // Treating `isAuthenticated: true` with `user: undefined` crashes any
+        // consumer that reads `user.role` — fall back to logout instead.
+        if (!user) {
+          clearLegacyAccessToken();
+          set({ user: null, isAuthenticated: false, isLoading: false });
+          return;
+        }
         set({ user, isAuthenticated: true, isLoading: false });
         emitAuthReady(false);
       } catch {

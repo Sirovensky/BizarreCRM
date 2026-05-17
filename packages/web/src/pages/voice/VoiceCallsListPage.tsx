@@ -336,6 +336,7 @@ function CallRow({ call, callerMap }: CallRowProps) {
       <td className="px-4 py-3">
         {hasRecording(call) ? (
           <button
+            type="button"
             onClick={handlePlay}
             disabled={loadingRec}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
@@ -370,9 +371,13 @@ export function VoiceCallsListPage() {
 
   const allCalls = data?.calls ?? [];
 
-  // WEB-UIUX-875: collect unique inbound from_numbers and look up matching customers
+  // WEB-UIUX-875: collect unique inbound from_numbers and look up matching customers.
+  // BUGHUNT-2026-05-16: sort the array so the React Query key (compared by
+  // deep-equal/JSON) stays stable across reorderings — otherwise a new call
+  // at the top of the list shuffles the insertion order and triggers a
+  // useless refetch of the caller lookup.
   const fromNumbers = useMemo(
-    () => Array.from(new Set(allCalls.map((c) => c.from_number).filter(Boolean) as string[])),
+    () => Array.from(new Set(allCalls.map((c) => c.from_number).filter(Boolean) as string[])).sort(),
     [allCalls],
   );
   const { data: callerMap = new Map<string, CustomerSummary>() } = useQuery({
@@ -440,6 +445,7 @@ export function VoiceCallsListPage() {
           <AlertCircle className="h-10 w-10 text-red-400" />
           <p className="text-sm text-surface-500">Failed to load calls.</p>
           <button
+            type="button"
             onClick={() => refetch()}
             className="px-4 py-2 text-sm text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50"
           >
@@ -579,6 +585,7 @@ export function VoiceCallsListPage() {
               </span>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage <= 1}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
@@ -587,6 +594,7 @@ export function VoiceCallsListPage() {
                   Previous
                 </button>
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage >= totalPages}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"

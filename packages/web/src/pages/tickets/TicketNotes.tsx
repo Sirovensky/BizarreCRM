@@ -333,6 +333,7 @@ export function TicketNotes({
           <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)}
             rows={3} placeholder={`Enter ${noteType} comment...`}
             aria-label="Note text"
+            maxLength={10000}
             className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 resize-y" />
         ) : (
           <div>

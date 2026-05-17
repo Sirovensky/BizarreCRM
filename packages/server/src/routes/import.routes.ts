@@ -1683,7 +1683,7 @@ router.get(
       if (stored?.value) {
         rdAccessToken = decryptConfigValue(stored.value);
         const exp = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_token_expires'");
-        rdTokenExpiresAt = exp?.value ? parseInt(exp.value) : 0;
+        rdTokenExpiresAt = exp?.value ? parseInt(exp.value, 10) : 0;
         const rt = await adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'rd_refresh_token'");
         rdRefreshToken = rt?.value ? decryptConfigValue(rt.value) : null;
       }

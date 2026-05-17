@@ -138,7 +138,7 @@ function decryptTotpSecret(ciphertext: string): string {
     const [ivHex, tagHex, encHex] = ciphertext.split(':');
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
     decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+    return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString('utf8');
   }
 
   // Versioned format: v{n}:{iv}:{tag}:{data}
@@ -152,7 +152,7 @@ function decryptTotpSecret(ciphertext: string): string {
   if (version >= 3) {
     decipher.setAAD(Buffer.from(`v${version}`));
   }
-  return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+  return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString('utf8');
 }
 
 // ---------------------------------------------------------------------------

@@ -113,6 +113,10 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 // POST / — Create trade-in
 router.post('/', asyncHandler(async (req, res) => {
+  // BUGHUNT-2026-05-16: file-level comment (SCAN-557) says reads + writes
+  // must be manager-or-admin only because the record contains IMEI/serial/PII.
+  // GET endpoints already enforce this; POST/PATCH/DELETE were missing it.
+  requireManagerOrAdmin(req);
   // SCAN-556: rate-limit write path — 30 creates per user per minute
   if (!checkWindowRate(req.db, TRADE_IN_WRITE_CATEGORY, String(req.user!.id), TRADE_IN_WRITE_MAX, TRADE_IN_WRITE_WINDOW_MS)) {
     throw new AppError('Too many trade-in submissions. Please wait before trying again.', 429);
@@ -155,6 +159,10 @@ router.post('/', asyncHandler(async (req, res) => {
 // hard-cap accepted_price to (0, 100_000] so a typo can't issue a $1M payout
 // and a sign-flip can't mint negative inventory value.
 router.patch('/:id', asyncHandler(async (req, res) => {
+  // BUGHUNT-2026-05-16: blanket manager-or-admin gate. The accepted-status
+  // sub-check below still applies to financial confirmation but the broad
+  // PII access rule from SCAN-557 needs enforcement on every PATCH.
+  requireManagerOrAdmin(req);
   // SCAN-1096: validate id first so a malformed param returns 400, not a 500
   // from the SQLite comparison or a later Number('abc')=NaN.
   const tradeInId = validateId(req.params.id, 'id');
@@ -356,6 +364,9 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 // so the row is excluded from all normal list/detail queries but remains in
 // the database for audit and reconciliation purposes.
 router.delete('/:id', asyncHandler(async (req, res) => {
+  // BUGHUNT-2026-05-16: SCAN-557 mandates manager-or-admin on every endpoint
+  // since trade-in rows hold IMEI/serial/PII. Previously DELETE was open.
+  requireManagerOrAdmin(req);
   // SCAN-1096: validate id up front so malformed params 400 cleanly.
   const tradeInId = validateId(req.params.id, 'id');
   const adb = req.asyncDb;

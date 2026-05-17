@@ -6,11 +6,12 @@
  * pointer dead-ended. Now admin can add/edit/delete checklist items + flip
  * is_active without touching the DB.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Plus, Loader2, AlertTriangle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 
 interface ChecklistItem {
   id: number;
@@ -150,11 +151,12 @@ export function QcChecklistPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          // eslint-disable-next-line no-alert
-                          if (window.confirm(`Delete "${item.name}"? Historical sign-offs keep the row reference.`)) {
-                            deleteMut.mutate(item.id);
-                          }
+                        onClick={async () => {
+                          const ok = await confirm(
+                            `Delete "${item.name}"? Historical sign-offs keep the row reference.`,
+                            { title: 'Delete checklist item', confirmLabel: 'Delete', danger: true },
+                          );
+                          if (ok) deleteMut.mutate(item.id);
                         }}
                         className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/20"
                       >
@@ -208,6 +210,12 @@ function ChecklistItemModal({ onClose, onSubmit, pending, initial }: ChecklistIt
   const [name, setName] = useState(initial?.name ?? '');
   const [sortOrder, setSortOrder] = useState(String(initial?.sort_order ?? 0));
   const [category, setCategory] = useState(initial?.device_category ?? '');
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
 
   return (
     <div

@@ -51,6 +51,11 @@ function requireAdminOrManager(req: any): void {
   }
 }
 
+function isAdminOrManager(req: any): boolean {
+  const role = req?.user?.role;
+  return role === 'admin' || role === 'manager';
+}
+
 function requireAdmin(req: any): void {
   if (req?.user?.role !== 'admin') {
     throw new AppError('Admin role required', 403);
@@ -84,7 +89,12 @@ router.get(
   '/shifts',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const userId = req.query.user_id ? parseId(String(req.query.user_id), 'user_id') : null;
+    // BUGHUNT-2026-05-16: non-managers can only see their own shifts (mirrors
+    // shiftsSchedule.routes.ts). Previously any authenticated user could
+    // enumerate the entire shift list with names.
+    const requestedUserId = req.query.user_id ? parseId(String(req.query.user_id), 'user_id') : null;
+    const callerId = requireUserId(req);
+    const userId = isAdminOrManager(req) ? requestedUserId : callerId;
     const from = validateIsoDate(req.query.from, 'from', false);
     const to = validateIsoDate(req.query.to, 'to', false);
 
@@ -248,7 +258,12 @@ router.get(
     const status = req.query.status
       ? validateEnum(req.query.status, ['pending', 'approved', 'denied', 'cancelled'] as const, 'status', false)
       : null;
-    const userId = req.query.user_id ? parseId(String(req.query.user_id), 'user_id') : null;
+    // BUGHUNT-2026-05-16: non-managers see only their own time-off requests.
+    // The parallel timeOff.routes.ts already enforces this — bring this older
+    // route into line so the team-routes mount cannot leak across employees.
+    const requestedUserId = req.query.user_id ? parseId(String(req.query.user_id), 'user_id') : null;
+    const callerId = requireUserId(req);
+    const userId = isAdminOrManager(req) ? requestedUserId : callerId;
 
     const where: string[] = [];
     const params: unknown[] = [];
@@ -435,12 +450,22 @@ router.post(
     const target = await adb.get<{ id: number }>('SELECT id FROM users WHERE id = ? AND is_active = 1', toUserId);
     if (!target) throw new AppError('Target user not found', 404);
 
-    await adb.run(
-      `INSERT INTO ticket_handoffs (ticket_id, from_user_id, to_user_id, reason, context)
-       VALUES (?, ?, ?, ?, ?)`,
-      ticketId, fromUserId, toUserId, reason, context,
-    );
-    await adb.run('UPDATE tickets SET assigned_to = ?, updated_at = datetime("now") WHERE id = ?', toUserId, ticketId);
+    // BUGHUNT-2026-05-17: atomic — the audit row (ticket_handoffs) and the
+    // tickets.assigned_to UPDATE must commit together. A crash between them
+    // leaves either a handoff audit pointing to a ticket still owned by the
+    // old tech (post-mortem mismatch) or a silently reassigned ticket with no
+    // handoff context (accountability gap).
+    await adb.transaction([
+      {
+        sql: `INSERT INTO ticket_handoffs (ticket_id, from_user_id, to_user_id, reason, context)
+              VALUES (?, ?, ?, ?, ?)`,
+        params: [ticketId, fromUserId, toUserId, reason, context],
+      },
+      {
+        sql: "UPDATE tickets SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?",
+        params: [toUserId, ticketId],
+      },
+    ]);
     audit(req.db, 'ticket_handed_off', fromUserId, req.ip || 'unknown', {
       ticket_id: ticketId, to_user_id: toUserId,
     });
@@ -803,6 +828,7 @@ router.get(
 router.post(
   '/kb',
   asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
     const adb: AsyncDb = req.asyncDb;
     const title = validateRequiredString(req.body?.title, 'title', 200);
     const body = validateRequiredString(req.body?.body, 'body', 50_000);
@@ -823,6 +849,7 @@ router.post(
 router.put(
   '/kb/:id',
   asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
     const adb: AsyncDb = req.asyncDb;
     const id = parseId(req.params.id, 'article id');
     const title = req.body?.title !== undefined ? validateRequiredString(req.body.title, 'title', 200) : null;

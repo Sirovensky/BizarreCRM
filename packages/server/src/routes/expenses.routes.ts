@@ -361,8 +361,15 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   // @audit-fixed: validate id is positive integer
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isInteger(id) || id <= 0) throw new AppError('Invalid expense ID', 400);
-  const existing = await adb.get('SELECT id FROM expenses WHERE id = ?', id);
+  const existing = await adb.get<Record<string, any>>('SELECT id, user_id FROM expenses WHERE id = ?', id);
   if (!existing) throw new AppError('Expense not found', 404);
+
+  // Only admins or the user who created the expense can edit it
+  // (mirror of the DELETE handler below). Without this any authenticated
+  // user could overwrite another employee's expense amount/category.
+  if (req.user!.role !== 'admin' && existing.user_id !== req.user!.id) {
+    throw new AppError('Not authorized to edit this expense', 403);
+  }
 
   const { category, amount, description, date, receipt_path } = req.body;
   // @audit-fixed: V3 expense amount bounds check on update too — previously

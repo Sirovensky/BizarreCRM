@@ -2,7 +2,8 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
 import { isEmailConfigured, sendEmail } from '../services/email.js';
 import {
@@ -1330,31 +1331,74 @@ router.post('/prices', adminOrManager, asyncHandler(async (req, res) => {
     device_model_id, repair_service_id);
   if (existing) throw new AppError('A price already exists for this device model and service', 400);
 
-  const priceResult = await adb.run(`
-    INSERT INTO repair_prices (
-      device_model_id, repair_service_id, labor_price, default_grade,
-      is_active, is_custom, tier_label, auto_margin_enabled
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `, device_model_id, repair_service_id, validatedLabor, default_grade, is_active, is_custom ? 1 : 0, tier, auto_margin_enabled ? 1 : 0);
-
-  const priceId = priceResult.lastInsertRowid;
-
+  // BUGHUNT-2026-05-17: bundle the repair_prices INSERT + all grade rows +
+  // the audit row into one atomic transaction. Previously a crash mid-loop
+  // left a repair_prices row with a partial grades list — the POS would show
+  // the part with the wrong grade options or default to the wrong grade and
+  // the customer was overcharged / undercharged. Pre-validate every grade
+  // outside the tx so a 400 surfaces before any write.
+  interface PreparedGrade {
+    grade: unknown;
+    grade_label: unknown;
+    part_inventory_item_id: unknown;
+    part_catalog_item_id: unknown;
+    part_price: number;
+    labor_price_override: number | null;
+    is_default: number;
+    sort_order: number;
+  }
+  const preparedGrades: PreparedGrade[] = [];
   if (grades && Array.isArray(grades)) {
     for (const g of grades) {
-      // @audit-fixed: §37 — bound part_price + labor_price_override per grade
-      const validatedPartPrice = validatePriceField('part_price', g.part_price) ?? 0;
-      const validatedOverride = validatePriceField('labor_price_override', g.labor_price_override);
-      await adb.run(`
-        INSERT INTO repair_price_grades (repair_price_id, grade, grade_label, part_inventory_item_id, part_catalog_item_id, part_price, labor_price_override, is_default, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, priceId, g.grade, g.grade_label,
-        g.part_inventory_item_id || null, g.part_catalog_item_id || null,
-        validatedPartPrice, validatedOverride,
-        g.is_default ? 1 : 0, g.sort_order || 0
-      );
+      preparedGrades.push({
+        grade: g.grade,
+        grade_label: g.grade_label,
+        part_inventory_item_id: g.part_inventory_item_id || null,
+        part_catalog_item_id: g.part_catalog_item_id || null,
+        part_price: validatePriceField('part_price', g.part_price) ?? 0,
+        labor_price_override: validatePriceField('labor_price_override', g.labor_price_override),
+        is_default: g.is_default ? 1 : 0,
+        sort_order: g.sort_order || 0,
+      });
     }
   }
+
+  const priceTxQueries: TxQuery[] = [
+    {
+      sql: `INSERT INTO repair_prices (
+              device_model_id, repair_service_id, labor_price, default_grade,
+              is_active, is_custom, tier_label, auto_margin_enabled
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [device_model_id, repair_service_id, validatedLabor, default_grade, is_active, is_custom ? 1 : 0, tier, auto_margin_enabled ? 1 : 0],
+    },
+  ];
+  for (const pg of preparedGrades) {
+    priceTxQueries.push({
+      sql: `INSERT INTO repair_price_grades (repair_price_id, grade, grade_label, part_inventory_item_id, part_catalog_item_id, part_price, labor_price_override, is_default, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        lastInsertRowidFrom(0), pg.grade, pg.grade_label,
+        pg.part_inventory_item_id, pg.part_catalog_item_id,
+        pg.part_price, pg.labor_price_override,
+        pg.is_default, pg.sort_order,
+      ],
+    });
+  }
+  priceTxQueries.push({
+    sql: `INSERT INTO repair_prices_audit (
+            repair_price_id, device_model_id, repair_service_id,
+            old_labor_price, new_labor_price, old_is_custom, new_is_custom,
+            old_tier_label, new_tier_label, source, changed_by_user_id, note
+          )
+          VALUES (?, ?, ?, NULL, ?, NULL, ?, NULL, ?, 'manual', ?, ?)`,
+    params: [
+      lastInsertRowidFrom(0), device_model_id, repair_service_id, validatedLabor,
+      is_custom ? 1 : 0, tier, req.user!.id, 'Manual repair price created',
+    ],
+  });
+  const priceTxResults = await adb.transaction(priceTxQueries);
+  const priceId = Number(priceTxResults[0].lastInsertRowid);
 
   const [price, priceGrades] = await Promise.all([
     adb.get(`
@@ -1369,15 +1413,7 @@ router.post('/prices', adminOrManager, asyncHandler(async (req, res) => {
     adb.all('SELECT * FROM repair_price_grades WHERE repair_price_id = ? ORDER BY sort_order ASC', priceId),
   ]);
 
-  audit(db, 'repair_price_created', req.user!.id, req.ip || 'unknown', { price_id: Number(priceId), device_model_id, repair_service_id });
-  await adb.run(`
-    INSERT INTO repair_prices_audit (
-      repair_price_id, device_model_id, repair_service_id,
-      old_labor_price, new_labor_price, old_is_custom, new_is_custom,
-      old_tier_label, new_tier_label, source, changed_by_user_id, note
-    )
-    VALUES (?, ?, ?, NULL, ?, NULL, ?, NULL, ?, 'manual', ?, ?)
-  `, priceId, device_model_id, repair_service_id, validatedLabor, is_custom ? 1 : 0, tier, req.user!.id, 'Manual repair price created');
+  audit(db, 'repair_price_created', req.user!.id, req.ip || 'unknown', { price_id: priceId, device_model_id, repair_service_id });
   res.status(201).json({ success: true, data: { ...price as any, grades: priceGrades } });
 }));
 

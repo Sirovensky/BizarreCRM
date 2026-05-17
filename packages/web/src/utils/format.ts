@@ -65,7 +65,7 @@ export function formatCurrency(
   const fmt = useCustomLocale || currencyOverride
     ? getFormatter(localeOverride ?? _locale, code)
     : _currencyFmt;
-  if (amount == null || isNaN(Number(amount))) {
+  if (amount == null || !Number.isFinite(Number(amount))) {
     return '—';
   }
   try {
@@ -107,7 +107,7 @@ export function formatCurrencySymbol(currencyOverride?: string, localeOverride?:
  * Usage: `formatCents(1099)` → `"$10.99"` (with `USD` default).
  */
 export function formatCents(cents: number | null | undefined, currencyOverride?: string): string {
-  if (cents == null || !isFinite(Number(cents))) {
+  if (cents == null || !Number.isFinite(Number(cents))) {
     return '—';
   }
   const n = Number(cents);
@@ -117,13 +117,36 @@ export function formatCents(cents: number | null | undefined, currencyOverride?:
 
 // ─── Dates ──────────────────────────────────────────────────────────────────
 
+// BUGHUNT-2026-05-16: many server columns are written via SQLite
+// datetime('now') which produces 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z'). V8
+// parses such bare strings as LOCAL time, shifting the rendered value by
+// the browser's UTC offset (and flipping the calendar day for users west
+// of UTC near midnight UTC). Normalise to a proper ISO-8601 instant so
+// the centralised date helpers below get this right for every callsite.
+function normalizeMaybeSqliteTs(iso: string): string {
+  if (!iso) return iso;
+  // Already a full ISO instant (has T and Z/offset) \u2014 keep as-is.
+  if (iso.includes('T') && (iso.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(iso))) {
+    return iso;
+  }
+  // SQLite 'YYYY-MM-DD HH:MM:SS' form (no T, no tz) \u2014 UTC by convention.
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(iso)) {
+    return `${iso.replace(' ', 'T')}Z`;
+  }
+  // 'YYYY-MM-DDTHH:MM:SS' without tz \u2014 also treat as UTC.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso) && !/[Zz]|[+-]\d{2}:?\d{2}$/.test(iso)) {
+    return `${iso}Z`;
+  }
+  return iso;
+}
+
 // @audit-fixed (WEB-FM-008 / Fixer-C1 2026-04-25): added optional `localeOverride`
 // arg mirroring `formatCurrency` so portal pages \u2014 which run before AppShell ever
 // calls `initCurrencyFromSettings` \u2014 can format dates against a visitor-supplied
 // locale (`usePortalI18n`) instead of falling back to the module default.
 export function formatDate(iso: string | null | undefined, localeOverride?: string, tz?: string | null): string {
   if (!iso) return '\u2014';
-  const d = new Date(iso);
+  const d = new Date(normalizeMaybeSqliteTs(iso));
   if (isNaN(d.getTime())) return '\u2014';
   // WEB-UIUX-779: accept an optional IANA tz so reports + receipts can render
   // dates in the shop's `store_timezone` instead of the browser-local zone.
@@ -138,7 +161,7 @@ export function formatDate(iso: string | null | undefined, localeOverride?: stri
 
 export function formatDateTime(iso: string | null | undefined, localeOverride?: string, tz?: string | null): string {
   if (!iso) return '\u2014';
-  const d = new Date(iso);
+  const d = new Date(normalizeMaybeSqliteTs(iso));
   if (isNaN(d.getTime())) return '\u2014';
   const opts: Intl.DateTimeFormatOptions = {
     month: 'short',
@@ -157,7 +180,7 @@ export function formatDateTime(iso: string | null | undefined, localeOverride?: 
 // here so locale flows from `initCurrencyFromSettings` instead of being pinned.
 export function formatShortDateTime(iso: string | Date | null | undefined, tz?: string | null): string {
   if (iso == null) return '\u2014';
-  const d = iso instanceof Date ? iso : new Date(iso);
+  const d = iso instanceof Date ? iso : new Date(normalizeMaybeSqliteTs(iso));
   if (isNaN(d.getTime())) return '\u2014';
   const opts: Intl.DateTimeFormatOptions = {
     month: 'short',
@@ -205,7 +228,7 @@ export function dstSpringForwardAnomaly(localInput: string, parsed: Date): 'none
 
 export function formatTime(iso: string | Date | null | undefined, tz?: string | null): string {
   if (iso == null) return '\u2014';
-  const d = iso instanceof Date ? iso : new Date(iso);
+  const d = iso instanceof Date ? iso : new Date(normalizeMaybeSqliteTs(iso));
   if (isNaN(d.getTime())) return '\u2014';
   const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
   if (tz) opts.timeZone = tz;
@@ -214,7 +237,7 @@ export function formatTime(iso: string | Date | null | undefined, tz?: string | 
 
 /** Locale-aware integer formatter \u2014 replaces ad-hoc `n.toLocaleString()`. */
 export function formatNumber(n: number | null | undefined): string {
-  if (n == null || !isFinite(Number(n))) return '0';
+  if (n == null || !Number.isFinite(Number(n))) return '\u2014';
   return new Intl.NumberFormat(_locale).format(Number(n));
 }
 
@@ -330,6 +353,7 @@ export function timeAgo(iso: string): string {
   const diff = Date.now() - parsed;
   if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);
+  if (mins === 0) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;

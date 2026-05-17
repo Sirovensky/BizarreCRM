@@ -406,7 +406,7 @@ export function InventoryListPage() {
       return;
     }
 
-    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+    const headers = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
     // WEB-UIUX-760: enforce required-column validation up-front so the
     // operator gets a clear toast instead of a 400 after submit.
     const missing = REQUIRED_IMPORT_COLUMNS.filter(h => !headers.includes(h));
@@ -420,7 +420,7 @@ export function InventoryListPage() {
     const rows = lines.slice(1).map((line, idx) => {
       const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
-      headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+      headers.forEach((h, i) => { obj[h] = (vals[i] ?? '').trim(); });
       const rowNumber = idx + 2;
       for (const column of REQUIRED_IMPORT_COLUMNS) {
         if (!obj[column]?.trim()) errors.push(`Row ${rowNumber}: ${column} is required`);

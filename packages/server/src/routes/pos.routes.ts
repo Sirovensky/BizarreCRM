@@ -757,9 +757,13 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
   });
   const INVOICE_RESULT_INDEX = 0;
 
-  // 2. Line items + stock + movements. better-sqlite3 supports last_insert_rowid()
-  // inside the transaction — we use it as a literal in subsequent statements
-  // so we don't need to thread invoiceId across async calls.
+  // 2. Line items + stock + movements. We resolve the new invoice's id with
+  // a `(SELECT id FROM invoices WHERE order_id = ?)` sub-select (order_id has
+  // a UNIQUE index from migration 044). Do NOT switch this to bare
+  // `last_insert_rowid()` — the stock UPDATEs and stock_movements INSERTs
+  // between line-item INSERTs bump last_insert_rowid mid-loop, so the second
+  // line item would resolve the wrong rowid (BUGHUNT-2026-05-17). If you need
+  // a typed cross-statement ref, use `lastInsertRowidFrom(N)` from async-db.
   for (const line of resolvedLines) {
     txQueries.push({
       sql: `INSERT INTO invoice_line_items
@@ -1479,7 +1483,7 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
     }
 
     try {
-      broadcast(WS_EVENTS.INVOICE_CREATED, { invoice_id: inv.id, order_id: invoiceOrderId });
+      broadcast(WS_EVENTS.INVOICE_CREATED, { invoice_id: inv.id, order_id: invoiceOrderId }, req.tenantSlug || null);
     } catch (_) {
       // non-fatal
     }
@@ -1794,8 +1798,8 @@ router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandl
         adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_due_value'"),
         adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'repair_default_due_unit'"),
       ]);
-      if (dueCfg?.value && parseInt(dueCfg.value) > 0) {
-        const val = parseInt(dueCfg.value);
+      if (dueCfg?.value && parseInt(dueCfg.value, 10) > 0) {
+        const val = parseInt(dueCfg.value, 10);
         const unit = dueUnit?.value || 'days';
         const d = new Date();
         if (unit === 'hours') d.setHours(d.getHours() + val);
@@ -3448,9 +3452,13 @@ router.post('/workstations/:id/set-default', asyncHandler(async (req, res) => {
   const existing = await adb.get<{ id: number }>('SELECT id FROM workstations WHERE id = ?', id);
   if (!existing) throw new AppError('Workstation not found', 404);
 
-  // Clear existing default, then set the new one atomically.
-  await adb.run("UPDATE workstations SET is_default = 0, updated_at = datetime('now')");
-  await adb.run("UPDATE workstations SET is_default = 1, updated_at = datetime('now') WHERE id = ?", id);
+  // BUGHUNT-2026-05-16: wrap both writes in a real transaction. Previously a
+  // crash between the two `adb.run` calls left every workstation with
+  // is_default = 0, breaking POS startup queries that read `WHERE is_default = 1`.
+  await adb.transaction([
+    { sql: "UPDATE workstations SET is_default = 0, updated_at = datetime('now')", params: [] },
+    { sql: "UPDATE workstations SET is_default = 1, updated_at = datetime('now') WHERE id = ?", params: [id] },
+  ]);
 
   audit(req.db, 'workstation_set_default', req.user?.id ?? null, req.ip || '', { id });
   res.json({ success: true, data: { id, is_default: true } });

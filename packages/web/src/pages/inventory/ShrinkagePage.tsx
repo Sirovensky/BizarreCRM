@@ -13,6 +13,7 @@ import { cn } from '@/utils/cn';
 import { formatApiError } from '@/utils/apiError';
 import { InventoryItemPicker } from '@/components/inventory/InventoryItemPicker';
 import { formatDateTime } from '@/utils/format';
+import { confirm } from '@/stores/confirmStore';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
@@ -253,7 +254,15 @@ export function ShrinkagePage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => recordMut.mutate()}
+              type="button"
+              onClick={() => {
+                const q = parseInt(quantity, 10);
+                if (!Number.isFinite(q) || q < 1) {
+                  toast.error('Quantity must be a positive integer');
+                  return;
+                }
+                recordMut.mutate();
+              }}
               disabled={!itemId || !quantity || recordMut.isPending}
               className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
@@ -396,8 +405,11 @@ export function ShrinkagePage() {
                         <button
                           type="button"
                           onClick={async () => {
-                            if (!window.confirm(`Delete shrinkage event for ${r.name}? Stock of ${r.quantity} will be restored.`)) return;
-                            deleteMutation.mutate(r.id);
+                            const ok = await confirm(
+                              `Delete shrinkage event for ${r.name}? Stock of ${r.quantity} will be restored.`,
+                              { title: 'Delete shrinkage event', confirmLabel: 'Delete', danger: true },
+                            );
+                            if (ok) deleteMutation.mutate(r.id);
                           }}
                           className="text-red-600 hover:underline"
                         >

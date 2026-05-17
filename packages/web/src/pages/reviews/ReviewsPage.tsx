@@ -332,7 +332,7 @@ export function ReviewsPage() {
                       aria-label={r.public_posted ? 'Mark review private' : 'Mark review as publicly posted'}
                       title={r.public_posted ? 'Mark private' : 'Mark as publicly posted'}
                       onClick={() => { void handlePublicToggle(r); }}
-                      disabled={markPublicMut.isPending}
+                      disabled={markPublicMut.isPending && markPublicMut.variables?.id === r.id}
                       className={cn(
                         'rounded-lg p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none',
                         r.public_posted

@@ -4,7 +4,8 @@
  */
 import { Router, Request, Response, NextFunction } from 'express';
 import type Database from 'better-sqlite3';
-import type { AsyncDb } from '../db/async-db.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
@@ -293,35 +294,42 @@ router.post('/import/:catalogId', asyncHandler(async (req, res) => {
     if (existing) throw new AppError('Item already in inventory (matching SKU)', 409);
   }
 
-  const result = await adb.run(`
-    INSERT INTO inventory_items
-      (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock,
-       image_url, description, created_at)
-    VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))
-  `,
-    catalogItem.name,
-    catalogItem.sku || null,
-    costPrice,
-    retailPrice,
-    inStockQty,
-    catalogItem.image_url || null,
-    `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
-  );
-
-  const itemId = result.lastInsertRowid;
-
-  // Copy device model compatibility
+  // Pre-read compat rows so the tx contains only writes.
   const compatRows = await adb.all<{ device_model_id: number }>(
     'SELECT device_model_id FROM catalog_device_compatibility WHERE supplier_catalog_id = ?',
     catalogId,
   );
 
+  // BUGHUNT-2026-05-17: atomic — INSERT inventory_items + copy every
+  // compat row. Mid-loop crash left an item with partial compatibility
+  // (e.g. iPhone 12 screen marked compatible only with iPhone 12, missing
+  // iPhone 12 Pro / Mini), so techs searching by device wouldn't find the
+  // part for the missing model variants.
+  const importTxQueries: TxQuery[] = [
+    {
+      sql: `INSERT INTO inventory_items
+              (name, sku, item_type, is_reorderable, cost_price, retail_price, in_stock,
+               image_url, description, created_at)
+            VALUES (?, ?, 'part', 1, ?, ?, ?, ?, ?, datetime('now'))`,
+      params: [
+        catalogItem.name,
+        catalogItem.sku || null,
+        costPrice,
+        retailPrice,
+        inStockQty,
+        catalogItem.image_url || null,
+        `Imported from ${catalogItem.source}. ${catalogItem.product_url || ''}`.trim(),
+      ],
+    },
+  ];
   for (const row of compatRows) {
-    await adb.run(
-      'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)',
-      itemId, row.device_model_id,
-    );
+    importTxQueries.push({
+      sql: 'INSERT OR IGNORE INTO inventory_device_compatibility (inventory_item_id, device_model_id) VALUES (?, ?)',
+      params: [lastInsertRowidFrom(0), row.device_model_id],
+    });
   }
+  const importTxResults = await adb.transaction(importTxQueries);
+  const itemId = Number(importTxResults[0].lastInsertRowid);
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ?', itemId);
   res.status(201).json({ success: true, data: item });
@@ -762,10 +770,14 @@ router.post('/order-queue/add', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const {
     source, catalog_item_id, inventory_item_id, name, sku, supplier_url,
-    image_url, unit_price, quantity_needed = 1, ticket_device_part_id, ticket_id, notes,
+    image_url, unit_price, quantity_needed: rawQty = 1, ticket_device_part_id, ticket_id, notes,
   } = req.body;
 
-  if (!name) throw new AppError('name is required');
+  if (typeof name !== 'string' || !name.trim()) throw new AppError('name must be a non-empty string', 400);
+  // Coerce quantity_needed to a positive integer so a malicious / malformed
+  // payload can't store a string, array, or negative count.
+  const qtyNum = Number(rawQty);
+  const quantity_needed = Number.isFinite(qtyNum) && qtyNum >= 1 ? Math.floor(qtyNum) : 1;
 
   // Upsert — if same catalog_item_id already pending, increment quantity
   let queueId: number | bigint;
@@ -804,15 +816,22 @@ router.post('/order-queue/add', asyncHandler(async (req, res) => {
     queueId = r.lastInsertRowid;
   }
 
-  // Link to ticket
+  // Link to ticket — bundle the queue-tickets link + the ticket_device_parts
+  // status flip so a crash between them can't leave a part marked 'ordered'
+  // without a queue entry pointing at it (operator sees "ordered" with no
+  // PO trail and re-orders manually).
   if (ticket_device_part_id && ticket_id) {
-    await adb.run(`
-      INSERT OR IGNORE INTO parts_order_queue_tickets (parts_order_queue_id, ticket_device_part_id, ticket_id, quantity)
-      VALUES (?,?,?,?)
-    `, queueId, ticket_device_part_id, ticket_id, quantity_needed);
-
-    // Mark the ticket_device_part as 'ordered'
-    await adb.run(`UPDATE ticket_device_parts SET status = 'ordered' WHERE id = ?`, ticket_device_part_id);
+    await adb.transaction([
+      {
+        sql: `INSERT OR IGNORE INTO parts_order_queue_tickets (parts_order_queue_id, ticket_device_part_id, ticket_id, quantity)
+              VALUES (?, ?, ?, ?)`,
+        params: [queueId, ticket_device_part_id, ticket_id, quantity_needed],
+      },
+      {
+        sql: "UPDATE ticket_device_parts SET status = 'ordered' WHERE id = ?",
+        params: [ticket_device_part_id],
+      },
+    ]);
   }
 
   const item = await adb.get('SELECT * FROM parts_order_queue WHERE id = ?', queueId);

@@ -235,7 +235,8 @@ router.get(
 
 router.get(
   '/permission-keys',
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
+    requireUserManagement(req);
     res.json({ success: true, data: PERMISSION_KEYS });
   }),
 );
@@ -314,9 +315,16 @@ router.delete(
     if (['admin', 'manager', 'technician', 'cashier'].includes(role.name)) {
       throw new AppError('Cannot delete a built-in role', 400);
     }
-    await adb.run('DELETE FROM role_permissions WHERE role_id = ?', id);
-    await adb.run('DELETE FROM user_custom_roles WHERE role_id = ?', id);
-    await adb.run('DELETE FROM custom_roles WHERE id = ?', id);
+    // BUGHUNT-2026-05-16: previously these 3 cascading DELETEs were sequential
+    // adb.run calls. A crash between any two would orphan role_permissions or
+    // user_custom_roles rows pointing at a custom_role that no longer exists
+    // (or a custom_role with phantom permissions hanging off it). Bundle into
+    // a single transaction so the role tear-down is all-or-nothing.
+    await adb.transaction([
+      { sql: 'DELETE FROM role_permissions WHERE role_id = ?',  params: [id] },
+      { sql: 'DELETE FROM user_custom_roles WHERE role_id = ?', params: [id] },
+      { sql: 'DELETE FROM custom_roles WHERE id = ?',           params: [id] },
+    ]);
     audit(req.db, 'role_deleted', req.user!.id, req.ip || 'unknown', { role_id: id });
     res.json({ success: true, data: { id } });
   }),

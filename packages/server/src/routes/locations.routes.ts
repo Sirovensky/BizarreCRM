@@ -21,6 +21,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { ERROR_CODES } from '../utils/errorCodes.js';
+import type { TxQuery } from '../db/async-db.js';
 
 const router = Router();
 
@@ -533,24 +534,30 @@ router.post('/users/:userId/locations/:locationId', asyncHandler(async (req: Req
   const isPrimary = req.body.is_primary === true || req.body.is_primary === 1 ? 1 : 0;
   const roleAtLocation = validateOptionalString(req.body.role_at_location, 'role_at_location', MAX_SHORT_LEN);
 
-  // If setting is_primary=1, clear existing primary for this user first
+  // BUGHUNT-2026-05-16: previously the clear-existing-primary UPDATE and the
+  // upsert were two sequential adb.run calls. If the upsert failed (disk full,
+  // FK violation, schema migration mid-flight), the user was left with NO
+  // primary location even though they had one before — corrupting the
+  // primary-location invariant the UI depends on. Bundle both into a single
+  // transaction so the clear-then-set pair is all-or-nothing.
+  const upsertTxNow = now();
+  const txQueries: TxQuery[] = [];
   if (isPrimary) {
-    await adb.run(
-      'UPDATE user_locations SET is_primary = 0 WHERE user_id = ? AND is_primary = 1',
-      userId,
-    );
+    txQueries.push({
+      sql: 'UPDATE user_locations SET is_primary = 0 WHERE user_id = ? AND is_primary = 1',
+      params: [userId],
+    });
   }
-
-  // Upsert the assignment
-  await adb.run(
-    `INSERT INTO user_locations (user_id, location_id, is_primary, role_at_location, assigned_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(user_id, location_id) DO UPDATE SET
-       is_primary       = excluded.is_primary,
-       role_at_location = excluded.role_at_location,
-       assigned_at      = excluded.assigned_at`,
-    userId, locationId, isPrimary, roleAtLocation, now(),
-  );
+  txQueries.push({
+    sql: `INSERT INTO user_locations (user_id, location_id, is_primary, role_at_location, assigned_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, location_id) DO UPDATE SET
+            is_primary       = excluded.is_primary,
+            role_at_location = excluded.role_at_location,
+            assigned_at      = excluded.assigned_at`,
+    params: [userId, locationId, isPrimary, roleAtLocation, upsertTxNow],
+  });
+  await adb.transaction(txQueries);
 
   const row = await adb.get<{ user_id: number; location_id: number; is_primary: number; role_at_location: string | null; assigned_at: string }>(
     'SELECT * FROM user_locations WHERE user_id = ? AND location_id = ?',
@@ -588,22 +595,21 @@ router.delete('/users/:userId/locations/:locationId', asyncHandler(async (req: R
   );
   if (!existing) throw new AppError('Assignment not found', 404);
 
-  // Count how many locations remain after removal
-  const countRow = await adb.get<{ c: number }>(
-    'SELECT COUNT(*) AS c FROM user_locations WHERE user_id = ?',
-    userId,
+  // Atomic last-assignment guard. Previous SELECT-then-DELETE raced when two
+  // concurrent removes both saw count=2 and both deleted, leaving the user
+  // with zero locations. Conditional delete blocks the last row.
+  const result = await adb.run(
+    `DELETE FROM user_locations
+       WHERE user_id = ? AND location_id = ?
+         AND (SELECT COUNT(*) FROM user_locations WHERE user_id = ?) > 1`,
+    userId, locationId, userId,
   );
-  if ((countRow?.c ?? 0) <= 1) {
+  if (!result.changes) {
     throw new AppError(
       'Cannot remove the last location assignment. Assign another location first.',
       409,
     );
   }
-
-  await adb.run(
-    'DELETE FROM user_locations WHERE user_id = ? AND location_id = ?',
-    userId, locationId,
-  );
 
   audit(db, 'location.user_unassigned', req.user!.id, req.ip || 'unknown', {
     actor_id:    req.user!.id,

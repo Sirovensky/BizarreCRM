@@ -30,6 +30,7 @@
  * with the reason in .response. No lying about success.
  */
 
+import crypto from 'crypto';
 import { Router, Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -838,7 +839,14 @@ router.post(
     // CAMPAIGN_RUN_LOCK_MS. Server-authoritative — no client coordination.
     const CAMPAIGN_RUN_LOCK_MS = 30_000;
     if (campaign.last_run_at) {
-      const lastRunMs = new Date(campaign.last_run_at).getTime();
+      // BUGHUNT-2026-05-16: last_run_at is SQLite 'YYYY-MM-DD HH:MM:SS'
+      // (UTC, no Z). V8 parses that as local time, shifting the 30s
+      // dedup window by the operator's UTC offset.
+      const rawLast = campaign.last_run_at as string;
+      const normalized = rawLast.includes('T') || rawLast.endsWith('Z') || rawLast.includes('+')
+        ? rawLast
+        : `${rawLast.replace(' ', 'T')}Z`;
+      const lastRunMs = new Date(normalized).getTime();
       if (Number.isFinite(lastRunMs)) {
         const sinceMs = Date.now() - lastRunMs;
         if (sinceMs >= 0 && sinceMs < CAMPAIGN_RUN_LOCK_MS) {
@@ -931,11 +939,15 @@ function requireAdminOrServiceToken(req: Request): void {
   // Fast path: admin JWT.
   if (req?.user?.role === 'admin') return;
   // Alternate path: internal service token (disabled if env var not set).
-  if (
-    INTERNAL_SERVICE_TOKEN &&
-    req.headers['x-internal-service-token'] === INTERNAL_SERVICE_TOKEN
-  ) {
-    return;
+  // Use timingSafeEqual so a byte-by-byte timing attack can't recover the
+  // token via repeated requests.
+  if (INTERNAL_SERVICE_TOKEN) {
+    const supplied = req.headers['x-internal-service-token'];
+    if (typeof supplied === 'string') {
+      const a = Buffer.from(supplied);
+      const b = Buffer.from(INTERNAL_SERVICE_TOKEN);
+      if (a.length === b.length && crypto.timingSafeEqual(a, b)) return;
+    }
   }
   throw new AppError('Admin role or internal service token required', 403);
 }

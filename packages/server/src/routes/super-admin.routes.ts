@@ -2251,7 +2251,7 @@ router.get('/security-alerts', (req, res) => {
   }
   if (req.query.acknowledged !== undefined) {
     conditions.push('acknowledged = ?');
-    params.push(parseInt(req.query.acknowledged as string) || 0);
+    params.push(parseInt(req.query.acknowledged as string, 10) || 0);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -2272,7 +2272,7 @@ router.get('/security-alerts', (req, res) => {
 
 router.post('/security-alerts/:id/acknowledge', (req, res) => {
   const masterDb = getMasterDb()!;
-  const alertId = parseInt(req.params.id);
+  const alertId = parseInt(req.params.id, 10);
   if (!alertId || isNaN(alertId)) {
     return res.status(400).json({ success: false, message: 'Invalid alert ID' });
   }

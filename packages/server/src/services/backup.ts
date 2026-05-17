@@ -1212,8 +1212,8 @@ export function listDrives(): { path: string; label: string; free: number; total
         const cols = line.replace(/"/g, '').split(',');
         if (cols.length < 4 || !cols[0]) return null;
         const [name, free, used, root] = cols;
-        const freeBytes = parseInt(free) || 0;
-        const usedBytes = parseInt(used) || 0;
+        const freeBytes = parseInt(free, 10) || 0;
+        const usedBytes = parseInt(used, 10) || 0;
         return { path: root.trim(), label: name.trim() + ':', free: freeBytes, total: freeBytes + usedBytes };
       }).filter(Boolean) as any[];
     } else {
@@ -1227,7 +1227,7 @@ export function listDrives(): { path: string; label: string; free: number; total
         if (parts.length < 3) return null;
         const [mount, avail, size] = parts;
         if (mount.startsWith('/snap') || mount.startsWith('/boot')) return null;
-        return { path: mount, label: mount, free: parseInt(avail) || 0, total: parseInt(size) || 0 };
+        return { path: mount, label: mount, free: parseInt(avail, 10) || 0, total: parseInt(size, 10) || 0 };
       }).filter(Boolean) as any[];
     }
   } catch {
@@ -1349,4 +1349,14 @@ export function scheduleMultiTenantBackups(
     module: 'backup',
     schedule: '3:07 AM daily, Pro+trial only',
   });
+}
+
+/**
+ * BUGHUNT-2026-05-16: stop both backup crons during graceful shutdown so a
+ * tick doesn't fire against an already-closed DB and emit "database is closed"
+ * errors. Call this from index.ts's shutdown() before server.close().
+ */
+export function stopBackupCrons(): void {
+  if (cronTask) { try { cronTask.stop(); } catch { /* ignore */ } cronTask = null; }
+  if (multiTenantBackupCron) { try { multiTenantBackupCron.stop(); } catch { /* ignore */ } multiTenantBackupCron = null; }
 }

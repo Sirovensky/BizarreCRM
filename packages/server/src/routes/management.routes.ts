@@ -692,7 +692,10 @@ router.get('/tenants', (_req: Request, res: Response) => {
 
     res.json({ success: true, data: tenantsWithSize });
   } catch (err) {
-    res.json({ success: true, data: [] });
+    logger.error('Failed to load tenants', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ success: false, message: 'Failed to load tenants' });
   }
 });
 

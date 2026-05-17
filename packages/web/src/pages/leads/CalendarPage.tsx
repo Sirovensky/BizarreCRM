@@ -1172,6 +1172,7 @@ function MonthView({
                     const color = getStatusColor(appt.status);
                     return (
                       <button
+                        type="button"
                         key={appt.id}
                         onClick={() => onSelectAppointment(appt)}
                         className="block w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium leading-tight transition-opacity hover:opacity-80"
@@ -1303,6 +1304,7 @@ function WeekView({
                   const color = getStatusColor(appt.status);
                   return (
                     <button
+                      type="button"
                       key={appt.id}
                       onClick={() => onSelectAppointment(appt)}
                       className="block w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium leading-tight transition-opacity hover:opacity-80"
@@ -1390,6 +1392,7 @@ function DayView({
                 const color = getStatusColor(appt.status);
                 return (
                   <button
+                    type="button"
                     key={appt.id}
                     onClick={() => onSelectAppointment(appt)}
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left transition-opacity hover:opacity-80"
@@ -1555,6 +1558,7 @@ export function CalendarPage() {
           <p className="text-surface-500 dark:text-surface-400">Schedule appointments and follow-ups</p>
         </div>
         <button
+          type="button"
           onClick={() => setShowCreate(true)}
           className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-on-primary shadow-sm transition-colors hover:bg-primary-700"
         >

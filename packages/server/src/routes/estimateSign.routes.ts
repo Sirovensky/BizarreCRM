@@ -506,8 +506,10 @@ publicRouter.post(
     // Parse structural format
     const { estimateId, givenHmac } = parseSignToken(rawToken);
 
-    // Input validation
-    const signerName = (req.body.signer_name || '').trim();
+    // Input validation — coerce non-string (array/object) to empty so a
+    // malicious body like { signer_name: ['x'] } can't crash on .trim().
+    const rawSigner = req.body?.signer_name;
+    const signerName = (typeof rawSigner === 'string' ? rawSigner : '').trim();
     if (!signerName || signerName.length > 200) {
       throw new AppError('signer_name is required and must be ≤ 200 characters', 400);
     }

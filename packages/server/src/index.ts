@@ -176,7 +176,7 @@ import { startStepUpTotpReaper } from './middleware/stepUpTotp.js';
 import adminRoutes, { startAdminTokenReaper } from './routes/admin.routes.js';
 import billingRoutes, { webhookHandler as stripeWebhookHandler } from './routes/billing.routes.js';
 import tenantStripeRoutes, { tenantStripeWebhookHandler } from './routes/tenantStripe.routes.js';
-import { scheduleBackup } from './services/backup.js';
+import { scheduleBackup, stopBackupCrons } from './services/backup.js';
 import { sendDailyReport } from './services/scheduledReports.js';
 // Multi-tenant imports
 import { initMasterDb, getMasterDb, closeMasterDb } from './db/master-connection.js';
@@ -1608,6 +1608,16 @@ if (config.multiTenant) {
         req.db = await getTenantDb(tenant.slug);
         req.tenantSlug = tenant.slug;
         req.tenantId = tenant.id;
+        // BUGHUNT-2026-05-16: pair with releaseTenantDb on response end so
+        // inbound provider webhook traffic doesn't leak refcounts.
+        let released = false;
+        const releaseOnce = () => {
+          if (released) return;
+          released = true;
+          releaseTenantDb(tenant.slug);
+        };
+        res.on('finish', releaseOnce);
+        res.on('close', releaseOnce);
       } catch {
         return res.status(500).json({ success: false, message: 'Database error' });
       }
@@ -2427,7 +2437,7 @@ server.listen(config.port, config.host, async () => {
         const label = slug ? `:${slug}` : '';
         const tzRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as any;
         const tz = tzRow?.value || 'America/Denver';
-        const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+        const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }), 10);
         if (localHour !== 2 || !shouldRunDaily(`data-retention${label}`, tz)) return;
 
         try {
@@ -2493,7 +2503,7 @@ server.listen(config.port, config.host, async () => {
   // fire per UTC day even if the interval lands multiple times in hour 02.
   trackInterval(() => {
     try {
-      const utcHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }));
+      const utcHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }), 10);
       if (utcHour !== 2) return;
       if (!shouldRunDaily('tenant-db-size-monitor', 'UTC')) return;
 
@@ -2545,6 +2555,7 @@ server.listen(config.port, config.host, async () => {
           try {
             const utcHour = parseInt(
               new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }),
+              10,
             );
             if (utcHour !== 3) return;
             if (!shouldRunDaily('tenant-termination-purge', 'UTC')) return;
@@ -2568,8 +2579,14 @@ server.listen(config.port, config.host, async () => {
   // in multi-tenant mode (single-tenant has no tenant lifecycle).
   // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
   if (config.multiTenant && process.env.NODE_ENV !== 'test') {
+    // Run hourly with a 3 AM UTC quiet-hour gate. Previously this was a flat
+    // 24h setInterval whose phase depended on server startup time — meaning
+    // the destructive rename-tenant-DB sweep could fire at any hour, racing
+    // active tenant requests. Match the other daily crons in this file.
     trackInterval(async () => {
       try {
+        const utcHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }), 10);
+        if (utcHour !== 3) return;
         if (!shouldRunDaily('archive-due-tenants', 'UTC')) return;
         const { archiveDueTenants } = await import('./services/tenant-provisioning.js');
         const archived = await archiveDueTenants();
@@ -2581,7 +2598,7 @@ server.listen(config.port, config.host, async () => {
           error: err instanceof Error ? err.message : String(err),
         });
       }
-    }, 24 * 60 * 60 * 1000);
+    }, 60 * 60 * 1000);
   }
 
   // SCAN-1171: prune master stripe_webhook_events once/day. The table is
@@ -2625,7 +2642,8 @@ server.listen(config.port, config.host, async () => {
             .get() as any;
           const tz = tzRow?.value || 'America/Denver';
           const localHour = parseInt(
-            new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz })
+            new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }),
+            10,
           );
           // Only sweep once per tenant per local day, anchored at 2 AM like the audit purge
           // above so both cleanups share the same nightly window.
@@ -2719,7 +2737,7 @@ server.listen(config.port, config.host, async () => {
   // SEC-BG7: Registered via trackInterval so shutdown() can clear it.
   trackInterval(() => {
     try {
-      const utcHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }));
+      const utcHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'UTC' }), 10);
       if (utcHour !== 3 || !shouldRunDaily('master-retention', 'UTC')) return;
 
       const masterDb = getMasterDb();
@@ -2922,7 +2940,7 @@ server.listen(config.port, config.host, async () => {
         // SW-D16: Use store_timezone for daily report scheduling
         const tzRow = tenantDb.prepare("SELECT value FROM store_config WHERE key = 'store_timezone'").get() as any;
         const tz = tzRow?.value || 'America/Denver';
-        const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }));
+        const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tz }), 10);
         // SEC-M16: Guard against double-fire — only run once per calendar day per tenant
         if (localHour !== 7 || !shouldRunDaily(`daily-report:${_slug || 'default'}`, tz)) return;
 
@@ -2936,7 +2954,16 @@ server.listen(config.port, config.host, async () => {
             .prepare('SELECT plan, trial_ends_at FROM tenants WHERE slug = ?')
             .get(_slug) as { plan: string; trial_ends_at: string | null } | undefined;
           if (!tenantRow) return;
-          const trialEnd = tenantRow.trial_ends_at ? new Date(tenantRow.trial_ends_at) : null;
+          // BUGHUNT-2026-05-16: trial_ends_at may be SQLite-format
+          // 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z'). Normalize so the
+          // trial-active gate is correct on non-UTC hosts.
+          const trialRaw = tenantRow.trial_ends_at;
+          const trialNormalized = trialRaw
+            ? (trialRaw.includes('T') || trialRaw.endsWith('Z') || trialRaw.includes('+')
+                ? trialRaw
+                : `${trialRaw.replace(' ', 'T')}Z`)
+            : null;
+          const trialEnd = trialNormalized ? new Date(trialNormalized) : null;
           const trialActive = !!trialEnd && !Number.isNaN(trialEnd.getTime()) && trialEnd.getTime() > Date.now();
           const effectivePlan = trialActive ? 'pro' : (tenantRow.plan || 'free');
           if (effectivePlan !== 'pro') return;
@@ -2964,7 +2991,7 @@ server.listen(config.port, config.host, async () => {
   trackInterval(async () => {
     try {
       // Phase 1: server-local scrape into template DB (runs once globally per day).
-      const scrapeHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: CATALOG_SCRAPE_TZ }));
+      const scrapeHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: CATALOG_SCRAPE_TZ }), 10);
       if (scrapeHour === 3 && shouldRunDaily('catalog-sync-template', CATALOG_SCRAPE_TZ)) {
         try {
           const BetterSqlite3 = (await import('better-sqlite3')).default;
@@ -3005,7 +3032,7 @@ server.listen(config.port, config.host, async () => {
           const catalogRefreshHour = Number.isInteger(parsedRefreshHour)
             ? Math.max(0, Math.min(23, parsedRefreshHour))
             : 3;
-          const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tenantTz }));
+          const localHour = parseInt(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: tenantTz }), 10);
           if (localHour !== catalogRefreshHour) return;
           if (!shouldRunDaily(`catalog-copy:${_slug || 'default'}`, tenantTz)) return;
 
@@ -3743,6 +3770,15 @@ function shutdown(signal: string) {
   // timer cannot fire after sockets / DB handles are torn down.
   try { stopWebSocketHeartbeat(); log.info('WebSocket heartbeat stopped'); } catch (err) {
     log.error('Failed to stop WebSocket heartbeat', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // BUGHUNT-2026-05-16: node-cron ScheduledTask handles aren't in
+  // backgroundIntervals (they're managed by node-cron's registry). Stop them
+  // explicitly so a tick can't fire against a closed DB during teardown.
+  try { stopBackupCrons(); log.info('Backup crons stopped'); } catch (err) {
+    log.error('Failed to stop backup crons', {
       error: err instanceof Error ? err.message : String(err),
     });
   }

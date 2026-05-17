@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
@@ -6,6 +6,16 @@ import type { AsyncDb } from '../db/async-db.js';
 import { validateId } from '../utils/validate.js';
 
 const router = Router();
+
+// BUGHUNT-2026-05-16: snippets are shared CRM-wide canned responses. Reads
+// stay open for any staff member, but creates / edits / deletes need a role
+// gate so a tech or cashier can't overwrite the manager's templates.
+function requireAdminOrManager(req: Request): void {
+  const role = (req as any).user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required', 403);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GET / – List all snippets
@@ -35,6 +45,7 @@ router.get(
 router.post(
   '/',
   asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
     const adb = req.asyncDb;
     const { shortcode, title, content, category } = req.body;
 
@@ -77,6 +88,7 @@ router.post(
 router.put(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
     const existing = await adb.get<any>('SELECT * FROM snippets WHERE id = ?', id);
@@ -129,6 +141,7 @@ router.put(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
     const adb = req.asyncDb;
     const id = validateId(req.params.id, 'id');
     const existing = await adb.get('SELECT id FROM snippets WHERE id = ?', id);

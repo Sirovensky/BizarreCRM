@@ -190,7 +190,7 @@ export function LeadDetailPage() {
   }, []);
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['lead', id],
+    queryKey: ['lead', Number(id)],
     queryFn: () => leadApi.get(Number(id)),
   });
 
@@ -240,7 +240,7 @@ export function LeadDetailPage() {
   const updateMut = useMutation({
     mutationFn: (d: any) => leadApi.update(Number(id), d),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['lead', id] });
+      queryClient.invalidateQueries({ queryKey: ['lead', Number(id)] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       setEditingNotes(false);
       setEditingStatus(false);
@@ -256,7 +256,7 @@ export function LeadDetailPage() {
   const statusUndo = useUndoableAction<{ to: string; from: string }>(
     async ({ to }) => {
       await leadApi.update(Number(id), { status: to });
-      queryClient.invalidateQueries({ queryKey: ['lead', id] });
+      queryClient.invalidateQueries({ queryKey: ['lead', Number(id)] });
       queryClient.invalidateQueries({ queryKey: ['leads'] });
     },
     {
@@ -267,7 +267,7 @@ export function LeadDetailPage() {
         return e?.response?.data?.message || 'Failed to update status';
       },
       onUndo: () => {
-        queryClient.invalidateQueries({ queryKey: ['lead', id] });
+        queryClient.invalidateQueries({ queryKey: ['lead', Number(id)] });
         queryClient.invalidateQueries({ queryKey: ['leads'] });
       },
     },
@@ -275,7 +275,7 @@ export function LeadDetailPage() {
 
   const scheduleStatusChange = (to: string, from: string) => {
     if (to === from) return;
-    queryClient.setQueriesData({ queryKey: ['lead', id] }, (old: any) => {
+    queryClient.setQueriesData({ queryKey: ['lead', Number(id)] }, (old: any) => {
       if (!old) return old;
       const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
       const rec = clone?.data?.data;
@@ -305,6 +305,17 @@ export function LeadDetailPage() {
   // the useMemo below reads it via the lead?-guarded path.
   const appointments: any[] = lead?.appointments || [];
 
+  // BUGHUNT-2026-05-16: SQLite returns 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z').
+  // V8 parses that as local time, shifting overdue boundaries by the
+  // browser's UTC offset.
+  const parseTs = (v: string | null | undefined): number => {
+    if (!v) return NaN;
+    const normalized = v.includes('T') || v.endsWith('Z') || v.includes('+')
+      ? v
+      : `${v.replace(' ', 'T')}Z`;
+    return new Date(normalized).getTime();
+  };
+
   // Activity timeline: merge appointments + reminders into a unified list.
   // Declared before the early returns (FK-016) — depends on possibly-undefined
   // `lead`, so every read is guarded.
@@ -326,7 +337,7 @@ export function LeadDetailPage() {
         title: r.note || 'Follow-up reminder',
         // WEB-FF-023: compare against the ticking `nowMs` so the badge flips
         // from Pending → Overdue without needing a refetch.
-        detail: r.is_dismissed ? 'Dismissed' : (new Date(r.remind_at).getTime() < nowMs ? 'Overdue' : 'Pending'),
+        detail: r.is_dismissed ? 'Dismissed' : (parseTs(r.remind_at) < nowMs ? 'Overdue' : 'Pending'),
       });
     }
     if (lead.created_at) {
@@ -343,7 +354,7 @@ export function LeadDetailPage() {
         detail: lead.lost_reason ? LOST_REASONS.find(r => r.value === lead.lost_reason)?.label ?? lead.lost_reason : undefined,
       });
     }
-    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    items.sort((a, b) => parseTs(b.date) - parseTs(a.date));
     return items;
   }, [appointments, reminders, lead, nowMs]);
 
@@ -602,10 +613,13 @@ export function LeadDetailPage() {
                 />
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => {
                       if (!reminderDate) { toast.error('Pick a date/time'); return; }
+                      const parsed = new Date(reminderDate);
+                      if (Number.isNaN(parsed.getTime())) { toast.error('Invalid date/time'); return; }
                       createReminderMut.mutate({
-                        remind_at: new Date(reminderDate).toISOString(),
+                        remind_at: parsed.toISOString(),
                         note: reminderNote || undefined,
                       });
                     }}
@@ -626,7 +640,7 @@ export function LeadDetailPage() {
                 {reminders.map((r: any) => {
                   // WEB-FF-023: drive isOverdue from the ticking nowMs so the
                   // visual chip flips when the reminder passes, not on refetch.
-                  const isOverdue = !r.is_dismissed && new Date(r.remind_at).getTime() < nowMs;
+                  const isOverdue = !r.is_dismissed && parseTs(r.remind_at) < nowMs;
                   return (
                     <div
                       key={r.id}

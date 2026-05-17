@@ -162,6 +162,10 @@ router.get('/:id', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 router.post('/', asyncHandler(async (req, res) => {
   if (!req.user) throw new AppError('Not authenticated', 401);
+  // SEC: gate credit-note creation to manager/admin to match the apply/void
+  // endpoints. Without this any authenticated cashier/technician could mint
+  // an arbitrary-value open credit note redeemable by a manager later.
+  requireManagerOrAdmin(req);
   writeRateLimit(req);
 
   const adb = req.asyncDb;
@@ -267,35 +271,57 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
 
   const amountCents = note.amount_cents as number;
   const creditDollars = amountCents / 100; // invoices.amount_due is in dollars
-  const newAmountDue = Math.max(0, inv.amount_due - creditDollars);
+  // BUGHUNT-2026-05-16: round both operand and result so a credit that
+  // exactly covers the balance doesn't leave a `0.0000000001` residue that
+  // (a) renders weirdly in the UI and (b) prevents the auto-status flip.
+  // Mirrors refunds.routes.ts roundCents pattern.
+  const newAmountDue = Math.round(Math.max(0, inv.amount_due - creditDollars) * 100) / 100;
+  // BUGHUNT-2026-05-16: a credit note that exactly covers the balance must
+  // also flip the invoice to 'paid'. Previously this path only updated
+  // amount_due, so the invoice stayed unpaid/partial and continued to
+  // surface in the dunning queue at $0 due.
+  const newInvoiceStatus = newAmountDue === 0 ? 'paid' : inv.status;
 
   // Transaction now only wraps the atomic apply — both UPDATEs must land or
   // neither. Conditional `WHERE status = 'open'` on the credit-note update
   // catches a concurrent apply/void that slipped in between the pre-check
   // and the transaction body.
   let applied = true;
-  req.db.transaction(() => {
-    req.db.prepare(`
-      UPDATE invoices
-         SET amount_due = ?,
-             updated_at = datetime('now')
-       WHERE id = ?
-    `).run(newAmountDue, invoiceIdNum);
+  const STATE_CHANGED = '__credit_note_state_changed__';
+  try {
+    req.db.transaction(() => {
+      req.db.prepare(`
+        UPDATE invoices
+           SET amount_due = ?,
+               status = ?,
+               updated_at = datetime('now')
+         WHERE id = ?
+      `).run(newAmountDue, newInvoiceStatus, invoiceIdNum);
 
-    const creditResult = req.db.prepare(`
-      UPDATE credit_notes
-         SET status = 'applied',
-             applied_to_invoice_id = ?,
-             applied_at = datetime('now')
-       WHERE id = ? AND status = 'open'
-    `).run(invoiceIdNum, id);
-    if (creditResult.changes === 0) {
-      applied = false;
-      // Trigger an automatic rollback by throwing; the plain Error is caught
-      // below so we can surface a clean 409 back to the client.
-      throw new Error('__credit_note_state_changed__');
+      const creditResult = req.db.prepare(`
+        UPDATE credit_notes
+           SET status = 'applied',
+               applied_to_invoice_id = ?,
+               applied_at = datetime('now')
+         WHERE id = ? AND status = 'open'
+      `).run(invoiceIdNum, id);
+      if (creditResult.changes === 0) {
+        applied = false;
+        // Trigger an automatic rollback by throwing; the plain Error is caught
+        // below so we can surface a clean 409 back to the client.
+        throw new Error(STATE_CHANGED);
+      }
+    })();
+  } catch (err) {
+    // BUGHUNT-2026-05-16: better-sqlite3 rolls back the transaction on throw
+    // but RE-THROWS the error. Without this try/catch the sentinel bubbles
+    // through asyncHandler as a 500 — clients should see the intended
+    // retriable 409 instead.
+    if (err instanceof Error && err.message === STATE_CHANGED) {
+      throw new AppError('Credit note state changed; refresh and retry', 409);
     }
-  })();
+    throw err;
+  }
 
   if (!applied) {
     throw new AppError('Credit note state changed; refresh and retry', 409);

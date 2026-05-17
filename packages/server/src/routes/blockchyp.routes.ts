@@ -451,9 +451,13 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
     // showing a balance due. Bundle all three into a single atomic
     // transaction so post-capture recording is all-or-nothing.
     const userId = req.user!.id;
-    const newPaid = invoice.amount_paid + chargeAmount;
+    // BUGHUNT-2026-05-16: round both sides so repeated partial payments
+    // (e.g. 33.33 + 33.33 + 33.34) don't accumulate FP drift that leaves
+    // amount_due stuck at 0.0000000001 and the invoice in 'partial' forever.
+    // Mirrors the void-payment path at line 671-674.
+    const newPaid = roundMoney(invoice.amount_paid + chargeAmount);
+    const newDue = roundMoney(Math.max(0, invoice.total - newPaid));
     const newStatus = newPaid >= invoice.total ? 'paid' : 'partial';
-    const newDue = Math.max(0, invoice.total - newPaid);
 
     const txResults = await adb.transaction([
       {

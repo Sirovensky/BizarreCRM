@@ -30,6 +30,11 @@ import { ERROR_CODES } from '../utils/errorCodes.js';
 import { trackInterval } from '../utils/trackInterval.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { getMasterDb } from '../db/master-connection.js';
+import {
+  POS_PIN_COOKIE,
+  POS_PIN_TTL_SEC,
+  issuePosPinToken,
+} from '../middleware/requirePosPin.js';
 import { PERMISSIONS, ROLE_PERMISSIONS } from '@bizarre-crm/shared';
 
 const logger = createLogger('auth');
@@ -246,7 +251,7 @@ function decryptSecret(ciphertext: string): string {
     const [ivHex, tagHex, encHex] = ciphertext.split(':');
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
     decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+    return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString('utf8');
   }
 
   // Versioned format: v{n}:{iv}:{tag}:{data}
@@ -261,7 +266,7 @@ function decryptSecret(ciphertext: string): string {
   if (version >= 3) {
     decipher.setAAD(Buffer.from(`v${version}`));
   }
-  return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+  return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString('utf8');
 }
 
 const router = Router();
@@ -1035,20 +1040,55 @@ router.post('/login/set-password', asyncHandler(async (req: Request, res: Respon
   // password that was already set on another tab. Guard the UPDATE with an
   // explicit `AND password_set = 0` so a consumed challenge cannot silently
   // replace an already-set password.
+  //
+  // BUGHUNT-2026-05-16: parallel to SEC-M24 — the password UPDATE and the
+  // sessions DELETE were two sequential adb.run calls. A crash between them
+  // would leave the new password set while an old (pre-set-password) session
+  // remained alive on disk. Bundle into an atomic transaction. Also record
+  // the new hash in password_history so the user cannot later "reset" to
+  // this same initial password and bypass the P2FA8 reuse check.
+  // `expectChanges: true` on the UPDATE forces the whole batch to roll back
+  // if password_set has already flipped to 1 (race / re-fire) so we never
+  // delete sessions or insert history for a no-op password change.
   const hash = bcrypt.hashSync(password, 12);
-  const updateResult = await adb.run(
-    "UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime('now') WHERE id = ? AND password_set = 0",
-    hash, userId
-  );
-  if (updateResult.changes === 0) {
+  try {
+    await adb.transaction([
+      {
+        sql: "UPDATE users SET password_hash = ?, password_set = 1, updated_at = datetime('now') WHERE id = ? AND password_set = 0",
+        params: [hash, userId],
+        expectChanges: true,
+        expectChangesError: 'PASSWORD_ALREADY_SET',
+      },
+      {
+        sql: 'DELETE FROM sessions WHERE user_id = ?',
+        params: [userId],
+      },
+      {
+        sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+        params: [userId, hash],
+      },
+      {
+        sql: `DELETE FROM password_history
+                WHERE user_id = ?
+                  AND id NOT IN (
+                    SELECT id FROM password_history
+                      WHERE user_id = ?
+                      ORDER BY created_at DESC
+                      LIMIT ?
+                  )`,
+        params: [userId, userId, PASSWORD_HISTORY_DEPTH],
+      },
+    ]);
+  } catch (err) {
     // Either the user went away or password_set has already flipped to 1.
     // Return a generic 401 to avoid leaking which condition tripped.
-    res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
-    return;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('PASSWORD_ALREADY_SET')) {
+      res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
+      return;
+    }
+    throw err;
   }
-
-  // SECURITY: Invalidate all existing sessions for this user
-  await adb.run('DELETE FROM sessions WHERE user_id = ?', userId);
 
   // Issue NEW challenge for 2FA setup step
   const newChallenge = createChallenge(userId, (req as any).tenantSlug);
@@ -1166,9 +1206,13 @@ router.post('/login/2fa-verify', asyncHandler(async (req: Request, res: Response
     userId
   );
 
+  if (!user) {
+    res.status(401).json({ success: false, message: 'TOTP not configured' });
+    return;
+  }
   // Use pending secret (first-time setup) or existing encrypted secret from DB
   const secret = pendingSecret || (user.totp_secret ? decryptSecret(user.totp_secret) : null);
-  if (!user || !secret) {
+  if (!secret) {
     res.status(401).json({ success: false, message: 'TOTP not configured' });
     return;
   }
@@ -1270,7 +1314,10 @@ router.post('/login/2fa-backup', asyncHandler(async (req: Request, res: Response
   }
 
   const { challengeToken, code } = req.body;
-  const userId = consumeChallenge(challengeToken);
+  // Peek the challenge first so a rate-limited request doesn't permanently
+  // destroy a valid challenge — the legitimate user can retry once their
+  // lockout expires (matches the /login/2fa-verify ordering).
+  const userId = validateChallenge(challengeToken);
   if (!userId) { res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_CHALLENGE_EXPIRED, message: 'Challenge expired' }); return; }
 
   // Share TOTP rate limiter
@@ -1279,6 +1326,9 @@ router.post('/login/2fa-backup', asyncHandler(async (req: Request, res: Response
     res.status(429).json({ success: false, message: 'Too many failed attempts. Try again in 15 minutes.' });
     return;
   }
+
+  // Safe to consume now that rate-limit + challenge checks pass.
+  consumeChallenge(challengeToken);
 
   const user = await adb.get<any>(
     'SELECT id, username, email, password_hash, first_name, last_name, role, avatar_url, permissions, totp_secret, totp_enabled, backup_codes FROM users WHERE id = ? AND is_active = 1',
@@ -1464,7 +1514,14 @@ router.post('/refresh', asyncHandler(async (req: Request, res: Response) => {
     // SEC (A8): Enforce idle-session timeout on refresh as well. Otherwise
     // a dormant refresh token could be used to resurrect a session.
     if (session.last_active) {
-      const lastActiveMs = new Date(session.last_active).getTime();
+      // BUGHUNT-2026-05-16: session.last_active is SQLite datetime('now') →
+      // 'YYYY-MM-DD HH:MM:SS' (UTC, no Z). V8 parses as local time, shifting
+      // the 14-day idle boundary by the UTC offset.
+      const rawActive = session.last_active as string;
+      const normalizedActive = rawActive.includes('T') || rawActive.endsWith('Z') || rawActive.includes('+')
+        ? rawActive
+        : `${rawActive.replace(' ', 'T')}Z`;
+      const lastActiveMs = new Date(normalizedActive).getTime();
       if (!Number.isNaN(lastActiveMs)) {
         const idleDays = (Date.now() - lastActiveMs) / (24 * 60 * 60 * 1000);
         if (idleDays > 14) {
@@ -1859,7 +1916,19 @@ router.post('/verify-pin', authMiddleware, asyncHandler(async (req: Request, res
   clearPinFailures(db, ip);
   audit(db, 'pin_verify_success', userId, ip, {});
   logTenantAuthEvent('pin_verify_success', req, userId, null, {});
-  res.json({ success: true, data: { verified: true } });
+
+  // BUGHUNT-2026-05-16: issue a short-lived HMAC-signed cookie bound to
+  // user_id + expiry. requirePosPin* middleware reads this instead of
+  // trusting a client-set X-Pos-Pin-Verified header.
+  const token = issuePosPinToken(userId);
+  res.cookie(POS_PIN_COOKIE, token, {
+    httpOnly: true,
+    secure: req.secure || config.nodeEnv === 'production',
+    sameSite: 'lax',
+    maxAge: POS_PIN_TTL_SEC * 1000,
+    path: '/',
+  });
+  res.json({ success: true, data: { verified: true, expires_in: POS_PIN_TTL_SEC } });
 }));
 
 // ENR-UX19: POST /forgot-password — Request a password reset token
@@ -2193,11 +2262,13 @@ router.post('/account/2fa/disable', authMiddleware, asyncHandler(async (req: Req
 
   clearRateLimit(db, 'totp', totpKey(tenantSlug, userId));
 
-  await adb.run(
-    "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?",
-    userId
-  );
-
+  // BUGHUNT-2026-05-16: previously the disable UPDATE and the other-sessions
+  // DELETE were two sequential adb.run calls. A process crash between them
+  // would leave 2FA disabled on the row while other devices kept their
+  // existing sessions — undoing SEC-H8's "other devices must re-auth"
+  // guarantee. Bundle into a single transaction so the disable is atomic
+  // with the session revoke.
+  //
   // SEC-H8: Disabling 2FA is a security-sensitive state change — any other
   // session (on a different device / stolen cookie) must be forced through a
   // fresh login so an attacker who grabbed a refresh token can't ride along
@@ -2205,10 +2276,16 @@ router.post('/account/2fa/disable', authMiddleware, asyncHandler(async (req: Req
   // out of the very request they just made. Also clear any deviceTrust cookie
   // on this browser so "remember this device" from a prior 2FA-enabled state
   // doesn't grant silent re-entry.
-  await adb.run(
-    'DELETE FROM sessions WHERE user_id = ? AND id != ?',
-    userId, req.user!.sessionId
-  );
+  await adb.transaction([
+    {
+      sql: "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?",
+      params: [userId],
+    },
+    {
+      sql: 'DELETE FROM sessions WHERE user_id = ? AND id != ?',
+      params: [userId, req.user!.sessionId],
+    },
+  ]);
   res.clearCookie('deviceTrust', { path: '/api' });
   res.clearCookie('deviceTrust', { path: '/' });
 
@@ -2254,12 +2331,22 @@ router.post('/force-disable-2fa/:userId', authMiddleware, asyncHandler(async (re
     return;
   }
 
-  await adb.run(
-    "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?",
-    targetId
-  );
-  // Force re-login by nuking any active sessions for the target.
-  await adb.run('DELETE FROM sessions WHERE user_id = ?', targetId);
+  // BUGHUNT-2026-05-16: bundle the disable UPDATE and the session DELETE into
+  // a single atomic transaction (parallel fix to /account/2fa/disable). A
+  // crash between the two could leave 2FA disabled on the row while the
+  // target's existing sessions kept their tokens — defeating the
+  // "force re-login on next request" guarantee admins rely on when
+  // recovering a locked-out user.
+  await adb.transaction([
+    {
+      sql: "UPDATE users SET totp_secret = NULL, totp_enabled = 0, backup_codes = NULL, updated_at = datetime('now') WHERE id = ?",
+      params: [targetId],
+    },
+    {
+      sql: 'DELETE FROM sessions WHERE user_id = ?',
+      params: [targetId],
+    },
+  ]);
 
   audit(db, '2fa_force_disabled', actor.id, ip, {
     target_user_id: targetId,
@@ -2291,6 +2378,10 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
   const adb = req.asyncDb;
   const db = req.db;
   const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  // SEC: equalize response time so the not-found path (fast) and the
+  // found-but-wrong-code path (multiple bcrypt compares) can't be
+  // distinguished by timing to enumerate accounts.
+  const startNs = process.hrtime.bigint();
 
   // IP-level rate limit (reuse login rate limiter).
   if (!checkLoginRateLimit(db, ip)) {
@@ -2333,13 +2424,14 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
   );
 
   // Generic failure message to avoid leaking whether the email exists.
-  const fail = () => {
+  const fail = async () => {
     recordLoginFailure(db, ip);
     audit(db, 'backup_code_recovery_failed', user?.id ?? null, ip, { email: normalizedEmail });
+    await enforceMinDuration(startNs, LOGIN_MIN_DURATION_MS);
     res.status(401).json({ success: false, code: ERROR_CODES.ERR_AUTH_INVALID_CREDENTIALS, message: 'Invalid credentials' });
   };
 
-  if (!user || !user.backup_codes) { fail(); return; }
+  if (!user || !user.backup_codes) { await fail(); return; }
 
   const tenantSlug = (req as any).tenantSlug || null;
   if (!checkTotpRateLimit(db, tenantSlug, user.id)) {
@@ -2405,7 +2497,7 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
 
   if (!recoveryConsumed) {
     recordTotpFailure(db, tenantSlug, user.id);
-    fail();
+    await fail();
     return;
   }
 
@@ -2418,15 +2510,41 @@ router.post('/recover-with-backup-code', asyncHandler(async (req: Request, res: 
   clearRateLimit(db, 'totp', totpKey(tenantSlug, user.id));
   const newHash = bcrypt.hashSync(newPassword, 12);
 
-  await adb.run(
-    // SEC-H17: stamp last_backup_recovery_at so role / permission mutations
-    // can enforce a 24 h cooldown post-recovery. Column added in migration
-    // 100_recovery_cooldown.sql.
-    "UPDATE users SET password_hash = ?, password_set = 1, totp_secret = NULL, totp_enabled = 0, last_backup_recovery_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-    newHash, user.id
-  );
-  await adb.run('DELETE FROM sessions WHERE user_id = ?', user.id);
-  await recordPasswordHistory(adb, user.id, newHash);
+  // BUGHUNT-2026-05-16: parallel to SEC-M24 on /change-password — the password
+  // UPDATE, sessions DELETE, and password_history INSERT must be atomic.
+  // Previously these were 3 sequential adb.run calls; a process crash between
+  // them could leave new password + old sessions still active (account
+  // takeover preservation), or rotate the password without recording history
+  // (next rotation could reuse this password, bypassing the P2FA8 reuse
+  // check). Bundle into a single transaction matching change-password.
+  await adb.transaction([
+    {
+      // SEC-H17: stamp last_backup_recovery_at so role / permission mutations
+      // can enforce a 24 h cooldown post-recovery. Column added in migration
+      // 100_recovery_cooldown.sql.
+      sql: "UPDATE users SET password_hash = ?, password_set = 1, totp_secret = NULL, totp_enabled = 0, last_backup_recovery_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+      params: [newHash, user.id],
+    },
+    {
+      sql: 'DELETE FROM sessions WHERE user_id = ?',
+      params: [user.id],
+    },
+    {
+      sql: 'INSERT INTO password_history (user_id, password_hash) VALUES (?, ?)',
+      params: [user.id, newHash],
+    },
+    {
+      sql: `DELETE FROM password_history
+              WHERE user_id = ?
+                AND id NOT IN (
+                  SELECT id FROM password_history
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                )`,
+      params: [user.id, user.id, PASSWORD_HISTORY_DEPTH],
+    },
+  ]);
 
   audit(db, 'backup_code_recovery_success', user.id, ip, {
     sessions_revoked: true,
@@ -2479,7 +2597,7 @@ router.post('/change-password', authMiddleware, asyncHandler(async (req: Request
     res.status(400).json({ success: false, message: 'New password must be at least 8 characters' });
     return;
   }
-  if (newPassword.length > 256) {
+  if (newPassword.length > 128) {
     res.status(400).json({ success: false, message: 'New password is too long' });
     return;
   }

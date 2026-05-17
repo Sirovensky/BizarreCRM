@@ -237,9 +237,9 @@ router.post('/lookup', asyncHandler(async (req: Request, res: Response) => {
     return;
   }
   recordWindowFailure(req.db, 'tracking', ip, 5000);
-  const { phone, order_id } = req.body as { phone?: string; order_id?: string };
+  const { phone, order_id } = req.body as { phone?: unknown; order_id?: unknown };
 
-  if (!phone || phone.trim().length < 4) {
+  if (typeof phone !== 'string' || phone.trim().length < 4) {
     res.status(400).json({ success: false, code: ERROR_CODES.ERR_INPUT_VALIDATION, message: 'Phone number (min 4 digits) is required' });
     return;
   }
@@ -292,7 +292,7 @@ router.post('/lookup', asyncHandler(async (req: Request, res: Response) => {
   const params: any[] = [...customerIds];
 
   // If order_id also provided, filter to that specific ticket (validates phone ownership)
-  if (order_id) {
+  if (typeof order_id === 'string' && order_id.trim().length > 0) {
     const normId = normaliseOrderId(order_id);
     query += ' AND t.order_id = ?';
     params.push(normId);

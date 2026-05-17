@@ -11,6 +11,7 @@ import { useHasRole } from '@/hooks/useHasRole';
 // WEB-UIUX-1562: focus trap for Issue modal
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { confirm } from '@/stores/confirmStore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1289,12 +1290,14 @@ function PendingIssuancesInbox() {
                 <div className="flex items-center gap-2 text-xs">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(`Approve and mint a ${formatCurrency(r.amount)} gift card?`)) {
-                        approveMut.mutate(r.id);
-                      }
+                    onClick={async () => {
+                      const ok = await confirm(
+                        `Approve and mint a ${formatCurrency(r.amount)} gift card?`,
+                        { title: 'Approve gift-card issuance', confirmLabel: 'Approve' },
+                      );
+                      if (ok) approveMut.mutate(r.id);
                     }}
-                    disabled={approveMut.isPending}
+                    disabled={approveMut.isPending && approveMut.variables === r.id}
                     className="rounded-md bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {approveMut.isPending && approveMut.variables === r.id ? 'Approving…' : 'Approve'}
@@ -1302,7 +1305,7 @@ function PendingIssuancesInbox() {
                   <button
                     type="button"
                     onClick={() => { setDeclineId(r.id); setDeclineReason(''); }}
-                    disabled={declineMut.isPending}
+                    disabled={declineMut.isPending && declineMut.variables?.id === r.id}
                     className="rounded-md border border-red-300 px-3 py-1.5 font-medium text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Decline

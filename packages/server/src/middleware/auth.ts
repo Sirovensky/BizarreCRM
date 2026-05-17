@@ -245,7 +245,13 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
       // SEC (A8): Reject idle sessions whose last_active is > IDLE_SESSION_MAX_DAYS old.
       // Even if refresh token hasn't reached expires_at, an unused session is revoked.
       if (session.last_active) {
-        const lastActiveMs = new Date(session.last_active).getTime();
+        // BUGHUNT-2026-05-16: SQLite datetime('now') → 'YYYY-MM-DD HH:MM:SS'
+        // (UTC, no Z). V8 parses as local time, shifting the idle window.
+        const rawActive = session.last_active as string;
+        const normalizedActive = rawActive.includes('T') || rawActive.endsWith('Z') || rawActive.includes('+')
+          ? rawActive
+          : `${rawActive.replace(' ', 'T')}Z`;
+        const lastActiveMs = new Date(normalizedActive).getTime();
         if (!Number.isNaN(lastActiveMs)) {
           const idleMs = Date.now() - lastActiveMs;
           const maxIdleMs = IDLE_SESSION_MAX_DAYS * 24 * 60 * 60 * 1000;

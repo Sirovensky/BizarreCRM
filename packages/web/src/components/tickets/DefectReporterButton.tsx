@@ -150,6 +150,7 @@ export function DefectReporterButton({
   return (
     <>
       <button
+        type="button"
         onClick={() => setOpen(true)}
         title={`Report a defect on ${itemName}`}
         className={

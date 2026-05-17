@@ -165,12 +165,14 @@ function EditTemplateModal({
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 p-5 border-t border-surface-200 dark:border-surface-700">
           <button
+            type="button"
             onClick={onClose}
             className="btn btn-secondary btn-sm"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
             className="btn btn-primary btn-sm"
@@ -372,7 +374,7 @@ export function NotificationTemplatesTab() {
                         <ToggleSwitch
                           checked={!!t.send_email_auto}
                           onChange={(v) => handleToggle(t, 'send_email_auto', v)}
-                          disabled={updateMut.isPending}
+                          disabled={updateMut.isPending && updateMut.variables?.id === t.id}
                         />
                       </div>
                     </td>
@@ -381,7 +383,7 @@ export function NotificationTemplatesTab() {
                         <ToggleSwitch
                           checked={!!t.send_sms_auto}
                           onChange={(v) => handleToggle(t, 'send_sms_auto', v)}
-                          disabled={updateMut.isPending}
+                          disabled={updateMut.isPending && updateMut.variables?.id === t.id}
                         />
                       </div>
                     </td>
@@ -390,7 +392,7 @@ export function NotificationTemplatesTab() {
                         <ToggleSwitch
                           checked={!!(t as any).show_in_canned}
                           onChange={(v) => handleToggle(t, 'show_in_canned', v)}
-                          disabled={updateMut.isPending}
+                          disabled={updateMut.isPending && updateMut.variables?.id === t.id}
                         />
                       </div>
                     </td>

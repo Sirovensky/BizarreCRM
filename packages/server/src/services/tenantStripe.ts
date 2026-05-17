@@ -405,7 +405,10 @@ export function verifyTenantStripeWebhook(
   }
   requireValidSecret(cfg.secretKey);
   const stripe = createStripeClient(cfg.secretKey);
-  return stripe.webhooks.constructEvent(payload, signature, cfg.webhookSecret);
+  // Explicit 5-minute tolerance — matches the platform-level handler in
+  // stripe.ts. Previously this relied on the SDK default which is undocumented
+  // and version-dependent, leaving the replay window unspecified.
+  return stripe.webhooks.constructEvent(payload, signature, cfg.webhookSecret, 300);
 }
 
 function getPaymentIntentId(value: Stripe.Checkout.Session | Stripe.PaymentIntent): string | null {
@@ -422,22 +425,27 @@ function readWebhookEventRow(db: Database.Database, eventId: string): { status: 
 }
 
 function reserveWebhookEvent(db: Database.Database, event: Stripe.Event): boolean {
+  // Atomic claim: try to insert. If the row already exists, fall through to
+  // the status check. Previous SELECT-then-INSERT pattern allowed two
+  // concurrent deliveries past the guard with no DB-level serialization.
+  const inserted = db.prepare(`
+    INSERT OR IGNORE INTO tenant_stripe_webhook_events (stripe_event_id, event_type, status)
+    VALUES (?, ?, 'processing')
+  `).run(event.id, event.type);
+  if (inserted.changes > 0) return true;
   const existing = readWebhookEventRow(db, event.id);
   if (existing?.status === 'processed' || existing?.status === 'ignored') return false;
   if (existing?.status === 'failed') {
-    db.prepare(`
+    // Atomic re-claim only when current status is 'failed' so a concurrent
+    // 'processing' worker can't be displaced.
+    const re = db.prepare(`
       UPDATE tenant_stripe_webhook_events
          SET status = 'processing', error = NULL, updated_at = datetime('now')
-       WHERE stripe_event_id = ?
+       WHERE stripe_event_id = ? AND status = 'failed'
     `).run(event.id);
-    return true;
+    return re.changes > 0;
   }
-  if (existing?.status === 'processing') return false;
-  db.prepare(`
-    INSERT INTO tenant_stripe_webhook_events (stripe_event_id, event_type, status)
-    VALUES (?, ?, 'processing')
-  `).run(event.id, event.type);
-  return true;
+  return false;
 }
 
 function completeWebhookEvent(

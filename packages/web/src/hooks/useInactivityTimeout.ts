@@ -71,10 +71,11 @@ export function useInactivityTimeout(opts: UseInactivityTimeoutOptions = {}): vo
     }
 
     function reset() {
-      // Only re-arm on activity AFTER the warn fired keeps the warn signal
-      // visible long enough for the user to act. Pre-warn activity simply
-      // resets the clock.
-      if (warnFired) return;
+      // BUGHUNT-2026-05-16: previously this returned early after the warn had
+      // fired, so the warn toast that says "move your mouse or press a key to
+      // stay signed in" was a lie — moving the mouse couldn't extend the
+      // session and logout fired 5 min later regardless. Now any activity
+      // re-arms (including post-warn), matching the toast's promise.
       arm();
     }
 

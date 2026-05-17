@@ -19,6 +19,12 @@ const HTML_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
   '"': '&quot;',
   "'": '&#x27;',
   '/': '&#x2F;',
+  // Backtick: breaks out of template-literal attribute contexts.
+  '`': '&#x60;',
+  // U+2028 / U+2029: valid JS line terminators that escape string context
+  // when interpolated into a <script> block or template literal.
+  ' ': '&#x2028;',
+  ' ': '&#x2029;',
 });
 
 /**
@@ -27,7 +33,7 @@ const HTML_ESCAPES: Readonly<Record<string, string>> = Object.freeze({
  */
 export function escapeHtml(input: string): string {
   if (input === null || input === undefined) return '';
-  return String(input).replace(/[&<>"'/]/g, (ch) => HTML_ESCAPES[ch] ?? ch);
+  return String(input).replace(/[&<>"'/`  ]/g, (ch) => HTML_ESCAPES[ch] ?? ch);
 }
 
 /**

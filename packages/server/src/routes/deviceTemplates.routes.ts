@@ -18,6 +18,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { createLogger } from '../utils/logger.js';
+import type { TxQuery } from '../db/async-db.js';
 import {
   validateRequiredString,
   validateTextLength,
@@ -423,31 +424,39 @@ router.post(
     const parts = parseJson<TemplatePart[]>(template.parts_json, []);
     const checklist = parseJson<string[]>(template.diagnostic_checklist_json, []);
 
-    let insertedParts = 0;
+    // BUGHUNT-2026-05-17: previously the parts INSERT loop interleaved reads
+    // (inventory_items lookup) with writes (ticket_device_parts INSERT), so a
+    // crash mid-loop left the ticket with a partial parts list — the tech
+    // would see "phone screen replacement" applied with only the screen and
+    // none of the adhesive/clips, and would have to manually figure out what
+    // was missing. Pre-resolve every part outside the transaction, then run
+    // all INSERTs (plus the checklist UPDATE) as one atomic batch.
+    interface ResolvedPart {
+      inv_id: number;
+      name: string;
+      qty: number;
+      price: number;
+      cost: number;
+    }
+    const resolvedParts: ResolvedPart[] = [];
     for (const p of parts) {
       const item = await adb.get<any>(
         'SELECT id, name, retail_price, cost_price FROM inventory_items WHERE id = ?',
         p.inventory_item_id,
       );
       if (!item) continue;
-
-      await adb.run(
-        `INSERT INTO ticket_device_parts
-          (ticket_device_id, inventory_item_id, name, quantity, price, cost_price, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'available')`,
-        device.id,
-        item.id,
-        item.name,
-        p.qty,
-        Number(item.retail_price) || 0,
-        Number(item.cost_price) || 0,
-      );
-      insertedParts += 1;
+      resolvedParts.push({
+        inv_id: item.id,
+        name: item.name,
+        qty: p.qty,
+        price: Number(item.retail_price) || 0,
+        cost: Number(item.cost_price) || 0,
+      });
     }
 
-    // Append checklist items to the ticket's existing checklist column, if it
-    // exists. We don't fail the whole request if the column is missing —
-    // older schemas may not have it.
+    // Pre-read the ticket checklist so we can pre-compute the merged JSON.
+    // The column-missing case (legacy schemas) is caught around the read.
+    let mergedChecklistJson: string | null = null;
     try {
       const checklistRow = (await adb.get(
         'SELECT checklist_json FROM tickets WHERE id = ?',
@@ -461,17 +470,30 @@ router.post(
         ...existing,
         ...checklist.map((text) => ({ text, done: false, source: 'template' })),
       ];
-      await adb.run(
-        "UPDATE tickets SET checklist_json = ? WHERE id = ?",
-        JSON.stringify(merged),
-        ticketId,
-      );
+      mergedChecklistJson = JSON.stringify(merged);
     } catch (err) {
       logger.warn('apply-to-ticket: checklist column not present, skipping', {
         ticket_id: ticketId,
         error: err instanceof Error ? err.message : String(err),
       });
     }
+
+    const applyTxQueries: TxQuery[] = resolvedParts.map((rp) => ({
+      sql: `INSERT INTO ticket_device_parts
+              (ticket_device_id, inventory_item_id, name, quantity, price, cost_price, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'available')`,
+      params: [device.id, rp.inv_id, rp.name, rp.qty, rp.price, rp.cost],
+    }));
+    if (mergedChecklistJson !== null) {
+      applyTxQueries.push({
+        sql: 'UPDATE tickets SET checklist_json = ? WHERE id = ?',
+        params: [mergedChecklistJson, ticketId],
+      });
+    }
+    if (applyTxQueries.length > 0) {
+      await adb.transaction(applyTxQueries);
+    }
+    const insertedParts = resolvedParts.length;
 
     audit(req.db, 'device_template_applied', req.user?.id ?? null, req.ip ?? 'unknown', {
       template_id: templateId,

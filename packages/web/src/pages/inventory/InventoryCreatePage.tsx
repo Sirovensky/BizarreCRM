@@ -7,6 +7,7 @@ import { inventoryApi, settingsApi } from '@/api/endpoints';
 import type { TaxClassRecord } from '@/api/endpoints';
 import { formatApiError } from '@/utils/apiError';
 import { formatCurrencySymbol } from '@/utils/format';
+import { confirm } from '@/stores/confirmStore';
 
 // WEB-FL-023 (Fixer-C9 2026-04-25): replace `any[]` / `any` soup on tax-class
 // API result, mutation arg, mutation success res, and onError handler. Tax
@@ -121,26 +122,27 @@ export function InventoryCreatePage() {
     onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error('Name is required');
     const parsedRetailPrice = parseFloat(form.retail_price);
     if (!form.retail_price || isNaN(parsedRetailPrice)) return toast.error('Retail price is required');
     if (parsedRetailPrice <= 0) {
-      const confirmed = window.confirm(
-        'Retail price is $0.00. Is this intentional (e.g. gift or promotional item)?'
+      const confirmed = await confirm(
+        'Retail price is $0.00. Is this intentional (e.g. gift or promotional item)?',
+        { title: 'Zero-priced item?', confirmLabel: 'Yes, save' },
       );
       if (!confirmed) return;
     }
     mutation.mutate({
       ...form,
       item_type: form.item_type as 'product' | 'part' | 'service',
-      cost_price: parseFloat(form.cost_price) || 0,
-      retail_price: parseFloat(form.retail_price) || 0,
-      in_stock: parseInt(form.in_stock) || 0,
-      reorder_level: parseInt(form.reorder_level) || 0,
-      stock_warning: parseInt(form.stock_warning) || 5,
-      tax_class_id: form.tax_class_id ? parseInt(form.tax_class_id) : undefined,
+      cost_price: Math.max(0, parseFloat(form.cost_price) || 0),
+      retail_price: Math.max(0, parseFloat(form.retail_price) || 0),
+      in_stock: Math.max(0, parseInt(form.in_stock, 10) || 0),
+      reorder_level: Math.max(0, parseInt(form.reorder_level, 10) || 0),
+      stock_warning: Math.max(0, parseInt(form.stock_warning, 10) || 5),
+      tax_class_id: form.tax_class_id ? parseInt(form.tax_class_id, 10) : undefined,
       tax_inclusive: form.tax_inclusive,
       is_serialized: form.is_serialized,
     });

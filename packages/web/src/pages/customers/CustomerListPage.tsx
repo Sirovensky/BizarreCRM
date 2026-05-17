@@ -187,7 +187,7 @@ export function CustomerListPage() {
         keyword: serverKeyword || undefined,
         sort_by: serverSortBy, sort_order: sortOrder,
         include_stats: '1',
-        group_id: searchParams.get('group_id') ? parseInt(searchParams.get('group_id')!) : undefined,
+        group_id: searchParams.get('group_id') ? parseInt(searchParams.get('group_id')!, 10) : undefined,
         from_date: searchParams.get('from_date') || undefined,
         to_date: searchParams.get('to_date') || undefined,
         has_open_tickets: searchParams.get('has_open_tickets') || undefined,
@@ -357,7 +357,7 @@ export function CustomerListPage() {
           keyword: serverKeyword || undefined,
           sort_by: serverSortBy,
           sort_order: sortOrder,
-          group_id: searchParams.get('group_id') ? parseInt(searchParams.get('group_id')!) : undefined,
+          group_id: searchParams.get('group_id') ? parseInt(searchParams.get('group_id')!, 10) : undefined,
           from_date: searchParams.get('from_date') || undefined,
           to_date: searchParams.get('to_date') || undefined,
           has_open_tickets: searchParams.get('has_open_tickets') || undefined,
@@ -395,12 +395,12 @@ export function CustomerListPage() {
   const parseImportCsv = (text: string) => {
     const lines = text.trim().split('\n');
     if (lines.length < 2) return;
-    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
+    const headers = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
     const rows: ImportCustomerItem[] = [];
     for (const line of lines.slice(1)) {
       const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
-      headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+      headers.forEach((h, i) => { obj[h] = (vals[i] ?? '').trim(); });
       // Server requires `first_name`; skip rows missing it rather than
       // shipping malformed payloads.
       if (!obj.first_name) continue;

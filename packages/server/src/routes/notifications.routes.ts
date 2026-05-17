@@ -306,7 +306,7 @@ router.post(
         ${receiptHeader ? `<p style="font-size:13px;color:#555;margin-bottom:12px;">${escapeHtml(receiptHeader)}</p>` : ''}
         <p>Receipt for Invoice <strong>${escapeHtml(invoice.order_id)}</strong></p>
         <p>Customer: ${escapeHtml(invoice.first_name || '')} ${escapeHtml(invoice.last_name || '')}</p>
-        <p>Date: ${escapeHtml(new Date(invoice.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}</p>
+        <p>Date: ${escapeHtml(new Date(typeof invoice.created_at === 'string' && !invoice.created_at.includes('T') && !invoice.created_at.endsWith('Z') ? `${invoice.created_at.replace(' ', 'T')}Z` : invoice.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <thead>
             <tr style="background:#f5f5f5;">

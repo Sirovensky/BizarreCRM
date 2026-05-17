@@ -51,6 +51,13 @@ function globalEscHandler(e: KeyboardEvent): void {
   }
 }
 
+// BUGHUNT-2026-05-16: remember the capture flag we used when registering the
+// global handler. Without this, a first consumer mounting with capture=false
+// adds (handler, false), a second with capture=true adds nothing (stack
+// non-empty), and the last consumer to unmount removes with ITS capture
+// value — which may not match the registered listener, leaking it forever.
+let registeredCapture: boolean | null = null;
+
 export function useEscClose(
   onClose: () => void,
   enabled: boolean = true,
@@ -74,6 +81,7 @@ export function useEscClose(
     // Register the global handler on first consumer.
     if (escStack.length === 0) {
       document.addEventListener('keydown', globalEscHandler, capture);
+      registeredCapture = capture;
     }
 
     escStack.push(callback);
@@ -82,9 +90,12 @@ export function useEscClose(
       const idx = escStack.lastIndexOf(callback);
       if (idx !== -1) escStack.splice(idx, 1);
 
-      // Remove the global handler when the last consumer unregisters.
-      if (escStack.length === 0) {
-        document.removeEventListener('keydown', globalEscHandler, capture);
+      // Remove the global handler when the last consumer unregisters. Use the
+      // capture flag we recorded at registration time, not this consumer's
+      // local capture — the two can differ across overlapping consumers.
+      if (escStack.length === 0 && registeredCapture !== null) {
+        document.removeEventListener('keydown', globalEscHandler, registeredCapture);
+        registeredCapture = null;
       }
     };
   }, [enabled, capture]);

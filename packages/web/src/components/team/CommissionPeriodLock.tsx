@@ -135,6 +135,9 @@ export function CommissionPeriodLock() {
   // 2 years. Default page-size is 50 (matches server cap of 200).
   const [yearFilter, setYearFilter] = useState<string>('');
   const [page, setPage] = useState(1);
+  // BUGHUNT-2026-05-16: window.prompt for bulk-lock cutoff is suppressed in
+  // iOS PWA full-screen mode. Inline date-input modal replaces it.
+  const [bulkLockCutoff, setBulkLockCutoff] = useState<string | null>(null);
   const perPage = 50;
 
   // WEB-UIUX-1150: destructure isLoading to avoid empty-state false positive on cold load.
@@ -161,9 +164,17 @@ export function CommissionPeriodLock() {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         const isDirty = newName || newStart || newEnd;
-        if (!isDirty || window.confirm('Discard this period?')) {
+        if (!isDirty) {
           setShowNew(false);
+          return;
         }
+        void confirm('Discard this period?', {
+          title: 'Discard unsaved period?',
+          confirmLabel: 'Discard',
+          danger: true,
+        }).then((ok) => {
+          if (ok) setShowNew(false);
+        });
       }
     };
     document.addEventListener('keydown', handler);
@@ -229,19 +240,20 @@ export function CommissionPeriodLock() {
     },
   });
 
-  async function handleBulkLock() {
-    // WEB-UIUX-788: local-calendar today; the prompt default must reflect
-    // the operator's wall-clock day, not UTC midnight.
-    const today = toLocalDateString(new Date());
-    const cutoff = window.prompt(
-      'Lock every unlocked period whose end_date is strictly before this date (YYYY-MM-DD).\n\nThis cannot be undone.',
-      today,
-    );
+  function handleBulkLock() {
+    // WEB-UIUX-788: local-calendar today; the modal default must reflect the
+    // operator's wall-clock day, not UTC midnight.
+    setBulkLockCutoff(toLocalDateString(new Date()));
+  }
+
+  async function submitBulkLock() {
+    const cutoff = (bulkLockCutoff ?? '').trim();
     if (!cutoff) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff.trim())) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) {
       toast.error('Cutoff must be YYYY-MM-DD');
       return;
     }
+    setBulkLockCutoff(null);
     const ok = await confirm(
       `Lock every payroll period ending before ${cutoff}? Locked periods refuse all commission / time-entry / tip edits in their range. This cannot be undone.`,
       {
@@ -250,7 +262,7 @@ export function CommissionPeriodLock() {
         danger: true,
       },
     );
-    if (ok) bulkLockMut.mutate(cutoff.trim());
+    if (ok) bulkLockMut.mutate(cutoff);
   }
 
   async function downloadCsv(periodId: number) {
@@ -447,9 +459,17 @@ export function CommissionPeriodLock() {
           onClick={() => {
             // WEB-UIUX-1154: dirty-guard on backdrop click — confirm before discarding entered data.
             const isDirty = newName || newStart || newEnd;
-            if (!isDirty || window.confirm('Discard this period?')) {
+            if (!isDirty) {
               setShowNew(false);
+              return;
             }
+            void confirm('Discard this period?', {
+              title: 'Discard unsaved period?',
+              confirmLabel: 'Discard',
+              danger: true,
+            }).then((ok) => {
+              if (ok) setShowNew(false);
+            });
           }}
         >
           <div
@@ -495,12 +515,14 @@ export function CommissionPeriodLock() {
             </div>
             <div className="flex gap-2 mt-5">
               <button
+                type="button"
                 className="flex-1 px-3 py-2 border rounded text-sm hover:bg-surface-50 dark:hover:bg-surface-800"
                 onClick={() => setShowNew(false)}
               >
                 Cancel
               </button>
               <button
+                type="button"
                 className="flex-1 px-3 py-2 bg-primary-600 text-on-primary rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 // WEB-UIUX-1153: also block submit when end < start so the cashier
                 // gets immediate visual feedback instead of a server 400 after click.
@@ -512,6 +534,31 @@ export function CommissionPeriodLock() {
                 {/* WEB-UIUX-1152: use explicit action label instead of generic "Save". */}
                 Create period
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkLockCutoff !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setBulkLockCutoff(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="bulk-lock-cutoff-title" className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+            <h3 id="bulk-lock-cutoff-title" className="mb-1 text-lg font-semibold text-surface-900 dark:text-surface-100">Bulk lock periods</h3>
+            <p className="mb-3 text-xs text-surface-500 dark:text-surface-400">
+              Lock every unlocked period whose end_date is strictly before this date. This cannot be undone.
+            </p>
+            <label className="block text-xs font-medium text-surface-700 dark:text-surface-300">
+              Cutoff date
+              <input
+                autoFocus
+                type="date"
+                value={bulkLockCutoff}
+                onChange={(e) => setBulkLockCutoff(e.target.value)}
+                className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setBulkLockCutoff(null)} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Cancel</button>
+              <button type="button" onClick={() => { void submitBulkLock(); }} className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Continue</button>
             </div>
           </div>
         </div>

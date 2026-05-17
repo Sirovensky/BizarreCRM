@@ -220,6 +220,33 @@ router.put(
     if (trigger_type !== undefined) assertTriggerType(trigger_type);
     if (action_type !== undefined) assertActionType(action_type);
 
+    // BUGHUNT-2026-05-16: sibling gap of WEB-UIUX-694 — POST rejects a
+    // duplicate (trigger_type, trigger_config) against active rules, but PUT
+    // didn't. An operator could edit an existing rule to mirror another
+    // active rule's trigger + config, and both would silently fire (the
+    // bug WEB-UIUX-694 was created to prevent). Same DB check, scoped to
+    // active rows OTHER than the one being edited.
+    const resolvedTriggerType = trigger_type !== undefined ? trigger_type : existing.trigger_type;
+    const resolvedTriggerConfigJson = trigger_config !== undefined
+      ? JSON.stringify(trigger_config)
+      : existing.trigger_config;
+    const dup = await adb.get<{ id: number; name: string }>(
+      `SELECT id, name FROM automations
+        WHERE id != ?
+          AND trigger_type = ?
+          AND trigger_config = ?
+          AND COALESCE(is_active, 1) = 1`,
+      id,
+      resolvedTriggerType,
+      resolvedTriggerConfigJson,
+    );
+    if (dup) {
+      throw new AppError(
+        `Duplicate automation: "${dup.name}" (id ${dup.id}) already fires on this trigger + config. Deactivate or edit that rule first.`,
+        409,
+      );
+    }
+
     await adb.run(`
       UPDATE automations SET
         name = ?, trigger_type = ?, trigger_config = ?, action_type = ?, action_config = ?,
@@ -227,8 +254,8 @@ router.put(
       WHERE id = ?
     `,
       name !== undefined ? name : existing.name,
-      trigger_type !== undefined ? trigger_type : existing.trigger_type,
-      trigger_config !== undefined ? JSON.stringify(trigger_config) : existing.trigger_config,
+      resolvedTriggerType,
+      resolvedTriggerConfigJson,
       action_type !== undefined ? action_type : existing.action_type,
       action_config !== undefined ? JSON.stringify(action_config) : existing.action_config,
       sort_order !== undefined ? sort_order : existing.sort_order,

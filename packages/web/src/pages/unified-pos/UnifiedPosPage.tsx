@@ -1504,7 +1504,10 @@ export function UnifiedPosPage() {
       addProductToCart(item);
       setGlobalSearch('');
     } catch (err) {
-      console.error('[POS unified search] inventory add failed', err);
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('[POS unified search] inventory add failed', err);
+      }
       toast.error('Could not add item to sale');
     } finally {
       setAddingInventoryId(null);
@@ -2499,8 +2502,16 @@ export function UnifiedPosPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Could not cancel appointment'),
   });
   const cancelAppointment = (appointment: PosAppointment) => {
-    if (!window.confirm(`Cancel ${appointmentCustomerName(appointment)}'s ${formatTime(appointment.start_time)} appointment?`)) return;
-    cancelAppointmentMutation.mutate(appointment.id);
+    // WEB-FH-021: route through the inline confirm modal — window.confirm is
+    // blocked in fullscreen/iframe POS contexts and inconsistent on touch.
+    setPendingConfirm({
+      title: 'Cancel appointment?',
+      message: `Cancel ${appointmentCustomerName(appointment)}'s ${formatTime(appointment.start_time)} appointment?`,
+      confirmLabel: 'Cancel appointment',
+      cancelLabel: 'Keep',
+      danger: true,
+      onConfirm: () => cancelAppointmentMutation.mutate(appointment.id),
+    });
   };
 
   const selectAppointment = async (appointment: PosAppointment) => {

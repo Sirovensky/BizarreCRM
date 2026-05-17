@@ -63,7 +63,7 @@ function getDateRange(key: string): { from_date?: string; to_date?: string } {
   // tomorrow's date used as the server filter after ~4pm local.
   const to_date = toLocalDateString(now);
   if (key === 'today') return { from_date: to_date, to_date };
-  const days = parseInt(key);
+  const days = parseInt(key, 10);
   const from = new Date(now.getTime() - days * 86400_000);
   return { from_date: toLocalDateString(from), to_date };
 }

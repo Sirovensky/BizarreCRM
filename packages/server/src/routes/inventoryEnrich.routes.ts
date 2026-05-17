@@ -1548,6 +1548,13 @@ router.post(
     });
 
     if (format === 'pdf') {
+      // SEC: cap PDF batch size. Each label is 288×96px = ~28KB; 5000 labels
+      // would allocate a 138MB canvas at once and OOM under load. ZPL is
+      // streamed and unaffected, so the cap applies only to PDF.
+      const PDF_LABEL_CAP = 200;
+      if (totalLabels > PDF_LABEL_CAP) {
+        throw new AppError(`PDF batch exceeds ${PDF_LABEL_CAP} labels (got ${totalLabels}) — print in smaller batches or use ZPL`, 400);
+      }
       // WEB-W3-009: Real PDF output via canvas PDF mode.
       // This version of canvas doesn't support newPage() so we stack all
       // labels vertically on one tall page (2 in wide × 1 in per label).

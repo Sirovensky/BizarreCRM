@@ -53,7 +53,7 @@ export function buildTemplateDb(): void {
         needsRebuild = true;
         rebuildReason = `template missing core tables: ${missingTables.join(', ')}`;
       }
-      const applied = (tempDb.prepare("SELECT COUNT(*) as c FROM _migrations").get() as any)?.c || 0;
+      const applied = (tempDb.prepare("SELECT COUNT(*) as c FROM _migrations").get() as { c?: number } | undefined)?.c ?? 0;
       if (!needsRebuild && applied < migrationFiles) {
         needsRebuild = true;
         rebuildReason = `template migrations behind (${applied}/${migrationFiles})`;

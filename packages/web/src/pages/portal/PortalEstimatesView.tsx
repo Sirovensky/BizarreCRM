@@ -5,6 +5,7 @@ import * as api from './portalApi';
 import { usePortalI18n } from './i18n';
 import { formatCurrency, formatDate } from '../../utils/format';
 import { cn } from '@/utils/cn';
+import { confirm } from '@/stores/confirmStore';
 
 interface PortalEstimatesViewProps {
   onBack: () => void;
@@ -43,10 +44,14 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
     if (est) {
       const total = Number(est.total ?? 0);
       const totalStr = total.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-      // eslint-disable-next-line no-alert
-      const ok = window.confirm(
+      // BUGHUNT-2026-05-16: window.confirm is suppressed silently in iOS PWA
+      // full-screen mode (returns true without showing the dialog) — a stray
+      // tap would commit the customer to the estimate. Use the same store
+      // PhotoGallery already uses.
+      const ok = await confirm(
         `Approve estimate ${est.order_id ?? '#' + id} for ${totalStr}?\n\n` +
         `This authorizes the shop to begin work and bill you for the amount above. You will not be able to revoke this through the portal once submitted.`,
+        { title: 'Approve estimate?', confirmLabel: 'Approve' },
       );
       if (!ok) return;
     }
@@ -103,10 +108,10 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
     if (est) {
       const total = Number(est.total ?? 0);
       const totalStr = total.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-      // eslint-disable-next-line no-alert
-      const ok = window.confirm(
+      const ok = await confirm(
         `Decline estimate ${est.order_id ?? '#' + id} for ${totalStr}?\n\n` +
         `The shop will be notified that you are not moving forward with this quote.`,
+        { title: 'Decline estimate?', confirmLabel: 'Decline', danger: true },
       );
       if (!ok) return;
     }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { JSX } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -215,7 +216,7 @@ function ReloadModal({ cardId, currentBalance, onClose }: ReloadModalProps) {
             if (!Number.isFinite(parsed) || parsed <= 0) return <span className="text-surface-400">New: —</span>;
             return (
               <span className="text-surface-500 dark:text-surface-400">
-                New: <span className="font-semibold text-primary-700 dark:text-primary-300">{formatCurrencyShared(currentBalance + parsed)}</span>
+                New: <span className="font-semibold text-primary-700 dark:text-primary-300">{formatCurrencyShared(Math.round((currentBalance + parsed) * 100) / 100)}</span>
               </span>
             );
           })()}
@@ -257,6 +258,13 @@ export function GiftCardDetailPage() {
   const [showCode, setShowCode] = useState(false);
   const [showReloadModal, setShowReloadModal] = useState(false);
   const [txPage, setTxPage] = useState(0);
+  // BUGHUNT-2026-05-16: window.prompt is unstyled, suppressed in iOS PWA
+  // full-screen mode, and inaccessible to screen readers — replace with
+  // inline modal state for the resend-email and disable-reason inputs.
+  const [showResendModal, setShowResendModal] = useState(false);
+  const [resendEmail, setResendEmail] = useState('');
+  const [showDisableModal, setShowDisableModal] = useState(false);
+  const [disableReason, setDisableReason] = useState('');
   // WEB-UIUX-552: gate Reload on server-side permission (gift_cards.reload is
   // admin/manager only). Free-plan cashiers don't have it, so the button must
   // be inert rather than letting them fire a request that returns 403.
@@ -472,21 +480,8 @@ export function GiftCardDetailPage() {
             <button
               type="button"
               onClick={() => {
-                const defaultTo = card.recipient_email || '';
-                const target = window.prompt(
-                  defaultTo
-                    ? `Re-send code to which email?`
-                    : 'No recipient email on file. Enter an email to send the code to:',
-                  defaultTo,
-                );
-                if (target === null) return;
-                const trimmed = target.trim();
-                if (!trimmed) {
-                  toast.error('Email is required');
-                  return;
-                }
-                if (!window.confirm(`Send the gift-card code to ${trimmed}?`)) return;
-                resendCodeMutation.mutate(trimmed !== defaultTo ? trimmed : undefined);
+                setResendEmail(card.recipient_email || '');
+                setShowResendModal(true);
               }}
               disabled={resendCodeMutation.isPending}
               className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -506,14 +501,10 @@ export function GiftCardDetailPage() {
         {canDisable && card.status === 'active' && (
           <div className="mt-2">
             <button
-              onClick={async () => {
-                const reason = window.prompt(
-                  'Why is this gift card being disabled? (optional — e.g. "reported lost", "stolen", "issued in error")',
-                  '',
-                );
-                if (reason === null) return;
-                if (!window.confirm('Disable this gift card? It can no longer be redeemed until you re-enable it.')) return;
-                disableMutation.mutate(reason);
+              type="button"
+              onClick={() => {
+                setDisableReason('');
+                setShowDisableModal(true);
               }}
               disabled={disableMutation.isPending}
               className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -526,8 +517,14 @@ export function GiftCardDetailPage() {
         {canDisable && card.status === 'disabled' && (
           <div className="mt-2">
             <button
-              onClick={() => {
-                if (!window.confirm('Re-enable this gift card? It will be redeemable again at its current balance.')) return;
+              type="button"
+              onClick={async () => {
+                const okEnable = await useConfirmStore.getState().confirm({
+                  title: 'Re-enable gift card',
+                  message: 'Re-enable this gift card? It will be redeemable again at its current balance.',
+                  confirmLabel: 'Re-enable',
+                });
+                if (!okEnable) return;
                 enableMutation.mutate();
               }}
               disabled={enableMutation.isPending}
@@ -681,6 +678,142 @@ export function GiftCardDetailPage() {
           onClose={() => setShowReloadModal(false)}
         />
       )}
+
+      {showResendModal && (
+        <ResendCodeModal
+          defaultEmail={card.recipient_email || ''}
+          value={resendEmail}
+          onChange={setResendEmail}
+          pending={resendCodeMutation.isPending}
+          onClose={() => setShowResendModal(false)}
+          onSubmit={() => {
+            const trimmed = resendEmail.trim();
+            if (!trimmed) {
+              toast.error('Email is required');
+              return;
+            }
+            resendCodeMutation.mutate(trimmed !== (card.recipient_email || '') ? trimmed : undefined);
+            setShowResendModal(false);
+          }}
+        />
+      )}
+
+      {showDisableModal && (
+        <DisableCardModal
+          value={disableReason}
+          onChange={setDisableReason}
+          pending={disableMutation.isPending}
+          onClose={() => setShowDisableModal(false)}
+          onSubmit={() => {
+            disableMutation.mutate(disableReason.trim() || '');
+            setShowDisableModal(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ResendCodeModal({
+  defaultEmail,
+  value,
+  onChange,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  defaultEmail: string;
+  value: string;
+  onChange: (v: string) => void;
+  pending: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+}): JSX.Element {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="resend-code-title"
+        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="resend-code-title" className="mb-2 text-lg font-semibold text-surface-900 dark:text-surface-100">
+          Resend gift-card code
+        </h3>
+        <p className="mb-3 text-sm text-surface-500 dark:text-surface-400">
+          {defaultEmail
+            ? 'Confirm or override the recipient email.'
+            : 'No recipient email on file. Enter an email to send the code to.'}
+        </p>
+        <label className="block text-xs font-medium text-surface-700 dark:text-surface-300">
+          Email
+          <input
+            autoFocus
+            type="email"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="customer@example.com"
+            className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"
+          />
+        </label>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Cancel</button>
+          <button type="button" onClick={onSubmit} disabled={pending} className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+            {pending ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DisableCardModal({
+  value,
+  onChange,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  pending: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+}): JSX.Element {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="disable-card-title"
+        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="disable-card-title" className="mb-2 text-lg font-semibold text-surface-900 dark:text-surface-100">
+          Disable gift card
+        </h3>
+        <p className="mb-3 text-sm text-surface-500 dark:text-surface-400">
+          Disable this gift card? It can no longer be redeemed until you re-enable it.
+        </p>
+        <label className="block text-xs font-medium text-surface-700 dark:text-surface-300">
+          Reason (optional)
+          <input
+            autoFocus
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder='e.g. "reported lost", "stolen", "issued in error"'
+            className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"
+          />
+        </label>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Cancel</button>
+          <button type="button" onClick={onSubmit} disabled={pending} className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+            {pending ? 'Disabling…' : 'Disable card'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

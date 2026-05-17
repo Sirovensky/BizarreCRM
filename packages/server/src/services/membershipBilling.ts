@@ -462,7 +462,10 @@ export async function billMembershipSubscription(
   const userId = options.userId ?? null;
   const ip = options.ip ?? 'unknown';
   const runId = options.runId ?? null;
-  const amount = Number(subscription.monthly_price);
+  // BUGHUNT-2026-05-16: monthly_price is a SQLite REAL — pre-round to cents so
+  // the amount stored in subscription_payments matches what the gateway is
+  // told to charge (which already does Math.round * 100 in the gateway call).
+  const amount = Math.round(Number(subscription.monthly_price) * 100) / 100;
   const previousPeriodEnd = subscription.current_period_end ?? null;
 
   if (subscription.status === 'cancelled') {

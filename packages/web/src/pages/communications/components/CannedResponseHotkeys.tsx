@@ -47,7 +47,7 @@ export function CannedResponseHotkeys({
     queryKey: ['sms-templates'],
     queryFn: () => smsApi.templates(),
   });
-  const templates: SmsTemplate[] = (tplData?.data as any)?.data?.templates ?? [];
+  const templates: SmsTemplate[] = tplData?.data?.data?.templates ?? [];
   const top3 = templates.slice(0, 3);
 
   useEffect(() => {

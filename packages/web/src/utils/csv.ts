@@ -96,5 +96,8 @@ export function parseCsvLine(line: string): string[] {
   if (out.length > 0 && out[0].charCodeAt(0) === 0xFEFF) {
     out[0] = out[0].slice(1);
   }
-  return out.map(v => v.trim());
+  // Don't .trim() every field — that destroys intentional surrounding
+  // whitespace in imported CSVs (e.g. right-padded SKUs). Callers can
+  // .trim() at their own boundary if needed.
+  return out;
 }

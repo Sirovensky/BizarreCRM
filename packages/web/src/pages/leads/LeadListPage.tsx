@@ -932,7 +932,7 @@ export function LeadListPage() {
                               if (await confirm('Delete this lead?', { danger: true })) {
                                 setPendingDeleteId(lead.id);
                                 try {
-                                  scheduleLeadDelete(lead.id, lead.name);
+                                  scheduleLeadDelete(lead.id, `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.trim() || undefined);
                                 } finally {
                                   setPendingDeleteId(null);
                                 }

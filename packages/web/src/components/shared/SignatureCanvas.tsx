@@ -272,6 +272,14 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     clearRef.current = clear;
   }, [clear]);
 
+  // BUGHUNT-2026-05-16: mirror the clearRef pattern for endDraw so the touch
+  // listener effect below doesn't tear down / re-add native listeners every
+  // time `isDrawing` flips (which was on every stroke).
+  const endDrawRef = useRef<() => void>(endDraw);
+  useEffect(() => {
+    endDrawRef.current = endDraw;
+  }, [endDraw]);
+
   // SCAN-1167: install native touch listeners with `{ passive: false }` so
   // `preventDefault()` actually runs. React's synthetic touch listeners are
   // passive by default; calling preventDefault inside them is silently
@@ -317,7 +325,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
     const handleEnd = () => {
       pendingTouchPos = null;
       drawingNow = false;
-      endDraw();
+      endDrawRef.current();
     };
     const trackStart = (e: TouchEvent) => {
       handleStart(e);
@@ -332,7 +340,7 @@ export function SignatureCanvas({ onSave, width = 400, height = 150, initialValu
       canvas.removeEventListener('touchend', handleEnd);
       canvas.removeEventListener('touchcancel', handleEnd);
     };
-  }, [getPos, endDraw]);
+  }, [getPos]);
 
   return (
     <div className="space-y-2">

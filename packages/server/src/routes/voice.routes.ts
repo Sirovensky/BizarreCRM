@@ -613,7 +613,16 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
                     'SELECT id, plan, storage_limit_mb, trial_ends_at FROM tenants WHERE slug = ?'
                   ).get(slug) as { id: number; plan: string; storage_limit_mb: number | null; trial_ends_at: string | null } | undefined;
                   if (tenantRow) {
-                    const trialActive = !!tenantRow.trial_ends_at && new Date(tenantRow.trial_ends_at).getTime() > Date.now();
+                    // BUGHUNT-2026-05-16: trial_ends_at may be a SQLite
+                    // 'YYYY-MM-DD HH:MM:SS' value (UTC, no 'Z') — normalize
+                    // so the trial-active check is correct on non-UTC hosts.
+                    const trialRaw = tenantRow.trial_ends_at ?? null;
+                    const trialNormalized = trialRaw
+                      ? (trialRaw.includes('T') || trialRaw.endsWith('Z') || trialRaw.includes('+')
+                          ? trialRaw
+                          : `${trialRaw.replace(' ', 'T')}Z`)
+                      : null;
+                    const trialActive = !!trialNormalized && new Date(trialNormalized).getTime() > Date.now();
                     const effectivePlan: TenantPlan = trialActive ? 'pro' : (tenantRow.plan === 'pro' ? 'pro' : 'free');
                     const planDef = getPlanDefinition(effectivePlan);
                     const limitMb = effectivePlan === 'pro'
@@ -654,9 +663,16 @@ export async function voiceRecordingWebhookHandler(req: Request, res: Response):
     const voiceCfg = getVoiceConfig(db);
     if ((voiceCfg.voice_auto_transcribe === '1' || voiceCfg.voice_auto_transcribe === 'true') && recordingId && provider.requestTranscription) {
       await adb.run("UPDATE call_logs SET transcription_status = 'pending' WHERE id = ?", call.id);
+      // BUGHUNT-2026-05-16: mirror the POST /call pattern (line 148–150).
+      // In production the public hostname must be `req.get('host')` — using
+      // the LAN IP made the transcription callback URL unreachable from
+      // Twilio/Telnyx, leaving every call's transcription_status stuck at
+      // 'pending' forever.
       const lanIp = getLanIp();
-      const protocol = config.nodeEnv === 'production' ? 'https' : (req.protocol || 'https');
-      const callbackUrl = `${protocol}://${lanIp}:${config.port}/api/v1/voice/transcription-webhook`;
+      const callbackBaseUrl = config.nodeEnv === 'production'
+        ? `https://${req.get('host')}`
+        : `https://${lanIp}:${config.port}`;
+      const callbackUrl = `${callbackBaseUrl}/api/v1/voice/transcription-webhook`;
       await provider.requestTranscription(recordingId, callbackUrl);
     }
 

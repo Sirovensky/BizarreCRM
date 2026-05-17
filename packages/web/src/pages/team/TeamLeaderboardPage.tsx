@@ -40,8 +40,9 @@ async function fetchLeaderboard(): Promise<LeaderboardRow[]> {
   return res.data.data;
 }
 
-function rowKey(r: LeaderboardRow): number {
-  return r.user_id ?? r.id ?? Math.random();
+function rowKey(r: LeaderboardRow, idx: number): string {
+  // Stable composite — Math.random() fallback caused row remount each render.
+  return String(r.user_id ?? r.id ?? `idx:${idx}`);
 }
 
 function ticketsClosed(r: LeaderboardRow): number {
@@ -104,7 +105,7 @@ export function TeamLeaderboardPage() {
             </thead>
             <tbody className="divide-y">
               {sorted.map((r, i) => (
-                <tr key={rowKey(r)} className={i < 3 ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}>
+                <tr key={rowKey(r, i)} className={i < 3 ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}>
                   <td className="px-4 py-3 font-bold text-gray-500 dark:text-surface-400">
                     {i === 0 && <span className="text-2xl">🥇</span>}
                     {i === 1 && <span className="text-2xl">🥈</span>}

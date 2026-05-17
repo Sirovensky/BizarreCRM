@@ -330,14 +330,23 @@ function InvoiceStatusBadge({ status }: { status: string }) {
   );
 }
 
+// BUGHUNT-2026-05-16: server sends raw SQLite 'YYYY-MM-DD HH:MM:SS' (UTC,
+// no 'Z' suffix). V8 parses that as local time, so the displayed timestamp
+// is off by the browser's UTC offset. Normalize to ISO + Z before parsing.
+function normalizeSqliteTs(value: string): string {
+  if (!value) return value;
+  if (value.includes('T') || value.endsWith('Z') || value.includes('+')) return value;
+  return `${value.replace(' ', 'T')}Z`;
+}
+
 function formatDateTime(date: string, locale = 'en-US'): string {
   try {
-    return new Date(date).toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return new Date(normalizeSqliteTs(date)).toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   } catch { return date; }
 }
 
 function formatDate(date: string, locale = 'en-US'): string {
   try {
-    return new Date(date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
+    return new Date(normalizeSqliteTs(date)).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return date; }
 }

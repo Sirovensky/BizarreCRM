@@ -75,6 +75,9 @@ export function InvoiceDetailPage() {
     | null
   >(null);
   const [showCreditNote, setShowCreditNote] = useState(false);
+  // BUGHUNT-2026-05-16: inline modal for the "Refund to original card" amount
+  // input. Replaces window.prompt which is silently suppressed on iOS PWA.
+  const [cardRefundAmount, setCardRefundAmount] = useState<string | null>(null);
   // WEB-UIUX-877: manager PIN gate before credit-note for amounts > $100.
   const [showRefundPinGate, setShowRefundPinGate] = useState(false);
   const REFUND_PIN_THRESHOLD = 100;
@@ -149,13 +152,16 @@ export function InvoiceDetailPage() {
   // WEB-UIUX-1218: Esc handler checks dirty state before closing credit-note modal.
   useEscClose(() => {
     if (creditNoteForm.amount || creditNoteForm.code || creditNoteForm.note.trim()) {
-      if (!window.confirm('Discard credit note?')) return;
+      void confirm('Discard credit note?', {
+        title: 'Discard credit note?', confirmLabel: 'Discard', danger: true,
+      }).then((ok) => { if (ok) setShowCreditNote(false); });
+      return;
     }
     setShowCreditNote(false);
   }, showCreditNote);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoice', id],
+    queryKey: ['invoice', invoiceId],
     queryFn: () => invoiceApi.get(invoiceId),
     enabled: isValidId,
   });
@@ -335,7 +341,7 @@ export function InvoiceDetailPage() {
   const payMutation = useMutation({
     mutationFn: (d: any) => invoiceApi.recordPayment(invoiceId, d),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
       // WEB-UIUX-1538: server `recordCustomerInteraction` updates customer
@@ -367,14 +373,13 @@ export function InvoiceDetailPage() {
       const code = e?.response?.data?.code;
       const serverMsg = e?.response?.data?.message;
       if (status === 409 && code === 'ERR_PAYMENT_DUPLICATE' && vars && !vars.force_duplicate) {
-        // eslint-disable-next-line no-alert
-        const ok = window.confirm(
-          `${serverMsg || 'A payment with this exact amount was just recorded.'}\n\nRecord this as a separate tender?`
-        );
-        if (ok) {
-          payMutation.mutate({ ...vars, force_duplicate: true });
-          return;
-        }
+        void confirm(
+          `${serverMsg || 'A payment with this exact amount was just recorded.'}\n\nRecord this as a separate tender?`,
+          { title: 'Duplicate payment?', confirmLabel: 'Record anyway' },
+        ).then((ok) => {
+          if (ok) payMutation.mutate({ ...vars, force_duplicate: true });
+        });
+        return;
       }
       toast.error(serverMsg || 'Failed to record payment');
     },
@@ -387,7 +392,7 @@ export function InvoiceDetailPage() {
     onSuccess: (res) => {
       const newBalance = Number(res.data?.data?.new_balance ?? 0);
       toast.success(`Credit applied. Remaining store credit: ${formatCurrency(newBalance)}`);
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       if (customerIdForCredits) {
         queryClient.invalidateQueries({ queryKey: ['customer-credits', customerIdForCredits] });
@@ -407,7 +412,7 @@ export function InvoiceDetailPage() {
   const voidUndo = useUndoableAction<void>(
     async () => {
       await invoiceApi.void(invoiceId);
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
     },
     {
@@ -425,7 +430,7 @@ export function InvoiceDetailPage() {
         if (voidSnapshotRef.current !== undefined) {
           queryClient.setQueryData(['invoice', id], voidSnapshotRef.current);
         }
-        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+        queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
         queryClient.invalidateQueries({ queryKey: ['invoices'] });
       },
     },
@@ -437,7 +442,7 @@ export function InvoiceDetailPage() {
     voidSnapshotRef.current = queryClient.getQueryData(['invoice', id]);
 
     // Optimistically mark the invoice as voided so the UI updates instantly.
-    queryClient.setQueriesData({ queryKey: ['invoice', id] }, (old: any) => {
+    queryClient.setQueriesData({ queryKey: ['invoice', invoiceId] }, (old: any) => {
       if (!old) return old;
       const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
       const inv = clone?.data?.data;
@@ -468,7 +473,7 @@ export function InvoiceDetailPage() {
       });
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       // WEB-UIUX-715: status distribution donut chart reads ['invoice-stats'].
       queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
@@ -622,7 +627,7 @@ export function InvoiceDetailPage() {
       });
     },
     onSuccess: (_res, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['refunds'] });
       queryClient.invalidateQueries({ queryKey: ['payments'] });
@@ -696,7 +701,7 @@ export function InvoiceDetailPage() {
   const installmentPlanMutation = useMutation({
     mutationFn: (payload: CreateInstallmentPlanInput) => installmentApi.create(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       toast.success('Installment plan created');
       setShowInstallmentPlan(false);
@@ -798,7 +803,7 @@ export function InvoiceDetailPage() {
           { duration: 8000 },
         );
         // Refresh invoice in case server already wrote a payment row before timeout.
-        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+        queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
         return;
       }
       if (result?.success) {
@@ -810,7 +815,7 @@ export function InvoiceDetailPage() {
         } else {
           toast.success(`Payment approved${result.cardType ? ` — ${result.cardType} ending ${result.last4}` : ''}`);
         }
-        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+        queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
         queryClient.invalidateQueries({ queryKey: ['invoices'] });
         setShowPayment(false);
         setReceiptPromptTarget(null);
@@ -975,40 +980,9 @@ export function InvoiceDetailPage() {
                 {blockchypEnabled && cardPaymentWithTxn && Number(invoice.amount_paid) > 0 && (
                   <button
                     type="button"
-                    onClick={async () => {
+                    onClick={() => {
                       const cap = Math.round(Number(invoice.amount_paid) * 100) / 100;
-                      const input = window.prompt(
-                        `Refund to original card.\nMaximum: ${formatCurrency(cap)}.\nEnter amount to refund:`,
-                        cap.toFixed(2),
-                      );
-                      if (input === null) return;
-                      const amt = parseFloat(input);
-                      if (!Number.isFinite(amt) || amt <= 0) {
-                        toast.error('Amount must be a positive number');
-                        return;
-                      }
-                      if (amt > cap) {
-                        toast.error(`Amount exceeds maximum refundable (${formatCurrency(cap)})`);
-                        return;
-                      }
-                      if (!window.confirm(`Queue ${formatCurrency(amt)} card refund? It will appear in /refunds for an admin to approve before the processor fires.`)) {
-                        return;
-                      }
-                      try {
-                        await refundApi.create({
-                          invoice_id: invoiceId,
-                          customer_id: invoice.customer_id as number,
-                          amount: amt,
-                          type: 'refund',
-                          method: 'blockchyp',
-                          reason: 'Card refund requested from invoice detail',
-                        });
-                        toast.success('Refund queued — open Refunds to approve.');
-                        queryClient.invalidateQueries({ queryKey: ['refunds'] });
-                      } catch (err) {
-                        const e = err as { response?: { data?: { message?: string } } };
-                        toast.error(e?.response?.data?.message ?? 'Could not queue card refund');
-                      }
+                      setCardRefundAmount(cap.toFixed(2));
                     }}
                     className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
                     title="Create a refund row that, on approval, refunds the original card via BlockChyp."
@@ -1338,16 +1312,18 @@ export function InvoiceDetailPage() {
             {invoice.status !== 'void' && invoice.status !== 'paid' && customerCreditBalance > 0 && Number(invoice.amount_due) > 0 && (
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const cap = Math.min(customerCreditBalance, Number(invoice.amount_due));
                   if (!Number.isFinite(cap) || cap <= 0) {
                     toast.error('Nothing to apply');
                     return;
                   }
                   const fixed = Math.round(cap * 100) / 100;
-                  if (!window.confirm(`Apply ${formatCurrency(fixed)} of store credit to this invoice? Customer's balance after: ${formatCurrency(customerCreditBalance - fixed)}.`)) {
-                    return;
-                  }
+                  const ok = await confirm(
+                    `Apply ${formatCurrency(fixed)} of store credit to this invoice? Customer's balance after: ${formatCurrency(customerCreditBalance - fixed)}.`,
+                    { title: 'Apply store credit', confirmLabel: 'Apply' },
+                  );
+                  if (!ok) return;
                   applyCreditMut.mutate(fixed);
                 }}
                 disabled={applyCreditMut.isPending}
@@ -1381,8 +1357,15 @@ export function InvoiceDetailPage() {
           // a partially-entered payment; operator must confirm before data is discarded.
           onClick={(e) => {
             if (e.target !== e.currentTarget) return;
-            if (paymentForm.amount || paymentForm.notes || paymentForm.method !== 'cash' || paymentForm.payment_type !== 'payment') {
-              if (!window.confirm('Discard payment entry?')) return;
+            const isDirty = !!(paymentForm.amount || paymentForm.notes || paymentForm.method !== 'cash' || paymentForm.payment_type !== 'payment');
+            if (isDirty) {
+              void confirm('Discard payment entry?', { title: 'Discard payment?', confirmLabel: 'Discard', danger: true })
+                .then((ok) => {
+                  if (!ok) return;
+                  setShowPayment(false);
+                  setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' });
+                });
+              return;
             }
             setShowPayment(false);
             setPaymentForm({ amount: '', method: 'cash', notes: '', transaction_id: '', payment_type: 'payment' });
@@ -1659,7 +1642,13 @@ export function InvoiceDetailPage() {
               creditNoteForm.code !== null ||
               creditNoteForm.note.trim() !== '';
             if (isDirty) {
-              if (!window.confirm('Discard credit-note in progress?')) return;
+              void confirm('Discard credit-note in progress?', { title: 'Discard credit note?', confirmLabel: 'Discard', danger: true })
+                .then((ok) => {
+                  if (!ok) return;
+                  setShowCreditNote(false);
+                  setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
+                });
+              return;
             }
             setShowCreditNote(false);
             setCreditNoteForm({ amount: '', code: null, note: '', method: 'credit_note' });
@@ -2075,6 +2064,73 @@ export function InvoiceDetailPage() {
           onClose={() => setShowPrintModal(false)}
         />
       )}
+
+      {cardRefundAmount !== null && (() => {
+        const cap = Math.round(Number(invoice.amount_paid) * 100) / 100;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setCardRefundAmount(null)}>
+            <div role="dialog" aria-modal="true" aria-labelledby="card-refund-title" className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+              <h3 id="card-refund-title" className="mb-1 text-lg font-semibold text-surface-900 dark:text-surface-100">Refund to original card</h3>
+              <p className="mb-3 text-xs text-surface-500 dark:text-surface-400">Maximum: {formatCurrency(cap)}.</p>
+              <label className="block text-xs font-medium text-surface-700 dark:text-surface-300">
+                Amount
+                <input
+                  autoFocus
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0"
+                  max={cap}
+                  value={cardRefundAmount}
+                  onChange={(e) => setCardRefundAmount(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"
+                />
+              </label>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setCardRefundAmount(null)} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Cancel</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const amt = parseFloat(cardRefundAmount);
+                    if (!Number.isFinite(amt) || amt <= 0) {
+                      toast.error('Amount must be a positive number');
+                      return;
+                    }
+                    if (amt > cap) {
+                      toast.error(`Amount exceeds maximum refundable (${formatCurrency(cap)})`);
+                      return;
+                    }
+                    setCardRefundAmount(null);
+                    const okQueueRefund = await confirm(
+                      `Queue ${formatCurrency(amt)} card refund? It will appear in /refunds for an admin to approve before the processor fires.`,
+                      { title: 'Queue card refund', confirmLabel: 'Queue refund' },
+                    );
+                    if (!okQueueRefund) return;
+                    try {
+                      await refundApi.create({
+                        invoice_id: invoiceId,
+                        customer_id: invoice.customer_id as number,
+                        amount: amt,
+                        type: 'refund',
+                        method: 'blockchyp',
+                        reason: 'Card refund requested from invoice detail',
+                      });
+                      toast.success('Refund queued — open Refunds to approve.');
+                      queryClient.invalidateQueries({ queryKey: ['refunds'] });
+                    } catch (err) {
+                      const e = err as { response?: { data?: { message?: string } } };
+                      toast.error(e?.response?.data?.message ?? 'Could not queue card refund');
+                    }
+                  }}
+                  className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  Queue refund
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* WEB-UIUX-877: manager PIN gate — shown before credit-note dialog when
           the refundable amount exceeds REFUND_PIN_THRESHOLD ($100). On success

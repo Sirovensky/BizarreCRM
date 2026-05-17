@@ -1,7 +1,12 @@
 import { AppError } from '../middleware/errorHandler.js';
 
 export function validatePrice(value: unknown, fieldName = 'price'): number {
-  const num = typeof value === 'number' ? value : parseFloat(value as string);
+  // parseFloat("12.50 USD") silently returns 12.5 — require strict numeric
+  // shape on strings so a poisoned string can't slip past validation.
+  let num: number;
+  if (typeof value === 'number') num = value;
+  else if (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim())) num = Number(value.trim());
+  else throw new AppError(`${fieldName} must be a number`, 400);
   if (isNaN(num) || !isFinite(num) || num < 0) throw new AppError(`${fieldName} must be non-negative`, 400);
   if (num > 999999.99) throw new AppError(`${fieldName} exceeds maximum`, 400);
   return Math.round(num * 100) / 100;
@@ -14,7 +19,10 @@ export function validatePrice(value: unknown, fieldName = 'price'): number {
  * credit notes where negative values are legitimate.
  */
 export function validateSignedAmount(value: unknown, fieldName = 'amount'): number {
-  const num = typeof value === 'number' ? value : parseFloat(value as string);
+  let num: number;
+  if (typeof value === 'number') num = value;
+  else if (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim())) num = Number(value.trim());
+  else throw new AppError(`${fieldName} must be a number`, 400);
   if (isNaN(num) || !isFinite(num)) throw new AppError(`${fieldName} must be a number`, 400);
   if (num < -999999.99 || num > 999999.99) throw new AppError(`${fieldName} out of range`, 400);
   return Math.round(num * 100) / 100;
@@ -25,7 +33,10 @@ export function validateSignedAmount(value: unknown, fieldName = 'amount'): numb
  * where a zero or negative value would be nonsense but a small amount is fine.
  */
 export function validatePositiveAmount(value: unknown, fieldName = 'amount'): number {
-  const num = typeof value === 'number' ? value : parseFloat(value as string);
+  let num: number;
+  if (typeof value === 'number') num = value;
+  else if (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim())) num = Number(value.trim());
+  else throw new AppError(`${fieldName} must be > 0`, 400);
   if (isNaN(num) || !isFinite(num) || num <= 0) throw new AppError(`${fieldName} must be > 0`, 400);
   if (num > 999999.99) throw new AppError(`${fieldName} exceeds maximum`, 400);
   return Math.round(num * 100) / 100;
@@ -54,7 +65,18 @@ export function validateQuantity(value: unknown, fieldName = 'quantity'): number
  * truncate to 2 (POS5 bug).
  */
 export function validateIntegerQuantity(value: unknown, fieldName = 'quantity'): number {
-  const raw = typeof value === 'number' ? value : parseFloat(value as string);
+  // BUGHUNT-2026-05-16: mirror validateQuantity's strict regex guard so a
+  // string like "5abc" cannot bypass validation (parseFloat would return 5
+  // and Number.isInteger(5) is true). Also rejects scientific notation
+  // ("1e2") that would otherwise be silently coerced.
+  let raw: number;
+  if (typeof value === 'number') {
+    raw = value;
+  } else if (typeof value === 'string' && /^-?\d+$/.test(value.trim())) {
+    raw = Number(value.trim());
+  } else {
+    throw new AppError(`${fieldName} must be a whole number`, 400);
+  }
   if (isNaN(raw) || !isFinite(raw)) throw new AppError(`${fieldName} must be an integer`, 400);
   if (!Number.isInteger(raw)) throw new AppError(`${fieldName} must be a whole number`, 400);
   if (raw < 0) throw new AppError(`${fieldName} cannot be negative`, 400);

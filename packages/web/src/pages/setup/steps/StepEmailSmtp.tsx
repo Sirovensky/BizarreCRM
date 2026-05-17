@@ -71,7 +71,10 @@ export function StepEmailSmtp({
     try {
       const res = await api.post('/settings/email/test-smtp', {
         host: pending.smtp_host,
-        port: pending.smtp_port,
+        // smtp_port arrives from the form as a string (e.target.value); the
+        // server schema expects a number — coerce here so a valid "587"
+        // doesn't fail validation.
+        port: Number(pending.smtp_port),
         user: pending.smtp_user,
         pass: pending.smtp_pass,
       });

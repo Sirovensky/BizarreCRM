@@ -18,6 +18,7 @@ import { api } from '@/api/client';
 import { useHasRole } from '@/hooks/useHasRole';
 import { extractApiError } from '@/utils/apiError';
 import { dstSpringForwardAnomaly } from '@/utils/format';
+import { confirm } from '@/stores/confirmStore';
 
 interface Shift {
   id: number;
@@ -271,11 +272,15 @@ export function ShiftSchedulePage() {
                       {s.role && <div className="text-primary-500 truncate dark:text-primary-400">{s.role}</div>}
                       {canManageSchedule ? (
                         <button
+                          type="button"
                           className="text-red-500 hover:text-red-700 mt-1 inline-flex items-center dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
-                          onClick={() => {
-                            if (window.confirm('Delete this shift? Cannot be undone.')) {
-                              deleteMut.mutate(s.id);
-                            }
+                          onClick={async () => {
+                            const ok = await confirm('Delete this shift? Cannot be undone.', {
+                              title: 'Delete shift',
+                              confirmLabel: 'Delete',
+                              danger: true,
+                            });
+                            if (ok) deleteMut.mutate(s.id);
                           }}
                           disabled={deleteMut.isPending && deleteMut.variables === s.id}
                           aria-label={`Remove shift for ${s.first_name ?? ''} ${s.last_name ?? ''}`}

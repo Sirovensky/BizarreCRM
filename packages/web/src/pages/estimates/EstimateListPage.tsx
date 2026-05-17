@@ -452,7 +452,12 @@ export function EstimateListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const page = Number(searchParams.get('page') || '1');
-  const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('estimates_pagesize') || '25');
+  // BUGHUNT-2026-05-16: localStorage can throw SecurityError in private mode
+  // / sandboxed iframes — fall back to default rather than crashing render.
+  const persistedPageSize = (() => {
+    try { return localStorage.getItem('estimates_pagesize'); } catch { return null; }
+  })();
+  const pageSize = Number(searchParams.get('pagesize') || persistedPageSize || '25');
   const keyword = searchParams.get('keyword') || '';
   const statusFilter = searchParams.get('status') || '';
 
@@ -1144,7 +1149,7 @@ export function EstimateListPage() {
                   value={pageSize}
                   onChange={(e) => {
                     const v = e.target.value;
-                    localStorage.setItem('estimates_pagesize', v);
+                    try { localStorage.setItem('estimates_pagesize', v); } catch { /* private mode / quota */ }
                     const p = new URLSearchParams(searchParams);
                     p.set('pagesize', v);
                     p.set('page', '1');

@@ -3,6 +3,20 @@ import { AlertTriangle, Gift, Users, TrendingUp, Share2 } from 'lucide-react';
 import axios from 'axios';
 import { api } from '@/api/client';
 
+// BUGHUNT-2026-05-16: referrals.created_at is stored via SQLite datetime('now')
+// → 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z' suffix). V8 parses bare strings as
+// local time, so without normalisation the date shifts by the browser's UTC
+// offset — flipping to the prior calendar day for users west of UTC near
+// midnight UTC.
+function formatSqliteDate(iso: string): string {
+  if (!iso) return '';
+  const normalized = iso.includes('T') || iso.endsWith('Z') || iso.includes('+')
+    ? iso
+    : `${iso.replace(' ', 'T')}Z`;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
+}
+
 /**
  * ReferralsDashboard — read-only view of the referrals table maintained
  * by the portal agent. Shows:
@@ -237,7 +251,7 @@ export function ReferralsDashboard() {
                       <div className="flex items-center justify-between">
                         <code className="font-mono text-xs">{r.referral_code}</code>
                         <span className="text-[10px] text-surface-500">
-                          {new Date(r.created_at).toLocaleDateString()}
+                          {formatSqliteDate(r.created_at)}
                         </span>
                       </div>
                       <div className="text-xs text-surface-500 mt-0.5">

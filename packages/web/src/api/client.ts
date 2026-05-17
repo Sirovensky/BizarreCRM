@@ -244,8 +244,7 @@ function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
   // Removed by `git revert` once the kick-out root cause is known.
   try {
     const stack = new Error('forceLogout stack').stack || '';
-    // eslint-disable-next-line no-console
-    console.error('[auth] forceLogout fired', { reason, stack });
+    devWarn('[auth] forceLogout fired', { reason, stack });
   } catch { /* non-fatal */ }
   // Tenant access tokens now live in httpOnly cookies. Drop any legacy
   // localStorage residue, then call /auth/logout with credentials + CSRF.
@@ -406,8 +405,7 @@ client.interceptors.response.use(
             devWarn('Retried request still 401 after refresh; forcing logout.');
             // Diagnostic: capture the request URL that 401'd on retry so the
             // ticket-page kick-out repros can be traced in the browser console.
-            // eslint-disable-next-line no-console
-            console.error('[auth] retry-still-401', { url: originalRequest.url, method: originalRequest.method });
+            devWarn('[auth] retry-still-401', { url: originalRequest.url, method: originalRequest.method });
             // WEB-UIUX-750: if the failing request was a POS checkout call,
             // flag it so the POS page can show a "checkout interrupted" banner
             // after the user re-authenticates.
@@ -425,8 +423,7 @@ client.interceptors.response.use(
       } catch (refreshErr) {
         devWarn('Token refresh failed, logging out:', refreshErr);
         // Diagnostic: capture the request that triggered the failed refresh.
-        // eslint-disable-next-line no-console
-        console.error('[auth] refresh-failed', {
+        devWarn('[auth] refresh-failed', {
           triggeredBy: { url: originalRequest.url, method: originalRequest.method },
           err: refreshErr instanceof Error ? { name: refreshErr.name, message: refreshErr.message } : refreshErr,
         });
@@ -439,6 +436,10 @@ client.interceptors.response.use(
           try { sessionStorage.setItem('pos.checkout_interrupted', '1'); } catch { /* ignore */ }
         }
         forceLogout('refresh-failed');
+        // BUGHUNT-2026-05-16: without this return, execution falls through to
+        // the trailing `Promise.reject(error)` with the original 401, so the
+        // triggering mutation's onError fires alongside the forced logout.
+        return Promise.reject(refreshErr);
       }
     }
 

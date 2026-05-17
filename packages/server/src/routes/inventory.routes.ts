@@ -18,6 +18,7 @@ import { createLogger } from '../utils/logger.js';
 import { reserveStorage } from '../services/usageTracker.js';
 import { fileUploadValidator } from '../middleware/fileUploadValidator.js';
 import { enforceUploadQuota } from '../middleware/uploadQuota.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
 import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { parsePageSize, parsePageSizeDual } from '../utils/pagination.js';
@@ -612,7 +613,7 @@ router.get('/stock-alerts-summary', asyncHandler(async (req, res) => {
 // GET /inventory/variance-report — Monthly stock movement variance analysis
 router.get('/variance-report', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
-  const months = parseInt(req.query.months as string) || 6;
+  const months = parseInt(req.query.months as string, 10) || 6;
 
   // Get monthly in/out totals per item over the last N months
   const rows = await adb.all<any>(`
@@ -893,30 +894,45 @@ router.post('/kits', requirePermission('inventory.create'), asyncHandler(async (
   if (!Array.isArray(items) || items.length === 0)
     throw new AppError('At least one item is required', 400);
 
-  const result = await adb.run(
-    `INSERT INTO inventory_kits (name, description) VALUES (?, ?)`,
-    name.trim(), description || null,
-  );
-
-  const kitId = Number(result.lastInsertRowid);
-
+  // BUGHUNT-2026-05-16: previously the kit INSERT and each kit_item INSERT
+  // were sequential adb.run calls inside a loop, with the existence check
+  // interleaved. A crash mid-loop would leave a kit row with a partial set
+  // of items — the kit's bill-of-materials would silently undercount on
+  // every subsequent POS sale that exploded the kit. Pre-validate all items
+  // first, then bundle the kit INSERT + every kit_items INSERT into a
+  // single atomic transaction.
+  const validatedKitItems: Array<{ invId: number; qty: number }> = [];
   for (const item of items) {
     const invId = parseInt(item.inventory_item_id, 10);
     const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
     if (!invId) continue;
-
-    // Verify item exists
     const exists = await adb.get<{ id: number }>(
       'SELECT id FROM inventory_items WHERE id = ? AND is_active = 1',
       invId,
     );
     if (!exists) throw new AppError(`Inventory item ${invId} not found`, 404);
-
-    await adb.run(
-      `INSERT INTO inventory_kit_items (kit_id, inventory_item_id, quantity) VALUES (?, ?, ?)`,
-      kitId, invId, qty,
-    );
+    validatedKitItems.push({ invId, qty });
   }
+
+  const kitTxQueries: TxQuery[] = [
+    {
+      sql: `INSERT INTO inventory_kits (name, description) VALUES (?, ?)`,
+      params: [name.trim(), description || null],
+    },
+  ];
+  // BUGHUNT-2026-05-17: must NOT use last_insert_rowid() here — each
+  // kit_item INSERT bumps the rowid, so kit_items[1+] would point at the
+  // prior kit_item's rowid (not the kit's). Use lastInsertRowidFrom(0) so
+  // every child resolves to the parent INSERT's id.
+  for (const item of validatedKitItems) {
+    kitTxQueries.push({
+      sql: `INSERT INTO inventory_kit_items (kit_id, inventory_item_id, quantity)
+            VALUES (?, ?, ?)`,
+      params: [lastInsertRowidFrom(0), item.invId, item.qty],
+    });
+  }
+  const txResults = await adb.transaction(kitTxQueries);
+  const kitId = Number(txResults[0].lastInsertRowid);
 
   audit(req.db, 'inventory_kit_created', req.user!.id, req.ip || 'unknown', { kit_id: kitId, name: name.trim(), item_count: items.length });
 
@@ -1032,8 +1048,8 @@ router.get('/:id/barcode', asyncHandler(async (req, res, next) => {
   if (!code) throw new AppError('Item has no SKU or UPC for barcode generation', 400);
 
   const format = (req.query.format as string) || 'png';
-  const width = Math.min(4, Math.max(1, parseInt(req.query.width as string) || 2));
-  const height = Math.min(200, Math.max(30, parseInt(req.query.height as string) || 80));
+  const width = Math.min(4, Math.max(1, parseInt(req.query.width as string, 10) || 2));
+  const height = Math.min(200, Math.max(30, parseInt(req.query.height as string, 10) || 80));
 
   try {
     // PDF9 (post-enrichment): code-point slice. The previous
@@ -1063,8 +1079,11 @@ router.get('/:id/barcode', asyncHandler(async (req, res, next) => {
       res.json({ success: true, data: { barcode_data_url: `data:image/png;base64,${base64}`, sku: item.sku, upc: item.upc } });
     } else {
       const pngBuf = canvas.toBuffer('image/png');
+      // Sanitize code for header — SKU/UPC could contain CR/LF or quotes that
+      // would split the header. Restrict to URL-safe charset.
+      const safeCode = String(code).replace(/[^\w\-.]/g, '_').slice(0, 64);
       res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Content-Disposition', `inline; filename="barcode-${code}.png"`);
+      res.setHeader('Content-Disposition', `inline; filename="barcode-${safeCode}.png"`);
       res.send(pngBuf);
     }
   } catch (err: unknown) {
@@ -1269,29 +1288,35 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
   // ENR-INV10: Track cost_price changes before updating
   const locked = Number(existing.cost_locked ?? 0) === 1;
   const effectiveCostPrice = locked ? null : (cost_price ?? null);
-  if (effectiveCostPrice !== null && Number(effectiveCostPrice) !== Number(existing.cost_price)) {
-    await adb.run(
-      `INSERT INTO cost_price_history (inventory_item_id, old_price, new_price, changed_by)
-       VALUES (?, ?, ?, ?)`,
-      req.params.id,
-      existing.cost_price ?? null,
-      Number(effectiveCostPrice),
-      req.user?.id ?? null,
-    );
-  }
 
   // Normalize cost_locked to 0/1 if supplied; null keeps existing value.
   const normalizedCostLocked = cost_locked === undefined || cost_locked === null
     ? null
     : (Number(cost_locked) ? 1 : 0);
 
+  // ATOMIC: pair the cost_price_history audit row with the inventory UPDATE so
+  // a crash between them can't leave history orphaned from the actual price, or
+  // (worse) update the price without logging who changed it.
   // NOTE: COALESCE(?, column) means sending null/undefined keeps the existing value.
   // This is intentional for partial updates (PATCH semantics) but means the client
   // CANNOT clear a field to NULL by omitting it. To clear a nullable field, the client
   // should send an empty string ("") which COALESCE will accept as a non-null value.
   // Example: { "description": "" } clears description; omitting "description" keeps it.
-  await adb.run(`
-    UPDATE inventory_items SET
+  const putTxQueries: TxQuery[] = [];
+  if (effectiveCostPrice !== null && Number(effectiveCostPrice) !== Number(existing.cost_price)) {
+    putTxQueries.push({
+      sql: `INSERT INTO cost_price_history (inventory_item_id, old_price, new_price, changed_by)
+            VALUES (?, ?, ?, ?)`,
+      params: [
+        req.params.id,
+        existing.cost_price ?? null,
+        Number(effectiveCostPrice),
+        req.user?.id ?? null,
+      ],
+    });
+  }
+  putTxQueries.push({
+    sql: `UPDATE inventory_items SET
       name = COALESCE(?, name),
       description = COALESCE(?, description),
       item_type = COALESCE(?, item_type),
@@ -1316,15 +1341,19 @@ router.put('/:id', requirePermission('inventory.edit'), async (req: Request<{ id
       cost_locked = COALESCE(?, cost_locked),
       location_id = COALESCE(?, location_id),
       updated_at = datetime('now')
-    WHERE id = ?
-  `, name ?? null, description ?? null, item_type ?? null, category ?? null,
-    manufacturer ?? null, device_type ?? null, sku ?? null, upc ?? null,
-    effectiveCostPrice, retail_price ?? null, reorder_level ?? null, stock_warning ?? null,
-    tax_class_id ?? null, tax_inclusive ?? null, is_serialized ?? null,
-    is_reorderable !== undefined && is_reorderable !== null ? (Number(is_reorderable) ? 1 : 0) : null,
-    supplier_id ?? null, image_url ?? null,
-    location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked,
-    resolvedLocationId, req.params.id);
+    WHERE id = ?`,
+    params: [
+      name ?? null, description ?? null, item_type ?? null, category ?? null,
+      manufacturer ?? null, device_type ?? null, sku ?? null, upc ?? null,
+      effectiveCostPrice, retail_price ?? null, reorder_level ?? null, stock_warning ?? null,
+      tax_class_id ?? null, tax_inclusive ?? null, is_serialized ?? null,
+      is_reorderable !== undefined && is_reorderable !== null ? (Number(is_reorderable) ? 1 : 0) : null,
+      supplier_id ?? null, image_url ?? null,
+      location ?? null, shelf ?? null, bin ?? null, normalizedCostLocked,
+      resolvedLocationId, req.params.id,
+    ],
+  });
+  await adb.transaction(putTxQueries);
 
   const item = await adb.get('SELECT * FROM inventory_items WHERE id = ? AND is_active = 1', req.params.id);
   if (location !== undefined || shelf !== undefined || bin !== undefined) {
@@ -1409,25 +1438,43 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
   const sql = clearDismissed
     ? `UPDATE inventory_items SET in_stock = in_stock + ?, low_stock_dismissed_at = NULL, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0${expectedClause}`
     : `UPDATE inventory_items SET in_stock = in_stock + ?, updated_at = datetime('now') WHERE id = ? AND in_stock + ? >= 0${expectedClause}`;
-  const upd = await adb.run(sql, parsedQty, req.params.id, parsedQty, ...expectedParams);
-  if (upd.changes === 0) {
-    if (expectedQty != null) {
-      const current = await adb.get<{ in_stock: number }>(
-        'SELECT in_stock FROM inventory_items WHERE id = ?', req.params.id,
-      );
-      throw new AppError(
-        `Stock changed during write. You expected ${expectedQty}, current is ${current?.in_stock ?? 'unknown'}. Re-check and retry.`,
-        409,
-        ERROR_CODES.ERR_RESOURCE_CONFLICT,
-      );
+  // BUGHUNT-2026-05-16: bundle the guarded stock UPDATE with the
+  // stock_movements audit INSERT into a single transaction. Previously a
+  // crash between them would leave inventory adjusted without an audit row
+  // — destroying the operator/qty/reason trail used to investigate
+  // shrinkage and theft. expectChanges:true on the UPDATE preserves the
+  // original CAS / insufficient-stock 409/400 behaviour.
+  try {
+    await adb.transaction([
+      {
+        sql,
+        params: [parsedQty, req.params.id, parsedQty, ...expectedParams],
+        expectChanges: true,
+        expectChangesError: 'STOCK_ADJUST_REJECTED',
+      },
+      {
+        sql: `INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id)
+              VALUES (?, ?, ?, 'manual', ?, ?)`,
+        params: [req.params.id, type, parsedQty, notes || null, req.user!.id],
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('STOCK_ADJUST_REJECTED')) {
+      if (expectedQty != null) {
+        const current = await adb.get<{ in_stock: number }>(
+          'SELECT in_stock FROM inventory_items WHERE id = ?', req.params.id,
+        );
+        throw new AppError(
+          `Stock changed during write. You expected ${expectedQty}, current is ${current?.in_stock ?? 'unknown'}. Re-check and retry.`,
+          409,
+          ERROR_CODES.ERR_RESOURCE_CONFLICT,
+        );
+      }
+      throw new AppError('Insufficient stock', 400);
     }
-    throw new AppError('Insufficient stock', 400);
+    throw err;
   }
-
-  await adb.run(`
-    INSERT INTO stock_movements (inventory_item_id, type, quantity, reference_type, notes, user_id)
-    VALUES (?, ?, ?, 'manual', ?, ?)
-  `, req.params.id, type, parsedQty, notes || null, req.user!.id);
 
   audit(req.db, 'inventory_stock_adjusted', req.user!.id, req.ip || 'unknown', { item_id: Number(req.params.id), quantity: parsedQty, type });
 
@@ -1440,7 +1487,9 @@ router.post('/:id/adjust-stock', requirePermission('inventory.adjust_stock'), as
     entity_id: Number(req.params.id),
     action: 'stock_adjusted',
     metadata: { quantity_delta: parsedQty },
-  }).catch(() => {});
+  }).catch((err: unknown) => {
+    logger.warn('logActivity failed', { entity_kind: 'inventory', error: err instanceof Error ? err.message : String(err) });
+  });
 
   // Check for low stock and broadcast appropriate event
   if (updated && updated.in_stock <= updated.reorder_level) {
@@ -1664,20 +1713,32 @@ router.post('/purchase-orders', requirePermission('inventory.create'), asyncHand
   // number — the individual validators already reject NaN/Infinity.
   subtotal = Math.round(subtotal * 100) / 100;
 
-  const result = await adb.run(`
-    INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, expected_date, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `, orderId, supplierId, subtotal, subtotal, notes || null, expected_date || null, req.user!.id);
-
+  // ATOMIC: PO header + line items must either all land or none. A partial
+  // insert (header without items) leaves an orphan PO that can't be received
+  // against. lastInsertRowidFrom(0) lets every line-item INSERT reference the
+  // header's rowid even after the prior line item bumped last_insert_rowid().
+  const poTxQueries: TxQuery[] = [
+    {
+      sql: `INSERT INTO purchase_orders (order_id, supplier_id, subtotal, total, notes, expected_date, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [orderId, supplierId, subtotal, subtotal, notes || null, expected_date || null, req.user!.id],
+    },
+  ];
+  // BUGHUNT-2026-05-17: lastInsertRowidFrom(0) — chaining last_insert_rowid()
+  // in SQL would point line items[1+] at the prior line item's rowid, not the
+  // PO header's, and the FK on purchase_order_id would reject the second row.
   for (const item of validItems) {
-    await adb.run(`
-      INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
-      VALUES (?, ?, ?, ?)
-    `, result.lastInsertRowid, item.inventory_item_id, item.quantity_ordered, item.cost_price);
+    poTxQueries.push({
+      sql: `INSERT INTO purchase_order_items (purchase_order_id, inventory_item_id, quantity_ordered, cost_price)
+            VALUES (?, ?, ?, ?)`,
+      params: [lastInsertRowidFrom(0), item.inventory_item_id, item.quantity_ordered, item.cost_price],
+    });
   }
+  const poTxResults = await adb.transaction(poTxQueries);
+  const newPoId = Number(poTxResults[0].lastInsertRowid);
 
-  const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', result.lastInsertRowid);
-  audit(req.db, 'purchase_order_created', req.user!.id, req.ip || 'unknown', { po_id: Number(result.lastInsertRowid), order_id: orderId, supplier_id: supplierId, total: subtotal });
+  const po = await adb.get('SELECT * FROM purchase_orders WHERE id = ?', newPoId);
+  audit(req.db, 'purchase_order_created', req.user!.id, req.ip || 'unknown', { po_id: newPoId, order_id: orderId, supplier_id: supplierId, total: subtotal });
   res.status(201).json({ success: true, data: po });
 }));
 
@@ -1973,7 +2034,7 @@ router.post('/stocktake', requirePermission('inventory.bulk_action'), asyncHandl
     const inv = await adb.get<any>('SELECT id, name, in_stock FROM inventory_items WHERE id = ? AND is_active = 1', item.item_id);
     if (!inv) continue;
 
-    const counted = parseInt(item.counted_qty);
+    const counted = parseInt(item.counted_qty, 10);
     if (isNaN(counted) || counted < 0) continue;
 
     const diff = counted - inv.in_stock;

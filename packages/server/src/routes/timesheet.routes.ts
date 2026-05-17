@@ -224,20 +224,25 @@ router.patch('/clock-entries/:id', asyncHandler(async (req: any, res: any) => {
     notes: newNotes,
   });
 
-  await adb.run(
-    `UPDATE clock_entries
-     SET clock_in = ?, clock_out = ?, total_hours = ?, notes = ?
-     WHERE id = ?`,
-    newClockIn, newClockOut, newTotalHours, newNotes, id,
-  );
-
-  // Write to clock_entry_edits.
-  await adb.run(
-    `INSERT INTO clock_entry_edits
-       (clock_entry_id, editor_user_id, before_json, after_json, reason)
-     VALUES (?, ?, ?, ?, ?)`,
-    id, callerId, beforeJson, afterJson, reasonTrimmed,
-  );
+  // BUGHUNT-2026-05-16: the clock_entries UPDATE and the clock_entry_edits
+  // audit INSERT were two sequential adb.run calls. A crash between them
+  // would edit the clock entry WITHOUT recording the before/after snapshot
+  // in clock_entry_edits — breaking the payroll-fraud detection trail this
+  // audit row exists for. Bundle into one transaction.
+  await adb.transaction([
+    {
+      sql: `UPDATE clock_entries
+             SET clock_in = ?, clock_out = ?, total_hours = ?, notes = ?
+            WHERE id = ?`,
+      params: [newClockIn, newClockOut, newTotalHours, newNotes, id],
+    },
+    {
+      sql: `INSERT INTO clock_entry_edits
+              (clock_entry_id, editor_user_id, before_json, after_json, reason)
+            VALUES (?, ?, ?, ?, ?)`,
+      params: [id, callerId, beforeJson, afterJson, reasonTrimmed],
+    },
+  ]);
 
   audit(db, 'clock_entry_edited', callerId, req.ip || 'unknown', {
     clock_entry_id: id,

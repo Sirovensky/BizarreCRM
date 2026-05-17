@@ -23,7 +23,8 @@ import { idempotent } from '../middleware/idempotency.js';
 import { audit } from '../utils/audit.js';
 import { getInvoicePitSnapshot } from '../utils/invoiceSnapshot.js';
 import { fireWebhook } from '../services/webhooks.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { escapeLike } from '../utils/query.js';
 import { accruePaymentPoints } from '../services/notifications.js';
 import { recordCustomerInteraction } from '../services/customerHealthScore.js';
@@ -294,8 +295,8 @@ async function postPaymentSideEffects({
 router.get('/', requirePermission('invoices.view'), async (req, res) => {
   const adb = req.asyncDb;
   const { page = '1', pagesize = '20', status, from_date, to_date, keyword, customer_id, location_id, sort_by, sort_dir, include_credit_notes } = req.query as Record<string, string>;
-  const p = Math.max(1, parseInt(page));
-  const ps = Math.min(250, Math.max(1, parseInt(pagesize)));
+  const p = Math.max(1, parseInt(page, 10));
+  const ps = Math.min(250, Math.max(1, parseInt(pagesize, 10)));
   const offset = (p - 1) * ps;
 
   let where = 'WHERE 1=1';
@@ -623,26 +624,34 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
   // populated and fall back to the live row when NULL (legacy invoices).
   const pit = await getInvoicePitSnapshot(adb, customer_id);
 
-  const result = await adb.run(`
-    INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
-      total_tax, total, amount_paid, amount_due, notes, due_on, created_by,
-      is_deposit, deposit_amount, parent_invoice_id, location_id,
-      customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
-    total_tax, total, amount_due, notes || null, validatedDueDate, req.user!.id,
-    depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId,
-    pit.customer_name_snapshot, pit.customer_address_snapshot, pit.store_name_snapshot, pit.tax_jurisdiction_snapshot);
+  // BUGHUNT-2026-05-17: previously the invoice INSERT, the line-item INSERT
+  // loop, and the optional tickets.invoice_id UPDATE all ran as separate
+  // adb.run() calls. A crash mid-loop left an invoice with a partial item set
+  // (its `total` no longer matched the sum of `invoice_line_items`), or an
+  // invoice with line items but no link back to the ticket (the customer
+  // would see "no invoice" while the row sat orphaned in the table).
+  // Re-validate every line item OUTSIDE the tx (we need the total-cap check
+  // before any write so the cap-exceeded error doesn't roll back the world),
+  // then batch every write atomically.
 
-  const invoiceId = result.lastInsertRowid;
-
-  // SCAN-748: Re-check total cap after per-item re-validation to prevent
-  // multi-pass small-item accumulation from breaching INVOICE_TOTAL_CAP.
+  // SCAN-748: Re-check total cap with the SAME per-item validation we'll use
+  // for inserts, then bail if over cap BEFORE we open a transaction.
+  interface PreparedLineItem {
+    inventory_item_id: number | null;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_discount: number;
+    tax_amount: number;
+    tax_class_id: number | null;
+    line_total: number;
+    notes: string | null;
+  }
+  const preparedLineItems: PreparedLineItem[] = [];
   let revalidatedTotal = 0;
   for (const item of line_items) {
     // SEC-M12: Destructure only allowed fields (prevents mass assignment)
     const { inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, notes: itemNotes } = item;
-    // V9: Re-validate each field at insert time so the row is clean.
     const safeQty = validateIntegerQuantity(quantity ?? 1, 'line item quantity');
     const safeUnitPrice = validatePrice(unit_price ?? 0, 'line item unit_price');
     const safeLineDiscount = validatePrice(line_discount ?? 0, 'line item line_discount');
@@ -652,21 +661,59 @@ router.post('/', idempotent, requirePermission('invoices.create'), async (req, r
     if (typeof itemNotes === 'string' && itemNotes.length > 1000) throw new AppError('Line item notes exceeds 1000 characters', 400);
     const lineTotal = roundCents((safeQty * safeUnitPrice) - safeLineDiscount + safeLineTax);
     revalidatedTotal = roundCents(revalidatedTotal + lineTotal);
-    await adb.run(`
-      INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, total, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, invoiceId, inventory_item_id || null, description || '', safeQty,
-      safeUnitPrice, safeLineDiscount, safeLineTax, tax_class_id || null,
-      lineTotal, itemNotes || null);
+    preparedLineItems.push({
+      inventory_item_id: inventory_item_id || null,
+      description: description || '',
+      quantity: safeQty,
+      unit_price: safeUnitPrice,
+      line_discount: safeLineDiscount,
+      tax_amount: safeLineTax,
+      tax_class_id: tax_class_id || null,
+      line_total: lineTotal,
+      notes: itemNotes || null,
+    });
   }
   if (!isAdmin && revalidatedTotal > INVOICE_TOTAL_CAP) {
     throw new AppError(`Invoice total exceeds cap (${INVOICE_TOTAL_CAP})`, 400);
   }
 
-  // Link ticket to invoice if provided
-  if (ticket_id) {
-    await adb.run('UPDATE tickets SET invoice_id = ?, updated_at = datetime(\'now\') WHERE id = ?', invoiceId, ticket_id);
+  const invoiceTxQueries: TxQuery[] = [
+    {
+      sql: `INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, discount_reason,
+                                  total_tax, total, amount_paid, amount_due, notes, due_on, created_by,
+                                  is_deposit, deposit_amount, parent_invoice_id, location_id,
+                                  customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        orderId, customer_id, ticket_id || null, subtotal, appliedDiscount, discount_reason || null,
+        total_tax, total, amount_due, notes || null, validatedDueDate, req.user!.id,
+        depositFlag, depositAmount, parent_invoice_id || null, invoiceLocationId,
+        pit.customer_name_snapshot, pit.customer_address_snapshot, pit.store_name_snapshot, pit.tax_jurisdiction_snapshot,
+      ],
+    },
+  ];
+  const INVOICE_QUERY_INDEX = 0;
+
+  for (const li of preparedLineItems) {
+    invoiceTxQueries.push({
+      sql: `INSERT INTO invoice_line_items (invoice_id, inventory_item_id, description, quantity, unit_price, line_discount, tax_amount, tax_class_id, total, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        lastInsertRowidFrom(INVOICE_QUERY_INDEX), li.inventory_item_id, li.description, li.quantity,
+        li.unit_price, li.line_discount, li.tax_amount, li.tax_class_id, li.line_total, li.notes,
+      ],
+    });
   }
+
+  if (ticket_id) {
+    invoiceTxQueries.push({
+      sql: "UPDATE tickets SET invoice_id = ?, updated_at = datetime('now') WHERE id = ?",
+      params: [lastInsertRowidFrom(INVOICE_QUERY_INDEX), ticket_id],
+    });
+  }
+
+  const invoiceTxResults = await adb.transaction(invoiceTxQueries);
+  const invoiceId = Number(invoiceTxResults[INVOICE_QUERY_INDEX].lastInsertRowid);
   const invoice = await getInvoiceDetail(adb, invoiceId as number);
   broadcast(WS_EVENTS.INVOICE_CREATED, invoice, req.tenantSlug || null);
 
@@ -1136,7 +1183,13 @@ router.patch('/payments/:paymentId/reverse', async (req: Request<{ paymentId: st
   if (typeof payment.notes === 'string' && payment.notes.includes('[VOIDED]')) {
     throw new AppError('Payment is already voided', 409);
   }
-  const createdMs = Date.parse(String(payment.created_at).replace(' ', 'T'));
+  // SQLite returns 'YYYY-MM-DD HH:MM:SS' in UTC with no tz suffix; without
+  // appending Z, V8 parses it as local time and the reverse-window check
+  // is off by the server's tz offset on non-UTC hosts.
+  const createdRaw = String(payment.created_at);
+  const createdMs = Date.parse(
+    createdRaw.includes('T') ? createdRaw : `${createdRaw.replace(' ', 'T')}Z`,
+  );
   if (!Number.isFinite(createdMs)) {
     throw new AppError('Payment created_at is unparseable — refuse reverse', 409);
   }
@@ -1576,87 +1629,22 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
   // doesn't bleed live customer/store renames into a historical refund.
   const pitCn = await getInvoicePitSnapshot(adb, original.customer_id);
 
-  // Create the credit note as a negative invoice
-  const cnResult = await adb.run(`
-    INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
-      amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id,
-      credit_note_code, credit_note_note,
-      customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
-    VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?)
-  `,
-    orderId,
-    original.customer_id,
-    original.ticket_id,
-    -cnSubtotalPortion,    // negative subtotal (pre-tax portion of refund)
-    -cnTaxPortion,         // negative tax (proportional share of refund)
-    -amount,               // negative total
-    // WEB-UIUX-1225: stop writing `Credit note: ${reason}` into `notes` for
-    // new credit-note rows. The dedicated `credit_note_code` +
-    // `credit_note_note` columns (set immediately below) are now the
-    // single source of truth. Pre-2026-05-12 rows still carry the composed
-    // string in `notes` for backwards-compat; reports must prefer
-    // `credit_note_code` when present and fall back to `notes` only for
-    // legacy rows where `credit_note_code IS NULL`.
-    null,
-    invoiceId,             // link to original
-    req.user!.id,
-    original.location_id ?? 1,
-    cnCode,
-    cnNote,
-    pitCn.customer_name_snapshot,
-    pitCn.customer_address_snapshot,
-    pitCn.store_name_snapshot,
-    pitCn.tax_jurisdiction_snapshot,
-  );
-
-  const creditNoteId = cnResult.lastInsertRowid;
-
-  // Add a single line item for the credit
-  await adb.run(`
-    INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, notes)
-    VALUES (?, ?, 1, ?, ?, ?)
-  `, creditNoteId, `Credit note for invoice #${original.order_id}`, -amount, -amount, resolvedReason);
-
-  // WEB-UIUX-1026: also write a refunds row of type='credit_note' so the
-  // /refunds reporting surface and "show me all refunds processed today"
-  // queries reconcile with the invoices-table credit-note records.
-  // Previously credit notes were invisible to refunds reporting and the two
-  // surfaces never matched.
-  try {
-    await adb.run(`
-      INSERT INTO refunds (invoice_id, ticket_id, customer_id, amount, type, reason, method, status, approved_by, created_by)
-      VALUES (?, ?, ?, ?, 'credit_note', ?, 'store_credit', 'completed', ?, ?)
-    `,
-      invoiceId,
-      original.ticket_id ?? null,
-      original.customer_id ?? null,
-      amount,
-      resolvedReason,
-      req.user!.id,
-      req.user!.id,
-    );
-  } catch (refundsErr) {
-    logger.warn('invoices_credit_note_refund_row_failed', {
-      error: refundsErr instanceof Error ? refundsErr.message : String(refundsErr),
-      credit_note_id: Number(creditNoteId),
-    });
-  }
+  // BUGHUNT-2026-05-17: bundle the credit-note INSERT + its line item +
+  // the original-invoice ledger UPDATE into one atomic transaction. A crash
+  // between any pair could:
+  //   - leave a credit_note invoice with no line item (the printed CN is empty)
+  //   - leave a credit_note + line item but the original invoice still
+  //     showing the un-credited balance (customer is double-billed).
+  // The refunds row + store-credit overflow + commission reversal stay
+  // OUTSIDE the tx — they are explicit fail-open paths already wrapped.
 
   // WEB-UIUX-1208: stop inflating `amount_paid` to drive `amount_due` to zero.
   // The credit-note value lands in the dedicated `amount_credited` column
   // (migration 196). `amount_paid` keeps tracking real cash collected; the
   // combined ledger (amount_paid + amount_credited) is what zeroes amount_due.
-  //
-  // Overflow semantics: when the cumulative credit exceeds (total - amount_paid)
-  // we still post the excess to store credit (existing behaviour) so the
-  // refund is honoured even on already-collected balances. The overflow
-  // calculation is now driven by the remaining ledger gap, not by inflating
-  // amount_paid past total.
   const prevAmountPaid = roundCents(original.amount_paid || 0);
   const prevAmountCredited = roundCents(Number((original as { amount_credited?: number }).amount_credited) || 0);
   const total = roundCents(original.total);
-  // How much of `amount` is absorbed by the invoice itself vs. parked as
-  // store-credit overflow:
   const ledgerSlotRemaining = Math.max(0, roundCents(total - prevAmountPaid - prevAmountCredited));
   const absorbedByInvoice = Math.min(amount, ledgerSlotRemaining);
   const creditOverflow = roundCents(amount - absorbedByInvoice);
@@ -1687,44 +1675,108 @@ router.post('/:id/credit-note', idempotent, requirePermission('invoices.credit_n
     assertInvoiceTransition(original.status, newStatus);
   }
 
-  await adb.run(`
-    UPDATE invoices SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?
-  `, newAmountCredited, newAmountDue, newStatus, invoiceId);
+  // Atomic write: credit-note invoice + its line item + original ledger update.
+  const cnTxResults = await adb.transaction([
+    {
+      sql: `INSERT INTO invoices (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
+                                  amount_paid, amount_due, notes, credit_note_for, status, created_by, location_id,
+                                  credit_note_code, credit_note_note,
+                                  customer_name_snapshot, customer_address_snapshot, store_name_snapshot, tax_jurisdiction_snapshot)
+            VALUES (?, ?, ?, ?, 0, ?, ?, 0, 0, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        orderId,
+        original.customer_id,
+        original.ticket_id,
+        -cnSubtotalPortion,
+        -cnTaxPortion,
+        -amount,
+        // WEB-UIUX-1225: do not write composed reason into notes for new CN rows.
+        null,
+        invoiceId,
+        req.user!.id,
+        original.location_id ?? 1,
+        cnCode,
+        cnNote,
+        pitCn.customer_name_snapshot,
+        pitCn.customer_address_snapshot,
+        pitCn.store_name_snapshot,
+        pitCn.tax_jurisdiction_snapshot,
+      ],
+    },
+    {
+      sql: `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, notes)
+            VALUES (?, ?, 1, ?, ?, ?)`,
+      params: [
+        lastInsertRowidFrom(0),
+        `Credit note for invoice #${original.order_id}`,
+        -amount,
+        -amount,
+        resolvedReason,
+      ],
+    },
+    {
+      sql: `UPDATE invoices SET amount_credited = ?, amount_due = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+      params: [newAmountCredited, newAmountDue, newStatus, invoiceId],
+    },
+  ]);
+  const creditNoteId = Number(cnTxResults[0].lastInsertRowid);
+
+  // WEB-UIUX-1026: refunds row for reporting reconciliation. Fail-open — if
+  // the refunds table is missing on a legacy tenant, log and continue.
+  try {
+    await adb.run(`
+      INSERT INTO refunds (invoice_id, ticket_id, customer_id, amount, type, reason, method, status, approved_by, created_by)
+      VALUES (?, ?, ?, ?, 'credit_note', ?, 'store_credit', 'completed', ?, ?)
+    `,
+      invoiceId,
+      original.ticket_id ?? null,
+      original.customer_id ?? null,
+      amount,
+      resolvedReason,
+      req.user!.id,
+      req.user!.id,
+    );
+  } catch (refundsErr) {
+    logger.warn('invoices_credit_note_refund_row_failed', {
+      error: refundsErr instanceof Error ? refundsErr.message : String(refundsErr),
+      credit_note_id: creditNoteId,
+    });
+  }
 
   // Record overflow (the part of the credit that exceeded the remaining balance)
   // as a store credit for this customer.
   if (creditOverflow > 0 && original.customer_id) {
     try {
+      // BUGHUNT-2026-05-17: bundle the UPSERT + ledger row so a crash between
+      // them can't leave the balance bumped without an audit trail entry
+      // (silent ghost credit in reconciliation) or vice versa.
       // BUGHUNT-2026-05-10-02: atomic UPSERT — previous SELECT-then-UPDATE
       // raced identically to the overpayment path. UNIQUE(customer_id)
       // from migration 109 makes ON CONFLICT DO UPDATE safe.
-      await adb.run(
-        `INSERT INTO store_credits (customer_id, amount)
-         VALUES (?, ?)
-         ON CONFLICT(customer_id) DO UPDATE SET
-           amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
-           updated_at = datetime('now')`,
-        original.customer_id,
-        creditOverflow,
-      );
-      // SEC-M33: this transaction is specifically the OVERFLOW portion of a
-      // credit note that exceeded the invoice balance — not a plain credit
-      // applied to the invoice. reference_type previously said 'invoice'
-      // which made ledger drill-downs and reconciliation tools treat it as
-      // if it credited the invoice directly; it didn't. Use a dedicated
-      // reference_type so reports can isolate overflow credits from
-      // normal invoice-to-credit moves.
-      await adb.run(`
-        INSERT INTO store_credit_transactions
-          (customer_id, amount, type, reference_type, reference_id, notes, user_id)
-        VALUES (?, ?, 'manual_credit', 'credit_note_overflow', ?, ?, ?)
-      `,
-        original.customer_id,
-        creditOverflow,
-        invoiceId,
-        `Credit note overflow for invoice ${original.order_id}`,
-        req.user!.id,
-      );
+      await adb.transaction([
+        {
+          sql: `INSERT INTO store_credits (customer_id, amount)
+                VALUES (?, ?)
+                ON CONFLICT(customer_id) DO UPDATE SET
+                  amount = ROUND((store_credits.amount + excluded.amount) * 100) / 100,
+                  updated_at = datetime('now')`,
+          params: [original.customer_id, creditOverflow],
+        },
+        {
+          // SEC-M33: reference_type='credit_note_overflow' so reports isolate
+          // overflow credits from normal invoice-to-credit moves.
+          sql: `INSERT INTO store_credit_transactions
+                  (customer_id, amount, type, reference_type, reference_id, notes, user_id)
+                VALUES (?, ?, 'manual_credit', 'credit_note_overflow', ?, ?, ?)`,
+          params: [
+            original.customer_id,
+            creditOverflow,
+            invoiceId,
+            `Credit note overflow for invoice ${original.order_id}`,
+            req.user!.id,
+          ],
+        },
+      ]);
     } catch (creditErr: unknown) {
       const msg = creditErr instanceof Error ? creditErr.message : String(creditErr);
       logger.warn('invoices_credit_note_overflow_store_credit_failed', { error: msg });

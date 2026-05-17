@@ -25,19 +25,22 @@ import { formatApiError } from '@/utils/apiError';
 
 type StatusTab = 'open' | 'applied' | 'voided' | 'all';
 
+// BUGHUNT-2026-05-16: server returns `amount_cents` from the credit_notes
+// table (see migration 123). The previous interface declared `amount` and
+// `amount_applied` (neither exists), and `code` (doesn't exist) — every
+// amount column rendered as '—' and the apply prompt showed $0.00.
 interface CreditNoteRow {
   id: number;
-  code: string | null;
   customer_id: number | null;
   customer_name: string | null;
-  amount: number;
-  amount_applied: number | null;
+  amount_cents: number;
   status: string;
   reason: string | null;
   original_invoice_id: number | null;
   original_invoice_order_id: string | null;
   applied_to_invoice_id: number | null;
   applied_to_invoice_order_id: string | null;
+  applied_at: string | null;
   created_at: string;
   created_by_name: string | null;
 }
@@ -88,8 +91,8 @@ export function CreditNotesListPage() {
   });
 
   const applyMut = useMutation({
-    mutationFn: (vars: { id: number; invoice_id: number; amount?: number }) =>
-      creditNotesApi.apply(vars.id, { invoice_id: vars.invoice_id, amount: vars.amount }),
+    mutationFn: (vars: { id: number; invoice_id: number }) =>
+      creditNotesApi.apply(vars.id, { invoice_id: vars.invoice_id }),
     onSuccess: () => {
       toast.success('Credit applied to invoice');
       queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
@@ -100,31 +103,41 @@ export function CreditNotesListPage() {
   const notes = data?.data?.credit_notes ?? [];
   const totalPages = data?.data?.pagination?.total_pages ?? 1;
 
+  // BUGHUNT-2026-05-16: replaced window.prompt apply/void flows with inline
+  // modals so iOS PWA / sandboxed-iframe operators can still use them.
+  const [applyModal, setApplyModal] = useState<{ cn: CreditNoteRow; invoiceIdInput: string } | null>(null);
+  const [voidModal, setVoidModal] = useState<{ cn: CreditNoteRow; reason: string } | null>(null);
+
   function handleApply(cn: CreditNoteRow) {
-    const idStr = window.prompt(
-      `Apply credit note ${cn.code ?? `#${cn.id}`} (${formatCurrency(cn.amount)}) to which invoice id?`,
-    );
-    if (!idStr) return;
-    const invoiceId = parseInt(idStr, 10);
+    setApplyModal({ cn, invoiceIdInput: '' });
+  }
+
+  function handleVoid(cn: CreditNoteRow) {
+    setVoidModal({ cn, reason: '' });
+  }
+
+  function submitApply() {
+    if (!applyModal) return;
+    const invoiceId = parseInt(applyModal.invoiceIdInput.trim(), 10);
     if (!Number.isFinite(invoiceId) || invoiceId <= 0) {
       toast.error('Invalid invoice id');
       return;
     }
-    const amtStr = window.prompt(
-      `Amount to apply? Leave blank for full available (${formatCurrency(cn.amount - (cn.amount_applied ?? 0))}).`,
-    );
-    const amount = amtStr ? parseFloat(amtStr) : undefined;
-    if (amtStr && (!Number.isFinite(amount) || amount! <= 0)) {
-      toast.error('Invalid amount');
-      return;
-    }
-    applyMut.mutate({ id: cn.id, invoice_id: invoiceId, amount });
+    const id = applyModal.cn.id;
+    setApplyModal(null);
+    applyMut.mutate({ id, invoice_id: invoiceId });
   }
 
-  function handleVoid(cn: CreditNoteRow) {
-    const reason = window.prompt(`Void credit note ${cn.code ?? `#${cn.id}`}? Enter reason:`);
-    if (!reason || !reason.trim()) return;
-    voidMut.mutate({ id: cn.id, reason: reason.trim() });
+  function submitVoid() {
+    if (!voidModal) return;
+    const reason = voidModal.reason.trim();
+    if (!reason) {
+      toast.error('Reason is required');
+      return;
+    }
+    const id = voidModal.cn.id;
+    setVoidModal(null);
+    voidMut.mutate({ id, reason });
   }
 
   return (
@@ -189,7 +202,7 @@ export function CreditNotesListPage() {
             <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
               {notes.map((note) => (
                 <tr key={note.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50">
-                  <td className="px-4 py-3 font-mono text-xs">{note.code ?? `#${note.id}`}</td>
+                  <td className="px-4 py-3 font-mono text-xs">#{note.id}</td>
                   <td className="px-4 py-3">
                     {note.customer_id ? (
                       <button type="button" onClick={() => navigate(`/customers/${note.customer_id}`)} className="text-primary-600 hover:underline dark:text-primary-400">
@@ -204,9 +217,9 @@ export function CreditNotesListPage() {
                       </button>
                     ) : (<span className="text-surface-400">—</span>)}
                   </td>
-                  <td className="px-4 py-3 text-right font-medium">{formatCurrency(note.amount)}</td>
+                  <td className="px-4 py-3 text-right font-medium">{formatCurrency((note.amount_cents ?? 0) / 100)}</td>
                   <td className="px-4 py-3 text-right text-xs text-surface-500">
-                    {note.amount_applied != null ? formatCurrency(note.amount_applied) : '—'}
+                    {note.status === 'applied' ? formatCurrency((note.amount_cents ?? 0) / 100) : '—'}
                     {note.applied_to_invoice_order_id && (
                       <div className="text-[10px]">
                         → <button type="button" onClick={() => navigate(`/invoices/${note.applied_to_invoice_id}`)} className="text-primary-600 hover:underline">
@@ -230,7 +243,7 @@ export function CreditNotesListPage() {
                         <div className="inline-flex gap-1">
                           <button
                             type="button"
-                            disabled={applyMut.isPending}
+                            disabled={applyMut.isPending && applyMut.variables?.id === note.id}
                             onClick={() => handleApply(note)}
                             aria-label={`Apply credit note ${note.id} to invoice`}
                             title="Apply to invoice"
@@ -240,7 +253,7 @@ export function CreditNotesListPage() {
                           </button>
                           <button
                             type="button"
-                            disabled={voidMut.isPending}
+                            disabled={voidMut.isPending && voidMut.variables?.id === note.id}
                             onClick={() => handleVoid(note)}
                             aria-label={`Void credit note ${note.id}`}
                             title="Void"
@@ -280,6 +293,56 @@ export function CreditNotesListPage() {
           >
             Next
           </button>
+        </div>
+      )}
+
+      {applyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setApplyModal(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="apply-cn-title" className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+            <h3 id="apply-cn-title" className="mb-3 text-lg font-semibold text-surface-900 dark:text-surface-100">
+              Apply credit note #{applyModal.cn.id} ({formatCurrency((applyModal.cn.amount_cents ?? 0) / 100)})
+            </h3>
+            <label className="block text-xs font-medium text-surface-700 dark:text-surface-300">
+              Invoice ID
+              <input
+                autoFocus
+                type="number"
+                inputMode="numeric"
+                value={applyModal.invoiceIdInput}
+                onChange={(e) => setApplyModal({ ...applyModal, invoiceIdInput: e.target.value })}
+                className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setApplyModal(null)} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Cancel</button>
+              <button type="button" onClick={submitApply} className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700">Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {voidModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setVoidModal(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="void-cn-title" className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+            <h3 id="void-cn-title" className="mb-3 text-lg font-semibold text-surface-900 dark:text-surface-100">
+              Void credit note #{voidModal.cn.id}
+            </h3>
+            <label className="block text-xs font-medium text-surface-700 dark:text-surface-300">
+              Reason
+              <input
+                autoFocus
+                type="text"
+                value={voidModal.reason}
+                onChange={(e) => setVoidModal({ ...voidModal, reason: e.target.value })}
+                placeholder="e.g. issued in error"
+                className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setVoidModal(null)} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Cancel</button>
+              <button type="button" onClick={submitVoid} className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">Void</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

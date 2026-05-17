@@ -319,14 +319,14 @@ export interface SmsTemplateListResponse {
 
 export interface CreateSmsTemplateInput {
   name: string;
-  template: string;
+  content: string;
   template_vars?: string[];
   category?: string;
 }
 
 export interface UpdateSmsTemplateInput {
   name?: string;
-  template?: string;
+  content?: string;
   template_vars?: string[];
   category?: string;
 }

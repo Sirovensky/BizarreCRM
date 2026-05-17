@@ -473,6 +473,7 @@ function DeviceEditForm({
         <label className="block text-xs font-medium text-surface-500 mb-1">Issue / Notes</label>
         <textarea value={form.additional_notes} onChange={(e) => setForm({ ...form, additional_notes: e.target.value })}
           rows={2}
+          maxLength={2000}
           className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           placeholder="Describe the issue..." />
       </div>

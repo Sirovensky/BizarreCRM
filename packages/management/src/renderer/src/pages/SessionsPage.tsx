@@ -15,6 +15,17 @@ import type { SessionEntry } from '@/api/bridge';
  * Short human-friendly relative string: "5m", "2h 14m", "3d". Used for
  * session duration and expiry-countdown chips.
  */
+// BUGHUNT-2026-05-16: SQLite timestamps come back as 'YYYY-MM-DD HH:MM:SS'
+// without a 'Z' suffix. V8 parses that as LOCAL time, shifting the epoch by
+// the operator's UTC offset and producing wrong session age + expiry chips.
+function parseSqliteTs(value: string): number {
+  if (!value) return NaN;
+  const normalized = value.includes('T') || value.endsWith('Z') || value.includes('+')
+    ? value
+    : `${value.replace(' ', 'T')}Z`;
+  return new Date(normalized).getTime();
+}
+
 function compactDuration(ms: number): string {
   if (!isFinite(ms) || ms <= 0) return '—';
   const sec = Math.floor(ms / 1000);
@@ -84,13 +95,20 @@ export function SessionsPage() {
 
   const handleRevoke = async () => {
     if (!revokeTarget) return;
-    const res = await getAPI().superAdmin.revokeSession(revokeTarget.id);
-    if (res.success) {
-      toast.success('Session revoked');
-      setRevokeTarget(null);
-      refresh();
-    } else {
-      toast.error(formatApiError(res));
+    // BUGHUNT-2026-05-16: previously unwrapped — an Electron IPC failure
+    // crashed the handler with no user feedback and the confirm dialog
+    // stuck in a half-rendered state.
+    try {
+      const res = await getAPI().superAdmin.revokeSession(revokeTarget.id);
+      if (res.success) {
+        toast.success('Session revoked');
+        setRevokeTarget(null);
+        refresh();
+      } else {
+        toast.error(formatApiError(res));
+      }
+    } catch (err) {
+      toast.error(formatApiError(err));
     }
   };
 
@@ -120,7 +138,7 @@ export function SessionsPage() {
     const now = Date.now();
     let expiringSoon = 0;
     for (const s of sessions) {
-      const ms = new Date(s.expires_at).getTime() - now;
+      const ms = parseSqliteTs(s.expires_at) - now;
       if (ms > 0 && ms < 15 * 60 * 1000) expiringSoon++;
     }
     return { expiringSoon };
@@ -173,8 +191,8 @@ export function SessionsPage() {
         <div className="space-y-2">
           {sessions.map((s) => {
             const isSelf = currentUsername && s.username === currentUsername;
-            const createdMs = new Date(s.created_at).getTime();
-            const expiresMs = new Date(s.expires_at).getTime();
+            const createdMs = parseSqliteTs(s.created_at);
+            const expiresMs = parseSqliteTs(s.expires_at);
             const age = compactDuration(now - createdMs);
             const remaining = expiresMs > now ? compactDuration(expiresMs - now) : 'expired';
             const expiringSoon = expiresMs > now && expiresMs - now < 15 * 60 * 1000;

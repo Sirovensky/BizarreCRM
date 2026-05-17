@@ -11,6 +11,7 @@ import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatTime } from '@/utils/format';
 import { useAuthStore } from '@/stores/authStore';
 import { useHasRole } from '@/hooks/useHasRole';
+import { confirm } from '@/stores/confirmStore';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -442,7 +443,7 @@ function PayRateEditor({ employeeId, currentRate }: { employeeId: number; curren
     setEditing(true);
   }
 
-  function commit() {
+  async function commit() {
     const trimmed = draft.trim();
     const rate = trimmed === '' ? null : parseFloat(trimmed);
     if (trimmed !== '' && (isNaN(rate!) || rate! < 0 || rate! > 9999.99)) {
@@ -454,8 +455,10 @@ function PayRateEditor({ employeeId, currentRate }: { employeeId: number; curren
     // commissions/hours math for this employee.
     if (rate !== null && rate < 1) {
       const label = rate === 0 ? '$0.00/hr (no pay)' : `$${rate.toFixed(2)}/hr`;
-      // eslint-disable-next-line no-alert
-      const ok = window.confirm(`Set pay rate to ${label}? This will be used for all future timesheet + commission math.`);
+      const ok = await confirm(
+        `Set pay rate to ${label}? This will be used for all future timesheet + commission math.`,
+        { title: 'Confirm low pay rate', confirmLabel: 'Set rate' },
+      );
       if (!ok) return;
     }
     mutation.mutate(rate);
@@ -482,7 +485,7 @@ function PayRateEditor({ employeeId, currentRate }: { employeeId: number; curren
         />
         <button
           type="button"
-          onClick={commit}
+          onClick={() => { void commit(); }}
           disabled={mutation.isPending}
           aria-label="Save pay rate"
           className="rounded-lg p-1 text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30"
@@ -535,8 +538,21 @@ function EmployeeExpandedRow({
   const recentCommissions = detailCommissions.slice(0, 5);
   const weeklyHours = Number(employee.weekly_hours ?? 0);
   const monthStart = new Date(monthRange.from_date).getTime();
+  // BUGHUNT-2026-05-16: commission.created_at comes from SQLite datetime('now')
+  // (UTC, no 'Z'). V8 parses bare strings as local time, so the >= comparison
+  // was shifted by the browser's UTC offset — commissions recorded just past
+  // midnight UTC on the 1st were excluded from "this month" for users west of
+  // UTC, undercounting the monthly total.
   const recentMonthCommissionTotal = detailCommissions
-    .filter((commission) => new Date(commission.created_at).getTime() >= monthStart)
+    .filter((commission) => {
+      const raw = commission.created_at;
+      if (!raw) return false;
+      const iso = raw.includes('T') || raw.endsWith('Z') || raw.includes('+')
+        ? raw
+        : `${raw.replace(' ', 'T')}Z`;
+      const ms = new Date(iso).getTime();
+      return Number.isFinite(ms) && ms >= monthStart;
+    })
     .reduce((total, commission) => total + Number(commission.amount ?? 0), 0);
 
   return (

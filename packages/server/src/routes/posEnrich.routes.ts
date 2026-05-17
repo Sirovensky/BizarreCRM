@@ -503,7 +503,14 @@ router.post(
     // 7-day correction window keeps the reopen path bounded; older rows
     // require an explicit audit-tooling intervention rather than silent
     // mutation of week-old close timestamps.
-    const closedMs = Date.parse(shift.closed_at);
+    // BUGHUNT-2026-05-16: closed_at is SQLite 'YYYY-MM-DD HH:MM:SS' (UTC,
+    // no 'Z'). Date.parse without normalization would parse it as local
+    // time on V8, shifting the 7-day boundary by the server's UTC offset.
+    const closedRaw = shift.closed_at;
+    const closedNormalized = closedRaw.includes('T') || closedRaw.endsWith('Z')
+      ? closedRaw
+      : `${closedRaw.replace(' ', 'T')}Z`;
+    const closedMs = Date.parse(closedNormalized);
     if (Number.isFinite(closedMs) && Date.now() - closedMs > 7 * 24 * 60 * 60 * 1000) {
       throw new AppError('Shift was closed more than 7 days ago — reopen window expired', 409);
     }
@@ -632,8 +639,13 @@ async function getZReportActor(adb: AsyncDb, userId: number | null): Promise<ZRe
 }
 
 function computeShiftDurationMinutes(openedAt: string, closedAt: string): number | null {
-  const openedMs = Date.parse(openedAt);
-  const closedMs = Date.parse(closedAt);
+  // BUGHUNT-2026-05-16: SQLite timestamps lack 'Z' suffix; V8 parses them as
+  // local time. Normalize so the duration on a non-UTC host matches the wall
+  // clock.
+  const normalize = (v: string): string =>
+    v.includes('T') || v.endsWith('Z') || v.includes('+') ? v : `${v.replace(' ', 'T')}Z`;
+  const openedMs = Date.parse(normalize(openedAt));
+  const closedMs = Date.parse(normalize(closedAt));
   if (!Number.isFinite(openedMs) || !Number.isFinite(closedMs) || closedMs < openedMs) {
     return null;
   }
@@ -736,8 +748,16 @@ async function buildZReport(
   };
   let durationMinutes: number | null = null;
   if (shift.opened_at) {
+    // BUGHUNT-2026-05-16: shift.opened_at is SQLite DEFAULT CURRENT_TIMESTAMP
+    // (UTC, no 'Z'). closedAt comes from `.toISOString()` (full ISO). Without
+    // normalization the start parses as local time on non-UTC hosts and
+    // durationMinutes is off by 2× the UTC offset.
+    const startRaw = shift.opened_at;
+    const startNormalized = startRaw.includes('T') || startRaw.endsWith('Z') || startRaw.includes('+')
+      ? startRaw
+      : `${startRaw.replace(' ', 'T')}Z`;
     const endMs = new Date(closedAt).getTime();
-    const startMs = new Date(shift.opened_at).getTime();
+    const startMs = new Date(startNormalized).getTime();
     if (Number.isFinite(endMs) && Number.isFinite(startMs) && endMs >= startMs) {
       durationMinutes = Math.round((endMs - startMs) / 60_000);
     }

@@ -464,16 +464,20 @@ router.delete('/jobs/:id', asyncHandler(async (req: Request, res: Response) => {
   if (existing.status === 'canceled') throw new AppError('Job is already canceled', 409);
 
   const ts = now();
-  await adb.run(
-    "UPDATE field_service_jobs SET status = 'canceled', updated_at = ? WHERE id = ?",
-    ts, id,
-  );
-
-  // Record in history
-  await adb.run(`
-    INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
-    VALUES (?, 'canceled', ?, 'Soft-deleted via DELETE endpoint', ?)
-  `, id, req.user!.id, ts);
+  // BUGHUNT-2026-05-16: bundle the status flip with the dispatch_status_history
+  // INSERT so a crash between them can't leave a job in 'canceled' with no
+  // matching history row (breaks the dispatch-history audit reconstruction).
+  await adb.transaction([
+    {
+      sql: "UPDATE field_service_jobs SET status = 'canceled', updated_at = ? WHERE id = ?",
+      params: [ts, id],
+    },
+    {
+      sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
+            VALUES (?, 'canceled', ?, 'Soft-deleted via DELETE endpoint', ?)`,
+      params: [id, req.user!.id, ts],
+    },
+  ]);
 
   audit(db, 'field_service.job_canceled', req.user!.id, req.ip || 'unknown', { job_id: id });
   res.json({ success: true, data: { id, status: 'canceled' } });
@@ -510,16 +514,21 @@ router.post('/jobs/:id/assign', asyncHandler(async (req: Request, res: Response)
   }
 
   const ts = now();
-  await adb.run(`
-    UPDATE field_service_jobs
-    SET assigned_technician_id = ?, status = 'assigned', updated_at = ?
-    WHERE id = ?
-  `, techId, ts, id);
-
-  await adb.run(`
-    INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
-    VALUES (?, 'assigned', ?, ?, ?)
-  `, id, req.user!.id, `Assigned to technician ${techId}`, ts);
+  // BUGHUNT-2026-05-16: pair the assignment UPDATE with the history INSERT in
+  // one transaction so the audit row can't be lost on partial failure.
+  await adb.transaction([
+    {
+      sql: `UPDATE field_service_jobs
+             SET assigned_technician_id = ?, status = 'assigned', updated_at = ?
+             WHERE id = ?`,
+      params: [techId, ts, id],
+    },
+    {
+      sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
+            VALUES (?, 'assigned', ?, ?, ?)`,
+      params: [id, req.user!.id, `Assigned to technician ${techId}`, ts],
+    },
+  ]);
 
   audit(db, 'field_service.job_assigned', req.user!.id, req.ip || 'unknown', {
     job_id: id, technician_id: techId, previous_status: job.status,
@@ -549,16 +558,22 @@ router.post('/jobs/:id/unassign', asyncHandler(async (req: Request, res: Respons
   }
 
   const ts = now();
-  await adb.run(`
-    UPDATE field_service_jobs
-    SET assigned_technician_id = NULL, status = 'unassigned', updated_at = ?
-    WHERE id = ?
-  `, ts, id);
-
-  await adb.run(`
-    INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
-    VALUES (?, 'unassigned', ?, 'Unassigned by manager', ?)
-  `, id, req.user!.id, ts);
+  // BUGHUNT-2026-05-16: pair the unassign UPDATE with the history INSERT in
+  // one transaction so a partial failure can't leave a job 'unassigned' with
+  // no matching dispatch_status_history row.
+  await adb.transaction([
+    {
+      sql: `UPDATE field_service_jobs
+             SET assigned_technician_id = NULL, status = 'unassigned', updated_at = ?
+             WHERE id = ?`,
+      params: [ts, id],
+    },
+    {
+      sql: `INSERT INTO dispatch_status_history (job_id, status, actor_user_id, notes, created_at)
+            VALUES (?, 'unassigned', ?, 'Unassigned by manager', ?)`,
+      params: [id, req.user!.id, ts],
+    },
+  ]);
 
   audit(db, 'field_service.job_unassigned', req.user!.id, req.ip || 'unknown', {
     job_id: id, previous_technician_id: job.assigned_technician_id,
@@ -614,20 +629,20 @@ router.post('/jobs/:id/status', asyncHandler(async (req: Request, res: Response)
   const notesVal = validateOptionalString(notes, 'notes', MAX_NOTES_LEN);
   const ts = now();
 
-  await adb.run(
-    'UPDATE field_service_jobs SET status = ?, updated_at = ? WHERE id = ?',
-    newStatus, ts, id,
-  );
-
-  await adb.run(`
-    INSERT INTO dispatch_status_history
-      (job_id, status, actor_user_id, location_lat, location_lng, notes, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `,
-    id, newStatus, req.user!.id,
-    locLatVal, locLngVal,
-    notesVal, ts,
-  );
+  // BUGHUNT-2026-05-16: bundle the status flip + dispatch_status_history INSERT
+  // so a partial failure can't leave a job in the new status with no history.
+  await adb.transaction([
+    {
+      sql: 'UPDATE field_service_jobs SET status = ?, updated_at = ? WHERE id = ?',
+      params: [newStatus, ts, id],
+    },
+    {
+      sql: `INSERT INTO dispatch_status_history
+              (job_id, status, actor_user_id, location_lat, location_lng, notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [id, newStatus, req.user!.id, locLatVal, locLngVal, notesVal, ts],
+    },
+  ]);
 
   audit(db, 'field_service.job_status_changed', req.user!.id, req.ip || 'unknown', {
     job_id: id, from: job.status, to: newStatus,

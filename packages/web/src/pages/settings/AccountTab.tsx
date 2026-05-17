@@ -165,7 +165,13 @@ export function AccountTab() {
 
 function formatRelative(iso: string | null): string {
   if (!iso) return 'never';
-  const ms = Date.now() - new Date(iso).getTime();
+  // BUGHUNT-2026-05-16: last_seen_at is a SQLite datetime('now') string
+  // (UTC, no 'Z' suffix). V8 parses as local time, shifting "x ago"
+  // computations by the browser's UTC offset.
+  const normalized = iso.includes('T') || iso.endsWith('Z') || iso.includes('+')
+    ? iso
+    : `${iso.replace(' ', 'T')}Z`;
+  const ms = Date.now() - new Date(normalized).getTime();
   if (Number.isNaN(ms) || ms < 0) return 'just now';
   const s = Math.floor(ms / 1000);
   if (s < 60) return `${s}s ago`;

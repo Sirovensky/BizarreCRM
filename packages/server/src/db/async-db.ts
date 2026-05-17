@@ -15,10 +15,34 @@ interface RunResult {
  * (POS2 / S1), the db worker throws inside the transaction if the query
  * affects zero rows — forcing the whole batch to roll back. Use this with
  * guarded UPDATE patterns like `WHERE id = ? AND in_stock >= ?`.
+ *
+ * Cross-statement result refs (BUGHUNT-2026-05-17): pass
+ * `lastInsertRowidFrom(N)` as a param to substitute the lastInsertRowid of
+ * the Nth prior query in this transaction. Use this instead of `last_insert_rowid()`
+ * in SQL when you have multiple INSERT statements that all need to reference
+ * the same parent rowid — bare `last_insert_rowid()` in the 2nd+ child INSERT
+ * resolves to the prior child's rowid, not the parent's, and the FK rejects.
  */
+export interface TxResultRef {
+  __txResultRef: 'lastInsertRowid';
+  fromIndex: number;
+}
+
+/**
+ * Marker for a parameter that should be substituted at transaction-execution
+ * time with the lastInsertRowid of the query at `index` in the queries array.
+ * Indices are zero-based and must refer to an earlier query in the same tx.
+ */
+export function lastInsertRowidFrom(index: number): TxResultRef {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error('lastInsertRowidFrom: index must be a non-negative integer');
+  }
+  return { __txResultRef: 'lastInsertRowid', fromIndex: index };
+}
+
 export interface TxQuery {
   sql: string;
-  params?: unknown[];
+  params?: Array<unknown | TxResultRef>;
   expectChanges?: boolean;
   expectChangesError?: string;
 }

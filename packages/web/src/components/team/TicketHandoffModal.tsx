@@ -91,7 +91,7 @@ export function TicketHandoffModal({
       className="border border-surface-200 p-5 text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
     >
       <h2 id="ticket-handoff-title" className="text-lg font-bold mb-1 inline-flex items-center text-surface-900 dark:text-surface-100">
-        <ArrowRightLeft className="w-5 h-5 mr-2 text-primary-500" /> Hand off ticket
+        <ArrowRightLeft className="w-5 h-5 mr-2 text-primary-500" aria-hidden="true" /> Hand off ticket
       </h2>
       <p id="ticket-handoff-description" className="text-xs text-surface-500 dark:text-surface-400 mb-4">
         The new assignee will see this in their queue. The reason is logged for audit.

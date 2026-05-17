@@ -122,10 +122,14 @@ const PER_INVOICE_MIN_GAP_MS = 20 * 60 * 60 * 1000;
 function mostRecentRunMs(db: Database.Database): number | null {
   try {
     const row = db
-      .prepare('SELECT MAX(created_at) AS latest FROM dunning_runs')
+      .prepare('SELECT MAX(executed_at) AS latest FROM dunning_runs')
       .get() as { latest: string | null } | undefined;
     if (!row?.latest) return null;
-    const ms = new Date(row.latest).getTime();
+    // SQLite returns 'YYYY-MM-DD HH:MM:SS' (UTC, no tz suffix). new Date() of
+    // that string is parsed as LOCAL time in V8, which silently shifts the
+    // epoch on non-UTC servers. Normalize to ISO+Z before parsing.
+    const normalized = row.latest.includes('T') ? row.latest : `${row.latest.replace(' ', 'T')}Z`;
+    const ms = new Date(normalized).getTime();
     return Number.isFinite(ms) ? ms : null;
   } catch {
     // Table may not exist yet on a fresh tenant — treat as "never ran".
@@ -151,7 +155,8 @@ function mostRecentInvoiceRunMs(
       )
       .get(invoiceId) as { latest: string | null } | undefined;
     if (!row?.latest) return null;
-    const ms = new Date(row.latest).getTime();
+    const normalized = row.latest.includes('T') ? row.latest : `${row.latest.replace(' ', 'T')}Z`;
+    const ms = new Date(normalized).getTime();
     return Number.isFinite(ms) ? ms : null;
   } catch {
     return null;
@@ -301,7 +306,13 @@ export async function runDunningOnce(
               -- HH:MM:SS so lex compare equals chrono compare.
               AND i.due_on <= ?
               AND r.id IS NULL
-            LIMIT 500`,
+            -- BUGHUNT-2026-05-16: bumped from 500 to 5000 so a tenant with a
+            -- large past-due backlog (e.g. coming off a payment-processor
+            -- outage) doesn't have remaining invoices silently delayed by
+            -- the 20h per-tenant rate-limit guard. 5000 still bounds the
+            -- per-tick wall-clock cost (each step is gated by a per-invoice
+            -- 20h check anyway, so true work-per-tick is much smaller).
+            LIMIT 5000`,
         )
         // SCAN-1174: cutoffIso is `YYYY-MM-DD`; due_date carries a time so
         // append ` 23:59:59` to include any row due on the cutoff date.
@@ -325,7 +336,8 @@ export async function runDunningOnce(
             .all(...eligible.map((i) => i.id)) as Array<{ invoice_id: number; latest: string | null }>;
           for (const r of rows) {
             if (!r.latest) continue;
-            const ms = new Date(r.latest).getTime();
+            const normalized = r.latest.includes('T') ? r.latest : `${r.latest.replace(' ', 'T')}Z`;
+            const ms = new Date(normalized).getTime();
             if (Number.isFinite(ms)) lastRunByInvoice.set(r.invoice_id, ms);
           }
         } catch {

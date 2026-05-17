@@ -362,14 +362,15 @@ router.post(
       }
     }
 
-    // Refresh member_count_cache
-    const countRow = await adb.get<{ total: number }>(
-      'SELECT COUNT(*) AS total FROM sms_customer_group_members WHERE group_id = ?',
-      id,
-    );
+    // Refresh member_count_cache atomically — previous SELECT-then-UPDATE
+    // raced when two concurrent member adds both read the count before
+    // either UPDATE landed, leaving the cache under-counted.
     await adb.run(
-      `UPDATE sms_customer_groups SET member_count_cache = ?, updated_at = datetime('now') WHERE id = ?`,
-      countRow?.total ?? 0, id,
+      `UPDATE sms_customer_groups
+          SET member_count_cache = (SELECT COUNT(*) FROM sms_customer_group_members WHERE group_id = ?),
+              updated_at = datetime('now')
+        WHERE id = ?`,
+      id, id,
     );
 
     res.json({ success: true, data: { group_id: id, added, skipped } });
@@ -403,20 +404,25 @@ router.delete(
     if (!group) throw new AppError('Group not found', 404);
     if (group.is_dynamic) throw new AppError('Cannot remove members from a dynamic group', 400);
 
-    await adb.run(
-      'DELETE FROM sms_customer_group_members WHERE group_id = ? AND customer_id = ?',
-      id, customerId,
-    );
-
-    // Refresh member_count_cache
-    const countRow = await adb.get<{ total: number }>(
-      'SELECT COUNT(*) AS total FROM sms_customer_group_members WHERE group_id = ?',
-      id,
-    );
-    await adb.run(
-      `UPDATE sms_customer_groups SET member_count_cache = ?, updated_at = datetime('now') WHERE id = ?`,
-      countRow?.total ?? 0, id,
-    );
+    // BUGHUNT-2026-05-16: previously the DELETE and the cache-refresh UPDATE
+    // were two sequential adb.run calls. A crash between them would leave
+    // member_count_cache off-by-one (stale higher than the actual count)
+    // until the next add/remove fired. The cache is the source of truth for
+    // the group list page's member count, so the UI would show an inflated
+    // number until the next cache refresh. Bundle into a transaction.
+    await adb.transaction([
+      {
+        sql: 'DELETE FROM sms_customer_group_members WHERE group_id = ? AND customer_id = ?',
+        params: [id, customerId],
+      },
+      {
+        sql: `UPDATE sms_customer_groups
+                 SET member_count_cache = (SELECT COUNT(*) FROM sms_customer_group_members WHERE group_id = ?),
+                     updated_at = datetime('now')
+               WHERE id = ?`,
+        params: [id, id],
+      },
+    ]);
 
     res.json({ success: true, data: { group_id: id, customer_id: customerId, removed: true } });
   }),

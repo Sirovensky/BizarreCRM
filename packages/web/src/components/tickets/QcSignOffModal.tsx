@@ -21,6 +21,7 @@ import { Camera, Eraser, Check, X, Loader2, ClipboardCheck, AlertTriangle, Histo
 import toast from 'react-hot-toast';
 import { benchApi, settingsApi, ticketApi } from '@/api/endpoints';
 import { formatApiError } from '@/utils/apiError';
+import { confirm } from '@/stores/confirmStore';
 import {
   IMAGE_UPLOAD_ACCEPT,
   SMALL_IMAGE_UPLOAD_MAX_BYTES,
@@ -220,7 +221,10 @@ export function QcSignOffModal({
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     setSignatureDrawn(false);
-  }, [hasFailedOutcome]);
+    // Initialise once on mount. Previously this re-ran whenever
+    // `hasFailedOutcome` flipped, wiping a tech's in-progress signature any
+    // time they toggled a checklist item from pass↔fail.
+  }, []);
 
   const getPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -275,12 +279,8 @@ export function QcSignOffModal({
     // client-side to JPEG via canvas before validation, so iOS users are not
     // dead-ended at "convert to JPEG before uploading".
     const file = await maybeConvertHeicToJpeg(raw);
-    // WEB-UIUX-1099: Guard oversized photos before hitting the server.
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Photo too large (max 10MB). Try a smaller image.');
-      e.target.value = '';
-      return;
-    }
+    // Size cap is enforced by validateImageFile (SMALL_IMAGE_UPLOAD_MAX_BYTES);
+    // previous 10MB guard was dead code — the 5MB limit fires first.
     const error = await validateImageFile(file, {
       maxBytes: SMALL_IMAGE_UPLOAD_MAX_BYTES,
       label: `"${file.name}"`,
@@ -322,16 +322,20 @@ export function QcSignOffModal({
     failReason.trim().length > 0;
 
   const safeClose = () => {
-    if (
-      hasChanges &&
-      !window.confirm(
-        'You have unsaved QC progress (signature, photo, or checklist). Close anyway?',
-      )
-    ) {
+    if (!hasChanges) {
+      clearWorkingPhoto();
+      onClose();
       return;
     }
-    clearWorkingPhoto();
-    onClose();
+    void confirm(
+      'You have unsaved QC progress (signature, photo, or checklist). Close anyway?',
+      { title: 'Discard QC progress?', confirmLabel: 'Close anyway', danger: true },
+    ).then((ok) => {
+      if (ok) {
+        clearWorkingPhoto();
+        onClose();
+      }
+    });
   };
 
   const submitMut = useMutation({

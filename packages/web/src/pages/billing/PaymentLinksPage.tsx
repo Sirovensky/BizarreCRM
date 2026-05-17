@@ -12,6 +12,7 @@ import { api } from '@/api/client';
 import { settingsApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
 import { useHasRole } from '@/hooks/useHasRole';
+import { confirm } from '@/stores/confirmStore';
 
 interface PaymentLink {
   id: number;
@@ -379,10 +380,12 @@ export function PaymentLinksPage() {
                     {canManagePaymentLinks && row.status === 'active' ? (
                       <button type="button"
                         className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30"
-                        onClick={() => {
-                          if (window.confirm('Cancel this payment link? Customer can no longer pay using this URL.')) {
-                            cancelMutation.mutate(row.id);
-                          }
+                        onClick={async () => {
+                          const ok = await confirm(
+                            'Cancel this payment link? Customer can no longer pay using this URL.',
+                            { title: 'Cancel payment link', confirmLabel: 'Cancel link', danger: true },
+                          );
+                          if (ok) cancelMutation.mutate(row.id);
                         }}
                         disabled={cancelMutation.isPending && cancelMutation.variables === row.id}
                         aria-label={`Cancel payment request ${row.token.slice(0, 6)}…${row.token.slice(-4)}`}

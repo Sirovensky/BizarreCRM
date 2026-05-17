@@ -831,16 +831,23 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
   // Generate 6-digit code
   const code = String(crypto.randomInt(100000, 999999));
 
-  // Expire old unused codes for this customer
-  await adb.run(
-    "UPDATE portal_verification_codes SET used = 1 WHERE customer_id = ? AND used = 0",
-    foundCustomer.id);
-
-  // Insert new code (expires in 10 minutes)
-  await adb.run(`
-    INSERT INTO portal_verification_codes (customer_id, phone, code, expires_at)
-    VALUES (?, ?, ?, datetime('now', '+10 minutes'))
-  `, foundCustomer.id, normalized, code);
+  // BUGHUNT-2026-05-16: bundle expire-old + insert-new into a single
+  // transaction. Previously these were two sequential adb.run calls — if the
+  // INSERT failed (disk full, FK violation, schema mid-migration), every
+  // pending code for the customer was already burned but no replacement
+  // exists, so the customer must re-request a code AND can't use any code
+  // already in their SMS thread. Atomic txn keeps the rotation all-or-nothing.
+  await adb.transaction([
+    {
+      sql: 'UPDATE portal_verification_codes SET used = 1 WHERE customer_id = ? AND used = 0',
+      params: [foundCustomer.id],
+    },
+    {
+      sql: `INSERT INTO portal_verification_codes (customer_id, phone, code, expires_at)
+            VALUES (?, ?, ?, datetime('now', '+10 minutes'))`,
+      params: [foundCustomer.id, normalized, code],
+    },
+  ]);
 
   // Send SMS (L4: check the provider result rather than blindly reporting success)
   const storeName = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'store_name'");
@@ -985,24 +992,33 @@ router.post('/register/verify', asyncHandler(async (req: PortalRequest, res: Res
     return;
   }
 
-  // Mark code as used
-  await adb.run('UPDATE portal_verification_codes SET used = 1 WHERE id = ?', verification.id);
-
-  // Hash PIN and update customer
+  // BUGHUNT-2026-05-16: bundle code-burn + customer-update + session-insert
+  // into a single transaction. Previously these were 3 sequential adb.run
+  // calls — a crash between (1) and (2) would burn the verification code
+  // WITHOUT setting the PIN, locking the customer out and forcing them to
+  // request a brand-new code; a crash between (2) and (3) would set the PIN
+  // but never issue the promised session. Both are user-facing portal
+  // failures with no clean recovery path. bcrypt must run before the txn.
   const hashedPin = await bcrypt.hash(pin, 12);
-  await adb.run(`
-    UPDATE customers
-    SET portal_pin = ?, portal_verified = 1, portal_created_at = datetime('now'), updated_at = datetime('now')
-    WHERE id = ?
-  `, hashedPin, verification.customer_id);
-
-  // Create full-scope session immediately
   const token = generateToken();
   const sessionId = crypto.randomUUID();
-  await adb.run(`
-    INSERT INTO portal_sessions (id, customer_id, token, scope, expires_at)
-    VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))
-  `, sessionId, verification.customer_id, token);
+  await adb.transaction([
+    {
+      sql: 'UPDATE portal_verification_codes SET used = 1 WHERE id = ?',
+      params: [verification.id],
+    },
+    {
+      sql: `UPDATE customers
+              SET portal_pin = ?, portal_verified = 1, portal_created_at = datetime('now'), updated_at = datetime('now')
+            WHERE id = ?`,
+      params: [hashedPin, verification.customer_id],
+    },
+    {
+      sql: `INSERT INTO portal_sessions (id, customer_id, token, scope, expires_at)
+            VALUES (?, ?, ?, 'full', datetime('now', '+24 hours'))`,
+      params: [sessionId, verification.customer_id, token],
+    },
+  ]);
 
   // PT2: Issue CSRF token cookie alongside the new full-scope session.
   const csrfToken = generateCsrfToken();
@@ -1336,7 +1352,15 @@ router.post('/tickets/:id/pay-link', portalAuth, requireCsrfToken, requireTicket
     "SELECT token, expires_at FROM payment_links WHERE invoice_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 1",
     invoice.id
   );
-  if (existing && existing.expires_at && new Date(existing.expires_at).getTime() > Date.now()) {
+  // BUGHUNT-2026-05-16: payment_links.expires_at is SQLite text — normalize
+  // for V8 so the non-expired check isn't shifted by the server's UTC offset.
+  const expiresRaw = existing?.expires_at as string | null | undefined;
+  const expiresNormalized = expiresRaw
+    ? (expiresRaw.includes('T') || expiresRaw.endsWith('Z') || expiresRaw.includes('+')
+        ? expiresRaw
+        : `${expiresRaw.replace(' ', 'T')}Z`)
+    : null;
+  if (existing && expiresNormalized && new Date(expiresNormalized).getTime() > Date.now()) {
     res.json({ success: true, data: { url: `/pay/${existing.token}` } });
     return;
   }
@@ -1607,7 +1631,7 @@ router.post('/estimates/:id/approve', portalAuth, requireCsrfToken, requireFullS
   // SW-D7: Auto-change linked ticket status when estimate is approved
   const statusAfterEstimate = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");
   if (statusAfterEstimate?.value) {
-    const targetStatusId = parseInt(statusAfterEstimate.value);
+    const targetStatusId = parseInt(statusAfterEstimate.value, 10);
     if (targetStatusId > 0) {
       const est = await adb.get<AnyRow>('SELECT converted_ticket_id FROM estimates WHERE id = ?', estimateId);
       const ticketId = est?.converted_ticket_id
@@ -1696,7 +1720,7 @@ router.post('/estimates/:id/reject', portalAuth, requireCsrfToken, requireFullSc
   // hook so operators can opt in (default: leave the ticket untouched).
   const statusAfterReject = await adb.get<AnyRow>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate_rejected'");
   if (statusAfterReject?.value) {
-    const targetStatusId = parseInt(statusAfterReject.value as string);
+    const targetStatusId = parseInt(statusAfterReject.value as string, 10);
     if (targetStatusId > 0) {
       const est = await adb.get<AnyRow>('SELECT converted_ticket_id FROM estimates WHERE id = ?', estimateId);
       const ticketId = est?.converted_ticket_id

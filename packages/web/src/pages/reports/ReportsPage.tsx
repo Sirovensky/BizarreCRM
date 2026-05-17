@@ -1150,9 +1150,13 @@ function InsightsTab({
   compare: boolean;
   onCompareChange: (compare: boolean) => void;
 }) {
-  // Calculate previous period (same duration, shifted back)
-  const fromMs = new Date(from + 'T00:00:00').getTime();
-  const toMs = new Date(to + 'T00:00:00').getTime();
+  // Calculate previous period (same duration, shifted back).
+  // BUGHUNT-2026-05-16: previously the suffix was 'T00:00:00' (no 'Z'),
+  // anchoring midnight to LOCAL time. Combined with `toLocalDate`'s UTC
+  // round-trip below, the previous-period window could shift by a day in
+  // non-UTC zones. Anchor to UTC explicitly to stay consistent.
+  const fromMs = new Date(from + 'T00:00:00Z').getTime();
+  const toMs = new Date(to + 'T00:00:00Z').getTime();
   const durationMs = toMs - fromMs;
   const prevFrom = toLocalDate(new Date(fromMs - durationMs - 86400_000));
   const prevTo = toLocalDate(new Date(fromMs - 86400_000));

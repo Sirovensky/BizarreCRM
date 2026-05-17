@@ -94,7 +94,9 @@ export function decryptConfigValue(ciphertext: string): string {
     // version label has been tampered with. Must match encryptConfigValue.
     decipher.setAAD(Buffer.from(`v${version}`, 'utf8'));
     decipher.setAuthTag(tag);
-    return decipher.update(data) + decipher.final('utf8');
+    // Concatenate as Buffers first so a multi-byte UTF-8 sequence spanning
+    // the update/final boundary doesn't get decoded twice and corrupt.
+    return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
   } catch (err) {
     // @audit-fixed: Never return the raw ciphertext string on decrypt failure
     // — a caller could leak `enc:v1:...` into an outbound SMS/email template

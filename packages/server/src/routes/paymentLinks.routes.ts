@@ -10,6 +10,7 @@
  */
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { config } from '../config.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { createLogger } from '../utils/logger.js';
@@ -60,6 +61,51 @@ const TOKEN_REGEX = /^[A-Za-z0-9_-]{32}$/;
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+// BUGHUNT-2026-05-16: the /pay and /:token/pay handlers are PUBLIC (no auth)
+// and were composing redirect / webhook URLs from req.headers['x-forwarded-host']
+// and req.headers['x-forwarded-proto'] without verifying the request actually
+// came from a trusted reverse proxy. An unauthenticated attacker could send a
+// crafted POST with X-Forwarded-Host: attacker.com and Stripe / BlockChyp
+// would then redirect the customer (or POST the paid-callback webhook) to the
+// attacker's host — host-header injection that hijacks payment flow.
+//
+// Mirror the trusted-proxy gate from middleware/tenantResolver.ts:
+// only honour X-Forwarded-* when the socket's remoteAddress is in
+// config.trustedProxyIps; otherwise fall back to the direct Host header /
+// req.secure. IPv4-mapped IPv6 (::ffff:1.2.3.4) is normalised to bare v4 to
+// match how operators usually list trusted IPs.
+function normalizeProxyIp(ip: string): string {
+  if (!ip) return '';
+  const lower = ip.toLowerCase();
+  return lower.startsWith('::ffff:') ? lower.slice('::ffff:'.length) : lower;
+}
+
+function resolveSafeOrigin(req: Request): string {
+  const trustedIps = (config.trustedProxyIps ?? []).map(normalizeProxyIp);
+  const socketIp = normalizeProxyIp(req.socket?.remoteAddress || '');
+  const proxyTrusted = trustedIps.length > 0 && trustedIps.includes(socketIp);
+
+  let proto: string;
+  let host: string;
+  if (proxyTrusted) {
+    const xfProto = req.headers['x-forwarded-proto'];
+    const xfHost = req.headers['x-forwarded-host'];
+    const protoVal = (Array.isArray(xfProto) ? xfProto[0] : xfProto)?.split(',')[0]?.trim();
+    const hostVal = (Array.isArray(xfHost) ? xfHost[0] : xfHost)?.split(',')[0]?.trim();
+    proto = protoVal || (req.secure ? 'https' : 'http');
+    host = hostVal || req.headers.host || 'localhost';
+  } else {
+    proto = req.secure ? 'https' : 'http';
+    host = req.headers.host || 'localhost';
+  }
+  // Drop anything outside a safe hostname:port shape so a wild Host header
+  // can't smuggle path or query content into the constructed URL.
+  if (!/^[A-Za-z0-9_.\-:]+$/.test(host)) {
+    host = 'localhost';
+  }
+  return `${proto}://${host}`;
 }
 
 // SCAN-785: null-safe expiry check. null/undefined means "never expires".
@@ -415,9 +461,7 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
       return;
     }
 
-    const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
-    const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-    const origin = `${protocol}://${host}`;
+    const origin = resolveSafeOrigin(req);
     const description = row.description
       || (row.invoice_order_id ? `Invoice ${row.invoice_order_id}` : 'Payment');
 
@@ -490,9 +534,8 @@ publicRouter.post('/:token/pay', asyncHandler(async (req: Request, res: Response
   // Construct the callbackUrl from the request origin so BlockChyp can POST
   // back to us when the customer completes payment. Webhook handler is not yet
   // implemented — this wires the plumbing for it without blocking the flow.
-  const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
-  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost';
-  const callbackUrl = `${protocol}://${host}/api/v1/public/payment-links/${encodeURIComponent(token)}/paid-callback`;
+  const callbackOrigin = resolveSafeOrigin(req);
+  const callbackUrl = `${callbackOrigin}/api/v1/public/payment-links/${encodeURIComponent(token)}/paid-callback`;
 
   audit(req.db, 'payment_link.checkout_started', null, req.ip ?? '', {
     id: row.id,

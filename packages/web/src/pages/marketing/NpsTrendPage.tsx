@@ -2,6 +2,20 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, BarChart3, TrendingUp, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { api } from '@/api/client';
 
+// BUGHUNT-2026-05-16: nps_responses.responded_at is stored via SQLite
+// datetime('now') → 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z' suffix). V8 parses
+// bare strings as local time, so without normalisation the displayed date
+// shifts by the browser's UTC offset — flipping to the prior calendar day
+// for users west of UTC when the response landed near midnight UTC.
+function formatSqliteDate(iso: string): string {
+  if (!iso) return '';
+  const normalized = iso.includes('T') || iso.endsWith('Z') || iso.includes('+')
+    ? iso
+    : `${iso.replace(' ', 'T')}Z`;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
+}
+
 /**
  * NpsTrendPage — visualise customer NPS scores + monthly trend.
  *
@@ -196,7 +210,7 @@ export function NpsTrendPage() {
                       <div className="flex items-center justify-between">
                         <div className="font-medium text-sm">{r.customer_name ?? 'Anonymous'}</div>
                         <div className="text-[10px] text-surface-500">
-                          {new Date(r.responded_at).toLocaleDateString()}
+                          {formatSqliteDate(r.responded_at)}
                         </div>
                       </div>
                       {r.comment && (

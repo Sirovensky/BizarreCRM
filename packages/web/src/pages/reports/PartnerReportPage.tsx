@@ -181,7 +181,7 @@ export function PartnerReportPage() {
   return (
     <div className="p-6 max-w-3xl">
       <div className="flex items-center gap-2 mb-4">
-        <Briefcase className="text-surface-600 dark:text-surface-400" aria-hidden="true" />
+        <Briefcase className="w-6 h-6 text-surface-600 dark:text-surface-400" aria-hidden="true" />
         <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Partner / Lender Report</h1>
       </div>
       <p className="text-surface-600 dark:text-surface-400 mb-6">

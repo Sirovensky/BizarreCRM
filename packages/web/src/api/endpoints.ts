@@ -209,7 +209,12 @@ export const ticketApi = {
     sort_by?: string; sort_order?: string;
   }) => api.get('/tickets', { params }),
   get: (id: number) => api.get(`/tickets/${id}`),
-  create: (data: CreateTicketInput) => api.post('/tickets', data),
+  create: (data: CreateTicketInput, idempotencyKey?: string) =>
+    api.post('/tickets', data, {
+      headers: {
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('tkt'),
+      },
+    }),
   update: (id: number, data: Partial<Ticket>, signal?: AbortSignal) =>
     api.put(`/tickets/${id}`, data, { signal }),
   delete: (id: number) => api.delete(`/tickets/${id}`),
@@ -786,11 +791,11 @@ export const smsApi = {
     api.get<{ success: boolean; data: { count: number } }>('/sms/unread-count', { signal }),
   conversations: (params?: { keyword?: string; q?: string; include_archived?: string; assigned_to?: 'all' | 'me' | 'unassigned' }) =>
     api.get('/sms/conversations', { params }),
-  messages: (phone: string) => api.get(`/sms/conversations/${phone}`),
-  markRead: (phone: string) => api.patch(`/sms/conversations/${phone}/read`),
-  toggleFlag: (phone: string) => api.patch(`/sms/conversations/${phone}/flag`),
-  togglePin: (phone: string) => api.patch(`/sms/conversations/${phone}/pin`),
-  toggleArchive: (phone: string) => api.patch(`/sms/conversations/${phone}/archive`),
+  messages: (phone: string) => api.get(`/sms/conversations/${encodeURIComponent(phone)}`),
+  markRead: (phone: string) => api.patch(`/sms/conversations/${encodeURIComponent(phone)}/read`),
+  toggleFlag: (phone: string) => api.patch(`/sms/conversations/${encodeURIComponent(phone)}/flag`),
+  togglePin: (phone: string) => api.patch(`/sms/conversations/${encodeURIComponent(phone)}/pin`),
+  toggleArchive: (phone: string) => api.patch(`/sms/conversations/${encodeURIComponent(phone)}/archive`),
   send: (data: { to: string; message?: string; entity_type?: string; entity_id?: number; template_id?: number; template_vars?: Record<string, string>; send_at?: string }) =>
     api.post('/sms/send', data),
   reminders: (params?: { status?: 'pending' | 'completed' | 'cancelled' | 'all'; due?: boolean; phone?: string; id?: number }) =>
@@ -953,7 +958,12 @@ export const posApi = {
   // event so a flaky-network double-click doesn't double-record cash movement.
   cashIn: (data: CashAdjustmentInput) => postCashAdjustment('/pos/cash-in', data),
   cashOut: (data: CashAdjustmentInput) => postCashAdjustment('/pos/cash-out', data),
-  transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
+  transaction: (data: PosTransactionInput, idempotencyKey?: string) =>
+    api.post('/pos/transaction', data, {
+      headers: {
+        'X-Idempotency-Key': idempotencyKey ?? generateIdempotencyKey('pos'),
+      },
+    }),
   transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
   // WEB-FH-001 / WEB-FH-002: mandatory idempotency key, minted ONCE per
   // cart-session (in the unified-pos store) and reused across every retry
@@ -2332,7 +2342,10 @@ export const creditNotesApi = {
   list: (params?: { page?: number; pagesize?: number; status?: string; customer_id?: number }) =>
     api.get('/credit-notes', { params }),
   get: (id: number) => api.get(`/credit-notes/${id}`),
-  apply: (id: number, body: { invoice_id: number; amount?: number }) =>
+  // BUGHUNT-2026-05-16: server applies the full credit note — there is no
+  // partial-apply support. Removed the misleading `amount?` field that was
+  // being silently dropped.
+  apply: (id: number, body: { invoice_id: number }) =>
     api.post(`/credit-notes/${id}/apply`, body),
   void: (id: number, body?: { reason?: string }) =>
     api.post(`/credit-notes/${id}/void`, body ?? {}),

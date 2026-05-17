@@ -561,6 +561,10 @@ router.post(
 router.delete(
   '/:id/counts/:itemId',
   asyncHandler(async (req, res) => {
+    const role = req.user?.role;
+    if (role !== 'admin' && role !== 'manager' && role !== 'technician') {
+      throw new AppError('Admin, manager, or technician role required', 403);
+    }
     const adb = req.asyncDb;
     const stocktakeId = parseInt(req.params.id as string, 10);
     const inventoryItemId = parseInt(req.params.itemId as string, 10);
@@ -762,10 +766,17 @@ router.post(
       throw new AppError(`Stocktake is already ${session.status}`, 400);
     }
 
-    await adb.run(
-      `UPDATE stocktakes SET status = 'cancelled' WHERE id = ?`,
+    // BUGHUNT-2026-05-16: conditional update + changes-check mirrors the
+    // commit handler. Previously a concurrent commit that won the race could
+    // be silently overwritten back to 'cancelled' — stock variances stayed
+    // applied but the session showed as cancelled with committed_at still set.
+    const result = await adb.run(
+      `UPDATE stocktakes SET status = 'cancelled' WHERE id = ? AND status = 'open'`,
       id,
     );
+    if (!result.changes) {
+      throw new AppError('Stocktake state changed; refresh and retry', 409);
+    }
 
     audit(req.db, 'stocktake_cancelled', req.user!.id, req.ip || 'unknown', {
       stocktake_id: id,

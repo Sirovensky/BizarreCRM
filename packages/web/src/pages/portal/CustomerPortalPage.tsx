@@ -75,7 +75,9 @@ export function CustomerPortalPage() {
       api.verifySession(tokenParam)
         .then(result => {
           if (result.valid) {
-            sessionStorage.setItem('portal_token', tokenParam);
+            // Safari private mode throws SecurityError on sessionStorage
+            // writes. In-memory auth still works; only persistence fails.
+            try { sessionStorage.setItem('portal_token', tokenParam); } catch { /* private mode */ }
             // WEB-S4-023: forward has_account from verifySession response
             auth.loginWithToken(
               tokenParam,
@@ -326,7 +328,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
     setLoading(true);
     try {
       const result = await api.quickTrack(orderId.trim(), phoneLast4);
-      sessionStorage.setItem('portal_token', result.token);
+      try { sessionStorage.setItem('portal_token', result.token); } catch { /* private mode */ }
       setTicket(result.ticket);
       // Clear failure tracking on success.
       setFailureTimes([]);

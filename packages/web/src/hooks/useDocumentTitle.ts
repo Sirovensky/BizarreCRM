@@ -46,7 +46,9 @@ export function useDocumentTitle(
         document.title = previousTitle.current;
       }
     };
-    // `suffix` and `restore` are treated as stable call-site constants.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title]);
+    // BUGHUNT-2026-05-16: previously `suffix` and `restore` were excluded with
+    // an eslint-disable, which silently dropped runtime changes to either. The
+    // common call site passes a literal, so re-running on suffix/restore
+    // change is harmless and correct.
+  }, [title, suffix, restore]);
 }

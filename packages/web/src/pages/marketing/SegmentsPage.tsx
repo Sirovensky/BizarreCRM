@@ -46,6 +46,18 @@ const RULE_FIELDS = [
   { value: 'birthday_window_days', label: 'Days until birthday', type: 'number' },
 ] as const;
 
+// BUGHUNT-2026-05-16: customer_segments.last_refreshed_at is set via
+// SQLite datetime('now') → 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z' suffix). V8
+// parses bare strings as local time, so without the Z normalisation the
+// "last refresh" timestamp displays shifted by the browser's UTC offset.
+function formatSqliteTs(iso: string): string {
+  const normalized = iso.includes('T') || iso.endsWith('Z') || iso.includes('+')
+    ? iso
+    : `${iso.replace(' ', 'T')}Z`;
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
 const RULE_OPS: ReadonlyArray<{ value: '>' | '>=' | '<' | '<=' | '=' | '!='; label: string }> = [
   { value: '>', label: '> (greater than)' },
   { value: '>=', label: '>= (at least)' },
@@ -144,7 +156,7 @@ export function SegmentsPage() {
                   </td>
                   <td className="p-3 text-right font-semibold tabular-nums">{s.member_count}</td>
                   <td className="p-3 text-xs text-surface-500">
-                    {s.last_refreshed_at ? new Date(s.last_refreshed_at).toLocaleString() : 'never'}
+                    {s.last_refreshed_at ? formatSqliteTs(s.last_refreshed_at) : 'never'}
                   </td>
                   <td className="p-3 text-right">
                     <div className="inline-flex gap-1">
@@ -160,12 +172,19 @@ export function SegmentsPage() {
                       <button
                         type="button"
                         onClick={() => refresh.mutate(s.id)}
-                        disabled={refresh.isPending}
+                        disabled={refresh.isPending && refresh.variables === s.id}
                         aria-label={`Re-evaluate segment ${s.name}`}
                         className="p-1.5 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
                         title="Re-evaluate rule"
                       >
-                        <RefreshCw aria-hidden="true" className={refresh.isPending ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                        <RefreshCw
+                          aria-hidden="true"
+                          className={
+                            refresh.isPending && refresh.variables === s.id
+                              ? 'h-4 w-4 animate-spin'
+                              : 'h-4 w-4'
+                          }
+                        />
                       </button>
                       {s.is_auto === 0 && (
                         <button

@@ -470,11 +470,16 @@ async function runExportJob(
     for (const table of tables) {
       await yieldToEventLoop();
 
-      let rows: Array<Record<string, unknown>>;
+      // BUGHUNT-2026-05-16: switched from `.all()` to `.iterate()` so a large
+      // tenant doesn't materialize the entire table in memory before NDJSON-
+      // encoding it. Sibling `dataExportGenerator.ts` already uses iterate
+      // for this exact reason — keep them consistent.
+      const ndjsonLines: string[] = [];
       try {
-        rows = db
-          .prepare(`SELECT * FROM "${table}"`)
-          .all() as Array<Record<string, unknown>>;
+        const iter = db.prepare(`SELECT * FROM "${table}"`).iterate() as IterableIterator<Record<string, unknown>>;
+        for (const r of iter) {
+          ndjsonLines.push(JSON.stringify(sanitizeRow(table, r)));
+        }
       } catch (err) {
         logger.warn('tenant export: skipping unreadable table', {
           jobId,
@@ -484,9 +489,7 @@ async function runExportJob(
         continue;
       }
 
-      const ndjson = rows
-        .map((r) => JSON.stringify(sanitizeRow(table, r)))
-        .join('\n');
+      const ndjson = ndjsonLines.join('\n');
 
       // Safe name: table comes from sqlite_master (controlled), not user input.
       // Sanitise anyway: keep only [a-zA-Z0-9_-] so the name is safe inside a ZIP.

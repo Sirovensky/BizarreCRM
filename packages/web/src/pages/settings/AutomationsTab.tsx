@@ -835,7 +835,7 @@ export function AutomationsTab() {
                     <ToggleSwitch
                       checked={!!rule.is_active}
                       onChange={() => toggleMut.mutate(rule.id)}
-                      disabled={toggleMut.isPending}
+                      disabled={toggleMut.isPending && toggleMut.variables === rule.id}
                     />
                   </div>
 

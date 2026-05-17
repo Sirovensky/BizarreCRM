@@ -900,10 +900,14 @@ export function StocktakePage() {
                           <td className="px-3 py-2 text-right">
                             <button
                               type="button"
-                              onClick={() => {
-                                if (window.confirm(`Remove "${c.name ?? `#${c.inventory_item_id}`}" from this stocktake?`)) {
-                                  deleteCountMut.mutate(c.inventory_item_id);
-                                }
+                              onClick={async () => {
+                                const ok = await useConfirmStore.getState().confirm({
+                                  message: `Remove "${c.name ?? `#${c.inventory_item_id}`}" from this stocktake?`,
+                                  title: 'Remove count row',
+                                  confirmLabel: 'Remove',
+                                  danger: true,
+                                });
+                                if (ok) deleteCountMut.mutate(c.inventory_item_id);
                               }}
                               disabled={deleteCountMut.isPending}
                               aria-label={`Remove ${c.name ?? `item #${c.inventory_item_id}`} from stocktake`}

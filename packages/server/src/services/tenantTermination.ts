@@ -304,6 +304,14 @@ async function executeTermination(opts: {
   const archivedName = `${row.slug}-${ts}.db`;
   const archivedPath = path.join(deletedDir, archivedName);
   const srcPath = path.join(config.tenantDataDir, row.db_path);
+  // SEC: prevent path-traversal if master row's db_path was tampered with
+  // (e.g. '../../etc/passwd'). renameSync would otherwise move files outside
+  // tenantDataDir. Refuse to operate on a resolved path that escapes the dir.
+  const resolvedSrc = path.resolve(srcPath);
+  const tenantRoot = path.resolve(config.tenantDataDir);
+  if (!resolvedSrc.startsWith(tenantRoot + path.sep) && resolvedSrc !== tenantRoot) {
+    throw new Error(`tenant db_path escapes tenantDataDir: ${row.db_path}`);
+  }
 
   // 1. Close live DB handle before rename.
   try {
@@ -384,7 +392,12 @@ async function executeTermination(opts: {
         }),
         opts.requestIp ?? null,
       );
-  } catch {}
+  } catch (err) {
+    logger.error('master_audit_log write failed during termination', {
+      slug: row.slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   // 4. Cloudflare DNS cleanup — best effort.
   if (row.cloudflare_record_id && config.cloudflareEnabled) {
@@ -448,9 +461,13 @@ export function purgeExpiredDeletions(): { scanned: number; purged: number } {
   let scanned = 0;
   let purged = 0;
 
-  for (const name of fs.readdirSync(deletedDir)) {
+  for (const entry of fs.readdirSync(deletedDir, { withFileTypes: true })) {
+    const name = entry.name;
     // Only consider *.db entries — WAL/SHM sidecars are removed together.
     if (!/\.db$/.test(name)) continue;
+    // SEC: skip symlinks so a malicious symlink under deleted/ can't be
+    // followed into arbitrary filesystem deletion via fs.unlinkSync.
+    if (!entry.isFile()) continue;
     scanned += 1;
     const full = path.join(deletedDir, name);
 
@@ -472,7 +489,12 @@ export function purgeExpiredDeletions(): { scanned: number; purged: number } {
           .get(full, slugFromName) as { deletion_scheduled_at: string | null } | undefined;
 
         if (dbRow?.deletion_scheduled_at) {
-          deadlineMs = new Date(dbRow.deletion_scheduled_at).getTime();
+          // BUGHUNT-2026-05-16: SQLite ts normalization for non-UTC hosts.
+          const raw = dbRow.deletion_scheduled_at;
+          const normalized = raw.includes('T') || raw.endsWith('Z') || raw.includes('+')
+            ? raw
+            : `${raw.replace(' ', 'T')}Z`;
+          deadlineMs = new Date(normalized).getTime();
         }
       }
 

@@ -17,6 +17,7 @@
  */
 import { useState } from 'react';
 import type { JSX } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -138,6 +139,7 @@ export function StepSmsProvider({
   onBack,
   onSkip,
 }: StepProps): JSX.Element {
+  const navigate = useNavigate();
   // Tenancy + tier context for provider visibility rules. isMultiTenant
   // comes from authApi.setupStatus(); tier comes from store_config — Agent
   // 31's signup route writes 'trial' on tenant creation, billing flow
@@ -299,9 +301,7 @@ export function StepSmsProvider({
                   <button
                     key={id}
                     type="button"
-                    onClick={() => {
-                      window.location.href = '/settings?tab=billing';
-                    }}
+                    onClick={() => navigate('/settings?tab=billing')}
                     aria-disabled="true"
                     title="Upgrade to a paid plan to use BizarreSMS"
                     className="relative cursor-pointer rounded-xl border-2 border-dashed border-surface-300 bg-surface-50 px-3 py-3 text-xs font-medium text-surface-500 transition-colors hover:border-primary-400 hover:bg-primary-50/40 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-400 dark:hover:border-primary-500/40 dark:hover:bg-primary-500/5"

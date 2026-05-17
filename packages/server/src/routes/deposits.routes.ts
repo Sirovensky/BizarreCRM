@@ -73,6 +73,19 @@ function normalizeProcessor(value: unknown): string | null {
 // GET / — list deposits, filterable by customer_id / ticket_id / applied status
 // ---------------------------------------------------------------------------
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  // BUGHUNT-2026-05-16: deposits are financial records. The write endpoints
+  // (POST/PATCH/DELETE) are gated by deposits.create / .apply / .delete,
+  // but the list/detail reads were open to every authenticated user — a
+  // technician or cashier could enumerate all customer deposits + amounts.
+  // Gate behind any of the existing deposit permissions so anyone with
+  // legitimate need (creators / appliers) keeps access.
+  if (!(req as any).user || !((req as any).user.permissions?.['deposits.create']
+      || (req as any).user.permissions?.['deposits.apply']
+      || (req as any).user.permissions?.['deposits.delete']
+      || (req as any).user.role === 'admin'
+      || (req as any).user.role === 'manager')) {
+    throw new AppError('Insufficient permission to view deposits', 403);
+  }
   const customerIdRaw = req.query.customer_id;
   const ticketIdRaw = req.query.ticket_id;
 
@@ -143,6 +156,15 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
 // GET /:id — one deposit
 // ---------------------------------------------------------------------------
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+  // BUGHUNT-2026-05-16: same gate as list — restrict deposit detail reads
+  // to roles that can manage deposits.
+  if (!(req as any).user || !((req as any).user.permissions?.['deposits.create']
+      || (req as any).user.permissions?.['deposits.apply']
+      || (req as any).user.permissions?.['deposits.delete']
+      || (req as any).user.role === 'admin'
+      || (req as any).user.role === 'manager')) {
+    throw new AppError('Insufficient permission to view deposits', 403);
+  }
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id)) throw new AppError('Invalid id', 400);
 

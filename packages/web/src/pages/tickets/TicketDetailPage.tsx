@@ -593,8 +593,17 @@ export function TicketDetailPage() {
   const totalCost = allParts.reduce((sum: number, p) => sum + ((p.cost_price || 0) * (p.quantity || 0)), 0);
   const estimatedProfit = (ticket?.total || 0) - totalCost;
 
-  // Repair time
-  const repairTimeMs = ticket ? Date.now() - new Date(ticket.created_at).getTime() : 0;
+  // Repair time. BUGHUNT-2026-05-16: SQLite returns 'YYYY-MM-DD HH:MM:SS'
+  // (UTC, no 'Z' suffix); V8 parses that as LOCAL time, shifting the elapsed
+  // count by the browser's UTC offset.
+  const ticketCreatedMs = ticket
+    ? new Date(
+        ticket.created_at.includes('T') || ticket.created_at.endsWith('Z') || ticket.created_at.includes('+')
+          ? ticket.created_at
+          : `${ticket.created_at.replace(' ', 'T')}Z`
+      ).getTime()
+    : 0;
+  const repairTimeMs = ticket ? Date.now() - ticketCreatedMs : 0;
   const repairDays = Math.floor(repairTimeMs / 86400000);
   const repairHours = Math.floor((repairTimeMs % 86400000) / 3600000);
 

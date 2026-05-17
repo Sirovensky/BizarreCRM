@@ -1352,8 +1352,8 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
       >
         <div className="flex items-center justify-between p-4 border-b border-surface-100 dark:border-surface-800">
           <h3 id="dashboard-customize-title" className="font-semibold text-surface-900 dark:text-surface-100">Customize Dashboard</h3>
-          <button onClick={onClose} className="btn-icon btn-xs text-surface-400">
-            <X className="h-4 w-4" />
+          <button type="button" onClick={onClose} aria-label="Close customize dashboard" className="btn-icon btn-xs text-surface-400">
+            <X aria-hidden="true" className="h-4 w-4" />
           </button>
         </div>
         <div className="p-4 max-h-[60vh] overflow-y-auto">
@@ -1420,8 +1420,12 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
 function TodaysAppointments() {
   const navigate = useNavigate();
   // SCAN-1162: local-tz day boundaries — see localYmd comment above.
+  // Use setDate(+1) instead of Date.now()+86400000 so a DST spring-forward
+  // doesn't collapse `today` and `tomorrow` to the same local date.
   const today = localYmd(new Date());
-  const tomorrow = localYmd(new Date(Date.now() + 86400000));
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrow = localYmd(tomorrowDate);
 
   const { data: apptData, isLoading } = useQuery({
     queryKey: ['todays-appointments', today],
@@ -1658,7 +1662,11 @@ function CustomerTrendWidget({ data }: { data: DashboardSummary | null }) {
         <div className="flex items-end gap-2" style={{ height: 80 }}>
           {trend.map((m) => {
             const pct = maxCust > 0 ? (m.new_customers / maxCust) * 100 : 0;
-            const monthLabel = new Date(m.month + '-01').toLocaleDateString('en-US', { month: 'short' });
+            // BUGHUNT-2026-05-16: ISO date-only ("YYYY-MM-DD") parses as UTC
+            // midnight, which is the previous day in UTC-negative timezones
+            // — so the bar labelled "May" would render as "Apr". Append a
+            // local-time component to force local-time parsing.
+            const monthLabel = new Date(m.month + '-01T00:00:00').toLocaleDateString('en-US', { month: 'short' });
             return (
               <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
                 <span className="text-[10px] font-medium text-surface-600 dark:text-surface-400">{m.new_customers}</span>
@@ -1906,9 +1914,17 @@ function AdminOrManagerDashboard() {
   }, [widgetConfig]);
 
   const handleSaveWidgets = async (widgets: WidgetConfig[]) => {
-    await preferencesApi.set('dashboard_widgets', widgets);
-    queryClient.invalidateQueries({ queryKey: ['prefs', 'dashboard_widgets'] });
-    setShowCustomize(false);
+    try {
+      await preferencesApi.set('dashboard_widgets', widgets);
+      queryClient.invalidateQueries({ queryKey: ['prefs', 'dashboard_widgets'] });
+      setShowCustomize(false);
+    } catch (err) {
+      // BUGHUNT-2026-05-16: previously bare await would let a network/5xx
+      // failure pass silently, leaving the modal open with no feedback.
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        ?? 'Failed to save dashboard widgets';
+      toast.error(msg);
+    }
   };
 
   const { from, to } = useMemo(() => getDateRange(datePreset), [datePreset]);

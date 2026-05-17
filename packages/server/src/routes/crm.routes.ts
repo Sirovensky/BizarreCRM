@@ -50,7 +50,7 @@ import {
   getPkPassConfig,
   generatePkPass,
 } from '../services/walletPass.js';
-import type { AsyncDb } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
 
 const log = createLogger('crm');
@@ -889,33 +889,34 @@ export async function refreshSegmentMembership(
     ...params,
   );
 
-  // Simple rebuild: delete + insert. Safe because the table is small and
-  // segment_id is indexed.
-  await adb.run(`DELETE FROM customer_segment_members WHERE segment_id = ?`, segment.id);
-
+  // BUGHUNT-2026-05-16: simple rebuild: delete + insert + count UPDATE,
+  // previously a sequence of N+2 separate adb.run calls. A crash mid-loop
+  // would leave the segment partially rebuilt (some members deleted, some
+  // not yet re-inserted, count stale) until the next manual refresh — a
+  // marketing campaign that fires against the half-rebuilt segment would
+  // skip recipients silently. Bundle delete + every per-row INSERT OR IGNORE
+  // + the count UPDATE into a single atomic transaction so a refresh is
+  // all-or-nothing. The table is small and segment_id is indexed, so the
+  // transaction footprint stays bounded.
+  const refreshQueries: TxQuery[] = [
+    {
+      sql: `DELETE FROM customer_segment_members WHERE segment_id = ?`,
+      params: [segment.id],
+    },
+  ];
   for (const row of matched) {
-    try {
-      await adb.run(
-        `INSERT OR IGNORE INTO customer_segment_members (segment_id, customer_id) VALUES (?, ?)`,
-        segment.id,
-        row.id,
-      );
-    } catch (err) {
-      log.warn('Failed to insert segment member', {
-        segment_id: segment.id,
-        customer_id: row.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    refreshQueries.push({
+      sql: `INSERT OR IGNORE INTO customer_segment_members (segment_id, customer_id) VALUES (?, ?)`,
+      params: [segment.id, row.id],
+    });
   }
-
-  await adb.run(
-    `UPDATE customer_segments
-        SET member_count = ?, last_refreshed_at = datetime('now')
-      WHERE id = ?`,
-    matched.length,
-    segment.id,
-  );
+  refreshQueries.push({
+    sql: `UPDATE customer_segments
+            SET member_count = ?, last_refreshed_at = datetime('now')
+          WHERE id = ?`,
+    params: [matched.length, segment.id],
+  });
+  await adb.transaction(refreshQueries);
 
   return matched.length;
 }

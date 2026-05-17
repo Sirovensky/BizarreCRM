@@ -59,7 +59,14 @@ interface LineItemInput {
 // ---------------------------------------------------------------------------
 
 function advanceNextRunAt(current: string, kind: string, count: number): string {
-  const d = new Date(current);
+  // BUGHUNT-2026-05-16: `current` is SQLite 'YYYY-MM-DD HH:MM:SS' (UTC) with
+  // no 'Z' suffix. V8 parses that as LOCAL time, so subsequent setUTCMonth /
+  // setUTCDate arithmetic operates on the wrong base date and the monthly
+  // clamp can misfire on a non-UTC server.
+  const normalized = current.includes('T') || current.endsWith('Z') || current.includes('+')
+    ? current
+    : `${current.replace(' ', 'T')}Z`;
+  const d = new Date(normalized);
   // SCAN-1114: `setUTCMonth(m + count)` rolls Jan-31 into Mar-03 because
   // February has no 31st and JS overflows the day. Same with Mar-31 → May-01
   // via April. For the monthly and yearly kinds we clamp the day to the
@@ -286,7 +293,10 @@ function processTemplate(slug: string, db: Database.Database, tpl: InvoiceTempla
         const qty = typeof li.quantity === 'number' ? li.quantity : 1;
         const unitCents = typeof li.unit_price_cents === 'number' ? li.unit_price_cents : 0;
         const unitPrice = unitCents / 100;
-        const lineTotal = (qty * unitCents) / 100;
+        // BUGHUNT-2026-05-16: round to cents so a fractional qty (or any
+        // float intermediate) doesn't leave a sub-cent residue that drifts
+        // the stored line total away from the integer-cents subtotal.
+        const lineTotal = Math.round(qty * unitCents) / 100;
 
         db.prepare(`
           INSERT INTO invoice_line_items

@@ -86,6 +86,15 @@ router.post('/checkout-session', authMiddleware, asyncHandler(async (req: Reques
     return;
   }
 
+  // SEC: cap financing amount at invoice.amount_due to prevent a cashier
+  // sending amount_cents=1 to finance a near-zero portion of a $500 invoice,
+  // or amount_cents=999999 to over-finance.
+  const dueCents = Math.round(Number(invoice.amount_due ?? 0) * 100);
+  if (amountCents > dueCents) {
+    res.status(400).json({ success: false, message: 'amount_cents exceeds invoice balance' });
+    return;
+  }
+
   const result = await createCheckoutSession(cfg, {
     invoiceId,
     amountCents,

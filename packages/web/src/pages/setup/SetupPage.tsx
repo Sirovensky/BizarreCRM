@@ -405,27 +405,12 @@ export function SetupPage() {
         return <StepMobileAppQr {...stepProps} />;
 
       case 'review': {
-        // WEB-UIUX-850: derive `completedCards` from `pending` so the Review
-        // step's "Extras configured" section actually reflects work the
-        // owner did across the 24-step flow. Previously a `new Set()` was
-        // passed unconditionally — every owner saw an empty extras block,
-        // making the wizard read as if nothing they entered was captured.
-        const completedCards = new Set<ExtraCardId>();
-        if (pending.business_hours) completedCards.add('hours');
-        if (pending.tax_default_parts || pending.tax_default_services) completedCards.add('tax');
-        if ((pending as Record<string, unknown>).store_logo) completedCards.add('logo');
-        if ((pending as Record<string, unknown>).receipt_footer || (pending as Record<string, unknown>).receipt_slogan) {
-          completedCards.add('receipts');
-        }
-        if ((pending as Record<string, unknown>).import_completed) completedCards.add('import');
-        if ((pending as Record<string, unknown>).sms_provider) completedCards.add('sms');
-        if ((pending as Record<string, unknown>).smtp_host) completedCards.add('email');
-        if (
-          (pending as Record<string, unknown>).notify_customer_on_status_change ||
-          (pending as Record<string, unknown>).sms_template_status_change
-        ) {
-          completedCards.add('notifications');
-        }
+        // BUGHUNT-2026-05-16: previously this case shadowed `completedCards`
+        // with a fresh Set built from the WRONG pending key names
+        // (`sms_provider` vs `sms_provider_type`, `import_completed` vs
+        // `setup_imported_legacy_data`, `notify_customer_on_status_change`
+        // vs the `notif_tpl_*` family). The outer memoized completedCards
+        // (line 193) uses the right keys — pass it through directly.
         return (
           <StepReview
             pending={pending}

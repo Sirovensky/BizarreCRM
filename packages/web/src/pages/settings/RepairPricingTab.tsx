@@ -272,7 +272,7 @@ function ServicesSubTab() {
                         <input type="checkbox" checked={!!editForm.is_active} onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked ? 1 : 0 })} aria-label="Active" />
                       </td>
                       <td className="px-4 py-2 text-center">
-                        <input type="number" value={editForm.sort_order ?? 0} onChange={(e) => setEditForm({ ...editForm, sort_order: parseInt(e.target.value) || 0 })}
+                        <input type="number" value={editForm.sort_order ?? 0} onChange={(e) => setEditForm({ ...editForm, sort_order: parseInt(e.target.value, 10) || 0 })}
                           aria-label="Sort order"
                           className="w-16 px-2 py-1 text-sm text-center border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
@@ -548,7 +548,7 @@ function GradesSection({ priceId }: { priceId: number }) {
               <input type="checkbox" checked={addForm.is_default} onChange={(e) => setAddForm({ ...addForm, is_default: e.target.checked })} />
               Default grade
             </label>
-            <input type="number" value={addForm.sort_order} onChange={(e) => setAddForm({ ...addForm, sort_order: parseInt(e.target.value) || 0 })}
+            <input type="number" value={addForm.sort_order} onChange={(e) => setAddForm({ ...addForm, sort_order: parseInt(e.target.value, 10) || 0 })}
               placeholder="Sort order" className="px-2 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
             <div className="flex gap-2">
               <button onClick={() => addGradeMutation.mutate({ ...addForm, labor_price_override: addForm.labor_price_override === '' ? null : parseFloat(String(addForm.labor_price_override)) })}

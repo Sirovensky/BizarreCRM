@@ -17,6 +17,8 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { audit } from '../utils/audit.js';
 import { consumeWindowRate } from '../utils/rateLimiter.js';
 import { createLogger } from '../utils/logger.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
+import type { TxQuery } from '../db/async-db.js';
 
 const logger = createLogger('installments');
 const router = Router();
@@ -38,6 +40,13 @@ function parseId(raw: unknown, field = 'id'): number {
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
   const adb = req.asyncDb;
+
+  // SEC: gate plan creation to manager/admin. Matches the cancel endpoint
+  // and prevents a cashier/technician from minting arbitrary-value plans
+  // (which become enforceable payment schedules).
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    throw new AppError('Admin or manager role required to create a plan', 403);
+  }
 
   // Rate limit
   const rlResult = consumeWindowRate(db, 'installment_create', String(req.user!.id), RL_CREATE_MAX, RL_CREATE_WINDOW);
@@ -95,27 +104,24 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   let invoiceIdClean: number | null = null;
   if (invoice_id !== null && invoice_id !== undefined) {
     invoiceIdClean = parseId(invoice_id, 'invoice_id');
-    const invExists = await adb.get<{ id: number }>('SELECT id FROM invoices WHERE id = ?', invoiceIdClean);
+    const invExists = await adb.get<{ id: number; amount_due: number }>(
+      'SELECT id, amount_due FROM invoices WHERE id = ?',
+      invoiceIdClean,
+    );
     if (!invExists) throw new AppError('Invoice not found', 404);
+    // SEC: server-authoritative check that the plan's total doesn't exceed
+    // the invoice's outstanding balance. Without this a low-privilege user
+    // could submit total_cents=1 (or 999999) and the schedule sum check
+    // alone wouldn't catch the invoice mismatch.
+    const dueCents = Math.round(Number(invExists.amount_due ?? 0) * 100);
+    if (total_cents > dueCents) {
+      throw new AppError('total_cents exceeds invoice balance', 400);
+    }
   }
 
-  // ── Insert plan ───────────────────────────────────────────────────────────
-  const planResult = await adb.run(
-    `INSERT INTO installment_plans
-       (invoice_id, customer_id, total_cents, installment_count, frequency_days,
-        acceptance_token, acceptance_signed_at, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
-    invoiceIdClean,
-    customer_id,
-    total_cents,
-    installment_count,
-    frequency_days,
-    acceptance_token.trim(),
-    acceptance_signed_at,
-  );
-  const planId = Number(planResult.lastInsertRowid);
-
-  // ── Insert schedule rows ──────────────────────────────────────────────────
+  // Pre-validate every schedule row BEFORE inserting the plan, so a bad row
+  // doesn't leave an orphan `installment_plans` record with no schedule.
+  const normalizedSchedule: Array<{ amountCents: number; dueDate: string }> = [];
   for (const row of schedule) {
     const amountCents = Number(row.amount_cents);
     if (!Number.isInteger(amountCents) || amountCents < 1) {
@@ -125,14 +131,43 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
       throw new AppError('Each schedule row must have a due_date in YYYY-MM-DD format', 400);
     }
-    await adb.run(
-      `INSERT INTO installment_schedule (plan_id, due_date, amount_cents, status)
-       VALUES (?, ?, ?, 'pending')`,
-      planId,
-      dueDate,
-      amountCents,
-    );
+    normalizedSchedule.push({ amountCents, dueDate });
   }
+
+  // ── Insert plan + schedule rows atomically ──────────────────────────────
+  // BUGHUNT-2026-05-17: previously the plan INSERT and each schedule INSERT
+  // were sequential adb.run() calls. A crash mid-loop left the customer
+  // bound to an installment_plans row (status='active') with a partial or
+  // missing schedule — they'd see a plan in their portal with the wrong
+  // total or missing due dates and could be over- or under-charged on auto-bill.
+  // Wrap in adb.transaction(). lastInsertRowidFrom(0) so every schedule row
+  // pins to the plan's rowid (each schedule INSERT bumps last_insert_rowid()).
+  const planTxQueries: TxQuery[] = [
+    {
+      sql: `INSERT INTO installment_plans
+              (invoice_id, customer_id, total_cents, installment_count, frequency_days,
+               acceptance_token, acceptance_signed_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
+      params: [
+        invoiceIdClean,
+        customer_id,
+        total_cents,
+        installment_count,
+        frequency_days,
+        acceptance_token.trim(),
+        acceptance_signed_at,
+      ],
+    },
+  ];
+  for (const { amountCents, dueDate } of normalizedSchedule) {
+    planTxQueries.push({
+      sql: `INSERT INTO installment_schedule (plan_id, due_date, amount_cents, status)
+            VALUES (?, ?, ?, 'pending')`,
+      params: [lastInsertRowidFrom(0), dueDate, amountCents],
+    });
+  }
+  const planTxResults = await adb.transaction(planTxQueries);
+  const planId = Number(planTxResults[0].lastInsertRowid);
 
   audit(db, 'installment_plan.create', req.user!.id, req.ip ?? '', {
     plan_id: planId,
@@ -160,12 +195,22 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const params: unknown[] = [];
 
   if (customer_id) {
+    // BUGHUNT-2026-05-16: previously `parseInt("abc")` returned NaN and was
+    // bound as a SQL param, silently no-opping the filter on malformed input.
+    const cid = parseInt(customer_id, 10);
+    if (!Number.isInteger(cid) || cid <= 0) {
+      throw new AppError('customer_id must be a positive integer', 400);
+    }
     conditions.push('ip.customer_id = ?');
-    params.push(parseInt(customer_id, 10));
+    params.push(cid);
   }
   if (invoice_id) {
+    const iid = parseInt(invoice_id, 10);
+    if (!Number.isInteger(iid) || iid <= 0) {
+      throw new AppError('invoice_id must be a positive integer', 400);
+    }
     conditions.push('ip.invoice_id = ?');
-    params.push(parseInt(invoice_id, 10));
+    params.push(iid);
   }
   if (status) {
     conditions.push('ip.status = ?');

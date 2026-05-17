@@ -71,7 +71,7 @@ function decryptTotpSecret(ciphertext: string): string {
     const [ivHex, tagHex, encHex] = ciphertext.split(':');
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
     decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+    return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString('utf8');
   }
   const [vStr, ivHex, tagHex, encHex] = ciphertext.split(':');
   const version = parseInt(vStr.slice(1), 10);
@@ -79,7 +79,7 @@ function decryptTotpSecret(ciphertext: string): string {
   if (!key) throw new Error(`Unknown encryption key version: ${version}`);
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
   decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-  return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
+  return Buffer.concat([decipher.update(Buffer.from(encHex, 'hex')), decipher.final()]).toString('utf8');
 }
 
 // SCAN-648: Guard that all values in a request body map are strings.
@@ -1236,20 +1236,33 @@ router.delete('/statuses/:id', adminOnly, async (req, res) => {
         400,
       );
     }
-    // Migrate every ticket (active + soft-deleted) to the default.
-    await adb.run(
-      'UPDATE tickets SET status_id = ?, updated_at = datetime(\'now\') WHERE status_id = ?',
-      defaultStatus.id,
-      statusId,
-    );
+    // BUGHUNT-2026-05-16: previously the ticket migration UPDATE and the
+    // status DELETE were two separate adb.run calls. A crash between them
+    // would migrate every ticket onto the default status (audit row says
+    // "migrated") but leave the old status row in place — the operator
+    // would see the migration audit and assume delete succeeded, but the
+    // dropdown would still show the supposedly-deleted entry. Bundle the
+    // migration + delete into one transaction so the operator sees either
+    // "still here, still in use" or "fully gone".
+    await adb.transaction([
+      {
+        sql: "UPDATE tickets SET status_id = ?, updated_at = datetime('now') WHERE status_id = ?",
+        params: [defaultStatus.id, statusId],
+      },
+      {
+        sql: 'DELETE FROM ticket_statuses WHERE id = ?',
+        params: [statusId],
+      },
+    ]);
     audit(db, 'status_delete_migrated_tickets', req.user!.id, req.ip || 'unknown', {
       from_status_id: Number(statusId),
       to_status_id: defaultStatus.id,
       migrated_ticket_count: refCount.c,
     });
+  } else {
+    // No referencing tickets — straight delete.
+    await adb.run('DELETE FROM ticket_statuses WHERE id = ?', statusId);
   }
-
-  await adb.run('DELETE FROM ticket_statuses WHERE id = ?', statusId);
   audit(db, 'status_deleted', req.user!.id, req.ip || 'unknown', { status_id: Number(statusId) });
   res.json({ success: true, data: { message: 'Status deleted' } });
 });
@@ -1270,13 +1283,28 @@ router.post('/tax-classes', adminOnly, async (req, res) => {
   const nameClean = validateRequiredString(name, 'name', 100);
   const rateClean = validateTaxRate(rate, 'rate');
 
-  if (is_default) await adb.run('UPDATE tax_classes SET is_default = 0');
-  const result = await adb.run(
-    'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
-    nameClean,
-    rateClean,
-    is_default ? 1 : 0,
-  );
+  // BUGHUNT-2026-05-16: same atomicity gap as the PUT below — clearing all
+  // defaults followed by the INSERT, run as two adb.run calls, could leave
+  // every tax_class with is_default=0 if the INSERT failed. POS checkout
+  // relies on a default tax class existing. Bundle into a transaction.
+  let result;
+  if (is_default) {
+    const txResults = await adb.transaction([
+      { sql: 'UPDATE tax_classes SET is_default = 0', params: [] },
+      {
+        sql: 'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
+        params: [nameClean, rateClean, 1],
+      },
+    ]);
+    result = txResults[1];
+  } else {
+    result = await adb.run(
+      'INSERT INTO tax_classes (name, rate, is_default) VALUES (?, ?, ?)',
+      nameClean,
+      rateClean,
+      0,
+    );
+  }
   const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', result.lastInsertRowid);
   // AL3: auditing tax class creation because tax rate changes are financial.
   audit(db, 'tax_class_created', req.user!.id, req.ip || 'unknown', {
@@ -1306,14 +1334,30 @@ router.put('/tax-classes/:id', adminOnly, async (req, res) => {
     ? validateRequiredString(name, 'name', 100)
     : null;
 
-  if (is_default) await adb.run('UPDATE tax_classes SET is_default = 0');
-  await adb.run(
-    'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
-    nameClean,
-    rateClean,
-    is_default ?? null,
-    req.params.id,
-  );
+  // BUGHUNT-2026-05-16: previously the "clear all defaults" UPDATE and the
+  // per-row UPDATE were two sequential adb.run calls. A crash between them
+  // (when is_default was being set) would leave EVERY tax class with
+  // is_default=0 — and the DELETE handler below explicitly guards against
+  // exactly that state because POS checkout relies on
+  // `WHERE is_default = 1` returning a row. Bundle into a transaction so
+  // the default-swap is atomic.
+  if (is_default) {
+    await adb.transaction([
+      { sql: 'UPDATE tax_classes SET is_default = 0', params: [] },
+      {
+        sql: 'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
+        params: [nameClean, rateClean, is_default ?? null, req.params.id],
+      },
+    ]);
+  } else {
+    await adb.run(
+      'UPDATE tax_classes SET name = COALESCE(?, name), rate = COALESCE(?, rate), is_default = COALESCE(?, is_default) WHERE id = ?',
+      nameClean,
+      rateClean,
+      is_default ?? null,
+      req.params.id,
+    );
+  }
   const tc = await adb.get<any>('SELECT * FROM tax_classes WHERE id = ?', req.params.id);
   // AL3: audit the financial mutation with a before/after snapshot.
   audit(db, 'tax_class_updated', req.user!.id, req.ip || 'unknown', {
@@ -2987,7 +3031,7 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
 
   // Accept both `limit` + `offset` and `page` + `pagesize` so existing UI code
   // keeps working while new clients can use the simpler limit/offset form.
-  const rawOffset = parseInt(req.query.offset as string);
+  const rawOffset = parseInt(req.query.offset as string, 10);
 
   let pageSize: number;
   let offset: number;
@@ -3027,7 +3071,7 @@ router.get('/audit-logs', adminOnly, async (req, res) => {
   }
   if (user_id) {
     where += ' AND a.user_id = ?';
-    params.push(parseInt(user_id));
+    params.push(parseInt(user_id, 10));
   }
   if (from_date) {
     where += ' AND a.created_at >= ?';

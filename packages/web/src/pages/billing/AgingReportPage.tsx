@@ -275,8 +275,9 @@ export function AgingReportPage() {
                   {/* WEB-W3-017: per-row send reminder */}
                   <td className="px-3 py-2">
                     <button
+                      type="button"
                       onClick={() => handleRowReminder(inv)}
-                      disabled={sendingId === inv.id || bulkReminderMut.isPending}
+                      disabled={sendingId === inv.id || (bulkReminderMut.isPending && selected.has(inv.id))}
                       className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       title="Send payment reminder"
                     >

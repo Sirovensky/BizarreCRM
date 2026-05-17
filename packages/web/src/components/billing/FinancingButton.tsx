@@ -46,6 +46,20 @@ export function FinancingButton({
 
   // Hide entirely when the provider API key is missing, even if the toggle is on.
   const hasProviderKey = typeof providerKey === 'string' && providerKey.trim().length > 0;
+  const visible = hasProviderKey && enabled && Number.isFinite(amountCents) && amountCents >= minCents;
+
+  // WEB-FX-003: Esc-to-close for a11y dialog parity. Hooks must run on
+  // every render — they cannot be after early returns (rules-of-hooks).
+  useEffect(() => {
+    if (!showModal) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowModal(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showModal]);
+
+  // WEB-UIUX-412: focus trap keeps Tab cycling inside the stub dialog.
+  const dialogRef = useFocusTrap(showModal);
+
   if (!hasProviderKey) {
     if (import.meta.env.DEV && enabled) {
       // eslint-disable-next-line no-console
@@ -54,7 +68,7 @@ export function FinancingButton({
     return null;
   }
 
-  if (!enabled || !Number.isFinite(amountCents) || amountCents < minCents) return null;
+  if (!visible) return null;
 
   const providerLabel = provider === 'affirm' ? 'Affirm' : 'Klarna';
   const formatted = formatCents(amountCents);
@@ -90,17 +104,6 @@ export function FinancingButton({
     }
     setShowModal(true);
   };
-
-  // WEB-FX-003: Esc-to-close for a11y dialog parity.
-  useEffect(() => {
-    if (!showModal) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowModal(false); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [showModal]);
-
-  // WEB-UIUX-412: focus trap keeps Tab cycling inside the stub dialog.
-  const dialogRef = useFocusTrap(showModal);
 
   return (
     <>

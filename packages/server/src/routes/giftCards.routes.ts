@@ -61,7 +61,12 @@ function isExpired(expiresAt: string | null | undefined): boolean {
 
 function isPastExpiryInput(expiresAt: string): boolean {
   if (/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
-    return expiresAt < now().slice(0, 10);
+    // Treat a date-only input as "valid through end of that day UTC" so a
+    // user in UTC-X doesn't get their today-dated card rejected after UTC
+    // midnight crosses. Previous string-compare against now().slice(0,10)
+    // was UTC-only and rejected legitimate same-day inputs for ~8h/day.
+    const ts = Date.parse(`${expiresAt}T23:59:59.999Z`);
+    return Number.isFinite(ts) && ts < Date.now();
   }
   const ts = Date.parse(expiresAt);
   return Number.isFinite(ts) && ts < Date.now();
@@ -776,22 +781,44 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
   // BUGHUNT-2026-05-10-24: bump version stamp inside the guarded UPDATE so
   // another tab's stale balance + version becomes detectable via the
   // version field in the redeem/reload response.
-  const dec = await adb.run(
-    `UPDATE gift_cards
-        SET current_balance = current_balance - ?,
-            status = CASE
-                       WHEN current_balance - ? <= 0 THEN 'used'
-                       ELSE status
-                     END,
-            version = version + 1,
-            updated_at = ?
-      WHERE id = ? AND status = 'active' AND current_balance >= ?
-        AND (expires_at IS NULL
-             OR datetime(substr(expires_at, 1, 10), '+1 day') > datetime('now'))`,
-    amount, amount, now(), cardId, amount,
-  );
-  if (dec.changes === 0) {
-    throw new AppError('Gift card balance insufficient or expired', 409);
+  //
+  // BUGHUNT-2026-05-16: previously the guarded UPDATE and the
+  // gift_card_transactions INSERT were two sequential adb.run calls. If the
+  // INSERT failed (disk full, WAL error, FK violation if invoice_id was just
+  // deleted) the balance was already decremented but no transaction history
+  // row existed — leaving an audit gap that compliance cannot reconstruct
+  // from. Bundle both into a single transaction; expectChanges on the
+  // UPDATE preserves the original "balance insufficient or expired" 409.
+  const txNow = now();
+  try {
+    await adb.transaction([
+      {
+        sql: `UPDATE gift_cards
+                SET current_balance = current_balance - ?,
+                    status = CASE
+                               WHEN current_balance - ? <= 0 THEN 'used'
+                               ELSE status
+                             END,
+                    version = version + 1,
+                    updated_at = ?
+              WHERE id = ? AND status = 'active' AND current_balance >= ?
+                AND (expires_at IS NULL
+                     OR datetime(substr(expires_at, 1, 10), '+1 day') > datetime('now'))`,
+        params: [amount, amount, txNow, cardId, amount],
+        expectChanges: true,
+        expectChangesError: 'GIFT_CARD_REDEEM_REJECTED',
+      },
+      {
+        sql: 'INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        params: [cardId, 'redemption', -amount, invoiceId, 'Redeemed at POS', req.user!.id, txNow],
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('GIFT_CARD_REDEEM_REJECTED')) {
+      throw new AppError('Gift card balance insufficient or expired', 409);
+    }
+    throw err;
   }
 
   // Re-read committed balance + status for the response (avoid stale values).
@@ -804,11 +831,6 @@ router.post('/:id/redeem', requirePermission('gift_cards.redeem'), asyncHandler(
   const newBalance = roundCurrency(fresh?.current_balance ?? 0);
   const newStatus = fresh?.status ?? 'active';
   const newVersion = (fresh as any)?.version ?? null;
-
-  await adb.run(
-    'INSERT INTO gift_card_transactions (gift_card_id, type, amount, invoice_id, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    cardId, 'redemption', -amount, invoiceId, 'Redeemed at POS', req.user!.id, now(),
-  );
 
   audit(db, 'gift_card_redeemed', req.user!.id, req.ip || 'unknown', {
     gift_card_id: cardId,
@@ -840,17 +862,33 @@ router.post('/:id/reload', requirePermission('gift_cards.reload'), asyncHandler(
   // closes the window where a card is logically deleted between the SELECT
   // precheck and this write (SEC-H62 reload guard).
   // BUGHUNT-2026-05-10-24: bump version on reload too.
-  const reloadResult = await adb.run(
-    "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', version = version + 1, updated_at = ? WHERE id = ? AND is_deleted = 0",
-    amount, now(), cardId,
-  );
-  if (reloadResult.changes === 0) {
-    throw new AppError('Gift card not found or was deleted (concurrent request)', 409);
+  //
+  // BUGHUNT-2026-05-16: previously the balance UPDATE and the
+  // gift_card_transactions INSERT were two sequential adb.run calls. If the
+  // INSERT failed, the balance was already credited but no transaction
+  // history row existed — an audit gap on a money-in event. Bundle into a
+  // single transaction; expectChanges preserves the original 409.
+  const reloadNow = now();
+  try {
+    await adb.transaction([
+      {
+        sql: "UPDATE gift_cards SET current_balance = current_balance + ?, status = 'active', version = version + 1, updated_at = ? WHERE id = ? AND is_deleted = 0",
+        params: [amount, reloadNow, cardId],
+        expectChanges: true,
+        expectChangesError: 'GIFT_CARD_RELOAD_REJECTED',
+      },
+      {
+        sql: 'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        params: [cardId, 'adjustment', amount, 'Reloaded', req.user!.id, reloadNow],
+      },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('GIFT_CARD_RELOAD_REJECTED')) {
+      throw new AppError('Gift card not found or was deleted (concurrent request)', 409);
+    }
+    throw err;
   }
-  await adb.run(
-    'INSERT INTO gift_card_transactions (gift_card_id, type, amount, notes, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    cardId, 'adjustment', amount, 'Reloaded', req.user!.id, now(),
-  );
 
   // Re-read committed balance for accuracy (avoid stale computed values).
   // BUGHUNT-2026-05-10-24: include version for concurrent-tab detection.
@@ -1056,7 +1094,7 @@ router.post('/:id/resend-code', requirePermission('gift_cards.issue'), asyncHand
   }>(
     `SELECT id, code, current_balance, initial_balance, status,
             recipient_email, recipient_name, expires_at
-       FROM gift_cards WHERE id = ?`,
+       FROM gift_cards WHERE id = ? AND is_deleted = 0`,
     id,
   );
   if (!card) throw new AppError('Gift card not found', 404);

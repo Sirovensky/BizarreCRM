@@ -756,6 +756,7 @@ router.get('/sales', asyncHandler(async (req, res) => {
 // ─── Ticket Report ────────────────────────────────────────────────────────────
 
 router.get('/tickets', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const db = req.db; // needed for sync repair-time utils
   const from = (req.query.from_date as string) || new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
@@ -1407,6 +1408,7 @@ router.get('/stalled-tickets', asyncHandler(async (req, res) => {
 // ─── ENR-R6: Customer Acquisition Report ────────────────────────────────────
 
 router.get('/customer-acquisition', requireFeature('advancedReports'), asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const from = (req.query.from_date as string) || new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10);
   const to = (req.query.to_date as string) || new Date().toISOString().slice(0, 10);
@@ -1580,18 +1582,29 @@ router.post('/presets', asyncHandler(async (req, res) => {
 
   const filtersJson = typeof filters === 'string' ? filters : JSON.stringify(filters || {});
 
-  // If marking as default, clear other defaults for this type
+  // BUGHUNT-2026-05-16: previously the "clear other defaults" UPDATE and
+  // the INSERT were two sequential adb.run calls. A crash between them
+  // would leave the user with no default preset for this report_type even
+  // though they expected one. Bundle into a transaction.
+  let result;
   if (is_default) {
-    await adb.run(
-      'UPDATE report_presets SET is_default = 0 WHERE user_id = ? AND report_type = ?',
-      userId, report_type,
+    const txResults = await adb.transaction([
+      {
+        sql: 'UPDATE report_presets SET is_default = 0 WHERE user_id = ? AND report_type = ?',
+        params: [userId, report_type],
+      },
+      {
+        sql: `INSERT INTO report_presets (user_id, name, report_type, filters, is_default) VALUES (?, ?, ?, ?, 1)`,
+        params: [userId, name.trim(), report_type, filtersJson],
+      },
+    ]);
+    result = txResults[1];
+  } else {
+    result = await adb.run(
+      `INSERT INTO report_presets (user_id, name, report_type, filters, is_default) VALUES (?, ?, ?, ?, 0)`,
+      userId, name.trim(), report_type, filtersJson,
     );
   }
-
-  const result = await adb.run(
-    `INSERT INTO report_presets (user_id, name, report_type, filters, is_default) VALUES (?, ?, ?, ?, ?)`,
-    userId, name.trim(), report_type, filtersJson, is_default ? 1 : 0,
-  );
 
   const preset = await adb.get<any>('SELECT * FROM report_presets WHERE id = ?', result.lastInsertRowid);
 
@@ -1628,13 +1641,12 @@ router.put('/presets/:presetId', asyncHandler(async (req, res) => {
     updates.push('filters = ?');
     params.push(typeof filters === 'string' ? filters : JSON.stringify(filters));
   }
+  // BUGHUNT-2026-05-16: this used to issue the "clear other defaults" UPDATE
+  // and then the per-row UPDATE as two sequential adb.run calls; if the
+  // second crashed the user's report_type was left with zero defaults.
+  // Promotion-to-default is now bundled into a single transaction.
+  const promoteToDefault = is_default !== undefined && is_default;
   if (is_default !== undefined) {
-    if (is_default) {
-      await adb.run(
-        'UPDATE report_presets SET is_default = 0 WHERE user_id = ? AND report_type = ?',
-        userId, existing.report_type,
-      );
-    }
     updates.push('is_default = ?');
     params.push(is_default ? 1 : 0);
   }
@@ -1646,10 +1658,23 @@ router.put('/presets/:presetId', asyncHandler(async (req, res) => {
   updates.push("updated_at = datetime('now')");
   params.push(presetId, userId);
 
-  await adb.run(
-    `UPDATE report_presets SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
-    ...params,
-  );
+  if (promoteToDefault) {
+    await adb.transaction([
+      {
+        sql: 'UPDATE report_presets SET is_default = 0 WHERE user_id = ? AND report_type = ?',
+        params: [userId, existing.report_type],
+      },
+      {
+        sql: `UPDATE report_presets SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+        params,
+      },
+    ]);
+  } else {
+    await adb.run(
+      `UPDATE report_presets SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+      ...params,
+    );
+  }
 
   const updated = await adb.get<any>('SELECT * FROM report_presets WHERE id = ?', presetId);
   res.json({ success: true, data: updated });
@@ -2967,7 +2992,15 @@ router.get('/tax-report.pdf', asyncHandler(async (req, res) => {
 router.get('/partner-report.pdf', asyncHandler(async (req, res) => {
   requireAdminOrManager(req);
   const adb = req.asyncDb;
-  const year = String(req.query.year || new Date().getFullYear());
+  // BUGHUNT-2026-05-16: previously `String(req.query.year || ...)` was
+  // interpolated directly into <title> and <h1>, allowing reflected XSS via
+  // ?year=2024<script>...</script>. Validate strictly as 4-digit year.
+  const rawYear = String(req.query.year || new Date().getFullYear());
+  if (!/^\d{4}$/.test(rawYear)) {
+    res.status(400).json({ success: false, message: 'year must be a 4-digit year' });
+    return;
+  }
+  const year = rawYear;
   const from = `${year}-01-01`;
   const to = new Date().toISOString().slice(0, 10);
 
@@ -3261,6 +3294,10 @@ router.get('/nps-trend', asyncHandler(async (req, res) => {
 }));
 
 router.post('/nps', asyncHandler(async (req, res) => {
+  // BUGHUNT-2026-05-16: previously any authenticated user (tech, cashier)
+  // could fabricate NPS rows for arbitrary customer_ids. Limit to staff who
+  // would legitimately phone-bank a customer for an NPS score.
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const { customer_id, ticket_id, score, comment, channel } = req.body || {};
   const scoreNum = Number(score);

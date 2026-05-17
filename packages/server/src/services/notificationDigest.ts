@@ -209,7 +209,8 @@ export async function processNotificationDigests(db: any, tenantSlug?: string | 
       });
       if (!sent) throw new Error('Digest email send failed');
       markSent(db, claimedIds);
-      logger.info('digest sent', { tenantSlug: tenantSlug ?? null, recipientDomain: recipient.split('@')[1] || 'unknown', count: claimed.length, mode });
+      const atIdx = recipient.lastIndexOf('@');
+      logger.info('digest sent', { tenantSlug: tenantSlug ?? null, recipientDomain: atIdx > 0 ? recipient.slice(atIdx + 1) : 'unknown', count: claimed.length, mode });
     } catch (err) {
       markFailed(db, claimed, err instanceof Error ? err.message : String(err));
     }

@@ -42,13 +42,19 @@ type Theme = 'dark';
  */
 function initialTheme(): Theme {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') return 'dark';
-  const stored = localStorage.getItem(THEME_KEY);
+  // BUGHUNT-2026-05-16: Firefox privacy mode + Chrome strict-cookie policies
+  // throw SecurityError on getItem too — the typeof guard isn't enough. An
+  // unhandled throw inside the zustand `create` call crashes the renderer
+  // before any UI mounts.
+  let stored: string | null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch { return 'dark'; }
   return VALID_THEMES.has(stored ?? '') ? (stored as Theme) : 'dark';
 }
 
 function initialDensity(): Density {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') return 'default';
-  const stored = localStorage.getItem(DENSITY_KEY);
+  let stored: string | null;
+  try { stored = localStorage.getItem(DENSITY_KEY); } catch { return 'default'; }
   // Validate strictly against the allowed set; any unexpected value (storage
   // corruption, injected string) falls back to 'default' safely.
   return VALID_DENSITIES.has(stored ?? '') ? (stored as Density) : 'default';

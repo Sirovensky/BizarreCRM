@@ -13,12 +13,14 @@ import {
   validateJsonPayload,
   validateIntegerQuantity,
   validateId,
+  roundCents,
 } from '../utils/validate.js';
 import { createLogger } from '../utils/logger.js';
 import { escapeLike } from '../utils/query.js';
 import { hashEstimateApprovalToken } from '../services/estimateApprovalTokenHashBackfill.js';
 import { parsePageSize, parsePage } from '../utils/pagination.js';
-import type { AsyncDb } from '../db/async-db.js';
+import { lastInsertRowidFrom } from '../db/async-db.js';
+import type { AsyncDb, TxQuery } from '../db/async-db.js';
 
 /**
  * S20-E1: Constant-time comparison for approval tokens. Previously we used
@@ -372,8 +374,10 @@ router.post(
         unit_price: price,
         tax_amount: tax,
         tax_class_id: optionalTaxClassId(item.tax_class_id),
-        line_subtotal: qty * price,
-        line_total: qty * price + tax,
+        // BUGHUNT-2026-05-16: round persisted line totals so 3 * 19.99
+        // doesn't store 59.97000000000001 — matches the invoices/POS pattern.
+        line_subtotal: roundCents(qty * price),
+        line_total: roundCents(qty * price + tax),
       };
     });
 
@@ -454,22 +458,24 @@ router.post(
       };
     }
 
-    const result = await adb.run(`
-      INSERT INTO estimates (order_id, customer_id, status, discount, notes, valid_until, created_by)
-      VALUES ('TEMP', ?, ?, ?, ?, ?, ?)
-    `,
-      customer_id,
-      status ?? 'draft',
-      validatedDiscount,
-      notes ?? null,
-      valid_until ?? null,
-      req.user!.id,
-    );
-
-    const estimateId = result.lastInsertRowid;
-    const orderId = generateOrderId('EST', estimateId);
-    await adb.run('UPDATE estimates SET order_id = ? WHERE id = ?', orderId, estimateId);
-
+    // BUGHUNT-2026-05-16: previously this was: INSERT estimate, then UPDATE
+    // order_id, then loop {SELECT cost_price; INSERT line_item}, then UPDATE
+    // totals — all as separate adb.run calls. A crash mid-way could leave a
+    // headless estimate (no line items), or an estimate with wrong totals,
+    // or an estimate with 'TEMP' as its order_id. Pre-snapshot every line
+    // item's cost_price OUTSIDE the transaction, then commit the whole
+    // estimate (header + items + totals + final order_id) atomically.
+    const total = subtotal - validatedDiscount + totalTax;
+    const lineItemSnapshots: Array<{
+      inventory_item_id: number | null;
+      description: string;
+      quantity: number;
+      unit_price: number;
+      tax_amount: number;
+      tax_class_id: number | null;
+      line_total: number;
+      cost_price: number | null;
+    }> = [];
     for (const item of normalizedItems) {
       // WEB-UIUX-659: snapshot cost_price from inventory_items at create
       // time so the estimate's reported margin doesn't silently drift if
@@ -483,25 +489,64 @@ router.post(
           costPrice = Number(row.cost_price);
         }
       }
-      await adb.run(`
-        INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        estimateId,
-        item.inventory_item_id,
-        item.description,
-        item.quantity,
-        item.unit_price,
-        item.tax_amount,
-        item.tax_class_id,
-        item.line_total,
-        costPrice,
-      );
+      lineItemSnapshots.push({
+        inventory_item_id: item.inventory_item_id,
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        tax_amount: item.tax_amount,
+        tax_class_id: item.tax_class_id,
+        line_total: item.line_total,
+        cost_price: costPrice,
+      });
     }
 
-    const total = subtotal - validatedDiscount + totalTax;
-    await adb.run('UPDATE estimates SET subtotal = ?, total_tax = ?, total = ? WHERE id = ?',
-      subtotal, totalTax, total, estimateId);
+    const estimateTxQueries: TxQuery[] = [
+      {
+        sql: `INSERT INTO estimates (order_id, customer_id, status, discount, notes, valid_until, created_by, subtotal, total_tax, total)
+              VALUES ('TEMP', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          customer_id,
+          status ?? 'draft',
+          validatedDiscount,
+          notes ?? null,
+          valid_until ?? null,
+          req.user!.id,
+          subtotal,
+          totalTax,
+          total,
+        ],
+      },
+    ];
+    // BUGHUNT-2026-05-17: lastInsertRowidFrom(0). Bare last_insert_rowid()
+    // points at the *most recent* insert — each line_item bumps it, so
+    // line_items[1+] would attach to the prior line_item's rowid (FK fail).
+    for (const it of lineItemSnapshots) {
+      estimateTxQueries.push({
+        sql: `INSERT INTO estimate_line_items (estimate_id, inventory_item_id, description, quantity, unit_price, tax_amount, tax_class_id, total, cost_price)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          lastInsertRowidFrom(0),
+          it.inventory_item_id,
+          it.description,
+          it.quantity,
+          it.unit_price,
+          it.tax_amount,
+          it.tax_class_id,
+          it.line_total,
+          it.cost_price,
+        ],
+      });
+    }
+    const estimateTxResults = await adb.transaction(estimateTxQueries);
+    const estimateId = Number(estimateTxResults[0].lastInsertRowid);
+    const orderId = generateOrderId('EST', estimateId);
+    // order_id depends on the autoincrement id, so a second UPDATE is the
+    // only way to set it. If THIS write crashes the estimate keeps 'TEMP'
+    // as its order_id — visible but recoverable (operator can rename, or
+    // we could add a backfill cron). Acceptable failure mode vs. an
+    // orphan estimate with no line items.
+    await adb.run('UPDATE estimates SET order_id = ? WHERE id = ?', orderId, estimateId);
 
     const [estimate, items] = await Promise.all([
       adb.get<any>('SELECT * FROM estimates WHERE id = ?', estimateId),
@@ -854,8 +899,9 @@ router.put(
           unit_price: price,
           tax_amount: tax,
           tax_class_id: optionalTaxClassId(item.tax_class_id),
-          line_subtotal: qty * price,
-          line_total: qty * price + tax,
+          // BUGHUNT-2026-05-16: round persisted line totals to cents.
+          line_subtotal: roundCents(qty * price),
+          line_total: roundCents(qty * price + tax),
         };
       });
 
@@ -1498,7 +1544,7 @@ router.post(
     let advancedTicketStatusName: string | null = null;
     const statusAfterEstimate = await adb.get<any>("SELECT value FROM store_config WHERE key = 'ticket_status_after_estimate'");
     if (statusAfterEstimate?.value) {
-      const targetStatusId = parseInt(statusAfterEstimate.value);
+      const targetStatusId = parseInt(statusAfterEstimate.value, 10);
       if (targetStatusId > 0) {
         // Find linked ticket: check converted_ticket_id on estimate, or estimate_id on tickets
         const est = await adb.get<any>('SELECT converted_ticket_id FROM estimates WHERE id = ?', id);

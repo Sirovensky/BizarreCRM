@@ -144,8 +144,9 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
                     const permanent = isPermanentFailure(r.last_error);
                     return (
                       <button
+                        type="button"
                         onClick={() => !permanent && retryMut.mutate(r.id)}
-                        disabled={retryMut.isPending || permanent}
+                        disabled={(retryMut.isPending && retryMut.variables === r.id) || permanent}
                         title={
                           permanent
                             ? `Cannot retry — recipient permanent failure: ${r.last_error}`
@@ -163,8 +164,9 @@ export function FailedSendRetryList({ className }: FailedSendRetryListProps) {
                     );
                   })()}
                   <button
+                    type="button"
                     onClick={() => cancelMut.mutate(r.id)}
-                    disabled={cancelMut.isPending}
+                    disabled={cancelMut.isPending && cancelMut.variables === r.id}
                     title="Cancel"
                     className="rounded p-1 text-surface-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                   >

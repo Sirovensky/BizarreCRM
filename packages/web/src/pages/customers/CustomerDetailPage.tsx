@@ -277,7 +277,7 @@ export function CustomerDetailPage() {
     mutationFn: (confirmName: string) =>
       privacyApi.eraseCustomerPii({ customer_id: customerId, confirm_name: confirmName }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer', id] });
+      queryClient.invalidateQueries({ queryKey: ['customer', customerId] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       toast.success('Customer PII erased successfully');
       navigate('/customers');
@@ -1082,6 +1082,11 @@ function MembershipCard({ customerId }: { customerId: number }) {
   const [selectedTier, setSelectedTier] = useState<number | null>(null);
   const [membershipPaymentToken, setMembershipPaymentToken] = useState<string | null>(null);
   const [membershipCardLabel, setMembershipCardLabel] = useState<string | null>(null);
+  // BUGHUNT-2026-05-16: inline modals replace window.prompt for pause/cancel
+  // — window.prompt is suppressed in iOS PWA full-screen + inaccessible.
+  const [pauseModalOpen, setPauseModalOpen] = useState(false);
+  const [pauseReason, setPauseReason] = useState('');
+  const [cancelMode, setCancelMode] = useState<'end' | 'now' | null>(null);
   const selectedTierData = tiers.find((tier) => tier.id === selectedTier) || null;
   const selectedTierRequiresCard = Number(selectedTierData?.monthly_price ?? 0) > 0;
 
@@ -1238,16 +1243,10 @@ function MembershipCard({ customerId }: { customerId: number }) {
             {memberData.status === 'active' && isAdmin && (
               <>
                 <button
+                  type="button"
                   onClick={() => {
-                    // window.prompt returns null when the user clicks Cancel
-                    // on the native dialog. Previous `?? ''` fallback fired
-                    // the pause mutation anyway with an empty reason — a click
-                    // on the wrong button silently paused the membership.
-                    // Now abort on null; treat empty-but-OK'd string as a
-                    // valid "no reason" pause.
-                    const reason = window.prompt('Reason for pausing membership (optional):');
-                    if (reason === null) return;
-                    pauseMut.mutate(reason);
+                    setPauseReason('');
+                    setPauseModalOpen(true);
                   }}
                   disabled={pauseMut.isPending}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors"
@@ -1256,32 +1255,8 @@ function MembershipCard({ customerId }: { customerId: number }) {
                   Pause
                 </button>
                 <button
-                  onClick={async () => {
-                    // WEB-UIUX-827: two-stage confirm so the operator picks the
-                    // cancel semantics deliberately. Default = end-of-period
-                    // (customer keeps paid days). Native window.prompt with the
-                    // two explicit choices avoids a multi-step modal redesign
-                    // while still capturing intent.
-                    const choice = window.prompt(
-                      'Cancel membership?\nType "end" to cancel at the end of the current period (customer keeps paid days).\nType "now" to cancel immediately (customer forfeits remaining days).\nLeave blank to abort.',
-                      'end',
-                    );
-                    if (!choice) return;
-                    const trimmed = choice.trim().toLowerCase();
-                    if (trimmed !== 'end' && trimmed !== 'now') {
-                      toast.error('Type "end" or "now" to confirm.');
-                      return;
-                    }
-                    const immediate = trimmed === 'now';
-                    const ok = await confirm(
-                      immediate
-                        ? 'Cancel this membership immediately? Customer forfeits remaining paid days.'
-                        : 'Schedule cancellation at the end of the current paid period?',
-                      { title: 'Cancel membership?', confirmLabel: immediate ? 'Cancel now' : 'Cancel at period end', danger: immediate },
-                    );
-                    if (!ok) return;
-                    cancelMut.mutate({ immediate });
-                  }}
+                  type="button"
+                  onClick={() => setCancelMode('end')}
                   disabled={cancelMut.isPending}
                   // WEB-UIUX-1495: spell out "Cancel membership" — bare
                   // "Cancel" reads as a dialog dismiss next to Pause.
@@ -1295,6 +1270,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             )}
             {memberData.status === 'paused' && isAdmin && (
               <button
+                type="button"
                 onClick={() => resumeMut.mutate()}
                 disabled={resumeMut.isPending}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
@@ -1305,6 +1281,67 @@ function MembershipCard({ customerId }: { customerId: number }) {
             )}
           </div>
         </div>
+
+        {pauseModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setPauseModalOpen(false)}>
+            <div role="dialog" aria-modal="true" aria-labelledby="pause-mbr-title" className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+              <h3 id="pause-mbr-title" className="mb-3 text-lg font-semibold text-surface-900 dark:text-surface-100">Pause membership</h3>
+              <label className="block text-xs font-medium text-surface-700 dark:text-surface-300">
+                Reason (optional)
+                <input
+                  autoFocus
+                  type="text"
+                  value={pauseReason}
+                  onChange={(e) => setPauseReason(e.target.value)}
+                  placeholder="e.g. customer travelling"
+                  className="mt-1 w-full rounded-md border border-surface-300 px-3 py-2 text-sm dark:border-surface-600 dark:bg-surface-900"
+                />
+              </label>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setPauseModalOpen(false)} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Cancel</button>
+                <button type="button" onClick={() => { setPauseModalOpen(false); pauseMut.mutate(pauseReason); }} className="rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700">Pause</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cancelMode !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={() => setCancelMode(null)}>
+            <div role="dialog" aria-modal="true" aria-labelledby="cancel-mbr-title" className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+              <h3 id="cancel-mbr-title" className="mb-3 text-lg font-semibold text-surface-900 dark:text-surface-100">Cancel membership</h3>
+              <fieldset className="mb-4">
+                <label className="flex cursor-pointer items-start gap-2 rounded-md border border-surface-200 px-3 py-2 dark:border-surface-700">
+                  <input type="radio" name="cancel-when" value="end" checked={cancelMode === 'end'} onChange={() => setCancelMode('end')} />
+                  <span className="flex-1 text-sm">
+                    <span className="block font-medium">End of current period</span>
+                    <span className="text-xs text-surface-500">Customer keeps paid days.</span>
+                  </span>
+                </label>
+                <label className="mt-1 flex cursor-pointer items-start gap-2 rounded-md border border-surface-200 px-3 py-2 dark:border-surface-700">
+                  <input type="radio" name="cancel-when" value="now" checked={cancelMode === 'now'} onChange={() => setCancelMode('now')} />
+                  <span className="flex-1 text-sm">
+                    <span className="block font-medium">Cancel immediately</span>
+                    <span className="text-xs text-surface-500">Customer forfeits remaining days.</span>
+                  </span>
+                </label>
+              </fieldset>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setCancelMode(null)} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">Back</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const immediate = cancelMode === 'now';
+                    setCancelMode(null);
+                    cancelMut.mutate({ immediate });
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium text-white ${cancelMode === 'now' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+                >
+                  {cancelMode === 'now' ? 'Cancel now' : 'Cancel at period end'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1493,7 +1530,7 @@ function InfoTab({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.first_name.trim()) {
       toast.error('First name is required');
       return;
@@ -1503,8 +1540,9 @@ function InfoTab({
     const newPhone = stripPhone(form.phone);
     const oldPhone = customer.phone || '';
     if (newPhone !== oldPhone) {
-      const confirmed = window.confirm(
+      const confirmed = await confirm(
         "Phone changes the customer's portal login identity. Existing portal account will be unreachable until the customer re-registers with the new number.",
+        { title: 'Change portal identity?', confirmLabel: 'Change phone', danger: true },
       );
       if (!confirmed) return;
     }
@@ -1840,7 +1878,8 @@ function InfoTab({
       {/* Save */}
       <div className="mt-6 flex justify-end">
         <button
-          onClick={handleSave}
+          type="button"
+          onClick={() => { void handleSave(); }}
           disabled={updateMutation.isPending}
           className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-on-primary bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >

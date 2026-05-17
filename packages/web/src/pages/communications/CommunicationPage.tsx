@@ -2123,7 +2123,7 @@ export function CommunicationPage() {
                       {thread.subject || '(no subject)'}
                     </span>
                     <span className="text-xs text-surface-400 whitespace-nowrap ml-2">
-                      {thread.last_message_at ? new Date(thread.last_message_at).toLocaleDateString() : ''}
+                      {thread.last_message_at ? parseUtc(thread.last_message_at).toLocaleDateString() : ''}
                     </span>
                   </div>
                   <div className="text-xs text-surface-500 mt-0.5">
@@ -2605,7 +2605,7 @@ export function CommunicationPage() {
                                 )}
                                 {msg.status === 'scheduled' && msg.send_at && (
                                   <span className="text-[10px] text-amber-500">
-                                    Scheduled: {new Date(msg.send_at).toLocaleString()}
+                                    Scheduled: {parseUtc(msg.send_at).toLocaleString()}
                                   </span>
                                 )}
                               </div>

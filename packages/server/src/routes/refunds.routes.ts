@@ -83,6 +83,14 @@ interface StoreCreditRow {
 
 // GET / — List refunds
 router.get('/', asyncHandler(async (req, res) => {
+  // Sidebar gates /refunds to admin-only and the frontend route only renders
+  // for admin/manager (see web Sidebar.tsx:160). Keep the API in sync — without
+  // this gate any cashier/technician could enumerate refund history (customer
+  // names, invoice references, dollar amounts) via direct API call.
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required to list refunds', 403);
+  }
   const adb: AsyncDb = req.asyncDb;
   const page = parsePage(req.query.page);
   const pageSize = parsePageSize(req.query.pagesize, 25);
@@ -90,9 +98,13 @@ router.get('/', asyncHandler(async (req, res) => {
 
   // WEB-UIUX-1018/1019: optional status filter — admin approval queue calls
   // ?status=pending; the list page also offers approved/declined views.
+  // BUGHUNT-2026-05-16: approved refunds are stored as 'completed' in the DB
+  // (see approve handler line 347). Accept 'approved' as an alias so the
+  // frontend's Approved tab doesn't return an empty list.
   const statusRaw = typeof req.query.status === 'string' ? req.query.status.trim().toLowerCase() : '';
   const allowedStatuses = ['pending', 'approved', 'declined', 'cancelled', 'completed'];
-  const status = allowedStatuses.includes(statusRaw) ? statusRaw : '';
+  const statusAlias = statusRaw === 'approved' ? 'completed' : statusRaw;
+  const status = allowedStatuses.includes(statusAlias) ? statusAlias : '';
 
   // WEB-UIUX-1286: optional invoice_id filter so the credit-note modal can
   // detect a separate /refunds-path refund already exists against the same
@@ -516,6 +528,15 @@ router.patch('/:id/approve', requirePermission('refunds.approve'), asyncHandler(
     if (!originalPayment || !paymentIntentId) {
       await clearProcessorClaim('No captured Stripe payment intent found for this refund');
       throw new AppError('No captured Stripe payment intent found for this refund', 400);
+    }
+
+    // SEC: cap refund amount at the original Stripe payment's captured amount.
+    // Without this, a refund for $500 against a $50 PaymentIntent (because the
+    // invoice has $500 paid across multiple methods) is sent to Stripe and
+    // bounces — but the refund row is already in claimed state.
+    if (Number(refund.amount) > Number(originalPayment.amount) + 0.005) {
+      await clearProcessorClaim('Refund amount exceeds the captured Stripe payment');
+      throw new AppError('Refund amount exceeds the captured Stripe payment', 400);
     }
 
     stripeRefundResult = await refundTenantStripePayment(db, paymentIntentId, refund.amount, String(id));

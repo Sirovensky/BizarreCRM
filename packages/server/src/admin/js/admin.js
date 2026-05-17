@@ -116,7 +116,7 @@ async function saveSettings() {
   await api('PUT', '/backup-settings', {
     path: document.getElementById('backup-path').value,
     schedule: document.getElementById('backup-schedule').value,
-    retention: parseInt(document.getElementById('backup-retention').value) || 30,
+    retention: parseInt(document.getElementById('backup-retention').value, 10) || 30,
   });
   alert('Settings saved');
   load();

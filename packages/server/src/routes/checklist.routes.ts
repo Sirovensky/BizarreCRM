@@ -444,7 +444,12 @@ router.patch('/instances/:id', asyncHandler(async (req: Request, res: Response) 
     completedItemsJson = validateCompletedItemsJson(req.body.completed_items_json);
   }
 
-  const notes = req.body.notes !== undefined
+  // Distinguish "not provided" from "explicitly cleared": COALESCE(?, notes)
+  // can't see the difference between `notes: undefined` (skip update) and
+  // `notes: null|""` (clear the value). Track the explicit flag and build
+  // the SET clause to either preserve or overwrite.
+  const notesProvided = req.body.notes !== undefined;
+  const notes = notesProvided
     ? validateOptionalString(req.body.notes, 'notes', MAX_NOTES_LEN)
     : null;
 
@@ -459,17 +464,20 @@ router.patch('/instances/:id', asyncHandler(async (req: Request, res: Response) 
   // Compute completed_at when transitioning to a terminal state
   const completedAt = (status === 'completed' || status === 'abandoned') ? now() : null;
 
+  const notesClause = notesProvided ? 'notes = ?' : 'notes = notes';
   await adb.run(
     `UPDATE ops_checklist_instances
      SET completed_items_json = COALESCE(?, completed_items_json),
-         notes                = COALESCE(?, notes),
+         ${notesClause},
          status               = COALESCE(?, status),
          completed_at         = CASE
                                   WHEN ? IS NOT NULL THEN ?
                                   ELSE completed_at
                                 END
      WHERE id = ?`,
-    completedItemsJson, notes, status, completedAt, completedAt, id,
+    ...(notesProvided
+      ? [completedItemsJson, notes, status, completedAt, completedAt, id]
+      : [completedItemsJson, status, completedAt, completedAt, id]),
   );
 
   const updated = await adb.get<AnyRow>('SELECT * FROM ops_checklist_instances WHERE id = ?', id);

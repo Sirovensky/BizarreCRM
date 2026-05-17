@@ -85,7 +85,14 @@ function checkPolicyWriteRate(req: Request): void {
  */
 function computeRemainingMs(dueAt: string | null | undefined): number {
   if (!dueAt) return 0;
-  const ms = new Date(dueAt).getTime() - Date.now();
+  // BUGHUNT-2026-05-16: SLA due-at columns are stored by slaAssignment.ts via
+  // toSqliteTimestamp() → 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z'). V8 parses
+  // that as local time, shifting the SLA countdown by the server's UTC
+  // offset on every render.
+  const normalized = dueAt.includes('T') || dueAt.endsWith('Z') || dueAt.includes('+')
+    ? dueAt
+    : `${dueAt.replace(' ', 'T')}Z`;
+  const ms = new Date(normalized).getTime() - Date.now();
   return ms > 0 ? ms : 0;
 }
 
@@ -318,8 +325,14 @@ router.get('/tickets/:ticketId/status', asyncHandler(async (req: Request, res: R
   const breached = Boolean(ticket.sla_breached);
 
   // remaining_ms is time until resolution deadline (negative when overdue)
+  // BUGHUNT-2026-05-16: normalize SQLite ts before parsing (see helper note in
+  // computeRemainingMs above) — V8 misreads bare space-separated as local time.
   const remainingMs = resolutionDue
-    ? new Date(resolutionDue).getTime() - Date.now()
+    ? new Date(
+        resolutionDue.includes('T') || resolutionDue.endsWith('Z') || resolutionDue.includes('+')
+          ? resolutionDue
+          : `${resolutionDue.replace(' ', 'T')}Z`
+      ).getTime() - Date.now()
     : 0;
 
   const data: SlaStatusResponse = {

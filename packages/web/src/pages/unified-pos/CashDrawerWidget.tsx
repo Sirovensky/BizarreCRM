@@ -120,7 +120,7 @@ export function CashDrawerWidget() {
           <button
             onClick={() => setOpenModal('close')}
             className="btn btn-sm border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-            title={`Shift opened at ${new Date(shift.opened_at).toLocaleTimeString()} · float ${formatCents(shift.opening_float_cents)}`}
+            title={`Shift opened at ${new Date(shift.opened_at.includes('T') || shift.opened_at.endsWith('Z') ? shift.opened_at : `${shift.opened_at.replace(' ', 'T')}Z`).toLocaleTimeString()} · float ${formatCents(shift.opening_float_cents)}`}
           >
             <Unlock className="h-4 w-4" />
             Close Shift
@@ -128,7 +128,7 @@ export function CashDrawerWidget() {
         ) : shift ? (
           <span
             className="inline-flex h-9 items-center gap-2 rounded-md border border-surface-300 px-3 text-sm font-medium text-surface-600 dark:border-surface-600 dark:text-surface-300"
-            title={`Shift opened at ${new Date(shift.opened_at).toLocaleTimeString()} · float ${formatCents(shift.opening_float_cents)}`}
+            title={`Shift opened at ${new Date(shift.opened_at.includes('T') || shift.opened_at.endsWith('Z') ? shift.opened_at : `${shift.opened_at.replace(' ', 'T')}Z`).toLocaleTimeString()} · float ${formatCents(shift.opening_float_cents)}`}
           >
             <Unlock className="h-4 w-4" />
             Shift Open

@@ -152,9 +152,20 @@ router.delete('/sequences/:id', asyncHandler(async (req: Request, res: Response)
  * }
  */
 router.get('/invoices/aging', asyncHandler(async (req: Request, res: Response) => {
+  // Frontend route /billing/aging is gated to admin/manager (App.tsx
+  // RequireRole). Keep the API in sync — the aging report exposes the full
+  // overdue AR ledger (customer names + dollar amounts + buckets) and is not
+  // intended for cashier/technician access.
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'manager') {
+    throw new AppError('Admin or manager role required to view aging report', 403);
+  }
   // Round amount_due at the SQL boundary since the underlying column is a
   // REAL float (criticalaudit.md §M7). Every subsequent operation works in
   // integer cents, so bucket totals cannot drift.
+  // BUGHUNT-2026-05-16: cap result set at 2000 rows. A tenant with thousands
+  // of overdue invoices could otherwise materialize the entire ledger into a
+  // single JSON response and OOM the request handler.
   const rows = await req.asyncDb.all<Row>(
     // Column is `due_on` on the invoices table (see migration 013) — the
     // legacy `due_date` alias never landed in the schema, so the query was
@@ -168,7 +179,8 @@ router.get('/invoices/aging', asyncHandler(async (req: Request, res: Response) =
        LEFT JOIN customers c ON c.id = i.customer_id
       WHERE i.status IN ('unpaid','overdue','partial','draft')
         AND i.amount_due > 0
-      ORDER BY i.due_on ASC`,
+      ORDER BY i.due_on ASC
+      LIMIT 2000`,
   );
 
   const now = Date.now();

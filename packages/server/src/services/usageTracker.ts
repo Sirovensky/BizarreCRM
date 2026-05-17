@@ -95,8 +95,11 @@ export function getTicketsCreatedLast30Days(tenantId: number): number {
 
   const now = new Date();
   const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
-  const prev = new Date(now);
-  prev.setMonth(prev.getMonth() - 1);
+  // Use UTC year/month directly to avoid month-overflow when day-of-month
+  // doesn't exist in the previous month (e.g. Mar 31 → "Feb 31" → Mar 3).
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth(); // 0-based
+  const prev = new Date(Date.UTC(y, m - 1, 1));
   const prevMonth = prev.toISOString().slice(0, 7);
 
   const rows = masterDb.prepare(
@@ -254,8 +257,10 @@ export function reserveTicketCreation(
 
   const now = new Date();
   const currentMonth = now.toISOString().slice(0, 7);
-  const prev = new Date(now);
-  prev.setMonth(prev.getMonth() - 1);
+  // Same month-overflow safeguard as above.
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const prev = new Date(Date.UTC(y, m - 1, 1));
   const prevMonth = prev.toISOString().slice(0, 7);
 
   const reservation = masterDb.transaction((): { allowed: boolean; current: number } => {

@@ -112,9 +112,10 @@ router.put('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid tier id', 400);
   const { name, monthly_price, discount_pct, discount_applies_to, benefits, color, sort_order, is_active } = req.body;
 
-  await adb.run(
+  const result = await adb.run(
     `UPDATE membership_tiers SET name = COALESCE(?, name), monthly_price = COALESCE(?, monthly_price),
      discount_pct = COALESCE(?, discount_pct), discount_applies_to = COALESCE(?, discount_applies_to),
      benefits = COALESCE(?, benefits), color = COALESCE(?, color), sort_order = COALESCE(?, sort_order),
@@ -123,6 +124,7 @@ router.put('/tiers/:id', asyncHandler(async (req: Request, res: Response) => {
     benefits ? JSON.stringify(benefits) : null, color ?? null, sort_order ?? null,
     is_active ?? null, now(), id
   );
+  if (!result.changes) throw new AppError('Tier not found', 404);
 
   const tier = await adb.get<AnyRow>('SELECT * FROM membership_tiers WHERE id = ?', id);
   res.json({ success: true, data: tier });
@@ -133,9 +135,11 @@ router.delete('/tiers/:id', asyncHandler(async (req: Request, res: Response) => 
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid tier id', 400);
 
   // Soft delete — don't remove active subscriptions
-  await adb.run('UPDATE membership_tiers SET is_active = 0, updated_at = ? WHERE id = ?', now(), id);
+  const result = await adb.run('UPDATE membership_tiers SET is_active = 0, updated_at = ? WHERE id = ?', now(), id);
+  if (!result.changes) throw new AppError('Tier not found', 404);
   res.json({ success: true, data: { deleted: true } });
 }));
 
@@ -259,10 +263,16 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
     });
   }
 
-  // Calculate period
+  // Calculate period — handle month-end boundary so Jan 31 + 1 month doesn't
+  // overflow to Mar 3. If the resulting day is less than the original day,
+  // clamp to the last day of the previous (intended) month.
   const start = now();
   const endDate = new Date();
-  endDate.setMonth(endDate.getMonth() + 1);
+  const originalDay = endDate.getUTCDate();
+  endDate.setUTCMonth(endDate.getUTCMonth() + 1);
+  if (endDate.getUTCDate() !== originalDay) {
+    endDate.setUTCDate(0);
+  }
   const end = endDate.toISOString().replace('T', ' ').substring(0, 19);
 
   // WEB-UIUX-1071: prefer reactivating an existing cancelled row over
@@ -355,22 +365,24 @@ router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
     );
 
     if (!chargeResult.success) {
-      await adb.run(
-        `UPDATE customer_subscriptions
-            SET status = 'cancelled',
-                updated_at = ?
-          WHERE id = ?`,
-        now(),
-        subscriptionId,
-      );
-      await adb.run(
-        'INSERT INTO subscription_payments (subscription_id, amount, status, error_message, payment_provider) VALUES (?, ?, ?, ?, ?)',
-        subscriptionId,
-        monthlyPrice,
-        'failed',
-        chargeResult.error || 'Payment declined',
-        'blockchyp',
-      );
+      // BUGHUNT-2026-05-17: atomically cancel the subscription + log the
+      // failure. Previously these were two adb.run() calls in sequence; if
+      // the second crashed, the subscription was 'cancelled' with no
+      // matching subscription_payments row, so analytics / reconciliation
+      // couldn't see WHY the customer was cancelled (lost MRR-churn reason).
+      await adb.transaction([
+        {
+          sql: `UPDATE customer_subscriptions
+                   SET status = 'cancelled',
+                       updated_at = ?
+                 WHERE id = ?`,
+          params: [now(), subscriptionId],
+        },
+        {
+          sql: 'INSERT INTO subscription_payments (subscription_id, amount, status, error_message, payment_provider) VALUES (?, ?, ?, ?, ?)',
+          params: [subscriptionId, monthlyPrice, 'failed', chargeResult.error || 'Payment declined', 'blockchyp'],
+        },
+      ]);
       audit(db, 'membership_initial_charge_failed', req.user!.id, req.ip || 'unknown', {
         subscription_id: subscriptionId,
         customer_id,
@@ -484,8 +496,16 @@ router.post('/:id/cancel', asyncHandler(async (req: Request, res: Response) => {
       const lastCharge = Number((subBeforeCancel as AnyRow).last_charge_amount) || 0;
       const startStr = (subBeforeCancel as AnyRow).current_period_start as string | null;
       const endStr = (subBeforeCancel as AnyRow).current_period_end as string | null;
-      const startMs = startStr ? new Date(startStr).getTime() : NaN;
-      const endMs = endStr ? new Date(endStr).getTime() : NaN;
+      // BUGHUNT-2026-05-16: SQLite stores period boundaries as
+      // 'YYYY-MM-DD HH:MM:SS' (no 'Z' suffix). Node.js parses that as
+      // `Invalid Date` (unlike browsers), so both startMs/endMs were NaN
+      // and Number.isFinite always false — proration silently dead, and
+      // cancelling customers never received the partial-period credit
+      // note they were owed.
+      const normalize = (v: string): string =>
+        v.includes('T') || v.endsWith('Z') || v.includes('+') ? v : `${v.replace(' ', 'T')}Z`;
+      const startMs = startStr ? new Date(normalize(startStr)).getTime() : NaN;
+      const endMs = endStr ? new Date(normalize(endStr)).getTime() : NaN;
       const nowMs = Date.now();
       if (
         lastCharge > 0
@@ -659,8 +679,10 @@ router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
   requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
-  await adb.run("UPDATE customer_subscriptions SET status = 'paused', pause_reason = ?, auto_renew = 0, next_billing_attempt_at = NULL, updated_at = ? WHERE id = ?",
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
+  const result = await adb.run("UPDATE customer_subscriptions SET status = 'paused', pause_reason = ?, auto_renew = 0, next_billing_attempt_at = NULL, updated_at = ? WHERE id = ?",
     req.body.reason || null, now(), id);
+  if (!result.changes) throw new AppError('Subscription not found', 404);
   res.json({ success: true, data: { paused: true } });
 }));
 
@@ -703,8 +725,13 @@ router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
 // ── Payment History ──────────────────────────────────────────────────
 
 router.get('/:id/payments', asyncHandler(async (req: Request, res: Response) => {
+  // SEC: gate behind requireAdmin to match the rest of this billing-history
+  // surface. Without this any authenticated user could enumerate every
+  // subscription's payment ledger (amounts, methods, transaction ids).
+  requireAdmin(req);
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
   const payments = await adb.all<AnyRow>(
     'SELECT * FROM subscription_payments WHERE subscription_id = ? ORDER BY created_at DESC',
     id

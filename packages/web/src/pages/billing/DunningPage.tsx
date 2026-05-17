@@ -344,7 +344,7 @@ export function DunningPage() {
           ))}
         </div>
         <button type="button"
-          onClick={() => {
+          onClick={async () => {
             // WEB-UIUX-840: dry-run warning when a step has days_offset = 0
             // with a destructive non-dispatch action. A "d+0 escalate" or
             // "d+0 call_queue" sequence fires against every overdue
@@ -355,8 +355,9 @@ export function DunningPage() {
               s.days_offset === 0 && (s.action === 'escalate' || s.action === 'call_queue' || s.action === 'request_card_update'),
             );
             if (dangerousImmediate) {
-              const ok = window.confirm(
+              const ok = await confirm(
                 `Step at day 0 with action "${dangerousImmediate.action}" will fire against EVERY currently-overdue invoice the moment this sequence is active. There is no batch dry-run before that fans out. Continue?`,
+                { title: 'Confirm day-0 blast', confirmLabel: 'Enable sequence', danger: true },
               );
               if (!ok) return;
             }

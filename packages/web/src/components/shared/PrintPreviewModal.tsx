@@ -124,6 +124,7 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
           {/* Work Order */}
           {ticketId && (
             <button
+              type="button"
               onClick={() => handlePrint('workorder')}
               className="flex w-full items-center gap-4 rounded-xl border-2 border-surface-200 dark:border-surface-700 p-4 text-left transition-all hover:border-blue-400 hover:bg-blue-50 dark:hover:border-blue-500 dark:hover:bg-blue-900/10"
             >
@@ -140,6 +141,7 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
 
           {/* Receipt — always available (shows as check-in receipt when unpaid) */}
           <button
+            type="button"
             onClick={() => handlePrint('receipt')}
             className="flex w-full items-center gap-4 rounded-xl border-2 border-surface-200 dark:border-surface-700 p-4 text-left transition-all hover:border-green-400 hover:bg-green-50 dark:hover:border-green-500 dark:hover:bg-green-900/10"
           >

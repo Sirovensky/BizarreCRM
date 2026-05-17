@@ -199,7 +199,7 @@ function NumberRow({ label, description, value, onChange, min, max, suffix }: {
         <input
           type="number"
           value={value}
-          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+          onChange={(e) => onChange(parseInt(e.target.value, 10) || 0)}
           min={min}
           max={max}
           className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 text-center"

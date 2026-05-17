@@ -781,6 +781,7 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
             value={form.template_body}
             onChange={(e) => setForm({ ...form, template_body: e.target.value })}
             rows={4}
+            maxLength={1600}
             placeholder={
               form.channel === 'email'
                 ? 'Hi {{first_name}}, we miss you! Come visit for 15% off.\n\nUnsubscribe: {{unsubscribe_url}}'

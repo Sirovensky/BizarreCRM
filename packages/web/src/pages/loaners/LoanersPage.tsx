@@ -220,12 +220,14 @@ function ReturnDialog({ device, onClose, onChargeCreated }: ReturnDialogProps) {
         </div>
         <div className="flex gap-3 mt-6">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => returnMutation.mutate()}
             disabled={submitDisabled}
             className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"

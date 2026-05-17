@@ -209,6 +209,9 @@ export function SubscriptionsListPage() {
   // WEB-UIUX-1065: pause/resume mutations
   const [pausingId, setPausingId] = useState<number | null>(null);
   const [resumingId, setResumingId] = useState<number | null>(null);
+  // BUGHUNT-2026-05-16: replaced window.prompt chain with an inline modal so
+  // iOS PWA / sandboxed-iframe staff can still cancel subscriptions.
+  const [cancelModalSub, setCancelModalSub] = useState<Subscription | null>(null);
   const pauseMut = useMutation({
     // WEB-UIUX-1066: capture a free-form pause reason so the win-back report
     // can categorise paused-vs-cancelled cohorts. Server stores `pause_reason`.
@@ -298,10 +301,11 @@ export function SubscriptionsListPage() {
         { title: 'Pause subscription?', confirmLabel: 'Pause' },
       );
       if (!ok) return;
-      const reasonRaw = window.prompt('Reason for pause? (optional — used in win-back reports)', '');
-      const reason = reasonRaw === null ? null : reasonRaw.trim() || null;
+      // BUGHUNT-2026-05-16: window.prompt is suppressed in iOS PWA. The reason
+      // here was always optional — pause without a reason and let the operator
+      // edit it later from the detail page if needed.
       setPausingId(sub.id);
-      pauseMut.mutate({ id: sub.id, reason });
+      pauseMut.mutate({ id: sub.id, reason: null });
     } catch (err) {
       toast.error(formatApiError(err));
     }
@@ -322,76 +326,18 @@ export function SubscriptionsListPage() {
     }
   }
 
-  async function handleCancel(sub: Subscription): Promise<void> {
-    // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
-    try {
-      // WEB-UIUX-827: prompt for cancel semantics first (end-of-period vs now).
-      const choice = window.prompt(
-        'Cancel subscription?\nType "end" to cancel at the end of the current period (customer keeps paid days).\nType "now" to cancel immediately (customer forfeits remaining days).\nLeave blank to abort.',
-        'end',
-      );
-      if (!choice) return;
-      const trimmed = choice.trim().toLowerCase();
-      if (trimmed !== 'end' && trimmed !== 'now') {
-        toast.error('Type "end" or "now" to confirm.');
-        return;
-      }
-      const immediate = trimmed === 'now';
-      // WEB-UIUX-1498: surface cancellation impact so staff know what the customer loses
-      const chargeAmt = sub.last_charge_amount ?? sub.monthly_price;
-      const chargeDate = sub.current_period_end ? formatDate(sub.current_period_end) : null;
-      const impactLine = immediate
-        ? `Customer loses ${sub.tier_name} discount + benefits today.`
-          + (chargeDate && chargeAmt != null ? ` Last charge ${chargeDate}, ${formatCurrency(chargeAmt)}.` : '')
-          + ' No refund issued — see Refund flow if needed.'
-        : `Customer keeps ${sub.tier_name} discount + benefits until ${chargeDate ?? 'period end'}. No further charges.`;
-      const ok = await confirm(
-        `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership?\n\n${impactLine}`,
-        {
-          title: 'Cancel subscription?',
-          confirmLabel: immediate ? 'Cancel now' : 'Cancel at period end',
-          danger: immediate,
-        },
-      );
-      if (!ok) return;
-      // WEB-UIUX-1067: collect cancellation reason after the operator confirms
-      // the cancel-now vs cancel-at-period-end choice. Reason buckets mirror
-      // the server allow-list; free-text note caps at 500 chars on the
-      // backend. Server tolerates blank reason for backwards-compat, but the
-      // analytics column gets NULL in that case so encourage a choice.
-      const reasonChoice = window.prompt(
-        'Why is this customer cancelling? Pick a number (analytics + retention):\n' +
-        '  1. Too expensive\n' +
-        '  2. Missing features\n' +
-        '  3. Switched to another service\n' +
-        '  4. Not getting enough value\n' +
-        '  5. Customer service / experience\n' +
-        '  6. Business closed / moved\n' +
-        '  7. No longer needed\n' +
-        '  8. Other\n' +
-        'Type a number 1–8 or leave blank to skip.',
-        '4',
-      );
-      const REASON_MAP: Record<string, string> = {
-        '1': 'too_expensive',
-        '2': 'missing_features',
-        '3': 'switched_service',
-        '4': 'low_value',
-        '5': 'customer_service',
-        '6': 'business_closed',
-        '7': 'no_longer_needed',
-        '8': 'other',
-      };
-      const reason = reasonChoice ? (REASON_MAP[reasonChoice.trim()] ?? '') : '';
-      let note = '';
-      if (reason === 'other') {
-        note = (window.prompt('Add a short note describing the cancellation reason (max 500 chars).') ?? '').slice(0, 500);
-      }
-      setCancellingId(sub.id);
-      cancelMutation.mutate({ id: sub.id, immediate, reason, note });
-    } catch (err) {
-      toast.error(formatApiError(err));
-    }
+  function handleCancel(sub: Subscription): void {
+    // BUGHUNT-2026-05-16: open the inline cancel modal instead of a
+    // window.prompt chain (suppressed in iOS PWA + a11y broken).
+    setCancelModalSub(sub);
+  }
+
+  function submitCancel(vars: { immediate: boolean; reason: string; note: string }): void {
+    const sub = cancelModalSub;
+    if (!sub) return;
+    setCancelModalSub(null);
+    setCancellingId(sub.id);
+    cancelMutation.mutate({ id: sub.id, ...vars });
   }
 
   const subs = data ?? [];
@@ -791,6 +737,119 @@ export function SubscriptionsListPage() {
           }}
         />
       )}
+
+      {/* BUGHUNT-2026-05-16: Cancel-subscription modal (replaces window.prompt chain). */}
+      {cancelModalSub && (
+        <CancelSubscriptionModal
+          sub={cancelModalSub}
+          onClose={() => setCancelModalSub(null)}
+          onSubmit={submitCancel}
+        />
+      )}
+    </div>
+  );
+}
+
+interface CancelSubscriptionModalProps {
+  sub: Subscription;
+  onClose: () => void;
+  onSubmit: (vars: { immediate: boolean; reason: string; note: string }) => void;
+}
+
+function CancelSubscriptionModal({ sub, onClose, onSubmit }: CancelSubscriptionModalProps): React.ReactElement {
+  const [mode, setMode] = useState<'end' | 'now'>('end');
+  const [reason, setReason] = useState<string>('low_value');
+  const [note, setNote] = useState('');
+
+  const chargeAmt = sub.last_charge_amount ?? sub.monthly_price;
+  const chargeDate = sub.current_period_end ? formatDate(sub.current_period_end) : null;
+  const immediate = mode === 'now';
+  const impactLine = immediate
+    ? `Customer loses ${sub.tier_name} benefits today.`
+      + (chargeDate && chargeAmt != null ? ` Last charge ${chargeDate}, ${formatCurrency(chargeAmt)}.` : '')
+      + ' No refund issued — see Refund flow if needed.'
+    : `Customer keeps ${sub.tier_name} benefits until ${chargeDate ?? 'period end'}. No further charges.`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-sub-title"
+        className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="cancel-sub-title" className="mb-1 text-lg font-semibold text-surface-900 dark:text-surface-100">
+          Cancel {sub.first_name} {sub.last_name}'s membership
+        </h3>
+        <p className="mb-4 text-xs text-surface-500 dark:text-surface-400">{sub.tier_name}</p>
+
+        <fieldset className="mb-4">
+          <legend className="mb-1 text-xs font-medium text-surface-700 dark:text-surface-300">When?</legend>
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-surface-200 px-3 py-2 dark:border-surface-700">
+            <input type="radio" name="cancel-mode" value="end" checked={mode === 'end'} onChange={() => setMode('end')} />
+            <span className="flex-1 text-sm">
+              <span className="block font-medium">End of current period</span>
+              <span className="text-xs text-surface-500">Customer keeps paid days.</span>
+            </span>
+          </label>
+          <label className="mt-1 flex cursor-pointer items-start gap-2 rounded-md border border-surface-200 px-3 py-2 dark:border-surface-700">
+            <input type="radio" name="cancel-mode" value="now" checked={mode === 'now'} onChange={() => setMode('now')} />
+            <span className="flex-1 text-sm">
+              <span className="block font-medium">Cancel immediately</span>
+              <span className="text-xs text-surface-500">Customer forfeits remaining days.</span>
+            </span>
+          </label>
+        </fieldset>
+
+        <label className="mb-3 block text-xs font-medium text-surface-700 dark:text-surface-300">
+          Reason (analytics + retention)
+          <select
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="mt-1 w-full rounded-md border border-surface-300 px-2 py-1 text-sm dark:border-surface-600 dark:bg-surface-900"
+          >
+            <option value="">(skip)</option>
+            <option value="too_expensive">Too expensive</option>
+            <option value="missing_features">Missing features</option>
+            <option value="switched_service">Switched to another service</option>
+            <option value="low_value">Not getting enough value</option>
+            <option value="customer_service">Customer service / experience</option>
+            <option value="business_closed">Business closed / moved</option>
+            <option value="no_longer_needed">No longer needed</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+
+        {reason === 'other' && (
+          <label className="mb-3 block text-xs font-medium text-surface-700 dark:text-surface-300">
+            Note (max 500 chars)
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value.slice(0, 500))}
+              rows={3}
+              className="mt-1 w-full rounded-md border border-surface-300 px-2 py-1 text-sm dark:border-surface-600 dark:bg-surface-900"
+            />
+          </label>
+        )}
+
+        <p className={`mb-4 rounded-md p-2 text-xs ${immediate ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+          {impactLine}
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md border border-surface-200 px-3 py-1.5 text-sm dark:border-surface-700">
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => onSubmit({ immediate, reason, note: reason === 'other' ? note : '' })}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium text-white ${immediate ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-600 hover:bg-amber-700'}`}
+          >
+            {immediate ? 'Cancel now' : 'Cancel at period end'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

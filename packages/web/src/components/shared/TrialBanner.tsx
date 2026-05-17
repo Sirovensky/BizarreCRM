@@ -6,7 +6,13 @@ import { useDismissible } from '@/hooks/useDismissible';
  *  positive for active. Null if no trial set. */
 function daysRemaining(trialEndsAt: string | null): number | null {
   if (!trialEndsAt) return null;
-  const end = new Date(trialEndsAt).getTime();
+  // BUGHUNT-2026-05-16: trial_ends_at is a SQLite 'YYYY-MM-DD HH:MM:SS'
+  // (UTC, no 'Z'). V8 parses that as local time, shifting the banner
+  // boundary by the operator's UTC offset.
+  const normalized = trialEndsAt.includes('T') || trialEndsAt.endsWith('Z') || trialEndsAt.includes('+')
+    ? trialEndsAt
+    : `${trialEndsAt.replace(' ', 'T')}Z`;
+  const end = new Date(normalized).getTime();
   if (Number.isNaN(end)) return null;
   const diffMs = end - Date.now();
   if (diffMs <= 0) return Math.floor(diffMs / (24 * 60 * 60 * 1000));

@@ -14,7 +14,7 @@ const persistThemeServerSide = (theme: 'light' | 'dark' | 'system'): void => {
   if (path === '/login' || path === '/signup' || path.startsWith('/reset-password')) return;
   // CSRF: read the csrf_token cookie issued at login. Without it the server
   // rejects state-changing requests on cookie-auth flows.
-  const csrf = (document.cookie.split(';').find((p) => p.trim().startsWith('csrf_token=')) || '').split('=')[1] || '';
+  const csrf = /(?:^|;\s*)csrf_token=([^;]+)/.exec(document.cookie)?.[1] || '';
   fetch('/api/v1/settings/preferences', {
     method: 'PUT',
     credentials: 'include',

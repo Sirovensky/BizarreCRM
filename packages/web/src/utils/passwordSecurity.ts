@@ -118,7 +118,7 @@ export function assessSignupPassword(password: string, context: PasswordContext 
     score: normalizedScore,
     label,
     percent: Math.max(8, (normalizedScore + 1) * 20),
-    isAcceptable: password.length >= 8 && normalizedScore >= 3 && !hasCommonPassword && !contextMatch,
+    isAcceptable: password.length >= 8 && normalizedScore >= 3 && !hasCommonPassword && !hasCommonFragment && !contextMatch,
     suggestions: uniqueSuggestions,
   };
 }

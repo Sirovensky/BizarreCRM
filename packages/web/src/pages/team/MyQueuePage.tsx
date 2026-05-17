@@ -29,8 +29,18 @@ interface QueueTicket {
   last_name: string | null;
 }
 
+// SQLite timestamps come back as 'YYYY-MM-DD HH:MM:SS' (UTC, no suffix).
+// V8 parses that string as LOCAL time, shifting the epoch by the browser's
+// UTC offset. Normalize to ISO + 'Z' before parsing.
+function parseSqliteTs(value: string): number {
+  const normalized = value.includes('T') || value.endsWith('Z') || value.includes('+')
+    ? value
+    : `${value.replace(' ', 'T')}Z`;
+  return new Date(normalized).getTime();
+}
+
 function ageBadge(createdAt: string): { label: string; color: string } {
-  const ageMs = Date.now() - new Date(createdAt).getTime();
+  const ageMs = Date.now() - parseSqliteTs(createdAt);
   const days = Math.floor(ageMs / 86400000);
   if (days >= 14) return { label: `${days}d old`, color: 'bg-error-100 text-error-700 dark:bg-error-950/40 dark:text-error-200' };
   if (days >= 7)  return { label: `${days}d old`, color: 'bg-warning-100 text-warning-800 dark:bg-warning-950/40 dark:text-warning-200' };
@@ -40,13 +50,13 @@ function ageBadge(createdAt: string): { label: string; color: string } {
 
 function dueBadge(dueOn: string | null): { label: string; color: string } | null {
   if (!dueOn) return null;
-  const due = new Date(dueOn).getTime();
+  const due = parseSqliteTs(dueOn);
   const now = Date.now();
   const diffDays = Math.floor((due - now) / 86400000);
   if (diffDays < 0)  return { label: `${Math.abs(diffDays)}d overdue`, color: 'bg-error-100 text-error-700 dark:bg-error-950/40 dark:text-error-200' };
   if (diffDays === 0) return { label: 'due today', color: 'bg-warning-100 text-warning-800 dark:bg-warning-950/40 dark:text-warning-200' };
   if (diffDays <= 2)  return { label: `due in ${diffDays}d`, color: 'bg-warning-50 text-warning-700 dark:bg-warning-950/30 dark:text-warning-300' };
-  return { label: `due ${new Date(dueOn).toLocaleDateString()}`, color: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300' };
+  return { label: `due ${new Date(due).toLocaleDateString()}`, color: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300' };
 }
 
 type SortKey = 'due_on' | 'created_at' | 'updated_at' | 'order_id' | 'total' | '';

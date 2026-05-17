@@ -8,6 +8,7 @@ import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { formatCurrency, formatCurrencySymbol, formatDate, formatDateTime } from '@/utils/format';
 import { Modal } from '@/components/shared/Modal';
+import { confirm } from '@/stores/confirmStore';
 
 // Covers every field the detail form reads or writes. Loose `number | string`
 // types on numeric columns mirror the edit-field state shape (inputs return
@@ -136,8 +137,13 @@ export function InventoryDetailPage() {
     );
   })();
 
-  const handleCancelEdit = () => {
-    if (isDirty && !window.confirm('Discard unsaved changes?')) return;
+  const handleCancelEdit = async () => {
+    if (isDirty) {
+      const ok = await confirm('Discard unsaved changes?', {
+        title: 'Discard changes?', confirmLabel: 'Discard', danger: true,
+      });
+      if (!ok) return;
+    }
     setEditMode(false);
     setForm(item);
   };
@@ -300,7 +306,7 @@ export function InventoryDetailPage() {
                   {editMode ? (
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">{currencySymbol}</span>
-                      <input type="number" step="0.01" min="0" value={f[field] || ''} onChange={(e) => setForm({ ...f, [field]: parseFloat(e.target.value) || 0 })} className="input w-full text-sm pl-12" />
+                      <input type="number" step="0.01" min="0" value={f[field] || ''} onChange={(e) => setForm({ ...f, [field]: Math.max(0, parseFloat(e.target.value) || 0) })} className="input w-full text-sm pl-12" />
                     </div>
                   ) : (
                     <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{formatCurrency(Number(item[field]) || 0)}</p>
@@ -378,7 +384,7 @@ export function InventoryDetailPage() {
           {/* Stock Adjustment Modal — WEB-UIUX-592: focus trap, Esc, auto-focus */}
           <Modal
             open={showAdjust}
-            onClose={() => setShowAdjust(false)}
+            onClose={() => { setShowAdjust(false); setAdjustQty(''); setAdjustNotes(''); }}
             labelledById="adjust-stock-title"
             size="sm"
             className="p-6"
@@ -409,7 +415,7 @@ export function InventoryDetailPage() {
                 <input value={adjustNotes} onChange={(e) => setAdjustNotes(e.target.value)} className="input w-full text-sm" placeholder="Reason for adjustment..." />
               </div>
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={() => setShowAdjust(false)} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
+                <button type="button" onClick={() => { setShowAdjust(false); setAdjustQty(''); setAdjustNotes(''); }} className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
                 <button type="button" onClick={handleAdjust} disabled={adjustMutation.isPending} className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-700 text-on-primary rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                   {adjustMutation.isPending ? 'Saving...' : 'Apply'}
                 </button>

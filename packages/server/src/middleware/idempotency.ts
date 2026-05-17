@@ -101,7 +101,11 @@ export function idempotent(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
-  const key = req.headers['x-idempotency-key'] as string | undefined;
+  const rawKey = req.headers['x-idempotency-key'];
+  // Two identical header names get joined into a comma-separated string by
+  // Node — the length / CRLF check would then pass on a compound value that
+  // can never replay, and two callers' keys could fuse into a shared row.
+  const key = Array.isArray(rawKey) ? rawKey[0] : rawKey;
   if (!key) {
     next();
     return;

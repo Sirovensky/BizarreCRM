@@ -193,8 +193,27 @@ export default function execute(task) {
         const results = [];
         const txn = db.transaction(() => {
           for (const q of task.queries) {
+            // BUGHUNT-2026-05-17: cross-statement result refs. last_insert_rowid()
+            // in SQL only works for the *immediately* prior INSERT — chaining
+            // child inserts that all want the same parent rowid silently breaks
+            // (each child INSERT bumps last_insert_rowid to its own rowid, so
+            // child[1+] reference the prior child instead of the parent, and
+            // the FK constraint rejects). Callers signal "use prior result"
+            // by passing { __txResultRef: 'lastInsertRowid', fromIndex: N }.
+            const resolvedParams = q.params?.map(p => {
+              if (p && typeof p === 'object' && p.__txResultRef === 'lastInsertRowid') {
+                const idx = p.fromIndex;
+                if (!Number.isInteger(idx) || idx < 0 || idx >= results.length) {
+                  const err = new Error(`txResultRef.fromIndex ${idx} out of range (results.length=${results.length})`);
+                  err.code = 'E_BAD_TX_REF';
+                  throw err;
+                }
+                return results[idx].lastInsertRowid;
+              }
+              return p;
+            });
             const stmt = db.prepare(q.sql);
-            const result = q.params?.length ? stmt.run(...q.params) : stmt.run();
+            const result = resolvedParams?.length ? stmt.run(...resolvedParams) : stmt.run();
             // Guarded UPDATE / DELETE: if expectChanges is set and the query
             // touched fewer rows than expected (e.g. WHERE in_stock >= ? failed
             // because stock dropped between the precheck and the transaction),

@@ -14,6 +14,19 @@ import { getTenantTz, tzModifier } from '../utils/timezone.js';
 const router = Router();
 const logger = createLogger('employees');
 
+// BUGHUNT-2026-05-16: SQLite stores timestamps as 'YYYY-MM-DD HH:MM:SS' (UTC,
+// no 'Z' suffix). V8's `new Date(...)` / `Date.parse(...)` treat a bare
+// datetime string without a TZ as LOCAL time, so on a non-UTC server every
+// computed duration is wrong by the UTC offset (hours overstated/understated
+// on every auto-close, hours-summary, and bulk-close path). Normalize first.
+function parseSqliteTs(value: string): Date {
+  if (!value) return new Date(NaN);
+  const normalized = value.includes('T') || value.endsWith('Z') || value.includes('+')
+    ? value
+    : `${value.replace(' ', 'T')}Z`;
+  return new Date(normalized);
+}
+
 // ---------------------------------------------------------------------------
 // EM5 — Auto-lunch-break deduction helper
 // Policy: if a shift exceeds the configured threshold (default 6 hours), a
@@ -130,7 +143,10 @@ export async function autoClockOutStaleSessions(adb: AsyncDb, db: any): Promise<
     let closed = 0;
 
     for (const entry of stale) {
-      const clockIn = new Date(entry.clock_in);
+      // BUGHUNT-2026-05-16: SQLite stores clock_in as 'YYYY-MM-DD HH:MM:SS'
+      // (UTC, no suffix). V8 parses that as local time, so on a UTC+N server
+      // every rawHours is over/under by N hours.
+      const clockIn = parseSqliteTs(entry.clock_in);
       const rawHours = +(((now.getTime() - clockIn.getTime()) / 3600000).toFixed(2));
       const adjustedHours = applyLunchDeduction(rawHours, cfg);
       try {
@@ -364,7 +380,7 @@ router.post(
       id, staleCutoff,
     );
     if (staleForUser) {
-      const clockInDate = new Date(staleForUser.clock_in);
+      const clockInDate = parseSqliteTs(staleForUser.clock_in);
       const rawHours = +(((Date.now() - clockInDate.getTime()) / 3600000).toFixed(2));
       const cfg = await getLunchConfig(adb);
       const adjustedHours = applyLunchDeduction(rawHours, cfg);
@@ -471,7 +487,7 @@ router.post(
     if (!openEntry) throw new AppError('Not clocked in', 400);
 
     const now = new Date();
-    const clockIn = new Date(openEntry.clock_in);
+    const clockIn = parseSqliteTs(openEntry.clock_in);
     const nowIso = now.toISOString();
 
     // Payroll period lock — refuse to close a clock entry whose clock_in or
@@ -489,10 +505,17 @@ router.post(
     const lunchCfg = await getLunchConfig(adb);
     const totalHours = applyLunchDeduction(rawHours, lunchCfg);
 
-    await adb.run(
-      'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ?',
+    // BUGHUNT-2026-05-16: guard against a concurrent second clock-out that
+    // would overwrite the first with a later timestamp and inflate hours.
+    // The `AND clock_out IS NULL` predicate + changes-check makes the close
+    // race-safe; a lost race returns 409 instead of silently corrupting.
+    const closeResult = await adb.run(
+      'UPDATE clock_entries SET clock_out = ?, total_hours = ?, notes = ? WHERE id = ? AND clock_out IS NULL',
       nowIso, totalHours, notes ?? openEntry.notes, openEntry.id
     );
+    if (!closeResult.changes) {
+      throw new AppError('Clock entry already closed; refresh and retry', 409);
+    }
 
     const entry = await adb.get('SELECT * FROM clock_entries WHERE id = ?', openEntry.id);
     audit(req.db, 'employee_clocked_out', req.user!.id, req.ip || 'unknown', {
@@ -543,7 +566,7 @@ router.post(
         results.push({ entry_id: entry.id, user_id: entry.user_id, skipped: 'payroll_locked' });
         continue;
       }
-      const clockInMs = Date.parse(entry.clock_in);
+      const clockInMs = parseSqliteTs(entry.clock_in).getTime();
       if (!Number.isFinite(clockInMs)) {
         results.push({ entry_id: entry.id, user_id: entry.user_id, skipped: 'unparseable_clock_in' });
         continue;
@@ -641,7 +664,13 @@ router.get(
         ORDER BY clock_in DESC
       `, ...params),
       adb.get<{ total_hours: number }>(`
-        SELECT COALESCE(SUM(total_hours), 0) as total_hours FROM clock_entries
+        SELECT COALESCE(SUM(
+          CASE
+            WHEN clock_out IS NULL
+              THEN (unixepoch('now') - unixepoch(clock_in)) / 3600.0
+            ELSE total_hours
+          END
+        ), 0) as total_hours FROM clock_entries
         WHERE ${conditions.join(' AND ')}
       `, ...params) as Promise<{ total_hours: number }>,
     ]);

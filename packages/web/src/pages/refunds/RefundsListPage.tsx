@@ -17,6 +17,7 @@ import { refundApi } from '@/api/endpoints';
 import { useHasPermission } from '@/hooks/useHasPermission';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { cn } from '@/utils/cn';
+import { confirm } from '@/stores/confirmStore';
 
 type StatusTab = 'pending' | 'approved' | 'declined' | 'all';
 
@@ -329,11 +330,13 @@ export function RefundsListPage() {
                         <div className="inline-flex gap-1">
                           <button
                             type="button"
-                            disabled={approveMut.isPending}
-                            onClick={() => {
-                              if (window.confirm(`Approve refund #${r.id} for ${formatCurrency(r.amount)}?`)) {
-                                approveMut.mutate(r.id);
-                              }
+                            disabled={approveMut.isPending && approveMut.variables === r.id}
+                            onClick={async () => {
+                              const ok = await confirm(
+                                `Approve refund #${r.id} for ${formatCurrency(r.amount)}?`,
+                                { title: 'Approve refund', confirmLabel: 'Approve' },
+                              );
+                              if (ok) approveMut.mutate(r.id);
                             }}
                             aria-label={`Approve refund ${r.id}`}
                             className="rounded p-1 text-green-600 hover:bg-green-50 disabled:opacity-50 dark:hover:bg-green-900/20"
@@ -342,11 +345,13 @@ export function RefundsListPage() {
                           </button>
                           <button
                             type="button"
-                            disabled={declineMut.isPending}
-                            onClick={() => {
-                              if (window.confirm(`Decline refund #${r.id}?`)) {
-                                declineMut.mutate(r.id);
-                              }
+                            disabled={declineMut.isPending && declineMut.variables === r.id}
+                            onClick={async () => {
+                              const ok = await confirm(
+                                `Decline refund #${r.id}?`,
+                                { title: 'Decline refund', confirmLabel: 'Decline', danger: true },
+                              );
+                              if (ok) declineMut.mutate(r.id);
                             }}
                             aria-label={`Decline refund ${r.id}`}
                             className="rounded p-1 text-red-600 hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-900/20"

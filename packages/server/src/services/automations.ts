@@ -290,10 +290,18 @@ async function executeSendSms(
       let allowed: boolean;
       if (isMarketing) {
         // Marketing: explicit marketing consent required.
-        allowed = row.sms_consent_marketing !== 0 && row.sms_opt_in !== 0;
+        // BUGHUNT-2026-05-16: previously also AND-gated on sms_opt_in, which
+        // silently blocked customers who explicitly clicked "yes to marketing"
+        // but never toggled the legacy global sms_opt_in flag (defaults to 0).
+        // Documented contract (line 246): only sms_consent_marketing is
+        // required for marketing triggers. NULL is treated as opted-in to
+        // match the file-level convention for pre-migration legacy rows.
+        allowed = row.sms_consent_marketing !== 0;
       } else {
-        // Transactional: either global opt-in or transactional consent.
-        allowed = row.sms_opt_in !== 0 && row.sms_consent_transactional !== 0;
+        // Transactional: either global opt-in OR transactional consent (TCPA
+        // prior-business-relationship). Match the documented intent at line 250.
+        // Block only when BOTH are explicitly 0 (defence-in-depth opt-out).
+        allowed = row.sms_opt_in !== 0 || row.sms_consent_transactional !== 0;
       }
       if (!allowed) {
         logger.info('send_sms skipped — customer opted out', {
@@ -651,13 +659,14 @@ export function runAutomations(
                   visitedRuleIds: new Set(ctx.visitedRuleIds).add(rule.id),
                 };
                 // Pass tenantSlug forward so recursive change_status chains can
-                // route WebSocket broadcasts to the correct tenant.
+                // route WebSocket broadcasts to the correct tenant. runAutomations
+                // launches its own async IIFE — caller does not await.
                 runAutomations(
                   db,
                   'ticket_status_changed',
                   {
                     ...context,
-                    from_status_id: (context.ticket as any)?.status_id,
+                    from_status_id: (context.ticket as Record<string, unknown> | undefined)?.status_id,
                     to_status_id: actionConfig.status_id,
                   },
                   nextCtx,

@@ -467,11 +467,16 @@ router.post('/:id/mark-lost', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STO
     id,
   );
 
+  // Round to cents so a value like 9.999 doesn't land in the invoice as
+  // a 3-decimal float. Mirrors how `/return` calls validatePrice.
   const chargeAmountNum = charge_amount === undefined || charge_amount === null
     ? null
-    : Number(charge_amount);
+    : Math.round(Number(charge_amount) * 100) / 100;
   if (chargeAmountNum !== null && (!Number.isFinite(chargeAmountNum) || chargeAmountNum < 0)) {
     throw new AppError('charge_amount must be a non-negative number', 400);
+  }
+  if (chargeAmountNum !== null && chargeAmountNum > 999999.99) {
+    throw new AppError('charge_amount exceeds maximum', 400);
   }
   const recordCharge = chargeAmountNum !== null && chargeAmountNum > 0;
   const txNow = now();
@@ -498,7 +503,14 @@ router.post('/:id/mark-lost', requirePermission(PERMISSIONS.INVENTORY_ADJUST_STO
   let charge: any = null;
   if (recordCharge && active?.customer_id) {
     try {
-      const orderId = `LOAN-LOST-${id}-${Date.now()}`;
+      // BUGHUNT-2026-05-16: mirror the `/return` charge path — use the
+      // shared INV-XXXX counter so the row lands in the regular invoice
+      // sequence and can never collide with a UNIQUE order_id (the prior
+      // `LOAN-LOST-${id}-${Date.now()}` could collide on same-ms retries
+      // and was hidden from the `INV-*` invoice list filter).
+      const orderId = formatInvoiceOrderId(
+        allocateUniqueOrderId(db, 'invoice_order_id', 'invoices', 'order_id', 'INV-'),
+      );
       const status = charge_paid ? 'paid' : 'unpaid';
       const insertInv = await adb.run(
         `INSERT INTO invoices

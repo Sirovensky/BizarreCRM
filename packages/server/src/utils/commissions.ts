@@ -218,6 +218,12 @@ export async function reverseCommission(
   if (!Number.isFinite(sourceId) || sourceId <= 0) return 0;
 
   const column = sourceType === 'ticket' ? 'ticket_id' : 'invoice_id';
+  // Defence-in-depth: the column name is interpolated into the SQL string,
+  // so reject any future caller that passes a non-canonical sourceType
+  // before the value ever reaches the DB.
+  if (column !== 'ticket_id' && column !== 'invoice_id') {
+    throw new AppError(`Invalid commission source column: ${column}`, 400);
+  }
   const rows = await adb.all<{
     id: number;
     user_id: number;

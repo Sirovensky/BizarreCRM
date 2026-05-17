@@ -26,6 +26,7 @@ import {
 import type { StepProps } from '../wizardTypes';
 import { settingsApi } from '@/api/endpoints';
 import { validateEmail } from '@/services/validationService';
+import { confirm } from '@/stores/confirmStore';
 
 type EmployeeRole = 'admin' | 'tech' | 'cashier';
 type RowStatus = 'idle' | 'sending' | 'sent' | 'created' | 'failed';
@@ -266,8 +267,9 @@ export function StepFirstEmployees({
     const recipientList = toSend
       .map((r) => `• ${r.name.trim()} <${r.email.trim()}> · ${r.role}`)
       .join('\n');
-    const ok = window.confirm(
+    const ok = await confirm(
       `Send invite emails now to:\n\n${recipientList}\n\nAccounts are created immediately and the invite email goes out. Typos cannot be undone from the wizard.`,
+      { title: 'Send invite emails?', confirmLabel: 'Send invites' },
     );
     if (!ok) return;
 

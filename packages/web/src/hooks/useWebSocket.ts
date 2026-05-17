@@ -399,6 +399,10 @@ export function useWebSocket({ enabled = true }: { enabled?: boolean } = {}) {
     };
 
     ws.onmessage = (event) => {
+      // Skip messages that arrive after unmount — the close() in teardown
+      // doesn't drain queued frames, and setState/invalidateQueries on an
+      // unmounted tree triggers React warnings and stale cache refreshes.
+      if (unmountedRef.current) return;
       // WEB-FO-003: any message proves the socket is still alive end-to-end.
       // Track receipt so the watchdog interval can detect a half-open NAT.
       lastMessageAtRef.current = Date.now();

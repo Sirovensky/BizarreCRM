@@ -35,7 +35,7 @@ function decrypt(ciphertext: string): string {
     const [ivHex, tagHex, encHex] = ciphertext.split(':');
     const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
     d.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return d.update(Buffer.from(encHex, 'hex')) + d.final('utf8');
+    return Buffer.concat([d.update(Buffer.from(encHex, 'hex')), d.final()]).toString('utf8');
   }
   const [vStr, ivHex, tagHex, encHex] = ciphertext.split(':');
   const version = parseInt(vStr.slice(1), 10);
@@ -44,7 +44,7 @@ function decrypt(ciphertext: string): string {
   const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
   d.setAuthTag(Buffer.from(tagHex, 'hex'));
   if (version >= 3) d.setAAD(Buffer.from(`v${version}`));
-  return d.update(Buffer.from(encHex, 'hex')) + d.final('utf8');
+  return Buffer.concat([d.update(Buffer.from(encHex, 'hex')), d.final()]).toString('utf8');
 }
 
 const row = db.prepare('SELECT username, totp_secret, totp_enabled FROM users WHERE username = ?').get(username) as

@@ -53,15 +53,25 @@ export function computeLaborCostCents(seconds: number, rateCents: number): numbe
  * finished timers (uses `ended_at`) and live ones (uses "now").
  */
 export function computeElapsedSeconds(row: BenchTimerRow): number {
-  const start = new Date(row.started_at).getTime();
-  const end = row.ended_at ? new Date(row.ended_at).getTime() : Date.now();
+  // BUGHUNT-2026-05-16: bench_timers.started_at / ended_at are SQLite
+  // DEFAULT (datetime('now')) → 'YYYY-MM-DD HH:MM:SS' (UTC, no 'Z'). V8
+  // parses that as local time, so every elapsed/paused interval was wrong
+  // by the server's UTC offset — labor cost charged to the customer was
+  // therefore wrong on any non-UTC host.
+  const normalizeTs = (v: string): number => {
+    if (!v) return NaN;
+    const s = v.includes('T') || v.endsWith('Z') || v.includes('+') ? v : `${v.replace(' ', 'T')}Z`;
+    return new Date(s).getTime();
+  };
+  const start = normalizeTs(row.started_at);
+  const end = row.ended_at ? normalizeTs(row.ended_at) : Date.now();
   if (Number.isNaN(start) || Number.isNaN(end)) return 0;
 
   const pauses = parseJson<PauseSegment[]>(row.pause_log_json, []);
   let paused = 0;
   for (const p of pauses) {
-    const pa = new Date(p.pause_at).getTime();
-    const pr = p.resume_at ? new Date(p.resume_at).getTime() : end;
+    const pa = normalizeTs(p.pause_at);
+    const pr = p.resume_at ? normalizeTs(p.resume_at) : end;
     if (Number.isFinite(pa) && Number.isFinite(pr) && pr > pa) paused += pr - pa;
   }
 

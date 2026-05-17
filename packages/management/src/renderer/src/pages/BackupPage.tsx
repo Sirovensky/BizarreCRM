@@ -101,9 +101,12 @@ export function BackupPage() {
         if (multi) {
           const tres = await getAPI().superAdmin.listTenants();
           if (cancelled) return;
-          if (tres.success && Array.isArray(tres.data)) {
-            const opts = (tres.data as TenantOption[])
-              .filter((t) => t.status === 'active' || t.status === 'suspended');
+          const tenantList = tres.success
+            ? ((tres.data as { tenants?: TenantOption[] } | TenantOption[] | undefined)
+                && (Array.isArray(tres.data) ? (tres.data as TenantOption[]) : (tres.data as { tenants?: TenantOption[] }).tenants))
+            : null;
+          if (Array.isArray(tenantList)) {
+            const opts = tenantList.filter((t) => t.status === 'active' || t.status === 'suspended');
             setTenants(opts);
             if (opts.length > 0) setSelectedSlug(opts[0].slug);
           }
@@ -313,7 +316,13 @@ export function BackupPage() {
   // settings.last_backup, which can be stale if the scheduler missed a
   // tick but a manual `Backup Now` ran).
   const lastBackupAt = backups.length > 0 ? backups[0].created : settings?.last_backup ?? null;
-  const ageMs = lastBackupAt ? Math.max(0, Date.now() - new Date(lastBackupAt).getTime()) : Infinity;
+  // BUGHUNT-2026-05-16: SQLite timestamps are 'YYYY-MM-DD HH:MM:SS' UTC without
+  // a 'Z' suffix; V8 parses that as local time, shifting the health-band
+  // boundaries by the operator's UTC offset.
+  const normalizedTs = lastBackupAt
+    ? (lastBackupAt.includes('T') || lastBackupAt.endsWith('Z') ? lastBackupAt : `${lastBackupAt.replace(' ', 'T')}Z`)
+    : null;
+  const ageMs = normalizedTs ? Math.max(0, Date.now() - new Date(normalizedTs).getTime()) : Infinity;
   const ageHours = ageMs / (1000 * 60 * 60);
   const health: 'fresh' | 'stale' | 'overdue' | 'missing' =
     !lastBackupAt

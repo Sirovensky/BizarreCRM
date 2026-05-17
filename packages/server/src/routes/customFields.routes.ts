@@ -110,14 +110,33 @@ router.delete('/definitions/:id', adminOnly, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const existing = await adb.get('SELECT id FROM custom_field_definitions WHERE id = ?', req.params.id);
   if (!existing) throw new AppError('Custom field definition not found', 404);
-  await adb.run('DELETE FROM custom_field_values WHERE definition_id = ?', req.params.id);
-  await adb.run('DELETE FROM custom_field_definitions WHERE id = ?', req.params.id);
+  // BUGHUNT-2026-05-16: the cascading DELETE FROM custom_field_values and
+  // DELETE FROM custom_field_definitions were two sequential adb.run calls.
+  // A crash between them would orphan custom_field_values rows pointing at a
+  // now-deleted definition (or, with order swapped, leave a definition with
+  // dangling values). Bundle into a single transaction so the cascade is
+  // all-or-nothing.
+  await adb.transaction([
+    {
+      sql: 'DELETE FROM custom_field_values WHERE definition_id = ?',
+      params: [req.params.id],
+    },
+    {
+      sql: 'DELETE FROM custom_field_definitions WHERE id = ?',
+      params: [req.params.id],
+    },
+  ]);
   audit(req.db, 'custom_field_deleted', req.user!.id, req.ip || 'unknown', { definition_id: Number(req.params.id) });
   res.json({ success: true, data: { id: Number(req.params.id) } });
 }));
 
 // GET /values/:entityType/:entityId — Get custom field values for an entity
 router.get('/values/:entityType/:entityId', asyncHandler(async (req, res) => {
+  // Same allowlist as the PUT endpoint — without it, any authenticated user
+  // could probe arbitrary entity_type values via the GET path.
+  if (!VALID_ENTITY_TYPES.has(req.params.entityType)) {
+    throw new AppError('Invalid entity_type', 400);
+  }
   const adb = req.asyncDb;
   const values = await adb.all(`
     SELECT cfv.*, cfd.field_name, cfd.field_type, cfd.options

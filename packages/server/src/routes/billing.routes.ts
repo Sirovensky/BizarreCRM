@@ -12,6 +12,19 @@ const router = Router();
 const BILLING_RATE_LIMIT_MAX = 10;       // 10 attempts
 const BILLING_RATE_LIMIT_WINDOW = 600_000; // per 10 minutes
 
+// BUGHUNT-2026-05-16: billing actions affect the entire tenant's subscription
+// (checkout/portal can cancel Pro, change plan, swap payment method). The
+// router previously only required JWT auth — any technician or kiosk account
+// could open the portal. Force admin role here so a routing/middleware
+// reorder cannot silently expose these endpoints.
+function requireAdminRole(req: Request, res: Response): boolean {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ success: false, message: 'Admin access required' });
+    return false;
+  }
+  return true;
+}
+
 /** Per-tenant rate limit on billing endpoints to prevent DoS against Stripe API. */
 function billingRateLimit(req: Request, res: Response, next: NextFunction): void {
   if (!req.tenantId) {
@@ -44,6 +57,7 @@ function validateBaseDomain(req: Request, res: Response): string | null {
 // header (not cookie), so CSRF form-submit attacks aren't applicable.
 // If cookie-based session auth is ever added, enable requireCsrf here.
 router.post('/checkout', billingRateLimit, async (req: Request, res: Response) => {
+  if (!requireAdminRole(req, res)) return;
   if (!config.multiTenant || !req.tenantId || !req.tenantSlug) {
     res.status(400).json({ success: false, message: 'Billing is only available for hosted tenants' });
     return;
@@ -71,6 +85,7 @@ router.post('/checkout', billingRateLimit, async (req: Request, res: Response) =
 
 // GET /api/v1/billing/portal — Get Stripe Customer Portal URL
 router.get('/portal', billingRateLimit, async (req: Request, res: Response) => {
+  if (!requireAdminRole(req, res)) return;
   if (!config.multiTenant || !req.tenantId || !req.tenantSlug) {
     res.status(400).json({ success: false, message: 'Billing is only available for hosted tenants' });
     return;

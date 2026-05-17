@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { inventoryApi, benchApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
+import { confirm } from '@/stores/confirmStore';
 
 // WEB-UIUX-654: surface recent defect reports next to a PO line item so the
 // operator sees "this exact SKU was reported defective N times in the last
@@ -179,10 +180,11 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
   const closeModal = useCallback(() => {
     if (receiveMut.isPending) return;
     if (totalToReceive > 0) {
-      const ok = window.confirm(
+      void confirm(
         `Discard counts for ${totalToReceive} item${totalToReceive === 1 ? '' : 's'}? You'll have to recount the shipment.`,
-      );
-      if (!ok) return;
+        { title: 'Discard receive counts?', confirmLabel: 'Discard', danger: true },
+      ).then((ok) => { if (ok) onClose(); });
+      return;
     }
     onClose();
   }, [onClose, receiveMut.isPending, totalToReceive]);
@@ -305,10 +307,14 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
               Cancel
             </button>
             <button
-              onClick={() => {
+              type="button"
+              onClick={async () => {
                 const itemCount = receiving.filter((r) => r.receive_qty > 0).length;
-                if (!window.confirm(`Receive ${totalToReceive} units across ${itemCount} item(s)? This cannot be undone.`)) return;
-                receiveMut.mutate();
+                const ok = await confirm(
+                  `Receive ${totalToReceive} units across ${itemCount} item(s)? This cannot be undone.`,
+                  { title: 'Confirm receive', confirmLabel: 'Receive' },
+                );
+                if (ok) receiveMut.mutate();
               }}
               disabled={totalToReceive === 0 || receiveMut.isPending || receiving.length === 0}
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-on-primary rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
@@ -820,11 +826,18 @@ export function PurchaseOrdersPage() {
                 Cancel
               </button>
               <button
-                onClick={() => {
+                type="button"
+                onClick={async () => {
                   const hasZeroCost = newPo.items.some(
                     (i) => typeof i.inventory_item_id === 'number' && i.inventory_item_id > 0 && i.cost_price === 0,
                   );
-                  if (hasZeroCost && !window.confirm('Submit with $0 line items?')) return;
+                  if (hasZeroCost) {
+                    const ok = await confirm(
+                      'Submit with $0 line items?',
+                      { title: 'Submit purchase order?', confirmLabel: 'Submit' },
+                    );
+                    if (!ok) return;
+                  }
                   createMut.mutate();
                 }}
                 disabled={!canSubmit || createMut.isPending}

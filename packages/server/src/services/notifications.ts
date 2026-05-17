@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import type Database from 'better-sqlite3';
 import { sendSmsTenant } from './smsProvider.js';
 import { sendEmail, isEmailConfigured } from './email.js';
@@ -230,7 +231,7 @@ const RETRY_JITTER_MAX_SECONDS = 60;
 
 /** Returns a random integer in [0, RETRY_JITTER_MAX_SECONDS). */
 function retryJitterSeconds(): number {
-  return Math.floor(Math.random() * RETRY_JITTER_MAX_SECONDS);
+  return crypto.randomInt(0, RETRY_JITTER_MAX_SECONDS);
 }
 
 /**
@@ -400,9 +401,14 @@ export async function sendTicketStatusNotification(db: Database.Database, ctx: N
     const customer = db
       .prepare('SELECT sms_opt_in, sms_consent_transactional FROM customers WHERE id = ?')
       .get(ticket.customer_id) as AnyRow | undefined;
+    // BUGHUNT-2026-05-16: Ticket status notifications are TRANSACTIONAL.
+    // Match the dunningScheduler invariant (line 730): suppress only when
+    // BOTH flags are explicitly 0. OR-ing would block any customer whose
+    // sms_opt_in is 0 (the migration 001 default) even though their
+    // sms_consent_transactional column is 1.
     const optedOut =
       customer != null &&
-      (customer.sms_opt_in === 0 || customer.sms_consent_transactional === 0);
+      customer.sms_opt_in === 0 && customer.sms_consent_transactional === 0;
     if (optedOut) {
       logger.info('SMS skipped: customer opted out', {
         customerId: ticket.customer_id,

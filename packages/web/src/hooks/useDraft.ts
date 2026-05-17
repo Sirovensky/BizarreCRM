@@ -207,7 +207,12 @@ export function useDraft(
     timerRef.current = undefined;
     const scopedKey = buildScopedKey(key);
     scopedKeyRef.current = scopedKey;
-    const saved = localStorage.getItem(scopedKey);
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(scopedKey);
+    } catch {
+      // private-mode / quota-exceeded — treat as no draft
+    }
     // Reset oversize/lastSavedAt on key change — they belong to the previous key.
     setOversize(undefined);
     setWriteFailed(undefined);
@@ -261,8 +266,13 @@ export function useDraft(
     valueRef.current = value;
     clearTimeout(timerRef.current);
     if (!value) {
-      // If empty, remove the draft
-      localStorage.removeItem(currentKey);
+      // If empty, remove the draft. Wrapped in try/catch because removeItem
+      // can throw SecurityError in private mode / sandboxed iframes.
+      try {
+        localStorage.removeItem(currentKey);
+      } catch {
+        // ignore — the draft is already gone from the user's perspective
+      }
       if (mountedRef.current) {
         setHasDraft(false);
         setWriteFailed(undefined);
