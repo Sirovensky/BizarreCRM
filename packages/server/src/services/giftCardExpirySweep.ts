@@ -106,13 +106,24 @@ export function sweepExpiredGiftCards(db: Database): number {
 
   let count = 0;
   try {
+    // BUGHUNT-2026-05-17: the redeem path (giftCards.routes.ts:839) and the
+    // list "expired" filter (giftCards.routes.ts:192) both treat a bare
+    // YYYY-MM-DD `expires_at` as "valid through end of that local day" via
+    // `datetime(substr(expires_at,1,10),'+1 day')`. The sweep was using a
+    // raw `expires_at <= datetime('now')` text comparison, which flips
+    // status to 'expired' at 00:00 UTC of the labeled expiry day — a full
+    // day too early. Because the redeem path additionally checks
+    // `status = 'active'`, customers visiting the shop on the labeled
+    // expiry day saw their card auto-rejected at POS even though every
+    // other path agreed the card was still in window. Align the boundary
+    // with redeem so the three queries can never disagree.
     const result = db
       .prepare(
         `UPDATE gift_cards
             SET status = 'expired'
           WHERE status = 'active'
             AND expires_at IS NOT NULL
-            AND expires_at <= datetime('now')
+            AND datetime(substr(expires_at, 1, 10), '+1 day') <= datetime('now')
             AND is_deleted = 0`,
       )
       .run();
