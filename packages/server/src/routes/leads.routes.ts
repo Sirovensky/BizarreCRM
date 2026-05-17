@@ -988,28 +988,38 @@ router.put(
     );
 
     // Replace devices if provided
+    // BUGHUNT-2026-05-17: bundle the DELETE + each INSERT into a single
+    // adb.transaction so a mid-loop failure (constraint, disk full, FK
+    // miss on a poorly-shaped catalog service_id) doesn't leave the lead
+    // with partial devices — previously DELETE would commit and then
+    // the loop crash would leave the lead with zero devices despite the
+    // PUT containing many.
     if (validatedDevices !== undefined) {
-      await adb.run('DELETE FROM lead_devices WHERE lead_id = ?', id);
+      const deviceTxQueries: import('../db/async-db.js').TxQuery[] = [
+        { sql: 'DELETE FROM lead_devices WHERE lead_id = ?', params: [id] },
+      ];
       for (const d of validatedDevices) {
-        await adb.run(`
-          INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
-            price, tax, problem, customer_notes, security_code, start_time, end_time)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-          id,
-          d.device_name,
-          d.repair_type,
-          d.service_type,
-          d.service_id,
-          d.price,
-          d.tax,
-          d.problem,
-          d.customer_notes,
-          d.security_code,
-          d.start_time,
-          d.end_time,
-        );
+        deviceTxQueries.push({
+          sql: `INSERT INTO lead_devices (lead_id, device_name, repair_type, service_type, service_id,
+                  price, tax, problem, customer_notes, security_code, start_time, end_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          params: [
+            id,
+            d.device_name,
+            d.repair_type,
+            d.service_type,
+            d.service_id,
+            d.price,
+            d.tax,
+            d.problem,
+            d.customer_notes,
+            d.security_code,
+            d.start_time,
+            d.end_time,
+          ],
+        });
       }
+      await adb.transaction(deviceTxQueries);
     }
 
     const [lead, leadDevices] = await Promise.all([
