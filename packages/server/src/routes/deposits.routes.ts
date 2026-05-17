@@ -200,7 +200,10 @@ router.post('/', requirePermission('deposits.create'), asyncHandler(async (req: 
 
   const customerId = validateIntegerQuantity(req.body?.customer_id, 'customer_id');
   // FK: customer must exist (would otherwise silently orphan the deposit).
-  const cust = await req.asyncDb.get('SELECT id FROM customers WHERE id = ?', customerId);
+  // BUGHUNT-2026-05-17: include is_deleted=0 so a soft-deleted customer
+  // can't have a fresh financial deposit attached (PII leak into a new
+  // row GDPR-erase didn't see).
+  const cust = await req.asyncDb.get('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customerId);
   if (!cust) throw new AppError('Customer not found', 404);
 
   let ticketId: number | null = null;
@@ -246,26 +249,42 @@ router.post('/', requirePermission('deposits.create'), asyncHandler(async (req: 
     ? (linkedPayment.processor_transaction_id ?? linkedPayment.transaction_id ?? null)
     : null;
   const collectedAt = nowIso();
-  const txResults = await req.asyncDb.transaction([
-    {
-      sql: `INSERT INTO deposits (
-              customer_id, ticket_id, amount_cents, collected_at, notes,
-              payment_id, processor, processor_transaction_id, processor_response
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      params: [
-        customerId,
-        ticketId,
-        amountCents,
-        collectedAt,
-        notes || null,
-        linkedPayment?.id ?? null,
-        linkedProcessor,
-        linkedProcessorTransactionId,
-        linkedPayment?.processor_response ?? null,
-      ],
-    },
-  ]);
+  // BUGHUNT-2026-05-17: atomic insert-if-customer-still-active. A /DELETE
+  // landing between the precheck and this tx commit silently orphans the
+  // deposit onto a soft-deleted customer.
+  let txResults: Awaited<ReturnType<typeof req.asyncDb.transaction>>;
+  try {
+    txResults = await req.asyncDb.transaction([
+      {
+        sql: `INSERT INTO deposits (
+                customer_id, ticket_id, amount_cents, collected_at, notes,
+                payment_id, processor, processor_transaction_id, processor_response
+              )
+              SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+               WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)`,
+        params: [
+          customerId,
+          ticketId,
+          amountCents,
+          collectedAt,
+          notes || null,
+          linkedPayment?.id ?? null,
+          linkedProcessor,
+          linkedProcessorTransactionId,
+          linkedPayment?.processor_response ?? null,
+          customerId,
+        ],
+        expectChanges: true,
+        expectChangesError: 'CUSTOMER_DELETED_RACE',
+      },
+    ]);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('CUSTOMER_DELETED_RACE')) {
+      throw new AppError('Customer was just deleted; refresh and retry', 409);
+    }
+    throw err;
+  }
   const result = txResults[0];
 
   // Audit fire-and-forget after tx commits — audit failure must not roll back
