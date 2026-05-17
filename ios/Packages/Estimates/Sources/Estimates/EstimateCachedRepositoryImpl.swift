@@ -21,6 +21,14 @@ public actor EstimateCachedRepositoryImpl: EstimateRepository {
     private var cache: [String?: [Estimate]] = [:]
     private var syncedAt: [String?: Date] = [:]
     private var _lastSyncedAt: Date?
+    // BUGHUNT-2026-05-17: per-key inflight tracker so rapid scroll / repeated
+    // cachedList calls don't fan out into N concurrent /estimates fetches.
+    // Without this, the last-arriving response won the cache write, masking
+    // an earlier (correct) response and forcing the UI to render stale rows
+    // when the user scrolled through filters quickly. Same fix family as
+    // TicketCachedRepositoryImpl/CustomerCachedRepositoryImpl — adapted for
+    // the fire-and-forget refresh shape (callers don't await the Task).
+    private var refreshInflight: [String?: Task<Void, Never>] = [:]
 
     // MARK: - Init
 
@@ -51,15 +59,11 @@ public actor EstimateCachedRepositoryImpl: EstimateRepository {
             isStale = true
         }
 
-        if isStale {
-            Task {
-                do {
-                    let fresh = try await self.underlying.list(keyword: keyword)
-                    await self.updateCache(keyword: keyword, items: fresh)
-                } catch {
-                    AppLog.sync.warning("Estimates background refresh failed: \(error.localizedDescription, privacy: .public)")
-                }
+        if isStale, refreshInflight[keyword] == nil {
+            let task = Task<Void, Never> { [keyword] in
+                await self.runRefresh(keyword: keyword)
             }
+            refreshInflight[keyword] = task
         }
 
         return CachedResult(
@@ -102,5 +106,19 @@ public actor EstimateCachedRepositoryImpl: EstimateRepository {
         cache[keyword] = items
         syncedAt[keyword] = now
         _lastSyncedAt = now
+    }
+
+    /// Actor-isolated background refresh body. Factored out so the Task in
+    /// `cachedList` can be a plain `@Sendable` closure that hops onto the
+    /// actor here. Clears `refreshInflight[keyword]` before returning whether
+    /// the network call succeeded or failed.
+    private func runRefresh(keyword: String?) async {
+        defer { refreshInflight[keyword] = nil }
+        do {
+            let fresh = try await underlying.list(keyword: keyword)
+            updateCache(keyword: keyword, items: fresh)
+        } catch {
+            AppLog.sync.warning("Estimates background refresh failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

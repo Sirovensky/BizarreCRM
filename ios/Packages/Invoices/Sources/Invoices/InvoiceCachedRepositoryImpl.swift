@@ -38,6 +38,14 @@ public actor InvoiceCachedRepositoryImpl: InvoiceRepository {
     private var syncedAt: [InvoiceCacheFilter: Date] = [:]
     private var _lastSyncedAt: Date?
 
+    // BUGHUNT-2026-05-17: per-key inflight tracker so rapid status-tab switches
+    // + scroll + pull-to-refresh don't fan out into N concurrent /invoices
+    // fetches with the last-arriving response winning the cache write. Used
+    // for both `listExtended` (status-tab sort) and `cachedList` (legacy
+    // filter) refresh shapes — they key off different cache keys. Same
+    // fix family as EstimateCachedRepositoryImpl / InventoryCachedRepositoryImpl.
+    private var refreshInflight: [InvoiceCacheFilter: Task<Void, Never>] = [:]
+
     // MARK: - Init
 
     public init(api: APIClient) {
@@ -71,15 +79,14 @@ public actor InvoiceCachedRepositoryImpl: InvoiceRepository {
         } else {
             isStale = true
         }
-        if isStale {
-            Task {
-                do {
-                    let fresh = try await self.underlying.listExtended(statusTab: statusTab, keyword: keyword, sort: sort, cursor: nil, advancedFilter: advancedFilter)
-                    await self.updateCache(key: key, items: fresh.invoices)
-                } catch {
-                    AppLog.sync.warning("Invoices extended refresh failed: \(error.localizedDescription, privacy: .public)")
-                }
+        if isStale, refreshInflight[key] == nil {
+            let task = Task<Void, Never> { [statusTab, keyword, sort, advancedFilter, key] in
+                await self.runExtendedRefresh(
+                    statusTab: statusTab, keyword: keyword, sort: sort,
+                    advancedFilter: advancedFilter, key: key
+                )
             }
+            refreshInflight[key] = task
         }
         return InvoicesListResponse(invoices: cached, pagination: nil)
     }
@@ -104,15 +111,11 @@ public actor InvoiceCachedRepositoryImpl: InvoiceRepository {
             isStale = true
         }
 
-        if isStale {
-            Task {
-                do {
-                    let fresh = try await self.underlying.list(filter: filter, keyword: keyword)
-                    await self.updateCache(key: key, items: fresh)
-                } catch {
-                    AppLog.sync.warning("Invoices background refresh failed: \(error.localizedDescription, privacy: .public)")
-                }
+        if isStale, refreshInflight[key] == nil {
+            let task = Task<Void, Never> { [filter, keyword, key] in
+                await self.runListRefresh(filter: filter, keyword: keyword, key: key)
             }
+            refreshInflight[key] = task
         }
 
         return CachedResult(
@@ -154,5 +157,40 @@ public actor InvoiceCachedRepositoryImpl: InvoiceRepository {
         cache[key] = items
         syncedAt[key] = now
         _lastSyncedAt = now
+    }
+
+    /// Background refresh body for the extended/status-tab list shape.
+    private func runExtendedRefresh(
+        statusTab: InvoiceStatusTab,
+        keyword: String?,
+        sort: InvoiceSortOption,
+        advancedFilter: InvoiceListFilter,
+        key: InvoiceCacheFilter
+    ) async {
+        defer { refreshInflight[key] = nil }
+        do {
+            let fresh = try await underlying.listExtended(
+                statusTab: statusTab, keyword: keyword, sort: sort,
+                cursor: nil, advancedFilter: advancedFilter
+            )
+            updateCache(key: key, items: fresh.invoices)
+        } catch {
+            AppLog.sync.warning("Invoices extended refresh failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Background refresh body for the legacy plain-list shape.
+    private func runListRefresh(
+        filter: InvoiceFilter,
+        keyword: String?,
+        key: InvoiceCacheFilter
+    ) async {
+        defer { refreshInflight[key] = nil }
+        do {
+            let fresh = try await underlying.list(filter: filter, keyword: keyword)
+            updateCache(key: key, items: fresh)
+        } catch {
+            AppLog.sync.warning("Invoices background refresh failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }

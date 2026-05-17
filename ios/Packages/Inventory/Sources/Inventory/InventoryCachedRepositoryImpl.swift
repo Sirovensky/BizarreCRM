@@ -50,6 +50,13 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
     // Expose staleness data to the ViewModel (read on MainActor via await).
     private var _lastSyncedAt: Date?
 
+    // BUGHUNT-2026-05-17: per-key inflight tracker so concurrent stale reads
+    // (filter switch + scroll + pull-to-refresh in rapid succession) don't
+    // each spawn their own /inventory fetch. The last-arriving response
+    // previously won the cache write, masking earlier (correct) responses.
+    // Same fix family as EstimateCachedRepositoryImpl — fire-and-forget shape.
+    private var refreshInflight: [InventoryCacheFilter: Task<Void, Never>] = [:]
+
     // MARK: - Init
 
     public init(api: APIClient) {
@@ -101,17 +108,15 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
             isStale = true
         }
 
-        if isStale {
+        if isStale, refreshInflight[key] == nil {
             // Background refresh — best effort; UI already has stale data.
-            Task {
-                do {
-                    let fresh = try await self.underlying.listAdvanced(
-                        filter: filter, sort: sort, advanced: advanced, keyword: keyword)
-                    await self.updateCache(key: key, items: fresh)
-                } catch {
-                    AppLog.sync.warning("Inventory background refresh failed: \(error.localizedDescription, privacy: .public)")
-                }
+            let task = Task<Void, Never> { [filter, sort, advanced, keyword, key] in
+                await self.runRefresh(
+                    filter: filter, sort: sort, advanced: advanced,
+                    keyword: keyword, key: key
+                )
             }
+            refreshInflight[key] = task
         }
 
         return CachedResult(
@@ -166,5 +171,25 @@ public actor InventoryCachedRepositoryImpl: InventoryRepository {
         cache[key] = items
         syncedAt[key] = now
         _lastSyncedAt = now
+    }
+
+    /// Actor-isolated background refresh body. Hops back onto the actor from
+    /// the Task in `cachedList`. Always clears `refreshInflight[key]` before
+    /// returning regardless of success/failure.
+    private func runRefresh(
+        filter: InventoryFilter,
+        sort: InventorySortOption,
+        advanced: InventoryAdvancedFilter,
+        keyword: String?,
+        key: InventoryCacheFilter
+    ) async {
+        defer { refreshInflight[key] = nil }
+        do {
+            let fresh = try await underlying.listAdvanced(
+                filter: filter, sort: sort, advanced: advanced, keyword: keyword)
+            updateCache(key: key, items: fresh)
+        } catch {
+            AppLog.sync.warning("Inventory background refresh failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
