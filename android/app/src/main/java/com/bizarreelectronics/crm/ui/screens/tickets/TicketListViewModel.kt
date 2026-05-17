@@ -303,13 +303,23 @@ class TicketListViewModel @Inject constructor(
 
     /** Swipe-right on unassigned ticket: assign to current user. */
     fun onAssignToMe(ticketId: Long) {
-        // TODO(plan:L641): wire to ticketRepository.updateTicket with assignedTo=authPreferences.userId.
+        // BUGHUNT-2026-05-17: this was a disconnected handler — the optimistic
+        // local replaceTicketInList ran, but the launch block only logged a
+        // "TODO: wire to updateTicket" message. The user's swipe action did
+        // nothing on the server (and the local state list reset on the next
+        // refresh from Room). Unlike onMarkDone/onReopen, assigning doesn't
+        // need a status-ID lookup; it just needs the current user id.
+        val userId = authPreferences.userId
+        if (userId <= 0L) return
         val ticket = _state.value.tickets.firstOrNull { it.id == ticketId } ?: return
-        val updated = ticket.copy(assignedTo = authPreferences.userId, locallyModified = true)
+        val updated = ticket.copy(assignedTo = userId, locallyModified = true)
         replaceTicketInList(updated)
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Assign to me: ticketId=$ticketId userId=${authPreferences.userId} (TODO: wire to updateTicket)")
+                ticketRepository.updateTicket(
+                    ticketId,
+                    UpdateTicketRequest(assignedTo = userId),
+                )
             } catch (e: Exception) {
                 Log.w(TAG, "Assign to me failed: ${e.message}")
             }
