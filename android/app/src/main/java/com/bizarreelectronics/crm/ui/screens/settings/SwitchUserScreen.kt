@@ -53,6 +53,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import com.bizarreelectronics.crm.util.rememberReduceMotion
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -151,6 +152,15 @@ class SwitchUserViewModel @Inject constructor(
                 authPreferences.userRole = data.user.role
                 // Clear sensitive entry, signal navigation.
                 _state.value = SwitchUserUiState(switched = true)
+            } catch (e: CancellationException) {
+                // BUGHUNT-2026-05-17: re-throw cancellation. If the user
+                // backed out mid-switch AFTER the server accepted the new
+                // identity, painting handleError() would re-arm the entry
+                // and lock the new credentials out via wrongShakes++ —
+                // surfacing a fake "Incorrect PIN" for the (correct) PIN
+                // they just used. Re-throw so the actor state stays Loading
+                // until the explicit success path or a real error fires.
+                throw e
             } catch (e: Exception) {
                 handleError(e)
             }
