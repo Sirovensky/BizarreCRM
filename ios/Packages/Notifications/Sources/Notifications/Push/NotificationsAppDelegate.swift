@@ -128,7 +128,14 @@ extension NotificationsAppDelegate: UIApplicationDelegate {
         }
         Task {
             try? await Task.sleep(nanoseconds: 25_000_000_000) // 25s safety net
-            once.call(.newData)
+            // BUGHUNT-2026-05-17: report .failed on the timeout branch
+            // instead of .newData. Telling iOS the fetch succeeded when it
+            // actually timed out misleads the system's throttling
+            // heuristics — iOS keeps sending silent pushes the app can't
+            // complete, then eventually throttles harder when the "success"
+            // claim doesn't match observed app behaviour. .failed is the
+            // honest answer and lets iOS back off appropriately.
+            once.call(.failed)
         }
     }
 }
