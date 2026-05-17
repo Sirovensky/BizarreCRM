@@ -286,17 +286,26 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
   // neither. Conditional `WHERE status = 'open'` on the credit-note update
   // catches a concurrent apply/void that slipped in between the pre-check
   // and the transaction body.
+  // BUGHUNT-2026-05-17: also guard the invoice UPDATE with `AND status NOT
+  // IN ('void')`. Without that, a /void landing between our SELECT inv
+  // (line 265) and the tx body silently clobbers 'void' back to 'paid'
+  // (or 'partial') — same race class as the payment-record void clobber.
+  // 0 changes on either UPDATE rolls the whole tx back to the same 409.
   let applied = true;
   const STATE_CHANGED = '__credit_note_state_changed__';
   try {
     req.db.transaction(() => {
-      req.db.prepare(`
+      const invoiceUpdate = req.db.prepare(`
         UPDATE invoices
            SET amount_due = ?,
                status = ?,
                updated_at = datetime('now')
-         WHERE id = ?
+         WHERE id = ? AND status NOT IN ('void', 'refunded')
       `).run(newAmountDue, newInvoiceStatus, invoiceIdNum);
+      if (invoiceUpdate.changes === 0) {
+        applied = false;
+        throw new Error(STATE_CHANGED);
+      }
 
       const creditResult = req.db.prepare(`
         UPDATE credit_notes
@@ -318,13 +327,13 @@ router.post('/:id/apply', asyncHandler(async (req, res) => {
     // through asyncHandler as a 500 — clients should see the intended
     // retriable 409 instead.
     if (err instanceof Error && err.message === STATE_CHANGED) {
-      throw new AppError('Credit note state changed; refresh and retry', 409);
+      throw new AppError('Credit note or invoice state changed; refresh and retry', 409);
     }
     throw err;
   }
 
   if (!applied) {
-    throw new AppError('Credit note state changed; refresh and retry', 409);
+    throw new AppError('Credit note or invoice state changed; refresh and retry', 409);
   }
 
   audit(req.db, 'credit_note.applied', req.user!.id, req.ip ?? '', {
