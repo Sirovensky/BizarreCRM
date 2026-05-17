@@ -2752,50 +2752,67 @@ router.delete(
       }
     }
 
-    // SEC-H53: Explicit FTS scrub for customers_fts (content='customers').
-    // The customers_fts_delete trigger fires when we DELETE FROM customers below,
-    // which would normally remove the entry.  We issue the delete explicitly here
-    // so the FTS index is clean even if the trigger is missing or re-created.
-    await adb.run(
-      `INSERT INTO customers_fts(customers_fts, rowid, first_name, last_name, email, phone, mobile, organization, city, postcode, tags)
-       VALUES ('delete', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id,
-      customer.first_name ?? '',
-      customer.last_name ?? '',
-      customer.email ?? '',
-      customer.phone ?? '',
-      customer.mobile ?? '',
-      customer.organization ?? '',
-      customer.city ?? '',
-      customer.postcode ?? '',
-      customer.tags ?? '',
-    );
+    // BUGHUNT-2026-05-17: GDPR-erase final SQL phase is now atomic. Prior
+    // chain was 7+ sequential adb.run() calls — a crash between, say, the
+    // child-table NULL-out and the final DELETE FROM customers left the
+    // customer row intact but with all relationships/messages already
+    // scrubbed, and a crash after DELETE FROM customers but before the
+    // audit_log JSON scrub left PII in audit details forever. Both are
+    // compliance-grade gaps under GDPR Article 17 (right to erasure).
+    //
+    // Wrap everything from the customers_fts scrub through the audit_log
+    // scrub in a single transaction so the on-disk SQL state advances
+    // atomically. The fs.unlink loop above is unavoidably outside the tx
+    // (filesystem ops cannot enrol in SQLite transactions), but that loop
+    // is ENOENT-tolerant and idempotent — replaying it on a retried erase
+    // is safe.
+    const eraseTx: TxQuery[] = [
+      // SEC-H53: Explicit FTS scrub for customers_fts (content='customers').
+      // The customers_fts_delete trigger fires when we DELETE FROM customers
+      // below; we issue the delete explicitly so the FTS index is clean even
+      // if the trigger is missing or re-created.
+      {
+        sql: `INSERT INTO customers_fts(customers_fts, rowid, first_name, last_name, email, phone, mobile, organization, city, postcode, tags)
+              VALUES ('delete', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [
+          id,
+          customer.first_name ?? '',
+          customer.last_name ?? '',
+          customer.email ?? '',
+          customer.phone ?? '',
+          customer.mobile ?? '',
+          customer.organization ?? '',
+          customer.city ?? '',
+          customer.postcode ?? '',
+          customer.tags ?? '',
+        ],
+      },
+      // D1: Set child rows' customer_id to NULL instead of 0. Writing 0
+      // used to leak a synthetic orphan id into every join and break FK
+      // semantics. Invoices have been nullable since migration 013;
+      // tickets and estimates were made nullable in migration 074.
+      { sql: 'UPDATE tickets SET customer_id = NULL WHERE customer_id = ?', params: [id] },
+      { sql: 'UPDATE invoices SET customer_id = NULL WHERE customer_id = ?', params: [id] },
+      { sql: 'UPDATE estimates SET customer_id = NULL WHERE customer_id = ?', params: [id] },
+      // D3: customer_relationships has no CASCADE on customer_id_a/b, so
+      // we clean it up here from application code as part of the erasure.
+      {
+        sql: 'DELETE FROM customer_relationships WHERE customer_id_a = ? OR customer_id_b = ?',
+        params: [id, id],
+      },
+    ];
 
-    // D1: Set child rows' customer_id to NULL instead of 0. Writing 0 used
-    // to leak a synthetic orphan id into every join and break FK semantics.
-    // Invoices have been nullable since migration 013. Tickets and estimates
-    // were made nullable in migration 074.
-    await adb.run('UPDATE tickets SET customer_id = NULL WHERE customer_id = ?', id);
-    await adb.run('UPDATE invoices SET customer_id = NULL WHERE customer_id = ?', id);
-    await adb.run('UPDATE estimates SET customer_id = NULL WHERE customer_id = ?', id);
-
-    // D3: customer_relationships has no CASCADE on customer_id_a/b, so we
-    // clean it up here from application code as part of the erasure.
-    await adb.run(
-      'DELETE FROM customer_relationships WHERE customer_id_a = ? OR customer_id_b = ?',
-      id,
-      id,
-    );
-
-    // Delete SMS messages linked to customer's phone numbers
+    // Delete SMS messages and call logs linked to customer's phone numbers
     const phoneSet = new Set<string>();
     if (customer.phone) phoneSet.add(normalizePhone(customer.phone));
     if (customer.mobile) phoneSet.add(normalizePhone(customer.mobile));
     if (phoneSet.size > 0) {
       const phoneList = Array.from(phoneSet);
       const phonePlaceholders = phoneList.map(() => '?').join(', ');
-      await adb.run(`DELETE FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`, ...phoneList);
-      await adb.run(`DELETE FROM call_logs WHERE conv_phone IN (${phonePlaceholders})`, ...phoneList);
+      eraseTx.push(
+        { sql: `DELETE FROM sms_messages WHERE conv_phone IN (${phonePlaceholders})`, params: phoneList },
+        { sql: `DELETE FROM call_logs WHERE conv_phone IN (${phonePlaceholders})`, params: phoneList },
+      );
     }
 
     // Delete email messages
@@ -2804,39 +2821,44 @@ router.delete(
     if (emailSet.size > 0) {
       const emailList = Array.from(emailSet);
       const emailPlaceholders = emailList.map(() => '?').join(', ');
-      await adb.run(`DELETE FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`,
-        ...emailList, ...emailList);
+      eraseTx.push({
+        sql: `DELETE FROM email_messages WHERE LOWER(to_address) IN (${emailPlaceholders}) OR LOWER(from_address) IN (${emailPlaceholders})`,
+        params: [...emailList, ...emailList],
+      });
     }
 
-    // Hard delete the customer record
-    await adb.run('DELETE FROM customers WHERE id = ?', id);
-
-    // SEC-H53: Strip PII from audit_log.details JSON for all rows that
-    // reference this customer.  We retain customer_id so the audit chain
-    // stays anchored (compliance requirement) but remove the human-readable
-    // fields that constitute personal data.
-    //
-    // PII keys observed in audit() calls across the codebase:
-    //   customer_name  — customer_gdpr_erased, (customer_deleted uses only customer_id)
-    //   phone          — sms_opt_out
-    //   customer_email — (none currently, guarded for future-proofing)
-    //   customer_phone — (none currently, guarded for future-proofing)
-    //   customer_last_name — (none currently, guarded for future-proofing)
-    await adb.run(
-      `UPDATE audit_logs
-          SET details = JSON_REMOVE(
-                JSON_REMOVE(
-                  JSON_REMOVE(
-                    JSON_REMOVE(
-                      JSON_REMOVE(details,
-                        '$.customer_name'),
-                      '$.customer_email'),
-                    '$.customer_phone'),
-                  '$.customer_last_name'),
-                '$.phone')
-        WHERE JSON_EXTRACT(details, '$.customer_id') = ?`,
-      id,
+    eraseTx.push(
+      // Hard delete the customer record
+      { sql: 'DELETE FROM customers WHERE id = ?', params: [id] },
+      // SEC-H53: Strip PII from audit_log.details JSON for all rows that
+      // reference this customer.  We retain customer_id so the audit chain
+      // stays anchored (compliance requirement) but remove the human-readable
+      // fields that constitute personal data.
+      //
+      // PII keys observed in audit() calls across the codebase:
+      //   customer_name  — customer_gdpr_erased, (customer_deleted uses only customer_id)
+      //   phone          — sms_opt_out
+      //   customer_email — (none currently, guarded for future-proofing)
+      //   customer_phone — (none currently, guarded for future-proofing)
+      //   customer_last_name — (none currently, guarded for future-proofing)
+      {
+        sql: `UPDATE audit_logs
+                 SET details = JSON_REMOVE(
+                       JSON_REMOVE(
+                         JSON_REMOVE(
+                           JSON_REMOVE(
+                             JSON_REMOVE(details,
+                               '$.customer_name'),
+                             '$.customer_email'),
+                           '$.customer_phone'),
+                         '$.customer_last_name'),
+                       '$.phone')
+               WHERE JSON_EXTRACT(details, '$.customer_id') = ?`,
+        params: [id],
+      },
     );
+
+    await adb.transaction(eraseTx);
 
     // SEC-H53: SMS suppression list — the sms_suppression table does not
     // exist in the current schema (verified: grep of all migrations returns

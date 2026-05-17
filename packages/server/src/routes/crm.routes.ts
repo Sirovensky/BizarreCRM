@@ -463,7 +463,10 @@ router.post(
     const monthly = validatePositiveAmount(body.monthly_amount, 'monthly_amount');
     const nextBillingDate = validateIsoDate(body.next_billing_date, 'next_billing_date', true)!;
 
-    const exists = await adb.get<{ id: number }>(`SELECT id FROM customers WHERE id = ?`, id);
+    const exists = await adb.get<{ id: number }>(
+      `SELECT id FROM customers WHERE id = ? AND is_deleted = 0`,
+      id,
+    );
     if (!exists) throw new AppError('Customer not found', 404);
 
     // card_token is an opaque reference from the payment processor; bound it
@@ -475,13 +478,18 @@ router.post(
     const result = await adb.run(
       `INSERT INTO service_subscriptions
          (customer_id, plan_name, monthly_cents, next_billing_date, card_token)
-       VALUES (?, ?, ?, ?, ?)`,
+       SELECT ?, ?, ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)`,
       id,
       planName,
       Math.round(monthly * 100),
       nextBillingDate,
       cardToken,
+      id,
     );
+    if (result.changes === 0) {
+      throw new AppError('Customer was just deleted; refresh and retry', 409);
+    }
 
     audit(db, 'service_subscription_created', req.user!.id, req.ip || 'unknown', {
       customer_id: id,
