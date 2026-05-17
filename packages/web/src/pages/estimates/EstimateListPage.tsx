@@ -324,8 +324,9 @@ function CreateEstimateModal({
                   <input
                     type="number"
                     min="1"
+                    step="1"
                     value={item.quantity}
-                    onChange={(e) => updateLineItem(idx, 'quantity', Number(e.target.value))}
+                    onChange={(e) => updateLineItem(idx, 'quantity', Math.max(1, Math.floor(Number(e.target.value)) || 1))}
                     className="w-16 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm text-center dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
                     placeholder="Qty"
                   />
