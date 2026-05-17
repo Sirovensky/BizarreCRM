@@ -4926,36 +4926,40 @@ router.post('/merge', requirePermission('tickets.bulk_update'), asyncHandler(asy
   if (!keepTicket) throw new AppError('Keep ticket not found', 404);
   if (!mergeTicket) throw new AppError('Merge ticket not found', 404);
 
-  // Move all devices from merge_id to keep_id
-  await adb.run('UPDATE ticket_devices SET ticket_id = ?, updated_at = ? WHERE ticket_id = ?',
-    keep_id, now(), merge_id);
+  // BUGHUNT-2026-05-17: bundle every move + soft-delete into one atomic
+  // transaction. Previously each step was a separate adb.run() — a crash
+  // partway through left the merge half-done: devices moved but notes
+  // weren't, or links half-rewritten, or the soft-delete UPDATE never
+  // landed. Operator saw "merge succeeded" or "merge failed" responses
+  // backed by inconsistent state with no clean recovery path.
+  //
+  // recalcTicketTotalsAsync is intentionally left OUTSIDE the tx
+  // because it's an async read+write helper that doesn't fit the
+  // TxQuery[] shape. If recalc fails we accept stale totals on the
+  // surviving ticket (operator can re-trigger a recalc via the totals
+  // edit), but the moves + soft-delete are guaranteed atomic.
+  const mergeNow = now();
+  await adb.transaction([
+    { sql: 'UPDATE ticket_devices SET ticket_id = ?, updated_at = ? WHERE ticket_id = ?',
+      params: [keep_id, mergeNow, merge_id] },
+    { sql: 'UPDATE ticket_notes SET ticket_id = ? WHERE ticket_id = ?',
+      params: [keep_id, merge_id] },
+    { sql: 'UPDATE ticket_history SET ticket_id = ? WHERE ticket_id = ?',
+      params: [keep_id, merge_id] },
+    { sql: 'UPDATE ticket_photos SET ticket_id = ? WHERE ticket_id = ? AND ticket_device_id IS NULL',
+      params: [keep_id, merge_id] },
+    { sql: 'UPDATE ticket_links SET ticket_id_a = ? WHERE ticket_id_a = ?',
+      params: [keep_id, merge_id] },
+    { sql: 'UPDATE ticket_links SET ticket_id_b = ? WHERE ticket_id_b = ?',
+      params: [keep_id, merge_id] },
+    { sql: 'DELETE FROM ticket_links WHERE ticket_id_a = ticket_id_b',
+      params: [] },
+    { sql: 'UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?',
+      params: [mergeNow, merge_id] },
+  ]);
 
-  // Move all notes
-  await adb.run('UPDATE ticket_notes SET ticket_id = ? WHERE ticket_id = ?',
-    keep_id, merge_id);
-
-  // Move all history entries
-  await adb.run('UPDATE ticket_history SET ticket_id = ? WHERE ticket_id = ?',
-    keep_id, merge_id);
-
-  // Move all photos (ticket-level, not device-level -- device photos moved with devices)
-  await adb.run('UPDATE ticket_photos SET ticket_id = ? WHERE ticket_id = ? AND ticket_device_id IS NULL',
-    keep_id, merge_id);
-
-  // Move any ticket_links referencing merge_id
-  await adb.run('UPDATE ticket_links SET ticket_id_a = ? WHERE ticket_id_a = ?',
-    keep_id, merge_id);
-  await adb.run('UPDATE ticket_links SET ticket_id_b = ? WHERE ticket_id_b = ?',
-    keep_id, merge_id);
-  // Remove self-links that may have resulted
-  await adb.run('DELETE FROM ticket_links WHERE ticket_id_a = ticket_id_b');
-
-  // Recalculate totals on keep ticket
+  // Recalculate totals on keep ticket (post-tx, best-effort).
   await recalcTicketTotalsAsync(adb, keep_id);
-
-  // Soft-delete the merged ticket
-  await adb.run('UPDATE tickets SET is_deleted = 1, updated_at = ? WHERE id = ?',
-    now(), merge_id);
 
   // History on keep ticket
   await insertHistoryAsync(adb, keep_id, userId, 'merged',
