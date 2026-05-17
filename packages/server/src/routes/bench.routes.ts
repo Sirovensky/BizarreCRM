@@ -489,14 +489,28 @@ router.post(
         : row.notes;
 
     // Wrap pause_log update + timer stop in one atomic transaction (SCAN-809).
-    await adb.transaction([
-      {
-        sql: `UPDATE bench_timers SET ended_at = datetime('now'),
-        total_seconds = ?, labor_cost_cents = ?, notes = ?, pause_log_json = ?
-       WHERE id = ?`,
-        params: [elapsed, cost, notes, pauseLogJson, id],
-      },
-    ]);
+    // BUGHUNT-2026-05-17: guard the UPDATE WHERE ended_at IS NULL so a
+    // racing /stop or the auto-close-on-ticket-close pathway can't
+    // overwrite our just-recorded total_seconds + labor_cost_cents
+    // with their own computed values.
+    try {
+      await adb.transaction([
+        {
+          sql: `UPDATE bench_timers SET ended_at = datetime('now'),
+          total_seconds = ?, labor_cost_cents = ?, notes = ?, pause_log_json = ?
+         WHERE id = ? AND ended_at IS NULL`,
+          params: [elapsed, cost, notes, pauseLogJson, id],
+          expectChanges: true,
+          expectChangesError: 'TIMER_ALREADY_STOPPED',
+        },
+      ]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('TIMER_ALREADY_STOPPED')) {
+        throw new AppError('Timer was just stopped by another request', 409);
+      }
+      throw err;
+    }
 
     audit(req.db, 'bench_timer_stopped', req.user?.id ?? null, req.ip ?? 'unknown', {
       timer_id: id,
