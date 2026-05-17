@@ -182,6 +182,13 @@ public struct JailbreakDetector: Sendable {
     /// On a stock device these will always return `false`.
     private func checkURLSchemes() -> [JailbreakSignal] {
         #if canImport(UIKit)
+        // BUGHUNT-2026-05-17: `assess()` advertises "safe to call from a
+        // background actor", but the unconditional MainActor.assumeIsolated
+        // here trips the runtime isolation check off the main thread. Gate on
+        // Thread.isMainThread; when called off-main we simply skip this
+        // single soft signal (the other heuristics still run and are more
+        // diagnostic for actual jailbreaks).
+        guard Thread.isMainThread else { return [] }
         let schemes = ["cydia://", "sileo://", "zbra://"]
         for scheme in schemes {
             let canOpen = MainActor.assumeIsolated {

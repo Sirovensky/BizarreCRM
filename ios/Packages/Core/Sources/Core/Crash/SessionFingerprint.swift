@@ -68,7 +68,17 @@ extension SessionFingerprint {
 
         let iOSVersion: String
         #if os(iOS) || os(tvOS)
-        iOSVersion = MainActor.assumeIsolated { UIDevice.current.systemVersion }
+        // BUGHUNT-2026-05-17: this method runs in crash-recovery paths that
+        // may fire on a background thread (signal handler, telemetry flush).
+        // Unconditionally calling MainActor.assumeIsolated trips the runtime
+        // isolation check and crashes during crash reporting. Gate on
+        // Thread.isMainThread and fall back to ProcessInfo, which is safe
+        // off-main and returns a comparable version string.
+        if Thread.isMainThread {
+            iOSVersion = MainActor.assumeIsolated { UIDevice.current.systemVersion }
+        } else {
+            iOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
+        }
         #else
         iOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
         #endif
