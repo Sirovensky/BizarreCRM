@@ -699,9 +699,20 @@ router.post('/:id/pause', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
   const id = parseInt(req.params.id as string, 10);
   if (!Number.isFinite(id) || id <= 0) throw new AppError('Invalid subscription id', 400);
-  const result = await adb.run("UPDATE customer_subscriptions SET status = 'paused', pause_reason = ?, auto_renew = 0, next_billing_attempt_at = NULL, updated_at = ? WHERE id = ?",
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status NOT IN
+  // ('cancelled','paused'). Without this, /pause silently flips a
+  // cancelled subscription back to 'paused', which the /resume guard
+  // then happily revives to 'active' — bypassing the cancellation
+  // invariant noted in /resume's comment (customers.active_subscription_id
+  // was nulled by the immediate-cancel path, so an 'active' sub against
+  // a null active_subscription_id is an unrecoverable inconsistency).
+  const result = await adb.run("UPDATE customer_subscriptions SET status = 'paused', pause_reason = ?, auto_renew = 0, next_billing_attempt_at = NULL, updated_at = ? WHERE id = ? AND status NOT IN ('cancelled','paused')",
     req.body.reason || null, now(), id);
-  if (!result.changes) throw new AppError('Subscription not found', 404);
+  if (!result.changes) {
+    const existing = await adb.get<AnyRow>('SELECT status FROM customer_subscriptions WHERE id = ?', id);
+    if (!existing) throw new AppError('Subscription not found', 404);
+    throw new AppError(`Subscription is ${existing.status}; cannot pause`, 409);
+  }
   res.json({ success: true, data: { paused: true } });
 }));
 
@@ -726,7 +737,13 @@ router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
   if (current.status === 'cancelled') {
     throw new AppError('Cancelled subscriptions cannot be resumed; enroll the customer in a new subscription instead.', 409);
   }
-  await adb.run(
+  // BUGHUNT-2026-05-17: guard the UPDATE WHERE status != 'cancelled'.
+  // The SELECT precheck above is TOCTOU — a concurrent cancellation
+  // could flip the sub to 'cancelled' between the read and the write,
+  // and the unguarded UPDATE would silently revive it. Per the comment
+  // above, cancelled→active leaves an unrecoverable inconsistency
+  // (customers.active_subscription_id is already NULL by then).
+  const result = await adb.run(
     `UPDATE customer_subscriptions
         SET status = 'active',
             pause_reason = NULL,
@@ -734,10 +751,13 @@ router.post('/:id/resume', asyncHandler(async (req: Request, res: Response) => {
             cancel_at_period_end = 0,
             billing_suspended_at = NULL,
             updated_at = ?
-      WHERE id = ?`,
+      WHERE id = ? AND status != 'cancelled'`,
     now(),
     id,
   );
+  if (!result.changes) {
+    throw new AppError('Subscription was cancelled concurrently; enroll the customer in a new subscription instead.', 409);
+  }
   res.json({ success: true, data: { resumed: true } });
 }));
 
