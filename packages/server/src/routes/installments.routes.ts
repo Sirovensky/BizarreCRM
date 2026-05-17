@@ -98,7 +98,14 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   }
 
   // FK checks
-  const customerExists = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ?', customer_id);
+  // BUGHUNT-2026-05-17: include is_deleted = 0 so a soft-deleted customer
+  // can't have a new installment plan attached (which the auto-charge cron
+  // would then keep billing forever). The whole plan + schedule write is
+  // already inside an adb.transaction so a /DELETE landing between this
+  // SELECT and the tx commit would still produce a stale plan; the tx
+  // could be tightened with a WHERE EXISTS subquery on the plan INSERT
+  // but that requires more refactoring — flag here for follow-up.
+  const customerExists = await adb.get<{ id: number }>('SELECT id FROM customers WHERE id = ? AND is_deleted = 0', customer_id);
   if (!customerExists) throw new AppError('Customer not found', 404);
 
   let invoiceIdClean: number | null = null;
@@ -142,12 +149,18 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
   // total or missing due dates and could be over- or under-charged on auto-bill.
   // Wrap in adb.transaction(). lastInsertRowidFrom(0) so every schedule row
   // pins to the plan's rowid (each schedule INSERT bumps last_insert_rowid()).
+  // BUGHUNT-2026-05-17: include the customer-still-active guard inside the
+  // tx via INSERT...WHERE EXISTS + expectChanges. If a /DELETE soft-deletes
+  // the customer between the precheck above and this tx commit, the plan
+  // INSERT yields 0 rows and the whole tx rolls back — no orphan plan or
+  // schedule rows, no auto-charge cron picking up a deleted customer.
   const planTxQueries: TxQuery[] = [
     {
       sql: `INSERT INTO installment_plans
               (invoice_id, customer_id, total_cents, installment_count, frequency_days,
                acceptance_token, acceptance_signed_at, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
+              SELECT ?, ?, ?, ?, ?, ?, ?, 'active'
+               WHERE EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_deleted = 0)`,
       params: [
         invoiceIdClean,
         customer_id,
@@ -156,7 +169,10 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
         frequency_days,
         acceptance_token.trim(),
         acceptance_signed_at,
+        customer_id,
       ],
+      expectChanges: true,
+      expectChangesError: 'CUSTOMER_DELETED_RACE',
     },
   ];
   for (const { amountCents, dueDate } of normalizedSchedule) {
@@ -166,7 +182,16 @@ router.post('/', asyncHandler(async (req: Request, res: Response) => {
       params: [lastInsertRowidFrom(0), dueDate, amountCents],
     });
   }
-  const planTxResults = await adb.transaction(planTxQueries);
+  let planTxResults: Awaited<ReturnType<typeof adb.transaction>>;
+  try {
+    planTxResults = await adb.transaction(planTxQueries);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('CUSTOMER_DELETED_RACE')) {
+      throw new AppError('Customer was just deleted; refresh and retry', 409);
+    }
+    throw err;
+  }
   const planId = Number(planTxResults[0].lastInsertRowid);
 
   audit(db, 'installment_plan.create', req.user!.id, req.ip ?? '', {
